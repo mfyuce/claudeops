@@ -230,7 +230,8 @@ HANDOVER_MSG_DEFAULT = (
     "SONRA tüm güncellemeleri commit + push et (tüm remote lara).\n\n"
     "Sonunda CLAUDE.md nin sonuna "
     "\"## READY FOR HANDOVER ($(date))\" başlığıyla 5-10 satırlık özet ekle.\n"
-    "Bitince \"READY FOR HANDOVER\" özetiyle dön."
+    "Bitince \"READY FOR HANDOVER\" özetiyle dön.\n"
+    "Yanıt dili: Türkçe (özet ve STEWARD-* satırları dahil)."
 )
 
 HANDOVER_MSG_DEFAULT_EN = (
@@ -257,7 +258,8 @@ HANDOVER_MSG_DEFAULT_EN = (
     "THEN commit + push all updates (to all remotes).\n\n"
     "Finally, append a 5-10 line summary to the end of CLAUDE.md under the heading "
     "\"## READY FOR HANDOVER ($(date))\".\n"
-    "When done, reply with the \"READY FOR HANDOVER\" summary."
+    "When done, reply with the \"READY FOR HANDOVER\" summary.\n"
+    "Reply language: English (including the summary and STEWARD-* lines)."
 )
 
 

@@ -15,6 +15,19 @@ class UsageStateTest(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+    def test_cached_view_reads_state_without_polling(self):
+        from claudeops.commands import web
+        v = web.usage_cached_view()
+        self.assertTrue(v["ok"] and v["cached"] and v["stale"])
+        self.assertEqual(v["providers"], {})
+        with mock.patch.object(web, "_usage_all", side_effect=AssertionError("okuma yapmamalı")):
+            us.set_all({"agy": {"supported": True, "available": True, "entries": [1]}}, source="periodic")
+            v = web.usage_cached_view()
+        self.assertEqual(v["source"], "periodic")
+        self.assertIn("agy", v["providers"])
+        self.assertFalse(v["stale"])
+        self.assertIsNotNone(v["age_secs"])
+
     def test_empty_is_stale(self):
         g = us.get(1000.0)
         self.assertTrue(g["stale"])

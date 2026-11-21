@@ -83,6 +83,7 @@ class _Tmp(unittest.TestCase):
         P.set_config("usage_refresh", {"enabled": "off"})      # öntanımlı AÇIK iş testlerde gerçek okuma yapmasın (kendi testi aşağıda)
         P.set_config("model_watch", {"enabled": "off"})        # öntanımlı AÇIK iş testlerde gerçek model taraması yapmasın
         P.set_config("host_probe", {"enabled": "off"})         # öntanımlı AÇIK iş testlerde gerçek host yoklaması yapmasın
+        P.set_config("orphan_watch", {"enabled": "off"})       # öntanımlı AÇIK iş testlerde gerçek süreç/soket taraması yapmasın (kendi testi test_orphan_watch.py)
         P.set_config("disk_clean", {"enabled": "off"})         # öntanımlı AÇIK iş testlerde gerçek dizinleri silmesin (kendi testi test_disk_clean.py)
 
 
@@ -242,6 +243,26 @@ class ChatBackupTest(_Tmp):
         self.assertTrue(r["ok"])                                               # yerel yedek başarılı
         self.assertIn("UYARI uzak çekme yuhem", r["msg"])
         self.assertEqual(len(r["warnings"]), 1)
+
+    def test_out_of_range_mtime_does_not_crash_plan(self):
+        """R-2: aralık dışı st_mtime plan_chat_backup'ı düşürmemeli; gün bugüne düşer, dosya yine yedeklenir."""
+        self._setup_repo()
+        bad = os.path.join(self.d, "claude", "projects", "-p1", "a.jsonl")
+        real_stat = os.stat
+
+        def fake_stat(path, *a, **k):          # ext4 mtime'ı 2446'ya kısar; aralık dışı değeri stat sahtesiyle ver
+            st = real_stat(path, *a, **k)
+            if path == bad:
+                t = list(st)[:10]
+                t[8] = 10 ** 12                # yıl 33658: fromtimestamp ValueError
+                return os.stat_result(t)
+            return st
+        with mock.patch.object(P, "_local_sources", return_value=self.srcs), \
+                mock.patch.object(P.os, "stat", side_effect=fake_stat):
+            plan = P.plan_chat_backup(self.cfg, {})
+        ent = [e for e in plan["changed"] if e["src"] == bad]
+        self.assertEqual(len(ent), 1)
+        self.assertEqual(ent[0]["day"], datetime.date.today().isoformat())
 
     def test_binary_chunked_and_group_repo(self):
         repo = self._setup_repo()
@@ -473,3 +494,26 @@ class UsageRefreshJobTest(_Tmp):
     def test_builtin_default_without_stored_config_is_on(self):
         os.remove(P.CONFIG_JSON) if os.path.exists(P.CONFIG_JSON) else None
         self.assertTrue(P._is_on(P.load_config()["usage_refresh"]["enabled"]))
+
+
+def test_redact_cli_anahtar_siniflari():
+    g = "AIza" + "A" * 35
+    for tok in ("github_pat_" + "a1B2" * 8, "sk-proj-" + "x" * 30, g, "xoxb-1234567890-abc", "hf_" + "a" * 34, "npm_" + "a" * 36):
+        out, n = P.redact("anahtar " + tok + " son")
+        assert tok not in out and n >= 1, tok
+
+
+def test_maske_surumu_degisince_imzalar_duser():
+    m = {"/x/a.jsonl": "1:2", P._DEST_PFX + "d/a": "5", P._MASKVER_KEY: "eski"}
+    st = {"chat_backup": {"manifest": m}}
+    cfg = dict(P.DEFAULT_CHAT_BACKUP, dump_db=False, raw_remote="", enabled="on")
+    seen = {}
+    def fake_plan(c, man):
+        seen.update(man)
+        return {"repo": "", "seen": 0, "changed": [], "marks": {}}
+    with mock.patch.object(P, "plan_chat_backup", fake_plan), mock.patch.object(P, "_local_sources", lambda: []):
+        try:
+            P.run_chat_backup(cfg, False, st)
+        except Exception:
+            pass
+    assert "/x/a.jsonl" not in seen and P._DEST_PFX + "d/a" in seen

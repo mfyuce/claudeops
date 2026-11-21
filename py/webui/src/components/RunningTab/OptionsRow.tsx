@@ -229,11 +229,25 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
       // alongside the new one, same as plain "newchat". A failed stop aborts
       // before spawning the new one rather than leaving two live sessions
       // sharing state on the same cwd.
+      let stoppedByUs = false;
+      // Rollback: the stop already happened, so a failed new chat (e.g. empty model list) would leave NO session (TODO 1117).
+      // Best-effort: start the old name again with the server's recorded settings and say so.
+      const rollback = async () => {
+        if (!stoppedByUs) return;
+        stoppedByUs = false;
+        try {
+          const r = await apiStart({ name: session.name, host: session.host, lang });
+          showToast(r.ok ? t.restartRolledBack(session.name) : t.restartRollbackFailed(session.name));
+        } catch {
+          showToast(t.restartRollbackFailed(session.name));
+        }
+      };
       try {
         let stopOk = true;
         if (mode === "restart" && session.running) {
           const stopRes = await apiStop({ name: session.name, host: session.host, lang });
           stopOk = stopRes.ok;
+          stoppedByUs = stopRes.ok;
           if (!stopRes.ok) showToast(`${session.name}: ${stopRes.error}`);
         }
         if (stopOk) {
@@ -253,10 +267,12 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
             const msg = `${session.name}: ${describeResError(res, t)}`;
             if (res.code === "spawn_refused") showToast(msg);     // kota/giriş reddi: tanılama sekmesi önerisi anlamsız
             else confirmDiagFollowup(msg);
+            await rollback();
           }
         }
       } catch (e) {
         showToast(friendlyError(describeApiError(e, t), lang));
+        await rollback();
       }
     } else {
       // "reset" while still running (modeChoices above) needs the same

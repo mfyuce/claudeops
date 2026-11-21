@@ -22,6 +22,7 @@ export type TabKey =
   | "snapshots"
   | "readlist"
   | "diag"
+  | "metrics"
   | "settings";
 
 /** Same localStorage key as the original PAGE_HTML JS's `TAB` variable. */
@@ -40,6 +41,7 @@ const ALL_TABS: readonly TabKey[] = [
   "snapshots",
   "readlist",
   "diag",
+  "metrics",
   "settings",
 ];
 
@@ -62,10 +64,10 @@ export function extIdOf(key: string): string {
 export type TabGroup = "tools" | "settings";
 
 export const TOOLS_SUBS: readonly TabKey[] = ["ucli", "team", "steward", "desktop", "readlist"];
-export const SETTINGS_SUBS: readonly TabKey[] = ["settings", "snapshots", "diag"];
+export const SETTINGS_SUBS: readonly TabKey[] = ["settings", "snapshots", "diag", "metrics"];
 
 /** Keys hidden for a filtered (non-admin) view: same set the old flat bar hid. */
-export const RESTRICTED_HIDE: readonly string[] = ["team", "steward", "desktop", "snapshots", "readlist", "diag", "settings"];
+export const RESTRICTED_HIDE: readonly string[] = ["team", "steward", "desktop", "snapshots", "readlist", "diag", "metrics", "settings"];
 
 /** Group a key belongs to, or null for a top-level tab (running, registered, ..., ext:<id>). */
 export function groupOf(key: string, extSubs?: ExtSubs): TabGroup | null {

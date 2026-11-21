@@ -39,7 +39,7 @@ import types
 import os
 import shutil
 import sys
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from .. import roster as roster_mod
 from .. import review as rv
@@ -73,13 +73,39 @@ def resolve_sid(args) -> str:
     return sid
 
 
-def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, sid: str = "default") -> Dict[str, Any]:
+def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, sid: str = "default",
+         timeout: float = 15) -> Dict[str, Any]:
     if sid != "default" and isinstance(body, dict):
         body = dict(body, steward=sid)      # default'ta gövde BUGÜNKÜYLE aynı (kimliksiz)
     try:
-        return mcp_queue._api(port, method, path, body)
+        if timeout == 15:
+            return mcp_queue._api(port, method, path, body)      # varsayılan: eski çağrı biçimi birebir
+        return mcp_queue._api(port, method, path, body, timeout=timeout)
     except mcp_queue.ApiError as e:
         return {"ok": False, "error": str(e)}
+
+
+_RETRYABLE_MARKERS = ("timed out", "bad response from claudeops panel", "cannot reach claudeops panel")
+DIRECTIVE_TIMEOUT_SECONDS = 60       # direktif eşzamanlı yol: değnekçi kilidi (tick) + TODO yazımı + tmux gönderimi 15 sn'yi aşabiliyor (21 Kas 17:08)
+DIRECTIVE_ATTEMPTS = 3
+
+
+def _api_idempotent(port: int, method: str, path: str, body: Dict[str, Any], sid: str, did: str,
+                    attempts: int = DIRECTIVE_ATTEMPTS, timeout: float = DIRECTIVE_TIMEOUT_SECONDS,
+                    sleep: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+    """Zaman aşımı/bağlantı hatasında AYNI `_did` ile yeniden dener (sunucu `_did` ile yinelenmeyi ayıklar: TODO satırı ve gönderim tek).
+    Bütün denemeler biterse SESSİZ kayıp yok: açık `unknown_outcome` + `directive_id` + denetim ipucu döner. HTTP hatası/ok:false yeniden denenmez."""
+    body = dict(body, _did=did)
+    res: Dict[str, Any] = {}
+    for i in range(max(1, attempts)):
+        res = _api(port, method, path, body, sid, timeout=timeout)
+        if res.get("ok") or not any(mk in str(res.get("error") or "") for mk in _RETRYABLE_MARKERS):
+            return res
+        if i + 1 < attempts:
+            sleep(3.0)
+    return dict(res, unknown_outcome=True, directive_id=did,
+                hint=f"sonuç bilinmiyor ({attempts} deneme): direktif iletilmiş olabilir. Kontrol: TODO.md'de 'direktif {did})' satırı / "
+                     f"py/cops steward{_sflag(sid)} log; aynı komutu AYNI id ile yinelemek güvenli: --did {did}")
 
 
 def _sflag(sid: str) -> str:
@@ -184,6 +210,9 @@ def cmd_status(args) -> int:
     _fr = _uf.freshness()
     if _fr.get("stale"):
         print(f"uyarı: {_fr['message']}")
+    _fz = _uf.uzakgoz_freshness()
+    if _fz.get("stale"):
+        print(f"uyarı: {_fz['message']}")
     return 0
 
 
@@ -385,14 +414,55 @@ def cmd_ask(args) -> int:
     return 0
 
 
+def _in_claude_session() -> bool:
+    """Bu komut bir claude (claudeops/Claude Code) oturumunun içinden mi çağrılıyor? COPS_NAME (claudeops oturumu), CLAUDECODE / CLAUDE_CODE_*
+    ortamı ya da üst süreç zincirinde `claude` süreci. Sahibin düz kabuğunda bunların hiçbiri yok. COPS_NAME'siz açılmış kontrol oturumu
+    (cops, 21 Kas: 4 cevap yanlışlıkla owner_cli kaydedildi) bu yedek tespitle yakalanır."""
+    if os.environ.get("COPS_NAME") or os.environ.get("CLAUDECODE"):
+        return True
+    if any(k.startswith("CLAUDE_CODE_") for k in os.environ):
+        return True
+    try:
+        from ..handover import ancestor_pids
+        for pid in ancestor_pids():
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    argv = [a.decode("utf-8", "replace") for a in f.read().split(b"\0")[:3] if a]
+                with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as f:
+                    comm = f.read().strip()
+            except OSError:
+                continue
+            if comm == "claude" or any(os.path.basename(a) == "claude" for a in argv):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _answer_by(args) -> str:
-    """`--as-owner` -> owner_cli; `--on-behalf` -> cops; ikisi de yoksa: claudeops oturumunun içinden (COPS_NAME var) = cops (sahip adına),
-    sahibin kendi terminali (COPS_NAME yok) = owner_cli."""
+    """`--as-owner` -> owner_cli; `--on-behalf` -> cops; ikisi de yoksa: claude oturumunun içinden (COPS_NAME, CLAUDECODE/CLAUDE_CODE_* ya da
+    üst süreçte claude) = cops (sahip adına), sahibin düz kabuğu = owner_cli. Sahip claude içinden çağırırsa `--as-owner` açıkça."""
     if getattr(args, "as_owner", False):
         return "owner_cli"
     if getattr(args, "on_behalf", False):
         return "cops"
-    return "cops" if os.environ.get("COPS_NAME") else "owner_cli"
+    return "cops" if _in_claude_session() else "owner_cli"
+
+
+def cmd_fix_answered_by(args) -> int:
+    """Tek seferlik düzeltme: kayıtlı cevapların `answered_by` alanını değiştirir (varsayılan cops). Cevap metnine/iletim durumuna
+    DOKUNMAZ, yeniden İLETMEZ: `py/cops steward fix-answered-by ID [ID...] [--to cops]`."""
+    by = args.to
+    if by not in sw.ANSWERED_BY:
+        print(f"hata: geçersiz --to; izinli: {', '.join(sw.ANSWERED_BY)}")
+        return 1
+    n = sw.set_answered_by(args.ids, by, _sid(args))
+    missing = [i for i in args.ids if i not in n]
+    for i in n:
+        print(f"✓ [{i}] answered_by -> {by}")
+    for i in missing:
+        print(f"yok ya da cevapsız: {i}")
+    return 0 if not missing else 1
 
 
 def cmd_answer(args) -> int:
@@ -1068,9 +1138,9 @@ def cmd_api(args) -> int:
             return 0
         res = _api(port, "POST", "/api/steward/brain", {"action": what}, sid)
     elif args.action == "directive":
-        res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
-                                                            "model": args.model or "", "effort": args.effort or "",
-                                                            "reason": "cli", "queue": True}, sid)
+        res = _api_idempotent(port, "POST", "/api/steward/directive",
+                              {"name": args.name, "text": args.text or "", "model": args.model or "", "effort": args.effort or "",
+                               "reason": "cli", "queue": True}, sid, getattr(args, "did", None) or __import__("uuid").uuid4().hex[:12])
         if res.get("status") == "queued" and res.get("id"):      # arka plan teslimi: sonucu bekle (delivered|failed), zaman aşımı = hâlâ queued
             for _ in range(60):
                 time.sleep(2)
@@ -1186,6 +1256,10 @@ def register(sub):
     pq = s.add_parser("questions", help="sorular")
     pq.add_argument("--all", action="store_true")
     pq.set_defaults(func=cmd_questions)
+    pf = s.add_parser("fix-answered-by", help="cevaplanmış soruların answered_by alanını düzelt (yeniden iletmez)")
+    pf.add_argument("ids", nargs="+")
+    pf.add_argument("--to", default="cops")
+    pf.set_defaults(func=cmd_fix_answered_by)
     pa = s.add_parser("answer", help="soruyu cevapla (seçenekli soruda numara da olur)")
     pa.add_argument("id")
     pa.add_argument("answer")
@@ -1313,6 +1387,8 @@ def register(sub):
             px.add_argument("--model")
             px.add_argument("--effort")
             px.add_argument("--reason")
+        if name == "directive":
+            px.add_argument("--did", help="istemci direktif kimliği (12 hex): zaman aşımından sonra AYNI id ile yeniden göndermek yinelenme yapmaz")
         px.set_defaults(func=cmd_api)
     for sp in s.choices.values():      # alt-komut `func`ı doğrudan çağrılır (`run` yalnız alt-komutsuz): kimliği HER BİRİNDE çöz
         sp.set_defaults(func=_with_sid(sp.get_default("func")))

@@ -117,6 +117,7 @@ export interface Strings {
   readlistMarkReadFable: string;
   readlistFiltered: (shown: number, total: number) => string;
   tabDiag: string;
+  tabMetrics: string;
   tabSettings: string;
   desktopDesc: string;
   desktopStartBtn: string;
@@ -192,6 +193,7 @@ export interface Strings {
   termCtrlLabel: string;
   termCtrlHint: string;
   termCtrlOn: string;
+  termCtrlNeedsLive: string;
   termGone: (err: string) => string;
   termScrolledHint: string;
   termHistoryBtn: string;
@@ -301,6 +303,8 @@ export interface Strings {
   autoNameHint: (name: string, date: string) => string;
   starting: string;
   newChatStarted: string;
+  restartRolledBack: (name: string) => string;
+  restartRollbackFailed: (name: string) => string;
   layoutDesc: string;
   layoutMissingPrefix: string;
   layoutMissingSuffix: string;
@@ -328,6 +332,8 @@ export interface Strings {
   diagRestartDone: (r: string) => string;
   diagRefreshHint: string;
   diagWindowless: (names: string) => string;
+  diagOrphanWatch: (items: string) => string;
+  diagCpuHog: (items: string) => string;
   diagOrphans: (list: string) => string;
   regSubList: string;
   snapSubNow: string;
@@ -515,6 +521,7 @@ export interface Strings {
   ucliSectionRun: string;
   ucliSectionStart: string;
   ucliSectionGlobal: string;
+  ucliSectionMetrics: string;
   ucliTabNoCli: string;
   mixedCliBadgeHint: (cli: string) => string;
   ucliLimitsPlaceholderAuto: string;
@@ -526,6 +533,10 @@ export interface Strings {
   ucliLimitsStreamHint: string;
   ucliLimitsStreamOff: string;
   ucliLimitsStreamOn: string;
+  ucliLimitsShowReasoningLabel: string;
+  ucliLimitsShowReasoningHint: string;
+  ucliLimitsShowReasoningOn: string;
+  ucliLimitsShowReasoningOff: string;
   ucliUsageWarnLabel: string;
   ucliUsageWarnDesc: string;
   ucliUsageWarnAmberLabel: string;
@@ -614,6 +625,9 @@ export interface Strings {
   tabDiagLog: string;
   usageWarning: string;
   usageCheckBtn: string;
+  usageRefreshBtn: string;
+  usageAge: (secs: number | null | undefined) => string;
+  usageNoState: string;
   usageChecking: string;
   usageNotSupported: string;
   usageNoSession: string;
@@ -703,6 +717,12 @@ export interface Strings {
   stewardSvcOpenJobs: string;
   stewardSvcNoToken: string;
   stewardJobsTitle: string;
+  stewardDirTitle: string;
+  stewardDirNone: string;
+  stewardDirTodoOpen: string;
+  stewardDirTodoClosed: string;
+  stewardDirTodoMissing: string;
+  stewardDirTodoHint: string;
   stewardJobsNone: string;
   stewardJobsAll: string;
   stewardJobsOpen: string;
@@ -779,6 +799,8 @@ export interface Strings {
   stewardIdeasTitle: string;
   stewardNoIdeas: string;
   stewardIdeaPlaceholder: string;
+  stewardIdeaProjectAuto: string;
+  stewardIdeaProjectTitle: string;
   stewardIdeaAddBtn: string;
   stewardIdeaLater: string;
   stewardIdeaDrop: string;
@@ -1016,6 +1038,7 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistMarkReadFable: "Okundu, notu kaydet",
     readlistFiltered: (m: number, n: number) => `arama: ${m} / ${n} eşleşti`,
     tabDiag: "Tanı",
+    tabMetrics: "Metrikler",
     tabSettings: "Ayarlar",
     desktopDesc: "Makinenin ekran görüntüsünü canlı izle (2 fps). Kapatmayı unutma, açıkken sürekli ekran yakalıyor.",
     desktopStartBtn: "Başlat",
@@ -1095,6 +1118,7 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveOn: "⌨ canlı yazma açık — terminale tıklayıp yazın; tuşlar doğrudan CLI'a gider (yazdıklarınız ~200ms'lik ekran yenilemesinde görünür)",
     termCtrlLabel: "ctrl",
     termCtrlHint: "işaretliyken canlı yazmada bastığınız her harf Ctrl+harf olarak gider (ör. x → Ctrl-X) — fiziksel Ctrl tuşu olmayan dokunmatik klavyeler için. Check/uncheck gibi çalışır: siz kaldırana kadar işaretli kalır (tek basışta kendi kendine kapanmaz). Art arda birden fazla Ctrl+harf göndermek için (ör. Ctrl-X sonra Ctrl-S) işaretli bırakıp ikisini de yazın; aralarına düz bir harf (ör. Ctrl-X sonra düz v) sokmak için harften önce işareti kaldırın.",
+    termCtrlNeedsLive: "Ctrl+harf terminale gitmedi: canlı yazmayı açın ya da alttaki ctrl-c / ctrl-d düğmesini kullanın.",
     termCtrlOn: "⎈ ctrl işaretli — bastığınız harfler Ctrl+harf olarak gider, siz kaldırana kadar",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ yukarı kaydırdınız — canlı akış duraklatıldı, dibe dönünce devam eder",
@@ -1207,6 +1231,8 @@ export const STRINGS: Record<Lang, Strings> = {
     autoNameHint: (name, date) => `isim otomatik: ${name}${date} (çakışırsa _1, _2…)`,
     starting: "başlıyor…",
     newChatStarted: "yeni chat başlatıldı: ",
+    restartRolledBack: (name) => `${name}: yeni chat açılamadı, eski oturum aynı ayarlarla geri başlatıldı`,
+    restartRollbackFailed: (name) => `${name}: yeni chat açılamadı ve eski oturum geri başlatılamadı (oturumsuz kaldı, elle Başlat'a bas)`,
     layoutDesc: "X11 masaüstü — Wayland'da/kilitli ekranda çalışmaz",
     layoutMissingPrefix: "⚠ eksik: ",
     layoutMissingSuffix: " — kurmak için: sudo apt install -y ",
@@ -1239,6 +1265,8 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Çalıştır",
     regSubNew: "Yeni kayıt",
     diagOrphans: (list) => `⚠ terminalsiz süreçler (pty yok, tmux yok): ${list} — "boşa" = 10 dk boyunca >=%50 CPU; Çalışan sekmesinden Durdur ile kapatılır`,
+    diagCpuHog: (items) => `⚠ yüksek CPU (tek süreç ortalama %300 üstü, panel yavaşlayabilir; öldürülmez): ${items}`,
+    diagOrphanWatch: (items) => `⚠ sahipsiz kaynak (cops'un tanımadığı, 1 saatten eski; otomatik öldürülmez): ${items}`,
     diagWindowless: (names) => `⚠ penceresiz çalışıyor (gnome-terminal fallback, tmux-only): ${names} — panelde görünmezler, sadece "terminal" butonuyla erişilir`,
     windowlessBadge: "penceresiz",
     noTerminalBadge: "terminali yok",
@@ -1512,6 +1540,7 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliSectionRun: "Çalıştır",
     ucliSectionStart: "Oturum başlatma",
     ucliSectionGlobal: "Global ayarlar",
+    ucliSectionMetrics: "Metrikler",
     ucliTabNoCli: "ucli bu kurulumda etkin değil (cli_list içinde yok).",
     mixedCliBadgeHint: (c) => `Bu klasörde birden çok CLI çalışıyor; bu satırlardan bazıları ${c}`,
     ucliLimitsPlaceholderAuto: "boş = preset varsayılanı",
@@ -1525,6 +1554,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "Varsayılan AÇIK. Açıkken model yanıtı akışlı istenir: ucli'nin durum dosyasında ve satırdaki rozette 'düşünüyor' / 'yazıyor' aşamaları ve akan miktar görünür (akış donarsa rozet uyarır), metin terminale canlı basılır. Bedeli: (1) cevap terminalde iki kez görünür (canlı akış, sonra son çıktı); (2) akış yarıda kesilirse (ağ kesintisi) çağrı yeniden DENENMEZ ve görev hata verir, akışsız çağrıda kesinti yanıt gelmeden olursa yeniden denenir. Yalnız YENİ açılan oturumlara uygulanır.",
     ucliLimitsStreamOff: "kapalı",
     ucliLimitsStreamOn: "açık (varsayılan)",
+    ucliLimitsShowReasoningLabel: "akıl yürütme dökümü (--show-reasoning)",
+    ucliLimitsShowReasoningHint:
+      "Varsayılan KAPALI. Açıkken modelin akıl yürütme parçaları oturum penceresine (stderr) basılır; uzun döküm çıkabilir. Yalnız yeni açılan oturumlara uygulanır; ucli ikilisi bayrağı tanımıyorsa eklenmez.",
+    ucliLimitsShowReasoningOn: "açık",
+    ucliLimitsShowReasoningOff: "kapalı (varsayılan)",
     ucliUsageWarnLabel: "ucli kullanım uyarısı (oturum başına kota eşdeğeri token)",
     ucliUsageWarnDesc:
       "Token rozeti bu eşiklere göre amber/kırmızıya döner. Sayı, Evren hesap kotasına yansıyan değerdir (önbellekli girdi %3 sayılır), ham toplam DEĞİL; süreç başından beri biriken oturum toplamıdır. Yalnız renk: hiçbir şey durdurulmaz. Boş = varsayılan, off ya da 0 = o kademe kapalı.",
@@ -1626,6 +1660,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageWarning:
       "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
     usageCheckBtn: "Kullanımı kontrol et",
+    usageRefreshBtn: "Şimdi tazele",
+    usageAge: (s) => (s == null ? "yaş bilinmiyor" : s < 90 ? `${s} sn önce` : `${Math.round(s / 60)} dk önce`),
+    usageNoState: "Henüz kayıtlı okuma yok; 'Şimdi tazele' ile oku.",
     usageChecking: "kontrol ediliyor…",
     usageNotSupported: "desteklenmiyor",
     usageNoSession: "çalışan session yok",
@@ -1715,6 +1752,12 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSvcOpenJobs: "açık iş",
     stewardSvcNoToken: "token dosyası YOK",
     stewardJobsTitle: "İş kuyruğu",
+    stewardDirTitle: "Gönderilen direktifler",
+    stewardDirNone: "Henüz direktif yok.",
+    stewardDirTodoOpen: "TODO'da açık",
+    stewardDirTodoClosed: "TODO'da kapandı",
+    stewardDirTodoMissing: "TODO'da yok",
+    stewardDirTodoHint: "Hedef projenin TODO.md'sindeki 'direktif <id>' satırı",
     stewardJobsNone: "İş yok.",
     stewardJobsAll: "Hepsi",
     stewardJobsOpen: "Açık",
@@ -1791,6 +1834,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeasTitle: "Fikir kutusu",
     stewardNoIdeas: "Yeni fikir yok.",
     stewardIdeaPlaceholder: "fikir…",
+    stewardIdeaProjectAuto: "proje: otomatik",
+    stewardIdeaProjectTitle: "Fikrin projesi; boşsa beyin atar. Aktarımda \"ilgili projeye\" bu projeye yazar.",
     stewardIdeaAddBtn: "Ekle",
     stewardIdeaLater: "sonra",
     stewardIdeaDrop: "vazgeç",
@@ -2029,6 +2074,7 @@ export const STRINGS: Record<Lang, Strings> = {
     readlistMarkReadFable: "Read, save note",
     readlistFiltered: (m: number, n: number) => `search: ${m} / ${n} matched`,
     tabDiag: "Diagnostics",
+    tabMetrics: "Metrics",
     tabSettings: "Settings",
     desktopDesc: "Watch the machine's screen live (2 fps). Remember to stop it — it captures the screen continuously while running.",
     desktopStartBtn: "Start",
@@ -2108,6 +2154,7 @@ export const STRINGS: Record<Lang, Strings> = {
     termLiveOn: "⌨ live typing on — click the terminal and type; keys go straight to the CLI (what you type shows up on the next ~200ms screen refresh)",
     termCtrlLabel: "ctrl",
     termCtrlHint: "while checked, every letter key you press in live typing is sent as Ctrl+letter (e.g. x → Ctrl-X) — for touch keyboards with no physical Ctrl key. It works like a check/uncheck toggle: it stays checked until YOU uncheck it (it does not auto-release after one key). To send several Ctrl+letters in a row (e.g. Ctrl-X then Ctrl-S), leave it checked for both; to follow with a plain letter instead (e.g. Ctrl-X then a bare v), uncheck it first.",
+    termCtrlNeedsLive: "Ctrl+letter did not reach the terminal: turn on live typing or use the ctrl-c / ctrl-d buttons below.",
     termCtrlOn: "⎈ ctrl armed — letters you press go out as Ctrl+letter until you uncheck it",
     termGone: (err) => `✗ ${err}`,
     termScrolledHint: "⏸ scrolled up — live updates paused, resumes when you scroll back to bottom",
@@ -2220,6 +2267,8 @@ export const STRINGS: Record<Lang, Strings> = {
     autoNameHint: (name, date) => `name auto-generated: ${name}${date} (adds _1, _2… on conflict)`,
     starting: "starting…",
     newChatStarted: "new chat started: ",
+    restartRolledBack: (name) => `${name}: new chat could not start; the old session was started again with its recorded settings`,
+    restartRollbackFailed: (name) => `${name}: new chat could not start and the old session could not be restarted (no session left; press Start manually)`,
     layoutDesc: "X11 desktop — does not work on Wayland/locked screen",
     layoutMissingPrefix: "⚠ missing: ",
     layoutMissingSuffix: " — install with: sudo apt install -y ",
@@ -2252,6 +2301,8 @@ export const STRINGS: Record<Lang, Strings> = {
     orchSubRun: "Run",
     regSubNew: "New registration",
     diagOrphans: (list) => `⚠ processes without a terminal (no pty, no tmux): ${list} — "spin" = >=50% CPU for 10 min; stop from the Running tab`,
+    diagCpuHog: (items) => `⚠ high CPU (single process averaging over 300%, panel may slow down; never killed): ${items}`,
+    diagOrphanWatch: (items) => `⚠ orphaned resources (not known to cops, older than 1h; never auto-killed): ${items}`,
     diagWindowless: (names) => `⚠ running windowless (gnome-terminal fallback, tmux-only): ${names} — won't show a window, only reachable via the "terminal" button`,
     windowlessBadge: "windowless",
     noTerminalBadge: "no terminal",
@@ -2525,6 +2576,7 @@ export const STRINGS: Record<Lang, Strings> = {
     ucliSectionRun: "Run",
     ucliSectionStart: "Session start",
     ucliSectionGlobal: "Global settings",
+    ucliSectionMetrics: "Metrics",
     ucliTabNoCli: "ucli is not enabled on this install (not in cli_list).",
     mixedCliBadgeHint: (c) => `Several CLIs share this folder; some rows here are ${c}`,
     ucliLimitsPlaceholderAuto: "empty = preset default",
@@ -2538,6 +2590,11 @@ export const STRINGS: Record<Lang, Strings> = {
       "On by default. When on, the model response is requested as a stream: the 'thinking' / 'writing' phases and the amount received show in ucli's status file and in the row badge (which warns when the stream freezes), and the text is printed to the terminal live. The cost: (1) the answer appears twice in the terminal (the live stream, then the final output); (2) if the stream breaks off mid-way (a network drop) the call is NOT retried and the task fails, whereas a non-streamed call that drops before any answer arrives is retried. Applies only to newly opened sessions.",
     ucliLimitsStreamOff: "off",
     ucliLimitsStreamOn: "on (default)",
+    ucliLimitsShowReasoningLabel: "reasoning output (--show-reasoning)",
+    ucliLimitsShowReasoningHint:
+      "Off by default. When on, the model's reasoning chunks are printed to the session window (stderr); the output can be long. Applies to newly started sessions only; not added if the ucli binary does not know the flag.",
+    ucliLimitsShowReasoningOn: "on",
+    ucliLimitsShowReasoningOff: "off (default)",
     ucliUsageWarnLabel: "ucli usage warning (quota-equivalent tokens per session)",
     ucliUsageWarnDesc:
       "The token badge turns amber/red at these thresholds. The number is what hits the Evren account quota (cached input counts 3%), not the raw total; it is the per-session sum since the process started. Colour only: nothing is stopped. Empty = default, off or 0 = that level disabled.",
@@ -2639,6 +2696,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageWarning:
       "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
     usageCheckBtn: "Check usage",
+    usageRefreshBtn: "Refresh now",
+    usageAge: (s) => (s == null ? "age unknown" : s < 90 ? `${s}s ago` : `${Math.round(s / 60)} min ago`),
+    usageNoState: "No stored reading yet; press 'Refresh now'.",
     usageChecking: "checking…",
     usageNotSupported: "not supported",
     usageNoSession: "no running session",
@@ -2728,6 +2788,12 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardSvcOpenJobs: "open jobs",
     stewardSvcNoToken: "token file MISSING",
     stewardJobsTitle: "Job queue",
+    stewardDirTitle: "Sent directives",
+    stewardDirNone: "No directives yet.",
+    stewardDirTodoOpen: "open in TODO",
+    stewardDirTodoClosed: "closed in TODO",
+    stewardDirTodoMissing: "not in TODO",
+    stewardDirTodoHint: "The 'direktif <id>' line in the target project's TODO.md",
     stewardJobsNone: "No jobs.",
     stewardJobsAll: "All",
     stewardJobsOpen: "Open",
@@ -2804,6 +2870,8 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardIdeasTitle: "Idea inbox",
     stewardNoIdeas: "No new ideas.",
     stewardIdeaPlaceholder: "idea…",
+    stewardIdeaProjectAuto: "project: auto",
+    stewardIdeaProjectTitle: "The idea's project; empty = brain assigns. Export to \"its project\" writes there.",
     stewardIdeaAddBtn: "Add",
     stewardIdeaLater: "later",
     stewardIdeaDrop: "drop",

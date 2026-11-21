@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import ucli_freshness as uf  # noqa: E402
@@ -64,3 +65,22 @@ class TestFreshness(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UzakgozFreshness(unittest.TestCase):
+    def test_uzakgoz_behind_and_current(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            b = os.path.join(d, "uzakgoz")
+            open(b + ".info", "w").write("source_git=aaa1111\n")
+            os.makedirs(os.path.join(d, "src"))
+            calls = {"rev-parse": "bbb2222", "rev-list": "3"}
+            git = lambda src, *a: calls.get(a[0])  # noqa: E731
+            with unittest.mock.patch.dict(os.environ, {"UZAKGOZ_BIN": b, "UZAKGOZ_DIR": os.path.join(d, "src")}):
+                r = uf.uzakgoz_freshness(git=git)
+                self.assertTrue(r["stale"])
+                self.assertEqual(r["behind"], 3)
+                self.assertIn("bin/uzakgoz 3 commit geride", r["message"])
+                self.assertIn("install-uzakgoz.sh", r["message"])
+                calls["rev-parse"] = "aaa1111"
+                self.assertFalse(uf.uzakgoz_freshness(git=git)["stale"])

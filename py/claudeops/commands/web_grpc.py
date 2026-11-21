@@ -37,6 +37,7 @@ kalabilir" canlı olayı) burada BEDAVA gelmesi: gRPC'nin kendi keepalive/
 channel-state makinesi bunu hallediyor, hand-rolled bir eşdeğeri gerekmiyor.
 """
 from __future__ import annotations
+import json
 import secrets
 import threading
 import time
@@ -154,6 +155,13 @@ def _cli_options_from_proto(raw) -> Dict[str, Any]:
     }
 
 
+def _extras_to_proto(d: Dict[str, Any]) -> Dict[str, Any]:
+    ex = {k: d[k] for k in _EXTRA_KEYS if d.get(k) is not None}
+    if not ex or "extras_json" not in pb2.StatusUpdate.DESCRIPTOR.fields_by_name:
+        return {}
+    return {"extras_json": json.dumps(ex, separators=(",", ":"))}
+
+
 def _status_dict_to_proto(d: Dict[str, Any]) -> pb2.StatusUpdate:
     return pb2.StatusUpdate(
         ok=True,
@@ -164,7 +172,22 @@ def _status_dict_to_proto(d: Dict[str, Any]) -> pb2.StatusUpdate:
         cli_list=d.get("cli_list") or [],
         cli_options=_cli_options_to_proto(d.get("cli_options")),
         dups=d.get("dups") or [],
+        **_extras_to_proto(d),
     )
+
+
+_EXTRA_KEYS = ("disk_clean", "orphan_watch", "fwd", "build")      # Hostlar rozet alanları (proto: extras_json)
+
+
+def _extras_from_proto(msg) -> Dict[str, Any]:
+    raw = getattr(msg, "extras_json", "")        # eski pb2'de alan yok
+    if not raw:
+        return {}
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        return {}
+    return {k: d[k] for k in _EXTRA_KEYS if isinstance(d, dict) and k in d}
 
 
 def _status_proto_to_dict(msg: pb2.StatusUpdate) -> Dict[str, Any]:
@@ -181,6 +204,7 @@ def _status_proto_to_dict(msg: pb2.StatusUpdate) -> Dict[str, Any]:
         "cli_list": list(msg.cli_list),
         "cli_options": _cli_options_from_proto(msg.cli_options),
         "dups": list(msg.dups),
+        **_extras_from_proto(msg),
     }
 
 

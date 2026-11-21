@@ -142,6 +142,19 @@ def _git(base: List[str], *args: str, run: Optional[Callable] = None, timeout: f
     return _run([*base, *args], timeout=timeout, run=run)
 
 
+_USAGE_COUNTER_RE = re.compile(r'("[A-Za-z_]*(?:tokens|_count|count)"\s*:\s*)-?\d+(?:\.\d+)?')
+
+
+def scan_text(rel: str, txt: str, scan: Callable[[str], str]) -> str:
+    """Gizli değer taraması (maskelenmiş metni döndürür). `.usage.jsonl` yalnız sayılar içerir ve `"cached_tokens": 1022713` gibi
+    sayaç alanları `token` + sayı olarak SIR deseniyle eşleşiyordu (52/1513 dosya boşuna dışarıda kalıyordu, 21 Kas teşhis):
+    önce bu sayaç değerleri nötrlenir; başka her şey (gerçek sır) eskisi gibi yakalanır, dönen metin özgün metinle karşılaştırılır."""
+    if not rel.endswith(".usage.jsonl"):
+        return scan(txt)
+    neutral = _USAGE_COUNTER_RE.sub(lambda m: m.group(1) + "0", txt)
+    return txt if scan(neutral) == neutral else scan(txt)
+
+
 def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: bool = True,
                    run: Optional[Callable] = None, vis_check: Optional[Callable[[str], str]] = None) -> Dict[str, object]:
     """`root/reviews/` altındaki, `-prv` deposunda HENÜZ izlenmeyen dosyaları (yalnız bu yol, `add -A` YOK; `-f`: ana
@@ -190,7 +203,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
             except OSError:
                 held.append(rel)
                 continue
-            (held if scan(txt) != txt else would).append(rel)
+            (held if scan_text(rel, txt, scan) != txt else would).append(rel)
             if rel in would:
                 seen[rel] = txt
     res.update(would=would, held=held, ok=True)
@@ -206,7 +219,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
                 would.remove(rel)
                 held.append(rel)
                 continue
-            if now_txt != seen.get(rel) and scan(now_txt) != now_txt:
+            if now_txt != seen.get(rel) and scan_text(rel, now_txt, scan) != now_txt:
                 would.remove(rel)
                 held.append(rel)
         res.update(would=would, held=held)
@@ -220,7 +233,7 @@ def commit_reviews(root: str, git_dir: str, scan: Callable[[str], str], dry: boo
         # gizli değer varsa o yol index'ten çıkarılır ve dışarıda kalır (review cliops 3 Kas TOCTOU)
         for rel in list(would):
             rcb, blob = _git(base, "show", ":" + rel, run=run)
-            if rcb != 0 or scan(blob) != blob:
+            if rcb != 0 or scan_text(rel, blob, scan) != blob:
                 _git(base, "reset", "-q", "--", rel, run=run)
                 would.remove(rel)
                 held.append(rel)

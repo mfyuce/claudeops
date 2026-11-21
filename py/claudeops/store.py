@@ -1,10 +1,10 @@
-"""claudeops durum deposu (TBD#142 / K1-K10): stdlib `sqlite3`, WAL, ORM YOK.
+"""claudeops durum deposu (TBD#142 / K1-K10): `dbapi` üzerinden SQLite (varsayılan, WAL) ya da Postgres (`db_url`), ORM YOK.
 
 İki ilkel yeter (dosya-tabanlı state'in tamamı bunlara iner):
   * `docs`  : ad -> JSON belge (hosts.json, quota.json, settings...). Okuma-değiştirme-yazma `update_doc` ile TEK
               `BEGIN IMMEDIATE` işleminde (eski kilitsiz RMW sorunlarının, TBD#64, çaresi).
   * `log`   : akış adı + artan id -> JSON satır (diag.log, steward/log.jsonl benzeri ekleme-günlükleri).
-Şema sürümü `PRAGMA user_version`; `MIGRATIONS` listesine YALNIZ sona ekleme yapılır (var olan öğe DEĞİŞTİRİLMEZ).
+Şema sürümü `schema_version` tablosu (SQLite'ta eski `PRAGMA user_version` aktarılır ve güncel tutulur, bkz. dbapi); `MIGRATIONS` listesine YALNIZ sona ekleme yapılır (var olan öğe DEĞİŞTİRİLMEZ).
 Bağlantı thread başına; yazı serileştirmesi SQLite'ın kilidiyle (`busy_timeout`), süreçler arası da çalışır
 (`cops` servis kapalıyken DB'yi doğrudan açar, K4). Motorlar arası taşınabilirlik için standart SQL; motora özgü
 özellik yok (K1: ileride PostgreSQL'e dönüşebilir).
@@ -12,10 +12,11 @@ Bağlantı thread başına; yazı serileştirmesi SQLite'ın kilidiyle (`busy_ti
 from __future__ import annotations
 import json
 import os
-import sqlite3
 import threading
 import time
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from . import dbapi
 
 MIGRATIONS: List[str] = [
     # v1
@@ -24,12 +25,12 @@ MIGRATIONS: List[str] = [
         name    TEXT PRIMARY KEY,
         body    TEXT NOT NULL,
         version INTEGER NOT NULL DEFAULT 1,
-        updated REAL NOT NULL
+        updated {REAL} NOT NULL
     );
     CREATE TABLE log (
-        id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        id     {PK_AUTO},
         stream TEXT NOT NULL,
-        ts     REAL NOT NULL,
+        ts     {REAL} NOT NULL,
         body   TEXT NOT NULL
     );
     CREATE INDEX log_stream_id ON log(stream, id);
@@ -54,7 +55,7 @@ MIGRATIONS: List[str] = [
     """,
 ]
 
-BUSY_TIMEOUT_MS = 5000
+BUSY_TIMEOUT_MS = dbapi.BUSY_TIMEOUT_MS
 
 
 class StoreError(Exception):
@@ -62,25 +63,26 @@ class StoreError(Exception):
 
 
 class Store:
-    def __init__(self, path: str):
+    def __init__(self, path: str, url: Optional[str] = None):
+        """`url` verilmezse ortam `CLAUDEOPS_DB_URL`; boş = `path`teki SQLite dosyası (bugünkü davranış)."""
         self.path = path
+        self.url = dbapi.default_url() if url is None else url
+        self.backend = dbapi.backend_of(self.url)
         self._tl = threading.local()
-        d = os.path.dirname(os.path.abspath(path))
-        os.makedirs(d, exist_ok=True)
-        # İlk oluşturmadan itibaren 0600 (sır içerebilir; çok kullanıcılı makine).
-        if not os.path.exists(path):
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
-            os.close(fd)
+        if self.backend == dbapi.SQLITE:
+            d = os.path.dirname(os.path.abspath(path))
+            os.makedirs(d, exist_ok=True)
+            # İlk oluşturmadan itibaren 0600 (sır içerebilir; çok kullanıcılı makine).
+            if not os.path.exists(path):
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+                os.close(fd)
         self._migrate()
 
     # -- bağlantı ---------------------------------------------------------------------------------------------
-    def _conn(self) -> sqlite3.Connection:
+    def _conn(self) -> dbapi.Conn:
         c = getattr(self._tl, "c", None)
         if c is None:
-            c = sqlite3.connect(self.path, timeout=BUSY_TIMEOUT_MS / 1000.0, isolation_level=None)  # autocommit; işlemi biz açarız
-            c.execute("PRAGMA journal_mode=WAL")
-            c.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
-            c.execute("PRAGMA synchronous=NORMAL")
+            c = dbapi.connect(self.url, self.path)
             self._tl.c = c
         return c
 
@@ -91,22 +93,17 @@ class Store:
             self._tl.c = None
 
     def _tx(self):
-        return _Tx(self._conn())
+        return dbapi.Tx(self._conn())
 
     # -- migrasyon --------------------------------------------------------------------------------------------
     def _migrate(self) -> None:
-        c = self._conn()
-        with _Tx(c):   # BEGIN IMMEDIATE: iki süreç aynı anda migrate ederse biri bekler, sonra user_version'ı görür
-            ver = c.execute("PRAGMA user_version").fetchone()[0]
-            if ver > len(MIGRATIONS):
-                raise StoreError(f"DB sürümü ({ver}) bu kodun bildiğinden ({len(MIGRATIONS)}) yeni; kod eski")
-            for i in range(ver, len(MIGRATIONS)):
-                for stmt in _split(MIGRATIONS[i]):
-                    c.execute(stmt)
-                c.execute(f"PRAGMA user_version={i + 1}")
+        try:
+            dbapi.migrate(self._conn(), MIGRATIONS)
+        except dbapi.DbError as e:
+            raise StoreError(str(e)) from e
 
     def schema_version(self) -> int:
-        return self._conn().execute("PRAGMA user_version").fetchone()[0]
+        return dbapi.schema_version(self._conn())
 
     # -- docs -------------------------------------------------------------------------------------------------
     def get_doc(self, name: str, default: Any = None) -> Any:
@@ -123,7 +120,8 @@ class Store:
         """Atomik okuma-değiştirme-yazma: `fn(eski)` yeni değeri döndürür (None dönerse yazılmaz, eski aynen kalır).
         `fn` işlem içinde çalışır: UZUN iş / ağ / başka DB çağrısı yapma. Yeni değeri döndürür."""
         with self._tx() as c:
-            row = c.execute("SELECT body FROM docs WHERE name=?", (name,)).fetchone()
+            c.xact_lock(name)
+            row = c.execute("SELECT body FROM docs WHERE name=?" + c.for_update, (name,)).fetchone()
             cur = default if row is None else json.loads(row[0])
             new = fn(cur)
             if new is None:
@@ -144,7 +142,7 @@ class Store:
         return 0 if row is None else row[0]
 
     @staticmethod
-    def _put(c: sqlite3.Connection, name: str, body: str) -> int:
+    def _put(c: dbapi.Conn, name: str, body: str) -> int:
         c.execute(
             "INSERT INTO docs(name, body, version, updated) VALUES(?,?,1,?) "
             "ON CONFLICT(name) DO UPDATE SET body=excluded.body, version=docs.version+1, updated=excluded.updated",
@@ -154,9 +152,8 @@ class Store:
     # -- log --------------------------------------------------------------------------------------------------
     def append_log(self, stream: str, obj: Any) -> int:
         with self._tx() as c:
-            cur = c.execute("INSERT INTO log(stream, ts, body) VALUES(?,?,?)",
+            return c.insert("INSERT INTO log(stream, ts, body) VALUES(?,?,?)",
                             (stream, time.time(), json.dumps(obj, ensure_ascii=False)))
-            return int(cur.lastrowid)
 
     def read_log(self, stream: str, limit: int = 100, after_id: int = 0) -> List[Tuple[int, float, Any]]:
         """`after_id`'den sonraki satırlar, en eskiden yeniye (id, ts, nesne)."""
@@ -224,6 +221,9 @@ class Store:
     # -- yedek ------------------------------------------------------------------------------------------------
     def backup(self, dest: str) -> None:
         """Tutarlı anlık kopya (`sqlite3` backup API; düz `cp` WAL yüzünden tutarsız olabilir, K7). Hedef 0600."""
+        if self.backend != dbapi.SQLITE:
+            raise StoreError("yedek Postgres'te `pg_dump` ile alınır (db_url postgresql://)")
+        import sqlite3
         import tempfile
         d = os.path.dirname(os.path.abspath(dest)) or "."
         fd, tmp = tempfile.mkstemp(prefix=os.path.basename(dest) + ".", suffix=".tmp", dir=d)   # benzersiz ad: eşzamanlı yedek çakışmaz
@@ -232,7 +232,7 @@ class Store:
             os.chmod(tmp, 0o600)
             out = sqlite3.connect(tmp)
             try:
-                self._conn().backup(out)
+                self._conn().raw.backup(out)
             finally:
                 out.close()
             fd2 = os.open(tmp, os.O_RDONLY)
@@ -291,36 +291,9 @@ class Store:
         return {n: self.get_doc(n) for n in self.list_docs()}
 
 
-class _Tx:
-    """`BEGIN IMMEDIATE` ... COMMIT/ROLLBACK (yazar kilidi baştan alınır; okuyan-sonra-yazan yarışı olmaz)."""
-    def __init__(self, c: sqlite3.Connection):
-        self.c = c
-
-    def __enter__(self) -> sqlite3.Connection:
-        self.c.execute("BEGIN IMMEDIATE")
-        return self.c
-
-    def __exit__(self, et, ev, tb) -> bool:
-        if et is None:
-            self.c.execute("COMMIT")
-        else:
-            self.c.execute("ROLLBACK")
-        return False
-
-
-def _split(script: str) -> Iterator[str]:
-    """`;` ile bölerken tırnak/gövde içindeki `;`yi (string literal, trigger) bölmez: sqlite3 tam-ifade denetimi."""
-    acc = ""
-    for part in script.split(";"):
-        acc += part
-        if sqlite3.complete_statement(acc + ";"):
-            if acc.strip():
-                yield acc.strip()
-            acc = ""
-        else:
-            acc += ";"
-    if acc.strip().rstrip(";").strip():
-        yield acc.strip().rstrip(";")
+def _split(script: str):
+    """Geriye dönük ad (testler): SQLite deyim bölücüsü, asıl yer `dbapi.split_statements`."""
+    return dbapi.split_statements(script, dbapi.SQLITE)
 
 
 _DEFAULT: Optional[Store] = None

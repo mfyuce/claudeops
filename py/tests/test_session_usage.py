@@ -44,6 +44,19 @@ class SessionUsageTest(unittest.TestCase):
         self.assertEqual(sorted(u["by_family"]), ["fable", "haiku", "other", "sonnet"])
         self.assertEqual(u["by_family"]["haiku"]["cache_read"], 50)
 
+    def test_synthetic_rows_are_not_turns_nor_a_family(self):
+        """TODO 1519: API hata/kesinti sentetik mesajı (`<synthetic>`) gerçek istek değil."""
+        with open(self.main, "w") as f:
+            f.write(_row("m1"))
+            f.write(_row("syn", model="<synthetic>", i=0, cw=0, cr=0, out=0))
+        u = su.usage_for_path(self.main)
+        self.assertEqual(u["turns"], 1)
+        self.assertEqual(sorted(u["by_family"]), ["sonnet"])
+        with open(self.main, "w") as f:
+            f.write(_row("syn", model="<synthetic>", i=0, cw=0, cr=0, out=0))
+        su._files.clear()
+        self.assertEqual(su.usage_for_path(self.main)["turns"], 0)
+
     def test_split_rows_of_one_reply_counted_once_and_max_kept(self):
         with open(self.main, "w") as f:
             for _ in range(3):                      # thinking/text/tool_use bölünmesi: aynı id+requestId, aynı usage

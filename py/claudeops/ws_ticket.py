@@ -56,3 +56,15 @@ def consume(ticket: str, now: float | None = None) -> bool:
         exp = _TICKETS.pop(ticket, None)
         _BOUND.pop(ticket, None)
     return exp is not None and exp > now
+
+
+def consume_full(ticket: str, now: float | None = None):
+    """(geçerli mi, bağlı kimlik ya da None); bileti her durumda SİLER. Rust ön kapı el sıkışması için (tek atomik çağrı)."""
+    if not ticket:
+        return False, None
+    now = time.monotonic() if now is None else now
+    with _LOCK:
+        exp = _TICKETS.pop(ticket, None)
+        p = _BOUND.pop(ticket, None)
+    ok = exp is not None and exp > now
+    return ok, (p if ok else None)

@@ -175,6 +175,16 @@ class SaveWiringTests(SnapshotFileCase):
             web._save_closing_snapshot()                       # pencere kapandı: yeni kayıt
         self.assertEqual(len(snapshot._load_all()), 2)
 
+    def test_closing_snapshot_failure_is_logged_not_raised(self):
+        def boom():
+            raise RuntimeError("tarama patladi")
+        with mock.patch.object(web, "_live_snapshot_entries", boom), \
+                mock.patch.object(web, "diag_log") as dl:
+            web._save_closing_snapshot()                       # istisna FIRLATMAZ
+        dl.assert_called_once()
+        self.assertEqual(dl.call_args.args[0], "closing_snapshot_failed")
+        self.assertIn("tarama patladi", dl.call_args.kwargs["error"])
+
     def test_status_info_carries_the_mirror_count(self):
         snapshot.save_snapshot([S1], mirrors=[M1, M2])
         info = web._snapshot_info()

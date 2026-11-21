@@ -100,7 +100,7 @@ from ..paths import ucli_key_file
 from .. import ucli_cost
 from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
-from ..settings import (byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
+from ..settings import (ucli_show_reasoning_enabled, byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
 from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
@@ -404,6 +404,39 @@ def _stream_args(binary: str, session_name: str = "") -> List[str]:
         diag_log("ucli_flag_unsupported", name=session_name, flag="--stream", binary=binary)
         return []
     return ["--stream"]
+
+
+def _reasoning_display_args(binary: str, session_name: str = "") -> List[str]:
+    """`--show-reasoning` (bkz. `settings.ucli_show_reasoning_enabled`, VARSAYILAN KAPALI): YALNIZ ayar açıkken ve ikili bayrağı
+    tanıyorsa eklenir (eski ikili 'unexpected argument' ile spawn anında ölürdü); tanımıyorsa günlüğe yazılır."""
+    if not ucli_show_reasoning_enabled():
+        return []
+    if not binary_supports_flag(binary, "--show-reasoning"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--show-reasoning", binary=binary)
+        return []
+    return ["--show-reasoning"]
+
+
+def _metrics_file_args(binary: str, session_name: str = "") -> List[str]:
+    """`--metrics-file <CLAUDEOPS_DIR>/ucli_metrics/<oturum>.jsonl` (ucli'nin kendi RSS/CPU/araç-bekleme örnekleri). YALNIZ
+    `settings.ucli_metrics.enabled` açıkken (varsayılan açık), oturum adı varken ve ikili bayrağı tanıyorsa eklenir (eski ikili
+    'unexpected argument' ile spawn anında ölürdü); tanımıyorsa günlüğe yazılır, argv değişmez."""
+    if not session_name:
+        return []
+    try:
+        from .. import ucli_metrics
+        if not ucli_metrics.get_config().get("enabled"):
+            return []
+        if not binary_supports_flag(binary, "--metrics-file"):
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--metrics-file", binary=binary)
+            return []
+        from ..paths import CLAUDEOPS_DIR
+        safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in session_name)
+        d = os.path.join(CLAUDEOPS_DIR, "ucli_metrics")
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        return ["--metrics-file", os.path.join(d, safe + ".jsonl")]
+    except Exception:
+        return []
 
 
 def _interactive_args(binary: str, session_name: str = "") -> List[str]:
@@ -930,6 +963,8 @@ class UcliProvider(CliProvider):
         argv += _history_args(argv[0], limits, session_name)
         argv += _effort_args(argv[0], model, preset, session_name)
         argv += _stream_args(argv[0], session_name)
+        argv += _reasoning_display_args(argv[0], session_name)
+        argv += _metrics_file_args(argv[0], session_name)
         argv += _interactive_args(argv[0], session_name)
         argv += _state_dir_args(argv[0], cwd, session_name, force=bool(cli_opts and cli_opts.get("ucli_checks")))
         if "--with-mcp" in extra_args:      # yalnız `mcp_launch_args`ın (kayıt başarılıysa) verdiği bayrak; başka extra_args yok sayılır

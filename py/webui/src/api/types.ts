@@ -267,6 +267,13 @@ export interface HostRecord {
   probe?: HostProbeRow[];
   /** Host's own periodic `disk_clean` summary (disk %, last run); null/absent on hosts that predate it. */
   disk_clean?: DiskCleanSummary | null;
+  /** Host's own `orphan_watch` counts (orphaned helper tmux servers / unrecognized CLI processes); null on older hosts. */
+  orphan_watch?: { servers: number; procs: number; last_end?: number | null } | null;
+  /** Host's signed-identity-forwarding announcement (`fwd` in its /api/status): mode, key ids, clock skew in s (remote minus local); null when absent. */
+  fwd?: { mode: string; kids: string[]; skew: number | null } | null;
+  /** Remote running commit (short) and whether it differs from this panel's running commit. */
+  build_running?: string | null;
+  build_diff?: boolean;
 }
 
 export interface HostProbeRow {
@@ -468,6 +475,11 @@ export interface UsageProviderResult {
 
 export interface UsageResult {
   ok: boolean;
+  /** cached:true yanıtında (usage_state): okumanın yaşı (sn); hiç okuma yoksa null/0 */
+  cached?: boolean;
+  at?: number;
+  age_secs?: number | null;
+  stale?: boolean;
   providers: Record<string, UsageProviderResult>;
 }
 
@@ -525,7 +537,23 @@ export interface DiagInfo {
   fallback_alert_window_minutes: number;
 }
 
+export interface OrphanWatchSummary {
+  servers: number;
+  procs: number;
+  last_end?: number | null;
+  last_ok?: boolean | null;
+  /** Processes averaging >300% CPU over the last orphan_watch interval (warning only). */
+  hogs?: number;
+  detail?: {
+    hogs?: { pid: number; name: string; cmd: string; pct: number; span_s: number }[];
+    sockets?: { deleted?: string[]; killed?: string[]; orphans?: { name: string; age_s: number; owner_pid: number }[] };
+    procs?: { pid: number; name: string; age_s: number; cwd: string }[];
+  };
+}
+
 export interface StatusPayload {
+  /** Sahipsiz kaynak denetimi (periodic orphan_watch; tarama yapmaz, durum dosyasından) */
+  orphan_watch?: OrphanWatchSummary;
   config_ok: boolean;
   config_code: string;
   config_detail: string;

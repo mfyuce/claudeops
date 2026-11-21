@@ -59,6 +59,7 @@ from ..guard import guard_lock
 from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from .. import build_info
+from .. import authz
 from .. import host_probe
 from ..io_providers import IO_PROVIDERS, IoProviderError, get_io_provider
 from ..kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -496,6 +497,17 @@ def _find_running(name: str) -> list:
     "zaten çalışıyor"/"açıldı mı" soruları ise TAM isme bakar (`_start`, `_wait_stable`).
     """
     return [s for s in find_sessions(measure_cpu=False) if s.name == name or s.base == name]
+
+
+def _recheck_targets(name: str, exact: bool = False) -> Optional[list]:
+    """Kilit İÇİNDE hedefi YENİDEN çözer (TODO 1005, gpt-6 R06): hedef `guard_lock` öncesi çözülüyor, bekleme sırasında oturum
+    kapanıp pid yeniden kullanılmış/başka oturum açılmış olabilir. `find_sessions()` canlı /proc taramasıdır, bu yüzden isimle
+    yeniden çözmek yeter. Dönen: o ANKİ gerçek hedef listesi (boş olabilir: zaten gitti); belirsizleştiyse (ya da `exact`
+    isteniyor ama tam eşleşme yok) None: çağıran HİÇBİR ŞEY öldürmez."""
+    kind, now = _find_running_for_action(name)
+    if kind == "ambiguous" or (exact and kind != "exact"):
+        return None
+    return list(now or [])
 
 
 def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
@@ -1930,6 +1942,8 @@ def _status_payload() -> dict:
         "ext_routes": extensions.routes(),     # eklenti yol önekleri (panel eklenti sekmelerini bununla gösterir)
         # Claude hizmetli ucli oturumlarının bugünkü $ toplamı + günlük tavan (Ayarlar > ucli_cost); ucli_cost.state() 30 sn önbellekli
         "ucli_cost": ucli_cost.state(),
+        "orphan_watch": periodic.orphan_summary(),    # sahipsiz kaynak denetimi (sahip 20 Kas): sahipsiz tmux sunucusu/CLI süreci sayısı
+        **authz.status_extras(),                   # eklenti ilanları (ör. `fwd`: imzalı kimlik iletimi); kanca yoksa boş
         "disk_clean": periodic.disk_summary(),     # disk %, son temizlik koşusu (sahip 20 Kas); Hostlar'da host başına gösterilir
         "build": build_info.info(),     # çalışan commit / diskteki commit / stale (merge sonrası restart yapıldı mı)
         # TOBEDECIDED#15 Phase 1 — HAFİF görünüm (2s WS/poll cadence'ine
@@ -2105,14 +2119,17 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
         return {"ok": False, "error": str(e)}
     except ValueError as e:   # ör. seçilen hizmetin anahtarı yok: spawn REDDEDİLİR
         diag_log("start_refused", name=name, cli=chosen_cli, reason=str(e)[:200])
+        ucli_cost.release(name)
         return ucli_cost.refusal(e)
     diag_log("start_end", name=name, kind=kind, opened=opened, trust=trust)
     if trust == "unregistered":
         return _err(lang, "start_trust_unregistered", name=name)
     if not opened and died:
         diag_log("start_failed", name=name, reason="died_early", secs=EARLY_DEATH_SECONDS, trust=trust)
+        ucli_cost.release(name)     # ucli başlatma payı (günlük tavan rezervasyonu) TTL'i (120 sn) beklemesin; ucli dışı = no-op
         return _err(lang, "start_died_early", name=name, kind=kind, secs=int(EARLY_DEATH_SECONDS))
     if not opened:
+        ucli_cost.release(name)
         return _err(lang, "start_no_proc", name=name, kind=kind)
     if rec is not None:
         inst_mod.mark_started(name, cli=chosen_cli, model=chosen_model,
@@ -2137,6 +2154,10 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
     diag_log("stop_begin", name=name, pids=[s.pid for s in procs])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            procs_now = _recheck_targets(name, exact)
+            if procs_now is None:
+                return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+            procs = procs_now
             results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
     except TimeoutError as e:
         return {"ok": False, "error": str(e)}
@@ -2513,7 +2534,7 @@ def _files_mkdir(name: str, dir_path: Optional[str], folder_name: str, lang: str
     return result, 200
 
 
-def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[dict, int]:
+def _files_write(name: str, path: str, content: str, lang: str = "tr", create: bool = False) -> Tuple[dict, int]:
     """`read_text`/`_files_read`'in yazma karşılığı. `too_large`, diğer
     mutasyonların ("exists"/"bad_filename" vb.) hiçbirinde olmayan bir
     `limit_mb` yer tutucusu taşıyor — `_files_mutation_err`'ün paylaşılan
@@ -2522,7 +2543,7 @@ def _files_write(name: str, path: str, content: str, lang: str = "tr") -> Tuple[
     s, err = _files_resolve(name, lang)
     if err:
         return err, _files_resolve_status(err)
-    result = files_mod.write_text(s, path, content)
+    result = files_mod.write_text(s, path, content, create=create)
     if result["ok"]:
         return result, 200
     if result["error"] == "too_large":
@@ -3071,6 +3092,10 @@ def _stop_instance(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -3093,6 +3118,10 @@ def _retire(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -3132,6 +3161,10 @@ def _close_project(name: str, lang: str = "tr") -> dict:
     if procs:
         try:
             with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+                procs_now = _recheck_targets(name)
+                if procs_now is None:
+                    return _err(lang, "ambiguous_name", name=name, candidates=", ".join(s.name for s in procs))
+                procs = procs_now
                 for s in procs:
                     kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name)
         except TimeoutError as e:
@@ -3437,6 +3470,68 @@ def _usage_fresh_tui(provider, now: Optional[float] = None) -> Optional[dict]:
     return None
 
 
+_USAGE_SOCK_PREFIX = "cops-usage-"
+_USAGE_SOCK_MAX_AGE = 600.0      # bir okuma en çok ~45 sn sürer; 10 dk'dan eski soket yetimdir (panel okuma ortasında öldürüldü/yeniden başlatıldı)
+
+
+def _usage_sock_dir() -> str:
+    return f"/tmp/tmux-{os.getuid()}"
+
+
+def _isolated_state() -> bool:
+    """`CLAUDEOPS_DIR` varsayılan (`~/.claude/claudeops`) değilse bu panel izole/e2e/test'tir."""
+    from ..paths import CLAUDEOPS_DIR as cd, CLAUDE_DIR as cl
+    return os.path.realpath(cd) != os.path.realpath(os.path.join(cl, "claudeops"))
+
+
+def usage_tui_sweep(now: Optional[float] = None, sock_dir: Optional[str] = None) -> int:
+    """Yetim `cops-usage-*` tmux sunucularını kapat + soket dosyalarını sil (sahip bug 20 Kas: panel restart'ı okuma ortasında `finally`yi
+    atlatınca 19 Kas'tan 20 Kas'a açık kalan copilot sunucuları). Yetim = pid'i ölü ya da soket mtime'ı `_USAGE_SOCK_MAX_AGE`'den eski
+    (şu an çalışan kendi okumamız taze, dokunulmaz). Kapatılan sayısı döner; asla fırlatmaz."""
+    import subprocess
+    t = time.time() if now is None else now
+    d = sock_dir or _usage_sock_dir()
+    n = 0
+    try:
+        names = [x for x in os.listdir(d) if x.startswith(_USAGE_SOCK_PREFIX)]
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(d, name)
+        try:
+            age = t - os.stat(path).st_mtime
+        except OSError:
+            continue
+        try:
+            pid = int(name.rsplit("-", 1)[1])
+        except (ValueError, IndexError):
+            pid = 0
+        alive = False
+        if pid and pid != os.getpid():
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except PermissionError:
+                alive = True
+            except OSError:
+                alive = False
+        elif pid == os.getpid():
+            alive = True
+        if alive and age < _USAGE_SOCK_MAX_AGE:
+            continue
+        try:
+            subprocess.run(["tmux", "-L", name, "kill-server"], capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        n += 1
+        diag_log("usage_tui_orphan_closed", sock=name, age=int(age), pid_alive=alive)
+    return n
+
+
 def _usage_fresh_tui_run(provider) -> Optional[dict]:
     """Oturumsuz okuma, TUI yolu: ayrı tmux soketinde geçici CLI (fleet'e/oturumlara dokunmaz), `/usage` yaz, ekranı oku, kapat.
     Başarısızlıkta None. Soket HER yolda kapatılır."""
@@ -3444,9 +3539,14 @@ def _usage_fresh_tui_run(provider) -> Optional[dict]:
     cmd = provider.usage_command()
     if not argv or not cmd:
         return None
+    if _isolated_state():       # izole/e2e/test paneli gerçek copilot/claude'a DOKUNMAZ (19 Kas yetim sunucuların kaynağı)
+        return None
     import subprocess
-    sock = f"cops-usage-{provider.name}-{os.getpid()}"
+    usage_tui_sweep()      # önceki (öldürülmüş panelden kalan) yetimleri topla
+    sock = f"{_USAGE_SOCK_PREFIX}{provider.name}-{os.getpid()}"
     base = ["tmux", "-L", sock]
+    if shutil.which("timeout"):      # panel okuma ortasında ölse bile CLI kendiliğinden biter, tek oturumluk sunucu da onunla gider
+        argv = ["timeout", "90"] + list(argv)
 
     def _t(*a, timeout=10):
         return subprocess.run(base + list(a), capture_output=True, text=True, timeout=timeout)
@@ -3600,6 +3700,14 @@ def usage_refresh(source: str = "panel") -> dict:
     except Exception as e:      # yazma hatası kullanım sekmesini düşürmesin
         diag_log(f"usage_state yazılamadı: {type(e).__name__}")
     return res
+
+
+def usage_cached_view() -> dict:
+    """`POST /api/usage {cached:true}`: merkezi kaynaktan (`usage_state`, periodic `usage_refresh` yazar) OKUR, okuma YAPMAZ; yaşı taşır."""
+    from .. import usage_state
+    st = usage_state.get()
+    return {"ok": True, "cached": True, "providers": st["providers"], "at": st["at"],
+            "age_secs": st["age_secs"], "stale": st["stale"], "source": st["source"]}
 
 
 def _usage_kinds() -> dict:
@@ -3811,6 +3919,14 @@ def _adopt(old_name: str, new_name: str = "", model: str = "",
         diag_log("adopt_preflight_error", old_name=old_name, error=repr(e)[:200])
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
+            # hedef kilit öncesi çözülmüştü: bekleme sırasında oturum gitmiş/pid yeniden kullanılmış/belirsizleşmiş olabilir
+            # (TODO 1005 deseni; `_adopt` 19 Kas triyajda eksik kalmıştı). Gitti ya da belirsiz: HİÇBİR ŞEY öldürülmez/açılmaz.
+            procs_now = _recheck_targets(old_name)
+            if procs_now is None:
+                return _err(lang, "ambiguous_name", name=old_name, candidates=", ".join(s.name for s in procs))
+            if not procs_now:
+                return _err(lang, "not_running", name=old_name)
+            procs = procs_now
             kill_results = [kill_session_and_parent(s.pid, grace=KILL_GRACE_SECONDS, name=s.name) for s in procs]
             if HANDOVER_KILL_SETTLE_SECONDS > 0 and any(r != "already_dead" for r in kill_results):
                 time.sleep(HANDOVER_KILL_SETTLE_SECONDS)
@@ -3972,8 +4088,12 @@ def _save_closing_snapshot() -> None:
     aynıysa kendiliğinden no-op — burada AYRICA bir karşılaştırma gerekmiyor."""
     try:
         save_snapshot(_live_snapshot_entries(), kind="closing", mirrors=_live_mirror_entries())
-    except Exception:
-        pass
+    except Exception as e:
+        # kapanış kaydı sessizce kaybolmasın: neden iz bırakır (kapanışı yine engellemez)
+        try:
+            diag_log("closing_snapshot_failed", error=f"{type(e).__name__}: {e}"[:200])
+        except Exception:
+            pass
 
 
 def _snapshot_list() -> dict:
@@ -4577,6 +4697,21 @@ class _BodyTimeout(Exception):
     """POST gövdesi zamanında/tam gelmedi."""
 
 
+from .. import front as front_mod  # noqa: E402
+
+
+def trusted_forwarded_ip(peer: str, headers, secret: str) -> str:
+    """Saf yardımcı (test edilebilir): güvenilen X-Forwarded-For çözümü, bkz. `_Handler._client_ip`."""
+    if not secret or peer not in ("127.0.0.1", "::1"):
+        return peer
+    import hmac
+    got = headers.get("X-Cops-Front") or ""
+    if not hmac.compare_digest(got.encode(), secret.encode()):
+        return peer
+    xff = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()      # ön kapı kendi eşini SONA ekler/ezer: son değer güvenilir
+    return xff or peer
+
+
 class _Handler(BaseHTTPRequestHandler):
     server_version = "claudeops-web/1"
     # HTTP/1.0 (stdlib varsayılanı) her istekte yeni TCP+TLS-yok-ama-yine-de
@@ -4701,9 +4836,9 @@ class _Handler(BaseHTTPRequestHandler):
             k, _, v = part.strip().partition("=")
             if k:
                 cookies[k] = v
-        addr = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        addr = self._client_ip()
         return authz.RequestView(method=self.command or "", path=urlparse(self.path).path, query={k: v[0] for k, v in qs.items()},
-                                 headers=self.headers, cookies=cookies, client_addr=addr)
+                                 headers=self.headers, cookies=cookies, client_addr=addr, body_fn=self._peek_body)
 
     def _principal(self):
         """İstek kimliği: eklenti authenticator'ı (K1) kayıtlıysa o çözer (None = 401), değilse bugünkü `web.token` -> LEGACY.
@@ -5031,7 +5166,7 @@ class _Handler(BaseHTTPRequestHandler):
         403, `confirm:true` ŞART (panel onay penceresinden sonra gönderir). Her çağrı olay günlüğüne (diag.log: kim/ne zaman/IP/sonuç)."""
         host = _host_from_body(data)
         actor = str(data.get("actor") or "human").strip() or "human"
-        ip = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        ip = self._client_ip()
         if host != LOCAL_HOST_NAME:
             self._json({"ok": False, "error": "local_only"}, status=400)
             return
@@ -5185,6 +5320,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._spawn_refused(e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
+
+    def _client_ip(self) -> str:
+        """İstemci IP'si. Rust ön kapı (copsd) önündeyken `X-Forwarded-For`a YALNIZ bağlantı loopback'ten gelir VE `X-Cops-Front`
+        başlığı ön kapı gizlisiyle (`CLAUDEOPS_FRONT_SECRET`) eşleşirse güvenilir; aksi halde soket eşi (sahte başlık etkisiz)."""
+        peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+        return trusted_forwarded_ip(peer, self.headers, front_mod.read_secret())
 
     def _spawn_refused(self, e) -> None:
         self._json({"ok": False, "error": "spawn_refused", "reason": e.reason, "detail": e.detail}, status=403)
@@ -5368,6 +5509,12 @@ class _Handler(BaseHTTPRequestHandler):
                     "ok": cached["ok"] if cached else False,
                     "error": (cached.get("error") if cached else "not polled yet"),
                     "tier": web_hosts.get_tier(h["name"]),  # capability prober'ın son bildiği "rest"|"ws"|"grpc"
+                    "build_running": (cached.get("build_running") if cached else None),
+                    "build_diff": bool(cached and cached.get("build_running") and build_info.RUNNING
+                                       and not str(build_info.RUNNING).startswith(cached["build_running"][:12])
+                                       and not cached["build_running"].startswith(str(build_info.RUNNING)[:12])),  # uzak ile yerel çalışan commit farklı (imzalı iletimde iki taraf aynı sürüm olmalı)
+                    "fwd": (cached.get("fwd") if cached else None),  # uzak host imzali kimlik iletimi ilani (mode, kids, saat farki)
+                    "orphan_watch": (cached.get("orphan_watch") if cached else None),  # uzak host'un sahipsiz kaynak sayıları
                     "disk_clean": (cached.get("disk_clean") if cached else None),  # uzak host'un disk %'si + son temizlik (periodic disk_clean)
                     "probe": host_probe.public_view(h["name"]),  # adres yoklaması (periodic `host_probe`): ms, ort., hata sayısı
                 })
@@ -5403,7 +5550,13 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/ucli/checks-mode":
             from .. import ucli_checks as _ck
             from ..ucli_client import state_dir_for as _sdf
-            nm = (parse_qs(urlparse(self.path).query).get("name") or [""])[0]
+            _qs = parse_qs(urlparse(self.path).query)
+            nm = (_qs.get("name") or [""])[0]
+            _host = _host_from_qs(_qs)
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi oturumu/state-dir'i (TBD#264)
+                result, status = web_hosts.proxy_get(path, _host, {"name": nm}, dedup=False)
+                self._json(result, status=status)
+                return
             inst = inst_mod.get_instance(nm) or {}
             co = (inst.get("cli_opts") or {}).get("ucli_checks") or {}
             if not co:
@@ -5413,12 +5566,30 @@ class _Handler(BaseHTTPRequestHandler):
                             **_ck.get_mode(_sdf(str(inst.get("cwd") or "")), nm)})
         elif path == "/api/ucli/checks":
             from .. import ucli_checks as _ck
+            _host = _host_from_qs(parse_qs(urlparse(self.path).query))
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi kayıt dosyası (TBD#264)
+                result, status = web_hosts.proxy_get(path, _host, {}, dedup=False)
+                self._json(result, status=status)
+                return
             data, err = _ck.load_registry()
             self._json({"ok": not err or "kaydı yok" in err, "checks": data.get("check", []), "error": "" if "kaydı yok" in err else err,
                         "templates": _ck.TEMPLATES})
+        elif path in ("/api/ucli/metrics", "/api/ucli/metrics/sessions"):
+            from .. import ucli_metrics as _um
+            _qs = parse_qs(urlparse(self.path).query)
+            _host = _host_from_qs(_qs)
+            if _host != LOCAL_HOST_NAME:        # uzak hostun kendi metrik DB'si
+                _fw = {k: (_qs.get(k) or [""])[0] for k in ("name", "since", "limit") if _qs.get(k)}
+                result, status = web_hosts.proxy_get(path, _host, _fw, dedup=False)
+                self._json(result, status=status)
+                return
+            self._json(_um.api_get(path, _qs))
         elif path == "/api/ucli/freshness":
             from .. import ucli_freshness as _uf
             self._json(_uf.freshness())
+        elif path == "/api/uzakgoz/freshness":
+            from .. import ucli_freshness as _uf
+            self._json(_uf.uzakgoz_freshness())
         elif path == "/api/ucli/instructions-check":
             from ..providers.ucli_provider import instructions_check as _ic
             self._json(_ic((parse_qs(urlparse(self.path).query).get("cwd") or [""])[0]))
@@ -5609,7 +5780,32 @@ class _Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    _PEEK_BODY_MAX = 4 * 1024 * 1024      # imzalı kimlik iletimi gövde bağlama sınırı (daha büyük gövde "stream" imzalanır)
+
+    def _peek_body(self) -> Optional[bytes]:
+        """Authenticator'ın istediği gövde (yalnız geçerli imzadan SONRA çağrılır): okunur ve `_read_body` aynı isteğe aynen verir.
+        İsteğin gövdesi yok/okunamaz/çok büyükse None. Önbellek istek satırı nesnesine bağlı (keep-alive'da önceki isteğin gövdesi sızmaz)."""
+        c = getattr(self, "_body_cache", None)
+        if c is not None and c[0] is self.raw_requestline:
+            return c[1]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if n < 0 or n > self._PEEK_BODY_MAX:
+            return None
+        data = self._read_body_raw(n) if n else b""
+        self._body_cache = (self.raw_requestline, data)
+        return data
+
     def _read_body(self, length: int) -> bytes:
+        c = getattr(self, "_body_cache", None)
+        if c is not None and c[0] is self.raw_requestline and len(c[1]) == length:
+            self._body_cache = None
+            return c[1]
+        return self._read_body_raw(length)
+
+    def _read_body_raw(self, length: int) -> bytes:
         """`length` bayt gövde; zaman aşımı/kopma/eksik gövde `_BodyTimeout` (do_POST 408 + bağlantı kapatma)."""
         with self._body_timeout_ctx():
             try:
@@ -5657,6 +5853,34 @@ class _Handler(BaseHTTPRequestHandler):
             raw = self._read_body(length) if length else b""
             form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
             self._question_page(form)
+            return
+        if path.startswith("/api/_internal/"):
+            # Rust ön kapının iç uçları: kimlik YOK, yalnız loopback + ön kapı gizlisi (`front.secret`); aksi 404 (uç varlığı sızmaz)
+            peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
+            if not front_mod.trusted_front(peer, self.headers):
+                self._json({"error": "not found"}, status=404)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > 65536:
+                self.close_connection = True
+                self._json({"ok": False, "error": "invalid or oversized body"}, status=400)
+                return
+            try:
+                body = json.loads(self._read_body(length).decode("utf-8") or "{}") if length else {}
+            except ValueError:
+                body = None
+            if not isinstance(body, dict):
+                self._json({"ok": False, "error": "bad json"}, status=400)
+                return
+            if path == "/api/_internal/authz":
+                self._json(front_mod.internal_authz(body, self.token))
+            elif path == "/api/_internal/ws-ticket/consume":
+                self._json(front_mod.ws_ticket_consume(body))
+            else:
+                self._json({"error": "not found"}, status=404)
             return
         _route = extensions.match_route("POST", path)
         if _route is not None:
@@ -5962,7 +6186,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not isinstance(content, str):
                 self._json(_err(lang, "content_required"), status=400)
                 return
-            result, status = _files_write(name, fpath, content, lang=lang)
+            result, status = _files_write(name, fpath, content, lang=lang, create=data.get("create") is True)
             self._json(result, status=status)
             return
 
@@ -6018,7 +6242,7 @@ class _Handler(BaseHTTPRequestHandler):
             # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
             # kullanımını gösterir, TODO.md'ye not düşüldü.
             if data.get("cached") is True:
-                self._json(usage_poll.last())       # değnekçi tick'inin son okuması (usage_mode=tick); okuma yapmaz
+                self._json(usage_cached_view())
                 return
             self._json(usage_refresh(source="panel"))
             return
@@ -6177,7 +6401,7 @@ class _Handler(BaseHTTPRequestHandler):
             code, res = _ck.set_mode(_sdf(str(inst.get("cwd") or "")), str(data["name"]), str(data.get("mode") or ""),
                                      str(co.get("max") or co.get("mode") or "restricted"), confirm=bool(data.get("confirm")),
                                      user=str(getattr(p, "uid", "") or "panel"),
-                                     ip=str(self.client_address[0]) if getattr(self, "client_address", None) else "")
+                                     ip=self._client_ip())
             self._json(res, status=code)
             return
 
@@ -6476,6 +6700,17 @@ def register(sub):
     p.set_defaults(func=run)
 
 
+def _prewarm_status() -> None:
+    """Sunucu açılırken `_status_payload()`'ı bir kez çalıştırıp önbellekleri (provider model listeleri, needs_ho, bağlam) ısıtır. Hata yutulur."""
+    try:
+        _status_payload()
+    except Exception as e:
+        try:
+            diag_log("status_prewarm_failed", error=f"{type(e).__name__}: {e}"[:200])
+        except Exception:
+            pass
+
+
 def run(args) -> int:
     # `cops web` TEK her zaman çalışan süreç olduğu için kapsayıcı uygulama
     # noktası burası: roster.tsv/models.tsv/settings.json/hosts.json/web.token/
@@ -6524,6 +6759,10 @@ def run(args) -> int:
     web_steward.configure(status_payload=_status_payload, fleet_status=_fleet_status, start=_start, stop=_stop,
                           handover=_handover, register_project=_register_project)
     web_steward.start_loop()
+    try:
+        usage_tui_sweep()       # önceki panelden (SIGTERM ile öldürülmüş) kalan cops-usage-* tmux sunucuları
+    except Exception:
+        pass
     ucli_agents.set_panel_port(args.port)       # ucli oturumlarına `UCLI_AGENT_URL` için (yeni oturumlar bunu kullanır)
     web_agents.start_reaper(_AGENT_OPS)
     grpc_port = args.grpc_port if args.grpc_port is not None else args.port + 1
@@ -6565,6 +6804,14 @@ def run(args) -> int:
             faulthandler.register(signal.SIGHUP, file=_faultlog_fh, all_threads=True, chain=True)
         except Exception:
             pass
+    # Soğuk /api/status ~4,3 sn (agy models alt süreci, needs_ho git çağrıları, ilk psutil taraması): ilk istek bunu ödemesin diye
+    # sunucu dinlerken arka planda bir kez ısıt (21 Kas ölçümü: soğuk 4,3-8 sn, ısınmış ~1 sn).
+    threading.Thread(target=_prewarm_status, daemon=True, name="status-prewarm").start()
+    try:
+        from .. import ucli_metrics as _um
+        _um.start_background()
+    except Exception:
+        pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:

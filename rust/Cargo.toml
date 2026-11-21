@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/cops-proxy", "crates/copsd", "crates/cops-auth", "crates/cops-local", "crates/cops-metrics", "crates/cops-progress"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "signal"] }
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "client-legacy", "http1"] }
+http-body-util = "0.1"
+bytes = "1"

@@ -411,7 +411,10 @@ def read_text(s: Session, path: str) -> Tuple[Optional[str], Optional[str]]:
         return None, "not_found"
 
 
-def write_text(s: Session, path: str, content: str) -> dict:
+CREATABLE_DOCS = ("TODO.md", "TOBEDECIDED.md", "DONE.md")     # `create` yalnız bu proje not dosyaları için (uzak fikir aktarımı, 21 Kas)
+
+
+def write_text(s: Session, path: str, content: str, create: bool = False) -> dict:
     """İnline "düzenle"nin KAYDETME tarafı — `read_text`'in yazma karşılığı,
     sadece VAR OLAN bir dosyanın içeriğini değiştirir (yeni dosya oluşturmaz,
     o upload'un işi). `MAX_VIEW_BYTES` ile aynı sınır (görüntüleyemediğin
@@ -434,7 +437,22 @@ def write_text(s: Session, path: str, content: str) -> dict:
     if real is None:
         return {"ok": False, "error": "forbidden"}
     if not os.path.isfile(real):
-        return {"ok": False, "error": "not_found"}
+        if not (create and os.path.basename(real) in CREATABLE_DOCS and os.path.isdir(os.path.dirname(real))
+                and not os.path.lexists(real)):
+            return {"ok": False, "error": "not_found"}
+        try:
+            n_new = len(content.encode("utf-8"))
+        except UnicodeError as e:
+            return {"ok": False, "error": "bad_encoding", "detail": str(e)}
+        if n_new > MAX_VIEW_BYTES:
+            return {"ok": False, "error": "too_large"}
+        try:
+            fd = os.open(real, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)      # EXCL: yarışta var olan dosyayı ezmez
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as e:
+            return {"ok": False, "error": "io_error", "detail": str(e)}
+        return {"ok": True, "created": True}
     try:
         with open(real, "rb") as _rf:
             old = _rf.read(MAX_VIEW_BYTES + 1)

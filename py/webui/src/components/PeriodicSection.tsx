@@ -95,7 +95,7 @@ function JobRow({ id, job, onChanged }: { id: string; job: PeriodicJob; onChange
     setOut(x.running);
     try {
       const res = await apiPeriodicAction(body);
-      setOut(res.ok ? res.msg ?? "" : res.error ?? "");
+      setOut(res.ok ? res.msg ?? "" : res.error ?? res.msg ?? "");
       if (okMsg && res.ok) showToast(okMsg, "success");
     } catch (e) {
       setOut(e instanceof ApiError ? e.message : String(e));

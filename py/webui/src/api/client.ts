@@ -555,7 +555,8 @@ export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
  * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
 /** Okuma ~10 sn sürer; tünel/aradaki katman ilk denemede 502/503/504 verebilir (sahip 19 Kas: "ilk denemede 503, ikincide oldu").
  * Okuma yan etkisizdir (idempotent), bu yüzden geçici ağ geçidi hatasında bir kez sessizce yeniden denenir. */
-export const apiUsage = async (lang: Lang): Promise<UsageResult> => {
+export const apiUsage = async (lang: Lang, cached = false): Promise<UsageResult> => {
+  if (cached) return apiPost<UsageResult>("/api/usage", { lang, cached: true });   // usage_state'ten okur, okuma yapmaz
   try {
     return await apiPost<UsageResult>("/api/usage", { lang });
   } catch (e) {
@@ -705,8 +706,8 @@ export const apiStewardAnswer = (id: string, answer: string, sid?: string): Prom
   apiPost<StewardAnswerResult>("/api/steward/answer", { id, answer, ...stewardBody(sid) });
 export const apiStewardAsk = (project: string, text: string, options: string[], sid?: string): Promise<StewardAskResult> =>
   apiPost<StewardAskResult>("/api/steward/ask", { project, text, options, source: "panel", ...stewardBody(sid) });
-export const apiStewardIdea = (text: string, sid?: string): Promise<SimpleResult & { id?: string }> =>
-  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel", ...stewardBody(sid) });
+export const apiStewardIdea = (text: string, sid?: string, project?: string): Promise<SimpleResult & { id?: string }> =>
+  apiPost<SimpleResult & { id?: string }>("/api/steward/idea", { text, source: "panel", ...(project ? { project } : {}), ...stewardBody(sid) });
 export const apiStewardIdeaUpdate = (id: string, status: string, sid?: string): Promise<SimpleResult> =>
   apiPost<SimpleResult>("/api/steward/idea", { id, status, ...stewardBody(sid) });
 export const apiStewardIdeaExport = (id: string, kind: "todo" | "tbd", target: "project" | "all", sid?: string): Promise<SimpleResult> =>
@@ -751,6 +752,20 @@ export const getStewardJobs = (sid?: string, state = "all", refresh = false): Pr
   apiGet<SimpleResult & { jobs?: StewardJobRow[] }>(
     `/api/steward/jobs?state=${encodeURIComponent(state)}${refresh ? "&refresh=1" : ""}${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`,
   );
+export interface StewardDirectiveRow {
+  id: string;
+  name: string;
+  status: "queued" | "delivered" | "failed" | string;
+  reason?: string;
+  error?: string;
+  at?: number;
+  done_at?: number;
+  todo?: string;
+  todo_state?: "open" | "closed" | "missing" | string;
+}
+/** Son 20 direktifin teslim durumu + TODO.md satırının hâli (open/closed/missing). */
+export const getStewardDirectives = (): Promise<SimpleResult & { deliveries?: StewardDirectiveRow[] }> =>
+  apiGet<SimpleResult & { deliveries?: StewardDirectiveRow[] }>("/api/steward/directive/status");
 export const getStewardJobKinds = (sid?: string): Promise<SimpleResult & { kinds?: unknown }> =>
   apiGet<SimpleResult & { kinds?: unknown }>(`/api/steward/jobs?kinds=1${sid && sid !== "default" ? `&steward=${encodeURIComponent(sid)}` : ""}`);
 export const apiStewardServiceAdd = (name: string, url: string, token_file: string, match: string): Promise<SimpleResult & { warning?: string }> =>

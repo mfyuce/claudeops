@@ -72,7 +72,7 @@ def _read_token() -> str:
     return token
 
 
-def _api(port: int, method: str, path: str, body: Optional[dict] = None) -> dict:
+def _api(port: int, method: str, path: str, body: Optional[dict] = None, timeout: float = 15) -> dict:
     url = f"http://127.0.0.1:{port}{path}"
     data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = {"Authorization": f"Bearer {_read_token()}"}
@@ -80,7 +80,7 @@ def _api(port: int, method: str, path: str, body: Optional[dict] = None) -> dict
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise ApiError(f"HTTP {e.code} from claudeops panel: {e.read().decode('utf-8', 'replace')[:300]}")

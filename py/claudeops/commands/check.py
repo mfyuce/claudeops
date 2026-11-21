@@ -56,4 +56,8 @@ def run(args) -> int:
         print(f"✗ {e}", file=sys.stderr)
     if not errs:
         print("✓ check temiz (derleme, import, dist)")
+    from .. import ucli_freshness as _uf
+    for fr in (_uf.freshness(), _uf.uzakgoz_freshness()):      # bayat teslim edilmiş ikili: UYARI (hata değil, deploy'u durdurmaz)
+        if fr.get("stale"):
+            print(f"uyarı: {fr['message']}", file=sys.stderr)
     return 1 if errs else 0

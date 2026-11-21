@@ -9,6 +9,7 @@ import { apiGet, apiPost } from "../api/client";
 import { describeApiError } from "../api/errors";
 import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
+import { useStatusContext } from "../state/StatusContext";
 
 interface Check {
   name: string;
@@ -28,10 +29,14 @@ export function UcliChecksSection() {
   const [raw, setRaw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const { data } = useStatusContext();
+  const [host, setHost] = useState("local");      // kayıt ilgili hostun KENDİ diskinde (TBD#264)
+  const hostNames = (data?.hosts ?? []).map((h) => h.name);
+  const q = host !== "local" ? `?host=${encodeURIComponent(host)}` : "";
 
   async function load() {
     try {
-      const r = await apiGet<Registry>("/api/ucli/checks");
+      const r = await apiGet<Registry>(`/api/ucli/checks${q}`);
       setChecks(r.checks ?? []);
       setTemplates(r.templates ?? {});
       setRaw(JSON.stringify({ check: r.checks ?? [] }, null, 1));
@@ -40,12 +45,12 @@ export function UcliChecksSection() {
       setErr(describeApiError(e, t));
     }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [host]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   async function post(body: object) {
     setBusy(true);
     try {
-      const r = await apiPost<{ ok: boolean; error?: string }>("/api/ucli/checks", body);
+      const r = await apiPost<{ ok: boolean; error?: string }>("/api/ucli/checks", { ...body, host });
       if (!r.ok) showToast(r.error || "error");
     } catch (e) {
       showToast(describeApiError(e, t));
@@ -78,6 +83,15 @@ export function UcliChecksSection() {
           ? "ucli run_checks: model yalnız bu kayıttaki adlandırılmış kontrolleri çalıştırır (kafeste). Oturum başlatırken Kontroller seçicisinden açılır; kayıt oturum dışında, model tarafından değiştirilemeyen dosyada durur."
           : "ucli run_checks: the model can run only the named checks in this registry (caged). Enable per session in the start options; the registry lives outside the work root, so the model cannot edit it."}
       </span>
+      {hostNames.length > 0 && (
+        <label style={{ flexBasis: "100%", display: "flex", gap: ".5rem", alignItems: "center" }}>
+          <span className="opts-hint">{tr ? "Host:" : "Host:"}</span>
+          <select id="ucliChecksHost" value={host} onChange={(e) => setHost(e.target.value)}>
+            <option value="local">local</option>
+            {hostNames.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      )}
       {err && <span className="opts-hint" style={{ color: "var(--red)", flexBasis: "100%" }}>{err}</span>}
       {checks.map((c) => (
         <div key={c.name} style={{ display: "flex", alignItems: "center", gap: ".5rem", flexBasis: "100%", flexWrap: "wrap" }}>

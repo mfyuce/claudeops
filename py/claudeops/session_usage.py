@@ -58,6 +58,8 @@ def _from_row(r: Any) -> Optional[Tuple[Any, Tuple[str, int, int, int, int]]]:
     u = m.get("usage") if isinstance(m, dict) else None
     if not isinstance(u, dict):
         return None
+    if m.get("model") == "<synthetic>":
+        return None            # API hata/kesinti sentetik mesajı: gerçek istek değil (TODO 1519); tur ya da "other" ailesi saymaz
     mid = m.get("id")
     # id yoksa tekilleştirilemez: satırın kendi uuid'si (o da yoksa her satır ayrı tur sayılır)
     key = (mid, r.get("requestId")) if mid else ("row", r.get("uuid") or object())

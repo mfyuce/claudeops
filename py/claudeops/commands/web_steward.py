@@ -16,6 +16,7 @@ import dataclasses
 import hashlib
 import json
 import os
+import collections
 import re
 import secrets
 import shutil
@@ -1408,6 +1409,8 @@ def _wait_ready(name: str, cli: str, timeout: float = READY_TIMEOUT_SECONDS) -> 
     return False
 
 
+TRUST_RECHECK_SECONDS = 4.0        # güven diyaloğu kabulünden sonra ekranın yenilenmesini bekleme üst sınırı
+TRUST_RECHECK_STEP_SECONDS = 0.3
 ANSWER_FAIL_ALERT = 3      # art arda bu kadar başarısız cevap iletimi: olay + bildirim
 _ANSWER_FAILS: Dict[str, int] = {}
 
@@ -1434,6 +1437,17 @@ def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
     if ok and cli == "ucli":
         _ucli_box_recheck(name, sid)
     return ok
+
+
+def _send_fail_result(name: str) -> Dict[str, Any]:
+    """`_send` False döndükten sonra sonuç sözlüğü. Gönderim bir DİYALOG yüzünden reddedildiyse (`_note_send_result(.., "dialog:<tür>")`)
+    neden gizlenmez: `error=dialog_blocked:<tür>` + `code=dialog_blocked` (21 Kas iso/copsdevderbent: izin diyaloğu "Do you want to proceed?"
+    8 kez düz 'send failed' diye görünmüş, kök neden yalnız diag.log'daydı). Başka nedenler eskisi gibi 'send failed'."""
+    err = str((_SEND_FAILS.get(name) or {}).get("error") or "")
+    if err.startswith("dialog:"):
+        stuck = _DIALOG_STUCK.get(name) or {}
+        return {"ok": False, "error": "dialog_blocked:" + err[len("dialog:"):], "code": "dialog_blocked", "dialog": str(stuck.get("head") or "")[:160]}
+    return {"ok": False, "error": "send failed"}
 
 
 DIALOG_NOTIFY_SECONDS = 6 * 3600
@@ -1489,8 +1503,14 @@ def _recover_dialog(name: str, cl: Tuple[str, str]) -> bool:
             if res == "accepted":
                 diag_log("send_dialog_trust_accepted", name=name)
                 _DIALOG_STUCK.pop(name, None)
-                if trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
-                    return False
+                # Tuş basıldı ama TUI henüz yeniden çizmedi: HEMEN yeniden okumak bayat diyaloğu görüp gönderimi düşürüyordu
+                # (21 Kas: genetarihppr/aspergerppr/esneklikppr açılış istemi 'send failed', oturumlar sonra respawn ile açıldı).
+                # Diyalog kaybolana dek kısa aralıklarla yokla; süre dolarsa gerçekten kalmıştır.
+                end = time.monotonic() + TRUST_RECHECK_SECONDS
+                while trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
+                    if time.monotonic() >= end:
+                        return False
+                    time.sleep(TRUST_RECHECK_STEP_SECONDS)
                 _wait_prompt_ready(name)     # kabulden hemen sonra Claude henüz açılıyor: ilk gönderim düşüyordu (12 Kas runikppr)
                 return True
     now = time.time()
@@ -2430,7 +2450,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if st == "failed":
             return {"ok": False, "error": "delivery_unconfirmed", "code": "delivery_unconfirmed", "name": sname}
     elif not _send(sname, scli, message, sid=(cfg.sid if cfg is not None else "default")):
-        return {"ok": False, "error": "send failed"}
+        return _send_fail_result(sname)
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
     # cevabın İKİNCİ KEZ iletilmesine yol açmaz: yinelenmeyi engelleyen `delivered` işareti ÖNCE ve yeniden denemeli yazılır.
     unrecorded = False
@@ -3541,7 +3561,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return gate
     if k == "ask_user":
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
-                                        routine=bool(action.payload.get("routine")), paths=paths)
+                                        options=action.payload.get("options"), routine=bool(action.payload.get("routine")), paths=paths)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             fast = _job_fast_path(action, cfg, q, paths) if outcome not in ("same", "merged") else None
             if fast is not None:
@@ -3553,6 +3573,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": True, "id": q.id, "notified": False, "merged": True}
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
+    if k == "close_negative_answer":      # olumsuz/bekle cevabı: proje açılmaz, cevap teslim edildi sayılır (21 Kas)
+        sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
+        sw.log_event("negative_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name)
+        return {"ok": True}
     if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
         why = str(action.payload.get("reason") or "")
         qd = next((x for x in sw.load_questions(paths) if x.id == str(action.payload.get("question_id") or "")), None)
@@ -3599,7 +3623,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT, sid=cfg.sid)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
-        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+        return {"ok": ok} if ok else _send_fail_result(s.name)
     if k in ("idle_nudge", "owner_todo_move", "todo_triage"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
         # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
         if not host:
@@ -3614,7 +3638,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"), sid=cfg.sid)   # ucli çok satırı ayrı tur sayar: TEK satır
         sw.log_event(k, paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
-        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+        return {"ok": ok} if ok else _send_fail_result(s.name)
     if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
         mode = str(action.payload.get("mode") or "")
         if mode not in ("handover", "respawn", "stop") or host:
@@ -3864,7 +3888,24 @@ def _doc_path(cwd: str, fname: str) -> str:
 _TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re.I)
 
 
-def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int, int]]:
+def _todo_owned_by_other(projects: Dict[str, sw.Project], proj: str, cwd: str, real: str, resolve: Callable[[str], str]) -> bool:
+    """TODO.md'nin GERÇEK yolu (symlink çözülmüş), bu projenin kendi klasörünün dışında ve BAŞKA kayıtlı bir projenin klasöründeyse True
+    (worktree projesi: `scripts/worktree-docs-link.sh` TODO.md'yi ana checkout'a symlink'ler; copsdevderbent'e claudeops'un açık
+    maddeleri yazılıyordu). Sayı o projeye ait DEĞİL: çağıran None (bilinmiyor) sayar, kanıtlı teyit kanıta kalır."""
+    own = os.path.realpath(cwd)
+    home = os.path.dirname(real)
+    if home == own:
+        return False
+    for name in projects:
+        if name == proj:
+            continue
+        oc = resolve(name)
+        if oc and os.path.realpath(oc) == home:
+            return True
+    return False
+
+
+def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = False) -> Optional[Tuple[int, int]]:
     """Projenin YEREL TODO.md'si: (açık iş sayısı, sahibe bağlı etiketli açık satır sayısı). Sahibe bağlı satırlar
     (`OWNER_WAIT_LINE_RE`: SAHİPTE, (sahip), DIŞ GİRDİ, "sahip kararı bekliyor"...) açık iş SAYILMAZ. Uzak proje, klasörü bilinmeyen,
     okunamayan ya da 2 MB üstü dosya = None."""
@@ -3872,9 +3913,12 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
         p = projects.get(proj)
         if p is None or p.host:
             return None
-        cwd = _cwd_resolver()(proj)
+        resolve = _cwd_resolver()
+        cwd = resolve(proj)
         real = _doc_path(cwd, "TODO.md")
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            return None
+        if _todo_owned_by_other(projects, proj, cwd, real, resolve):
             return None
         n_open = n_owner = n_boxed = n_unboxed = 0
         with open(real, encoding="utf-8", errors="replace") as f:
@@ -3891,6 +3935,8 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str) -> Optional[Tuple[int
                 n_boxed += 1
                 if sw.OWNER_TODO_LINE_RE.search(ln):
                     n_owner += 1
+                if skip_cila and "Fable cila" in ln:
+                    continue
                 if not sw.OWNER_WAIT_LINE_RE.search(ln):
                     n_open += 1
         if n_boxed == 0 and n_open == 0:
@@ -3920,11 +3966,11 @@ def _oldest_open_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
     return first
 
 
-def _open_work_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+def _open_work_of(projects: Dict[str, sw.Project], skip_cila: bool = False) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (sahibe bağlı etiketliler hariç; `_scan_todo`).
     None = bilinmiyor (ön-kontrol atlanır, teyit kanıta kalır). Yalnız teyit gelince çağrılır."""
     def count(proj: str) -> Optional[int]:
-        r = _scan_todo(projects, proj)
+        r = _scan_todo(projects, proj, skip_cila)
         return None if r is None else r[0]
     return count
 
@@ -4001,16 +4047,28 @@ def _consume_fresh_start(project: str, sid: str) -> bool:
         return False
 
 
+def _has_question_of(paths: Any) -> Callable[[str], bool]:
+    """Projenin KAYITLI açık sorusu ya da iletilmemiş cevabı var mı (hata = True: dürtme gitmez)."""
+    try:
+        have = {q.project for q in sw.load_questions(paths) if q.status == "open"}
+        have |= {q.project for q in sw.undelivered_answers(paths=paths) if not q.undeliverable}
+    except Exception:
+        return lambda _p: True
+    return lambda p: p in have
+
+
 def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
     """`iş yok` kapatma/yeniden açma kararının bekleyen-şey kümeleri (hata = o küme boş, kapatma KISILIR değil GENİŞLEMEZ: hata varsa
     `ctx["errors"]` dolar ve kapatma planlayıcısı bu tick'te hiçbir şey kapatmaz). Alanlar: open_q {proje} (sahip/beyin/ROUTINE dahil HER açık soru),
     answer_pending {proje: soru kimliği}, review {proje: neden} (onaylı/doğrulanmış iletilmemiş bulgu, bekleyen ders, koşan review, ilerletme
     adayı), jobs {proje} (açık ya da sonucu iletilmemiş varaka işi)."""
-    ctx: Dict[str, Any] = {"open_q": set(), "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
+    ctx: Dict[str, Any] = {"open_q": set(), "open_q_since": {}, "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
     try:
         for q in sw.load_questions(paths):
             if q.status == "open":
                 ctx["open_q"].add(q.project)
+                # proje başına EN YENİ açık sorunun zamanı: tüm açık sorular en az o kadar eskidir (nowork.aged_q)
+                ctx["open_q_since"][q.project] = max(float(ctx["open_q_since"].get(q.project) or 0), float(q.created_at or 0))
         for q in sw.undelivered_answers(paths=paths):
             if not q.undeliverable:
                 ctx["answer_pending"].setdefault(q.project, q.id)
@@ -4026,7 +4084,15 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
         for rsid in sorted(sw.reviewer_ids()):
             for rec in rv.load_findings(sw.paths_for(rsid)).values():
                 if isinstance(rec, dict) and rec.get("state") in ("verified", "approved"):
-                    ctx["review"].setdefault(str(rec.get("project") or ""), f"bulgu:{rec.get('state')}")
+                    proj_k = str(rec.get("project") or "")
+                    if rec.get("state") == "verified" and snw.verified_is_stale(rec, time.time()):
+                        # sahip 21 Kas: 2 sa ilerlemeyen verified bulgu kapanışı engellemez (yeniden açılış bulgu iletimiyle zaten tetiklenir);
+                        # neden takıldığı teşhisle `review_stuck`a yazılır (review_auto_approve düzeyi/önem/gizli değer)
+                        ctx.setdefault("review_stuck", {}).setdefault(proj_k, []).append(
+                            snw.verified_stuck_reason(int(getattr(cfg, "review_auto_approve", 0) or 0), rec,
+                                                      sa.is_sensitive(rec)))
+                        continue
+                    ctx["review"].setdefault(proj_k, f"bulgu:{rec.get('state')}")
         for row in _advance_candidates(cfg):
             ctx["review"].setdefault(str(row.get("project") or ""), "bulgu:ilerletme")
         for k in web_review.running_keys():
@@ -4349,7 +4415,7 @@ def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dic
                      error=str((res or {}).get("error") if isinstance(res, dict) else res))
 
 
-_JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir
+_JOURNAL_KINDS = ("ask_user", "idea", "set_phase", "close_stale_answer", "close_negative_answer")   # kaydı sessizce kaybolan tür: tetikleyici (yanıt özeti) tick'te tüketilir
 
 
 def _journal_id(a: sw.Action) -> str:
@@ -4455,7 +4521,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
                                                   open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects),
-                                                  claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects))
+                                                  claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects),
+                                                  open_work_real=_open_work_of(projects, skip_cila=True))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
@@ -4513,7 +4580,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
                                                             open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
-                                                            todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects))
+                                                            todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects),
+                                                            has_question=_has_question_of(paths))
                 if cfg.claude_idle == "dry":
                     for a in cl_actions:            # YALNIZ ölçüm: oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,
@@ -5534,7 +5602,7 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
     if "/" in fname or ".." in fname or "\x00" in fname:      # sözcük denetimi (fname sabit tablodan gelir; yine de)
         return "unreadable"
     path = cwd.rstrip("/") + "/" + fname
-    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    before, create = _remote_before(host, name, path, fname)
     if before is None:
         return "unreadable"
     new = _idea_appended(before, idea, stamp)
@@ -5542,9 +5610,10 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
         return "already"
     if dry:
         return "would"
-    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
-    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                       REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "write_failed"
 
 
@@ -6294,6 +6363,22 @@ def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
     return out
 
 
+_REMOTE_CREATABLE = ("TODO.md", "TOBEDECIDED.md", "DONE.md")      # files.CREATABLE_DOCS ile aynı (uzak host eski kodsa `create` yok sayılır → write_failed)
+
+
+def _remote_before(host: str, name: str, path: str, fname: str) -> Tuple[Optional[str], bool]:
+    """Uzak dosyanın içeriği + `create` mı. Okunamayan/yok dosya proje not dosyasıysa boş içerikle ve create=True ile devam edilir."""
+    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    if before is None and fname in _REMOTE_CREATABLE:
+        try:       # YALNIZ host net "yok" (404) dedi ise oluştur; ağ/zaman aşımı/boyut sınırı = okunamadı, yazma YOK
+            parsed, status = _remote.get("/api/files/read", host, {"name": name, "path": path}, timeout=REMOTE_READ_BUDGET_SECONDS)
+        except Exception:
+            return None, False
+        if status == 404 and isinstance(parsed, dict) and parsed.get("ok") is False:
+            return "", True
+    return before, False
+
+
 def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Optional[str]], sid: str) -> str:
     """Uzak projenin `fname` dosyasını `edit(metin)` ile günceller (`_remote_append_idea` ile aynı güvenlik sırası: kapı, oku, yeniden oku, yaz)."""
     if not _remote_files_gate(host, sid):
@@ -6303,15 +6388,16 @@ def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Opt
         return "no_folder"
     name = real or name
     path = cwd.rstrip("/") + "/" + fname
-    before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
+    before, create = _remote_before(host, name, path, fname)
     if before is None:
         return "remote_unreadable"
     new = edit(before)
     if new is None:
         return "already"
-    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != before:
+    if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
-    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+    res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                       REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "remote_write_failed"
 
 
@@ -6411,8 +6497,11 @@ def http_idea(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
             return {"ok": False, "error": "unknown idea id"}
         sw.log_event("idea_update", paths=sid, id=i.id, status=i.status, project=i.project)
         return {"ok": True, "idea": dataclasses.asdict(i)}
+    proj = str(data.get("project") or "").strip()
+    if proj and proj not in sw.load_projects(sid):
+        return {"ok": False, "error": "unknown project"}
     try:
-        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"), paths=sid)
+        i = sw.add_idea(str(data.get("text") or ""), source=str(data.get("source") or "api"), paths=sid, project=proj)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     sw.log_event("idea", paths=sid, id=i.id)
@@ -6631,9 +6720,12 @@ def http_directive_status(qs: Dict[str, List[str]]) -> Dict[str, Any]:
     with _DELIVERY_LOCK:
         _deliveries_load()
         if not did:
-            return {"ok": True, "deliveries": [dict(v) for v in list(_DELIVERIES.values())[-20:]]}
+            return {"ok": True, "deliveries": [dict(v, todo_state=_todo_directive_state(str(v.get("name") or ""), str(v.get("id") or ""), "default"))
+                                               for v in list(_DELIVERIES.values())[-20:]]}
         d = _DELIVERIES.get(did)
-        return {"ok": True, **dict(d)} if d else {"ok": False, "error": "unknown delivery id"}
+        if not d:
+            return {"ok": False, "error": "unknown delivery id"}
+        return {"ok": True, **dict(d), "todo_state": _todo_directive_state(str(d.get("name") or ""), did, "default")}
 
 
 def _pane_norm(text: str) -> str:
@@ -6683,13 +6775,13 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
         for attempt in (1, 2):
             _delivery_set(did, attempts=attempt)
             try:
-                res = http_directive(dict(data, queue=False, _bg=True), sid)
+                res = http_directive(dict(data, queue=False, _bg=True, _did=did), sid)
             except Exception as e:      # arka plan işi asla sessiz ölmez
                 res = {"ok": False, "error": f"{type(e).__name__}: {e}"}
             if res.get("ok") or res.get("code") in ("draining", "start_backoff", "manual_session_running", "owner_pending"):
                 break
         if res.get("ok"):
-            _delivery_set(did, status="delivered", done_at=time.time(), skipped=str(res.get("skipped") or ""))
+            _delivery_set(did, status="delivered", done_at=time.time(), skipped=str(res.get("skipped") or ""), todo=str(res.get("todo") or ""))
         else:
             reason = str(res.get("code") or res.get("error") or "unknown")
             _delivery_set(did, status="failed", reason=reason, error=str(res.get("error") or "")[:300], done_at=time.time())
@@ -6701,6 +6793,66 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
 
     threading.Thread(target=run, daemon=True, name=f"directive-{did}").start()
     return {"ok": True, "status": "queued", "id": did, "name": name}
+
+
+_TODO_DIRECTIVE_SKIP_REASONS = ("restart", "review_verify")
+
+
+def _todo_record_directive(p: Optional[sw.Project], name: str, text: str, did: str, data: Dict[str, Any]) -> str:
+    """Sahip kuralı (20 Kas): her insan/cops/readlist direktifi hedef projenin TODO.md'sine `- [ ] (tarih, direktif <id>) <özet>`
+    olarak otomatik yazılır ("gönder deyince TODO olmalı yoksa kaybolur"). Aynı içerik zaten AÇIK satırsa ya da aynı id varsa
+    yeni satır AÇILMAZ. Beyin direktifi, restart/review_verify sistem direktifi, uzak host projesi, TODO.md'siz proje ATLANIR.
+    Dönen: added | duplicate | skipped:<neden> | error. Asla fırlatmaz. (Notes DB bu kod tabanında yok: hc/sesim TODO.md kullanır.)"""
+    try:
+        actor = str(data.get("actor") or "")
+        reason = str(data.get("reason") or "")
+        if actor == "brain" or reason.startswith(_TODO_DIRECTIVE_SKIP_REASONS):
+            return "skipped:system"
+        if not text.strip() or p is None or p.host:
+            return "skipped:no_local_project"
+        cwd = _cwd_resolver()(p.name)
+        real = _doc_path(cwd, "TODO.md") if cwd else ""
+        if not real:
+            return "skipped:no_todo"
+        flat = " ".join(text.split())
+        summary = flat if len(flat) <= 400 else flat[:397] + "..."
+        with open(real, encoding="utf-8", errors="replace") as f:
+            body = f.read()
+        if f"direktif {did})" in body or f"direktif {did}," in body:
+            return "duplicate"
+        for ln in body.splitlines():
+            m = re.match(r"^- \[ \] \([^)]*direktif [0-9a-f]+\) (.*)$", ln)
+            if m and " ".join(m.group(1).split()) == summary:
+                return "duplicate"
+        line = f"- [ ] ({time.strftime('%Y-%m-%d')}, direktif {did}) {summary}"
+        with open(real, "a", encoding="utf-8") as f:
+            f.write(("" if body.endswith("\n") or not body else "\n") + line + "\n")
+        return "added"
+    except Exception as e:
+        diag_log(f"direktif TODO satırı yazılamadı: {type(e).__name__}")
+        return "error"
+
+
+def _todo_directive_state(name: str, did: str, sid: str) -> str:
+    """Panel: direktifin TODO satırı `open` | `closed` | `missing` (satır yok ya da TODO.md yok)."""
+    try:
+        p = sw.load_projects(sid).get(name)
+        cwd = _cwd_resolver()(p.name if p else name)
+        real = _doc_path(cwd, "TODO.md") if cwd else ""
+        if not real:
+            return "missing"
+        with open(real, encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                if f"direktif {did})" in ln:
+                    return "open" if ln.startswith("- [ ]") else "closed"
+    except Exception:
+        pass
+    return "missing"
+
+
+_DID_RE = re.compile(r"^[0-9a-f]{12}$")
+_DID_DONE: "collections.OrderedDict[str, Dict[str, Any]]" = collections.OrderedDict()     # (sid, did) -> son başarılı sonuç (yinelenme ayıklama)
+_DID_DONE_MAX = 256
 
 
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6723,7 +6875,12 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     if (not data.get("actor") and data.get("queue") is True and data.get("start_if_stopped", True)
             and not _name_host(name) and not _live_sessions(name, sid)):
         return _queue_directive(data, sid)       # insan/CLI başlatma yolu: zaman aşımı yok, durum izlenir
+    cdid = str(data.get("_did") or "")
+    if cdid and not _DID_RE.match(cdid):
+        return {"ok": False, "error": "bad _did (12 hex)"}      # TODO satırına yazılır: serbest metin enjekte edilemez
     with _ctx(sid).lock:
+        if cdid and (sid, cdid) in _DID_DONE:     # aynı istemci kimliği zaten iletildi (zaman aşımı sonrası yeniden deneme / hayalet yürütme)
+            return dict(_DID_DONE[(sid, cdid)], duplicate=True)
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
         if str(data.get("actor") or "") == "extension":
@@ -6734,6 +6891,8 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             if _running(name) is None and not inst_mod.get_instance(name) and name not in (_act("fleet_status") or {}):
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
+        did = str(data.get("_did") or "") or __import__("uuid").uuid4().hex[:12]
+        todo_res = _todo_record_directive(p, name, text, did, data)
         _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
         if p.phase in ("done", "paused") and str(data.get("actor") or "") not in ("brain", "extension") and sw.valid_name(p.name) and p.name in projects:
             # insan/okuma(readlist)/CLI direktifi done/paused projeye yeni iş demektir: phase=planned (17 Kas, marwan: oturum açıldı ama faz done kaldı)
@@ -6744,6 +6903,13 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                               start_if_stopped=bool(data.get("start_if_stopped", True)),
                               reason=str(data.get("reason") or "brain"), session_name=name, cfg=steward_config(sid),
                               actor=str(data.get("actor") or ""), verify=bool(data.get("_bg")))
+    if isinstance(res, dict) and todo_res != "skipped:system":
+        res = dict(res, directive_id=did, todo=todo_res)
+    if cdid and isinstance(res, dict) and res.get("ok"):
+        with _ctx(sid).lock:
+            _DID_DONE[(sid, cdid)] = res
+            while len(_DID_DONE) > _DID_DONE_MAX:
+                _DID_DONE.popitem(last=False)
     if str(data.get("actor") or "") == "brain":
         _register_brain_outcome(res, name, sid)
     return res
@@ -6756,6 +6922,15 @@ def _register_brain_outcome(res: Any, name: str, sid: str) -> None:
         return
     _register_outcomes([{"kind": "directive", "name": str(res.get("name") or name), "at": time.time(), "sigs": {},
                          "via": "brain"}], sw.paths_for(sid))
+
+
+def _dialog_still_open(name: str) -> bool:
+    """`_DIALOG_STUCK` kaydı bayat olabilir (sahip diyalogu geçti, sonra hiç gönderim olmadı): pane'i YENİDEN okuyup doğrular; kapandıysa kaydı siler."""
+    from .. import trust_dialog
+    if trust_dialog.classify(strip_ansi(tmux_capture(name) or "")) is not None:
+        return True
+    _DIALOG_STUCK.pop(name, None)
+    return False
 
 
 def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6774,6 +6949,13 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if blocked is not None:
         return blocked
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
+    if not host and str(data.get("actor") or "") == "brain" and name in _DIALOG_STUCK and _dialog_still_open(name):
+        # Oturum bir DİYALOGDA (izin/güven/seçici) bekliyor ve motor kör tuş basmıyor: beynin 'send failed -> restart' kararı sahibin
+        # bekleyen onayını sessizce atar ve gereksiz devre yol açar (21 Kas copsdev 14:38). Karar sahibe (panelden terminali açıp geçer).
+        d = _DIALOG_STUCK[name]
+        sw.log_event("restart_refused_dialog", paths=sid, name=name, kind=str(d.get("kind") or ""), head=str(d.get("head") or "")[:160])
+        return {"ok": False, "error": "dialog_blocked:" + str(d.get("kind") or "unknown_dialog"), "code": "dialog_blocked",
+                "detail": "oturum bir diyalogda bekliyor; restart bunu çözmez, sahibe bildirildi (panelden terminali açıp geçin)"}
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if host:
             # Uzak restart = durdurma (`_remote_stop` koşulları + kapanma beklemesi) + yönerge (kapalıysa uzak başlatma).
@@ -8050,19 +8232,21 @@ class RemoteReviewDriver:
             return {"ok": False, "error": f"remote folder of {self.project} unknown on {self.host}"}
         name = real or self.project
         path = cwd.rstrip("/") + "/" + fname
+        create = False
         for attempt in (0, 1):      # dosya okuma ile yazma arasında değişirse (proje oturumu aynı anda yazıyor) TEK otomatik yeniden deneme
-            before = _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS)
+            before, create = _remote_before(self.host, name, path, fname)
             if before is None:
                 return {"ok": False, "error": f"{fname} missing or unreadable on {self.host}: not created", "path": path}
             new, written = build(before)
             out: Dict[str, Any] = {"ok": True, "path": path, "written": written, "host": self.host, "session": name}
             if new is None:
                 return out
-            if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) == before:
+            if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) == (None if create else before):
                 break
             if attempt:
                 return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
-        res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new}, REMOTE_INPUT_TIMEOUT_SECONDS)
+        res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
+                           REMOTE_INPUT_TIMEOUT_SECONDS)
         if not res.get("ok"):
             return {"ok": False, "error": f"write_failed: {res.get('error') or res.get('code') or 'failed'}", "path": path}
         if _remote_read_full(self.host, name, path, REMOTE_READ_BUDGET_SECONDS) != new:

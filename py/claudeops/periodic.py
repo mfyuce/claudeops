@@ -31,6 +31,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .atomic_json import atomic_write_json
+from . import metrics_push as _metrics_push
 from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR, REPO_DIR
 
@@ -46,6 +47,13 @@ SECRET_RES = [
     re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),
     re.compile(r"sk-or-[A-Za-z0-9_\-]{12,}"),
     re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),         # ince taneli GitHub PAT
+    re.compile(r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_\-]{20,}"),   # OpenAI (codex)
+    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),               # Google/Gemini API anahtarı
+    re.compile(r"xox[abprs]-[A-Za-z0-9\-]{10,}"),        # Slack
+    re.compile(r"hf_[A-Za-z0-9]{30,}"),                  # Hugging Face
+    re.compile(r"npm_[A-Za-z0-9]{36}"),
+    re.compile(r"ya29\.[A-Za-z0-9_\-]{20,}"),            # Google OAuth erişim belirteci
     re.compile(r"glpat-[A-Za-z0-9_\-]{10,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{24,}"),
@@ -53,6 +61,10 @@ SECRET_RES = [
     re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"])[^'\"\n]{4,}?(?=\\*['\"])"),
     re.compile(r"(?i)((?:password|passwd|pwd|parola|şifre)\\*['\"]?\s*[=:]\s*\\*['\"]?)(?!\[GİZLİ-MASKELENDİ\])[^\s'\"<>$*,}\\]{4,}"),
 ]
+
+# Maske sürümü: SECRET_RES değişince manifestteki kaynak imzaları düşer, tüm kaynaklar yeni maskeyle yeniden yazılır (geriye dönük maske).
+MASK_VER = hashlib.sha256("\n".join(r.pattern for r in SECRET_RES).encode()).hexdigest()[:12]
+_MASKVER_KEY = "_maskver"
 
 DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "enabled": "off",
@@ -509,7 +521,7 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
             best[dest] = {"src": f, "sig": f"{stt.st_size}:{int(stt.st_mtime)}", "dest": dest, "mt": stt.st_mtime,
                           "size": stt.st_size, "kind": kind,
                           "group": _group_of(prefix),
-                          "day": datetime.datetime.fromtimestamp(stt.st_mtime).strftime("%F")}
+                          "day": _day_of(stt.st_mtime)}
     def _regress(e: Dict[str, Any]) -> bool:
         try:
             return int(e["mt"]) < int(manifest.get(_DEST_PFX + e["dest"], "0"))
@@ -518,6 +530,14 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
     todo = [e for _d, e in sorted(best.items()) if manifest.get(e["src"]) != e["sig"] and not _regress(e)]
     return {"repo": _group_repo(cfg, "claude"), "seen": seen, "changed": todo,
             "marks": _dest_marks([e for e in best.values() if manifest.get(e["src"]) == e["sig"]])}
+
+
+def _day_of(mt: float) -> str:
+    """mtime -> 'YYYY-MM-DD'; aralık dışı/bozuk mtime (ValueError/OverflowError/OSError) bugüne düşer, koşuyu düşürmez."""
+    try:
+        return datetime.datetime.fromtimestamp(mt).strftime("%F")
+    except (ValueError, OverflowError, OSError):
+        return datetime.date.today().isoformat()
 
 
 def _put(dest: str, blob: bytes) -> bool:
@@ -655,6 +675,8 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
     """Plan (apply=False) ya da uygula. Sonuç dict'i: ok, msg, written, ... Asla fırlatmaz.
     Her grup (claude|codex|gemini) kendi repo'suna gider; repo'su henüz olmayan grup ATLANIR (manifeste yazılmaz, sonra denenir)."""
     manifest: Dict[str, str] = dict((state.get("chat_backup") or {}).get("manifest") or {})
+    if manifest and manifest.get(_MASKVER_KEY) != MASK_VER:      # maske kuralları değişti: kaynak imzalarını at (dest: işaretleri kalır), hepsini yeniden maskele
+        manifest = {k: v for k, v in manifest.items() if k.startswith(_DEST_PFX)}
     dump_info: Dict[str, Any] = {}
     warns: List[str] = []              # uzak çekme/arşiv açma hataları: yerel yedeği durdurmaz ama mesajda görünür (sahte 'temiz ok' olmasın)
     rp = cfg.get("remote_pull")
@@ -739,7 +761,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             for rel in _porcelain_z_paths(por):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
                 if rel and not any(rel in v for v in days.values()):
                     try:
-                        d = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(repo, rel))).strftime("%F")
+                        d = _day_of(os.path.getmtime(os.path.join(repo, rel)))
                     except OSError:
                         d = datetime.date.today().isoformat()
                     days.setdefault(d, []).append(rel)
@@ -791,6 +813,7 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             done[k] = v
     done.update({_DEST_PFX + e["dest"]: sigs[_DEST_PFX + e["dest"]] for e in plan["changed"] if _DEST_PFX + e["dest"] in sigs})
     manifest.update(done)
+    manifest[_MASKVER_KEY] = MASK_VER
     state.setdefault("chat_backup", {})["manifest"] = manifest
     mode = str(cfg.get("remote_tgz_prune", "dry")).strip().lower()
     dump_bad = bool(dump_info and (dump_info.get("errors") or dump_info.get("raw_err")))
@@ -974,6 +997,51 @@ def run_host_probe(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> D
     return {"ok": True, "msg": f"{r['hosts']} host, {r['urls']} adres, {r['ok']} erişilebilir", "applied": True}
 
 
+DEFAULT_ORPHAN_WATCH: Dict[str, Any] = {
+    "enabled": "on",             # yalnız okur; otomatik iş: ölü yardımcı soket dosyası silme + KENDİ cops-usage-* sunucularını kapatma
+    "schedule": "",
+    "start": "00:00",
+    "interval_hours": 12 / 60,   # 12 dk (sahip 20 Kas)
+}
+
+
+def run_orphan_watch(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Sahipsiz kaynak denetimi (`orphan_watch`): yardımcı tmux soketleri + tanınmayan yaşlı CLI süreçleri. Yeni anomalide TEK bildirim."""
+    if not apply:
+        return {"ok": True, "msg": "plan: yardımcı tmux soketleri ve tanınmayan yaşlı CLI süreçleri taranır (hiçbir süreç öldürülmez)", "applied": False}
+    from . import orphan_watch as ow
+    r = ow.check()
+    if not r.get("ok"):
+        return {"ok": False, "msg": f"tarama hatası: {r.get('error')}", "applied": True}
+    st = state.setdefault(cfg.get("_name", "orphan_watch"), {})
+    hogs, st["cpu_prev"] = ow.scan_cpu_hogs(st.get("cpu_prev"))
+    r["keys"] = list(r["keys"]) + [f"cpu:{h['pid']}" for h in hogs]
+    prev = set(st.get("notified") or [])
+    cur = set(r["keys"])
+    new = sorted(cur - prev)
+    st["notified"] = sorted(cur)                    # çözülen anahtarlar düşer: yeniden çıkarsa yeniden bildirilir
+    st["detail"] = {"sockets": r["sockets"], "procs": r["procs"], "hogs": hogs, "at": time.time()}
+    if new:
+        try:
+            from .commands import web_steward
+            web_steward.notify_phone("sahipsiz kaynak / CPU: " + ", ".join(new[:6]) + (f" (+{len(new) - 6})" if len(new) > 6 else ""),
+                                     title="claudeops sahipsiz")
+        except Exception as e:  # noqa: BLE001
+            diag_log(f"orphan_watch bildirim hatası {type(e).__name__}")
+    sk = r["sockets"]
+    msg = (f"{len(sk['orphans'])} sahipsiz sunucu, {len(r['procs'])} sahipsiz CLI süreci; {len(sk['deleted'])} ölü soket silindi, "
+           f"{len(sk['killed'])} usage sunucusu kapatıldı" + (f"; CPU>%{int(ow.HOG_PCT)}: " + ", ".join(f"{h['name']}#{h['pid']} %{h['pct']}" for h in hogs[:3]) if hogs else ""))
+    return {"ok": True, "msg": msg, "applied": True}
+
+
+def orphan_summary() -> Dict[str, Any]:
+    """/api/status için ucuz özet (durum dosyasından; tarama YAPMAZ): sahipsiz sunucu/süreç sayısı + ayrıntı."""
+    st = load_state().get("orphan_watch") or {}
+    d = st.get("detail") or {}
+    return {"servers": len((d.get("sockets") or {}).get("orphans") or []), "procs": len(d.get("procs") or []),
+            "hogs": len(d.get("hogs") or []), "detail": d, "last_end": st.get("last_end"), "last_ok": st.get("last_ok")}
+
+
 DEFAULT_DISK_CLEAN: Dict[str, Any] = {
     "enabled": "on",             # sahip 20 Kas: tüm makinelerde otomatik (yalnız kendi uid'i)
     "schedule": "",
@@ -1007,10 +1075,11 @@ JOBS: Dict[str, Job] = {"disk_clean": Job("disk_clean", DEFAULT_DISK_CLEAN, run_
                         "memory_prv": Job("memory_prv", DEFAULT_MEMORY_PRV, run_memory_prv),
                         "usage_refresh": Job("usage_refresh", DEFAULT_USAGE_REFRESH, run_usage_refresh),
                         "model_watch": Job("model_watch", DEFAULT_MODEL_WATCH, run_model_watch),
-                        "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe)}
+                        "host_probe": Job("host_probe", DEFAULT_HOST_PROBE, run_host_probe),
+                        "orphan_watch": Job("orphan_watch", DEFAULT_ORPHAN_WATCH, run_orphan_watch)}
 # Hafif işler (kısa ağ yoklaması/okuma) ağır işlerin (chat_backup, notes_sync, özel) ARKASINDA beklemez: ayrı kilit + ayrı döngü iş parçacığı.
 # 20 Kas teşhisi: uyanıştan sonra kaçan günlük chat_backup uzun koştu, tek kilit + tek döngü yüzünden host_probe/usage_refresh ~17 saat durdu.
-LIGHT_JOBS = frozenset({"host_probe", "usage_refresh", "model_watch"})
+LIGHT_JOBS = frozenset({"host_probe", "usage_refresh", "model_watch", "orphan_watch"})
 _LOCK = threading.Lock()                  # ağır işler
 _LIGHT_LOCK = threading.Lock()
 _STATE_LOCK = threading.Lock()            # durum dosyası oku-değiştir-yaz (iki sınıf eşzamanlı yazabilir)
@@ -1081,6 +1150,7 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             _notify_failure(name, res, st)
             _save_job_state(name, st)
             diag_log(f"periodic {name}: {'ok' if res.get('ok') else 'HATA'} {res.get('msg', '')}")
+            _metrics_push.push_job(name, (st["last_end"] - st["last_start"]) * 1000.0, res, st["last_end"])    # strangler köprüsü (copsd metrics.db), iş Rust'a taşınınca kalkar
         return res
     finally:
         _RUNNING.pop(name, None)

@@ -817,16 +817,27 @@ class TestAutoExport(_Flow):
         self.assertTrue(all(v["state"] == "exported" for v in self.findings().values()))
 
     def test_sensitive_and_remote_are_skipped(self):
-        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde: password=Xk93jsd81hF sabit yazılı\n"      # gerçek gizli DEĞER var
+        md = "## R-1 | P3 | w.py:1 | Kodda password=Xk93jsd81hF sabit yazılı\ngovde: temiz\n"      # gerçek gizli DEĞER BAŞLIKTA
         fids = self.approve("a", md)
         self.approve("far", REVIEW_MD)
         self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), [])
-        self.assertEqual(self.findings()[fids[0]]["state"], "approved")            # değerli hassas bulgu: elle kalır
+        self.assertEqual(self.findings()[fids[0]]["state"], "approved")            # başlıkta değer: elle kalır
         self.assertFalse(os.path.exists(os.path.join(self.proj_dir, "TODO.md")))
         self.assertTrue(all(v["state"] == "approved" for v in self.findings().values()))
 
+    def test_body_secret_is_exported_without_body(self):
+        # TBD#268 (c): gövdede değer var, başlık temiz: otomatik yazılır, GÖVDE çıkar (yalnız başlık + yer), değer hiçbir yere sızmaz
+        md = "## R-1 | P3 | w.py:1 | Veritabanı bağlantısı sabit\ngovde: password=Xk93jsd81hF sabit yazılı\n"
+        fids = self.approve("a", md)
+        self.assertEqual(wr.auto_export(self.cfg(), now=5_000.0), ["a"])
+        with open(os.path.join(self.proj_dir, "TODO.md")) as fh:
+            text = fh.read()
+        self.assertIn(f"(review {fids[0]})", text)
+        self.assertNotIn("Xk93jsd81hF", text)
+        self.assertNotIn("sabit yazılı", text)
+
     def test_secret_skip_is_loud_once_and_listed_for_manual_export(self):
-        md = "## R-1 | P3 | w.py:1 | Veritabanı parolası kodda\ngovde: password=Xk93jsd81hF sabit yazılı\n"
+        md = "## R-1 | P3 | w.py:1 | Kodda password=Xk93jsd81hF sabit yazılı\ngovde: temiz\n"
         fids = self.approve("a", md)
         wr.auto_export(self.cfg(), now=5_000.0)
         wr.auto_export(self.cfg(), now=5_100.0)

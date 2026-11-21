@@ -56,8 +56,8 @@ def claude_guidance_path() -> Optional[str]:
         except OSError:
             pass
         os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-        with open(OVERRIDE_PATH, "w", encoding="utf-8") as f:
-            f.write(text)
+        from .atomic_json import atomic_write_text
+        atomic_write_text(OVERRIDE_PATH, text)
         return OVERRIDE_PATH
     except Exception:
         return None

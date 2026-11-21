@@ -30,7 +30,8 @@ def _git(src: str, *args: str) -> Optional[str]:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def freshness(bin_path: str = "", src_dir: str = "", git: Callable[..., Optional[str]] = _git) -> Dict[str, object]:
+def freshness(bin_path: str = "", src_dir: str = "", git: Callable[..., Optional[str]] = _git, label: str = "ucli",
+              installer: str = "scripts/install-ucli.sh release --build") -> Dict[str, object]:
     """{ok, stale, behind, built, head, message}. Bilgi eksikse stale=False (yanlis alarm yok), message dolu olabilir."""
     bin_path = bin_path or os.environ.get("UCLI_BIN") or _DEFAULT_BIN
     src = src_dir or os.environ.get("UNIFIED_CLI_DIR") or os.path.expanduser("~/work/projects/tmp/unified-cli")
@@ -41,7 +42,7 @@ def freshness(bin_path: str = "", src_dir: str = "", git: Callable[..., Optional
         built = ""
     res["built"] = built
     if not built:
-        res["message"] = "bin/ucli.info yok ya da source_git yok: ikili kaynaktan ayrisik olabilir (scripts/install-ucli.sh release --build)"
+        res["message"] = f"bin/{label}.info yok ya da source_git yok: ikili kaynaktan ayrisik olabilir ({installer})"
         return res
     if not src or not os.path.isdir(src):
         return res
@@ -57,6 +58,13 @@ def freshness(bin_path: str = "", src_dir: str = "", git: Callable[..., Optional
     res["behind"] = behind
     if behind > 0:
         res["stale"] = True
-        res["message"] = (f"bin/ucli {behind} commit geride (derlenen {built}, HEAD {head}): "
-                          "scripts/install-ucli.sh release --build")
+        res["message"] = (f"bin/{label} {behind} commit geride (derlenen {built}, HEAD {head}): {installer}")
     return res
+
+
+def uzakgoz_freshness(git: Callable[..., Optional[str]] = _git) -> Dict[str, object]:
+    """bin/uzakgoz (scripts/install-uzakgoz.sh `uzakgoz.info` source_git yazar) uzakgoz HEAD'inin gerisinde mi. `remote_desktop.start()` LOCAL_BIN
+    varsa derlemez: bayat ikili yeni özellikleri (kutu filtresi, karo kipi) canlıya hiç ulaştırmıyordu (21 Kas)."""
+    return freshness(bin_path=os.environ.get("UZAKGOZ_BIN") or os.path.join(os.path.dirname(_DEFAULT_BIN), "uzakgoz"),
+                     src_dir=os.environ.get("UZAKGOZ_DIR") or os.path.expanduser("~/work/projects/tmp/uzakgoz"),
+                     git=git, label="uzakgoz", installer="scripts/install-uzakgoz.sh --build")

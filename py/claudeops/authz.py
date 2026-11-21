@@ -50,6 +50,9 @@ class RequestView:
     headers: Mapping[str, str]
     cookies: Dict[str, str]
     client_addr: str = ""
+    # Gövdeyi TEMBEL okuyan sağlayıcı (imzalı kimlik iletimi gövde bağlama): çağrılırsa gövde okunur ve handler'a da aynen kalır;
+    # sınırı aşan/okunamayan gövde için None. Çağıran yalnız imza doğrulandıktan sonra ister.
+    body_fn: Optional[Callable[[], Optional[bytes]]] = None
 
 
 # Ön ek -> eylem. SIRA ÖNEMLİ (ilk eşleşen kazanır; daha özel önek önce). GET ve POST aynı tablo (yöntem ayrımı eylem adında değil).
@@ -79,7 +82,9 @@ _ACTION_TABLE: List[Tuple[str, str]] = [
     ("/api/files/", "files.read"),
     ("/api/orch/", "orch.run"),
     ("/api/ucli/ask", "session.chat"),
+    ("/api/_internal/", "admin.config"),            # Rust ön kapı iç uçları: kimlik doğrulamadan ÖNCE gizli+loopback ile korunur (front.py); eşleme yalnız emniyet
     ("/api/chat-backup", "admin.config"),
+    ("/api/ucli/metrics", "status.read"),           # salt-okunur zaman serisi (ucli_metrics.py)
     ("/api/ucli/checks-mode", "session.control"),   # kaynak = oturum (`name`); ÖNCE: "/api/ucli/checks" öneki bunu da yakalar
     ("/api/ucli/checks", "admin.config"),           # kontrol kaydı bir güvenlik izni (docs/ucli-run-checks-design.md 4.5)
     ("/api/ucli/approvals", "session.chat"),     # GET listesi `action_for`'da status.read (yanıt sahibine göre süzülür)
@@ -194,9 +199,10 @@ def add_audit_sink(fn: Callable[[Principal, str, Resource, int], None]) -> None:
 def reset() -> None:
     """Test/yeniden yükleme: tüm kancaları sil (çekirdek varsayılanına dön)."""
     with _LOCK:
-        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK
-        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = None
+        global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK, _OUTBOUND_SIGNER
+        _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = _OUTBOUND_SIGNER = None
         _AUDIT_SINKS.clear()
+        _STATUS_EXTRAS.clear()
         _EVENT_SINKS.clear()
         _EXT_ACTIONS.clear()
 
@@ -207,6 +213,51 @@ def has_authenticator() -> bool:
 
 def has_authorizer() -> bool:
     return _AUTHORIZER is not None
+
+
+_STATUS_EXTRAS: Dict[str, Callable[[], Any]] = {}
+
+
+def set_status_extra(key: str, fn: Optional[Callable[[], Any]]) -> None:
+    """`/api/status` köküne `key: fn()` ekler (eklenti ilanı, ör. `fwd`). `fn` None döndürürse ya da istisna atarsa anahtar eklenmez."""
+    with _LOCK:
+        if fn is None:
+            _STATUS_EXTRAS.pop(key, None)
+        else:
+            _STATUS_EXTRAS[key] = fn
+
+
+def status_extras() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, fn in list(_STATUS_EXTRAS.items()):
+        try:
+            v = fn()
+        except Exception as e:      # noqa: BLE001
+            _log("authz_status_extra_failed", key=k, error=f"{type(e).__name__}: {e}"[:200])
+            continue
+        if v is not None:
+            out[k] = v
+    return out
+
+
+def outbound_service_headers(host_name: str, method: str, path: str) -> Dict[str, str]:
+    """Panelin KENDİ adına (kullanıcı değil) imza: paylaşılan WS aktarıcıları (durum akışı, terminal relay) için; kimlik = LEGACY
+    (yerel panel). Kullanıcı yetkisi yerel kapıda uygulanmıştır. Kanca yoksa {}; `OutboundRefused` aynen yükselir."""
+    fn = _OUTBOUND_SIGNER
+    if fn is None:
+        return {}
+    try:
+        out = fn(LEGACY, host_name, method, path, None)
+    except OutboundRefused:
+        raise
+    except Exception as e:      # noqa: BLE001
+        _log("authz_outbound_signer_failed", error=f"{type(e).__name__}: {e}"[:200], host=host_name)
+        return {}
+    return {str(k): str(v) for k, v in (out or {}).items()}
+
+
+def has_outbound_signer() -> bool:
+    return _OUTBOUND_SIGNER is not None
 
 
 def has_status_filter() -> bool:
@@ -398,6 +449,44 @@ def set_spawn_hook(fn: Optional[Callable[[Optional[Principal], str, str, str], D
     global _SPAWN_HOOK
     with _LOCK:
         _SPAWN_HOOK = fn
+
+
+class OutboundRefused(Exception):
+    """Giden uzak-host isteği imzalanamaz ve politika bunu yasaklıyor (`fwd_policy=strict`). `reason` kısa makine kodu."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+# Giden imza kancası (imzalı kimlik iletimi, enterprise docs/SIGNED-IDENTITY-FORWARDING.md): fn(principal, host_name, method,
+# path, body) -> {başlık: değer}. `body` None = akış/gövdesiz. Kanca yoksa {} (davranış aynı).
+_OUTBOUND_SIGNER: Optional[Callable[[Principal, str, str, str, Optional[bytes]], Dict[str, str]]] = None
+
+
+def set_outbound_signer(fn: Optional[Callable[[Principal, str, str, str, Optional[bytes]], Dict[str, str]]]) -> None:
+    global _OUTBOUND_SIGNER
+    with _LOCK:
+        _OUTBOUND_SIGNER = fn
+
+
+def outbound_headers(host_name: str, method: str, path: str, body: Optional[bytes]) -> Dict[str, str]:
+    """Uzak host'a giden istek için ek (imza) başlıkları. Kanca yoksa ya da bu iş parçacığında kimlik bağlı değilse
+    (durum yoklaması, değnekçi) {}. `OutboundRefused` aynen yükselir; başka istisna günlüğe düşer ve {} döner (imzasız gönderim
+    kararı enterprise politikasındadır: strict ise kanca kendisi OutboundRefused atar). Her çağrı yeni imza üretir (nonce):
+    yeniden denemede de yeniden çağrılmalı."""
+    fn = _OUTBOUND_SIGNER
+    p = current_principal()
+    if fn is None or p is None:
+        return {}
+    try:
+        out = fn(p, host_name, method, path, body)
+    except OutboundRefused:
+        raise
+    except Exception as e:      # noqa: BLE001
+        _log("authz_outbound_signer_failed", error=f"{type(e).__name__}: {e}"[:200], host=host_name)
+        return {}
+    return {str(k): str(v) for k, v in (out or {}).items()}
 
 
 def spawn_env(cli: str, name: str, cwd: str) -> Dict[str, str]:

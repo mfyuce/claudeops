@@ -13,7 +13,7 @@ import { useLang } from "../../i18n/LangContext";
 const RANK: Record<string, number> = { off: 0, restricted: 1, full: 2 };
 interface ModeInfo { ok: boolean; enabled: boolean; mode?: string; max?: string }
 
-export function UcliChecksMode({ name }: { name: string }) {
+export function UcliChecksMode({ name, host = "local" }: { name: string; host?: string }) {
   const { lang, t } = useLang();
   const tr = lang === "tr";
   const [info, setInfo] = useState<ModeInfo | null>(null);
@@ -21,11 +21,11 @@ export function UcliChecksMode({ name }: { name: string }) {
 
   const load = useCallback(async () => {
     try {
-      setInfo(await apiGet<ModeInfo>(`/api/ucli/checks-mode?name=${encodeURIComponent(name)}`));
+      setInfo(await apiGet<ModeInfo>(`/api/ucli/checks-mode?name=${encodeURIComponent(name)}${host !== "local" ? `&host=${encodeURIComponent(host)}` : ""}`));
     } catch {
       /* geçici hata: sonraki yüklemede */
     }
-  }, [name]);
+  }, [name, host]);
   useEffect(() => { void load(); }, [load]);
 
   if (!info?.enabled) return null;
@@ -41,7 +41,7 @@ export function UcliChecksMode({ name }: { name: string }) {
     }
     setBusy(true);
     try {
-      const r = await apiPost<{ ok: boolean; error?: string }>("/api/ucli/checks-mode", { name, mode: next, ...(widen ? { confirm: true } : {}) });
+      const r = await apiPost<{ ok: boolean; error?: string }>("/api/ucli/checks-mode", { name, host, mode: next, ...(widen ? { confirm: true } : {}) });
       if (!r.ok) showToast(r.error || "error");
     } catch (e) {
       showToast(describeApiError(e, t));

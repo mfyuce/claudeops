@@ -28,12 +28,39 @@ export class ExtensionBoundary extends Component<{ children: ReactNode; label: s
   }
 }
 
-export function ExtensionTab({ ext, openSession }: { ext: UiExtension; openSession: (host: string, name: string) => void }) {
+export function ExtensionTab({ ext, openSession, search = "" }: { ext: UiExtension; openSession: (host: string, name: string) => void; search?: string }) {
   const { t, lang } = useLang();
   const rootRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "incompatible" | "failed">("loading");
   const [error, setError] = useState("");
-  const ctx = useMemo(() => makeExtCtx({ lang, openSession }), [lang, openSession]);
+  // Üst arama kutusu eklentiye `ctx.search` ile akar (ctx yeniden kurulmaz: eklenti yeniden bağlanmasın).
+  const searchRef = useRef(search);
+  const listeners = useRef(new Set<(q: string) => void>());
+  useEffect(() => {
+    searchRef.current = search;
+    listeners.current.forEach((fn) => {
+      try {
+        fn(search);
+      } catch {
+        // eklentinin kendi dinleyici hatası paneli bozmaz
+      }
+    });
+  }, [search]);
+  const ctx = useMemo(
+    () =>
+      makeExtCtx({
+        lang,
+        openSession,
+        search: {
+          get: () => searchRef.current,
+          subscribe: (fn) => {
+            listeners.current.add(fn);
+            return () => listeners.current.delete(fn);
+          },
+        },
+      }),
+    [lang, openSession],
+  );
 
   useEffect(() => {
     let cancelled = false;

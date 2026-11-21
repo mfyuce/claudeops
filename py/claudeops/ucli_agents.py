@@ -161,8 +161,8 @@ def issue_token(session_name: str) -> str:
     if is_child_name(session_name):
         raise ValueError("child sessions do not get an agent token (depth 1)")
     token = secrets.token_hex(32)
-    path = _write_token_file(session_name, token)
-    with _LOCK:
+    with _LOCK:     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
+        path = _write_token_file(session_name, token)
         data = _load()
         rec = data["parents"].setdefault(session_name, {})
         rec.update(sha256=_digest(token), issued=time.time())
@@ -188,12 +188,12 @@ def parent_for_token(token: str) -> Optional[str]:
 
 def revoke_parent(session_name: str) -> None:
     """Üst oturum kapandı: token dosyası silinir, özet düşer (çocuk kayıtları KALIR: status/result okunabilsin)."""
-    if _SAFE_NAME_RE.match(session_name or ""):     # güvensiz ad (`../x`) dosya silmeye dönüşmesin
-        try:
-            os.remove(token_file(session_name))
-        except OSError:
-            pass
     with _LOCK:
+        if _SAFE_NAME_RE.match(session_name or ""):     # güvensiz ad (`../x`) dosya silmeye dönüşmesin
+            try:
+                os.remove(token_file(session_name))
+            except OSError:
+                pass
         data = _load()
         rec = data["parents"].get(session_name)
         if isinstance(rec, dict) and "sha256" in rec:

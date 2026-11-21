@@ -226,7 +226,9 @@ class Apply(Env):
             subprocess.run(["git", "clone", "-q", d, seed], check=True, capture_output=True)
             open(os.path.join(seed, "keep.txt"), "w").write("k")
             git("add", "keep.txt", cwd=seed)
-            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"], cwd=seed, check=True)
+            # sabit tarih: iki remote AYNI commit'i taşır (saniye sınırında hash ayrışıp gitlab push'u reddettiriyordu)
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed"], cwd=seed, check=True,
+                           env={**os.environ, "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z"})
             git("push", "-q", "origin", "HEAD:main", cwd=seed)
         self.existing = {"mfyuce/delta-prv"}
         ents, failed = mb.run_prv(self.proj_root, True, [], self.roster(cwd), self.marks(cwd))

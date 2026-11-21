@@ -111,6 +111,8 @@ class FakeH:
     def _json(self, obj, status=200):
         self.out, self.status = obj, status
 
+    _client_ip = web._Handler._client_ip
+
 
 class Endpoint(unittest.TestCase):
     def call(self, action, data, headers=None, set_lock=None):

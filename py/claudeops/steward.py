@@ -351,6 +351,7 @@ class Config:
     keepwarm_chain_close: str = "dry"  # zincir dolunca: off = yalnız kes | dry = YALNIZ `would:idle_close` (marker keepwarm_chain) | act = devir + kapat + phase=paused (gerekçeli, ntfy yok; pause devir BİTİNCE yazılır)
     no_work_close: str = "dry"            # işi olmayan oturum: off | dry (YALNIZ `would:idle_close` marker no_work + state.no_work_report) | act (devir + kapat + paused "iş yok")
     no_work_close_minutes: int = 30       # bu kadar dk boşta olmadan kapatılmaz
+    no_work_open_q_hours: float = 2.0     # KAYITLI açık soru en az bu kadar sa açıksa (cevap yok/iletilmemiş değil) no_work_close'u artık engellemez: devir + kapat + paused, cevap gelince yeniden açılır; 0 = soru süresiz engeller (eski davranış)
     keepwarm_pause_exempt: str = "copsdev"   # virgüllü proje adları: zincir dolsa da paused OLMAZ, yalnız kesilir (TBD#163 b); ayrıca notta "devam etmeli" geçen proje
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız
@@ -917,13 +918,13 @@ def save_ideas(ideas: List[Idea], paths: Any = None) -> None:
         _save_json(_pp(paths).ideas, [dataclasses.asdict(i) for i in ideas])
 
 
-def add_idea(text: str, source: str = "", paths: Any = None) -> Idea:
+def add_idea(text: str, source: str = "", paths: Any = None, project: str = "") -> Idea:
     text = str(text).strip()[:_MAX_IDEA_CHARS]
     if not text:
         raise ValueError("empty idea")
     with steward_lock(paths):
         ideas = load_ideas(paths)
-        idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source)
+        idea = Idea(id=_new_id("i"), text=text, created_at=_now(), source=source, project=str(project or ""))
         ideas.append(idea)
         save_ideas(ideas, paths)
         return idea
@@ -1333,6 +1334,22 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
     if hit is not None and hit.source == review_remote.ASK_SOURCE:
         apply_review_where_answer(hit, paths)      # kilit dışında: upsert_project ownership kilidi alır
     return hit
+
+
+def set_answered_by(ids: List[str], by: str, paths: Any = None) -> List[str]:
+    """CEVAPLANMIŞ soruların `answered_by` alanını düzeltir (yalnız o alan; cevap/iletim durumu/zaman dokunulmaz). Düzeltilen kimlikler döner."""
+    if by not in ANSWERED_BY:
+        raise ValueError("bad answered_by")
+    done: List[str] = []
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id in ids and q.status == "answered":
+                q.answered_by = by
+                done.append(q.id)
+        if done:
+            save_questions(questions, paths)
+    return done
 
 
 def apply_review_where_answer(q: Question, paths: Any = None) -> None:
@@ -2311,6 +2328,62 @@ _PROTOCOL_EN = (
 )
 
 
+# ── yanıt dili (sahip kuralı 21 Kas: proje oturumlarının değnekçiye/sahibe yazdığı metin PANEL ARAYÜZ DİLİNİ izler) ──────────────
+# Dil TEK kaynaktan: `Config.lang` (panel dili: tr/en). Kanıt: tunnel 16:22/16:38 STEWARD-NEXT'leri Almanca yazdı.
+REPLY_LANG_TR = "Yanıt dili: Türkçe (STEWARD-* satırları, sorular, özetler ve raporlar dahil; başka dilde yazma)."
+REPLY_LANG_EN = "Reply language: English (including STEWARD-* lines, questions, summaries and reports; do not write in another language)."
+LANG_FIX_TEXT_TR = "Dil düzeltmesi: son STEWARD-* satırların Türkçe değildi. Panel dili Türkçe: bundan sonra STEWARD-* satırlarını, soruları ve özetleri Türkçe yaz."
+LANG_FIX_TEXT_EN = "Language fix: your last STEWARD-* lines were not in English. The panel language is English: write STEWARD-* lines, questions and summaries in English from now on."
+LANG_FIX_COOLDOWN_SECONDS = 24 * 3600.0     # oturum başına en çok günde BİR düzeltme notu
+
+_TR_WORDS = frozenset("ve bir bu için ile değil ama gibi çok daha olarak yok var mı mi ne kadar sonra önce şimdi madde iş sorun cevap".split())
+_EN_WORDS = frozenset("the and is are not with for this that from have will was been which when into than then they there".split())
+_DE_WORDS = frozenset("der die das und ist nicht mit für ein eine zu von auf den dem des wird sind werden auch noch nach über oder aber wenn".split())
+
+
+def reply_language_line(lang: str) -> str:
+    return REPLY_LANG_EN if lang == "en" else REPLY_LANG_TR
+
+
+def text_lang_mismatch(text: str, lang: str) -> bool:
+    """SAF sezgi: `text` beklenen dilde DEĞİL mi (yalnız açık ise True; kısa/belirsiz metin False). lang=tr: Türkçe karakter yok ve
+    İngilizce/Almanca işlev sözcüğü >= 3; lang=en: Türkçe/Almanca işareti güçlü ve İngilizce işlev sözcüğü yok."""
+    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    if len(words) < 6:
+        return False
+    tr_chars = sum(1 for w in words if any(c in w for c in "çğıöşü"))
+    tr_hits = sum(1 for w in words if w in _TR_WORDS)
+    en_hits = sum(1 for w in words if w in _EN_WORDS)
+    de_hits = sum(1 for w in words if w in _DE_WORDS)
+    if lang == "en":
+        return ((tr_chars + tr_hits) >= 3 or de_hits >= 3) and en_hits == 0
+    return tr_chars == 0 and tr_hits == 0 and (en_hits + de_hits) >= 3
+
+
+def marker_texts(m: Dict[str, Any]) -> str:
+    """`scan_markers` sonucundaki sahibe/değnekçiye görünen metinler (soru, rutin, engel, sıradaki iş, fikir) tek dizgede."""
+    parts: List[str] = []
+    for k in ("asks", "routines", "blocked", "nexts", "ideas"):
+        for v in m.get(k) or []:
+            parts.append(v if isinstance(v, str) else str((v or {}).get("text") or v))
+    if m.get("next"):
+        parts.append(str(m["next"]))
+    return " ".join(parts)
+
+
+def lang_fix_action(name: str, proj: str, text: str, cfg: "Config", state: Dict[str, Any], now: float) -> Optional["Action"]:
+    """Yanlış dilde STEWARD-* metni: oturum başına günde BİR düzeltme notu (`nudge` yolu). `state["lang_fix_at"]` güncellenir (yerinde)."""
+    if not name or not text_lang_mismatch(text, cfg.lang):
+        return None
+    last = dict(state.get("lang_fix_at") or {})
+    if now - float(last.get(name) or 0) < LANG_FIX_COOLDOWN_SECONDS:
+        return None
+    last[name] = now
+    state["lang_fix_at"] = last
+    return Action("nudge", name, "STEWARD-* metni panel dilinde değil" if cfg.lang != "en" else "STEWARD-* text not in panel language",
+                  {"text": LANG_FIX_TEXT_EN if cfg.lang == "en" else LANG_FIX_TEXT_TR, "project": proj, "lang_fix": True})
+
+
 def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None,
                     more: Optional[List[Question]] = None, compact: bool = False, paths: Any = None) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
@@ -2383,10 +2456,12 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                 f"project is not closed without an evidenced `{MARK_DONE_CONFIRMED}: <short hash> open items 0, <evidence>`. Finishing one PART is not finishing the project."
             )
     if compact:
+        parts.append(reply_language_line(lang))
         return "\n\n".join(parts)
     if project.notes.strip():
         parts.append(("Değnekçi notu: " if tr else "Steward note: ") + project.notes.strip())
     parts.append(_PROTOCOL_TR if tr else _PROTOCOL_EN)
+    parts.append(reply_language_line(lang))
     return "\n\n".join(parts)
 
 
@@ -3795,7 +3870,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
               open_work: Optional[Callable[[str], Optional[int]]] = None,
               open_tbd: Optional[Callable[[str], Optional[int]]] = None,
               claim_check: Optional[Callable[[str], List[str]]] = None,
-              todo_sha: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+              todo_sha: Optional[Callable[[str], str]] = None,
+              open_work_real: Optional[Callable[[str], Optional[int]]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """Bir tick'in kararları. SAF: hiçbir yan etki yok; `state`'in GÜNCELLENMİŞ kopyasını döner
     (motor kaydeder). Sıra: ekonomi (handover/respawn) → işaretler → cevap iletimi → uğrama/başlatma →
     slot baskısı → beyin turu.
@@ -4025,6 +4101,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         proj = v.project if v.project in projects else ""
         actions.extend(marker_record_actions(v.name, proj, m))
         note_project_next(st, proj, v.name, m, now)
+        _lf = lang_fix_action(v.name, proj, marker_texts(m), cfg, st, now)
+        if _lf is not None:
+            actions.append(_lf)
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and (m["done"] or m["confirmed"] is not None) and done_blocked(projects[proj]):
@@ -4156,6 +4235,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             last_directive_at[v.name] = now
         elif target in manual_projects:
             continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
+        elif projects[target].phase in ("done", "paused") and is_negative_answer(q.answer):
+            # "Hayır / paused kalsın / açma": faz değişmez, oturum açılmaz; cevap yalnız teslim edildi sayılır (21 Kas)
+            actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı", {"question_id": q.id}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
               and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
             # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
@@ -4185,6 +4267,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     if todo_sha is not None:
         todo_seen: Dict[str, str] = {str(k): str(v) for k, v in dict(st.get("todo_seen") or {}).items()}
         paused_asked: Dict[str, float] = {k: float(v) for k, v in dict(st.get("todo_paused_asked") or {}).items()}
+        todo_swept: Dict[str, float] = {k: float(v) for k, v in dict(st.get("todo_swept") or {}).items()}
         for p in projects.values():
             try:
                 cur = str(todo_sha(p.name) or "")
@@ -4194,22 +4277,36 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 continue
             prev = todo_seen.get(p.name)
             todo_seen[p.name] = cur
-            if prev is None or prev == cur or open_work is None or not (open_work(p.name) or 0):
+            # Tetik için YALNIZ 'Fable cila' olmayan açık iş sayılır (cila en sona kalır, fotocizimppr); ilk gözlemde (prev None) done/paused
+            # proje de değerlendirilir (21 Kas, au/rustagentppr: dolu TODO ile ilk gözlem sonsuza dek tetiksiz kalıyordu); aktif faz cadence'e kalır
+            # Günlük süpürme: sha değişmese de done/paused + açık iş > 0 proje günde 1 kez değerlendirilir (au: 4 gündür aynı sha, baz kayıtlıydı)
+            first = prev is None
+            swept_due = p.phase in ("done", "paused") and now - todo_swept.get(p.name, 0.0) >= 24 * 3600
+            if p.phase in ACTIVE_PHASES and (first or prev == cur):
+                continue
+            if prev == cur and not swept_due:
+                continue
+            ow = open_work_real if open_work_real is not None else open_work
+            if ow is None or not (ow(p.name) or 0):
                 continue
             if p.phase in ACTIVE_PHASES:
                 todo_changed.add(p.name)
             elif p.phase == "done":
+                todo_swept[p.name] = now
                 # TODO'ya (ör. reviewer/Fable bulgusu) açık iş düştü: done proje unutulmasın (17 Kas, marwan); planned'a çek, sonraki tick açar
                 actions.append(Action("set_phase", p.name, "done projenin TODO'suna açık iş geldi", {"phase": "planned"}))
             elif p.phase == "paused" and now - paused_asked.get(p.name, 0.0) >= 24 * 3600:
-                n = open_work(p.name)
+                n = ow(p.name)
                 actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
-                                      {"project": p.name, "text": f"{p.name} duraklatılmış, TODO.md'si değişti ve {n} açık madde var. Açayım mı?"}))
+                                      {"project": p.name, "options": ["Aç", "Paused kalsın"],
+                                       "text": f"{p.name} duraklatılmış, TODO.md'sinde {n} açık madde var. Açayım mı?"}))
                 paused_asked[p.name] = now
         if todo_seen:
             st["todo_seen"] = todo_seen
         if paused_asked:
             st["todo_paused_asked"] = paused_asked
+        if todo_swept:
+            st["todo_swept"] = todo_swept
     for p in projects.values():
         if p.phase not in ACTIVE_PHASES or p.cadence_minutes <= 0 or p.name in running_projects or p.name in busy_names:
             continue
@@ -4422,6 +4519,7 @@ def api_error_kind(text: str) -> str:
 LOOP_MAX = 8
 LOOP_PAUSE_SECONDS = 6 * 3600.0
 LOOP_PAUSE_TOUR_SECONDS = 45 * 60.0     # beyin turu: kesinti KISA (11 Kas: 6 sa'lik duraklatma sorulara cevap gitmesini 4 sa durdurdu); sonra sayaç sıfırlanıp tur yeniden denenir
+LOOP_PAUSE_DELIVER_SECONDS = 15 * 60.0  # cevap iletimi: geçici engel (izin diyaloğu 21 Kas copsdevderbent 15:25-15:34) 6 sa değil KISA kesinti; kendi uyarısı `answer_delivery_failing`
 LOOP_FORGET_SECONDS = 24 * 3600.0
 LOOP_KINDS = frozenset(OBSERVE_SKIPPED) | {"directive", "restart"}
 
@@ -4468,7 +4566,7 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
         if fp:
             rec["fp"] = fp
         if rec["n"] > LOOP_MAX:
-            pause = LOOP_PAUSE_TOUR_SECONDS if a.kind == "tour" else LOOP_PAUSE_SECONDS
+            pause = LOOP_PAUSE_TOUR_SECONDS if a.kind == "tour" else LOOP_PAUSE_DELIVER_SECONDS if a.kind == "deliver_answer" else LOOP_PAUSE_SECONDS
             rec.update(until=now + pause, n=0, first=now)
             guard[key] = rec
             breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
@@ -4785,9 +4883,30 @@ _COND_RE = re.compile(r"\b\w{3,}(?:[ıiuü]rs[ae]|[ae]rs[ae]|m[ae]zs[ae]|[ae]yse
                       r"if|when|once|unless|provided|after|until|pending)\b", re.IGNORECASE)
 
 
+_NEG_ANSWER_RE = re.compile(
+    r"^\s*[\"'`*_\-\[(]*\s*(?:hay[ıi]r|no|nope|hayır|a[çc]ma|bekle|dur|kals[ıi]n|paused\s+kals[ıi]n|[şs]imdi\s+de[ğg]il|sonra|"
+    r"[şs]imdilik\s+(?:hay[ıi]r|kals[ıi]n|a[çc]ma)|olmas[ıi]n|gerek\s+yok)\b", re.IGNORECASE)
+NEG_ANSWER_MAX_CHARS = 60      # bundan uzun cevap ("Hayır, şunu yap: ...") yönerge sayılır, kapı açma kararı yine açıktır
+
+
+def is_negative_answer(text: str) -> bool:
+    """Sahip cevabı olumsuz/bekle mi ("Hayır, paused kalsın", "açma", "no", "sonra")? KISA (<=NEG_ANSWER_MAX_CHARS) ve olumsuz sözcükle
+    başlıyorsa True: done/paused proje planned'a çekilip AÇILMAZ (21 Kas, wifi5gppr/fotocizimppr). Uzun cevap yönergedir, False. SAF."""
+    t = (text or "").strip()
+    return bool(t) and len(t) <= NEG_ANSWER_MAX_CHARS and bool(_NEG_ANSWER_RE.search(t))
+
+
 def is_conditional_note(text: str) -> bool:
     """Not "X olursa Y" gibi koşullu mu: koşulsuz iş gibi `devam:` diye GÖNDERİLMEZ (mtsyn 7dd88e7: oturum koşulu atlayıp Y'yi yaptı). SAF."""
     return bool(_COND_RE.search(text or ""))
+
+
+_FABLE_POLISH_RE = re.compile(r"\bfable\b|\bcila\b|\bcilas[ıi]\b|nesir cila|üslup cila|prose polish|style polish", re.IGNORECASE)
+
+
+def is_fable_polish(text: str) -> bool:
+    """Not satırındaki 'sıradaki' değeri bir Fable/üslup cilası mı (en sona kalan, sahipsiz-iş sayılmayan iş)? SAF."""
+    return bool(_FABLE_POLISH_RE.search(text or ""))
 
 
 def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[int]]] = None, real_only: bool = False) -> str:
@@ -4806,6 +4925,8 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
                 return ""
             if is_conditional_note(val):
                 return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
+            if is_fable_polish(val):
+                continue       # sahip 21 Kas: üslup/nesir cilası (Fable) en sona kalır, 'sıradaki iş' sayılmaz (qve: B4-B18 cilası no_work'ü false yaptı)
             if val:
                 return val
     if real_only:
@@ -5016,12 +5137,19 @@ def _forced_open_nudge(oldest_open: Optional[Callable[[str], str]], proj: str, n
                     f"yalnız gerekçeyle atla (sahibe bağlıysa TOBEDECIDED'a taşı, TODO'dan çıkar), sonra sıradakine geç.", 700)
 
 
+OWNER_CLAIM_MIN_IDLE_SECS = 3600
+OWNER_CLAIM_NUDGE_TEXT = ("'Sahipte/sahip kararında' diyorsun ama bu proje için KAYITLI açık soru yok; sahip hiçbir şey görmüyor. Sahibe bağlı olanı "
+                          "`STEWARD-ASK:` ile sor (tek başına anlaşılır, seçenek + öneri); sahipsiz işin varsa onu yap ve devam et; hiçbiri yoksa "
+                          "`STEWARD-NEXT: yok` yaz.")
+
+
 def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,
                      planned: List[Action], world: Optional[World] = None,
                      open_work: Optional[Callable[[str], Optional[int]]] = None,
                      owner_todo: Optional[Callable[[str], Optional[int]]] = None,
                      todo_sha: Optional[Callable[[str], str]] = None,
-                     oldest_open: Optional[Callable[[str], str]] = None) -> Tuple[List[Action], Dict[str, Any]]:
+                     oldest_open: Optional[Callable[[str], str]] = None,
+                     has_question: Optional[Callable[[str], bool]] = None) -> Tuple[List[Action], Dict[str, Any]]:
     """`plan_ucli_idle`in Claude Code genellemesi (sahip onayı 7 Kas). SAF. Yönetilen yerel tmux claude oturumu boşta (`busy` False,
     alt ajan yok, son istekten `claude_idle_nudge_secs` geçti), son cevap işin bittiğini/soru sorduğunu söylemiyor ve projenin
     sıradaki işi varsa TEK satır `devam: <iş>` (`idle_nudge`). Kapat/devir/duraklatma YOK. Aynı boşta dönem en çok
@@ -5034,6 +5162,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     otm: Dict[str, Any] = dict(state.get("owner_todo_move") or {})
     next_none: Dict[str, Any] = dict(state.get("next_none") or {})
     tri: Dict[str, Any] = dict(state.get("todo_triage") or {})
+    ocn: Dict[str, Any] = dict(state.get("owner_claim_nudge") or {})
     none_changed = False
     ho_pending = state.get("ho_pending") or {}
     touched = {a.name for a in planned}
@@ -5113,6 +5242,22 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
                                        "text": forced, "next": f"todo_open={n_open_t}", "cli": "claude", "via": "none_rejected"}))
                     rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": forced}
                 continue        # (oldest_open yoksa eski davranış) aynı sha: ayıklama zaten yapıldı, "devam" dürtmesi de gitmez
+        if owner_wait(txt) and not idle_finish_marker(txt)[0] and has_question is not None \
+                and now - since >= max(thr, OWNER_CLAIM_MIN_IDLE_SECS):
+            # Mekanizma boşluğu (21 Kas): oturum 'sahipte' diyor ama KAYITLI açık soru/bekleyen cevap YOK: sahip hiçbir şey görmez, oturum
+            # süresiz susar. Boşta >= 60 dk ve proje başına dönem başına BİR dürtme; sonraki turda yine yoksa no_work_close normal işler.
+            try:
+                has_q = bool(has_question(proj.name))
+            except Exception:
+                has_q = True        # bilinmeyen = soru var say (dürtme gitmez)
+            prev_o = ocn.get(proj.name) or {}
+            if not has_q and not (prev_o.get("session") == v.name and since <= float(prev_o.get("at") or 0)):
+                out.append(Action("idle_nudge", v.name, f"oturum 'sahipte' diyor, kayıtlı soru yok (boşta {int((now - since) // 60)} dk)",
+                                  {"project": proj.name, "idle_secs": int(now - since), "threshold": thr, "n": chain + 1,
+                                   "text": OWNER_CLAIM_NUDGE_TEXT, "next": "owner_claim_unrecorded", "cli": "claude", "via": "owner_claim_unrecorded"}))
+                ocn[proj.name] = {"at": now, "session": v.name, "mode": cfg.claude_idle}
+                rec_all[v.name] = {"at": now, "n": chain + 1, "mode": cfg.claude_idle, "text": OWNER_CLAIM_NUDGE_TEXT}
+                continue
         if idle_finish_marker(txt)[0] or owner_wait(txt):
             continue
         # Karar "iş VAR MI"ya dayanır, "iş NE"ye değil (sahip 11 Kas): sahipsiz açık TODO maddesi > 0 (owner_in_todo hariç) ya da notta
@@ -5155,6 +5300,8 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
     st["claude_idle"] = rec_all
     if tri:
         st["todo_triage"] = tri
+    if ocn:
+        st["owner_claim_nudge"] = ocn
     if otm:
         st["owner_todo_move"] = otm
     if next_none:
@@ -5530,6 +5677,7 @@ _SUMMARY_TXT = {
         "cards": "Kartlar", "refreshed": "yenilendi", "handovers": "Handover", "directives": "Direktifler",
         "phases": "Faz değişimi", "pending": "Bekleyen", "open_q": "açık soru", "ideas_new": "yeni fikir",
         "items": "gözden geçirme maddesi", "undelivered": "iletilmemiş cevap", "none": "yok",
+        "orphans": "Sahipsiz kaynak", "orph_servers": "yardımcı sunucu", "orph_procs": "tanınmayan süreç",
     },
     "en": {
         "title": "Steward daily summary", "mode": "Mode", "obs_note": "actions that touch sessions were recorded, not applied",
@@ -5539,6 +5687,7 @@ _SUMMARY_TXT = {
         "cards": "Cards", "refreshed": "refreshed", "handovers": "Handovers", "directives": "Directives",
         "phases": "Phase changes", "pending": "Pending", "open_q": "open questions", "ideas_new": "new ideas",
         "items": "review items", "undelivered": "undelivered answers", "none": "none",
+        "orphans": "Orphaned resources", "orph_servers": "helper servers", "orph_procs": "unrecognized processes",
     },
 }
 
@@ -5554,7 +5703,7 @@ def _kind_counts(entries: List[Dict[str, Any]], key: str = "kind") -> str:
 
 
 def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
-                  pending: Optional[Dict[str, int]] = None) -> str:
+                  pending: Optional[Dict[str, int]] = None, orphans: Optional[Dict[str, int]] = None) -> str:
     """`log.jsonl` kayıtlarından (o güne ait olanlar süzülür) bir günün özeti — SAF, markdown. Sayılanlar: tick,
     uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
     handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
@@ -5610,6 +5759,10 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
                      + (f", {len(bad)} {T['failed']}" if bad else ""))
     if handovers:
         lines.append(f"- {T['handovers']}: {len(handovers)} ({_names([str(e.get('name')) for e in handovers])})")
+    held_ev = ev("review_store_held")
+    if held_ev:
+        lines.append(f"- {'review store: files held back by the secret scan' if lang == 'en' else 'review saklama: gizli değer taramasında dışarıda kalan dosya'}: "
+                     f"{int(held_ev[-1].get('n') or 0)} ({_names([str(x) for x in (held_ev[-1].get('files') or [])])})")
     dirs = ev("directive")
     if dirs:
         lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
@@ -5619,6 +5772,8 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
         lines.append(f"- {T['pending']}: {pending.get('open_questions', 0)} {T['open_q']}, {pending.get('ideas_new', 0)} "
                      f"{T['ideas_new']}, {pending.get('pending_items', 0)} {T['items']}, "
                      f"{pending.get('undelivered_answers', 0)} {T['undelivered']}")
+    if orphans and (orphans.get("servers") or orphans.get("procs")):
+        lines.append(f"- {T['orphans']}: {orphans.get('servers', 0)} {T['orph_servers']}, {orphans.get('procs', 0)} {T['orph_procs']}")
     return "\n".join(lines) + "\n"
 
 
@@ -5630,7 +5785,13 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
                "ideas_new": sum(1 for i in load_ideas(paths) if i.status == "new"),
                "pending_items": int(state.get("pending_items") or 0),
                "undelivered_answers": len(undelivered_answers(paths=paths))}
-    return daily_summary(log_entries_for_date(date, paths), date, lang, pending)
+    try:    # sahipsiz kaynak (orphan_watch durum dosyasından; tarama yok); okunamazsa satır atlanır
+        from .periodic import orphan_summary
+        o = orphan_summary()
+        orphans = {"servers": int(o.get("servers") or 0), "procs": int(o.get("procs") or 0)}
+    except Exception:
+        orphans = None
+    return daily_summary(log_entries_for_date(date, paths), date, lang, pending, orphans)
 
 
 def write_daily(date: str, text: str, paths: Any = None) -> str:

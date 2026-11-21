@@ -180,6 +180,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "anthropic_api_block_until": "",   # "YYYY-MM-DD": bu tarihe KADAR değnekçi, ucli+Anthropic (service claude / anthropic uç noktası) kayıtlı projeyi
                                        # AÇMAZ (`web_steward._api_blocked`, code `anthropic_api_blocked`). Boş = yasak yok. Sahip kararı 2026-11-05/06.
     "store_backend": "files",  # files|dual|db: SQLite geçişi (statedocs.py, TBD#142 K5); boş değer anahtarı siler = files
+    "ucli_metrics": {},      # {enabled, interval_s, retention_days}: ucli kaynak metrikleri (ucli_metrics.py); boş = varsayılan (açık, 15 sn, 30 gün)
     "ucli_usage_warn": {},   # {amber, red: str} — 2026-10-17: ucli token rozetinin renk eşikleri, OTURUM başına
                               # Evren KOTA EŞDEĞERİ token (`ucli_client.quota_equivalent_tokens`: önbellekli girdi
                               # %3 sayılır, panonun ham toplamı DEĞİL), süreç başından beri. Boş/eksik = varsayılan
@@ -192,6 +193,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # (7 Kas, sahip). VARSAYILAN KAPALI: başka kullanıcıyı ekrandan alır. Kilit AÇILMAZ.
                               # Okuma tarafı: `graphical_session.auto_activate_enabled()` (yalnız açık "on" sözcükleri açar).
     "usage_mode": "tek",      # "tek" (varsayılan) | "tick": kullanım okuması değnekçi tick'inde otomatik mi (TBD#203); bkz. `usage_poll.py`.
+    "host_loopback_ports": "18765,18766",   # virgüllü port listesi: menzil `reach` dinleyicileri; Hostlar `extra_urls` için SSRF korumasının TEK loopback istisnası
+                                            # (http://127.0.0.1:<port>, TBD#258 a, sahip 21 Kas). "" = istisna yok.
+    "spawn_nice": "10",      # proje oturumları (claudeops'un açtığı CLI'lar) bu nice değeriyle + ionice best-effort 7 ile başlar; panel/copsd/değnekçi beyni muaf.
+                             # "off" ya da "0" = kapalı (21 Kas, sahip: sesotappr CPU benchmark'ı panel /api/status'u 3,7-6,4 sn'ye çıkardı). Yalnız YENİ oturumlar.
     "tunnel_protocol": "",   # "" (yönetme) | "auto" | "http2" | "quic" — cloudflared --protocol (UDP/QUIC'i engelleyen ağlarda http2).
                               # Kaydedince systemd drop-in yazılır ve yalnız tünel servisi yeniden başlar (yeni URL); bkz. `tunnel_proto.py`.
     "tunnel_watch": "on",    # "on" | "off" — tünel SAĞLIK BEKÇİSİ (2026-10-17, kullanıcı: "settingslerde seçimlik
@@ -283,6 +288,8 @@ def _load_settings_uncached() -> Dict[str, Any]:
                 out["ucli_script"] = {}
             if not isinstance(out.get("ucli_cost"), dict):
                 out["ucli_cost"] = {}
+            if not isinstance(out.get("ucli_metrics"), dict):
+                out["ucli_metrics"] = {}
             if not isinstance(out.get("ucli_usage_warn"), dict):
                 out["ucli_usage_warn"] = {}
             if not isinstance(out.get("cli_managed"), dict):
@@ -350,7 +357,7 @@ def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if k in _DICT_ONLY_KEYS and not isinstance(v, dict):
             continue        # review R-17: dict olmayan yama bloğu tümden silmesin (okuma tarafı {} yapıyordu)
-        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
+        if k in ("default_model", "default_effort", "provider_bin", "ucli_limits", "ucli_web", "ucli_script", "ucli_cost", "ucli_metrics", "uzakgoz", "derbent", "reader", "remote_desktop", "memory_prv_public", "ucli_usage_warn", "cli_managed", "steward", "steward_quota") and isinstance(v, dict):
             merged = dict(current.get(k) or {})
             for ck, cv in v.items():
                 if isinstance(cv, (list, tuple)):   # ör. allow_fetch_domains: ["a.org", "b.org"]
@@ -621,6 +628,25 @@ def ucli_stream_enabled() -> bool:
     if value in _ON_WORDS:
         return True
     return UCLI_STREAM_DEFAULT
+
+
+UCLI_SHOW_REASONING_DEFAULT = False
+
+
+def ucli_show_reasoning_enabled() -> bool:
+    """`ucli_limits.show_reasoning` (opt-in, VARSAYILAN KAPALI): ucli'ye `--show-reasoning` geçirilsin mi (modelin akıl yürütme
+    parçaları pane'in stderr'ine basılır; stdout sözleşmesi ve yazma izni değişmez, web_review.py'deki `live_flags` ile aynı bayrak).
+    Terminalde uzun akıl yürütme dökümü çıkabildiği için açık değil; yalnız YENİ oturumlara uygulanır. Bayrağı ikili tanımıyorsa
+    `providers/ucli_provider.py` komuta KOYMAZ. Asla fırlatmaz."""
+    raw = load_settings().get("ucli_limits") or {}
+    if not isinstance(raw, dict):
+        return UCLI_SHOW_REASONING_DEFAULT
+    value = str(raw.get("show_reasoning") or "").strip().lower()
+    if value in _ON_WORDS:
+        return True
+    if value in _OFF_WORDS:
+        return False
+    return UCLI_SHOW_REASONING_DEFAULT
 
 
 UCLI_STATE_DIR_DEFAULT = False

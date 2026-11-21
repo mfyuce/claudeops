@@ -89,10 +89,11 @@ const HISTORY_LIMIT = 2000;
 // which sendTermInput() can't do (it early-returns on an empty input).
 // Cross-checked against tmux_backend.py's real ALLOWED_SPECIAL_KEYS
 // ({"C-c","C-d","Escape","Up","Down","Left","Right","Tab","Enter"}) — this
-// button list is a subset (no C-d button in the UI, same as the original).
+// button list now includes ctrl-d (21 Kas, owner: Ctrl+D never reached the pane).
 const XTERM_KEYS: [string, string][] = [
   ["↵", "Enter"],
   ["ctrl-c", "C-c"],
+  ["ctrl-d", "C-d"],
   ["esc", "Escape"],
   ["↑", "Up"],
   ["↓", "Down"],
@@ -305,6 +306,8 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
   // handler is installed in the mount effect below and would otherwise keep
   // that first render's props/state forever.
   const liveInputRef = useRef(liveInput);
+  const ctrlHintRef = useRef("");
+  ctrlHintRef.current = t.termCtrlNeedsLive;
   const ctxRef = useRef({ name, host, lang });
   const queueRawRef = useRef<(data: string) => void>(() => {});
   const pendingRawRef = useRef("");
@@ -485,6 +488,21 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
         // true, but paste goes through a different path there, so the handler
         // re-checks the toggle itself rather than trusting that.
         term.onData((data) => queueRawRef.current(data));
+        // Ctrl+letter: with live typing ON the browser shortcut (Ctrl+D = bookmark) must not fire — preventDefault, then let xterm
+        // send the control code. With it OFF, xterm ignores keys (disableStdin) and Ctrl+D went to Chrome: show a hint instead
+        // (never swallow Ctrl+C when text is selected, that is copy).
+        term.attachCustomKeyEventHandler((ev) => {
+          if (ev.type !== "keydown" || !ev.ctrlKey || ev.altKey || ev.metaKey) return true;
+          const k = ev.key.toLowerCase();
+          if (!["c", "d", "l", "z"].includes(k)) return true;
+          if (liveInputRef.current) {
+            ev.preventDefault();
+            return true;
+          }
+          if (k === "c" && term.hasSelection()) return true;
+          setLiveMsg(ctrlHintRef.current);
+          return true;
+        });
         // xterm's own CSS (`.xterm{user-select:none}`) means a drag-select
         // over terminal text does NOT produce a real `window.getSelection()`
         // Range the way it does in ChatView's plain markdown DOM — xterm

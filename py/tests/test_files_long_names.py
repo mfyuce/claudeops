@@ -41,6 +41,23 @@ class BadEncoding(unittest.TestCase):
         self.assertEqual(open(f).read(), "x")
 
 
+class CreateDocs(unittest.TestCase):
+    def _w(self, d, name, content="x", create=True):
+        from unittest import mock
+        with mock.patch.object(files, "_writable_roots", lambda s: [("project", d)]):
+            return files.write_text(None, os.path.join(d, name), content, create=create)
+
+    def test_create_only_project_notes_and_not_overwrite(self):
+        d = tempfile.mkdtemp()
+        self.assertEqual(self._w(d, "TODO.md", "- [ ] a\n"), {"ok": True, "created": True})
+        self.assertEqual(open(os.path.join(d, "TODO.md")).read(), "- [ ] a\n")
+        self.assertFalse(self._w(d, "x.txt")["ok"])                       # not listesi dışı
+        self.assertFalse(self._w(d, "DONE.md", create=False)["ok"])       # bayraksız: eski davranış
+        self.assertFalse(self._w(os.path.join(d, "yok"), "TODO.md")["ok"])  # üst dizin yok
+        os.symlink("/nonexistent", os.path.join(d, "TOBEDECIDED.md"))
+        self.assertFalse(self._w(d, "TOBEDECIDED.md")["ok"])              # kırık symlink ezilmez
+
+
 class RenameRaces(unittest.TestCase):
     def test_noreplace_dir_and_file(self):
         d = tempfile.mkdtemp()

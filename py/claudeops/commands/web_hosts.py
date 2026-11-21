@@ -69,6 +69,7 @@ HOST_ROUTED_PATHS = {
     "/api/instances/forget", "/api/cli/install",
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write", "/api/files/validate",
     "/api/context", "/api/live-model", "/api/live-effort", "/api/session/activate",
+    "/api/ucli/checks", "/api/ucli/checks-mode",     # run_checks: kayıt ve mod uzak hostun KENDİ diskinde (TBD#264, 21 Kas)
 }
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
@@ -76,7 +77,9 @@ HOST_ROUTED_PATHS = {
 # (files/download) JSON değil ham binary dönüyor. TODO.md'nin bilerek
 # ERTELEDİĞİ parça buydu (TOBEDECIDED #16 kapanışı) — artık uygulandı.
 GET_HOST_ROUTED_PATHS = {"/api/term/output", "/api/term/history", "/api/term/chat", "/api/files/list", "/api/files/read",
-                         "/api/instances", "/api/cli/status", "/api/session/facts", "/api/session/graphical"}
+                         "/api/instances", "/api/cli/status", "/api/session/facts", "/api/session/graphical",
+                         "/api/ucli/checks", "/api/ucli/checks-mode",
+                         "/api/ucli/metrics", "/api/ucli/metrics/sessions"}   # kaynak metrikleri uzak hostun KENDİ DB'sinde
 FILE_DOWNLOAD_PATH = "/api/files/download"  # ayrı tutulmasının sebebi yukarıda
 FILE_UPLOAD_PATH = "/api/files/upload"  # download'ın YAZMA kardeşi — POST + ham binary REQUEST body (ne JSON-body proxy_action'a ne query-only GET proxy'lerine uyar), kendi proxy_post_raw()'ı var
 
@@ -352,6 +355,42 @@ def _pool_checkin(key: str, conn: http.client.HTTPConnection, reusable: bool) ->
         pass
 
 
+from ..authz import OutboundRefused as _OutboundRefused  # noqa: E402
+
+
+REFUSED_PREFIX = "outbound refused:"
+
+
+def _refused(host_name: str, err: Optional[str]) -> Optional[Dict[str, Any]]:
+    """`_http_*` hata dizesi imza reddi ise (fwd_policy=strict: anahtar yok / uzak imzayı ilan etmiyor) 502 gövdesi, değilse None."""
+    if err and err.startswith(REFUSED_PREFIX):
+        reason = err[len(REFUSED_PREFIX):].strip()
+        return {"ok": False, "error": f"{host_name}: signed identity required, request not sent ({reason})", "reason": reason}
+    return None
+
+
+def _ws_signed_kw(host_name: str, path: str) -> Dict[str, Any]:
+    """WS el sıkışması için imza başlıkları (paylaşılan aktarıcılar panelin KENDİ kimliğiyle imzalanır). Kanca yoksa {} (davranış aynı).
+    Her bağlanmada yeniden çağrılmalı (nonce). Reddedilirse (`OutboundRefused`) bağlantı kurulmaz."""
+    from .. import authz
+    if not authz.has_outbound_signer():
+        return {}
+    h = authz.outbound_service_headers(host_name, "GET", path)
+    return {"additional_headers": h} if h else {}
+
+
+def _signed_headers(url: str, method: str, body: Optional[bytes]) -> Dict[str, str]:
+    """Uzak host'a giden istek için imza başlıkları (authz.outbound_headers). Kanca ya da bağlı kimlik yoksa {} ve host araması
+    YAPILMAZ. `OutboundRefused` çağırana yükselir. Her deneme için ayrı çağrılır (nonce)."""
+    from .. import authz
+    if not authz.has_outbound_signer() or authz.current_principal() is None:
+        return {}
+    parts = urllib.parse.urlsplit(url)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    name = next((h["name"] for h in hosts_mod.load_hosts() if str(h.get("base_url", "")).rstrip("/") == origin), "")
+    return authz.outbound_headers(name, method, parts.path, body)
+
+
 def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedup: bool = False) -> Tuple[int, Optional[dict], Optional[str]]:
     """Küçük stdlib-only HTTP+JSON yardımcısı — hiçbir zaman raise ETMEZ, her
     hata (status, None, kısa okunur mesaj) olarak döner; çağıranın exception
@@ -411,10 +450,14 @@ def _http_json(method: str, url: str, body: Optional[dict], timeout: float, dedu
         headers = {"Content-Type": "application/json"} if data is not None else {}
         last_err = ""
         for _ in (1, 2):
+            try:
+                sig = _signed_headers(url, method, data)
+            except _OutboundRefused as e:
+                return 0, None, f"outbound refused: {e.reason}"
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
             sent = False
             try:
-                conn.request(method, path, body=data, headers=headers)
+                conn.request(method, path, body=data, headers={**headers, **sig})
                 sent = True
                 resp = conn.getresponse()
                 status = resp.status
@@ -466,6 +509,35 @@ def _normalize_cli_options(raw: Any) -> Dict[str, Dict[str, list]]:
     return out
 
 
+def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
+    """Uzak host /api/status `orphan_watch` -> yalnız sayılar (ayrıntı host'ta kalır); eski host/bozuk biçim -> None."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        return {"servers": int(v.get("servers") or 0), "procs": int(v.get("procs") or 0), "last_end": v.get("last_end")}
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_running(v: Any) -> Optional[str]:
+    """Uzak host /api/status `build.running` (çalışan commit, kısa) ya da None (eski sürüm / bozuk)."""
+    r = v.get("running") if isinstance(v, dict) else None
+    return str(r)[:12] if r else None
+
+
+def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
+    """Uzak host `fwd` ilanı (imzalı kimlik iletimi) -> {mode, kids, skew}: skew = uzak saat - yerel saat (sn, gecikme dahil). Ilan yok ya da
+    bozuksa None (eski surum / ent_fwd_mode=off ve anahtarsiz)."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        skew = round(float(v["now"]) - local_now, 1) if v.get("now") is not None else None
+        kids = [str(k) for k in (v.get("kids") or [])][:4]
+        return {"mode": str(v.get("mode") or ""), "kids": kids, "skew": skew}
+    except (TypeError, ValueError):
+        return None
+
+
 def _tag_rows(rows: Optional[list], host_name: str) -> list:
     """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
     hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
@@ -495,6 +567,9 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "cli_options": _normalize_cli_options(result.get("cli_options")),
         "dups": result.get("dups") or [],
         "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
+        "orphan_watch": _orphan_brief(result.get("orphan_watch")),
+        "fwd": _fwd_brief(result.get("fwd"), time.time()),
+        "build_running": _build_running(result.get("build")),
     }
 
 
@@ -927,6 +1002,7 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
             "name": name, "ok": cached["ok"], "error": cached.get("error"),
             "cli_list": cached["cli_list"], "cli_options": cached["cli_options"],
             "dups": cached["dups"], "disk_clean": cached.get("disk_clean"),
+            "orphan_watch": cached.get("orphan_watch"), "fwd": cached.get("fwd"), "build_running": cached.get("build_running"),
         })
     local_payload["hosts"] = hosts_status
     # `local_payload["sessions"]/["closed"]/["retired"]` geldiğinde zaten
@@ -968,6 +1044,9 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     outgoing["host"] = LOCAL_HOST_NAME
     url = f"{host['base_url']}{path}?token={host['token']}"
     status, parsed, err = _http_json("POST", url, outgoing, ACTION_TIMEOUT_SECONDS if timeout is None else timeout)
+    ref = _refused(host_name, err)
+    if ref is not None:
+        return ref, 502
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
@@ -1014,9 +1093,13 @@ def _http_raw(url: str, timeout: float, dedup: bool = False) -> Tuple[int, Optio
         conn_cls = _conn_cls_for(url_parts.scheme)
         last_err = ""
         for _ in (1, 2):
+            try:
+                sig = _signed_headers(url, "GET", None)
+            except _OutboundRefused as e:
+                return 0, None, None, f"outbound refused: {e.reason}"
             conn, from_pool = _pool_checkout(key, conn_cls, url_parts.hostname, url_parts.port, timeout)
             try:
-                conn.request("GET", path)
+                conn.request("GET", path, headers=sig)
                 resp = conn.getresponse()
                 status = resp.status
                 body = resp.read()
@@ -1055,6 +1138,9 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str], dedup: bool = Tr
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     status, parsed, err = _http_json("GET", url, None, TERM_READ_TIMEOUT_SECONDS if timeout is None else timeout,
                                      dedup=dedup)
+    ref = _refused(host_name, err)
+    if ref is not None:
+        return ref, 502
     if err is not None or parsed is None:
         return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
     return parsed, status
@@ -1069,6 +1155,8 @@ def proxy_get_raw(path: str, host_name: str, query: Dict[str, str]) -> Tuple[Opt
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     status, body, headers, err = _http_raw(url, ACTION_TIMEOUT_SECONDS, dedup=True)
+    if err is not None and err.startswith(REFUSED_PREFIX):
+        return None, 502, None, f"{host_name}: signed identity required, request not sent ({err[len(REFUSED_PREFIX):].strip()})"
     if err is not None:
         return None, 200, None, f"{host_name} unreachable: {err}"
     return body, status, headers, None
@@ -1121,10 +1209,14 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
     url_parts, req_path = _split_url(url)
     conn_cls = _conn_cls_for(url_parts.scheme)
+    try:
+        sig = _signed_headers(url, "POST", None)
+    except _OutboundRefused as e:
+        return _refused(host_name, f"{REFUSED_PREFIX} {e.reason}"), 502
     conn = conn_cls(url_parts.hostname, url_parts.port, timeout=ACTION_TIMEOUT_SECONDS)
     try:
         conn.request("POST", req_path, body=_BoundedReader(body_stream, content_length),
-                      headers={"Content-Type": content_type, "Content-Length": str(content_length)})
+                      headers={"Content-Type": content_type, "Content-Length": str(content_length), **sig})
         resp = conn.getresponse()
         status = resp.status
         raw = resp.read()
@@ -1373,6 +1465,9 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
         "ok": True,
         "sessions": data.get("sessions"), "closed": data.get("closed"), "retired": data.get("retired"),
         "cli_list": data.get("cli_list"), "cli_options": data.get("cli_options"), "dups": data.get("dups"),
+        # Hostlar rozetleri (REST yoklamasıyla aynı alanlar; WS tier'de eskiden düşüyordu, e2e'de görüldü)
+        "disk_clean": data.get("disk_clean"), "orphan_watch": data.get("orphan_watch"), "fwd": data.get("fwd"),
+        "build": data.get("build"),
     }
 
 
@@ -1384,7 +1479,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
     else:  # "ws"
         url = _ws_url(host["base_url"], "/ws", token)
-        make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
+        make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None, **_ws_signed_kw(name, "/ws"))
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
@@ -1615,7 +1710,8 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                     if viewport:
                         extra["viewport"] = "1"
                     url = _ws_url(host["base_url"], "/ws/term", token, name=name, lang=lang, **extra)
-                    make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None)
+                    make_call = lambda: _guarded_ws_connect(url, open_timeout=10.0, ping_interval=None,
+                                                            **_ws_signed_kw(host_name, "/ws/term"))
                     parse_item = _parse_ws_term_frame
                 relay = _TermRelay(tier, make_call, parse_item,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")

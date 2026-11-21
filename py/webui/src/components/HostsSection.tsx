@@ -217,6 +217,26 @@ export function HostsSection() {
                   disk %{h.disk_clean.pct}
                 </span>
               )}
+              {h.fwd && (
+                <span
+                  className="cli-badge"
+                  style={{ color: (h.fwd.skew != null && Math.abs(h.fwd.skew) > 10) || h.build_diff ? "var(--red)" : undefined }}
+                  title={`signed identity: mode ${h.fwd.mode}, keys ${h.fwd.kids.join(", ") || "none"}${h.build_diff ? `, version differs (remote ${h.build_running})` : ""}${h.fwd.skew != null ? `, clock skew ${h.fwd.skew}s${Math.abs(h.fwd.skew) > 10 ? " (> 10 s: signatures may be rejected)" : ""}` : ""}`}
+                >
+                  fwd {h.fwd.mode}
+                  {h.fwd.skew != null && Math.abs(h.fwd.skew) > 10 ? ` ⏱${Math.round(h.fwd.skew)}s` : ""}
+                  {h.build_diff ? " ≠ver" : ""}
+                </span>
+              )}
+              {h.orphan_watch && (h.orphan_watch.servers > 0 || h.orphan_watch.procs > 0) && (
+                <span
+                  className="cli-badge"
+                  style={{ color: "var(--red)" }}
+                  title={`orphan_watch: ${h.orphan_watch.servers} helper tmux server, ${h.orphan_watch.procs} unrecognized CLI process`}
+                >
+                  orphan {h.orphan_watch.servers + h.orphan_watch.procs}
+                </span>
+              )}
               <button type="button" disabled={testingNames.has(h.name)} onClick={() => void handleTest(h.name)}>
                 {testingNames.has(h.name) ? t.hostTesting : t.hostTestBtn}
               </button>

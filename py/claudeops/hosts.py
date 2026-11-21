@@ -113,16 +113,33 @@ def _host_is_blocked(url: str) -> bool:
     return any(ip_is_blocked(info[4][0]) for info in infos)
 
 
-LOOPBACK_REACH_PORTS = range(18700, 18800)      # `menzil reach ... --listen 127.0.0.1:187xx` (docs/menzil.md): TEK istisna aralığı
+LOOPBACK_REACH_DEFAULT = (18765, 18766)         # `menzil reach` (docs/menzil.md); sahip 21 Kas (TBD#258 a): yalnız bu iki port, ayar `host_loopback_ports`
+
+
+def reach_loopback_ports() -> "frozenset[int]":
+    """`host_loopback_ports` ayarı (virgüllü); okunamaz/bozuksa varsayılan, "" = istisna yok. Geçersiz/aralık dışı parçalar atlanır."""
+    try:
+        from .settings import load_settings
+        raw = load_settings().get("host_loopback_ports")
+    except Exception:
+        raw = None
+    if raw is None:
+        return frozenset(LOOPBACK_REACH_DEFAULT)
+    out = set()
+    for part in str(raw).replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit() and 1 <= int(part) <= 65535:
+            out.add(int(part))
+    return frozenset(out)
 
 
 def _is_reach_loopback(url: str) -> bool:
-    """True: `url` literal 127.0.0.1/[::1] ve port 18700-18799 (menzil/tünel reach dinleyicisi). Yalnız `extra_urls` için kullanılır:
-    başka yerel servislere (panelin kendisi, metadata benzeri) SSRF yüzeyi AÇMAZ; `localhost` gibi DNS adları istisna DEĞİL."""
+    """True: `url` literal 127.0.0.1/[::1] ve port `host_loopback_ports` içinde (menzil/tünel reach dinleyicisi). Yalnız `extra_urls` için
+    kullanılır: başka yerel servislere (panelin kendisi, metadata benzeri) SSRF yüzeyi AÇMAZ; `localhost` gibi DNS adları istisna DEĞİL."""
     try:
         parts = urlparse(url)
         ip = ipaddress.ip_address(parts.hostname or "")
-        return parts.scheme == "http" and ip.is_loopback and (parts.port or 0) in LOOPBACK_REACH_PORTS
+        return parts.scheme == "http" and ip.is_loopback and (parts.port or 0) in reach_loopback_ports()
     except ValueError:
         return False
 

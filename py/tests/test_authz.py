@@ -298,8 +298,8 @@ class SpawnHookTest(unittest.TestCase):
     def test_spawn_session_dry_run_gets_env(self):
         from claudeops import spawn
         authz.set_spawn_hook(lambda p, cli, name, cwd: {"CLAUDE_CONFIG_DIR": "/u/ali/claude"})
-        with mock.patch.object(spawn, "detect_display", lambda: ":0"):
-            out = spawn.spawn_session("nm", "/w", "m", dry_run=True, cli="shell", force_new=True)
+        with mock.patch.object(spawn, "detect_display", lambda: ":0"), mock.patch.object(spawn, "spawn_priority_prefix", lambda n: ""):
+            out = spawn.spawn_session("nm", "/w", "m", dry_run=True, cli="shell", force_new=True)    # dry-run çıktısı 80 karaktere kırpılır: öncelik öneki dışarıda
         self.assertIn("CLAUDE_CONFIG_DIR=/u/ali/claude", out)
         authz.set_spawn_hook(lambda *a: (_ for _ in ()).throw(authz.SpawnRefused("login_required:claude")))
         with mock.patch.object(spawn, "detect_display", lambda: ":0"), self.assertRaises(ValueError):
