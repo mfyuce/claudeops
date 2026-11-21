@@ -133,7 +133,7 @@ def dialog_head(text: str, n: int = 2) -> str:
 
 def classify(text: str) -> Optional[Tuple[str, str]]:
     """Pane'de kullanıcı girişi bekleyen bir DİYALOG var mı: (tür, ilk 2 satır) | None.
-    Türler: trust (güven klasörü), resume_picker, login, unknown_dialog (hazır-istem altbilgisi YOK + numaralı menü/`Enter to confirm`).
+    Türler: trust (güven klasörü), resume_picker, login, permission (araç/dizin izni: 'Do you want to proceed?'), unknown_dialog (hazır-istem altbilgisi YOK + numaralı menü/`Enter to confirm`).
     Hazır-istem altbilgisi görünüyorsa hiçbiri değildir (konuşma geçmişinde geçen yazı diyalog sayılmaz). SAF."""
     lines = [l for l in (text or "").splitlines() if l.strip()]
     if not lines:
@@ -150,5 +150,7 @@ def classify(text: str) -> Optional[Tuple[str, str]]:
         return "login", dialog_head(text)
     menu = sum(1 for l in lines[-10:] if _MENU_RE.match(l))
     if menu >= 2 and ("enter to confirm" in tail or "esc to cancel" in tail or "to select" in tail or "use arrow" in tail):
+        if "do you want to proceed" in tail or "do you want to allow" in tail:
+            return "permission", dialog_head(text)      # araç/dizin İZİN istemi: motor ASLA onaylamaz, sahip karar verir (kör tuş yok)
         return "unknown_dialog", dialog_head(text)
     return None

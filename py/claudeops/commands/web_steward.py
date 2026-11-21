@@ -16,6 +16,7 @@ import dataclasses
 import hashlib
 import json
 import os
+import collections
 import re
 import secrets
 import shutil
@@ -1408,6 +1409,8 @@ def _wait_ready(name: str, cli: str, timeout: float = READY_TIMEOUT_SECONDS) -> 
     return False
 
 
+TRUST_RECHECK_SECONDS = 4.0        # güven diyaloğu kabulünden sonra ekranın yenilenmesini bekleme üst sınırı
+TRUST_RECHECK_STEP_SECONDS = 0.3
 ANSWER_FAIL_ALERT = 3      # art arda bu kadar başarısız cevap iletimi: olay + bildirim
 _ANSWER_FAILS: Dict[str, int] = {}
 
@@ -1434,6 +1437,17 @@ def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
     if ok and cli == "ucli":
         _ucli_box_recheck(name, sid)
     return ok
+
+
+def _send_fail_result(name: str) -> Dict[str, Any]:
+    """`_send` False döndükten sonra sonuç sözlüğü. Gönderim bir DİYALOG yüzünden reddedildiyse (`_note_send_result(.., "dialog:<tür>")`)
+    neden gizlenmez: `error=dialog_blocked:<tür>` + `code=dialog_blocked` (21 Kas iso/copsdevderbent: izin diyaloğu "Do you want to proceed?"
+    8 kez düz 'send failed' diye görünmüş, kök neden yalnız diag.log'daydı). Başka nedenler eskisi gibi 'send failed'."""
+    err = str((_SEND_FAILS.get(name) or {}).get("error") or "")
+    if err.startswith("dialog:"):
+        stuck = _DIALOG_STUCK.get(name) or {}
+        return {"ok": False, "error": "dialog_blocked:" + err[len("dialog:"):], "code": "dialog_blocked", "dialog": str(stuck.get("head") or "")[:160]}
+    return {"ok": False, "error": "send failed"}
 
 
 DIALOG_NOTIFY_SECONDS = 6 * 3600
@@ -1489,8 +1503,14 @@ def _recover_dialog(name: str, cl: Tuple[str, str]) -> bool:
             if res == "accepted":
                 diag_log("send_dialog_trust_accepted", name=name)
                 _DIALOG_STUCK.pop(name, None)
-                if trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
-                    return False
+                # Tuş basıldı ama TUI henüz yeniden çizmedi: HEMEN yeniden okumak bayat diyaloğu görüp gönderimi düşürüyordu
+                # (21 Kas: genetarihppr/aspergerppr/esneklikppr açılış istemi 'send failed', oturumlar sonra respawn ile açıldı).
+                # Diyalog kaybolana dek kısa aralıklarla yokla; süre dolarsa gerçekten kalmıştır.
+                end = time.monotonic() + TRUST_RECHECK_SECONDS
+                while trust_dialog.is_trust_dialog(strip_ansi(tmux_capture(name) or "")):
+                    if time.monotonic() >= end:
+                        return False
+                    time.sleep(TRUST_RECHECK_STEP_SECONDS)
                 _wait_prompt_ready(name)     # kabulden hemen sonra Claude henüz açılıyor: ilk gönderim düşüyordu (12 Kas runikppr)
                 return True
     now = time.time()
@@ -2430,7 +2450,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if st == "failed":
             return {"ok": False, "error": "delivery_unconfirmed", "code": "delivery_unconfirmed", "name": sname}
     elif not _send(sname, scli, message, sid=(cfg.sid if cfg is not None else "default")):
-        return {"ok": False, "error": "send failed"}
+        return _send_fail_result(sname)
     # Mesaj GİTTİ: bundan sonrası kayıt tutmadır. Hiçbir kayıt hatası (ör. kilit zaman aşımı) çağırana "başarısız" demez ve
     # cevabın İKİNCİ KEZ iletilmesine yol açmaz: yinelenmeyi engelleyen `delivered` işareti ÖNCE ve yeniden denemeli yazılır.
     unrecorded = False
@@ -3603,7 +3623,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, action.payload.get("text") or skw.KEEPWARM_TEXT, sid=cfg.sid)
         sw.log_event("keepwarm", paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "age_min", "tokens", "n", "text")})
-        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+        return {"ok": ok} if ok else _send_fail_result(s.name)
     if k in ("idle_nudge", "owner_todo_move", "todo_triage"):   # owner_todo_move: aynı yol, olay adı ayrı (TODO'daki sahibe bağlı maddeleri TOBEDECIDED'a taşıt)
         # TBD#156: boşta ucli kodcuya TEK satır "devam: <iş>" (koşullar `plan_ucli_idle`de denetlendi)
         if not host:
@@ -3618,7 +3638,7 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return {"ok": False, "error": "input box has unsent text"}
         ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"), sid=cfg.sid)   # ucli çok satırı ayrı tur sayar: TEK satır
         sw.log_event(k, paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
-        return {"ok": ok} if ok else {"ok": False, "error": "send failed"}
+        return {"ok": ok} if ok else _send_fail_result(s.name)
     if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
         mode = str(action.payload.get("mode") or "")
         if mode not in ("handover", "respawn", "stop") or host:
@@ -6830,6 +6850,11 @@ def _todo_directive_state(name: str, did: str, sid: str) -> str:
     return "missing"
 
 
+_DID_RE = re.compile(r"^[0-9a-f]{12}$")
+_DID_DONE: "collections.OrderedDict[str, Dict[str, Any]]" = collections.OrderedDict()     # (sid, did) -> son başarılı sonuç (yinelenme ayıklama)
+_DID_DONE_MAX = 256
+
+
 def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     text = str(data.get("text") or "").strip()
@@ -6850,7 +6875,12 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     if (not data.get("actor") and data.get("queue") is True and data.get("start_if_stopped", True)
             and not _name_host(name) and not _live_sessions(name, sid)):
         return _queue_directive(data, sid)       # insan/CLI başlatma yolu: zaman aşımı yok, durum izlenir
+    cdid = str(data.get("_did") or "")
+    if cdid and not _DID_RE.match(cdid):
+        return {"ok": False, "error": "bad _did (12 hex)"}      # TODO satırına yazılır: serbest metin enjekte edilemez
     with _ctx(sid).lock:
+        if cdid and (sid, cdid) in _DID_DONE:     # aynı istemci kimliği zaten iletildi (zaman aşımı sonrası yeniden deneme / hayalet yürütme)
+            return dict(_DID_DONE[(sid, cdid)], duplicate=True)
         projects = sw.load_projects(sid)
         p = _project_for_session(name, projects, _world(sid))
         if str(data.get("actor") or "") == "extension":
@@ -6875,6 +6905,11 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                               actor=str(data.get("actor") or ""), verify=bool(data.get("_bg")))
     if isinstance(res, dict) and todo_res != "skipped:system":
         res = dict(res, directive_id=did, todo=todo_res)
+    if cdid and isinstance(res, dict) and res.get("ok"):
+        with _ctx(sid).lock:
+            _DID_DONE[(sid, cdid)] = res
+            while len(_DID_DONE) > _DID_DONE_MAX:
+                _DID_DONE.popitem(last=False)
     if str(data.get("actor") or "") == "brain":
         _register_brain_outcome(res, name, sid)
     return res
@@ -6887,6 +6922,15 @@ def _register_brain_outcome(res: Any, name: str, sid: str) -> None:
         return
     _register_outcomes([{"kind": "directive", "name": str(res.get("name") or name), "at": time.time(), "sigs": {},
                          "via": "brain"}], sw.paths_for(sid))
+
+
+def _dialog_still_open(name: str) -> bool:
+    """`_DIALOG_STUCK` kaydı bayat olabilir (sahip diyalogu geçti, sonra hiç gönderim olmadı): pane'i YENİDEN okuyup doğrular; kapandıysa kaydı siler."""
+    from .. import trust_dialog
+    if trust_dialog.classify(strip_ansi(tmux_capture(name) or "")) is not None:
+        return True
+    _DIALOG_STUCK.pop(name, None)
+    return False
 
 
 def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
@@ -6905,6 +6949,13 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if blocked is not None:
         return blocked
     host = _name_host(name)      # `_gate` istekteki host'u projeninkiyle zaten eşledi
+    if not host and str(data.get("actor") or "") == "brain" and name in _DIALOG_STUCK and _dialog_still_open(name):
+        # Oturum bir DİYALOGDA (izin/güven/seçici) bekliyor ve motor kör tuş basmıyor: beynin 'send failed -> restart' kararı sahibin
+        # bekleyen onayını sessizce atar ve gereksiz devre yol açar (21 Kas copsdev 14:38). Karar sahibe (panelden terminali açıp geçer).
+        d = _DIALOG_STUCK[name]
+        sw.log_event("restart_refused_dialog", paths=sid, name=name, kind=str(d.get("kind") or ""), head=str(d.get("head") or "")[:160])
+        return {"ok": False, "error": "dialog_blocked:" + str(d.get("kind") or "unknown_dialog"), "code": "dialog_blocked",
+                "detail": "oturum bir diyalogda bekliyor; restart bunu çözmez, sahibe bildirildi (panelden terminali açıp geçin)"}
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
         if host:
             # Uzak restart = durdurma (`_remote_stop` koşulları + kapanma beklemesi) + yönerge (kapalıysa uzak başlatma).

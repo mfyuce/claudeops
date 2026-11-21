@@ -39,7 +39,7 @@ import types
 import os
 import shutil
 import sys
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from .. import roster as roster_mod
 from .. import review as rv
@@ -73,13 +73,37 @@ def resolve_sid(args) -> str:
     return sid
 
 
-def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, sid: str = "default") -> Dict[str, Any]:
+def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, sid: str = "default",
+         timeout: float = 15) -> Dict[str, Any]:
     if sid != "default" and isinstance(body, dict):
         body = dict(body, steward=sid)      # default'ta gövde BUGÜNKÜYLE aynı (kimliksiz)
     try:
-        return mcp_queue._api(port, method, path, body)
+        return mcp_queue._api(port, method, path, body, timeout=timeout)
     except mcp_queue.ApiError as e:
         return {"ok": False, "error": str(e)}
+
+
+_RETRYABLE_MARKERS = ("timed out", "bad response from claudeops panel", "cannot reach claudeops panel")
+DIRECTIVE_TIMEOUT_SECONDS = 60       # direktif eşzamanlı yol: değnekçi kilidi (tick) + TODO yazımı + tmux gönderimi 15 sn'yi aşabiliyor (21 Kas 17:08)
+DIRECTIVE_ATTEMPTS = 3
+
+
+def _api_idempotent(port: int, method: str, path: str, body: Dict[str, Any], sid: str, did: str,
+                    attempts: int = DIRECTIVE_ATTEMPTS, timeout: float = DIRECTIVE_TIMEOUT_SECONDS,
+                    sleep: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+    """Zaman aşımı/bağlantı hatasında AYNI `_did` ile yeniden dener (sunucu `_did` ile yinelenmeyi ayıklar: TODO satırı ve gönderim tek).
+    Bütün denemeler biterse SESSİZ kayıp yok: açık `unknown_outcome` + `directive_id` + denetim ipucu döner. HTTP hatası/ok:false yeniden denenmez."""
+    body = dict(body, _did=did)
+    res: Dict[str, Any] = {}
+    for i in range(max(1, attempts)):
+        res = _api(port, method, path, body, sid, timeout=timeout)
+        if res.get("ok") or not any(mk in str(res.get("error") or "") for mk in _RETRYABLE_MARKERS):
+            return res
+        if i + 1 < attempts:
+            sleep(3.0)
+    return dict(res, unknown_outcome=True, directive_id=did,
+                hint=f"sonuç bilinmiyor ({attempts} deneme): direktif iletilmiş olabilir. Kontrol: TODO.md'de 'direktif {did})' satırı / "
+                     f"py/cops steward{_sflag(sid)} log; aynı komutu AYNI id ile yinelemek güvenli: --did {did}")
 
 
 def _sflag(sid: str) -> str:
@@ -1112,9 +1136,9 @@ def cmd_api(args) -> int:
             return 0
         res = _api(port, "POST", "/api/steward/brain", {"action": what}, sid)
     elif args.action == "directive":
-        res = _api(port, "POST", "/api/steward/directive", {"name": args.name, "text": args.text or "",
-                                                            "model": args.model or "", "effort": args.effort or "",
-                                                            "reason": "cli", "queue": True}, sid)
+        res = _api_idempotent(port, "POST", "/api/steward/directive",
+                              {"name": args.name, "text": args.text or "", "model": args.model or "", "effort": args.effort or "",
+                               "reason": "cli", "queue": True}, sid, getattr(args, "did", None) or __import__("uuid").uuid4().hex[:12])
         if res.get("status") == "queued" and res.get("id"):      # arka plan teslimi: sonucu bekle (delivered|failed), zaman aşımı = hâlâ queued
             for _ in range(60):
                 time.sleep(2)
@@ -1361,6 +1385,8 @@ def register(sub):
             px.add_argument("--model")
             px.add_argument("--effort")
             px.add_argument("--reason")
+        if name == "directive":
+            px.add_argument("--did", help="istemci direktif kimliği (12 hex): zaman aşımından sonra AYNI id ile yeniden göndermek yinelenme yapmaz")
         px.set_defaults(func=cmd_api)
     for sp in s.choices.values():      # alt-komut `func`ı doğrudan çağrılır (`run` yalnız alt-komutsuz): kimliği HER BİRİNDE çöz
         sp.set_defaults(func=_with_sid(sp.get_default("func")))

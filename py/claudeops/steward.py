@@ -2328,6 +2328,62 @@ _PROTOCOL_EN = (
 )
 
 
+# ── yanıt dili (sahip kuralı 21 Kas: proje oturumlarının değnekçiye/sahibe yazdığı metin PANEL ARAYÜZ DİLİNİ izler) ──────────────
+# Dil TEK kaynaktan: `Config.lang` (panel dili: tr/en). Kanıt: tunnel 16:22/16:38 STEWARD-NEXT'leri Almanca yazdı.
+REPLY_LANG_TR = "Yanıt dili: Türkçe (STEWARD-* satırları, sorular, özetler ve raporlar dahil; başka dilde yazma)."
+REPLY_LANG_EN = "Reply language: English (including STEWARD-* lines, questions, summaries and reports; do not write in another language)."
+LANG_FIX_TEXT_TR = "Dil düzeltmesi: son STEWARD-* satırların Türkçe değildi. Panel dili Türkçe: bundan sonra STEWARD-* satırlarını, soruları ve özetleri Türkçe yaz."
+LANG_FIX_TEXT_EN = "Language fix: your last STEWARD-* lines were not in English. The panel language is English: write STEWARD-* lines, questions and summaries in English from now on."
+LANG_FIX_COOLDOWN_SECONDS = 24 * 3600.0     # oturum başına en çok günde BİR düzeltme notu
+
+_TR_WORDS = frozenset("ve bir bu için ile değil ama gibi çok daha olarak yok var mı mi ne kadar sonra önce şimdi madde iş sorun cevap".split())
+_EN_WORDS = frozenset("the and is are not with for this that from have will was been which when into than then they there".split())
+_DE_WORDS = frozenset("der die das und ist nicht mit für ein eine zu von auf den dem des wird sind werden auch noch nach über oder aber wenn".split())
+
+
+def reply_language_line(lang: str) -> str:
+    return REPLY_LANG_EN if lang == "en" else REPLY_LANG_TR
+
+
+def text_lang_mismatch(text: str, lang: str) -> bool:
+    """SAF sezgi: `text` beklenen dilde DEĞİL mi (yalnız açık ise True; kısa/belirsiz metin False). lang=tr: Türkçe karakter yok ve
+    İngilizce/Almanca işlev sözcüğü >= 3; lang=en: Türkçe/Almanca işareti güçlü ve İngilizce işlev sözcüğü yok."""
+    words = re.findall(r"[^\W\d_]+", (text or "").lower())
+    if len(words) < 6:
+        return False
+    tr_chars = sum(1 for w in words if any(c in w for c in "çğıöşü"))
+    tr_hits = sum(1 for w in words if w in _TR_WORDS)
+    en_hits = sum(1 for w in words if w in _EN_WORDS)
+    de_hits = sum(1 for w in words if w in _DE_WORDS)
+    if lang == "en":
+        return ((tr_chars + tr_hits) >= 3 or de_hits >= 3) and en_hits == 0
+    return tr_chars == 0 and tr_hits == 0 and (en_hits + de_hits) >= 3
+
+
+def marker_texts(m: Dict[str, Any]) -> str:
+    """`scan_markers` sonucundaki sahibe/değnekçiye görünen metinler (soru, rutin, engel, sıradaki iş, fikir) tek dizgede."""
+    parts: List[str] = []
+    for k in ("asks", "routines", "blocked", "nexts", "ideas"):
+        for v in m.get(k) or []:
+            parts.append(v if isinstance(v, str) else str((v or {}).get("text") or v))
+    if m.get("next"):
+        parts.append(str(m["next"]))
+    return " ".join(parts)
+
+
+def lang_fix_action(name: str, proj: str, text: str, cfg: "Config", state: Dict[str, Any], now: float) -> Optional["Action"]:
+    """Yanlış dilde STEWARD-* metni: oturum başına günde BİR düzeltme notu (`nudge` yolu). `state["lang_fix_at"]` güncellenir (yerinde)."""
+    if not name or not text_lang_mismatch(text, cfg.lang):
+        return None
+    last = dict(state.get("lang_fix_at") or {})
+    if now - float(last.get(name) or 0) < LANG_FIX_COOLDOWN_SECONDS:
+        return None
+    last[name] = now
+    state["lang_fix_at"] = last
+    return Action("nudge", name, "STEWARD-* metni panel dilinde değil" if cfg.lang != "en" else "STEWARD-* text not in panel language",
+                  {"text": LANG_FIX_TEXT_EN if cfg.lang == "en" else LANG_FIX_TEXT_TR, "project": proj, "lang_fix": True})
+
+
 def build_directive(project: Project, lang: str = "tr", extra: str = "", answer: Optional[Question] = None,
                     more: Optional[List[Question]] = None, compact: bool = False, paths: Any = None) -> str:
     """Bir proje oturumuna gönderilecek faz direktifi. `answer` verilirse önce insanın cevabı iletilir.
@@ -2400,10 +2456,12 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
                 f"project is not closed without an evidenced `{MARK_DONE_CONFIRMED}: <short hash> open items 0, <evidence>`. Finishing one PART is not finishing the project."
             )
     if compact:
+        parts.append(reply_language_line(lang))
         return "\n\n".join(parts)
     if project.notes.strip():
         parts.append(("Değnekçi notu: " if tr else "Steward note: ") + project.notes.strip())
     parts.append(_PROTOCOL_TR if tr else _PROTOCOL_EN)
+    parts.append(reply_language_line(lang))
     return "\n\n".join(parts)
 
 
@@ -4043,6 +4101,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         proj = v.project if v.project in projects else ""
         actions.extend(marker_record_actions(v.name, proj, m))
         note_project_next(st, proj, v.name, m, now)
+        _lf = lang_fix_action(v.name, proj, marker_texts(m), cfg, st, now)
+        if _lf is not None:
+            actions.append(_lf)
         if proj and m["plan_ready"] and projects[proj].phase == "planning":
             actions.append(Action("set_phase", proj, "STEWARD-PLAN-READY", {"phase": "planned"}))
         if proj and (m["done"] or m["confirmed"] is not None) and done_blocked(projects[proj]):
@@ -4458,6 +4519,7 @@ def api_error_kind(text: str) -> str:
 LOOP_MAX = 8
 LOOP_PAUSE_SECONDS = 6 * 3600.0
 LOOP_PAUSE_TOUR_SECONDS = 45 * 60.0     # beyin turu: kesinti KISA (11 Kas: 6 sa'lik duraklatma sorulara cevap gitmesini 4 sa durdurdu); sonra sayaç sıfırlanıp tur yeniden denenir
+LOOP_PAUSE_DELIVER_SECONDS = 15 * 60.0  # cevap iletimi: geçici engel (izin diyaloğu 21 Kas copsdevderbent 15:25-15:34) 6 sa değil KISA kesinti; kendi uyarısı `answer_delivery_failing`
 LOOP_FORGET_SECONDS = 24 * 3600.0
 LOOP_KINDS = frozenset(OBSERVE_SKIPPED) | {"directive", "restart"}
 
@@ -4504,7 +4566,7 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
         if fp:
             rec["fp"] = fp
         if rec["n"] > LOOP_MAX:
-            pause = LOOP_PAUSE_TOUR_SECONDS if a.kind == "tour" else LOOP_PAUSE_SECONDS
+            pause = LOOP_PAUSE_TOUR_SECONDS if a.kind == "tour" else LOOP_PAUSE_DELIVER_SECONDS if a.kind == "deliver_answer" else LOOP_PAUSE_SECONDS
             rec.update(until=now + pause, n=0, first=now)
             guard[key] = rec
             breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
