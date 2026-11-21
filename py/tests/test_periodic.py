@@ -373,6 +373,52 @@ class ChatBackupTest(_Tmp):
             self.assertFalse(P.run_chat_backup(dict(self.cfg, repo_dir=os.path.join(self.d, "yok"), repos={}), True, {})["ok"])
 
 
+class StaleUntrackedTest(_Tmp):
+    def test_vanished_untracked_path_is_not_added(self):
+        """R-4: boyut sinifi degisince silinen, hic commit'lenmemis (untracked) eski parca git add'i dusurmemeli."""
+        import subprocess
+        repo = os.path.join(self.d, "r")
+        os.makedirs(os.path.join(repo, "local"))
+        git = lambda *a: subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True)  # noqa: E731
+        git("init", "-q")
+        git("config", "user.email", "t@t")
+        git("config", "user.name", "t")
+        keep = "local/new.jsonl"
+        tracked_gone = "local/old.jsonl"
+        for rel in (keep, tracked_gone):
+            with open(os.path.join(repo, rel), "w") as f:
+                f.write("x\n")
+        git("add", "--", tracked_gone)
+        git("commit", "-q", "-m", "i")
+        os.remove(os.path.join(repo, tracked_gone))              # izlenen + silindi: silme commit'lenmeli, listede KALMALI
+        files = [keep, tracked_gone, "local/ghost.jsonl.part001"]  # sonuncu: untracked ve diskte yok
+        ok = P._addable_paths(repo, files)
+        self.assertEqual(sorted(ok), sorted([keep, tracked_gone]))
+        self.assertEqual(git("add", "--", *ok).returncode, 0)
+
+
+class StateRaceTest(_Tmp):
+    def test_save_job_state_waits_for_cross_process_state_lock(self):
+        """R-3: _STATE_LOCK yalniz thread kilidi; baska surec (servis+CLI) oku-degistir-yaz yaparken flock beklenmeli."""
+        import fcntl
+        import threading
+        lockp = P.STATE_JSON + ".lock"
+        fd = os.open(lockp, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)                # "baska surec" tutuyor
+        done = threading.Event()
+        t = threading.Thread(target=lambda: (P._save_job_state("x", {"ok": True}), done.set()))
+        t.start()
+        try:
+            self.assertFalse(done.wait(0.4), "kilit tutulurken yazim ilerlememeli")
+            self.assertNotIn("x", P.load_state())
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        t.join(5)
+        self.assertTrue(done.is_set())
+        self.assertEqual(P.load_state()["x"], {"ok": True})
+
+
 class ProcLockTest(_Tmp):
     def test_second_process_lock_refused(self):
         fd = P._acquire_proc_lock()
