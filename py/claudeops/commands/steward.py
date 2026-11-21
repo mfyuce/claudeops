@@ -78,6 +78,8 @@ def _api(port: int, method: str, path: str, body: Dict[str, Any] | None = None, 
     if sid != "default" and isinstance(body, dict):
         body = dict(body, steward=sid)      # default'ta gövde BUGÜNKÜYLE aynı (kimliksiz)
     try:
+        if timeout == 15:
+            return mcp_queue._api(port, method, path, body)      # varsayılan: eski çağrı biçimi birebir
         return mcp_queue._api(port, method, path, body, timeout=timeout)
     except mcp_queue.ApiError as e:
         return {"ok": False, "error": str(e)}

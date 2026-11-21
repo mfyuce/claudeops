@@ -54,7 +54,7 @@ class _Cli(_Tmp):
         self.api_calls = []
         self.running = set()
 
-        def fake_api(port, method, path, body=None):
+        def fake_api(port, method, path, body=None, timeout=15):
             self.api_calls.append((method, path, body))
             return {"ok": True}
 
