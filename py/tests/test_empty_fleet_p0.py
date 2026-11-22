@@ -95,6 +95,24 @@ class QuotaReopen(unittest.TestCase):
         self.assertEqual(saved, [{"steward": {"enabled": "on"}}, {"stewards": {"reviewer": {"enabled": "on"}}}])
         self.assertEqual(ws._QUOTA["closed"], [])
 
+    def test_cold_reopen_under_two_hours_sends_one_summary(self):
+        """D17: kapanışla açılış arası < 2 sa ise tek özet bildirimi (soğuk açılış); 2 sa ve üstünde bildirim yok."""
+        for gap, want in ((3600, 1), (7200, 0)):
+            saved, *ps = self._setup()
+            ws._QUOTA.update(closed_at=NOW - gap, ok_polls=0)
+            msgs = []
+            ps.append(mock.patch.object(ws, "notify_phone", lambda m, *a, **k: msgs.append(m) or True))
+            for p in ps:
+                p.start()
+            try:
+                d, u = types.SimpleNamespace(action="ok"), types.SimpleNamespace(week_pct=9.0)
+                ws._quota_reopen_check(d, u, now=NOW)
+                ws._quota_reopen_check(d, u, now=NOW)
+            finally:
+                for p in ps:
+                    p.stop()
+            self.assertEqual(len([m for m in msgs if "soğuk açılış" in m]), want, gap)
+
     def test_not_ok_resets_streak_and_keeps_list(self):
         saved, *ps = self._setup()
         for p in ps:

@@ -4971,6 +4971,9 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
     notify_phone(f"Kota bekçisi: {'HARD kapanma' if hard else 'devirli kapatma başladı'} ({reason}). Açmak için: py/cops steward up")
 
 
+QUOTA_COLD_REOPEN_SECONDS = 2 * 3600       # D17: kapanıştan bu süreden önce açılış = soğuk açılış uyarısı
+
+
 def _quota_reopen_check(d: Any, u: Any, now: Optional[float] = None) -> List[str]:
     """Karar `ok` iken kayıtlı kapatılmış kimlikleri geri aç (`sq.reopen_ready` kapısı). Açılan sid'ler döner."""
     t = time.time() if now is None else now
@@ -4982,6 +4985,7 @@ def _quota_reopen_check(d: Any, u: Any, now: Optional[float] = None) -> List[str
         closed = list(_QUOTA.get("closed") or [])
         if not closed or not sq.reopen_ready(float(_QUOTA.get("closed_at") or 0), _QUOTA["ok_polls"], t):
             return []
+        gap_s = max(0.0, t - float(_QUOTA.get("closed_at") or 0))
     from ..settings import save_settings
     reopened: List[str] = []
     for sid in closed:
@@ -4991,9 +4995,13 @@ def _quota_reopen_check(d: Any, u: Any, now: Optional[float] = None) -> List[str
                 continue
             save_settings({"steward": {"enabled": "on"}} if sid == "default" else {"stewards": {sid: {"enabled": "on"}}})
             reopened.append(sid)
-            sw.log_event("quota_reopen", paths="default", sid=sid, used=getattr(u, "week_pct", None))
+            sw.log_event("quota_reopen", paths="default", sid=sid, used=getattr(u, "week_pct", None), gap_min=int(gap_s // 60),
+                         cold=gap_s < QUOTA_COLD_REOPEN_SECONDS)
         except Exception as e:
             diag_log("steward_quota_reopen_failed", sid=sid, error=repr(e))
+    if reopened and gap_s < QUOTA_COLD_REOPEN_SECONDS:
+        # D17 (2 Kas döngüsü): kapanışla açılış arası kısa; önbellek soğur, tek özet bildirimi (sid başına ayrı bildirim yok)
+        notify_phone(f"Kota bekçisi: {len(reopened)} kimlik {int(gap_s // 60)} dk sonra yeniden açıldı (soğuk açılış, önbellek yeniden yazılır). Kapanış/açılış döngüsü olabilir: eşik/budget_pct'e bak.")
     with _QUOTA_LOCK:
         _QUOTA["closed"] = [s for s in _QUOTA["closed"] if s not in reopened]
         if not _QUOTA["closed"]:
