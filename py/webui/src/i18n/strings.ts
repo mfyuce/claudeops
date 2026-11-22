@@ -651,6 +651,7 @@ export interface Strings {
   contextSendFailed: string;
   contextParseFailed: string;
   pagePrev: string;
+  pageSizeLabel: string;
   pageNext: string;
   pageOf: (page: number, total: number) => string;
   groupRunningBadge: string;
@@ -1691,6 +1692,7 @@ export const STRINGS: Record<Lang, Strings> = {
     contextSendFailed: "komut gönderilemedi",
     contextParseFailed: "yanıt okunamadı",
     pagePrev: "önceki",
+    pageSizeLabel: "satır/sayfa",
     pageNext: "sonraki",
     pageOf: (page, total) => `sayfa ${page}/${total}`,
     groupRunningBadge: "bu grupta çalışan var",
@@ -2732,6 +2734,7 @@ export const STRINGS: Record<Lang, Strings> = {
     contextSendFailed: "could not send command",
     contextParseFailed: "could not read the response",
     pagePrev: "prev",
+    pageSizeLabel: "per page",
     pageNext: "next",
     pageOf: (page, total) => `page ${page}/${total}`,
     groupRunningBadge: "something in this group is running",

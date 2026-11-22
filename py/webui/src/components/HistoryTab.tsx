@@ -211,7 +211,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
     return nameA.localeCompare(nameB, lang) || a.cwd.localeCompare(b.cwd, lang);
   });
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
-  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
+  const { pageItems: pageGroups, page, totalPages, setPage, pageSize, totalItems, setPageSize } = usePagination(groups, undefined, "history");
 
   return (
     <>
@@ -280,7 +280,7 @@ export function HistoryTab({ search, onView }: { search: string; onView: (host: 
               })}
             </tbody>
           </table>
-          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} pageSize={pageSize} totalItems={totalItems} onPageSize={setPageSize} />
         </div>
       )}
       {openRun && <ReviewChatModal key={openRun.io} run={openRun} onClose={() => setOpenRun(null)} />}

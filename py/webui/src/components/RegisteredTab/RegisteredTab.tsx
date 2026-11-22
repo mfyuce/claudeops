@@ -162,7 +162,7 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
   const rows = allRows.filter((s) => matchesSearch(s, search));
   const groups = groupByCwd(rows);
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
-  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
+  const { pageItems: pageGroups, page, totalPages, setPage, pageSize, totalItems, setPageSize } = usePagination(groups, undefined, "registered");
 
   if (!data) return null;
 
@@ -263,7 +263,7 @@ export function RegisteredTab({ selection, onSwitchTab, search, onView }: Regist
           </tbody>
         </table>
       </div>
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} pageSize={pageSize} totalItems={totalItems} onPageSize={setPageSize} />
         </>
       )}
     </>

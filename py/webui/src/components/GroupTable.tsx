@@ -131,7 +131,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
   const filtered = items.filter((it) => matchesSearch(it, search));
   const groups = groupByCwd(filtered);
   const groupKeys = groups.map((g) => groupKey(g.host, g.cwd));
-  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
+  const { pageItems: pageGroups, page, totalPages, setPage, pageSize, totalItems, setPageSize } = usePagination(groups, undefined, "group");
 
   if (!filtered.length) return <div className="opts-hint">{items.length === 0 ? t.emptyHint : t.noSearchMatches}</div>;
 
@@ -161,7 +161,7 @@ export function GroupTable({ items, search, onView }: GroupTableProps) {
           })}
         </tbody>
       </table>
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} pageSize={pageSize} totalItems={totalItems} onPageSize={setPageSize} />
     </div>
   );
 }

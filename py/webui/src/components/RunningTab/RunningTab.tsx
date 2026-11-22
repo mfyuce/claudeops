@@ -115,7 +115,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
   // only which GROUPS are RENDERED on the current page is paginated (same
   // "never split a project's rows across pages" reasoning as
   // RegisteredTab).
-  const { pageItems: pageGroups, page, totalPages, setPage } = usePagination(groups);
+  const { pageItems: pageGroups, page, totalPages, setPage, pageSize, totalItems, setPageSize } = usePagination(groups, undefined, "running");
 
   if (!data) return null;
 
@@ -212,7 +212,7 @@ export function RunningTab({ selection, onToggleTerminal, onSwitchTab, search }:
           </tbody>
         </table>
       </div>
-      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} pageSize={pageSize} totalItems={totalItems} onPageSize={setPageSize} />
     </>
   );
 }
