@@ -8,7 +8,8 @@
  */
 
 import { useLang } from "../../i18n/LangContext";
-import { fieldSuggestions } from "./searchFilter";
+import { useStatusContext } from "../../state/StatusContext";
+import { fieldSuggestions, valueSuggestions } from "./searchFilter";
 
 interface SearchBoxProps {
   value: string;
@@ -17,7 +18,9 @@ interface SearchBoxProps {
 
 export function SearchBox({ value, onChange }: SearchBoxProps) {
   const { t } = useLang();
-  const hints = fieldSuggestions(value);
+  const { data } = useStatusContext();
+  const rows = data ? [...data.sessions, ...data.closed, ...data.retired] : [];
+  const hints = [...fieldSuggestions(value), ...valueSuggestions(value, rows)];
   const complete = (hint: string) => onChange(value.replace(/\S*$/, hint));
   return (
     <div className="searchbox">

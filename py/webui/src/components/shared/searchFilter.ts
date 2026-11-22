@@ -66,6 +66,25 @@ export function fieldSuggestions(query: string): string[] {
   return SEARCH_FIELDS.filter((f) => f.startsWith(last) && f !== last).map((f) => `${f}:`);
 }
 
+/**
+ * Value completions (TODO 2859) for a last token `model:x`, `cli:x`, `host:x`, `kind:x`, `blueprint:x`: the distinct values of
+ * that field in `rows` that contain the typed part (folded), excluding an exact match; sorted, at most 8. Empty for other fields.
+ */
+export function valueSuggestions(query: string, rows: Searchable[]): string[] {
+  const last = query.split(/\s+/).pop() ?? "";
+  const m = /^(model|cli|host|kind|blueprint):(.*)$/i.exec(last);
+  if (!m || m[2].includes("*")) return [];
+  const field = m[1].toLowerCase() as SearchField;
+  const typed = foldText(m[2]);
+  const seen = new Set<string>();
+  for (const r of rows) for (const v of fieldHay(r, field)) if (v) seen.add(v);
+  return [...seen]
+    .filter((v) => foldText(v).includes(typed) && foldText(v) !== typed)
+    .sort()
+    .slice(0, 8)
+    .map((v) => `${field}:${v}`);
+}
+
 function fieldMatches(value: string, hay: string): boolean {
   if (!value.includes("*")) return hay.includes(value);
   const re = new RegExp("^" + value.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
