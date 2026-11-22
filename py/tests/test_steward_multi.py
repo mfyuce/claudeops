@@ -109,7 +109,7 @@ def _golden_questions():
           answered_at=T0 - 100, source="ncs20261019"),
         Q(id="q2", project="egyptian20260917", text="eg?", created_at=T0 - 500, status="answered", answer="A",
           answered_at=T0 - 100, source="egyptian20260917"),
-        Q(id="q3", project="mkt", text="mkt?", created_at=T0 - 500, status="answered", answer="B",
+        Q(id="q3", project="mkt", text="mkt?", created_at=T0 - 500, status="answered", answer="Aç",
           answered_at=T0 - 100, source="mkt"),
         Q(id="q4", project="a", text="rutin?", created_at=T0 - 7200, routine=True, source="a"),
         Q(id="q5", project="", text="genel", created_at=T0 - 500, status="answered", answer="C", answered_at=T0 - 50),

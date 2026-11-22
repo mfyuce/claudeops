@@ -36,8 +36,16 @@ class T(unittest.TestCase):
             r = cb.install()
         self.assertFalse(r["ok"]); self.assertIn("systemctl --user", r["manual_command"])
 
-    def test_missing_script(self):
-        self.assertFalse(cb.install()["ok"]); self.assertFalse(cb.run_now()["ok"])
+    def test_missing_script_is_generated(self):
+        """D1 (22 Kas): betik kayıt yerleri listesinden ÜRETİLİR; eksikse install/run_now onu oluşturur (eskiden 'betik yok' hatası)."""
+        self.assertFalse(os.path.exists(cb.SCRIPT))
+        with mock.patch.object(cb, "_sysctl", lambda *a: mock.Mock(returncode=0, stdout="", stderr="")), \
+                mock.patch.object(cb.subprocess, "Popen", mock.Mock()):
+            self.assertTrue(cb.install()["ok"])
+            self.assertTrue(os.path.isfile(cb.SCRIPT))
+            os.remove(cb.SCRIPT)
+            self.assertTrue(cb.run_now()["ok"])
+            self.assertTrue(os.path.isfile(cb.SCRIPT))
 
 
 if __name__ == "__main__":

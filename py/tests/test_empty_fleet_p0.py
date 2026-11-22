@@ -109,7 +109,7 @@ class QuotaReopen(unittest.TestCase):
                 ws._quota_reopen_check(d, u, now=NOW)
                 ws._quota_reopen_check(d, u, now=NOW)
             finally:
-                for p in ps:
+                for p in reversed(ps):      # aynı öznitelik iki kez yamalı: ters sırada durdur, yoksa sahte kalır
                     p.stop()
             self.assertEqual(len([m for m in msgs if "soğuk açılış" in m]), want, gap)
 
