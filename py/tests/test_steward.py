@@ -3559,3 +3559,14 @@ class DeferAnswerTests(unittest.TestCase):
         q.deferred_until = 1000.0 + sw.DEFER_SECONDS
         self.assertEqual(sw.pending_digest_text([q], 1000.0), "")
         self.assertIn("1 soru", sw.pending_digest_text([q], q.deferred_until + 1))
+
+
+class StartDecisionEventTests(unittest.TestCase):
+    def test_event_shape(self):
+        A = sw.Action
+        self.assertEqual(sw.start_decision_event([], {}), {})
+        d = sw.start_decision_event([A("start", "b", "due"), A("start", "a", "due"), A("start", "x", "answer → start")], {})
+        self.assertEqual(d, {"allowed": ["a", "b"], "blocked": [], "reason": ""})
+        st = {"start_blocked": {"projects": ["c"], "reason": "max_active", "active": 3, "max_active": 3}}
+        d = sw.start_decision_event([A("start", "a", "due")], st)
+        self.assertEqual((d["allowed"], d["blocked"], d["reason"], d["max_active"]), (["a"], ["c"], "max_active", 3))

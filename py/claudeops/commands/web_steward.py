@@ -4526,6 +4526,9 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                                                   open_work_real=_open_work_of(projects, skip_cila=True))
                 if new_state.get("start_blocked") != (prev_state.get("start_blocked") if "start_blocked" in new_state else None):
                     sw.log_event("start_blocked", paths=paths, **new_state["start_blocked"])   # değişince bir kez
+                _sd = sw.start_decision_event(actions, new_state)     # D21: tek `start_decision` olayı (neden + izinli/engelli projeler); aynı içerik 15 dk tekrar yazılmaz
+                if _sd:
+                    sw.log_event("start_decision", paths=paths, **_sd)
                 job_actions, new_state = sj.plan_job_deliveries(views, projects, sj.load_jobs(paths), actions, new_state, t0, world)
                 actions = actions + job_actions     # iş sonucu iletimi (varaka kuyruğu): `plan_tick`e DOKUNMAZ, aynı observe/_target yolundan
                 lesson_actions, planned_state = sl.plan_lesson_deliveries(views, projects, _lessons(cfg), new_state, t0,

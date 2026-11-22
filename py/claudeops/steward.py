@@ -3729,6 +3729,22 @@ def _ask_base(name: str) -> str:
     return m.group(1) if m else name
 
 
+def start_decision_event(actions: Sequence["Action"], state: Dict[str, Any]) -> Dict[str, Any]:
+    """SAF (D21). Bu tick'in başlatma kararını TEK olay verisine indirir: `allowed` (cadence ile başlatılacak projeler),
+    `blocked` (süresi doldu ama başlatılamayanlar) + tek `reason` (`start_blocked.reason`; BEKLEME notu dahil) ve sınırlar.
+    Hiçbiri yoksa {} (olay yazılmaz)."""
+    allowed = sorted({a.name for a in actions if a.kind == "start" and a.reason == "due"})
+    sb = state.get("start_blocked") or {}
+    blocked = sorted(sb.get("projects") or [])
+    if not allowed and not blocked:
+        return {}
+    d: Dict[str, Any] = {"allowed": allowed, "blocked": blocked, "reason": str(sb.get("reason") or "") if blocked else ""}
+    for k in ("active", "max_active", "active_busy", "others_active", "max_active_total", "bekleme_projects"):
+        if blocked and k in sb:
+            d[k] = sb[k]
+    return d
+
+
 def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Action]:
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
