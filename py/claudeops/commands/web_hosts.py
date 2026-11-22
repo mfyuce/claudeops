@@ -1041,7 +1041,7 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     değnekçi eylemleri daha kısa verir (input/handover 60, start 120 sn)."""
     host = hosts_mod.get_host(host_name)
     if host is None:
-        return {"ok": False, "error": f"unknown host: {host_name}"}, 200
+        return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}, 200
     outgoing = dict(body)
     outgoing["host"] = LOCAL_HOST_NAME
     url = f"{host['base_url']}{path}?token={host['token']}"
@@ -1050,7 +1050,7 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     if ref is not None:
         return ref, 502
     if err is not None or parsed is None:
-        return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
+        return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}", "code": "host_unreachable"}, 200
     return parsed, status
 
 
@@ -1134,7 +1134,7 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str], dedup: bool = Tr
     `timeout`: verilmezse `TERM_READ_TIMEOUT_SECONDS` (değnekçinin tick başına okuma bütçesi daha kısa verir)."""
     host = hosts_mod.get_host(host_name)
     if host is None:
-        return {"ok": False, "error": f"unknown host: {host_name}"}, 200
+        return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}, 200
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
@@ -1144,7 +1144,7 @@ def proxy_get(path: str, host_name: str, query: Dict[str, str], dedup: bool = Tr
     if ref is not None:
         return ref, 502
     if err is not None or parsed is None:
-        return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}"}, 200
+        return {"ok": False, "error": f"{host_name} unreachable: {err or f'http {status}'}", "code": "host_unreachable"}, 200
     return parsed, status
 
 
@@ -1205,7 +1205,7 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
     ek maliyeti gerçek dosya transferi yanında ihmal edilebilir."""
     host = hosts_mod.get_host(host_name)
     if host is None:
-        return {"ok": False, "error": f"unknown host: {host_name}"}, 200
+        return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}, 200
     q = {k: v for k, v in query.items() if k != "host"}
     q["token"] = host["token"]
     url = f"{host['base_url']}{path}?{urllib.parse.urlencode(q)}"
@@ -1223,7 +1223,7 @@ def proxy_post_raw(path: str, host_name: str, query: Dict[str, str], body_stream
         status = resp.status
         raw = resp.read()
     except (OSError, http.client.HTTPException) as e:
-        return {"ok": False, "error": f"{host_name} unreachable: {e}"}, 200
+        return {"ok": False, "error": f"{host_name} unreachable: {e}", "code": "host_unreachable"}, 200
     finally:
         conn.close()
     try:
@@ -1686,7 +1686,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
     def fetch_fn() -> dict:
         host = hosts_mod.get_host(host_name)
         if host is None:
-            return {"ok": False, "error": f"unknown host: {host_name}"}
+            return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}
         dead = None
         with _term_relay_lock:
             relay = _term_relays.get(key)
@@ -1699,7 +1699,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                 if time.monotonic() - relay.created_mono < _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS:
                     # Kurulduktan hemen sonra öldü — bu tick'te yeniden kurma (bkz. sabitin notu).
                     # Eski kareyi de DÖNDÜRME (4c21cb5'in kapattığı "donmuş kare" hatası).
-                    return {"ok": False, "error": "relay: bağlantı koptu, yeniden deneniyor"}
+                    return {"ok": False, "error": "relay: bağlantı koptu, yeniden deneniyor", "code": "relay_connecting"}
                 dead = relay
                 del _term_relays[key]
                 relay = None
@@ -1727,7 +1727,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
         if dead is not None:
             dead.stop()
         result = relay.read()
-        return result if result is not None else {"ok": False, "error": "relay: henüz veri gelmedi"}
+        return result if result is not None else {"ok": False, "error": "relay: henüz veri gelmedi", "code": "relay_connecting"}
 
     return fetch_fn
 

@@ -205,6 +205,11 @@ def classify_frame(frame: Any) -> Tuple[str, str]:
             return "live", ""
         return "reconnecting", "metinsiz kare"
     err = str(frame.get("error") or "bilinmeyen hata")
+    code = frame.get("code")    # makine-okur kod önce (TODO 1177); eski panel yanıtlarında yok, metne düşer
+    if code in ("host_unreachable", "relay_connecting"):
+        return "reconnecting", err
+    if code in ("not_running", "unknown_host"):
+        return "waiting", err
     low = err.lower()
     if "unreachable" in low or low.startswith("relay:"):
         return "reconnecting", err

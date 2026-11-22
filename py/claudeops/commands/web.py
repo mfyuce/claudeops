@@ -322,7 +322,7 @@ def _content_disposition(filename: str) -> str:
 
 def _err(lang: str, key: str, **kwargs) -> dict:
     tpl = ERR[key]["en" if lang == "en" else "tr"]
-    return {"ok": False, "error": tpl.format(**kwargs)}
+    return {"ok": False, "error": tpl.format(**kwargs), "code": key}   # code: makine-okur (TODO 1177), metin yerelleşebilir
 
 
 def _msg(lang: str, key: str, **kwargs) -> str:
