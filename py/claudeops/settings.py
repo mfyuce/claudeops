@@ -826,7 +826,12 @@ def ucli_cost_config() -> Dict[str, Any]:
     if not (credit > 0) or credit == float("inf") or credit != credit:
         credit = 0.0                # boş/0/bozuk = toplam kredi gösterilmez
     ttl = str(raw.get("cache_ttl") or "").strip().lower()
-    return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h", "credit_total_usd": credit}
+    # kredi dönemi (22 Kas, sahip: 162 USD, 10 gün): YYYY-MM-DD; bozuk/boş = yok (harcama tüm geçmişten, kalan gün hesaplanmaz)
+    dates = {}
+    for k in ("credit_since", "credit_until"):
+        v = str(raw.get(k) or "").strip()
+        dates[k] = v if re.match(r"^\d{4}-\d{2}-\d{2}$", v) else ""
+    return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h", "credit_total_usd": credit, **dates}
 
 
 def ucli_script_mode() -> str:

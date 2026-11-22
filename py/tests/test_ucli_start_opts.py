@@ -398,7 +398,7 @@ class CostCapTests(unittest.TestCase):
             self.assertEqual(settings.ucli_cost_config()["cache_ttl"], "1h")
         with mock.patch.object(settings, "load_settings", return_value={"ucli_cost": "bozuk"}):
             self.assertEqual(settings.ucli_cost_config(),
-                             {"daily_cap_usd": 0.0, "credit_total_usd": 0.0, "cache_ttl": "1h"})
+                             {"daily_cap_usd": 0.0, "credit_total_usd": 0.0, "cache_ttl": "1h", "credit_since": "", "credit_until": ""})
 
     def test_credit_total_parsing_is_safe(self):
         from claudeops import settings

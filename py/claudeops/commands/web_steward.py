@@ -4532,7 +4532,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
     ctx = _ctx(sid)
     with ctx.lock:
         cfg = steward_config(sid)
-        if quota_blocking() and not cfg.drain:
+        quota_scope = quota_blocking() and not cfg.drain and quota_scoped(cfg)
+        if quota_blocking() and not cfg.drain and not quota_scope:
             cfg = dataclasses.replace(cfg, drain=True)      # kota bekçisi: yeni iş alınmaz (ayarı değiştirmez, yalnız bu tick)
         if sw.panic_active() and cfg.mode != "observe":
             cfg = dataclasses.replace(cfg, mode="observe", drain=True)   # ACİL DURDURMA: hiçbir oturuma dokunma, yeni iş alma (yalnız kayıt)
@@ -4556,6 +4557,8 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     _RECOVERED_DOWN.discard(h_up)
                     sw.log_event("remote_unreachable", paths=paths, host=h_up, state="up", via="probe")
             world = _with_availability(world, cfg, t0, rt)
+            if quota_scope:      # beyin ucli'de: yalnız sayaçlı (claude) CLI projeleri tutulur, ucli projeleri sürer
+                world = dataclasses.replace(world, quota_held=quota_held_projects(projects))
             # Uzak proje yoksa çağrı biçimi eskisiyle AYNI (altın testler `_collect_views`/`_apply`ı bu biçimle değiştirir).
             rkw: Dict[str, Any] = {"rt": rt} if world.hosts else {}
             _note_conflicts(ctx, idx, set(projects), t0)
@@ -4949,6 +4952,43 @@ def quota_blocking() -> bool:
     return bool(d is not None and d.action in ("drain", "shutdown", "stop"))
 
 
+# Kota bekçisinin okuduğu sayaç YALNIZ Claude Code aboneliği (`claude -p /usage`). Bu CLI'larla açılan oturumlar o sayaçtan yer.
+QUOTA_METERED_CLIS = frozenset({"claude"})
+
+
+def quota_scoped(cfg: Any) -> bool:
+    """Kota kararı bu kimlikte YALNIZ sayaçlı CLI projelerini mi tutar (True), yoksa tüm değnekçiyi drain mi eder (False).
+    Beyin ucli'deyse (Anthropic API kredisi ya da başka hizmet) beyin aboneliğe dokunmaz: ucli projeleri çalışmayı sürdürür
+    (sahip 22 Kas: "api kredisi ile her şeyi yürütebilir miyiz")."""
+    return str(getattr(cfg, "brain_cli", "") or "") == "ucli"
+
+
+def quota_held_projects(projects: Any, cli_of: Any = None) -> frozenset:
+    """Kota tutarken başlatılmayacak projeler: başlatma CLI'ı sayaçlı olanlar (`_project_cli`; bilinmeyen = claude varsayılanı)."""
+    cli_of = cli_of or _project_cli
+    out = set()
+    for name in projects:
+        try:
+            cli = cli_of(name)
+        except Exception:
+            cli = DEFAULT_CLI
+        if cli in QUOTA_METERED_CLIS:
+            out.add(name)
+    return frozenset(out)
+
+
+def quota_blocks_target(name: str, cfg: Any) -> bool:
+    """Kota bu hedefe (direktif/başlatma) yeni iş göndermeyi engelliyor mu."""
+    if not quota_blocking():
+        return False
+    if not quota_scoped(cfg):
+        return True
+    try:
+        return _project_cli(name) in QUOTA_METERED_CLIS
+    except Exception:
+        return True
+
+
 def _quota_save() -> None:
     d, u = _QUOTA.get("decision"), _QUOTA.get("usage")
     try:
@@ -4996,6 +5036,21 @@ def _quota_stop(reason: str, hard: bool = False) -> None:
                 # Reviewer Anthropic kotası tüketmez (agy/evren/codex; claude modu ayrı API anahtarı): kota bekçisi
                 # onu KAPATMAZ (sahip kararı 2026-11-02). review_claude_auth=subscription (Max kotası) için muafiyet YOK:
                 # reviewer kapanmaz ama review tick'i quota_blocking()'e bakıp abonelik claude hedeflerini başlatmaz (web_review).
+                continue
+            if quota_scoped(cfg):
+                # beyin ucli'de (API kredisi): kimlik KAPANMAZ, ucli projeleri sürer; yeni claude başlatması tick'te tutulur
+                # (`quota_held`). HARD'da yalnız kendi claude oturumları durur (beyin ve ucli oturumları dokunulmaz).
+                if hard:
+                    projects = sw.load_projects(_ctx(sid).paths)
+                    world = _world(sid, cfg, 0, _ownership_index())
+                    for v in _collect_views(cfg):
+                        if (v.running and v.cli in QUOTA_METERED_CLIS and v.name != cfg.brain_name
+                                and world.session_class(v.name, v.blueprint) == "own"):
+                            try:
+                                _apply(sw.Action("stop", v.name, "quota-hard"), cfg, projects, world)
+                            except Exception as e:
+                                diag_log("steward_quota_hard_stop_failed", sid=sid, name=v.name, error=repr(e))
+                sw.log_event("quota_scoped", paths=sid, hard=hard, reason=reason)
                 continue
             shutdown_start(sid)
             with _QUOTA_LOCK:      # geri açma listesi: yalnız BİZİM kapattığımız (açıkken kapanan) kimlikler
@@ -6716,7 +6771,7 @@ def _brain_directive_blocks(name: str, data: Dict[str, Any], sid: str, projects:
     kapalı bırakmasın) aynı denetimi kullanır. `None` = izinli."""
     if str(data.get("actor") or "") != "brain":
         return None
-    if steward_config(sid).drain or quota_blocking() or sw.panic_active():
+    if steward_config(sid).drain or quota_blocks_target(name, steward_config(sid)) or sw.panic_active():
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     if not _name_host(name):
         why = _brain_directive_defer(name, sid, str(data.get("text") or ""))
@@ -6964,7 +7019,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
     text = str(data.get("text") or "").strip()
     if not sw.valid_name(name):
         return {"ok": False, "error": "invalid name"}
-    if str(data.get("actor") or "") in ("brain", "extension") and (steward_config(sid).drain or quota_blocking() or sw.panic_active()):
+    if str(data.get("actor") or "") in ("brain", "extension") and (steward_config(sid).drain or quota_blocks_target(name, steward_config(sid)) or sw.panic_active()):
         return {"ok": False, "error": "draining: the steward takes no new work (human turned 'drain' on)", "code": "draining"}
     gated = _gate(name, data, "directive", sid)
     if gated is not None:
@@ -7212,7 +7267,9 @@ UI_CONFIG_CHOICE = {"claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "d
                     "review_evren_script": ("read", "off"), "review_evren_autoscale": ("on", "off"), "review_verify_mode": ("session", "self"),
                     # boş değer = claude (save_settings anahtarı siler)
                     "review_verify_provider": ("", "claude", "codex", "evren", "agy"),
-                    "review_claude_auth": ("api", "subscription")}
+                    "review_claude_auth": ("api", "subscription"),
+                    # beyin CLI'ı (22 Kas, sahip: "değnekçi modelini ui'den seçebilelim"): ucli = Anthropic API kredisi (brain_service)
+                    "brain_cli": ("claude", "ucli")}
 
 # Serbest metin reviewer ayarları (panel Reviewer formu, 2026-11-08): boş değer anahtarı SİLER = varsayılan
 # (yuvalar: TEK iş kipi; model listeleri: katalogdaki tümü). Model listesi virgüllü, dar karakter kümesi.
@@ -7258,6 +7315,20 @@ def http_config(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         value = str(value or "").strip()
         if not re.match(r"^[A-Za-z0-9_.:/@\[\]-]{0,80}$", value):
             return {"ok": False, "error": "brain_model has invalid characters"}
+    elif field == "brain_service":
+        # YALNIZ brain_cli=ucli: ucli hizmet kimliği (claude = Anthropic API); boş = claude (anahtar silinir)
+        value = str(value or "").strip().lower()
+        if not re.match(r"^[a-z0-9_.-]{0,40}$", value):
+            return {"ok": False, "error": "brain_service has invalid characters"}
+    elif field == "brain_max_cost_usd":
+        # YALNIZ brain_cli=ucli: tur başına USD tavanı (0 = yok)
+        try:
+            f = float(str(value).replace(",", "."))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "brain_max_cost_usd must be a number"}
+        if not 0 <= f <= 50:
+            return {"ok": False, "error": "brain_max_cost_usd must be 0..50"}
+        value = str(round(f, 2))
     elif field == "brain_effort":
         value = str(value or "").strip().lower()
         if value not in ("", "low", "medium", "high", "xhigh", "max"):

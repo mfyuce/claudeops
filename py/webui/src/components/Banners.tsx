@@ -30,8 +30,8 @@ export function Banners({ onGoToDiagnostics }: BannersProps) {
     banners.push(
       <div className="banner bad" key="build-stale">
         {lang === "tr"
-          ? `Kod güncellendi ama servis eski kodla çalışıyor (çalışan ${data.build.running}, disk ${data.build.disk}): restart_drain gerekir.`
-          : `Code on disk is newer than the running service (running ${data.build.running}, disk ${data.build.disk}): restart_drain needed.`}
+          ? `Kod güncellendi ama servis eski kodla çalışıyor (çalışan ${data.build.running}, disk ${data.build.disk}): yeni sürüm servis yeniden başlatılınca devreye girer (systemctl --user restart claudeops-web.service).`
+          : `Code on disk is newer than the running service (running ${data.build.running}, disk ${data.build.disk}): the new version takes effect after a service restart (systemctl --user restart claudeops-web.service).`}
       </div>,
     );
   }

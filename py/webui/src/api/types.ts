@@ -591,7 +591,7 @@ export interface StatusPayload {
    * 0 = tavan yok). Eski backend'de yok. */
   /** Çalışan süreç commit'i / diskteki commit; `stale` = merge sonrası servis yeniden başlatılmadı. Eski backend'de yok. */
   build?: { running: string; disk: string; stale: boolean; started_at: number };
-  ucli_cost?: { today_usd: number; cap_usd: number; pct: number | null; cache_ttl: string; by_session?: { session: string; usd: number }[]; rate_1h_usd?: number; rate_15m_usd?: number; credit_total_usd?: number; spent_total_usd?: number; credit_left_usd?: number };
+  ucli_cost?: { today_usd: number; cap_usd: number; pct: number | null; cache_ttl: string; by_session?: { session: string; usd: number }[]; rate_1h_usd?: number; rate_15m_usd?: number; credit_total_usd?: number; spent_total_usd?: number; credit_left_usd?: number; credit_since?: string; credit_until?: string; days_left?: number; daily_budget_usd?: number };
   /** Read-only — `py/cops service install`'ın yazdığı `tunnel_url.txt`/
    * `tunnel_label.txt` (varsa). İkisi de dosya yoksa `null` (quick-tunnel'da
    * URL cloudflared'ın kendi log'undan gelir, `service install` hiç

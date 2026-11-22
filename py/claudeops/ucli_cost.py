@@ -124,13 +124,51 @@ def rate_usd_per_hour(now: Optional[float] = None, window_min: float = 60.0, bas
     return sum(rate_by_session(now, window_min, base, write_mult).values())
 
 
-def total_usd(base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> float:
-    """BİRİKMİŞ (tüm günler) toplam $: tüm oturum günlükleri, tarih süzgeci yok. Dizin yoksa 0."""
+def total_usd(base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT, since_ms: float = 0.0) -> float:
+    """BİRİKMİŞ toplam $: tüm oturum günlükleri; `since_ms` > 0 ise yalnız o andan sonrası (kredi dönemi). Dizin yoksa 0."""
     try:
         names = os.listdir(base)
     except OSError:
         return 0.0
-    return sum(rv.usage_cost_usd(os.path.join(base, n), "", write_mult=write_mult) for n in names if n.endswith(".jsonl"))
+    out = 0.0
+    for n in names:
+        if not n.endswith(".jsonl"):
+            continue
+        p = os.path.join(base, n)
+        try:
+            if since_ms > 0 and os.path.getmtime(p) * 1000.0 < since_ms:
+                continue        # dönem başlamadan önce son yazılmış günlük: o döneme harcama yazamaz
+        except OSError:
+            continue
+        out += rv.usage_cost_usd(p, "", since_ms=since_ms, write_mult=write_mult)
+    return out
+
+
+def _date_ms(day: str, end: bool = False) -> float:
+    """YYYY-MM-DD -> yerel gün başı (ya da `end`: ertesi gün başı) epoch ms; bozuksa 0."""
+    try:
+        y, m, d = (int(x) for x in day.split("-"))
+        t = time.mktime((y, m, d, 0, 0, 0, 0, 0, -1))
+    except (ValueError, OverflowError):
+        return 0.0
+    return (t + (86400 if end else 0)) * 1000.0
+
+
+def credit_window(cfg: Dict[str, Any], spent: float, now: float) -> Dict[str, Any]:
+    """Kredi dönemi özeti (saf): {credit_since, credit_until, days_left, daily_budget_usd}. Bitiş yoksa yalnız since."""
+    out: Dict[str, Any] = {}
+    if cfg.get("credit_since"):
+        out["credit_since"] = cfg["credit_since"]
+    until = str(cfg.get("credit_until") or "")
+    if until:
+        end_ms = _date_ms(until, end=True)
+        if end_ms > 0:
+            days = max(0.0, (end_ms / 1000.0 - now) / 86400.0)
+            out.update(credit_until=until, days_left=round(days, 1))
+            credit = float(cfg.get("credit_total_usd") or 0.0)
+            if credit > 0 and days > 0:
+                out["daily_budget_usd"] = round(max(0.0, credit - spent) / max(days, 1.0), 2)
+    return out
 
 
 def today_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> float:
@@ -148,7 +186,7 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = write_mult(cfg)
         by = per_session_usd(t, base, mult)
-        _CACHE.update(at=t, total=total_usd(base, mult), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
+        _CACHE.update(at=t, total=total_usd(base, mult, _date_ms(cfg.get("credit_since") or "")), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
                       rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
     cap = float(cfg["daily_cap_usd"])
     usd = float(_CACHE["usd"])
@@ -162,6 +200,10 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     if credit > 0:      # kalan = toplam - birikmiş harcama (alt sınır tahmini; negatife düşmez)
         spent = float(_CACHE.get("total") or 0.0)
         out.update(credit_total_usd=credit, spent_total_usd=round(spent, 4), credit_left_usd=round(max(0.0, credit - spent), 4))
+        out.update(credit_window(cfg, spent, t))
+    for k in ("credit_since", "credit_until"):      # tarih alanları kredi girilmemişken de panelde görünsün
+        if cfg.get(k):
+            out[k] = cfg[k]
     return out
 
 

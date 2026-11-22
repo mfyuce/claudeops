@@ -3030,6 +3030,12 @@ class World:
                                                                  # kayıtlı projenin başka adlı oturumu `manual` (sahibin, dokunulmaz)
     unavailable: frozenset = frozenset()                         # host'u şu an erişilemeyen (ya da uzak eylemi kapalı) projeler:
                                                                  # başlatılmaz, devir/DONE izi silinmez (görünümleri yok diye "kapandı" sayılmaz)
+    quota_held: frozenset = frozenset()                          # kota bekçisi (22 Kas): sayacı dolan sağlayıcıyla (claude aboneliği) açılan
+                                                                 # projeler; YALNIZ yeni başlatma yapılmaz (beyin ucli+API'deyken tüm değnekçi drain olmaz)
+
+    def start_held(self, project: str) -> bool:
+        """Bu proje bu tick'te başlatılamaz mı (host erişilemez ya da kota tutuyor)."""
+        return project in self.unavailable or project in self.quota_held
 
     def host_of(self, project: str) -> str:
         """Projenin host'u ("" = yerel)."""
@@ -4394,7 +4400,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             # "Hayır / paused kalsın / açma": faz değişmez, oturum açılmaz; cevap yalnız teslim edildi sayılır (21 Kas)
             actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı", {"question_id": q.id}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
-              and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
+              and starts < max_starts and _slots() > 0 and not (world is not None and world.start_held(target))):
             # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
             actions.append(Action("set_phase", target, "sahip cevabı geldi", {"phase": "planned"}))
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
@@ -4402,7 +4408,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             busy_names.add(target)
             last_directive_at[target] = now
         elif (projects[target].phase in ACTIVE_PHASES
-              and starts < max_starts and _slots() > 0 and not (world is not None and target in world.unavailable)):
+              and starts < max_starts and _slots() > 0 and not (world is not None and world.start_held(target))):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
             busy_names.add(target)
@@ -4467,6 +4473,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue
         if world is not None and p.name in world.unavailable:
             continue     # host erişilemiyor: görünümü yok diye "çalışmıyor" sayılıp başlatılmaz
+        if world is not None and p.name in world.quota_held:
+            continue     # kota bekçisi: projenin sağlayıcısının sayacı dolu (yalnız başlatma tutulur)
         if any(_project_key(k, projects) == p.name and now - float(v or 0.0) < BRAIN_STOP_COOLDOWN_SECONDS
                for k, v in dict(st.get("brain_stopped") or {}).items()):
             continue     # beyin "kalan iş yok / sahip kararı bekliyor" diye durdurdu: cadence soğuk bağlamla hemen yeniden açmaz

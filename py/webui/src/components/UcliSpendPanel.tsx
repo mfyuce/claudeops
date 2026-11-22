@@ -86,6 +86,12 @@ export function UcliSpendPanel() {
         <div title={tr ? "kalan = toplam kredi - birikmiş harcama (alt sınır tahmini)" : "left = total credit - accumulated spend (lower-bound estimate)"}>
           {tr ? "kalan kredi" : "credit left"}: <strong>${cost.credit_left_usd.toFixed(2)}</strong>
           <span className="opts-hint"> / ${(cost.credit_total_usd ?? 0).toFixed(0)} · {tr ? "harcanan" : "spent"} ${(cost.spent_total_usd ?? 0).toFixed(2)}</span>
+          {cost.days_left != null && (
+            <span className="opts-hint">
+              {" "}· {cost.days_left} {tr ? "gün kaldı" : "days left"}
+              {cost.daily_budget_usd != null && <> · {tr ? "günlük bütçe" : "daily budget"} <strong>${cost.daily_budget_usd.toFixed(2)}</strong></>}
+            </span>
+          )}
         </div>
       )}
       <label className="opts-hint" title={tr ? "Boş = kalan krediyi gösterme." : "Empty = hide remaining credit."}>
@@ -113,6 +119,29 @@ export function UcliSpendPanel() {
           }}
         />
       </label>
+      {(["credit_since", "credit_until"] as const).map((k) => (
+        <label key={k} className="opts-hint" title={k === "credit_since" ? (tr ? "Harcama bu günden itibaren sayılır (boş = tüm geçmiş)." : "Spend counts from this day (empty = all history).") : (tr ? "Kredinin son günü: kalan gün ve günlük bütçe buna göre." : "Last day of the credit: days left and daily budget use it.")}>
+          {" "}{k === "credit_since" ? (tr ? "kredi başlangıcı" : "credit since") : (tr ? "kredi bitişi" : "credit until")}{" "}
+          <input
+            type="date"
+            key={`${k}-${cost[k] ?? ""}`}
+            defaultValue={cost[k] ?? ""}
+            onBlur={(e) => {
+              const v = e.target.value;
+              if (v === (cost[k] ?? "")) return;
+              void (async () => {
+                try {
+                  const res = await apiSaveSettings({ ucli_cost: { [k]: v }, lang });
+                  setError(res.ok ? null : res.error);
+                } catch (err) {
+                  setError(describeApiError(err, t));
+                }
+                refresh();
+              })();
+            }}
+          />
+        </label>
+      ))}
       {error && <pre className="layout-result">✗ {error}</pre>}
       <span className="opts-hint">
         {tr ? `önbellek TTL: ${cost.cache_ttl || "1h"} · alt sınır tahmini` : `cache TTL: ${cost.cache_ttl || "1h"} · lower-bound estimate`}

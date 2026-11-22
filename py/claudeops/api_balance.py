@@ -103,7 +103,12 @@ def _local_cost(cost_state: Optional[Dict[str, Any]], note: str) -> Dict[str, An
     entries = [{"label": "ucli (Claude hizmeti) bugün, yerel sayaç", "percent": "" if cost_state.get("pct") is None else str(int(cost_state["pct"])),
                 "detail": f"{_usd(cost_state.get('today_usd'))}" + (f" / tavan {_usd(cost_state['cap_usd'])}" if cost_state.get("cap_usd") else "")}]
     if cost_state.get("credit_left_usd") is not None:
-        entries.append({"label": "Kredi (tahmini kalan)", "percent": "", "detail": _usd(cost_state["credit_left_usd"])})
+        extra = ""
+        if cost_state.get("days_left") is not None:
+            extra = f" · {cost_state['days_left']} gün kaldı ({cost_state.get('credit_until')})"
+            if cost_state.get("daily_budget_usd") is not None:
+                extra += f" · günlük bütçe {_usd(cost_state['daily_budget_usd'])}"
+        entries.append({"label": "Kredi (tahmini kalan)", "percent": "", "detail": _usd(cost_state["credit_left_usd"]) + extra})
     entries.append({"label": "Not", "percent": "", "detail": note})
     return {"supported": True, "available": True, "checked_via": "local", "entries": entries}
 

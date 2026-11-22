@@ -468,6 +468,9 @@ export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (
           sid={sid}
           model={String((state?.config as Record<string, unknown> | undefined)?.brain_model ?? "")}
           effort={String((state?.config as Record<string, unknown> | undefined)?.brain_effort ?? "")}
+          cli={String((state?.config as Record<string, unknown> | undefined)?.brain_cli ?? "claude")}
+          service={String((state?.config as Record<string, unknown> | undefined)?.brain_service ?? "")}
+          maxCost={String((state?.config as Record<string, unknown> | undefined)?.brain_max_cost_usd ?? "")}
           onSaved={() => void load().then(refresh)}
         />
       </details>
