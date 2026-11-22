@@ -1076,6 +1076,17 @@ class NegativeAnswerTest(unittest.TestCase):
             self.assertEqual(self._plan(phase, "Hayır, paused kalsın"), [("close_negative_answer", "p1")], phase)
             self.assertEqual(self._plan(phase, "Aç"), [("set_phase", "p1"), ("start", "p1")], phase)
 
+    def test_hold_answers_real_texts_do_not_reopen(self):
+        """22 Kas: sahip adına verilen uzun 'tut' cevapları paused projeyi açmamalı; olumlular açmalı."""
+        holds = ("TBD de kalsin, ILL/yazar istegi YAPMA, kaynaklar elde olanla devam", "2) Paused kalsin. Kota sifirlaninca yeniden sorulsun",
+                 "Faz paused kalsin, yuhem gelene dek", "istenmesin", "yuhem gelene dek bekle", "bilmiyorum", "claude")
+        for t in holds:
+            self.assertFalse(sw.is_open_answer(t), t)
+            self.assertEqual(self._plan("paused", t), [("close_negative_answer", "p1")], t)
+        for t in ("Aç", "1) Aç", "evet", "Evet, aç; Sonnet ile", "planned yap", "başla", "Sonnet ile aç"):
+            self.assertTrue(sw.is_open_answer(t), t)
+            self.assertEqual(self._plan("paused", t), [("set_phase", "p1"), ("start", "p1")], t)
+
     def test_sweep_question_has_options(self):
         projects = {"c": sw.Project(name="c", phase="paused", cadence_minutes=60)}
         acts, _ = sw.plan_tick([], projects, {"todo_seen": {"c": "h1"}}, _cfg(), 200000.0, [], [], open_work=lambda n: 3, todo_sha=lambda n: "h1")

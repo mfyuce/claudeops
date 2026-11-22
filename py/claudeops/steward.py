@@ -4306,7 +4306,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             last_directive_at[v.name] = now
         elif target in manual_projects:
             continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
-        elif projects[target].phase in ("done", "paused") and is_negative_answer(q.answer):
+        elif projects[target].phase in ("done", "paused") and (is_negative_answer(q.answer) or not is_open_answer(q.answer)):
             # "Hayır / paused kalsın / açma": faz değişmez, oturum açılmaz; cevap yalnız teslim edildi sayılır (21 Kas)
             actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı", {"question_id": q.id}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
@@ -4965,6 +4965,27 @@ def is_negative_answer(text: str) -> bool:
     başlıyorsa True: done/paused proje planned'a çekilip AÇILMAZ (21 Kas, wifi5gppr/fotocizimppr). Uzun cevap yönergedir, False. SAF."""
     t = (text or "").strip()
     return bool(t) and len(t) <= NEG_ANSWER_MAX_CHARS and bool(_NEG_ANSWER_RE.search(t))
+
+
+_OPEN_LEAD_RE = re.compile(r"^[\s\"'`*_\-\[(]*(?:a[çc][ıi]ls[ıi]n|a[çc]|ba[şs]la\w*|evet|planned|devam\w*|yes|start|ok)\b", re.IGNORECASE)
+_OPEN_ANY_RE = re.compile(r"\b(?:a[çc][ıi]ls[ıi]n|a[çc]|ba[şs]la\w*|evet|planned|yes|start)\b", re.IGNORECASE)
+_HOLD_ANY_RE = re.compile(r"kals[ıi]n|bekle|yapma|istenmesin|gelene\s+(?:dek|kadar)|\btbd\b|hay[ıi]r|a[çc]ma|\bsonra\b|\bpaused\b|\bdur\b|olmas[ıi]n|gerek\s+yok|\bno\b", re.IGNORECASE)
+_OPT_NUM_RE = re.compile(r"^\s*\d+\s*[).:\-]\s*")
+
+
+def is_open_answer(text: str) -> bool:
+    """22 Kas (esneklikppr/genetarihppr yeniden açıldı): paused/done projede sahip cevabı YALNIZ açıkça olumlu iş vericiyse
+    ("Aç", "evet", "başla", "planned", "devam") faz açar. Numaralı seçenek öneki ("2) ") atılır. Baştaki olumlu sözcük kazanır;
+    yoksa herhangi bir tutma kalıbı ("paused kalsın", "TBD'de kalsın", "yapma", "yuhem gelene dek", "sonra") TUTAR; hiçbiri yoksa
+    olumlu sözcük aranır; belirsiz cevap AÇMAZ (False). SAF."""
+    t = _OPT_NUM_RE.sub("", " ".join(str(text or "").split()))
+    if not t:
+        return False
+    if _OPEN_LEAD_RE.search(t):
+        return True
+    if _HOLD_ANY_RE.search(t):
+        return False
+    return bool(_OPEN_ANY_RE.search(t))
 
 
 def is_conditional_note(text: str) -> bool:
