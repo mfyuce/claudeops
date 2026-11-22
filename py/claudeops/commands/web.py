@@ -1912,6 +1912,7 @@ def _status_payload() -> dict:
                 # Uzak (gRPC) satırlar bu alanları taşımaz: panel `models[0]`/son seviyeye düşer.
                 "default_model": default_model_for(p),
                 "default_effort": default_effort_for(p),
+                "default_permission_mode": p.default_permission_mode(),
                 # permission_modes()'ın DAR alt kümesi: session çalışırken
                 # (Shift+Tab ile) gerçekten değiştirilebilenler. Boş liste →
                 # panel Terminal'de mod seçicisini hiç göstermez.

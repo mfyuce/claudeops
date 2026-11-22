@@ -27,7 +27,7 @@ import { describeResError } from "../../api/errors";
 import type { SelectionControls } from "../../state/selection";
 import { effectiveModel } from "../shared/effectiveModel";
 import { TabHint } from "../shared/TabHint";
-import { DEFAULT_PERMISSION_MODE, defaultEffort } from "./cliDefaults";
+import { defaultEffort, defaultPermissionMode } from "./cliDefaults";
 
 type BulkAction = "start" | "handover" | "compact" | "stop" | "forcestop" | "close" | "retire" | "reset" | "restart" | "newchat";
 
@@ -88,7 +88,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
       // Settings' default_model is the aggregator's own preference — only
       // meaningful for a local session, same rule as OptionsRow.tsx.
       model: s.host === LOCAL_HOST ? (data?.settings.default_model?.[s.cli] ?? "") : "",
-      permission_mode: DEFAULT_PERMISSION_MODE,
+      permission_mode: defaultPermissionMode(cliOptions),
       effort: defaultEffort(cliOptions),
       cli: s.cli,
       lang,
@@ -116,7 +116,7 @@ export function BulkBar({ tab, rows, selection }: BulkBarProps) {
           : s.running && effectiveModel(s)
             ? effectiveModel(s) // 2026-10-09: canlı model (live_model), kayıtlı değil
             : (data?.settings.default_model?.[s.cli] ?? ""),
-      permission_mode: DEFAULT_PERMISSION_MODE,
+      permission_mode: defaultPermissionMode(cliOptions),
       effort: defaultEffort(cliOptions),
       cli: s.cli,
       lang,

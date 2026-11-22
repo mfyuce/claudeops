@@ -513,6 +513,11 @@ class CliProvider(ABC):
         known = self.model_effort_levels(model)
         return list(known) if known else self.effort_levels()
 
+    def default_permission_mode(self) -> str:
+        """PANELİN yeni oturum/devralma formunda ön-seçili izin modu (sunucu içi yollar `permission_modes()[0]`'ı kullanmaya devam eder,
+        bu yalnız panel varsayılanıdır). "auto" = eski davranış (seçici listede yoksa ilk seçenek görünür)."""
+        return "auto"
+
     def preferred_default_model(self) -> Optional[str]:
         """Ayarlarda `default_model` kaydı YOKKEN yeni oturum için tercih edilen model (`model_choices()`te yoksa
         yok sayılır). None = listenin ilki (eski davranış). Bkz. `settings.default_model_for`."""

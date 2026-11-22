@@ -1071,6 +1071,11 @@ class UcliProvider(CliProvider):
     def model_choices(self) -> List[str]:
         return _live_models()
 
+    def default_permission_mode(self) -> str:
+        # Sahip 25 Eyl + 22 Kas: panelden açılan ucli oturumları yazma izinli başlar; `read-only` seçilebilir kalır. Steward beyni,
+        # diag ask ve stuck yeniden başlatma `permission_modes()[0]` (read-only) kullanır, bundan etkilenmez.
+        return _ALLOW_EDIT
+
     def permission_modes(self) -> List[str]:
         return _PERMISSION_MODES
 

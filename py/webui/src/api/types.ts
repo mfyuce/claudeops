@@ -340,6 +340,8 @@ export interface CliOptions {
    * callers fall back to `models[0]` / the last effort level. */
   default_model?: string;
   default_effort?: string;
+  /** Panel form's pre-selected permission mode (ucli: allow-edit; others "auto"). Absent on remote rows: "auto". */
+  default_permission_mode?: string;
 }
 
 export const EMPTY_CLI_OPTIONS: CliOptions = { models: [], permission_modes: [], effort_levels: [], cyclable_modes: [] };

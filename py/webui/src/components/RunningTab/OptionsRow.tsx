@@ -35,7 +35,7 @@ import type { TabKey } from "../../state/tabs";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
 import { EMPTY_UCLI_START, serviceEffortLevels, toCliOpts, UcliStartOpts, type UcliPreset, type UcliStartState } from "./UcliStartOpts";
-import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
+import { defaultEffort, defaultModel, defaultPermissionMode } from "./cliDefaults";
 
 type Mode = "resume" | "reset" | "newchat" | "restart";
 
@@ -125,7 +125,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     return data?.settings.default_model?.[session.cli] ?? "";
   });
   const [modelOther, setModelOther] = useState("");
-  const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
+  const [permissionMode, setPermissionMode] = useState(() => defaultPermissionMode(cliOptionsFor(data, session.host, session.cli)));
   const [effort, setEffort] = useState(() => defaultEffort(cliOptionsFor(data, session.host, session.cli)));
   const [busy, setBusy] = useState(false);
   const [ucliStart, setUcliStart] = useState<UcliStartState>(EMPTY_UCLI_START);
@@ -179,7 +179,7 @@ export function OptionsRow({ session, colspan, onClose, onSwitchTab }: OptionsRo
     setCli(newCli);
     setModel(session.host === LOCAL_HOST ? (data?.settings.default_model?.[newCli] ?? "") : "");
     setModelOther("");
-    setPermissionMode(DEFAULT_PERMISSION_MODE);
+    setPermissionMode(defaultPermissionMode(cliOptionsFor(data, session.host, newCli)));
     setEffort(defaultEffort(cliOptionsFor(data, session.host, newCli)));
     setUcliStart(EMPTY_UCLI_START);
   }

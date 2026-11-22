@@ -24,7 +24,7 @@ import { cliOptionsFor } from "../../state/hosts";
 import type { SessionInfo } from "../../api/types";
 import { effectiveModel } from "../shared/effectiveModel";
 import { CliFields, OTHER_MODEL_VALUE } from "./CliFields";
-import { DEFAULT_PERMISSION_MODE, defaultEffort, defaultModel } from "./cliDefaults";
+import { defaultEffort, defaultModel, defaultPermissionMode } from "./cliDefaults";
 
 interface AdoptRowProps {
   session: SessionInfo;
@@ -47,7 +47,7 @@ export function AdoptRow({ session, colspan, onClose }: AdoptRowProps) {
     return live && live !== session.model ? live : "";
   });
   const [modelOther, setModelOther] = useState("");
-  const [permissionMode, setPermissionMode] = useState(DEFAULT_PERMISSION_MODE);
+  const [permissionMode, setPermissionMode] = useState(() => defaultPermissionMode(cliOptions));
   const [effort, setEffort] = useState(() => defaultEffort(cliOptions));
   const [busy, setBusy] = useState(false);
 

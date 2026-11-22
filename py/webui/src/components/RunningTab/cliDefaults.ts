@@ -10,6 +10,12 @@ import type { CliOptions } from "../../api/types";
  * not "first item in the CLI's permission_modes list". */
 export const DEFAULT_PERMISSION_MODE = "auto";
 
+/** Panel form default: the provider's `default_permission_mode` when it is a listed mode (ucli: allow-edit), else the literal "auto". */
+export function defaultPermissionMode(opts: CliOptions): string {
+  const m = opts.default_permission_mode;
+  return m && opts.permission_modes.includes(m) ? m : DEFAULT_PERMISSION_MODE;
+}
+
 /** The server's `default_effort` (Settings override, else the provider's
  * default: claude medium) when it is a valid level; otherwise the LAST entry
  * (every provider's list ends with its highest level, e.g. "max") — the old
