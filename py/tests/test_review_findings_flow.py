@@ -973,7 +973,7 @@ class TestBeforeTbd(_Flow):
 
 
 class StoreReportsTest(unittest.TestCase):
-    """TBD#118 ilk dilim: biten koşunun maskeli raporu özel klasöre kopyalanır; io/model/hata günlüğü SAKLANMAZ; git yok."""
+    """TBD#118 ilk dilim: biten koşunun maskeli raporu özel klasöre kopyalanır; model/hata günlüğü SAKLANMAZ, io günlüğü MASKELİ saklanır (D1); git yok."""
 
     def test_copies_report_and_usage_once_and_skips_private_traces(self):
         with tempfile.TemporaryDirectory() as d:
@@ -981,7 +981,7 @@ class StoreReportsTest(unittest.TestCase):
             os.makedirs(out)
             run = os.path.join(src, "oiso", "evren", "m", "low", "20261024164009")
             os.makedirs(run)
-            for n, body in (("20261024164009.md", "rapor"), ("20261024164009.usage.jsonl", "{}"), ("20261024164009.io.jsonl", "sır"),
+            for n, body in (("20261024164009.md", "rapor"), ("20261024164009.usage.jsonl", "{}"), ("20261024164009.io.jsonl", '{"text":"anahtar sk-ant-abcdefgh12345678 burada"}'),
                             ("20261024164009.model.md", "taslak"), ("20261024164009.err.md", "hata")):
                 with open(os.path.join(run, n), "w") as f:
                     f.write(body)
@@ -990,10 +990,15 @@ class StoreReportsTest(unittest.TestCase):
             cfg = NS(sid="rev", review_store_dir=out)
             with mock.patch.object(sw, "_pp", lambda sid: NS(reviews=src)):
                 got = wr.store_reports(cfg)
-                self.assertEqual(sorted(os.path.basename(g) for g in got), ["20261024164009.md", "20261024164009.usage.jsonl"])
+                self.assertEqual(sorted(os.path.basename(g) for g in got), ["20261024164009.io.jsonl", "20261024164009.md", "20261024164009.usage.jsonl"])
                 self.assertEqual(wr.store_reports(cfg), [])                    # ikinci tur: yeniden yazılmaz
             dst = os.path.join(out, "reviews", "oiso", "evren", "m", "low", "20261024164009")
-            self.assertEqual(sorted(os.listdir(dst)), ["20261024164009.md", "20261024164009.usage.jsonl"])
+            self.assertEqual(sorted(os.listdir(dst)), ["20261024164009.io.jsonl", "20261024164009.md", "20261024164009.usage.jsonl"])
+            with open(os.path.join(dst, "20261024164009.io.jsonl")) as f:     # D1: TÜM modellerin io günlüğü depoda, MASKELİ
+                masked = f.read()
+            self.assertNotIn("sk-ant-abcdefgh12345678", masked)
+            with open(os.path.join(run, "20261024164009.io.jsonl")) as f:      # kaynak değişmez
+                self.assertIn("sk-ant-abcdefgh12345678", f.read())
             self.assertFalse(os.path.exists(os.path.join(out, ".git")))
             with mock.patch.object(sw, "_pp", lambda sid: NS(reviews=src)):
                 self.assertEqual(wr.store_reports(NS(sid="rev", review_store_dir="")), [])

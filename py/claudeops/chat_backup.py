@@ -77,8 +77,8 @@ def status() -> Dict[str, Any]:
 
 def install() -> Dict[str, Any]:
     """Birimleri yazar, timer'ı etkinleştirir. Başarısızlıkta hata + `manual_command` (sahip elle çalıştırır)."""
-    if not os.path.isfile(SCRIPT):
-        return {"ok": False, "error": "chat_mirror.sh yok: " + SCRIPT}
+    from . import chat_sources
+    chat_sources.write_mirror_script(SCRIPT)      # D1: betik kayıt yerleri listesinden üretilir (yoksa oluşur, değiştiyse yenilenir)
     os.makedirs(UNIT_DIR, exist_ok=True)
     for name, body in ((UNIT + ".service", SERVICE), (UNIT + ".timer", TIMER)):
         with open(os.path.join(UNIT_DIR, name), "w", encoding="utf-8") as f:
@@ -94,7 +94,7 @@ def install() -> Dict[str, Any]:
 
 def run_now() -> Dict[str, Any]:
     """Betiği şimdi başlatır (arka planda, bekleme yok)."""
-    if not os.path.isfile(SCRIPT):
-        return {"ok": False, "error": "chat_mirror.sh yok"}
+    from . import chat_sources
+    chat_sources.write_mirror_script(SCRIPT)
     subprocess.Popen(["/bin/bash", SCRIPT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     return {"ok": True}

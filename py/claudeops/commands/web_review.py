@@ -3262,6 +3262,15 @@ def store_commit(cfg: Any, now: float, run: Optional[Callable] = None, force: bo
 _STORE_DENIED: Dict[str, str] = {}   # `review_store_denied` olayı aynı nedenle bir kez
 
 
+def _copy_masked(src: str, dst: str) -> None:
+    """Sohbet günlüğünü sır örüntüleri maskelenmiş olarak kopyalar (kaynak değişmez; maskeli kopya `commit_reviews` taramasından geçer)."""
+    from .. import periodic
+    with open(src, encoding="utf-8", errors="replace") as f:
+        txt = f.read()
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(periodic.redact(txt)[0])
+
+
 def store_reports(cfg: Any) -> List[str]:
     """TBD#118 ilk dilim: `review_store_dir` (sahibin ÖZEL klasörü) doluysa `reviews/<proje>/<mode>/<model>/<effort>/<ts>/` altındaki
     biten koşunun raporu ve sayaç günlüğü `<klasör>/reviews/...` altına AYNI göreli yolla kopyalanır (var olan dosya yeniden
@@ -3287,7 +3296,7 @@ def store_reports(cfg: Any) -> List[str]:
             continue
         for name in sorted(files):
             rel = os.path.relpath(os.path.join(dirpath, name), src_root)
-            fable_io = name == f"{ts}.io.jsonl" and rs.is_fable_path(rel)     # Fable: oturum günlüğü de saklanır (17 Kas, sahip: hiçbiri kaybolmasın)
+            fable_io = name == f"{ts}.io.jsonl"     # TÜM modellerin oturum günlüğü saklanır (22 Kas, sahip; önce yalnız Fable); depo kopyası MASKELİ
             if not (name.startswith(ts) and (name.endswith(STORE_SUFFIXES) or fable_io)) or name.endswith(".model.md") or ".err" in name \
                     or rv.FINDING_FILE_RE.search(name):
                 continue
@@ -3296,7 +3305,10 @@ def store_reports(cfg: Any) -> List[str]:
                 continue
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             tmp = _uniq_tmp(dst)
-            shutil.copyfile(os.path.join(dirpath, name), tmp)
+            if name.endswith(".io.jsonl"):
+                _copy_masked(os.path.join(dirpath, name), tmp)
+            else:
+                shutil.copyfile(os.path.join(dirpath, name), tmp)
             os.replace(tmp, dst)
             copied.append(rel)
     if copied:
