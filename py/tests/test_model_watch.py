@@ -41,5 +41,20 @@ class CompareTests(unittest.TestCase):
             self.assertEqual(json.load(open(p))["providers"]["agy"]["models"]["z"], "present")
 
 
+class MarkInstancesGoneTests(unittest.TestCase):
+    def test_marks_gone_clears_on_return_and_skips_empty_scan(self):
+        from unittest import mock
+        from claudeops import instances as ins
+        recs = {"a": {"cli": "ucli", "model": "old"}, "b": {"cli": "ucli", "model": "new", "model_gone": True},
+                "c": {"cli": "ucli", "model": "auto"}, "d": {"cli": "agy", "model": "x", "model_gone": True}, "e": {"cli": "ucli", "model": "claude-sonnet-5-5"}}
+        with mock.patch.object(ins, "_mutate", lambda fn: fn(recs)):
+            n = ins.mark_models_gone({"ucli": {"new"}, "agy": set()})
+        self.assertEqual(n, 3)
+        self.assertTrue(recs["a"]["model_gone"])
+        self.assertNotIn("model_gone", recs["b"])
+        self.assertNotIn("model_gone", recs["c"])
+        self.assertNotIn("model_gone", recs["d"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5043,7 +5043,8 @@ def _quota_poll() -> None:
             prev = _QUOTA.get("decision")
             _QUOTA.update(usage=u, decision=d)
             if prev is None or prev.action != d.action:
-                sw.log_event("quota_decision", paths="default", action=d.action, used=u.week_pct, cap=d.cap, reason=d.reason)
+                sw.log_event("quota_decision", paths="default", action=d.action, used=u.week_pct, cap=d.cap, reason=d.reason,
+                             session_pct=u.session_pct, fable_pct=u.fable_pct, reset_ts=u.reset_ts)
             lvl = {"shutdown": 1, "stop": 2}.get(d.action, 0)
             go = lvl > int(_QUOTA.get("level") or 0)
             _QUOTA["level"] = lvl if (go or lvl == 0) else _QUOTA.get("level")
@@ -5129,7 +5130,7 @@ def ucli_cost_watch(base: Optional[sw.Config] = None) -> Dict[str, Any]:
                 c = steward_config(sid)
             except Exception:
                 continue
-            if c.brain_cli == "ucli":
+            if c.brain_cli == "ucli" and all(c.brain_name != t.brain_name for t in targets):   # steward_ids() "default"u da döndürür: aynı beyin iki kez sayılmasın
                 targets.append(c)
         failed = 0
         stopped_n = 0
@@ -6501,10 +6502,11 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
 
 def http_idea(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if data.get("id"):
-        i = sw.update_idea(str(data["id"]), status=data.get("status"), project=data.get("project"), paths=sid)
+        i = sw.update_idea(str(data["id"]), status=data.get("status"), project=data.get("project"), paths=sid,
+                           reason=data.get("reason"))
         if i is None:
             return {"ok": False, "error": "unknown idea id"}
-        sw.log_event("idea_update", paths=sid, id=i.id, status=i.status, project=i.project)
+        sw.log_event("idea_update", paths=sid, id=i.id, status=i.status, project=i.project, reason=i.reason)
         return {"ok": True, "idea": dataclasses.asdict(i)}
     proj = str(data.get("project") or "").strip()
     if proj and proj not in sw.load_projects(sid):

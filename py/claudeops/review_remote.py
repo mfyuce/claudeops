@@ -22,10 +22,10 @@ DEFAULT_ROOTS = ("~/work/projects/tmp", "~/work/projects")
 def ask_text(project: str, host: str, lang: str = "tr") -> str:
     if lang == "en":
         return (f"Project {project} runs on remote host {host}. Where should the reviewer work on it: a LOCAL COPY "
-                f"(git pull --ff-only before each review, never writes to the remote), REMOTE (not available yet; "
-                f"recorded only) or skip it (no review)? You can also reply with the local clone's absolute path.")
+                f"(git pull --ff-only before each review, never writes to the remote), REMOTE (runs on the remote host; needs the "
+                f"driver and the remote-action gates) or skip it (no review)? You can also reply with the local clone's absolute path.")
     return (f"{project} projesi {host} uzak host'unda. Reviewer üzerinde nerede çalışsın: YEREL KOPYA (her review "
-            f"öncesi git pull --ff-only, uzağa yazılmaz), UZAK (henüz çalışmaz; yalnız kaydedilir) ya da vazgeç "
+            f"öncesi git pull --ff-only, uzağa yazılmaz), UZAK (uzak host'ta çalışır; sürücü ve uzak eylem kapıları gerekir) ya da vazgeç "
             f"(review yok)? Yerel kopyanın mutlak yolunu da yazabilirsin.")
 
 

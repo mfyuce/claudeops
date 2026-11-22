@@ -153,7 +153,7 @@ def _idea(port: int, args: dict) -> dict:
 def _idea_update(port: int, args: dict) -> dict:
     if not args.get("id") or not args.get("status"):
         return {"ok": False, "error": "id and status are required"}
-    return _api(port, "POST", "/api/steward/idea", _pick(args, "id", "status", "project"))
+    return _api(port, "POST", "/api/steward/idea", _pick(args, "id", "status", "project", "reason"))
 
 
 def _questions(port: int, args: dict) -> dict:
@@ -243,8 +243,8 @@ TOOLS: List[Dict[str, Any]] = [
      "description": "Record a new idea in the inbox.",
      "inputSchema": _obj({"text": _S}, ["text"])},
     {"name": "steward_idea_update",
-     "description": "Triage an idea: status project|later|dropped (+ project name when it became one).",
-     "inputSchema": _obj({"id": _S, "status": _S, "project": _S}, ["id", "status"])},
+     "description": "Triage an idea: status project|later|dropped (+ project name when it became one; give a short `reason` when dropping or deferring).",
+     "inputSchema": _obj({"id": _S, "status": _S, "project": _S, "reason": _S}, ["id", "status"])},
     {"name": "steward_questions",
      "description": "List questions (status open|answered|all).",
      "inputSchema": _obj({"status": _S}, [])},

@@ -81,6 +81,10 @@ class StoreTest(_Tmp):
         i = sw.add_idea("fikir", source="cli")
         self.assertEqual(sw.update_idea(i.id, status="project", project="yeni").project, "yeni")
         self.assertIsNone(sw.update_idea("yok", status="dropped"))
+        j = sw.update_idea(i.id, status="dropped", reason="  proje içi\nküçük iş  ")
+        self.assertEqual((j.status, j.reason), ("dropped", "proje içi küçük iş"))
+        self.assertEqual(sw.load_ideas()[0].reason, "proje içi küçük iş")      # kalıcı
+        self.assertEqual(sw.update_idea(i.id, status="later").reason, "proje içi küçük iş")   # reason verilmezse korunur
         sw.log_event("x", a=1)
         self.assertEqual(sw.tail_log(5)[-1]["a"], 1)
 

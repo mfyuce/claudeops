@@ -50,6 +50,12 @@ class CostWatch(unittest.TestCase):
             ws.ucli_cost_watch(self.cfg); ws.ucli_cost_watch(self.cfg)
         self.assertEqual((len(self.sent), len(self.stops)), (1, 1))
 
+    def test_default_identity_in_steward_ids_not_double_counted(self):
+        with self._state(10.2), mock.patch.object(ws, "steward_ids", lambda: ["default"]), \
+             mock.patch.object(ws, "steward_config", lambda sid="default": self.cfg):
+            ws.ucli_cost_watch(self.cfg)
+        self.assertEqual(len(self.stops), 1)
+
     def test_claude_brain_not_stopped(self):
         self.cfg.brain_cli = "claude"
         with self._state(11):
@@ -73,6 +79,7 @@ class CostWatch(unittest.TestCase):
     def test_cap_stops_all_ucli_identities(self):
         def cfg_for(sid):
             c = sw.Config(); c.brain_cli = "claude" if sid == "b" else "ucli"
+            c.brain_name = f"brain-{sid}"      # gerçekte kimlikten türetilir (steward_config)
             return c
         with mock.patch.object(ws, "steward_ids", lambda: ["a", "b", "c"]), \
                 mock.patch.object(ws, "steward_config", cfg_for), self._state(11):

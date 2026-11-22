@@ -26,13 +26,36 @@ MAX_ATTEMPTS = 3                    # error/model_fallback/partial çifti bu den
 MODE_MAX_ATTEMPTS = {"evren": 1, "anthropic": 1}    # Evren: 20 dk zaman aşımı kota yakar, pencere başına en çok 1 deneme (sahip kararı 2026-10-24)
 
 
-UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma")     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
+CAPACITY_ERROR_PREFIX = "capacity:"                # geçici sağlayıcı sıkışıklığı (Evren 429/503): deneme hakkını tüketmez, `retry_at`a dek beklenir
+CAPACITY_RETRY_MIN = 300.0                         # Retry-After yoksa bekleme (sn); üst sınır CAPACITY_RETRY_MAX
+CAPACITY_RETRY_MAX = 1800.0
+CAPACITY_MAX_TRIES = 6                             # bu kadar denemeden sonra capacity hatası normal deneme gibi sayılır
+_CAPACITY_RE = re.compile(r"model_capacity_exhausted|\b429\b|\b503\b|rate.?limit|too many requests|service unavailable", re.I)
+_RETRY_AFTER_RE = re.compile(r"retry[- ]?after\W{0,3}(\d+)", re.I)
+
+
+def is_capacity_error(*texts: Any) -> bool:
+    return any(_CAPACITY_RE.search(str(t or "")[-20000:]) for t in texts)
+
+
+def capacity_retry_seconds(*texts: Any) -> float:
+    """Sağlayıcının `Retry-After` değeri (sn) varsa o, yoksa 300 sn; [300, 1800] aralığına kırpılır."""
+    for t in texts:
+        m = _RETRY_AFTER_RE.search(str(t or "")[-20000:])
+        if m:
+            return min(CAPACITY_RETRY_MAX, max(CAPACITY_RETRY_MIN, float(m.group(1))))
+    return CAPACITY_RETRY_MIN
+
+
+UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma", CAPACITY_ERROR_PREFIX)     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
 
 
 def counts_as_attempt(rec: Any) -> bool:
     """Bu çift kaydının hatası deneme hakkını TÜKETİR mi: restart/iptal/spawn hatası tüketmez (aynı çift 30 gün kilitlenmesin);
     gerçek zaman aşımı/`partial`/rc≠0 tüketir."""
     err = str((rec or {}).get("error") or "")
+    if err.startswith(CAPACITY_ERROR_PREFIX) and int(_num((rec or {}).get("attempts"))) > CAPACITY_MAX_TRIES:
+        return True                       # sağlayıcı kalıcı sıkışıksa sonsuz yeniden deneme yok: sınırdan sonra normal deneme sayılır
     return not any(err.startswith(p) for p in UNCOUNTED_ERRORS)
 
 
@@ -340,6 +363,9 @@ def next_review(pool: Any, history: Any, targets: Sequence[ReviewTarget], now: f
                     and int(_num(r.get("attempts"))) >= max_attempts(t.mode) and counts_as_attempt(r)
                     and now - _num(r.get("started_at")) < window):
                 continue
+            if (isinstance(r, dict) and r.get("status") == "error" and str(r.get("error") or "").startswith(CAPACITY_ERROR_PREFIX)
+                    and now < _num(r.get("retry_at"))):
+                continue                         # geçici sıkışıklık: geri çekilme süresi dolana dek sıra başka çiftlere geçer (kuyruk sonuna atma)
             if model_family(t) not in covered:   # her model ailesinden en az bir koşu: henüz kapsanmamış aile önce
                 pick = t
                 break

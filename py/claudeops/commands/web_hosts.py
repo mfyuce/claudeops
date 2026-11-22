@@ -1522,17 +1522,21 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
             existing = None
         else:
             silent_old = None
+        start_failed = False
         try:
             consumer = _start_status_consumer(host, tier)
         except Exception:
-            # Yeni consumer başlatılamadı — eski girdiye (varsa) HİÇ dokunma,
-            # olduğu gibi kalsın (hâlâ alive'sa eski tier'de servis etmeye
-            # devam eder, ölüyse bir sonraki çağrı zaten yeniden dener).
-            if silent_old is not None:
-                silent_old.stop()
-            return False
-        consumer.endpoint = endpoint
-        _status_consumers[name] = consumer
+            start_failed = True
+        if not start_failed:
+            consumer.endpoint = endpoint
+            _status_consumers[name] = consumer
+    if start_failed:
+        # Yeni consumer başlatılamadı — eski girdiye (varsa) HİÇ dokunma,
+        # olduğu gibi kalsın (hâlâ alive'sa eski tier'de servis etmeye
+        # devam eder, ölüyse bir sonraki çağrı zaten yeniden dener).
+        if silent_old is not None:
+            silent_old.stop()      # kilidin DIŞINDA: stop() ağ I/O yapabilir (review R-11)
+        return False
     if existing is not None:
         existing.stop()  # ESKİ (tier değişmiş/ölmüş) consumer'ı kilidin DIŞINDA durdur — stop() ağ I/O yapabilir
     if silent_old is not None:

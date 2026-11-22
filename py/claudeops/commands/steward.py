@@ -502,7 +502,7 @@ def cmd_ideas(args) -> int:
         print("fikir yok")
         return 0
     for i in ideas:
-        print(f"[{i.id}] {i.status:<7} {i.project or '-':<16} {i.text[:140]}")
+        print(f"[{i.id}] {i.status:<7} {i.project or '-':<16} {i.text[:140]}" + (f"  (neden: {i.reason})" if i.reason else ""))
     return 0
 
 

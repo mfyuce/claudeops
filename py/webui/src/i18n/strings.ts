@@ -487,6 +487,7 @@ export interface Strings {
   snapshotHiddenLabel: string;
   snapshotResultSummary: (started: number, alreadyRunning: number, failed: number) => string;
   snapshotMirrorsSuffix: (mirrors: number) => string;
+  snapshotRemoteNote: (local: number, remote: number) => string;
   snapshotMirrorResult: (opened: number, alreadyOpen: number, failed: number, skipped: number) => string;
   snapshotKindManual: string;
   snapshotKindClosing: string;
@@ -1502,6 +1503,8 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} başlatıldı, ${alreadyRunning} zaten çalışıyordu, ${failed} başarısız`,
     snapshotMirrorsSuffix: (mirrors) => (mirrors > 0 ? `, ${mirrors} mirror penceresi` : ""),
+    snapshotRemoteNote: (local, remote) =>
+      `Şu an ${local} yerel oturum çalışıyor; snapshot yalnız yerel oturumları kaydeder. ${remote} uzak host oturumu kapsam dışı.`,
     snapshotMirrorResult: (opened, alreadyOpen, failed, skipped) =>
       `mirror pencereleri: ${opened} açıldı, ${alreadyOpen} zaten açıktı, ${failed} başarısız` +
       (skipped > 0 ? `, ${skipped} atlandı (gizli başlatma)` : ""),
@@ -2539,6 +2542,8 @@ export const STRINGS: Record<Lang, Strings> = {
     snapshotResultSummary: (started, alreadyRunning, failed) =>
       `${started} started, ${alreadyRunning} already running, ${failed} failed`,
     snapshotMirrorsSuffix: (mirrors) => (mirrors > 0 ? `, ${mirrors} mirror window(s)` : ""),
+    snapshotRemoteNote: (local, remote) =>
+      `${local} local session(s) running now; a snapshot saves local sessions only. ${remote} remote-host session(s) are not covered.`,
     snapshotMirrorResult: (opened, alreadyOpen, failed, skipped) =>
       `mirror windows: ${opened} opened, ${alreadyOpen} already open, ${failed} failed` +
       (skipped > 0 ? `, ${skipped} skipped (hidden start)` : ""),

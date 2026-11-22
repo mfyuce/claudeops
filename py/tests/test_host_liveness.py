@@ -393,3 +393,27 @@ class OutageScenarioTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnsureConsumerStopOutsideLock(unittest.TestCase):
+    """review R-11: sessiz eski consumer, yenisi başlatılamasa da kilidin DIŞINDA durdurulur."""
+    def test_silent_old_stopped_without_lock_when_start_fails(self):
+        from unittest import mock
+        from claudeops.commands import web_hosts
+        seen = []
+
+        class Old:
+            tier = "ws"; has_data = True
+            endpoint = ("", "http://a", "t")
+            def is_alive(self): return True
+            def silent_seconds(self): return 10 ** 6
+            def stop(self): seen.append(web_hosts._status_consumer_lock.locked())
+
+        h = {"name": "h9", "token": "t", "base_url": "http://a", "grpc_url": ""}
+        with mock.patch.object(web_hosts, "get_tier", return_value="ws"), \
+             mock.patch.object(web_hosts, "_start_status_consumer", side_effect=RuntimeError("x")):
+            web_hosts._status_consumers.clear()
+            web_hosts._status_consumers["h9"] = Old()
+            self.assertFalse(web_hosts._ensure_status_consumer(h))
+            web_hosts._status_consumers.clear()
+        self.assertEqual(seen, [False])

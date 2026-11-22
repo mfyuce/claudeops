@@ -163,6 +163,29 @@ def add_missing(records: Dict[str, dict]) -> int:
     return int(_mutate(_apply) or 0)
 
 
+def mark_models_gone(live: Dict[str, "set"]) -> int:
+    """Canlı model listesinde artık olmayan kayıtlara `model_gone: true` yazar (silmez); geri gelen modelde bayrak kalkar.
+    `live`: {cli: {model,...}}; yalnız listesi BOŞ olmayan cli'lar değerlendirilir (boş = tarama başarısız, yanlış işaret yok)."""
+    def fn(recs: Dict[str, dict]) -> int:
+        n = 0
+        for rec in recs.values():
+            models = live.get(rec.get("cli") or "")
+            m = rec.get("model")
+            if not models or not m or m in ("-", "auto") or m.startswith("claude-"):   # claude-* ucli'de Claude hizmeti, Evren listesinde olmaz
+                if rec.pop("model_gone", None):      # değerlendirilmeyen kayıtta eski bayrak kalmasın
+                    n += 1
+                continue
+            gone = m not in models
+            if bool(rec.get("model_gone")) != gone:
+                if gone:
+                    rec["model_gone"] = True
+                else:
+                    rec.pop("model_gone", None)
+                n += 1
+        return n
+    return int(_mutate(fn))
+
+
 def forget_instance(name: str) -> bool:
     """Geçmiş'ten gizler ama kaydı SİLMEZ: isim rezerve kalmalı (bkz. modül docstring'i)."""
 

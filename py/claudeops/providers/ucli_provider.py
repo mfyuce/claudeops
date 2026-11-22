@@ -1013,6 +1013,11 @@ class UcliProvider(CliProvider):
             raise OneshotError("ucli: boş yanıt")
         return text
 
+    def env_overrides(self, session_name: str) -> Dict[str, str]:
+        # TBD 63 P-4 (sahip onayı): tokio işçi ipliği 1 (ölçüm: boşta 10 -> 3 iplik, PSS -0,11 MiB/örnek). Yalnız filo
+        # oturumu (`chat --repl`); `serve http` bu sağlayıcıdan açılmaz. Komut satırı sözleşmesi (build_inner_command) değişmez.
+        return {"TOKIO_WORKER_THREADS": "1"}
+
     def matches_proc(self, cmd: List[str]) -> bool:
         # PROC-07: filo oturumu HER ZAMAN `chat --repl` (`build_inner_command`); `--repl`siz ucli (io_providers tek atımlık
         # `chat --session X <prompt>`, reviewer koşuları) filo oturumu DEĞİL: keşfe girip `_stop`un hedefi olmasın
