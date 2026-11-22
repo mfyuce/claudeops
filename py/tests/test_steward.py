@@ -3637,3 +3637,30 @@ class UcliStuckLadderTest(unittest.TestCase):
         self.assertEqual(ws._ucli_stuck_update("u", True, now=103.0), "")           # 6 saat içinde tekrar sorma
         self.assertEqual(ws._ucli_stuck_update("u", False, now=104.0), "")          # başarı: sıfırla
         self.assertEqual(ws._ucli_stuck_update("u", True, now=105.0), "")
+
+
+class RemoteRespawnNoteTest(unittest.TestCase):
+    """D24: uzak respawn da süresi dolmuş devirde eski oturumun son metnini ilk yönergeye ekler; notsuzsa boş yönerge."""
+    def _run(self, note):
+        from claudeops.commands import web_steward as ws
+        seen = {}
+        def fake_give(project, text, **kw):
+            seen["text"] = text
+            return {"ok": True}
+        p = sw.Project(name="p1", phase="planned", cadence_minutes=60)
+        with mock.patch.object(ws, "_remote_stop_and_wait", lambda *a, **k: None), \
+                mock.patch.object(ws, "_main_model_effort", lambda *a, **k: ("", "")), \
+                mock.patch.object(ws, "_ensure_running_remote", lambda *a, **k: {"ok": True, "name": "p1x"}), \
+                mock.patch.object(ws, "_give_directive", fake_give), \
+                mock.patch.object(sw, "log_event", lambda *a, **k: None):
+            res = ws._remote_respawn("p1", "h1", p, _cfg(), None, None, note=note)
+        return res, seen
+
+    def test_note_reaches_directive(self):
+        res, seen = self._run("önceki durum: Y kaldı")
+        self.assertTrue(res["ok"])
+        self.assertEqual(seen["text"], "önceki durum: Y kaldı")
+
+    def test_no_note_keeps_empty_directive(self):
+        _, seen = self._run("")
+        self.assertEqual(seen["text"], "")

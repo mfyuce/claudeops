@@ -3397,7 +3397,7 @@ def _remote_stop_and_wait(name: str, host: str, world: sw.World, sid: str, actor
 
 
 def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw.Config, world: sw.World,
-                    rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
+                    rt: Optional[_RemoteTick] = None, note: str = "") -> Dict[str, Any]:
     """Uzak yeniden açma (devirden sonra READY / süre doldu / oturum gitti): durdur (`_remote_stop_and_wait`) → YENİ
     konuşmayla başlat (`_ensure_running_remote`, `fresh=True`) → yönerge (`_give_directive`, `start_if_stopped=False`:
     ikinci bir başlatma asla gitmez). Bir adım başarısızsa sonrakine GEÇİLMEZ, `remote_respawn` olayı adımı söyler.
@@ -3423,7 +3423,9 @@ def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw
         return failed("start", res)
     if rt is not None:
         rt.refresh(host)
-    res = _give_directive(project, "", reason="respawn", session_name=str(res.get("name") or ""), cfg=cfg,
+    if note:       # D24: devir süresi READY FOR HANDOVER'sız doldu, eski oturumun son metni ilk yönergeye eklenir
+        sw.log_event("ho_expired_card_note", paths=paths, name=name, host=host, chars=len(note))
+    res = _give_directive(project, note, reason="respawn", session_name=str(res.get("name") or ""), cfg=cfg,
                           start_if_stopped=False, host=host, rt=rt, actor="engine")
     if not res.get("ok"):
         return failed("directive", res)
@@ -3481,7 +3483,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         w = world or _world(cfg.sid, cfg)
         if k == "stop":
             return _remote_stop(name, host, w, cfg.sid, "engine", rt)
-        return _remote_respawn(name, host, _project_for_session(name, projects, w), cfg, w, rt)
+        return _remote_respawn(name, host, _project_for_session(name, projects, w), cfg, w, rt,
+                               note=str((action.payload or {}).get("card_note") or ""))
     if k == "respawn":
         if _running(name) is not None:
             res = _act("stop", name, lang=cfg.lang)
