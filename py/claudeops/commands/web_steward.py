@@ -1432,10 +1432,14 @@ def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
         else:
             _DIALOG_STUCK.pop(name, None)
     # ucli çok satırı ayrı tur sayar: tek satıra katlama + kesmeme TEK yerde, `UcliProvider.prepare_input`
+    if cli == "ucli" and _UCLI_STUCK.get(name, 0) >= 1:
+        text = ucli_shorten_text(text) if _UCLI_STUCK.get(name, 0) >= 2 else text       # D12: 2. takılmadan sonra kısalt
     ok = tmux_send_keys(name, provider.prepare_input(text), settle_delay=provider.input_settle_delay())
     _note_send_result(name, bool(ok), "" if ok else "send failed")
     if ok and cli == "ucli":
-        _ucli_box_recheck(name, sid)
+        stuck = _ucli_box_recheck(name, sid)
+        if _ucli_stuck_update(name, bool(stuck)) == "ask":
+            notify_phone(f"ucli oturumu {name}: giriş kutusu art arda {UCLI_STUCK_ASK_AFTER} gönderimde takıldı (Enter ve kısaltma işe yaramadı). Elle bakmak gerekebilir.")
     return ok
 
 
@@ -1548,6 +1552,38 @@ UCLI_BOX_CHECK_DELAY = 0.8
 UCLI_BOX_POLLS = 20         # en çok yoklama (~16 sn): geç çizilen uzun metni de yakala
 UCLI_BOX_EMPTY_OK = 5       # art arda boş yoklama = gerçekten gönderildi
 UCLI_BOX_MAX_ENTERS = 3
+UCLI_SHORTEN_CHARS = 1500       # D12: art arda takılmadan sonra gönderilen metin bu uzunluğa kısaltılır
+UCLI_STUCK_ASK_AFTER = 3        # D12: art arda bu kadar takılmada sahibe bildirim (6 saatte bir)
+_UCLI_STUCK: Dict[str, int] = {}          # {oturum: art arda takılan gönderim sayısı}
+_UCLI_STUCK_NOTIFIED: Dict[str, float] = {}
+
+
+def ucli_shorten_text(text: str, limit: int = UCLI_SHORTEN_CHARS) -> str:
+    """D12 'kısalt' adımı: kutuda takılan uzun metni baş+son parçayla kısaltır, ortaya 'kesildi' işareti koyar. Kısaysa aynen. SAF."""
+    t = str(text or "")
+    if len(t) <= limit:
+        return t
+    head = t[: limit * 2 // 3]
+    tail = t[-(limit // 3):]
+    return head + "\n[... metin ucli kutusunda takıldığı için kısaltıldı; ayrıntı TODO.md/dosyalarda ...]\n" + tail
+
+
+def _ucli_stuck_update(name: str, stuck: bool, now: Optional[float] = None) -> str:
+    """Gönderim sonucuna göre art arda takılma sayacı. Dönen: "" | "shorten" (2. takılma sonrası sıradaki gönderim kısalır) |
+    "ask" (3. ve sonrası: sahibe bildirim, 6 saatte bir). Başarılı gönderim sayacı sıfırlar. SAF-ish (yalnız modül sözlükleri)."""
+    t = time.time() if now is None else now
+    if not stuck:
+        _UCLI_STUCK.pop(name, None)
+        return ""
+    n = _UCLI_STUCK.get(name, 0) + 1
+    _UCLI_STUCK[name] = n
+    if n >= UCLI_STUCK_ASK_AFTER:
+        last = _UCLI_STUCK_NOTIFIED.get(name)
+        if last is None or t - last >= DIALOG_NOTIFY_SECONDS:
+            _UCLI_STUCK_NOTIFIED[name] = t
+            return "ask"
+        return ""
+    return "shorten" if n >= 2 else ""
 _UCLI_PROMPT = "ucli>"
 # İstemden sonra bunlar varsa kutu boştur (tur sürüyor/bitmiş): metin kayması değil, çıktı.
 _UCLI_TURN_RE = re.compile(r"waiting for response|^\s*(?:\[[^\]]*\]\s*$|[●⏺▸→•]|tool\b)", re.IGNORECASE)
@@ -1573,7 +1609,7 @@ def _ucli_box_text(name: str) -> str:
     return " ".join(p for p in parts if p)
 
 
-def _ucli_box_recheck(name: str, sid: str = "default") -> None:
+def _ucli_box_recheck(name: str, sid: str = "default") -> bool:
     """Gönderimden sonra ucli giriş kutusunu İZLE: metin kaldıysa Enter (en çok `UCLI_BOX_MAX_ENTERS`), kutu art arda
     `UCLI_BOX_EMPTY_OK` yoklamada boşsa bitir; hâlâ doluysa `ucli_send_stuck` olayı. Tek yoklama yetmez (5 Kas 05:40: uzun metin
     ~20 sn sonra çizildi, boş kutu "gönderildi" sanıldı, Enter hiç gitmedi). Asla fırlatmaz."""
@@ -1586,7 +1622,7 @@ def _ucli_box_recheck(name: str, sid: str = "default") -> None:
             if not left:
                 empties += 1
                 if empties >= UCLI_BOX_EMPTY_OK:
-                    return
+                    return False
                 continue
             empties = 0
             if enters >= UCLI_BOX_MAX_ENTERS:
@@ -1595,8 +1631,10 @@ def _ucli_box_recheck(name: str, sid: str = "default") -> None:
             enters += 1
         if left:
             sw.log_event("ucli_send_stuck", paths=sw.paths_for(sid or "default"), name=name, left=left[:120], enters=enters)
+            return True
     except Exception:
         pass
+    return False
 
 
 _SCAN = threading.local()

@@ -3612,3 +3612,28 @@ class ExpiredHandoverNoteTest(unittest.TestCase):
         rs = self._plan("özet", ready=True)
         self.assertEqual(len(rs), 1)
         self.assertNotIn("card_note", rs[0].payload)
+
+
+class UcliStuckLadderTest(unittest.TestCase):
+    """D12: ucli kutusu art arda takılırsa 2. takılmadan sonra metin kısalır, 3.'de sahibe bildirim (6 saatte bir); başarı sayacı sıfırlar."""
+    def setUp(self):
+        from claudeops.commands import web_steward as ws
+        self.ws = ws
+        ws._UCLI_STUCK.clear(); ws._UCLI_STUCK_NOTIFIED.clear()
+        self.addCleanup(ws._UCLI_STUCK.clear); self.addCleanup(ws._UCLI_STUCK_NOTIFIED.clear)
+
+    def test_shorten_helper(self):
+        ws = self.ws
+        self.assertEqual(ws.ucli_shorten_text("kısa"), "kısa")
+        long = ws.ucli_shorten_text("a" * 5000)
+        self.assertLess(len(long), ws.UCLI_SHORTEN_CHARS + 200)
+        self.assertIn("kısaltıldı", long)
+
+    def test_ladder(self):
+        ws = self.ws
+        self.assertEqual(ws._ucli_stuck_update("u", True, now=100.0), "")           # 1. takılma: yalnız Enter denendi
+        self.assertEqual(ws._ucli_stuck_update("u", True, now=101.0), "shorten")    # 2.: sıradaki gönderim kısalır
+        self.assertEqual(ws._ucli_stuck_update("u", True, now=102.0), "ask")        # 3.: sahibe
+        self.assertEqual(ws._ucli_stuck_update("u", True, now=103.0), "")           # 6 saat içinde tekrar sorma
+        self.assertEqual(ws._ucli_stuck_update("u", False, now=104.0), "")          # başarı: sıfırla
+        self.assertEqual(ws._ucli_stuck_update("u", True, now=105.0), "")
