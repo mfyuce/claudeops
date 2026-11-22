@@ -914,6 +914,8 @@ export interface Strings {
   rvEvrenAuto: string;
   rvEvrenAutoHint: string;
   rvEvrenQuotaDaily: string;
+  rvCopilotQuota: string;
+  rvCopilotBlockedUntil: string;
   rvEvrenQuotaSlots: string;
   rvEvrenQuotaBackoff: string;
   rvEvrenQuotaNone: string;
@@ -1952,6 +1954,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvEvrenAuto: "Evren yuvası otomatik",
     rvEvrenAutoHint: "Açıkken Evren eşzamanlı koşu sayısı hesap kotasından (/v1/quota: eşzamanlılık 8, günlük kalan) ve model başına adil paydan (glm/gemma 2) hesaplanır; 503 model_capacity_exhausted ve 429'da yarıya iner, 10 dk sessizlikte toparlanır. Kapalıyken yukarıdaki Yuvalar (evren=N) elle geçerlidir.",
     rvEvrenQuotaDaily: "Evren kalan günlük",
+    rvCopilotQuota: "Copilot AI Credits kullanılan",
+    rvCopilotBlockedUntil: "engel bitişi",
     rvEvrenQuotaSlots: "şu anki yuva",
     rvEvrenQuotaBackoff: "geri çekilme düzeyi",
     rvEvrenQuotaNone: "kota okunamadı (elle ayar geçerli)",
@@ -2991,6 +2995,8 @@ export const STRINGS: Record<Lang, Strings> = {
     rvEvrenAuto: "Evren slots automatic",
     rvEvrenAutoHint: "When on, the number of concurrent Evren runs is computed from the account quota (/v1/quota: concurrency 8, daily remaining) and the per-model fair share (glm/gemma 2); halves on 503 model_capacity_exhausted and 429 and recovers after 10 quiet minutes. When off, the Slots above (evren=N) apply manually.",
     rvEvrenQuotaDaily: "Evren daily remaining",
+    rvCopilotQuota: "Copilot AI Credits used",
+    rvCopilotBlockedUntil: "blocked until",
     rvEvrenQuotaSlots: "current slots",
     rvEvrenQuotaBackoff: "backoff level",
     rvEvrenQuotaNone: "quota unreadable (manual setting applies)",

@@ -445,6 +445,12 @@ export function ReviewPanel({ sid, refreshKey, search = "" }: { sid: string; ref
               : t.rvEvrenQuotaNone}
           </span>
         )}
+        {st.copilot_quota && (st.copilot_quota.used_pct != null || st.copilot_quota.blocked_until) && (
+          <span className="opts-hint" title={st.copilot_quota.block_reason ?? st.copilot_quota.detail ?? ""}>
+            {t.rvCopilotQuota}: {st.copilot_quota.used_pct != null ? `%${Math.round(st.copilot_quota.used_pct)}` : "?"} / %{st.copilot_quota.stop_pct}
+            {st.copilot_quota.blocked_until ? ` · ${t.rvCopilotBlockedUntil}: ${new Date(st.copilot_quota.blocked_until * 1000).toLocaleString()}` : ""}
+          </span>
+        )}
         <TextSetting label={t.rvAgyModels} value={st.agy_models ?? ""} width="22rem" placeholder={t.rvModelsAll}
           onSave={(v) => void act(() => apiStewardConfig("review_agy_models", v, sid), t.rvDone)} />
         <TextSetting label={t.rvEvrenModels} value={st.evren_models ?? ""} width="22rem" placeholder={t.rvModelsAll}

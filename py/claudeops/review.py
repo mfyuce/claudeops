@@ -901,6 +901,56 @@ def set_block(paths: Any, key: str, until: float, reason: str = "") -> None:
         save_history(p, hist)
 
 
+COPILOT_BLOCK_REASON = "copilot usage_state"       # bu önekli engeller `reconcile_copilot_blocks`un (koşu hatası engellerine dokunulmaz)
+COPILOT_FALLBACK_SECONDS = 24 * 3600               # reset zamanı okunamazsa
+
+
+def parse_copilot_entries(entries: Any, now: float, base: Optional[float] = None) -> Optional[Tuple[float, float, str]]:
+    """`usage_state` copilot girdileri (`label` "Plan (AI Credits)", `percent` = KULLANILAN yüzde, `detail` "530 / 1,500 AIC · resets in 8 days")
+    -> (kullanılan_yüzde, reset_epoch, detay) ya da okunamadıysa None. "resets in" göreli süresi `base` (okumanın zamanı; yoksa `now`)
+    üzerine eklenir; süre okunamazsa `now + 24 sa`. İlk AI Credits/Plan satırı alınır."""
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        label = str(e.get("label") or "")
+        if "credit" not in label.lower() and "plan" not in label.lower():
+            continue
+        try:
+            pct = float(str(e.get("percent")).rstrip("%"))
+        except (TypeError, ValueError):
+            continue
+        detail = str(e.get("detail") or "")
+        secs = 0.0
+        m = re.search(r"resets?\s+in\s+(.+)$", detail, re.I)
+        if m:
+            for n, unit in re.findall(r"(\d+)\s*(day|d|hour|hr|h|minute|min|m)\w*", m.group(1), re.I):
+                secs += int(n) * {"d": 86400, "h": 3600, "m": 60}[unit[0].lower()]
+        reset = (base if base else now) + secs if secs else now + COPILOT_FALLBACK_SECONDS
+        return pct, reset, detail
+    return None
+
+
+def reconcile_copilot_blocks(hist: Dict[str, Any], info: Optional[Tuple[float, float, str]], stop_pct: float, now: float) -> List[str]:
+    """Copilot kipini `usage_state` kullanımına çeker (agy `reconcile_agy_blocks` kalıbı): kullanılan >= `stop_pct` -> `copilot` MOD engeli
+    reset zamanına dek (daha geç bir koşu-hatası engeli korunur). Altındaysa YALNIZ bu işlevin koyduğu (`COPILOT_BLOCK_REASON` önekli) engel
+    silinir; "exceeded your monthly quota" koşu engeli kalır. `info` None ya da `stop_pct` <= 0: dokunulmaz. Değişen anahtarlar döner."""
+    if not info or stop_pct <= 0:
+        return []
+    pct, reset, detail = info
+    blocks = hist.setdefault("blocks", {})
+    cur = blocks.get("copilot") if isinstance(blocks.get("copilot"), dict) else None
+    if pct >= stop_pct:
+        if cur and float(cur.get("until") or 0) >= reset - 60:
+            return []
+        blocks["copilot"] = {"until": float(reset), "set_at": now,
+                             "reason": f"{COPILOT_BLOCK_REASON}: %{pct:g} kullanıldı (eşik %{stop_pct:g}), {detail}; yenilenme {time.strftime('%Y-%m-%d %H:%M', time.localtime(reset))}"}
+        return ["copilot"]
+    if cur and str(cur.get("reason") or "").startswith(COPILOT_BLOCK_REASON):
+        del blocks["copilot"]
+        return ["copilot"]
+    return []
+
+
 def parse_agy_entries(entries: Any) -> Dict[str, Dict[str, Tuple[float, float]]]:
     """`usage_state`teki agy girdileri (`label` "<grup> — <metrik>", `percent`, `detail` "Resets <ISO>") -> `parse_agy_usage` ile aynı sözlük."""
     lines = []

@@ -1308,8 +1308,15 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         chk = rv.limit_scan_texts(out, err, jerr, err_has_model_text=target.mode in rv.UCLI_MODES) if (status != "done" or rv.is_short_banner(text)) else ()
         if chk and rv.is_daily_limit(*chk):
             until = rv.block_until_for_limit(now(), *chk)
+            if target.mode == "copilot":      # gerçek reset (usage_state "resets in …") varsa ay başı tahmini yerine o (kota ay başı sıfırlanmayabilir)
+                try:
+                    _ci = copilot_quota_info(now())
+                    if _ci and _ci[1] > now():
+                        until = _ci[1]
+                except Exception:       # noqa: BLE001
+                    pass
             status = "limit"
-            error = ("aylık kota doldu; ay sonuna dek durdu" if until != rv.next_utc_midnight(now())
+            error = ("aylık kota doldu; yenilenmeye (gerçek reset ya da ay başı) dek durdu" if until != rv.next_utc_midnight(now())
                      else "günlük kota doldu (daily_token_limit_exceeded); mod UTC gece yarısına dek durdu")
             rv.set_block(paths, target.mode, until, error)
         elif chk and rv.is_quota_exhausted(*chk):
@@ -2166,6 +2173,49 @@ def refresh_agy_blocks(p: Any, targets: List[rv.ReviewTarget], t: float, run: Op
     return changed
 
 
+def refresh_copilot_blocks(p: Any, cfg: Any, targets: List[rv.ReviewTarget], t: float) -> List[str]:
+    """copilot kipini genel kullanım durumundan (`usage_state`, AI Credits kullanılan %) ÖNCEDEN bloklar: `review_copilot_stop_pct` (varsayılan 95)
+    aşılınca reset zamanına dek. copilot hedefi yoksa, eşik 0 ya da kayıt yok/bayatsa (>10 dk) dokunmaz."""
+    stop = float(getattr(cfg, "review_copilot_stop_pct", 95) or 0)
+    if stop <= 0 or not any(x.mode == "copilot" for x in targets):
+        return []
+    info = copilot_quota_info(t)
+    if not info:
+        return []
+    with sw.steward_lock(sw._pp(p)):
+        hist = rv.load_history(p)
+        changed = rv.reconcile_copilot_blocks(hist, info, stop, t)
+        if changed:
+            rv.save_history(p, hist)
+    if changed:
+        sw.log_event("review_copilot_usage_blocks", paths=p, pct=info[0], stop=stop, until=info[1])
+    return changed
+
+
+def copilot_quota_info(t: float) -> Optional[Tuple[float, float, str]]:
+    from .. import usage_state
+    rec = usage_state.provider("copilot", now=t)
+    if not rec or not rec.get("available") or rec.get("stale"):
+        return None
+    return rv.parse_copilot_entries(rec.get("entries") or [], t, base=float(rec.get("at") or 0) or None)
+
+
+def _copilot_quota_view(cfg: Any, hist: Any, t: float) -> Dict[str, Any]:
+    """Panel: copilot AI Credits kullanılan %, eşik ve engel bitişi (yoksa {}). Ağ çağrısı yok (usage_state önbelleği)."""
+    try:
+        info = copilot_quota_info(t)
+        blk = (hist.get("blocks") or {}).get("copilot") if isinstance(hist, dict) else None
+        until = float(blk.get("until") or 0) if isinstance(blk, dict) else 0.0
+        out: Dict[str, Any] = {"stop_pct": int(getattr(cfg, "review_copilot_stop_pct", 95) or 0)}
+        if info:
+            out.update(used_pct=info[0], resets_at=info[1], detail=info[2])
+        if until > t:
+            out.update(blocked_until=until, block_reason=str(blk.get("reason") or "")[:200])
+        return out if len(out) > 1 else {}
+    except Exception:       # noqa: BLE001
+        return {}
+
+
 def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     """Bir reviewer kimliğinin döngü turu: (kapalıysa iptal) -> ilk tick'te `recover_on_start` -> havuz eşitleme ->
     havuzdan çıkan/devre dışı projenin koşan işini iptal -> tek iş kuralı + en az aralık -> sıradaki çift -> `run_job`.
@@ -2262,6 +2312,11 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
             hist = rv.load_history(p)
     except Exception as e:      # /usage hatası planlayıcıyı düşürmesin
         sw.log_event("review_agy_usage_failed", paths=p, error=_tail(repr(e)))
+    try:
+        if refresh_copilot_blocks(p, cfg, targets, t):
+            hist = rv.load_history(p)
+    except Exception as e:      # usage_state hatası planlayıcıyı düşürmesin
+        sw.log_event("review_copilot_usage_failed", paths=p, error=_tail(repr(e)))
     if rv.claude_is_subscription(cfg) and _quota_blocking():
         # abonelik kotası: bekçi drain/shutdown/stop dedi; Max'ten giden claude hedefleri başlamaz (api/agy/evren/codex sürer)
         targets = [x for x in targets if x.mode != "claude"]
@@ -2475,6 +2530,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "slots_spec": str(getattr(cfg, "review_slots", "") or ""),
             "evren_autoscale": str(getattr(cfg, "review_evren_autoscale", "off") or "off").strip().lower() != "off",
             "evren_quota": _evren_quota_view(cfg),
+            "copilot_quota": _copilot_quota_view(cfg, hist, t),
             "claude_auth": "subscription" if rv.claude_is_subscription(cfg) else "api",
             "claude_models": str(getattr(cfg, "review_claude_models", "") or ""),
             "claude_effective": ",".join(rv.claude_specs(cfg)),

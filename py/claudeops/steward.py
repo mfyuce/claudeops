@@ -380,6 +380,7 @@ class Config:
     review_claude_models: str = ""   # virgülle ayrık Anthropic model listesi (`claude -p`); "" = KAPALI (ayrı anahtar dosyası gerekir)
     review_codex_models: str = ""    # virgülle ayrık codex model listesi (`codex exec`, salt okunur sandbox); "" = KAPALI
     review_codex_effort: str = "low"   # codex `model_reasoning_effort` (config.toml'daki `max` review için gereksiz pahalı)
+    review_copilot_stop_pct: int = 95   # copilot AI Credits KULLANILAN yüzde bu değere ulaşınca copilot kipi sıfırlanmaya kadar BLOKLANIR (`usage_state` copilot girdisi); 0 = kapalı
     review_copilot_models: str = ""  # virgülle ayrık Copilot model listesi (`copilot -p`); "" = KAPALI
     review_copilot_effort: str = "low"  # copilot `--reasoning-effort`
     review_evren_effort: str = "medium"  # Evren `--effort` (ucli: tavan yükseltilemezse `low` ile tek yeniden deneme YALNIZ görev effort gönderiyorsa çalışır; alanı reddeden modelde atlanır)
