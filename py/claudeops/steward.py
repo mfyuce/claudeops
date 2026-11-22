@@ -135,6 +135,7 @@ OBSERVE_DEDUP_SECONDS = 6 * 3600   # aynı (tür, ad, soru) `would:` kaydı bu s
 MARK_END = "COPS-STEWARD-END"          # beynin tur yanıtının sonu
 MARK_ASK = "STEWARD-ASK:"              # insana soru (satırın kalanı soru metni)
 MARK_IDEA = "STEWARD-IDEA:"            # yeni fikir
+MARK_DETAIL = "STEWARD-DETAIL:"        # OPSİYONEL: bir önceki STEWARD-ASK'in uzun açıklaması (Markdown: Durum/Seçenekler/Öneri); panelde "Detay" düğmesi
 MARK_ROUTINE = "STEWARD-ROUTINE:"      # işleyiş sorusu (ne zaman/hangi sıra/hangi model): beyin cevaplar, sahibi rahatsız edilmez
 MARK_BLOCKED = "STEWARD-BLOCKED:"      # takıldım (RUTİN soru: beyin cevaplar, sahibe düşmez; sahip kararı gereken şey ayrı STEWARD-ASK olur; 2026-10-27)
 MARK_LESSON = "STEWARD-LESSON:"       # reviewer dersi işlendi onayı (<id> <todo|tbd|fixed|no-action|duplicate> [not]); motor ders durumunu "işlendi" yapar
@@ -221,6 +222,7 @@ class Question:
     extra_texts: List[str] = field(default_factory=list)  # L7b: proje başına açık soru sınırı (MAX_OPEN_QUESTIONS_PER_PROJECT) aşılınca gelen yeni sorular BU soruya "ek" olarak eklenir (en çok EXTRA_TEXTS_KEEP)
     answered_by: str = ""           # cevabı KİM verdi: ANSWERED_BY değerlerinden biri (boş = eski kayıt/bilinmiyor); danis eğitim/denetim için kullanır
     deferred_until: float = 0.0     # D19: sahip "sonra/kararları şimdi vereceğim" dedi: soru AÇIK kalır, bu zamana kadar özet/hatırlatmada çıkmaz (24 sa)
+    detail: str = ""                # opsiyonel uzun açıklama (Markdown; STEWARD-DETAIL: ya da API `detail`); panel/`/q` sayfasında "Detay" olarak açılır
     prev_texts: List[str] = field(default_factory=list)   # L7: KONU eşleşmesiyle birleşen soruların eski metinleri (yeniden eskiye, en çok TOPIC_PREV_KEEP); `text` = en yeni sürüm
 
 
@@ -1248,8 +1250,11 @@ def _unique_question_key(sid: str) -> str:
             return key
 
 
+_MAX_DETAIL_CHARS = 6000
+
+
 def add_question_ex(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
-                    paths: Any = None) -> Tuple[Question, str]:
+                    paths: Any = None, detail: str = "") -> Tuple[Question, str]:
     """`add_question` + ne olduğu: "new" (yeni soru), "reasked" (cevaplanmış soru yeniden iletilecek), "same" (aynı metinli
     açık soru zaten var), "merged" (benzer açık soru, sayaç arttı), "promoted" (açık RUTİN soru, bu kez sahibe giden soru
     olarak yeniden soruldu: `routine` kalktı, sahibe bildirilmeli). Bildirim yalnız "new"/"promoted"da gider."""
@@ -1303,6 +1308,8 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                 if source:
                     sim.source = source
         if sim is not None:
+            if detail and not sim.detail:
+                sim.detail = str(detail)[:_MAX_DETAIL_CHARS]
             sim.asked_again += 1
             promoted = sim.routine and not routine
             if promoted:
@@ -1310,15 +1317,16 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
             save_questions(questions, paths)
             return sim, ("promoted" if promoted else "merged")
         q = Question(id=_new_id("q"), project=project, text=text, created_at=_now(), source=source,
-                     options=normalize_options(options), key=_unique_question_key(_pp(paths).sid), routine=bool(routine))
+                     options=normalize_options(options), key=_unique_question_key(_pp(paths).sid), routine=bool(routine),
+                     detail=str(detail or "")[:_MAX_DETAIL_CHARS])
         questions.append(q)
         save_questions(questions, paths)
         return q, "new"
 
 
 def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
-                 paths: Any = None) -> Question:
-    return add_question_ex(project, text, source=source, options=options, routine=routine, paths=paths)[0]
+                 paths: Any = None, detail: str = "") -> Question:
+    return add_question_ex(project, text, source=source, options=options, routine=routine, paths=paths, detail=detail)[0]
 
 
 # owner_phone (/q sayfası) | owner_panel (panel/API) | owner_cli (sahibin kendi CLI'ı) | cops (kontrol oturumu, SAHİP ADINA) | brain (değnekçi beyni) | motor (otomatik cevap)
@@ -1477,12 +1485,12 @@ _QPAGE_TXT = {
            "done": "Cevap kaydedildi", "deliver": "Motor bir sonraki turda ilgili oturuma iletir.",
            "already": "Bu soru zaten cevaplanmış", "missing": "Böyle bir soru yok", "denied": "Bağlantı geçersiz",
            "empty": "Boş cevap gönderilemez", "by": "kaynak", "opts_hint": "Birine dokun ya da aşağıya yaz.",
-           "prev": "Aynı konuda önceki sürümler", "extra": "Ek sorular (açık soru sınırı aşıldı)"},
+           "prev": "Aynı konuda önceki sürümler", "extra": "Ek sorular (açık soru sınırı aşıldı)", "detail": "Detay"},
     "en": {"title": "Steward question", "project": "Project", "asked": "Asked", "free": "or type…", "send": "Send",
            "done": "Answer saved", "deliver": "The engine delivers it to the session on its next tick.",
            "already": "This question was already answered", "missing": "No such question", "denied": "Invalid link",
            "empty": "An empty answer cannot be sent", "by": "source", "opts_hint": "Tap one or type below.",
-           "prev": "Earlier versions on the same topic", "extra": "Additional questions (open-question limit reached)"},
+           "prev": "Earlier versions on the same topic", "extra": "Additional questions (open-question limit reached)", "detail": "Details"},
 }
 
 _QPAGE_CSS = (
@@ -1513,6 +1521,8 @@ def question_page_html(q: Optional[Question], lang: str = "tr", state: str = "as
         body.append(f"<p class='err'>{T['missing'] if state != 'denied' else T['denied']}</p>")
     else:
         body.append(f"<p class='q'>{esc(q.text)}</p>")
+        if q.detail:
+            body.append(f"<details><summary class='meta'>{T['detail']}</summary><div class='q' style='white-space:pre-wrap'>{esc(q.detail)}</div></details>")
         if q.extra_texts:
             body.append(f"<details open><summary class='meta'>{T['extra']} ({len(q.extra_texts)})</summary>"
                         + "".join(f"<p class='q'>{esc(t)}</p>" for t in q.extra_texts) + "</details>")
@@ -2224,7 +2234,7 @@ def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
     işaret satırın İÇİNDE de olabilir (model bazen önüne açıklama koyar) — kalanı alınır."""
-    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "nexts": [], "next": None, "lessons": [], "plan_ready": False, "done": False,
+    out: Dict[str, Any] = {"asks": [], "routines": [], "ideas": [], "blocked": [], "jobs": [], "nexts": [], "next": None, "lessons": [], "details": [], "plan_ready": False, "done": False,
                            "confirmed": None}
     if not text:
         return out
@@ -2243,11 +2253,11 @@ def scan_markers(text: str) -> Dict[str, Any]:
             continue
         if cont is not None and "STEWARD-" not in line:
             k, i = cont
-            out[k][i] = f"{out[k][i]} {line}"
+            out[k][i] = f"{out[k][i]}{chr(10) + raw.strip() if k == 'details' else ' ' + line}"
             continue
         cont = None
         for mark, key in ((MARK_ROUTINE, "routines"), (MARK_ASK, "asks"), (MARK_IDEA, "ideas"), (MARK_BLOCKED, "blocked"),
-                          (MARK_JOB, "jobs"), (MARK_NEXT, "nexts"), (MARK_LESSON, "lessons")):
+                          (MARK_JOB, "jobs"), (MARK_NEXT, "nexts"), (MARK_LESSON, "lessons"), (MARK_DETAIL, "details")):
             idx = line.find(mark)
             if idx != -1:
                 raw_body = line[idx + len(mark):].strip()
@@ -2266,6 +2276,8 @@ def scan_markers(text: str) -> Dict[str, Any]:
                     out[key].append(body)
                     if key in ("asks", "routines", "blocked") and body.rstrip("` ").endswith(":"):
                         cont = (key, len(out[key]) - 1)
+                    if key == "details":
+                        cont = (key, len(out[key]) - 1)     # Markdown gövde alt satırlarla sürer (boş satır ya da yeni işaret keser)
                     if key == "nexts":
                         out["next"] = body      # en SONDAKİ satır kazanır
                 break
@@ -3753,10 +3765,16 @@ def marker_record_actions(name: str, proj: str, m: Dict[str, Any]) -> List[Actio
     """Oturum yanıtındaki soru/rutin/takıldım/fikir işaretlerinin KAYIT eylemleri (oturuma dokunmaz). `plan_tick` ve
     döngü kapalıyken çalışan `plan_markers` aynı kuralı paylaşır."""
     out: List[Action] = []
-    for q in m["asks"]:
+    details = list(m.get("details") or [])
+    asks = list(m["asks"])
+    for ai, q in enumerate(asks):
         if _ask_is_status_line(q):
             continue   # D20: "Yok", "Hayır, sormuyorum", "soru yok" gibi soru işareti taşımayan durum cümlesi kayıt açmaz
-        out.append(Action("ask_user", name, "STEWARD-ASK", {"project": proj or _ask_base(name), "text": q}))
+        pl: Dict[str, Any] = {"project": proj or _ask_base(name), "text": q}
+        d = details[ai] if len(details) == len(asks) else (details[-1] if details and ai == len(asks) - 1 else "")
+        if d:
+            pl["detail"] = d     # STEWARD-DETAIL: aynı sayıdaysa sırayla, değilse son soruya
+        out.append(Action("ask_user", name, "STEWARD-ASK", pl))
     for q in m["routines"]:
         if "?" not in q:
             continue   # "bekliyorum, yeni soru yok" gibi durum cümlesi soru değil: kayda da girmez, sahibine de gitmez

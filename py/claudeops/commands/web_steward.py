@@ -3605,7 +3605,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             return gate
     if k == "ask_user":
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
-                                        options=action.payload.get("options"), routine=bool(action.payload.get("routine")), paths=paths)
+                                        options=action.payload.get("options"), routine=bool(action.payload.get("routine")), paths=paths,
+                                        detail=str(action.payload.get("detail") or ""))
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             fast = _job_fast_path(action, cfg, q, paths) if outcome not in ("same", "merged") else None
             if fast is not None:
@@ -6125,7 +6126,8 @@ def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     cfg = steward_config(sid)
     try:
         q = sw.add_question(str(data.get("project") or ""), str(data.get("text") or ""),
-                            source=str(data.get("source") or "api"), options=data.get("options"), paths=sid)
+                            source=str(data.get("source") or "api"), options=data.get("options"), paths=sid,
+                            detail=str(data.get("detail") or ""))
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     link = sw.question_link(q, public_base(), cfg.sid)
