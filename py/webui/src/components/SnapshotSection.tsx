@@ -68,6 +68,9 @@ export function SnapshotSection({ search = "" }: { search?: string }) {
   const [subTab, setSubTab] = useState<"now" | "history">("now");
   if (!data) return null;
   const snap = data.snapshot;
+  const runningNow = data.sessions.filter((s) => s.running);
+  const remoteRunning = runningNow.filter((s) => s.host !== "local").length;
+  const localRunning = runningNow.length - remoteRunning;
 
   function handleAuthOrError(e: unknown) {
     if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
@@ -127,6 +130,7 @@ export function SnapshotSection({ search = "" }: { search?: string }) {
           ? t.snapshotInfo(snap.count, fmtWhen(snap.saved_at), snap.kind) + t.snapshotMirrorsSuffix(snap.mirrors ?? 0)
           : t.snapshotNone}
       </span>
+      {remoteRunning > 0 && <span className="opts-hint">{t.snapshotRemoteNote(localRunning, remoteRunning)}</span>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" disabled={saving} onClick={() => void handleSave()}>
           {saving ? t.snapshotSaving : t.snapshotSaveBtn}
