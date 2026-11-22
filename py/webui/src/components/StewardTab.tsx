@@ -48,6 +48,7 @@ import { StewardActions } from "./StewardActions";
 import { useLang } from "../i18n/LangContext";
 import { useStatusContext } from "../state/StatusContext";
 import { showToast } from "../state/toast";
+import { renderMarkdownSafe } from "./shared/markdown";
 import type { StewardHostHealth, StewardQuestion, StewardStateResult } from "../api/types";
 
 type StewardSub = "ops" | "questions" | "ideas" | "jobs" | "projects" | "pending";
@@ -106,6 +107,11 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
   const { t, lang } = useLang();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [detailHtml, setDetailHtml] = useState<string | null>(null);
+
+  async function openDetail() {
+    setDetailHtml(await renderMarkdownSafe(q.detail || ""));
+  }
 
   async function send(answer: string) {
     const a = answer.trim();
@@ -133,6 +139,33 @@ function QuestionCard({ q, sid, health, onAnswered }: { q: StewardQuestion; sid:
         {q.source ? ` · ${q.source}` : ""}
       </div>
       <div style={{ whiteSpace: "pre-wrap", margin: ".3rem 0 .5rem" }}>{q.text}</div>
+      {q.detail && (
+        <div style={{ marginBottom: ".4rem" }}>
+          <button type="button" onClick={() => void openDetail()}>
+            {t.stewardDetailBtn}
+          </button>
+        </div>
+      )}
+      {detailHtml !== null && (
+        <div
+          role="dialog"
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
+          onClick={() => setDetailHtml(null)}
+        >
+          <div
+            style={{ background: "var(--bg, #fff)", color: "inherit", border: "1px solid var(--border)", borderRadius: 10, padding: ".8rem 1rem", maxWidth: "42rem", width: "100%", maxHeight: "85vh", overflow: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="legend" style={{ display: "flex", justifyContent: "space-between", margin: 0 }}>
+              <b>{q.project || "degnekci"}</b>
+              <button type="button" onClick={() => setDetailHtml(null)}>×</button>
+            </div>
+            <div style={{ whiteSpace: "pre-wrap", margin: ".4rem 0", fontWeight: 600 }}>{q.text}</div>
+            {/* eslint-disable-next-line react/no-danger -- sanitized via DOMPurify in renderMarkdownSafe */}
+            <div dangerouslySetInnerHTML={{ __html: detailHtml }} />
+          </div>
+        </div>
+      )}
       {q.options && q.options.length > 0 && (
         <div className="opts" style={{ marginBottom: ".4rem" }}>
           {q.options.map((o, i) => (

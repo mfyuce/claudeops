@@ -799,6 +799,7 @@ export interface Strings {
   stewardColNext: string;
   stewardColVisit: string;
   stewardNever: string;
+  stewardDetailBtn: string;
   stewardIdeasTitle: string;
   stewardNoIdeas: string;
   stewardIdeaPlaceholder: string;
@@ -1840,6 +1841,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardColNext: "sıradaki adım (kart)",
     stewardColVisit: "son uğrama",
     stewardNever: "hiç",
+    stewardDetailBtn: "Detay",
     stewardIdeasTitle: "Fikir kutusu",
     stewardNoIdeas: "Yeni fikir yok.",
     stewardIdeaPlaceholder: "fikir…",
@@ -2882,6 +2884,7 @@ export const STRINGS: Record<Lang, Strings> = {
     stewardColNext: "next step (card)",
     stewardColVisit: "last visit",
     stewardNever: "never",
+    stewardDetailBtn: "Details",
     stewardIdeasTitle: "Idea inbox",
     stewardNoIdeas: "No new ideas.",
     stewardIdeaPlaceholder: "idea…",

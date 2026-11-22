@@ -1064,6 +1064,8 @@ export interface StewardQuestion {
   /** Short choices (≤6); empty = free-text question. The answer may still be free text. */
   options?: string[];
   notified_at?: number;
+  /** Optional long Markdown explanation (STEWARD-DETAIL / API `detail`); shown via the "Detail" button. */
+  detail?: string;
   /** Remote host of the question's project (only present for remote projects). */
   host?: string;
 }
