@@ -1324,6 +1324,21 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
         return q, "new"
 
 
+def set_question_detail(question_id: str, detail: str, paths: Any = None) -> bool:
+    """Soruya detay yaz; zaten dolu detay EZİLMEZ (oturumun kendi STEWARD-DETAIL'i üretilenden önce gelir). Yazıldıysa True."""
+    detail = str(detail or "").strip()[:_MAX_DETAIL_CHARS]
+    if not detail:
+        return False
+    with steward_lock(paths):
+        questions = load_questions(paths)
+        for q in questions:
+            if q.id == question_id and not q.detail:
+                q.detail = detail
+                save_questions(questions, paths)
+                return True
+    return False
+
+
 def add_question(project: str, text: str, source: str = "", options: Any = None, routine: bool = False,
                  paths: Any = None, detail: str = "") -> Question:
     return add_question_ex(project, text, source=source, options=options, routine=routine, paths=paths, detail=detail)[0]

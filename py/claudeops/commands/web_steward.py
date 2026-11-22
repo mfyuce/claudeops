@@ -3607,6 +3607,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         q, outcome = sw.add_question_ex(action.payload.get("project") or name, action.payload.get("text") or "", source=name,
                                         options=action.payload.get("options"), routine=bool(action.payload.get("routine")), paths=paths,
                                         detail=str(action.payload.get("detail") or ""))
+        if outcome == "new" and q.status == "open" and not q.routine:
+            _auto_detail(q, paths)    # detaysız soru: ucuz modelle arka planda detay (önbellekli, tavanlı, sessiz)
         if q.status == "open" and q.routine:   # işleyiş sorusu: telefona gitmez, beynin turunda cevaplanır
             fast = _job_fast_path(action, cfg, q, paths) if outcome not in ("same", "merged") else None
             if fast is not None:
@@ -6120,6 +6122,15 @@ def http_register(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     return out
 
 
+def _auto_detail(q: "sw.Question", paths: Any) -> None:
+    """Detaysız açık soru için `question_detail.ensure_async` (kendi içinde sessiz; hiçbir hata soru akışını bozmaz)."""
+    try:
+        from .. import question_detail
+        question_detail.ensure_async(q, paths)
+    except Exception:
+        pass
+
+
 def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     """Soru aç (+ `options`: en çok 6 kısa seçenek) → ntfy: metin + numaralı seçenekler + `/q/<id>?k=` bağlantısı
     (tünel varsa; bildirime dokunmak sayfayı açar). Aynı açık soru ikinci kez bildirilmez (`add_question` dedup)."""
@@ -6130,6 +6141,8 @@ def http_ask(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
                             detail=str(data.get("detail") or ""))
     except ValueError as e:
         return {"ok": False, "error": str(e)}
+    if not q.notified_at:
+        _auto_detail(q, sid)
     link = sw.question_link(q, public_base(), cfg.sid)
     if q.notified_at:
         return {"ok": True, "id": q.id, "notified": False, "link": link, "dup": True}
