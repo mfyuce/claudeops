@@ -77,6 +77,8 @@ h1 { font-size: 1.1rem; margin: 0; letter-spacing: .02em; }
   font-size: 1rem; line-height: 1; cursor: pointer;
 }
 .searchbox .search-clear:hover { color: var(--text); }
+.searchbox .search-hints { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .25rem; }
+.searchbox .search-hints button { padding: 0 .4rem; font-size: .8em; }
 .banner {
   padding: .5rem .75rem; border-radius: 6px; margin-bottom: .6rem;
   font-size: .85rem; border: 1px solid transparent;

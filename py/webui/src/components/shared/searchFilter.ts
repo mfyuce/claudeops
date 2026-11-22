@@ -32,16 +32,57 @@ export interface Searchable {
 
 const LABEL_TERM = /^label:([a-z0-9_-]+)$/;
 
-/** Splits a query into `label:x` terms (lower-cased; several = AND) and the remaining free text (old behaviour). */
-export function parseQuery(query: string): { labels: string[]; text: string } {
+/** Field terms (TODO 1166): `model:opus*`, `cli:agy`, `host:ulak_31`, `name:`, `cwd:`/`path:`, `kind:`, `blueprint:`. */
+export const SEARCH_FIELDS = ["model", "cli", "host", "name", "cwd", "path", "kind", "blueprint"] as const;
+export type SearchField = (typeof SEARCH_FIELDS)[number];
+const FIELD_TERM = new RegExp(`^(${SEARCH_FIELDS.join("|")}):(.+)$`);
+
+export interface FieldTerm {
+  field: SearchField;
+  /** folded value; `*` = any characters (then the whole field must match), otherwise substring */
+  value: string;
+}
+
+/** Splits a query into `label:x` terms (lower-cased; several = AND), `field:value` terms (AND) and the remaining free text. */
+export function parseQuery(query: string): { labels: string[]; fields: FieldTerm[]; text: string } {
   const labels: string[] = [];
+  const fields: FieldTerm[] = [];
   const rest: string[] = [];
   for (const tok of query.trim().split(/\s+/)) {
-    const m = LABEL_TERM.exec(tok.toLowerCase());
+    const lower = tok.toLowerCase();
+    const m = LABEL_TERM.exec(lower);
+    const f = m ? null : FIELD_TERM.exec(lower);
     if (m) labels.push(m[1]);
+    else if (f) fields.push({ field: f[1] as SearchField, value: foldText(f[2]) });
     else if (tok) rest.push(tok);
   }
-  return { labels, text: rest.join(" ") };
+  return { labels, fields, text: rest.join(" ") };
+}
+
+/** Field-name completions for the last (partial) token of a query: `mo` -> `model:`. Empty when it already has a colon. */
+export function fieldSuggestions(query: string): string[] {
+  const last = query.split(/\s+/).pop()?.toLowerCase() ?? "";
+  if (last.length < 1 || last.includes(":")) return [];
+  return SEARCH_FIELDS.filter((f) => f.startsWith(last) && f !== last).map((f) => `${f}:`);
+}
+
+function fieldMatches(value: string, hay: string): boolean {
+  if (!value.includes("*")) return hay.includes(value);
+  const re = new RegExp("^" + value.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+  return re.test(hay);
+}
+
+function fieldHay(item: Searchable, field: SearchField): string[] {
+  switch (field) {
+    case "model": return [item.model, item.live_model ?? ""];
+    case "cli": return [item.cli];
+    case "host": return [item.host];
+    case "name": return [item.name, item.title ?? ""];
+    case "cwd":
+    case "path": return [item.cwd];
+    case "kind": return [item.kind ?? ""];
+    case "blueprint": return [item.blueprint ?? ""];
+  }
 }
 
 /**
@@ -65,7 +106,9 @@ export function foldText(s: string): string {
  * here (they only mean something for session rows). Empty query matches everything.
  */
 export function matchesText(fields: Array<string | number | null | undefined>, query: string): boolean {
-  const words = foldText(parseQuery(query).text).split(/\s+/).filter(Boolean);
+  // `field:x` terms mean something only for session rows; here they stay ordinary words (old behaviour).
+  const plain = query.trim().split(/\s+/).filter((tok) => !LABEL_TERM.test(tok.toLowerCase()));
+  const words = foldText(plain.join(" ")).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const hay = foldText(fields.map((f) => (f == null ? "" : String(f))).join("\n"));
   return words.every((w) => hay.includes(w));
@@ -75,6 +118,7 @@ export function matchesText(fields: Array<string | number | null | undefined>, q
 export function matchesSearch(item: Searchable, query: string): boolean {
   const parsed = parseQuery(query);
   if (parsed.labels.length && !parsed.labels.every((l) => item.labels?.includes(l))) return false;
+  if (parsed.fields.length && !parsed.fields.every((t) => fieldHay(item, t.field).some((h) => fieldMatches(t.value, foldText(h))))) return false;
   const q = foldText(parsed.text);
   if (!q) return true;
   return (

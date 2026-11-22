@@ -8,6 +8,7 @@
  */
 
 import { useLang } from "../../i18n/LangContext";
+import { fieldSuggestions } from "./searchFilter";
 
 interface SearchBoxProps {
   value: string;
@@ -16,6 +17,8 @@ interface SearchBoxProps {
 
 export function SearchBox({ value, onChange }: SearchBoxProps) {
   const { t } = useLang();
+  const hints = fieldSuggestions(value);
+  const complete = (hint: string) => onChange(value.replace(/\S*$/, hint));
   return (
     <div className="searchbox">
       <input
@@ -29,6 +32,13 @@ export function SearchBox({ value, onChange }: SearchBoxProps) {
         <button type="button" className="search-clear" onClick={() => onChange("")} aria-label={t.searchClear} title={t.searchClear}>
           ×
         </button>
+      )}
+      {hints.length > 0 && (
+        <span className="search-hints">
+          {hints.map((h) => (
+            <button key={h} type="button" onClick={() => complete(h)}>{h}</button>
+          ))}
+        </span>
       )}
     </div>
   );
