@@ -52,7 +52,9 @@ class AutoApprove(unittest.TestCase):
         data = {"A": rec(state="verified", body="parola düz metin"), "B": rec(state="verified", title="parola sızıyor"),
                 "C": rec(state="verified")}
         called = []
-        with mock.patch.object(sw, "paths_for", lambda sid: None), mock.patch.object(sw, "log_event", lambda *a, **k: None), \
+        from claudeops.commands import web_steward as _ws
+        wr._HELD_SENSITIVE_NOTIFIED.clear()
+        with mock.patch.object(_ws, "notify_phone", lambda *a, **k: True), mock.patch.object(sw, "paths_for", lambda sid: None), mock.patch.object(sw, "log_event", lambda *a, **k: None), \
                 mock.patch.object(rv, "load_findings", lambda p: data), \
                 mock.patch.object(rv, "decide_finding", lambda p, fid, act, t, by="": called.append(fid) or {"ok": True}):
             done = wr.auto_approve(NS(sid="rev", review_auto_approve=3), now=1.0)

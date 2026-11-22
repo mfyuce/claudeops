@@ -3188,6 +3188,9 @@ AUTO_APPROVE_SEVERITIES = {1: ("P3",), 2: ("P2", "P3"), 3: ("P1", "P2", "P3")}  
 AUTO_APPROVE_UNCLEAR_LEVEL = 99     # R5 (17 Kas): ulaşılmaz = `unclear` asla otomatik onaylanmaz; parola/gizli geçen bulgu HER düzeyde sahibe kalır
 
 
+_HELD_SENSITIVE_NOTIFIED: set = set()       # süreç içi: sahibe haber verilmiş tutulan fid'ler (yeniden başlatmada bir kez daha)
+
+
 def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     """`review_auto_approve` > 0 ise `verified` bulguları KENDİLİĞİNDEN onaylar (`decided_by=auto`): yalnız düzeyin önem
     kümesi (1 = P3, 2 = P2+P3, 3 = P1+P2+P3); `unclear` HİÇBİR düzeyde otomatik onaylanmaz; 1-2'de P1, HER düzeyde başlık/yer/gövdesinde
@@ -3199,14 +3202,27 @@ def auto_approve(cfg: Any, now: Optional[float] = None) -> List[str]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
     done: List[str] = []
+    held: List[Tuple[str, Dict[str, Any]]] = []
     for fid, rec in sorted(rv.load_findings(p).items()):
         ok_states = ("verified",)      # R5 (sahip 17 Kas): `unclear` HİÇBİR düzeyde otomatik onaylanmaz, her zaman sahibe
         if not isinstance(rec, dict) or rec.get("state") not in ok_states or str(rec.get("severity") or "") not in sev:
             continue
         if sa.is_sensitive(rec):       # TBD#268 (c): yalnız başlık/yer; gövdedeki gizli desen onayı engellemez (iletimde gövde çıkar)
+            held.append((fid, rec))
             continue
         if rv.decide_finding(p, fid, "approve", t, by="auto").get("ok"):
             done.append(fid)
+    new_held = [(f, r) for f, r in held if f not in _HELD_SENSITIVE_NOTIFIED]
+    if new_held:
+        # 17 Kas (sahip): tutulan bulgu SESSİZ beklemesin; proje+başlık tek olayla log'a, tek özetle telefona (fid başına bir kez)
+        _HELD_SENSITIVE_NOTIFIED.update(f for f, _ in new_held)
+        sw.log_event("review_auto_approve_held", paths=p, findings=[f for f, _ in new_held][:20], n=len(new_held))
+        try:
+            from . import web_steward           # yerel içe aktarım: modül döngüsü yok (bkz. satır 2355)
+            lines = "; ".join(f"{r.get('project') or '?'}: {str(r.get('title') or '')[:50]}" for _, r in new_held[:3])
+            web_steward.notify_phone(f"review: {len(new_held)} doğrulanmış bulgu başlık/yerinde parola/gizli sözcüğü geçtiği için otomatik onaylanmadı, onayını sen ver ({lines}).")
+        except Exception:
+            pass
     if done:
         sw.log_event("review_auto_approve", paths=p, findings=done, level=int(cfg.review_auto_approve))
     return done

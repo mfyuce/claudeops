@@ -702,6 +702,24 @@ if __name__ == "__main__":
 
 
 class TestAutoApprove(_Flow):
+    def setUp(self):
+        super().setUp()
+        from unittest import mock as _m
+        from claudeops.commands import web_steward as _ws
+        wr._HELD_SENSITIVE_NOTIFIED.clear()
+        self.notes = []
+        pt = _m.patch.object(_ws, "notify_phone", lambda m, *a, **k: self.notes.append(m) or True)
+        pt.start(); self.addCleanup(pt.stop); self.addCleanup(wr._HELD_SENSITIVE_NOTIFIED.clear)
+
+    def test_held_sensitive_finding_notifies_owner_once(self):
+        """17 Kas (sahip): başlığında parola geçen verified bulgu sessiz beklemesin: tek özet bildirimi, aynı fid ikinci kez bildirilmez."""
+        self.prep()
+        wr.auto_approve(NS(sid="rev", review_auto_approve=3), now=5_000.0)
+        self.assertEqual(len(self.notes), 1)
+        self.assertIn("otomatik onaylanmadı", self.notes[0])
+        wr.auto_approve(NS(sid="rev", review_auto_approve=3), now=5_001.0)
+        self.assertEqual(len(self.notes), 1)
+
     def states(self):
         return {v["ref"]: v["state"] for v in self.findings().values()}
 
