@@ -5876,6 +5876,12 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     dirs = ev("directive")
     if dirs:
         lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
+    tours, skips = ev("tour"), ev("skip")
+    if tours or skips:
+        # D16 (beyin turu ekonomisi): tur başına skip oranı yüksekse maddeler gereksiz turlanıyor demektir
+        ratio = f"%{round(100 * len(skips) / len(tours))}" if tours else "-"
+        lines.append(f"- {'brain tours: ' if lang == 'en' else 'beyin turu: '}{len(tours)} tur, {len(skips)} skip ({ratio}), {len(dirs)} direktif"
+                     if lang != "en" else f"- brain tours: {len(tours)} tours, {len(skips)} skips ({ratio}), {len(dirs)} directives")
     if phases:
         lines.append(f"- {T['phases']}: " + _names([f"{e.get('name')} ({e.get('reason')})" for e in phases], 8))
     if pending is not None:
