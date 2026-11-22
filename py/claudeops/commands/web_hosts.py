@@ -268,6 +268,8 @@ def _guarded_ws_connect(url: str, open_timeout: float = 10.0, **kw: Any) -> Any:
     (loopback/link-local/unspecified) el sıkışmadan reddedilir; sonra hazır soket `sock=` ile verilir. IP literalleri
     kayıt anında denetlendi, olduğu gibi geçer."""
     import socket as _socket
+    # Varsayılan close_timeout 10 sn: web_ws kapanışta istemci EOF'unu beklediği için her stop() 10 sn takılıyordu.
+    kw.setdefault("close_timeout", 1.5)
     parts = urllib.parse.urlsplit(url)
     host = parts.hostname or ""
     if not host or not hosts_mod.hostname_is_dns_name(host):
