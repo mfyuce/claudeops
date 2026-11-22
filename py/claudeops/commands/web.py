@@ -110,6 +110,7 @@ DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
 TOKEN_FILE = os.path.join(CLAUDEOPS_DIR, "web.token")
 TUNNEL_LOG = os.path.join(CLAUDEOPS_DIR, "tunnel.log")
+_TUNNEL_REGISTERED = "Registered tunnel connection"
 _TUNNEL_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com")
 
 # [[spawn-zombie-child-degrades-web-server]] — bu process'in kendi yaşı ("Tanı"
@@ -469,10 +470,13 @@ def _start_tunnel(port: int, cloudflared_path: str = "cloudflared", timeout: flo
     while time.monotonic() < deadline:
         try:
             with open(TUNNEL_LOG) as f:
-                m = _TUNNEL_URL_RE.search(f.read())
-                if m:
-                    url = m.group(0)
-                    break
+                text = f.read()
+            m = _TUNNEL_URL_RE.search(text)
+            # URL api.trycloudflare.com'dan gelir; edge'e (7844) gerçek bağlantı "Registered tunnel connection" ile belli olur.
+            # Yalnız URL'e güvenmek çıkış ağı 7844'ü kesen ortamda ölü URL (Error 1033) verir.
+            if m and _TUNNEL_REGISTERED in text:
+                url = m.group(0)
+                break
         except FileNotFoundError:
             pass
         if proc.poll() is not None:
@@ -486,7 +490,7 @@ def _tunnel_failure(proc, url) -> str:
     if proc is not None and proc.poll() is not None:
         return f"cloudflared çıktı (kod {proc.returncode})"
     if not url:
-        return "tünel URL'i zaman aşımı içinde alınamadı"
+        return "tünel URL'i alınamadı ya da cloudflared edge'e bağlanamadı (çıkış ağı 7844'e izin vermiyor olabilir)"
     return ""
 
 

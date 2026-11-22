@@ -28,6 +28,44 @@ class TunnelFailure(unittest.TestCase):
     def test_no_proc_no_url(self):
         self.assertTrue(web._tunnel_failure(None, ""))
 
+class TunnelRegistered(unittest.TestCase):
+    """Ölü URL: cloudflared URL'i basar ama edge'e bağlanamazsa (7844 kapalı) URL verilmemeli (TODO 1137)."""
+
+    def _fake(self, tmp, body):
+        import stat
+        path = os.path.join(tmp, "fake-cloudflared")
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\n" + body + "\nsleep 30\n")
+        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
+        return path
+
+    def _run(self, body, timeout):
+        import tempfile, shutil
+        tmp = tempfile.mkdtemp()
+        old = web.TUNNEL_LOG
+        web.TUNNEL_LOG = os.path.join(tmp, "t.log")
+        proc = None
+        try:
+            proc, url = web._start_tunnel(1, self._fake(tmp, body), timeout=timeout)
+            return url
+        finally:
+            web.TUNNEL_LOG = old
+            if proc is not None:
+                proc.kill(); proc.wait()
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_url_without_registration_is_not_returned(self):
+        self.assertIsNone(self._run('echo "https://abc-def.trycloudflare.com"', 2.0))
+
+    def test_url_with_registration_is_returned(self):
+        url = self._run('echo "https://abc-def.trycloudflare.com"; echo "INF Registered tunnel connection connIndex=0"', 5.0)
+        self.assertEqual(url, "https://abc-def.trycloudflare.com")
+
+    def test_registration_marker_logged_before_url_still_ok(self):
+        url = self._run('echo "Registered tunnel connection"; echo "https://abc.trycloudflare.com"', 5.0)
+        self.assertEqual(url, "https://abc.trycloudflare.com")
+
+
 class PortBusyGuard(unittest.TestCase):
     """Port doluyken tünel hiç başlamaz (cloudflared çalışan paneli internete açmasın; review R-2/R-4)."""
 
