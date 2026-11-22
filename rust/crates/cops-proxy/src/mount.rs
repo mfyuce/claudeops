@@ -33,6 +33,8 @@ pub struct Mount {
     /// Kimlik (`/grafana/` -> `grafana`).
     pub id: String,
     pub upstream: SocketAddr,
+    /// Kök-göreli istekler (`/api/x`, mount önekini taşımayan) Referer'ı bu mount altındaysa bu mount'a gider (uygulama köke göre yol yazıyorsa).
+    pub rootrel: bool,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -66,7 +68,10 @@ pub fn parse(data: &[u8]) -> Result<MountTable, String> {
     let mut mounts: Vec<Mount> = Vec::with_capacity(arr.len());
     for (i, it) in arr.iter().enumerate() {
         let o = it.as_object().ok_or(format!("#{i}: nesne olmalı"))?;
-        if let Some(k) = o.keys().find(|k| *k != "path" && *k != "upstream") {
+        if let Some(k) = o
+            .keys()
+            .find(|k| *k != "path" && *k != "upstream" && *k != "rootrel")
+        {
             return Err(format!("#{i}: bilinmeyen anahtar {k:?}"));
         }
         let path = o
@@ -102,9 +107,16 @@ pub fn parse(data: &[u8]) -> Result<MountTable, String> {
                 "#{i}: upstream yalnız loopback ve port != 0 olabilir: {up:?}"
             ));
         }
+        let rootrel = match o.get("rootrel") {
+            None => false,
+            Some(v) => v
+                .as_bool()
+                .ok_or(format!("#{i}: rootrel true/false olmalı"))?,
+        };
         mounts.push(Mount {
             id: id.to_string(),
             upstream,
+            rootrel,
         });
     }
     Ok(MountTable { mounts })
@@ -132,6 +144,32 @@ impl MountTable {
         } else {
             Hit::Under(m.upstream)
         })
+    }
+}
+
+impl MountTable {
+    /// `rootrel` mount'ları için: Referer yolu `/<id>/...` ya da `/<id>` ise o mount (kimlik, upstream).
+    pub fn find_by_referer_path(&self, referer_path: &str) -> Option<(&str, SocketAddr)> {
+        let rest = referer_path.strip_prefix('/')?;
+        let id = rest.split(['/', '?', '#']).next()?;
+        let m = self.mounts.iter().find(|m| m.rootrel && m.id == id)?;
+        Some((m.id.as_str(), m.upstream))
+    }
+}
+
+/// `Referer` değerinin yolu; yalnız `Host` ile aynı yetkili (host[:port]) ise (aynı köken), değilse None.
+pub fn same_origin_referer_path<'a>(referer: &'a str, host: &str) -> Option<&'a str> {
+    let rest = referer
+        .strip_prefix("https://")
+        .or_else(|| referer.strip_prefix("http://"))?;
+    let (auth, path) = match rest.find(['/', '?', '#']) {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    if auth.eq_ignore_ascii_case(host) && !host.is_empty() {
+        Some(path)
+    } else {
+        None
     }
 }
 
@@ -180,6 +218,17 @@ impl Mounts {
             return None;
         }
         self.snapshot().find(path)
+    }
+
+    /// Kök-göreli istek (mount'suz yol) için Referer'a göre `rootrel` mount: `(kimlik, upstream)`.
+    pub fn lookup_by_referer(&self, referer: &str, host: &str) -> Option<(String, SocketAddr)> {
+        if !self.active.load(Ordering::Acquire) {
+            return None;
+        }
+        let path = same_origin_referer_path(referer, host)?;
+        let t = self.snapshot();
+        t.find_by_referer_path(path)
+            .map(|(i, a)| (i.to_string(), a))
     }
 
     pub fn snapshot(&self) -> Arc<MountTable> {
@@ -299,6 +348,37 @@ mod tests {
             assert_eq!(t.find(p), None, "{p}");
         }
         assert!(parse(b"[]").unwrap().is_empty());
+    }
+
+    #[test]
+    fn rootrel_by_referer() {
+        let t = parse(br#"[{"path":"/gw/","upstream":"127.0.0.1:18104","rootrel":true},{"path":"/grafana/","upstream":"127.0.0.1:18102"}]"#).unwrap();
+        assert_eq!(t.find_by_referer_path("/gw/x?y=1"), Some(("gw", up(18104))));
+        assert_eq!(t.find_by_referer_path("/gw"), Some(("gw", up(18104))));
+        assert_eq!(t.find_by_referer_path("/grafana/d/1"), None); // rootrel degil
+        assert_eq!(t.find_by_referer_path("/gwx/"), None);
+        assert_eq!(t.find_by_referer_path("/"), None);
+        assert!(parse(br#"[{"path":"/g/","upstream":"127.0.0.1:1","rootrel":"x"}]"#).is_err());
+        assert_eq!(
+            same_origin_referer_path("https://t.example/gw/a?b", "t.example"),
+            Some("/gw/a?b")
+        );
+        assert_eq!(
+            same_origin_referer_path("https://t.example", "t.example"),
+            Some("/")
+        );
+        assert_eq!(
+            same_origin_referer_path("https://evil.example/gw/", "t.example"),
+            None
+        );
+        assert_eq!(
+            same_origin_referer_path("https://t.example.evil/gw/", "t.example"),
+            None
+        );
+        assert_eq!(
+            same_origin_referer_path("ftp://t.example/gw/", "t.example"),
+            None
+        );
     }
 
     #[test]

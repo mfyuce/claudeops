@@ -510,7 +510,7 @@ impl Proxy {
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
     pub async fn handle(
         self: Arc<Self>,
-        req: Request<Incoming>,
+        mut req: Request<Incoming>,
         peer: SocketAddr,
     ) -> Result<Response<Body>, hyper::Error> {
         // İç uçlar (`/api/_internal/*`) dışarıdan ASLA aktarılmaz: ön kapı gizlisi her aktarılan isteğe eklendiği için, aktarılırsa
@@ -527,6 +527,32 @@ impl Proxy {
         if let Some(cfg) = &self.mounts {
             if let Some(hit) = cfg.mounts.lookup(req.uri().path()) {
                 return Ok(self.handle_mount(cfg, hit, req, peer).await);
+            }
+            // Köke göre yazılan istek (`/api/x`, `/maya-ui/...`): Referer'ı bir `rootrel` mount'unun altındaysa o uygulamaya
+            // (`/<id>` + yol) gider; panelin kendi yollarını (`/api`) da kapsar, çünkü sayfa o uygulamanın sayfasıdır.
+            let referer = req
+                .headers()
+                .get(hyper::header::REFERER)
+                .and_then(|v| v.to_str().ok());
+            let host = req
+                .headers()
+                .get(hyper::header::HOST)
+                .and_then(|v| v.to_str().ok())
+                .or_else(|| req.uri().authority().map(|a| a.as_str()));
+            if let (Some(r), Some(h)) = (referer, host) {
+                if let Some((id, addr)) = cfg.mounts.lookup_by_referer(r, h) {
+                    let pq = req
+                        .uri()
+                        .path_and_query()
+                        .map(|p| p.as_str())
+                        .unwrap_or("/");
+                    if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
+                        *req.uri_mut() = uri;
+                        return Ok(self
+                            .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                            .await);
+                    }
+                }
             }
         }
         if let Some(r) = self.try_static(&req) {

@@ -539,3 +539,45 @@ async fn mount_table_hot_reload_through_proxy() {
     h.abort();
     assert!(ok, "yeni mount canlıya alınmadı");
 }
+
+const GW: &str =
+    r#"[{"path":"/gw/","upstream":"APP","rootrel":true},{"path":"/grafana/","upstream":"APP"}]"#;
+
+#[tokio::test]
+async fn rootrel_requests_follow_the_referer_into_the_mount() {
+    let (p, _d) = start(fake_app().await, Some((GW, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    // Referer /gw/ altinda: panel yolu (/api/...) da uygulamaya gider, /gw oneki eklenir.
+    let r = raw(
+        p,
+        &get(
+            "/api/export?a=1",
+            &format!("{auth}Referer: http://panel.example:8765/gw/maya-ui/x\r\n"),
+        ),
+    )
+    .await;
+    assert!(
+        r.starts_with("HTTP/1.1 200") && r.contains("GET /gw/api/export?a=1 "),
+        "{r}"
+    );
+    assert!(
+        !r.contains(COOKIE),
+        "panel kimligi uygulamaya sizmamali: {r}"
+    );
+    // Kimliksiz: 401 (Referer kimlik vermez).
+    let r = raw(
+        p,
+        &get("/api/export", "Referer: http://panel.example:8765/gw/\r\n"),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 401"), "{r}");
+    // Baska kokenin Referer'i, rootrel olmayan mount ve Referer'siz istek panele (Python) gider.
+    for extra in [
+        "Referer: http://evil.example/gw/\r\n",
+        "Referer: http://panel.example:8765/grafana/d/1\r\n",
+        "",
+    ] {
+        let r = raw(p, &get("/api/export", &format!("{auth}{extra}"))).await;
+        assert!(r.contains("PYTHON"), "{extra}: {r}");
+    }
+}
