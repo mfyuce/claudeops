@@ -4117,7 +4117,9 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 actions.append(Action("ho_halted", name, f"devir bitti ama proje {halted}: yeniden açılmadı, oturum devir notuyla açık",
                                       {"phase": halted, "step": "ready" if ready else "expired"}))
             else:
-                actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired"))
+                note = "" if ready else expired_handover_note(v.last_assistant, cfg.lang)
+                actions.append(Action("respawn", name, "READY FOR HANDOVER" if ready else "handover grace expired",
+                                      {"card_note": note} if note else {}))
             ho_pending.pop(name, None)
             ho_close.pop(name, None)
             ho_pause.pop(name, None)
@@ -4986,6 +4988,22 @@ def is_open_answer(text: str) -> bool:
     if _HOLD_ANY_RE.search(t):
         return False
     return bool(_OPEN_ANY_RE.search(t))
+
+
+CARD_NOTE_MAX_CHARS = 1200
+
+
+def expired_handover_note(last_assistant: str, lang: str = "tr") -> str:
+    """D24 (kart devri): devir süresi READY FOR HANDOVER gelmeden dolunca (ucli gibi zayıf modeller işareti yazmaz) yeni `--new`
+    oturum NOTSUZ açılmasın: eski oturumun SON asistan metni (kuyruk, `CARD_NOTE_MAX_CHARS`) ilk direktife eklenir. Metin yoksa "". SAF."""
+    t = " ".join(str(last_assistant or "").split())
+    if not t:
+        return ""
+    if len(t) > CARD_NOTE_MAX_CHARS:
+        t = "…" + t[-CARD_NOTE_MAX_CHARS:]
+    if lang == "en":
+        return f"The previous session ended its handover window without a READY FOR HANDOVER note. Its last message (verify against TODO.md/git before relying on it): {t}"
+    return f"Önceki oturum devir süresi READY FOR HANDOVER notu yazmadan doldu. Son mesajı (güvenmeden önce TODO.md/git ile doğrula): {t}"
 
 
 def is_conditional_note(text: str) -> bool:

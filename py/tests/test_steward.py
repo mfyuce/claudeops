@@ -3585,3 +3585,30 @@ class StartDecisionEventTests(unittest.TestCase):
         st = {"start_blocked": {"projects": ["c"], "reason": "max_active", "active": 3, "max_active": 3}}
         d = sw.start_decision_event([A("start", "a", "due")], st)
         self.assertEqual((d["allowed"], d["blocked"], d["reason"], d["max_active"]), (["a"], ["c"], "max_active", 3))
+
+
+class ExpiredHandoverNoteTest(unittest.TestCase):
+    """D24: READY FOR HANDOVER gelmeden devir süresi dolarsa respawn eylemi eski oturumun son metnini kart notu olarak taşır."""
+    def test_note_helper(self):
+        self.assertEqual(sw.expired_handover_note("", "tr"), "")
+        self.assertIn("son mesajı".lower(), sw.expired_handover_note("x", "tr").lower())
+        self.assertIn("last message", sw.expired_handover_note("x", "en"))
+        long = sw.expired_handover_note("a " * 3000, "tr")
+        self.assertLess(len(long), sw.CARD_NOTE_MAX_CHARS + 200)
+
+    def _plan(self, last, ready):
+        cfg = _cfg()
+        txt = (last + "\nREADY FOR HANDOVER") if ready else last
+        projects = {"p1": sw.Project(name="p1", phase="planned", cadence_minutes=60)}
+        acts, _ = sw.plan_tick([_view("p1", last_assistant=txt)], projects, {"ho_pending": {"p1": 1000.0}}, cfg, 1000.0 + cfg.ho_grace_minutes * 60 + 5, [], [])
+        return [a for a in acts if a.kind == "respawn"]
+
+    def test_expired_without_marker_carries_note(self):
+        rs = self._plan("son durum: X bitti, Y kaldı", ready=False)
+        self.assertEqual(len(rs), 1)
+        self.assertIn("Y kaldı", rs[0].payload.get("card_note", ""))
+
+    def test_ready_marker_has_no_card_note(self):
+        rs = self._plan("özet", ready=True)
+        self.assertEqual(len(rs), 1)
+        self.assertNotIn("card_note", rs[0].payload)

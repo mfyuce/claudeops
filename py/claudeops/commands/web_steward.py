@@ -3459,7 +3459,10 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if not res.get("ok") or p is None:
             return res
         sw.mark_card_stale(p.name)   # handover'da oturum işini yazdı: kart, proje durunca yeniden özetlensin
-        return _give_directive(p, "", reason="respawn", session_name=name, cfg=cfg, host="")
+        note = str((action.payload or {}).get("card_note") or "")
+        if note:
+            sw.log_event("ho_expired_card_note", paths=cfg.sid, name=name, chars=len(note))
+        return _give_directive(p, note, reason="respawn", session_name=name, cfg=cfg, host="")
     if k == "start":
         p = projects.get(name)
         if p is None:
