@@ -5937,6 +5937,16 @@ def http_project_upsert(data: Dict[str, Any], sid: str = "default") -> Dict[str,
     except ValueError as e:      # OwnedElsewhere / ReservedName / HostChangeRefused mesajı olduğu gibi
         return {"ok": False, "error": str(e)}
     sw.log_event("project_set", paths=sid, name=name, fields=sorted(fields))
+    if (fields.get("phase") == "paused" and old is not None and old.phase in sw.ACTIVE_PHASES
+            and data.get("actor") not in ("brain", "extension")):
+        try:        # sahip/CLI paused yaptı: açık oturum idle_close'u (30 dk) beklemesin; motor boştaysa devir+kapat (steward.plan_tick 2b)
+            with sw.steward_lock(sid):
+                st = sw.load_state(sid)
+                sw.request_pause_close(st, name, time.time())
+                sw.save_state(st, sid)
+            sw.log_event("pause_close_requested", paths=sid, name=name)
+        except Exception as e:      # istek yazılamazsa faz yine de değişti: eski yavaş yol (idle_close) çalışır
+            diag_log("pause_close_request_failed", error=repr(e))
     out = {"ok": True, "project": _project_dict(p)}
     warning = _prefix_warning(name, sid)
     if warning:
@@ -6987,8 +6997,13 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
         did = str(data.get("_did") or "") or __import__("uuid").uuid4().hex[:12]
         todo_res = _todo_record_directive(p, name, text, did, data)
-        _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
-        if p.phase in ("done", "paused") and str(data.get("actor") or "") not in ("brain", "extension") and sw.valid_name(p.name) and p.name in projects:
+        keep_phase = sw.directive_keeps_phase(text, data)      # toparla (commit+push+READY FOR HANDOVER) / --keep-phase: faz AÇILMAZ
+        if keep_phase and p.phase in ("done", "paused"):
+            sw.log_event("phase_keep", paths=sw.paths_for(sid), name=p.name, project=p.name, phase=p.phase, trigger="directive")
+        if not keep_phase:
+            _no_work_directive_reopen(p, sid)      # `iş yok` ile paused projeye direktif = yeniden açılış tetikleyicisi (planned + --new)
+        if (not keep_phase and p.phase in ("done", "paused") and str(data.get("actor") or "") not in ("brain", "extension")
+                and sw.valid_name(p.name) and p.name in projects):
             # insan/okuma(readlist)/CLI direktifi done/paused projeye yeni iş demektir: phase=planned (17 Kas, marwan: oturum açıldı ama faz done kaldı)
             sw.upsert_project(p.name, paths=sw.paths_for(sid), phase="planned")
             sw.log_event("phase_reopen", paths=sw.paths_for(sid), name=p.name, project=p.name, was=p.phase, trigger="directive")

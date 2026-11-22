@@ -1071,6 +1071,8 @@ DEFAULT_DISK_CLEAN: Dict[str, Any] = {
     "cargo": "on",
     "cargo_idle_days": 14,
     "cargo_roots": ["~/.cargo-target*", "~/work/projects"],
+    "cargo_sweep": "dry",          # ARTIFACT düzeyi süpürme (eski birimler, scratchpad derleme dizinleri): dry = yalnız ölçüm günlüğe; on = sil (22 Kas: önce dry)
+    "scratch_cargo_idle_days": 1,  # /tmp/claude-*/*/*/scratchpad altındaki CACHEDIR.TAG'li derleme dizinleri bu kadar gün boşta kalınca
     "scratch": "on",
     "scratch_idle_days": 3,
     "docker": "off",             # ortak daemon: paylaşımlı hostta (ulak_31, yuhem) KAPALI; yalnız kendi makinede host ayarıyla açılır

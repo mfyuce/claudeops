@@ -105,6 +105,17 @@ def cargo_candidates(roots: List[str], idle_days: float, now: float) -> List[Dic
     """`~/.cargo-target*` (kök listesinde glob önceden açılmış) + kök altında (derinlik<=5) `target/` (yanında Cargo.toml ya da
     CACHEDIR.TAG). Yaş: dizindeki EN YENİ dosya mtime'ı."""
     cutoff = now - idle_days * 86400
+    found = _find_targets(roots)
+    out = []
+    for d in found:
+        size, newest, ours = tree_info(d, newer_than=cutoff)
+        out.append({"kind": "cargo", "path": d, "bytes": size, "newest": newest, "idle_days": round((now - newest) / 86400, 1),
+                    "eligible": newest <= cutoff and ours, "why": "" if newest <= cutoff and ours else
+                    ("başkasının dosyası var" if not ours else f"son {idle_days:g} günde değişmiş")})
+    return out
+
+
+def _find_targets(roots: List[str]) -> List[str]:
     found: List[str] = []
     for r in roots:
         r = os.path.expanduser(r)
@@ -124,12 +135,103 @@ def cargo_candidates(roots: List[str], idle_days: float, now: float) -> List[Dic
                 if not os.path.islink(td) and (os.path.isfile(os.path.join(td, "CACHEDIR.TAG")) or os.path.isfile(os.path.join(d, "Cargo.toml"))):
                     found.append(td)
             dirs[:] = [x for x in dirs if x not in _SKIP_DIRS and not os.path.islink(os.path.join(d, x))]
+    return sorted(set(found))
+
+
+def _norm(x: str) -> str:
+    return x.replace("-", "_")
+
+
+def _unit_age(fp_dir: str) -> float:
+    """Birimin son KULLANIM zamanı: cargo her çağrıda `invoked.timestamp`i dokunur (değişmeyen bağımlılığın artifact mtime'ı
+    eski kalır, yaş ölçüsü o OLAMAZ); yoksa parmak izi dizinindeki en yeni dosya."""
+    ts = os.path.join(fp_dir, "invoked.timestamp")
+    try:
+        return os.lstat(ts).st_mtime
+    except OSError:
+        pass
+    newest = 0.0
+    try:
+        for e in os.scandir(fp_dir):
+            try:
+                newest = max(newest, e.stat(follow_symlinks=False).st_mtime)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return newest or os.lstat(fp_dir).st_mtime
+
+
+def _path_bytes(p: str) -> int:
+    try:
+        if os.path.isdir(p) and not os.path.islink(p):
+            return tree_info(p)[0]
+        return os.lstat(p).st_size
+    except OSError:
+        return 0
+
+
+def _profile_dirs(target: str) -> List[str]:
+    """`target/<profil>` ve `target/<üçlü>/<profil>`: içinde `.fingerprint` olan dizinler (derinlik <= 2)."""
     out = []
-    for d in sorted(set(found)):
-        size, newest, ours = tree_info(d, newer_than=cutoff)
-        out.append({"kind": "cargo", "path": d, "bytes": size, "newest": newest, "idle_days": round((now - newest) / 86400, 1),
-                    "eligible": newest <= cutoff and ours, "why": "" if newest <= cutoff and ours else
-                    ("başkasının dosyası var" if not ours else f"son {idle_days:g} günde değişmiş")})
+    try:
+        for e in os.scandir(target):
+            if not e.is_dir(follow_symlinks=False):
+                continue
+            if os.path.isdir(os.path.join(e.path, ".fingerprint")):
+                out.append(e.path)
+                continue
+            try:
+                for e2 in os.scandir(e.path):
+                    if e2.is_dir(follow_symlinks=False) and os.path.isdir(os.path.join(e2.path, ".fingerprint")):
+                        out.append(e2.path)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return sorted(out)
+
+
+def cargo_sweep_candidates(roots: List[str], idle_days: float, now: float) -> List[Dict[str, Any]]:
+    """ARTIFACT düzeyi (cargo-sweep benzeri): aktif target'larda her profil için `.fingerprint/<birim>` yaşı `idle_days`ten büyük
+    birimlerin parmak izi + deps/build/examples çıktıları. Hedef dizinin tamamı yaşlanmasa da çalışır (her gün kullanılan
+    `~/.cargo-target`te biriken eski sürümler). Profil başına TEK aday (`paths` listesi); yalnız kendi uid'imizin dosyaları."""
+    cutoff = now - idle_days * 86400
+    me = uid()
+    out: List[Dict[str, Any]] = []
+    for t in _find_targets(roots):
+        for prof in _profile_dirs(t):
+            fp = os.path.join(prof, ".fingerprint")
+            stale: List[str] = []
+            try:
+                entries = [e for e in os.scandir(fp) if e.is_dir(follow_symlinks=False)]
+            except OSError:
+                continue
+            for e in entries:
+                try:
+                    if e.stat(follow_symlinks=False).st_uid != me:
+                        continue
+                except OSError:
+                    continue
+                if _unit_age(e.path) <= cutoff:
+                    stale.append(e.name)
+            if not stale:
+                continue
+            want = {_norm(u) for u in stale}
+            paths = [os.path.join(fp, u) for u in stale]
+            for sub in ("deps", "build", "examples"):
+                d = os.path.join(prof, sub)
+                try:
+                    it = list(os.scandir(d))
+                except OSError:
+                    continue
+                for e in it:
+                    base = e.name.split(".")[0]
+                    cand = base[3:] if base.startswith("lib") and _norm(base[3:]) in want else base
+                    if _norm(cand) in want and not e.is_symlink():
+                        paths.append(e.path)
+            out.append({"kind": "cargo_sweep", "path": prof, "paths": paths, "units": len(stale),
+                        "bytes": sum(_path_bytes(p) for p in paths), "eligible": True, "why": ""})
     return out
 
 
@@ -166,11 +268,67 @@ def scratch_candidates(idle_days: float, now: float, tmp_root: str = "/tmp", hel
     return out
 
 
+def scratch_cargo_candidates(idle_days: float, now: float, tmp_root: str = "/tmp", held=None) -> List[Dict[str, Any]]:
+    """/tmp/claude-<uid>/<proje>/<oturum>/scratchpad/<dizin> içinde CACHEDIR.TAG'li cargo derleme dizinleri (oturumların ortak
+    target-dir'i DELEN çapraz derleme/profil dizinleri: tgt-*, tprof, bench). Yeniden üretilebilir önbellek: 3 günlük scratch kuralını
+    BEKLEMEZ, `idle_days` (varsayılan 1) boşta + süreç tutmuyorsa aday. Oturum dizininin geri kalanına dokunulmaz."""
+    held = held or _held_by_process
+    root = os.path.join(tmp_root, f"claude-{uid()}")
+    cutoff = now - idle_days * 86400
+    out: List[Dict[str, Any]] = []
+    try:
+        st = os.lstat(root)
+    except OSError:
+        return out
+    if os.path.islink(root) or st.st_uid != uid():
+        return out
+    for proj in sorted(os.listdir(root)):
+        pdir = os.path.join(root, proj)
+        if os.path.islink(pdir) or not os.path.isdir(pdir):
+            continue
+        for sess in sorted(os.listdir(pdir)):
+            sp = os.path.join(pdir, sess, "scratchpad")
+            if os.path.islink(sp) or not os.path.isdir(sp):
+                continue
+            tagged: List[str] = []
+            base_depth = sp.rstrip(os.sep).count(os.sep)
+            for dp, dirs, files in os.walk(sp, followlinks=False):
+                if "CACHEDIR.TAG" in files and dp != sp:
+                    tagged.append(dp)
+                    dirs[:] = []                 # etiketli dizinin içine inme
+                    continue
+                if dp.count(os.sep) - base_depth >= 3:
+                    dirs[:] = []
+                dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(dp, x))]
+            for d in sorted(tagged):
+                size, newest, ours = tree_info(d, newer_than=cutoff)
+                elig, why = newest <= cutoff and ours, ""
+                if not ours:
+                    why = "başkasının dosyası var"
+                elif newest > cutoff:
+                    why = f"son {idle_days:g} günde değişmiş"
+                elif held(d):
+                    elig, why = False, "bir süreç içinde çalışıyor"
+                out.append({"kind": "scratch_cargo", "path": d, "bytes": size, "newest": newest,
+                            "idle_days": round((now - newest) / 86400, 1), "eligible": elig, "why": why})
+    return out
+
+
 def _remove(path: str) -> Tuple[bool, str]:
     if os.path.islink(path):
         return False, "sembolik bağ"
     try:
         shutil.rmtree(path)
+        return True, ""
+    except OSError as e:
+        return False, f"{e.__class__.__name__}: {e.strerror or e}"[:120]
+
+
+def _remove_file(path: str) -> Tuple[bool, str]:
+    if os.path.islink(path):
+        return False, "sembolik bağ"
+    try:
+        os.unlink(path)
         return True, ""
     except OSError as e:
         return False, f"{e.__class__.__name__}: {e.strerror or e}"[:120]
@@ -221,11 +379,36 @@ def run(cfg: Dict[str, Any], apply: bool, now: Optional[float] = None, *, tmp_ro
         else:
             roots = [p for r in (cfg.get("cargo_roots") or []) for p in _glob(r)]
             items += cargo_candidates(roots, float(cfg.get("cargo_idle_days") or 14), now)
+    sweep = str(cfg.get("cargo_sweep", "dry")).lower()      # artifact düzeyi süpürme: ÖNCE dry (ölçüm günlüğe), sonra on
+    if sweep not in ("off", "0", "false") and not compilers():
+        roots = [p for r in (cfg.get("cargo_roots") or []) for p in _glob(r)]
+        for it in cargo_sweep_candidates(roots, float(cfg.get("cargo_idle_days") or 14), now):
+            if sweep == "dry":
+                it["eligible_dry"] = True      # ölçüm: silinmez, ama aday baytı günlüğe/özete girer
+                it["dry_only"] = True
+            items.append(it)
+    if sweep not in ("off", "0", "false") and not compilers():
+        for it in scratch_cargo_candidates(float(cfg.get("scratch_cargo_idle_days") or 1), now, tmp_root):
+            if sweep == "dry":
+                it["dry_only"] = True      # ölçüm: silinmez, aday baytı günlüğe girer
+            items.append(it)
     if str(cfg.get("scratch", "on")).lower() not in ("off", "0", "false"):
         items += scratch_candidates(float(cfg.get("scratch_idle_days") or 3), now, tmp_root)
     freed, removed = 0, 0
     for it in items:
         it["removed"] = False
+        if it.get("dry_only"):
+            continue
+        if it["eligible"] and do and it["kind"] == "cargo_sweep":
+            n_ok = 0
+            for pth in it["paths"]:
+                ok, _w = _remove(pth) if os.path.isdir(pth) else _remove_file(pth)
+                n_ok += 1 if ok else 0
+            it["removed"] = n_ok > 0
+            if n_ok:
+                freed += it["bytes"]
+                removed += 1
+            continue
         if it["eligible"] and do:
             ok, why = _remove(it["path"])
             it["removed"] = ok
@@ -241,7 +424,8 @@ def run(cfg: Dict[str, Any], apply: bool, now: Optional[float] = None, *, tmp_ro
     elig = [i for i in items if i.get("eligible")]
     res = {"ok": True, "applied": do, "mode": "on" if do else "dry", "disk_pct": disk_pct(), "candidates": len(elig),
            "candidate_bytes": sum(i["bytes"] for i in elig), "removed": removed, "freed_bytes": freed, "notes": notes, "at": now}
-    _log({**res, "items": [{k: v for k, v in i.items() if k != "newest"} for i in items if i.get("eligible") or i["kind"] == "docker"]})
+    _log({**res, "items": [{k: v for k, v in i.items() if k not in ("newest", "paths")} for i in items
+                           if i.get("eligible") or i.get("dry_only") or i["kind"] == "docker"]})
     return res
 
 

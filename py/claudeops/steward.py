@@ -3960,6 +3960,30 @@ def _confirm_action(name: str, proj: str, cfg: "Config", why: str) -> "Action":
                                         "confirm": True, "project": proj})
 
 
+_WRAP_UP_RE = re.compile(r"READY\s+FOR\s+HANDOVER", re.I)
+_WRAP_UP_ACT_RE = re.compile(r"\b(commit|push)\b|toparla|wrap[\s-]?up", re.I)
+PAUSE_CLOSE_EXPIRE_SECONDS = 6 * 3600     # paused'a çekilen projede meşgul oturum bu kadar sürede boşalmazsa istek düşer
+
+
+def is_wrap_up_directive(text: str) -> bool:
+    """SAF. Direktif bir TOPARLAMA isteği mi (commit/push + READY FOR HANDOVER): yeni iş değil, mevcut işi kapatmak.
+    Paused/done projenin fazını AÇMAMALI (22 Kas, marwan: `phase_reopen trigger=directive`)."""
+    t = str(text or "")
+    return bool(_WRAP_UP_RE.search(t) and _WRAP_UP_ACT_RE.search(t))
+
+
+def directive_keeps_phase(text: str, data: Optional[Dict[str, Any]] = None) -> bool:
+    """SAF. Direktif fazı değiştirmesin mi: açık `keep_phase` bayrağı ya da toparlama metni."""
+    return bool((data or {}).get("keep_phase") is True or is_wrap_up_directive(text))
+
+
+def request_pause_close(st: Dict[str, Any], project: str, now: float) -> None:
+    """Sahip/CLI projeyi paused yaptı: açık oturumu idle_close (30 dk) beklemeden devir+kapat isteği (state.pause_close)."""
+    pc = dict(st.get("pause_close") or {})
+    pc[project] = now
+    st["pause_close"] = pc
+
+
 def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config,
               now: float, questions: List[Question], ideas: List[Idea],
               world: Optional[World] = None,
@@ -4180,6 +4204,29 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         `SHUTDOWN_QUIET_SECONDS`tir sessiz: alt ajan sürüyor sayılmaz. Yoksa uzakta ertelenen STEWARD-DONE(-CONFIRMED) ASLA
         uygulanmazdı (`subagent_unknown` uzak görünümde hep True başlar; iggy@ulak_31 2026-10-29)."""
         return bool(v.busy is False and v.last_activity and (now - v.last_activity) >= SHUTDOWN_QUIET_SECONDS)
+
+    # 2b) Sahip/CLI projeyi paused yaptı (`state.pause_close`): oturum boştaysa HEMEN devir + kapat (idle_close'u bekleme),
+    #     meşgulse tur bitince (sonraki tick). Faz paused değilse (geri açıldı) ya da oturum yoksa/süre dolduysa istek düşer.
+    for proj, req_at in list((st.get("pause_close") or {}).items()):
+        pc = dict(st.get("pause_close") or {})
+        p = projects.get(proj)
+        mine = [v for v in views if v.running and v.name != cfg.brain_name
+                and (world.project_key(v.name) if world is not None else _project_key(v.name, projects)) == proj]
+        if p is None or p.phase != "paused" or not mine or (now - float(req_at)) >= PAUSE_CLOSE_EXPIRE_SECONDS:
+            pc.pop(proj, None)
+            st["pause_close"] = pc
+            continue
+        left = False
+        for v in mine:
+            if v.name in busy_names or v.name in ho_pending:
+                continue
+            if v.busy is True:
+                left = True
+                continue
+            _close_done(v, proj, "sahip paused yaptı: boşta oturum devir + kapat")
+        if not left:
+            pc.pop(proj, None)
+            st["pause_close"] = pc
 
     # 3) İşaret taraması — yalnız DEĞİŞMİŞ yanıtlarda (aynı yanıtı her tick yeniden işleme)
     for v in views:

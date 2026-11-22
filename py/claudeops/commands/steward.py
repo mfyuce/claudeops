@@ -1140,7 +1140,7 @@ def cmd_api(args) -> int:
     elif args.action == "directive":
         res = _api_idempotent(port, "POST", "/api/steward/directive",
                               {"name": args.name, "text": args.text or "", "model": args.model or "", "effort": args.effort or "",
-                               "reason": "cli", "queue": True}, sid, getattr(args, "did", None) or __import__("uuid").uuid4().hex[:12])
+                               "reason": "cli", "queue": True, **({"keep_phase": True} if getattr(args, "keep_phase", False) else {})}, sid, getattr(args, "did", None) or __import__("uuid").uuid4().hex[:12])
         if res.get("status") == "queued" and res.get("id"):      # arka plan teslimi: sonucu bekle (delivered|failed), zaman aşımı = hâlâ queued
             for _ in range(60):
                 time.sleep(2)
@@ -1389,6 +1389,7 @@ def register(sub):
             px.add_argument("--reason")
         if name == "directive":
             px.add_argument("--did", help="istemci direktif kimliği (12 hex): zaman aşımından sonra AYNI id ile yeniden göndermek yinelenme yapmaz")
+            px.add_argument("--keep-phase", action="store_true", help="paused/done projenin fazını AÇMA (toparla/commit+push/READY FOR HANDOVER direktifi; bu tür metin zaten otomatik tanınır)")
         px.set_defaults(func=cmd_api)
     for sp in s.choices.values():      # alt-komut `func`ı doğrudan çağrılır (`run` yalnız alt-komutsuz): kimliği HER BİRİNDE çöz
         sp.set_defaults(func=_with_sid(sp.get_default("func")))
