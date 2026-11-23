@@ -119,3 +119,50 @@ def transcript_pending_path(path: Optional[str], now: Optional[float] = None) ->
     except OSError:
         return False
     return transcript_pending(data.split("\n"), now)
+
+
+_CODEX_BG_RE = re.compile(r"(?<![\w.])([1-9]\d*) background terminals? running", re.I)
+
+
+def codex_screen_count(text: str) -> int:
+    """codex 0.166 alt durum satırı: `N background terminal(s) running · /ps to view · /stop to close` (canlı ölçüldü, docs/bg-work-measurement.md)."""
+    lines = (text or "").rstrip("\n").split("\n")[-SCREEN_TAIL_LINES:]
+    return sum(int(m.group(1)) for ln in lines for m in _CODEX_BG_RE.finditer(ln))
+
+
+def codex_subagents_pending(lines: Iterable[str], now: Optional[float] = None) -> int:
+    """codex rollout: `item_completed` `SubAgentActivity` `kind:"started"` olup aynı `agent_thread_id` için `completed` gelmemiş ajan sayısı.
+    Ekranda alt ajan işareti YOK (ölçüldü): tek kanıt dosyadır. `PENDING_MAX_AGE_SECONDS`ten eski başlangıç sayılmaz."""
+    now = time.time() if now is None else now
+    started: dict = {}
+    done: Set[str] = set()
+    for ln in lines:
+        if "SubAgentActivity" not in ln:
+            continue
+        try:
+            o = json.loads(ln)
+        except ValueError:
+            continue
+        it = (o.get("payload") or {}).get("item") or {}
+        if it.get("type") != "SubAgentActivity" or not it.get("agent_thread_id"):
+            continue
+        aid = str(it["agent_thread_id"])
+        if it.get("kind") == "started":
+            started[aid] = _epoch(o.get("timestamp")) or now
+        elif it.get("kind") in ("completed", "failed", "cancelled", "canceled", "closed"):
+            done.add(aid)
+    return sum(1 for a, t in started.items() if a not in done and now - t < PENDING_MAX_AGE_SECONDS)
+
+
+def tail_lines(path: Optional[str]) -> list:
+    """Dosyanın son `TRANSCRIPT_TAIL_BYTES` baytının satırları; okunamazsa []."""
+    if not path or not os.path.isfile(path):
+        return []
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - TRANSCRIPT_TAIL_BYTES))
+            return f.read().decode("utf-8", "replace").split("\n")
+    except OSError:
+        return []

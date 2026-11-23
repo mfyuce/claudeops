@@ -303,6 +303,17 @@ class CodexProvider(CliProvider):
         # tipinde de güvenilir şekilde tek-Enter'la gönderimi düzeltti.
         return 0.15
 
+    def background_work(self, pane_text: str, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """Canlı ölçüm (23 Kas, docs/bg-work-measurement.md): `task_complete` arka plan kabuğu bitmeden yazılır, bu yüzden boşta sayılmaz.
+        Arka plan kabuk = ekran `N background terminal(s) running`; alt ajan = rollout'ta `SubAgentActivity started` + `completed` gelmemiş."""
+        from .. import bg_work
+        n = bg_work.codex_screen_count(pane_text or "")
+        try:
+            n += bg_work.codex_subagents_pending(bg_work.tail_lines(self._rollout_path(cwd, sid)))
+        except Exception:
+            pass
+        return n
+
     def _rollout_path(self, cwd: str, sid: Optional[str]) -> Optional[str]:
         """`resolve_resume_id`'nin bulduğu sid'e karşılık gelen TAM dosyayı (ya da
         sid yoksa/hiç eşleşmezse aynı cwd-taramalı mtime-fallback'i) döndürür — o

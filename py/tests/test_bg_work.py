@@ -106,7 +106,7 @@ class ProviderBackgroundWork(unittest.TestCase):
     def test_base_unknown_and_claude_counts(self):
         from claudeops.providers import PROVIDERS
         for n, p in PROVIDERS.items():
-            if n != "claude":
+            if n not in ("claude", "codex", "ucli"):
                 self.assertIsNone(p.background_work("1 shell · esc to interrupt", "/x", None), n)
         c = PROVIDERS["claude"]
         self.assertEqual(c.background_work(SCREEN_BG_TASKS, "/nonexistent", None), 3)
@@ -125,3 +125,31 @@ class UcliBackgroundWork(unittest.TestCase):
             with mock.patch("claudeops.providers.ucli_provider.read_status_file", return_value=st):
                 self.assertIsNone(u.background_work("", "/x", "s"), st)
         self.assertIsNone(u.background_work("", "/x", None))
+
+
+CODEX_SCREEN = """\
+• Başladı.
+  1 background terminal running · /ps to view · /stop to close
+› Ask Codex to do anything
+"""
+
+
+def _sa(kind, aid, ts):
+    return json.dumps({"timestamp": ts, "type": "event_msg", "payload": {"type": "item_completed", "item": {
+        "type": "SubAgentActivity", "kind": kind, "agent_thread_id": aid, "agent_path": "/root/x"}}})
+
+
+class CodexBackgroundWork(unittest.TestCase):
+    def test_screen_and_rollout(self):
+        self.assertEqual(bg_work.codex_screen_count(CODEX_SCREEN), 1)
+        self.assertEqual(bg_work.codex_screen_count("› Ask Codex to do anything\nWorked for 3s"), 0)
+        ls = [_sa("started", "a1", "2026-11-23T10:17:26Z"), _sa("started", "a2", "2026-11-23T10:17:27Z"), _sa("completed", "a1", "2026-11-23T10:18:30Z")]
+        self.assertEqual(bg_work.codex_subagents_pending(ls, now=T), 1)
+        self.assertEqual(bg_work.codex_subagents_pending(ls, now=T + 7 * 3600), 0)
+
+    def test_provider_sums_screen_and_missing_rollout(self):
+        from claudeops.providers import PROVIDERS
+        c = PROVIDERS["codex"]
+        with mock.patch.object(type(c), "_rollout_path", return_value=None):
+            self.assertEqual(c.background_work(CODEX_SCREEN, "/x", None), 1)
+            self.assertEqual(c.background_work("› Ask Codex", "/x", None), 0)
