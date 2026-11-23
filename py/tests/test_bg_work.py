@@ -100,3 +100,16 @@ class SubagentActiveForUsesBoth(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProviderBackgroundWork(unittest.TestCase):
+    def test_base_unknown_and_claude_counts(self):
+        from claudeops.providers import PROVIDERS
+        for n, p in PROVIDERS.items():
+            if n != "claude":
+                self.assertIsNone(p.background_work("1 shell · esc to interrupt", "/x", None), n)
+        c = PROVIDERS["claude"]
+        self.assertEqual(c.background_work(SCREEN_BG_TASKS, "/nonexistent", None), 3)
+        self.assertEqual(c.background_work(SCREEN_SHELL, "/nonexistent", None), 2)
+        self.assertEqual(c.background_work(SCREEN_OWN_WORK, "/nonexistent", None), 1)
+        self.assertEqual(c.background_work(SCREEN_IDLE, "/nonexistent", None), 0)

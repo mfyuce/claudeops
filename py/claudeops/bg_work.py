@@ -29,6 +29,19 @@ _RUNNING_ID_RE = re.compile(r"\bID: ([A-Za-z0-9]+)")
 _DONE_STATUSES = {"completed", "failed", "killed", "cancelled", "canceled", "stopped"}
 
 
+def screen_bg_count(text: str) -> int:
+    """Ekrandaki arka plan işi SAYISI (alt durum satırındaki N'lerin toplamı; yalnız 'waiting on' görünürse en az 1); yoksa 0."""
+    lines = (text or "").rstrip("\n").split("\n")[-SCREEN_TAIL_LINES:]
+    total = 0
+    waiting = False
+    for ln in lines:
+        if _WAIT_RE.search(ln):
+            waiting = True
+        if _HINT_RE.search(ln):
+            total += sum(int(m.group(1)) for m in _COUNT_RE.finditer(ln))
+    return max(total, 1) if (total or waiting) else 0
+
+
 def screen_bg_work(text: str) -> bool:
     """capture-pane metninde (strip_ansi sonrası) arka plan işi göstergesi var mı. Yalnız son `SCREEN_TAIL_LINES` satır."""
     lines = (text or "").rstrip("\n").split("\n")[-SCREEN_TAIL_LINES:]

@@ -558,6 +558,12 @@ class CliProvider(ABC):
         uygulamalı (bkz. `tmux_backend.strip_ansi`)."""
         return None
 
+    def background_work(self, pane_text: str, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """Oturumun ARKA PLAN işi (kabuk işi, Monitor, alt ajan) sayısı; None (VARSAYILAN) = bu CLI'da ölçülemiyor/doğrulanmadı
+        (bilinmiyor, 0 ile KARIŞTIRMA). Değnekçi boşta kararlarında (dürtme, STEWARD-DONE, devir, kapatma) YALNIZ bunu sorar;
+        >0 ise oturum meşgul sayılır. `pane_text`: strip_ansi'li capture."""
+        return None
+
     def live_busy(self, cwd: str, sid: Optional[str]) -> Optional[bool]:
         """CLI'nin KENDİ yapılandırılmış canlı-durum mekanizması varsa (pane
         metnine regex uygulamak YERİNE — ör. ucli'nin `--status-file`'ı) True/

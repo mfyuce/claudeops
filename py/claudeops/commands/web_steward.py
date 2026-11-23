@@ -1266,19 +1266,16 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
     ('1 shell', '2 background tasks', 'waiting on ...'); (c) transkriptte `run_in_background` ile başlamış, bildirimi gelmemiş iş.
     (b)+(c): alt ajan KENDİ arka plan işini beklerken transkripti yazmaz, yalnız (a) ile 90 sn sonra 'bitti' sayılırdı (derbent, 23 Kas).
     Transkript bulunamazsa o kanıt False (bilinmiyor = bekletme)."""
-    from .. import bg_work
     from ..providers.claude_provider import jsonl_path_for
-    if name:
-        try:
-            if bg_work.screen_bg_work(strip_ansi(tmux_capture(name, lines=bg_work.SCREEN_TAIL_LINES + 6) or "")):
-                return True
-        except Exception:
-            pass
+    try:
+        screen = strip_ansi(tmux_capture(name, lines=20) or "") if name else ""
+        if (get_provider("claude").background_work(screen, cwd, sid) or 0) > 0:
+            return True
+    except Exception:
+        pass
     path = jsonl_path_for(cwd, sid)
     if not path or not path.endswith(".jsonl"):
         return False
-    if bg_work.transcript_pending_path(path, now):
-        return True
     d = os.path.join(path[:-len(".jsonl")], "subagents")
     try:
         names = os.listdir(d)
