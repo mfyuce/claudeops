@@ -26,7 +26,7 @@ class TestBrainDirectiveSubagentGate(unittest.TestCase):
                 mock.patch.object(ws.sw, "save_state", lambda *a, **k: None), \
                 mock.patch.object(ws.sw, "log_event", lambda *a, **k: None), \
                 mock.patch.object(ws, "_live_sessions", lambda name, sid="default": live), \
-                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None: sub):
+                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None, name=None: sub):
             return ws._brain_directive_defer("cli", "ucli")
 
     def test_subagent_active_defers(self):

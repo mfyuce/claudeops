@@ -1260,13 +1260,25 @@ def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
     return None
 
 
-def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = None) -> bool:
-    """Oturumun alt ajanı (`<oturum>/subagents/agent-*.jsonl`) hâlâ yazıyor mu: son `SUBAGENT_QUIET_SECONDS` içinde
-    değişen bir dosya varsa True. Transkript bulunamazsa False (bilinmiyor = bekletme)."""
+def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = None, name: Optional[str] = None) -> bool:
+    """Oturumun arka planda işi var mı (meşgul sayılır): (a) alt ajan transkripti (`<oturum>/subagents/agent-*.jsonl`) son
+    `SUBAGENT_QUIET_SECONDS` içinde yazıldı; (b) `name` verilmişse ekran alt durum satırı / ajan satırı arka plan işi gösteriyor
+    ('1 shell', '2 background tasks', 'waiting on ...'); (c) transkriptte `run_in_background` ile başlamış, bildirimi gelmemiş iş.
+    (b)+(c): alt ajan KENDİ arka plan işini beklerken transkripti yazmaz, yalnız (a) ile 90 sn sonra 'bitti' sayılırdı (derbent, 23 Kas).
+    Transkript bulunamazsa o kanıt False (bilinmiyor = bekletme)."""
+    from .. import bg_work
     from ..providers.claude_provider import jsonl_path_for
+    if name:
+        try:
+            if bg_work.screen_bg_work(strip_ansi(tmux_capture(name, lines=bg_work.SCREEN_TAIL_LINES + 6) or "")):
+                return True
+        except Exception:
+            pass
     path = jsonl_path_for(cwd, sid)
     if not path or not path.endswith(".jsonl"):
         return False
+    if bg_work.transcript_pending_path(path, now):
+        return True
     d = os.path.join(path[:-len(".jsonl")], "subagents")
     try:
         names = os.listdir(d)
@@ -1356,7 +1368,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                     v.context_tokens = None
             if s.cli == "claude":
                 try:
-                    v.subagent_active = subagent_active_for(s.cwd, s.sid)
+                    v.subagent_active = subagent_active_for(s.cwd, s.sid, name=s.name)
                 except Exception:
                     v.subagent_active = False
             try:
@@ -6701,7 +6713,7 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
         last = max(last, float(lda.get(rn) or 0.0))
     last = max(last, float(lda.get(name) or 0.0))
     try:    # çalışan alt ajan = ana oturum boşta görünse de iş sürüyor (cevap iletimi de aynı kuralı izler)
-        sub = any(subagent_active_for(x.cwd, x.sid) for x in _live_sessions(name, sid))
+        sub = any(subagent_active_for(x.cwd, x.sid, name=x.name) for x in _live_sessions(name, sid))
     except Exception:
         sub = False
     why = "subagent_active" if sub else sw.directive_defer_reason(busy, last, time.time())

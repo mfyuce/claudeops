@@ -34,7 +34,7 @@ class DeferLogged(unittest.TestCase):
                 mock.patch.object(ws.sw, "save_state", lambda *a, **k: None), \
                 mock.patch.object(ws.sw, "log_event", lambda ev, **k: events.append((ev, k))), \
                 mock.patch.object(ws, "_live_sessions", lambda name, sid="default": live), \
-                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None: False):
+                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None, name=None: False):
             ws._brain_directive_defer("cli", "ucli", text)
         return events
 
