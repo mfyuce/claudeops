@@ -571,7 +571,7 @@ impl Proxy {
         }
         if let Some(cfg) = &self.mounts {
             if let Some(hit) = cfg.mounts.lookup(req.uri().path()) {
-                return Ok(self.handle_mount(cfg, hit, req, peer).await);
+                return Ok(self.handle_mount(cfg, hit, req, peer, false).await);
             }
             // Köke göre yazılan istek (`/api/x`, `/maya-ui/...`): Referer'ı bir `rootrel` mount'unun altındaysa o uygulamaya
             // (`/<id>` + yol) gider; panelin kendi yollarını (`/api`) da kapsar, çünkü sayfa o uygulamanın sayfasıdır.
@@ -594,7 +594,7 @@ impl Proxy {
                     if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                         *req.uri_mut() = uri;
                         return Ok(self
-                            .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                            .handle_mount(cfg, mount::Hit::Under(addr), req, peer, true)
                             .await);
                     }
                 }
@@ -628,7 +628,7 @@ impl Proxy {
                 if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                     *req.uri_mut() = uri;
                     return Ok(self
-                        .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                        .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false)
                         .await);
                 }
             }
@@ -668,7 +668,7 @@ impl Proxy {
                         if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                             *req.uri_mut() = uri;
                             return Ok(self
-                                .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                                .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false)
                                 .await);
                         }
                     }
@@ -756,6 +756,7 @@ impl Proxy {
         hit: mount::Hit,
         mut req: Request<Incoming>,
         peer: SocketAddr,
+        learn_any_type: bool,
     ) -> Response<Body> {
         let (target, bare) = match hit {
             mount::Hit::Under(a) => (a, false),
@@ -876,12 +877,23 @@ impl Proxy {
         };
         let mut resp = self.forward(req, target, &pq).await;
         if let Some((seg, id)) = learn {
-            let html = resp.status().is_success()
-                && resp
-                    .headers()
-                    .get(CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("text/html"));
+            // Referer mount YOLUNUN altındaki (b) alt kaynak: yanıt türüne bakılmaz, 2xx/3xx yeter (SPA pushState sonrası HTML isteği olmaz).
+            // Diğer yönlenmeler (a, b2, b3, çerez) yalnız 2xx `text/html` belge ile öğretir: yanlış öğrenme zinciri olmasın.
+            let st = resp.status();
+            let ok_status = if learn_any_type {
+                st.is_success() || st.is_redirection()
+            } else {
+                st.is_success()
+            };
+            let html = ok_status
+                && (learn_any_type
+                    || resp
+                        .headers()
+                        .get(CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .is_some_and(|v| {
+                            v.trim_start().to_ascii_lowercase().starts_with("text/html")
+                        }));
             if html {
                 cfg.mounts.learn(&seg, &id);
             }

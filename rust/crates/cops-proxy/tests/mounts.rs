@@ -81,7 +81,12 @@ async fn fake_app() -> SocketAddr {
                         .find_map(|l| l.strip_prefix("x-fake-ct: "))
                         .map(|v| format!("Content-Type: {}\r\n", v.trim()))
                         .unwrap_or_default();
-                    let r = format!("HTTP/1.1 200 OK\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\n{ct}Content-Length: {}\r\nConnection: close\r\n\r\nAPP\n{}", head.len() + 4, head);
+                    let st = low
+                        .lines()
+                        .find_map(|l| l.strip_prefix("x-fake-status: "))
+                        .map(|v| v.trim().to_string())
+                        .unwrap_or_else(|| "200 OK".into());
+                    let r = format!("HTTP/1.1 {st}\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\n{ct}Content-Length: {}\r\nConnection: close\r\n\r\nAPP\n{}", head.len() + 4, head);
                     c.write_all(r.as_bytes()).await.unwrap();
                 }
             });
@@ -881,4 +886,82 @@ async fn last_taught_wins_and_removed_mounts_are_ignored() {
     ));
     m.refresh();
     assert_eq!(m.learned("shared"), None);
+}
+
+#[tokio::test]
+async fn subresources_with_a_mount_path_referer_teach_their_root_automatically() {
+    let (p, d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    let f = d.path().join("rootrel_learned.json");
+    // Referer /gw/ + HTML olmayan alt kaynak 200 -> `maya-ui` ogrenilir.
+    let r = raw(
+        p,
+        &get(
+            "/maya-ui/chunk.js",
+            &format!("{auth}Referer: http://panel.example:8765/gw/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.contains("GET /gw/maya-ui/chunk.js "), "{r}");
+    // Sonra cerez rancher iken Referer'siz F5 -> gw.
+    let r = raw(p, &get("/maya-ui/", &ckh("rancher"))).await;
+    assert!(r.contains("GET /gw/maya-ui/ "), "{r}");
+    // Mount yolunun derinindeki Referer de olur.
+    raw(
+        p,
+        &get(
+            "/deep-app/a.js",
+            &format!("{auth}Referer: http://panel.example:8765/gw/graf/x\r\n"),
+        ),
+    )
+    .await;
+    let t = std::fs::read_to_string(&f).unwrap();
+    assert!(t.contains("deep-app"), "{t}");
+    // Panel kokleri ogrenilmez.
+    for path in ["/api/x", "/v1/x", "/q/x", "/assets/a.js"] {
+        raw(
+            p,
+            &get(
+                path,
+                &format!("{auth}Referer: http://panel.example:8765/gw/\r\n"),
+            ),
+        )
+        .await;
+    }
+    // 404 / 5xx ogretmez.
+    for st in ["404 Not Found", "500 Internal Server Error"] {
+        raw(
+            p,
+            &get(
+                "/bad-seg/a",
+                &format!("{auth}Referer: http://panel.example:8765/gw/\r\nX-Fake-Status: {st}\r\n"),
+            ),
+        )
+        .await;
+    }
+    // Cerezle yonlenmis (Referer'siz) HTML olmayan istek ogretmez.
+    raw(p, &get("/cookie-seg/a.js", &ckh("gw"))).await;
+    // Referer yok ya da baska koken: ogretmez (panel'e gider).
+    raw(p, &get("/nor-seg/a.js", &auth)).await;
+    raw(
+        p,
+        &get(
+            "/evil-seg/a.js",
+            &format!("{auth}Referer: http://evil.example/gw/\r\n"),
+        ),
+    )
+    .await;
+    let t = std::fs::read_to_string(&f).unwrap();
+    for bad in [
+        "api",
+        "v1",
+        "\"q\"",
+        "assets",
+        "bad-seg",
+        "cookie-seg",
+        "nor-seg",
+        "evil-seg",
+    ] {
+        assert!(!t.contains(bad), "{bad}: {t}");
+    }
 }
