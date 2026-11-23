@@ -76,7 +76,12 @@ async fn fake_app() -> SocketAddr {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let _ = c.write_all(b"0\r\n\r\n").await;
                 } else {
-                    let r = format!("HTTP/1.1 200 OK\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\nContent-Length: {}\r\nConnection: close\r\n\r\nAPP\n{}", head.len() + 4, head);
+                    let ct = low
+                        .lines()
+                        .find_map(|l| l.strip_prefix("x-fake-ct: "))
+                        .map(|v| format!("Content-Type: {}\r\n", v.trim()))
+                        .unwrap_or_default();
+                    let r = format!("HTTP/1.1 200 OK\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\n{ct}Content-Length: {}\r\nConnection: close\r\n\r\nAPP\n{}", head.len() + 4, head);
                     c.write_all(r.as_bytes()).await.unwrap();
                 }
             });
@@ -756,4 +761,124 @@ async fn panel_path_from_an_app_page_with_cookie_goes_to_the_app() {
     )
     .await;
     assert!(r.contains("PYTHON"), "{r}");
+}
+
+const HTML: &str = "X-Fake-Ct: text/html; charset=utf-8\r\n";
+
+fn ckh(app: &str) -> String {
+    format!("Cookie: cops_ext={COOKIE}; cops_app={app}\r\n")
+}
+
+#[tokio::test]
+async fn html_pages_through_a_rootrel_mount_teach_their_first_segment() {
+    let (p, d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    // Grafana sayfasi /gw/graf/ uzerinden sunulunca `graf` -> gw ogrenilir.
+    let r = raw(p, &get("/gw/graf/d/x", &format!("{auth}{HTML}"))).await;
+    assert!(r.starts_with("HTTP/1.1 200"), "{r}");
+    // Cerez rancher iken Referer'li alt kaynak gw'ye gider.
+    let r = raw(
+        p,
+        &get(
+            "/offline-map/1.png",
+            &format!(
+                "{}Referer: http://panel.example:8765/graf/d/x\r\n",
+                ckh("rancher")
+            ),
+        ),
+    )
+    .await;
+    assert!(r.contains("GET /gw/offline-map/1.png "), "{r}");
+    // Referer'siz F5 / yeni sekme.
+    let r = raw(p, &get("/graf/d/x", &ckh("rancher"))).await;
+    assert!(r.contains("GET /gw/graf/d/x "), "{r}");
+    // Rancher /dashboard/ ogrenilince Referer /dashboard/auth/login + /v1/x rancher'a gider (cerez gw olsa da).
+    raw(p, &get("/rancher/dashboard/", &format!("{auth}{HTML}"))).await;
+    let r = raw(
+        p,
+        &get(
+            "/v1/x",
+            &format!(
+                "{}Referer: http://panel.example:8765/dashboard/auth/login\r\n",
+                ckh("gw")
+            ),
+        ),
+    )
+    .await;
+    assert!(r.contains("GET /rancher/v1/x "), "{r}");
+    // Tablo dosyada, 0600.
+    let f = d.path().join("rootrel_learned.json");
+    let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    let t = std::fs::read_to_string(&f).unwrap();
+    assert!(t.contains("graf") && t.contains("dashboard"), "{t}");
+    // Yeniden baslatma: ayni dizinde yeni Mounts tabloyu yukler.
+    let m = Mounts::new(d.path().join("mounts.json"));
+    m.refresh();
+    assert_eq!(m.learned("graf").map(|x| x.0), Some("gw".to_string()));
+    assert_eq!(
+        m.learned("dashboard").map(|x| x.0),
+        Some("rancher".to_string())
+    );
+}
+
+#[tokio::test]
+async fn only_html_non_panel_segments_are_learned() {
+    let (p, d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    // JSON/duz yanit ogretmez.
+    raw(p, &get("/gw/zzz/a", &auth)).await;
+    raw(
+        p,
+        &get(
+            "/gw/jsn/a",
+            &format!("{auth}X-Fake-Ct: application/json\r\n"),
+        ),
+    )
+    .await;
+    // Panel kokleri, mount koku ve bos parca ogretilmez.
+    for path in [
+        "/gw/",
+        "/gw/api/x",
+        "/gw/v1/x",
+        "/gw/q/x",
+        "/gw/assets/a",
+        "/gw/index.html",
+        "/gw/desktop/v",
+        "/gw/gw/x",
+    ] {
+        raw(p, &get(path, &format!("{auth}{HTML}"))).await;
+    }
+    let f = d.path().join("rootrel_learned.json");
+    let t = std::fs::read_to_string(&f).unwrap_or_default();
+    for bad in [
+        "zzz", "jsn", "api", "v1", "\"q\"", "assets", "index", "desktop", "\"gw\":",
+    ] {
+        assert!(!t.contains(bad), "{bad}: {t}");
+    }
+    let r = raw(p, &get("/zzz/a", &auth)).await;
+    assert!(r.contains("PYTHON"), "{r}");
+    // Rootrel olmayan mount ogretmez.
+    raw(p, &get("/graf/page/x", &format!("{auth}{HTML}"))).await;
+    let t = std::fs::read_to_string(&f).unwrap_or_default();
+    assert!(!t.contains("\"page\""), "{t}");
+}
+
+#[tokio::test]
+async fn last_taught_wins_and_removed_mounts_are_ignored() {
+    let app = fake_app().await;
+    let (p, d) = start(app, Some((TWO, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    raw(p, &get("/gw/shared/x", &format!("{auth}{HTML}"))).await;
+    raw(p, &get("/rancher/shared/x", &format!("{auth}{HTML}"))).await;
+    let r = raw(p, &get("/shared/y", &auth)).await;
+    assert!(r.contains("GET /rancher/shared/y "), "{r}");
+    // rancher mount'u silinince (yeni Mounts, yalniz gw) o mount'un satiri yok sayilir.
+    let m = Mounts::new(write_mounts(
+        d.path(),
+        &GW.replace("APP", &app.to_string()),
+        0o600,
+    ));
+    m.refresh();
+    assert_eq!(m.learned("shared"), None);
 }

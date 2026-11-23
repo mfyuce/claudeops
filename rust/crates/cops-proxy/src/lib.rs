@@ -121,6 +121,15 @@ pub fn ext_cookie(value: &str, secure: bool) -> String {
     )
 }
 
+/// Yolun ilk parçası (sorgu/fragment atılır); boşsa None.
+fn first_segment(path: &str) -> Option<&str> {
+    let p = path.split(['?', '#']).next()?;
+    p.strip_prefix('/')?
+        .split('/')
+        .next()
+        .filter(|s| !s.is_empty())
+}
+
 /// `/<id>/...` ya da `/<id>` yolunun kimliği.
 fn path_id(path: &str) -> Option<String> {
     path.strip_prefix('/')?
@@ -592,6 +601,39 @@ impl Proxy {
             }
         }
         if let Some(cfg) = &self.mounts {
+            // (b2) Referer yolunun ilk parçası bir rootrel mount'a ÖĞRENİLMİŞSE (HTML belge yanıtından, bkz. `handle_mount`) istek o
+            // uygulamanındır, panel yolu olsa da (`/v1`, `/api`: sayfa uygulamanın). (b3) İstek yolunun ilk parçası öğrenilmişse
+            // (Referer'sız F5/yeni sekme) de öyle. Panel kökleri hiç öğrenilmez (`mount::learnable`), çerezden ÖNCE gelir.
+            let r_seg = req
+                .headers()
+                .get(hyper::header::REFERER)
+                .and_then(|v| v.to_str().ok())
+                .zip(
+                    req.headers()
+                        .get(hyper::header::HOST)
+                        .and_then(|v| v.to_str().ok())
+                        .or_else(|| req.uri().authority().map(|a| a.as_str())),
+                )
+                .and_then(|(r, h)| mount::same_origin_referer_path(r, h))
+                .and_then(|p| first_segment(p).map(str::to_string));
+            let hit = r_seg.and_then(|seg| cfg.mounts.learned(&seg)).or_else(|| {
+                first_segment(req.uri().path()).and_then(|seg| cfg.mounts.learned(seg))
+            });
+            if let Some((id, addr)) = hit {
+                let pq = req
+                    .uri()
+                    .path_and_query()
+                    .map(|p| p.as_str())
+                    .unwrap_or("/");
+                if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
+                    *req.uri_mut() = uri;
+                    return Ok(self
+                        .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                        .await);
+                }
+            }
+        }
+        if let Some(cfg) = &self.mounts {
             // (d) Referer'sız köke göre istek (F5, yeni sekme, pushState adresi): `cops_app` çerezi var olan bir rootrel mount'u
             // gösteriyorsa o uygulamanın isteğidir. Panelin kendi yolları hariç. Çerez yalnız yolu seçer, yetki `handle_mount`ta.
             // Çakışma (Rancher `/v1/`, `/api/`): çerez + aynı kökenli Referer VAR ve Referer'ın yolu panel SAYFASI DEĞİLSE (`/dashboard/..` gibi
@@ -819,7 +861,31 @@ impl Proxy {
         } else {
             format!("{path}?{q}")
         };
+        // Yol kökü öğrenme: rootrel mount'tan GET ile gelen HTML belge yanıtı, mount önekinden sonraki ilk yol parçasını (`/gw/grafana/d/x`
+        // -> `grafana`) bu mount'a bağlar. API/JS/resim yanıtı öğretmez. Karar yalnız kimlikli (yukarıdaki kapıdan geçmiş) istekten.
+        let learn = if req.method() == hyper::Method::GET && !is_upgrade(req.headers()) {
+            app_id
+                .as_deref()
+                .filter(|id| cfg.mounts.rootrel_upstream(id).is_some())
+                .and_then(|id| {
+                    let rest = pq.strip_prefix('/')?.strip_prefix(id)?;
+                    first_segment(rest).map(|seg| (seg.to_string(), id.to_string()))
+                })
+        } else {
+            None
+        };
         let mut resp = self.forward(req, target, &pq).await;
+        if let Some((seg, id)) = learn {
+            let html = resp.status().is_success()
+                && resp
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("text/html"));
+            if html {
+                cfg.mounts.learn(&seg, &id);
+            }
+        }
         if let Some(c) = set_cookie {
             resp.headers_mut().append(SET_COOKIE, c);
         }

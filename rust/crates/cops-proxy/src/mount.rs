@@ -2,6 +2,7 @@
 //! portuna gider. Biçim: `[{"path":"/grafana/","upstream":"127.0.0.1:18101"}]`. Dosya 0600 değilse ya da yoksa tablo BOŞ (mount kapalı);
 //! bozuk dosyada son geçerli tablo korunur. Sıcak yolda dosya okuma yok: `refresh` arka plan görevinden (en çok 2 sn'de bir) çağrılır.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::PathBuf;
@@ -195,17 +196,56 @@ pub struct Mounts {
     active: AtomicBool,
     table: RwLock<Arc<MountTable>>,
     last: Mutex<Option<Stamp>>,
+    /// Yol kökü öğrenme: HTML belge yanıtı veren rootrel mount'un ilk yol parçası -> mount kimliği (`rootrel_learned.json`, 0600).
+    learned: Mutex<HashMap<String, String>>,
+    learned_file: PathBuf,
 }
 
 impl Mounts {
     /// Dosyayı OKUMAZ; ilk yükleme için `refresh` çağrılır.
     pub fn new(file: PathBuf) -> Arc<Mounts> {
+        let learned_file = file
+            .parent()
+            .map(|p| p.join("rootrel_learned.json"))
+            .unwrap_or_else(|| PathBuf::from("rootrel_learned.json"));
+        let learned = load_learned(&learned_file);
         Arc::new(Mounts {
             file,
             active: AtomicBool::new(false),
             table: RwLock::new(Arc::new(MountTable::default())),
             last: Mutex::new(None),
+            learned: Mutex::new(learned),
+            learned_file,
         })
+    }
+
+    /// Öğrenilmiş yol parçası -> (mount kimliği, upstream); mount artık yok ya da rootrel değilse None (satır yok sayılır).
+    pub fn learned(&self, seg: &str) -> Option<(String, SocketAddr)> {
+        let id = self
+            .learned
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(seg)?
+            .clone();
+        let addr = self.rootrel_upstream(&id)?;
+        Some((id, addr))
+    }
+
+    /// `id` mount'unun HTML belgesinden `seg` parçasını öğrenir (panel kökleri/geçersiz parça reddedilir). Değişince dosyaya yazar.
+    pub fn learn(&self, seg: &str, id: &str) {
+        if !learnable(seg) || seg == id {
+            return;
+        }
+        let mut m = self.learned.lock().unwrap_or_else(|e| e.into_inner());
+        match m.get(seg) {
+            Some(cur) if cur == id => return,
+            Some(cur) => {
+                eprintln!("copsd: rootrel öğrenme: /{seg} {cur} -> {id} (son öğretilen kazanır)")
+            }
+            None => {}
+        }
+        m.insert(seg.to_string(), id.to_string());
+        save_learned(&self.learned_file, &m);
     }
 
     pub fn file(&self) -> &std::path::Path {
@@ -328,6 +368,55 @@ impl Mounts {
                 }
             }
         })
+    }
+}
+
+/// Öğrenilebilir yol parçası: `[A-Za-z0-9_-]{1,63}` ve panelin kendi kökü değil (`api`, `v1`, `q`, `desktop`, `assets` ...).
+pub fn learnable(seg: &str) -> bool {
+    !seg.is_empty()
+        && seg.len() <= 63
+        && seg
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        && !RESERVED.contains(&seg.to_ascii_lowercase().as_str())
+}
+
+fn load_learned(f: &std::path::Path) -> HashMap<String, String> {
+    let Ok(md) = std::fs::metadata(f) else {
+        return HashMap::new();
+    };
+    if md.permissions().mode() & 0o077 != 0 || md.len() > MAX_FILE {
+        return HashMap::new();
+    }
+    std::fs::read(f)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<HashMap<String, String>>(&b).ok())
+        .map(|m| {
+            m.into_iter()
+                .filter(|(k, v)| learnable(k) && valid_id(v))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Atomik yazım (geçici dosya 0600 + rename); hata sessiz (öğrenme bellekte sürer).
+fn save_learned(f: &std::path::Path, m: &HashMap<String, String>) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let tmp = f.with_extension("json.tmp");
+    let Ok(body) = serde_json::to_vec(m) else {
+        return;
+    };
+    let ok = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .and_then(|mut h| h.write_all(&body))
+        .is_ok();
+    if ok {
+        let _ = std::fs::rename(&tmp, f);
     }
 }
 
