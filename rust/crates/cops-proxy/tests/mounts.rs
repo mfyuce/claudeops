@@ -705,3 +705,55 @@ async fn referer_beats_the_cookie() {
     .await;
     assert!(r.contains("PYTHON"), "{r}");
 }
+
+#[tokio::test]
+async fn panel_path_from_an_app_page_with_cookie_goes_to_the_app() {
+    let (p, _d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("cops_ext={COOKIE}");
+    let ck = format!("Cookie: {auth}; cops_app=rancher\r\n");
+    // Referer panelde olmayan bir sayfa (pushState): /v1 ve /api uygulamanin.
+    for path in ["/v1/x", "/api/y"] {
+        let r = raw(
+            p,
+            &get(
+                path,
+                &format!("{ck}Referer: http://panel.example:8765/dashboard/auth/login?a=1\r\n"),
+            ),
+        )
+        .await;
+        assert!(r.contains(&format!("GET /rancher{path} ")), "{path}: {r}");
+    }
+    // Referer panel sayfasi: panel.
+    for refp in ["/", "/?x=1", "/index.html", "/q/abc", "/desktop/v"] {
+        let r = raw(
+            p,
+            &get(
+                "/api/status",
+                &format!("{ck}Referer: http://panel.example:8765{refp}\r\n"),
+            ),
+        )
+        .await;
+        assert!(r.contains("PYTHON"), "{refp}: {r}");
+    }
+    // Referer'siz panel yolu: panel. Baska kokenli Referer: panel. Cerezsiz: panel.
+    let r = raw(p, &get("/v1/models", &ck)).await;
+    assert!(r.contains("PYTHON"), "{r}");
+    let r = raw(
+        p,
+        &get(
+            "/v1/x",
+            &format!("{ck}Referer: http://evil.example/dashboard/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.contains("PYTHON"), "{r}");
+    let r = raw(
+        p,
+        &get(
+            "/v1/x",
+            &format!("Cookie: {auth}\r\nReferer: http://panel.example:8765/dashboard/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.contains("PYTHON"), "{r}");
+}

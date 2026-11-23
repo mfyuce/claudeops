@@ -594,7 +594,28 @@ impl Proxy {
         if let Some(cfg) = &self.mounts {
             // (d) Referer'sız köke göre istek (F5, yeni sekme, pushState adresi): `cops_app` çerezi var olan bir rootrel mount'u
             // gösteriyorsa o uygulamanın isteğidir. Panelin kendi yolları hariç. Çerez yalnız yolu seçer, yetki `handle_mount`ta.
-            if !is_panel_path(req.uri().path()) {
+            // Çakışma (Rancher `/v1/`, `/api/`): çerez + aynı kökenli Referer VAR ve Referer'ın yolu panel SAYFASI DEĞİLSE (`/dashboard/..` gibi
+            // panelde olmayan sayfa) panel yolu olsa da uygulamanındır; panel arayüzünün istekleri Referer olarak panel sayfasını taşır.
+            // Referer'sız panel yolu isteği (curl, OpenAI istemcisi) panelde kalır.
+            let from_app_page = {
+                let r = req
+                    .headers()
+                    .get(hyper::header::REFERER)
+                    .and_then(|v| v.to_str().ok());
+                let h = req
+                    .headers()
+                    .get(hyper::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .or_else(|| req.uri().authority().map(|a| a.as_str()));
+                match (r, h) {
+                    (Some(r), Some(h)) => mount::same_origin_referer_path(r, h).is_some_and(|p| {
+                        let p = p.split(['?', '#']).next().unwrap_or("/");
+                        !is_panel_path(p)
+                    }),
+                    _ => false,
+                }
+            };
+            if from_app_page || !is_panel_path(req.uri().path()) {
                 if let Some(id) = app_cookie_id(req.headers()) {
                     if let Some(addr) = cfg.mounts.rootrel_upstream(&id) {
                         let pq = req
