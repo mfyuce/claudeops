@@ -199,16 +199,54 @@ pub struct Mounts {
     /// Yol kökü öğrenme: HTML belge yanıtı veren rootrel mount'un ilk yol parçası -> mount kimliği (`rootrel_learned.json`, 0600).
     learned: Mutex<HashMap<String, String>>,
     learned_file: PathBuf,
+    /// Öğrenme tablosunun SQLite'ı (`claudeops.db`); None ya da hata durumunda JSON dosyası.
+    learned_db: Option<PathBuf>,
 }
 
 impl Mounts {
     /// Dosyayı OKUMAZ; ilk yükleme için `refresh` çağrılır.
     pub fn new(file: PathBuf) -> Arc<Mounts> {
+        Self::with_db(file, None)
+    }
+
+    /// Öğrenme tablosu `db`de (`rootrel_learned`); tablo boşsa eski `rootrel_learned.json` bir kez içe alınır
+    /// (dosya `.migrated` adını alır). DB açılamazsa JSON'a düşer.
+    pub fn with_db(file: PathBuf, db: Option<PathBuf>) -> Arc<Mounts> {
         let learned_file = file
             .parent()
             .map(|p| p.join("rootrel_learned.json"))
             .unwrap_or_else(|| PathBuf::from("rootrel_learned.json"));
-        let learned = load_learned(&learned_file);
+        let mut learned_db = db;
+        let learned = match learned_db.as_deref().map(cops_local::learned::load) {
+            Some(Ok(mut m)) => {
+                if m.is_empty() {
+                    let old = load_learned(&learned_file);
+                    if !old.is_empty() {
+                        let db = learned_db.as_deref().unwrap();
+                        if old
+                            .iter()
+                            .all(|(k, v)| cops_local::learned::upsert(db, k, v).is_ok())
+                        {
+                            let _ = std::fs::rename(
+                                &learned_file,
+                                learned_file.with_extension("json.migrated"),
+                            );
+                            eprintln!("copsd: rootrel_learned.json -> SQLite ({} satır)", old.len());
+                        }
+                        m = old;
+                    }
+                }
+                m.into_iter()
+                    .filter(|(k, v)| learnable(k) && valid_id(v))
+                    .collect()
+            }
+            Some(Err(e)) => {
+                eprintln!("copsd: rootrel_learned SQLite açılamadı ({e}); JSON'a düşüldü");
+                learned_db = None;
+                load_learned(&learned_file)
+            }
+            None => load_learned(&learned_file),
+        };
         Arc::new(Mounts {
             file,
             active: AtomicBool::new(false),
@@ -216,6 +254,7 @@ impl Mounts {
             last: Mutex::new(None),
             learned: Mutex::new(learned),
             learned_file,
+            learned_db,
         })
     }
 
@@ -245,6 +284,12 @@ impl Mounts {
             None => {}
         }
         m.insert(seg.to_string(), id.to_string());
+        if let Some(db) = &self.learned_db {
+            if cops_local::learned::upsert(db, seg, id).is_ok() {
+                return;
+            }
+            eprintln!("copsd: rootrel_learned SQLite yazımı başarısız; JSON'a yazıldı");
+        }
         save_learned(&self.learned_file, &m);
     }
 

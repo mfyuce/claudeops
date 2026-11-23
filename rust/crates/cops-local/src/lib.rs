@@ -2,6 +2,7 @@
 //! Kaynak `claudeops.db` `docs` tablosu (store_backend=db: tek doğruluk kaynağı; belge adı `steward/questions` ya da
 //! `steward/stewards/<sid>/questions`, gövde = Python `Question` listesinin JSON'u). DB SALT OKUNUR açılır; yazım Python'da kalır.
 
+pub mod learned;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
 use std::path::Path;

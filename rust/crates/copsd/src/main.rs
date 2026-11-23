@@ -176,7 +176,10 @@ async fn main() -> std::io::Result<()> {
             if m.permissions().mode() & 0o077 == 0
                 && !cops_auth::Token::from_file(&tok_path).is_empty() =>
         {
-            let mounts = cops_proxy::mount::Mounts::new(mounts_file.clone());
+            let mounts = cops_proxy::mount::Mounts::with_db(
+                mounts_file.clone(),
+                db_path.exists().then(|| db_path.clone()),
+            );
             match mounts.refresh() {
                 Some(line) => eprintln!("copsd: {line}"),
                 None => eprintln!(

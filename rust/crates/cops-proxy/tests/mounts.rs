@@ -965,3 +965,26 @@ async fn subresources_with_a_mount_path_referer_teach_their_root_automatically()
         assert!(!t.contains(bad), "{bad}: {t}");
     }
 }
+
+#[test]
+fn learned_sqlite_migrates_json_and_persists() {
+    let d = tempfile::tempdir().unwrap();
+    let db = d.path().join("c.db");
+    let mf = d.path().join("mounts.json");
+    let json = d.path().join("rootrel_learned.json");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&json, r#"{"dash":"gw"}"#).unwrap();
+        std::fs::set_permissions(&json, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    let m = Mounts::with_db(mf.clone(), Some(db.clone()));
+    assert!(!json.exists() && d.path().join("rootrel_learned.json.migrated").exists());
+    assert_eq!(cops_local::learned::load(&db).unwrap()["dash"], "gw");
+    m.learn("site", "rancher");
+    drop(m);
+    let m2 = Mounts::with_db(mf, Some(db.clone()));
+    let _ = m2;
+    let t = cops_local::learned::load(&db).unwrap();
+    assert_eq!(t["site"], "rancher");
+    assert_eq!(t.len(), 2);
+}
