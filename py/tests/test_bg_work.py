@@ -113,3 +113,15 @@ class ProviderBackgroundWork(unittest.TestCase):
         self.assertEqual(c.background_work(SCREEN_SHELL, "/nonexistent", None), 2)
         self.assertEqual(c.background_work(SCREEN_OWN_WORK, "/nonexistent", None), 1)
         self.assertEqual(c.background_work(SCREEN_IDLE, "/nonexistent", None), 0)
+
+
+class UcliBackgroundWork(unittest.TestCase):
+    def test_reads_status_field_never_guesses(self):
+        from claudeops.providers import PROVIDERS
+        u = PROVIDERS["ucli"]
+        with mock.patch("claudeops.providers.ucli_provider.read_status_file", return_value={"activity": "waiting_for_stdin", "background_tasks": 2}):
+            self.assertEqual(u.background_work("", "/x", "s"), 2)
+        for st in ({"activity": "waiting_for_stdin"}, {"background_tasks": "2"}, {"background_tasks": -1}, {"background_tasks": True}, None):
+            with mock.patch("claudeops.providers.ucli_provider.read_status_file", return_value=st):
+                self.assertIsNone(u.background_work("", "/x", "s"), st)
+        self.assertIsNone(u.background_work("", "/x", None))

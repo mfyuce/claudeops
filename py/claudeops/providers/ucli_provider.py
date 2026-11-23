@@ -1108,6 +1108,21 @@ class UcliProvider(CliProvider):
             return None
         return status_is_busy(status)
 
+    def background_work(self, pane_text: str, cwd: str, sid: Optional[str]) -> Optional[int]:
+        """Durum dosyasındaki `background_tasks` (int >= 0): TAHMİN YOK. Alan yoksa/sayı değilse None (bilinmiyor). Bugünkü ucli
+        arka plan yürütmesi taşımaz (araç çağrıları turu bloklar = `running_tool` = zaten meşgul); alan, ucli arka plan işi/alt ajan
+        (unified-cli TODO K-3) kazanınca status.json'a eklenecek ve burası onu okur (ileriye uyumlu)."""
+        if not sid:
+            return None
+        try:
+            status = read_status_file(cwd, sid)
+        except Exception:
+            return None
+        n = status.get("background_tasks") if status else None
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            return None
+        return n
+
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         # Durum dosyasındaki `context_bytes` (oturumun GÜNCEL bağlam boyutu, bayt) / 4 = kaba token tahmini. `usage.prompt_tokens`
         # süreç boyunca TOPLAM (her istekte bağlam yeniden sayılır) olduğundan güncel boyutu vermez: seçilmedi.
