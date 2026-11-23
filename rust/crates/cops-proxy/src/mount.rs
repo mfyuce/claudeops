@@ -49,7 +49,7 @@ pub enum Hit {
     Bare(SocketAddr),
 }
 
-fn valid_id(id: &str) -> bool {
+pub fn valid_id(id: &str) -> bool {
     let b = id.as_bytes();
     !b.is_empty()
         && b.len() <= 63
@@ -229,6 +229,18 @@ impl Mounts {
         let t = self.snapshot();
         t.find_by_referer_path(path)
             .map(|(i, a)| (i.to_string(), a))
+    }
+
+    /// `rootrel` mount kimliği -> upstream (çerezle yönlendirme ve çerez koyma için). Bilinmeyen / rootrel olmayan kimlik None.
+    pub fn rootrel_upstream(&self, id: &str) -> Option<SocketAddr> {
+        if !self.active.load(Ordering::Acquire) {
+            return None;
+        }
+        self.snapshot()
+            .mounts
+            .iter()
+            .find(|m| m.rootrel && m.id == id)
+            .map(|m| m.upstream)
     }
 
     pub fn snapshot(&self) -> Arc<MountTable> {

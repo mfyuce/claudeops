@@ -121,6 +121,42 @@ pub fn ext_cookie(value: &str, secure: bool) -> String {
     )
 }
 
+/// `/<id>/...` ya da `/<id>` yolunun kimliği.
+fn path_id(path: &str) -> Option<String> {
+    path.strip_prefix('/')?
+        .split('/')
+        .next()
+        .filter(|i| !i.is_empty())
+        .map(str::to_string)
+}
+
+/// Köke göre yazılan isteği taşıyan uygulama çerezi (rootrel mount kimliği).
+pub const APP_COOKIE: &str = "cops_app";
+
+/// Panelin KENDİ yolları: bu yollar `cops_app` çerezi olsa bile panele gider (Referer'lı olanlar önce uygulamaya, bkz. `handle`).
+/// Kaynak: py/claudeops/commands/web.py do_GET/do_POST (`/` (5396), `/ws*`, `/api/*`, `/assets/*` + `/favicon.svg` (5347), `/q/*` (5351),
+/// `/readfile/*` (5356), `/v1/*` (5029), `/desktop/*` (5419)); mount.rs `RESERVED`; enterprise `register_route` önekleri (`/readlist/`, `/missing/`);
+/// `/index.html` copsd `try_static` ile aynı kökün parçası.
+pub fn is_panel_path(path: &str) -> bool {
+    if path == "/" || path == "/index.html" || path == "/favicon.svg" {
+        return true;
+    }
+    let seg = path.trim_start_matches('/');
+    let first = seg.split('/').next().unwrap_or("");
+    mount::RESERVED.contains(&first)
+}
+
+/// İstekteki `cops_app` değerleri arasında geçerli (mount kimliği biçimli) ilk değer.
+fn app_cookie_id(h: &hyper::HeaderMap) -> Option<String> {
+    h.get_all(COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|c| c.split(';'))
+        .filter_map(|kv| kv.trim().split_once('='))
+        .find(|(k, v)| *k == APP_COOKIE && mount::valid_id(v))
+        .map(|(_, v)| v.to_string())
+}
+
 /// Panel çerezlerini (`cops_*`: `cops_ext`, enterprise `cops_t`) siler, diğerlerini sırasıyla tek `Cookie` başlığında birleştirir.
 pub fn strip_panel_cookies(h: &mut hyper::HeaderMap) {
     if !h.contains_key(COOKIE) {
@@ -555,6 +591,27 @@ impl Proxy {
                 }
             }
         }
+        if let Some(cfg) = &self.mounts {
+            // (d) Referer'sız köke göre istek (F5, yeni sekme, pushState adresi): `cops_app` çerezi var olan bir rootrel mount'u
+            // gösteriyorsa o uygulamanın isteğidir. Panelin kendi yolları hariç. Çerez yalnız yolu seçer, yetki `handle_mount`ta.
+            if !is_panel_path(req.uri().path()) {
+                if let Some(id) = app_cookie_id(req.headers()) {
+                    if let Some(addr) = cfg.mounts.rootrel_upstream(&id) {
+                        let pq = req
+                            .uri()
+                            .path_and_query()
+                            .map(|p| p.as_str())
+                            .unwrap_or("/");
+                        if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
+                            *req.uri_mut() = uri;
+                            return Ok(self
+                                .handle_mount(cfg, mount::Hit::Under(addr), req, peer)
+                                .await);
+                        }
+                    }
+                }
+            }
+        }
         if let Some(r) = self.try_static(&req) {
             return Ok(r);
         }
@@ -694,6 +751,21 @@ impl Proxy {
             };
             return redirect(code, &loc, set_cookie);
         }
+        // Uygulama çerezi: rootrel mount yanıtına `cops_app=<id>` (istek zaten aynı değeri taşımıyorsa).
+        let app_id = path_id(req.uri().path());
+        let app_cookie = match &app_id {
+            Some(id)
+                if cfg.mounts.rootrel_upstream(id).is_some()
+                    && app_cookie_id(req.headers()).as_deref() != Some(id.as_str()) =>
+            {
+                HeaderValue::from_str(&format!(
+                    "{APP_COOKIE}={id}; Path=/; HttpOnly; SameSite=Lax{}",
+                    if https { "; Secure" } else { "" }
+                ))
+                .ok()
+            }
+            _ => None,
+        };
         let h = req.headers_mut();
         h.remove(AUTHORIZATION);
         strip_panel_cookies(h);
@@ -728,6 +800,9 @@ impl Proxy {
         };
         let mut resp = self.forward(req, target, &pq).await;
         if let Some(c) = set_cookie {
+            resp.headers_mut().append(SET_COOKIE, c);
+        }
+        if let Some(c) = app_cookie {
             resp.headers_mut().append(SET_COOKIE, c);
         }
         resp

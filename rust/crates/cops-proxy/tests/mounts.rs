@@ -581,3 +581,127 @@ async fn rootrel_requests_follow_the_referer_into_the_mount() {
         assert!(r.contains("PYTHON"), "{extra}: {r}");
     }
 }
+
+const TWO: &str = r#"[{"path":"/gw/","upstream":"APP","rootrel":true},{"path":"/rancher/","upstream":"APP","rootrel":true},{"path":"/grafana/","upstream":"APP"}]"#;
+
+fn set_cookies(r: &str) -> Vec<String> {
+    r.split("\r\n\r\n")
+        .next()
+        .unwrap_or("")
+        .split("\r\n")
+        .filter(|l| l.to_ascii_lowercase().starts_with("set-cookie:"))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn rootrel_mount_response_sets_the_app_cookie_once() {
+    let (p, _d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("cops_ext={COOKIE}");
+    let r = raw(p, &get("/gw/x", &format!("Cookie: {auth}\r\n"))).await;
+    assert!(r.starts_with("HTTP/1.1 200"), "{r}");
+    assert!(
+        set_cookies(&r).iter().any(|c| c.contains("cops_app=gw")
+            && c.contains("Path=/")
+            && c.contains("HttpOnly")
+            && c.contains("SameSite=Lax")),
+        "{r}"
+    );
+    // Istek ayni degeri zaten tasiyorsa tekrar konmaz.
+    let r = raw(
+        p,
+        &get("/gw/x", &format!("Cookie: {auth}; cops_app=gw\r\n")),
+    )
+    .await;
+    assert!(
+        !set_cookies(&r).iter().any(|c| c.contains("cops_app=")),
+        "{r}"
+    );
+    // Cerez uygulamaya sizmaz.
+    assert!(!r.contains("cops_app"), "{r}");
+    // rootrel olmayan mount cerez koymaz.
+    let r = raw(p, &get("/grafana/x", &format!("Cookie: {auth}\r\n"))).await;
+    assert!(
+        !set_cookies(&r).iter().any(|c| c.contains("cops_app=")),
+        "{r}"
+    );
+}
+
+#[tokio::test]
+async fn cookie_routes_refererless_root_requests_to_the_app() {
+    let (p, _d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("cops_ext={COOKIE}");
+    let r = raw(
+        p,
+        &get(
+            "/maya-ui/a?b=1",
+            &format!("Cookie: {auth}; cops_app=gw\r\n"),
+        ),
+    )
+    .await;
+    assert!(
+        r.starts_with("HTTP/1.1 200") && r.contains("GET /gw/maya-ui/a?b=1 "),
+        "{r}"
+    );
+    // Yonlenen yanit da cerezi yeniler (istek zaten tasiyor: eklenmez).
+    assert!(
+        !set_cookies(&r).iter().any(|c| c.contains("cops_app=")),
+        "{r}"
+    );
+    // Yetki degismez: kimliksiz cerez 401.
+    let r = raw(p, &get("/maya-ui/a", "Cookie: cops_app=gw\r\n")).await;
+    assert!(r.starts_with("HTTP/1.1 401"), "{r}");
+}
+
+#[tokio::test]
+async fn panel_paths_and_unknown_cookies_stay_on_the_panel() {
+    let (p, _d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("cops_ext={COOKIE}");
+    for path in [
+        "/",
+        "/api/status",
+        "/ws",
+        "/q/abc",
+        "/v1/models",
+        "/desktop/viewer.js",
+        "/readlist/x",
+        "/assets/a.js",
+    ] {
+        let r = raw(p, &get(path, &format!("Cookie: {auth}; cops_app=gw\r\n"))).await;
+        assert!(r.contains("PYTHON"), "{path}: {r}");
+    }
+    for ck in [
+        "cops_app=nope",
+        "cops_app=grafana",
+        "cops_app=",
+        "cops_app=../gw",
+    ] {
+        let r = raw(p, &get("/maya-ui/a", &format!("Cookie: {auth}; {ck}\r\n"))).await;
+        assert!(r.contains("PYTHON"), "{ck}: {r}");
+    }
+    // Cerezsiz ve Referer'siz.
+    let r = raw(p, &get("/maya-ui/a", &format!("Cookie: {auth}\r\n"))).await;
+    assert!(r.contains("PYTHON"), "{r}");
+}
+
+#[tokio::test]
+async fn referer_beats_the_cookie() {
+    let (p, _d) = start(fake_app().await, Some((TWO, 0o600))).await;
+    let auth = format!("cops_ext={COOKIE}");
+    let r = raw(
+        p,
+        &get(
+            "/dashboard/x",
+            &format!("Cookie: {auth}; cops_app=gw\r\nReferer: http://panel.example:8765/rancher/dashboard/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.contains("GET /rancher/dashboard/x "), "{r}");
+    // /api: Referer'li uygulamaya, Referer'siz panele.
+    let r = raw(
+        p,
+        &get("/api/x", &format!("Cookie: {auth}; cops_app=gw\r\n")),
+    )
+    .await;
+    assert!(r.contains("PYTHON"), "{r}");
+}
