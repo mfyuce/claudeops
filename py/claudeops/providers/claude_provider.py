@@ -664,7 +664,7 @@ class ClaudeProvider(CliProvider):
         return entries or None
 
     def usage_fresh_argv(self) -> Optional[List[str]]:
-        return ["claude", "-p", "/usage"]
+        return [resolved_binary("claude"), "-p", "/usage"]
 
     def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
         entries: List[Dict[str, str]] = []

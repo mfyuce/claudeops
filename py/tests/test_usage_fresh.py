@@ -68,8 +68,24 @@ class FreshRun(unittest.TestCase):
              mock.patch.object(web, "_usage_fresh", side_effect=lambda p: {"available": True, "checked_via": "fresh", "entries": []} if p.name == "claude" else None):
             out = web._usage_all()["providers"]
         self.assertEqual(out["claude"]["checked_via"], "fresh")
-        self.assertEqual(out["agy"].get("reason"), "no_running_session")
+        self.assertEqual(out["agy"].get("reason"), "read_failed")
         self.assertEqual(out["api:X"]["reason"], "no_endpoint")      # byok satırları birleştirilir
+
+    def test_usage_never_injects_into_live_sessions(self):
+        """P0 (23 Kas): fresh+tui duserse CANLI oturuma /usage enjekte EDILMEZ; 'okunamadi' doner, tmux_send_keys cagrilmaz."""
+        live = types.SimpleNamespace(name="cuneiresto", cli="claude", pid=1)
+        with mock.patch.object(web, "find_sessions", return_value=[live]), \
+             mock.patch("claudeops.api_balance.collect", return_value={}), \
+             mock.patch.object(web, "_usage_fresh", return_value=None), \
+             mock.patch.object(web, "_usage_fresh_tui", return_value=None), \
+             mock.patch.object(web, "tmux_send_keys") as send, \
+             mock.patch.object(web, "tmux_send_special_key") as special:
+            out = web._usage_all()["providers"]
+        send.assert_not_called()
+        special.assert_not_called()
+        self.assertFalse(out["claude"]["available"])
+        self.assertEqual(out["claude"]["reason"], "read_failed")
+        self.assertFalse(hasattr(web, "_usage_for_session"))
 
     def test_api_balance_failure_does_not_break_usage(self):
         with mock.patch.object(web, "find_sessions", return_value=[]), \
@@ -109,3 +125,29 @@ class PruneTranscripts(unittest.TestCase):
         self.assertEqual(web._prune_usage_transcripts(_t.time() - 60, d), 1)
         self.assertEqual(sorted(os.listdir(d)), ["big.jsonl", "old.jsonl", "other.jsonl", "real.jsonl"])
         self.assertEqual(web._prune_usage_transcripts(0, os.path.join(d, "yok")), 0)
+
+
+class ResolvedBinaryFallback(unittest.TestCase):
+    def test_claude_found_outside_path(self):
+        import tempfile
+        from claudeops import settings
+        d = tempfile.mkdtemp()
+        exe = os.path.join(d, "claude.exe")
+        open(exe, "w").write("#!/bin/sh\n")
+        os.chmod(exe, 0o755)
+        with mock.patch("shutil.which", return_value=None), \
+             mock.patch.object(settings, "load_settings", return_value={}), \
+             mock.patch.dict(settings._KNOWN_BINARY_PATHS, {"claude": (exe,)}):
+            self.assertEqual(settings.resolved_binary("claude"), exe)
+            self.assertEqual(PROVIDERS["claude"].usage_fresh_argv()[0], exe)
+
+    def test_provider_bin_override_used_by_usage_fresh_argv(self):
+        import tempfile
+        from claudeops import settings
+        d = tempfile.mkdtemp()
+        exe = os.path.join(d, "claude")
+        open(exe, "w").write("#!/bin/sh\n")
+        os.chmod(exe, 0o755)
+        with mock.patch("shutil.which", return_value=None), \
+             mock.patch.object(settings, "load_settings", return_value={"provider_bin": {"claude": exe}}):
+            self.assertEqual(PROVIDERS["claude"].usage_fresh_argv()[0], exe)

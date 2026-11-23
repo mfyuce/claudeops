@@ -3383,23 +3383,6 @@ def _compact(name: str, lang: str = "tr") -> dict:
 USAGE_SETTLE_SECONDS = 3.0
 
 
-def _usage_for_session(s, provider) -> dict:
-    """Tek bir CANLI session'a `usage_command()`'ı enjekte edip sonucu
-    parse eder. `provider.usage_command()`'ın None DÖNMEDİĞİ (çağıran taraf
-    zaten kontrol etmiş) durumda çağrılır."""
-    command = provider.usage_command()
-    if not tmux_send_keys(s.name, command, settle_delay=provider.input_settle_delay()):
-        return {"available": False, "reason": "send_failed"}
-    time.sleep(USAGE_SETTLE_SECONDS)
-    text = strip_ansi(tmux_capture(s.name, lines=100) or "")
-    entries = provider.parse_usage_text(text)
-    if provider.usage_needs_dismiss():
-        tmux_send_special_key(s.name, "Escape")
-    if not entries:
-        return {"available": False, "reason": "parse_failed", "checked_via": s.name}
-    return {"available": True, "checked_via": s.name, "entries": entries}
-
-
 USAGE_FRESH_TIMEOUT = 45.0
 
 
@@ -3448,7 +3431,7 @@ def _usage_fresh(provider) -> Optional[dict]:
     except (OSError, subprocess.SubprocessError):
         return None
     finally:
-        if os.path.basename(argv[0]) == "claude":
+        if os.path.basename(argv[0]).startswith("claude"):
             _prune_usage_transcripts(started)
     entries = provider.parse_fresh_usage(strip_ansi(r.stdout or "")) if r.returncode == 0 else None
     if not entries:
@@ -3627,7 +3610,6 @@ def _usage_all(only: Optional[set] = None) -> dict:
     listelenir (`supported:false`, tutarlılık için, "gizlice atlanan" bir
     provider olmasın diye) `if cli=="shell"` YOK, sadece `usage_command()`
     None dönüyor olması yeterli ayrım."""
-    running = find_sessions(measure_cpu=False)
     out: Dict[str, dict] = {}
     api_box: Dict[str, dict] = {}
     api_thread: Optional[threading.Thread] = None
@@ -3655,32 +3637,10 @@ def _usage_all(only: Optional[set] = None) -> dict:
         if fresh is not None:
             out[cli_name] = {"supported": True, **fresh}
             continue
-        raw_candidates = [s for s in running if s.cli == cli_name and is_tmux_backed(s.pid)]
-        # busy/masked adaylar KESİNLİKLE elenir (2026-09-14 fix — KRİTİK
-        # OPERASYONEL RİSK, bkz. TODO.md): eskiden bu filtre yoktu, bir turn
-        # işleyen (`_is_busy_cached`==True) ya da sudo/parola bekleyen
-        # (`pane_is_masked_input`==True) session'a `/usage` enjekte edilip 3sn
-        # sonra Escape gönderilebiliyordu — Escape çalışan bir görevi ANINDA
-        # kesip iptal ediyor, masked'a enjekte edilen `/usage` metni de parola
-        # prompt'una karışıyordu. `_is_busy_cached`'in `None` (bilinmiyor)
-        # dönüşü BİLEREK eleme kapsamı DIŞINDA — needs_ho/client_count'un aynı
-        # "bilinmiyor ≠ kesin risk" sözleşmesi, tamamen ölçülemeyen bir CLI'da
-        # (busy_status_pattern tanımsız) hiçbir aday kalmamasını önler.
-        candidates = [s for s in raw_candidates if not _is_busy_cached(s) and not pane_is_masked_input(s.name)]
-        if not candidates:
-            reason = "all_sessions_busy" if raw_candidates else "no_running_session"
-            out[cli_name] = {"supported": True, "available": False, "reason": reason}
-            continue
-        # Birden fazla aday varsa, kimsenin İZLEMEDİĞİ birini TERCİH et
-        # (`tmux_client_count()==0`) — canlı doğrulandı (2026-09-13, bu
-        # fonksiyonun İLK sürümü rastgele bir aday seçiyordu ve GERÇEKTEN
-        # ATTACHED bir fleet session'ına `/usage` enjekte edip ekranını anlık
-        # değiştirdi, sonra Escape'le geri döndü — veri kaybı YOK ama görünür
-        # bir kesinti oldu). Ölçülemeyen (`None`) "izleniyor olabilir" gibi
-        # TEDBİRLİ ele alınır, "kesin boş" (0) DEĞİLDİR — sadece kesin-boş
-        # bilinenler öne alınır.
-        candidates.sort(key=lambda s: 0 if tmux_client_count(s.name) == 0 else 1)
-        out[cli_name] = {"supported": True, **_usage_for_session(candidates[0], provider)}
+        # P0 (23 Kas): CANLI oturuma /usage enjekte eden yedek yol KALDIRILDI (yuhem'de fresh düşünce boştaki oturuma ayarlar
+        # penceresi düşüyordu; eskiden de Escape görev kesiyor, masked'a metin karışıyordu). Oturumsuz okuma düşerse
+        # yalnız "okunamadı" döner, hiçbir oturuma tmux_send_keys gitmez.
+        out[cli_name] = {"supported": True, "available": False, "reason": "read_failed"}
     if api_thread is not None:
         api_thread.join(timeout=60)
         out.update(api_box)

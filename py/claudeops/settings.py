@@ -451,7 +451,28 @@ def resolved_binary(cli_name: str) -> str:
         path = os.path.expanduser(override)
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path
-    return shutil.which(cli_name) or cli_name
+    found = shutil.which(cli_name)
+    if found:
+        return found
+    # PATH'te yoksa (yuhem panel servisi: PATH'e symlink istenmedi) bilinen kurulum konumları: npm kurulumu `~/cc/node_modules/...`
+    # ve kullanıcı bin dizinleri. Oturumlar kabuk PATH'iyle açılır, panel servisi o PATH'e sahip değildir.
+    for cand in _KNOWN_BINARY_PATHS.get(cli_name, ()):
+        path = os.path.expanduser(cand)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return cli_name
+
+
+_KNOWN_BINARY_PATHS = {
+    "claude": (
+        "~/cc/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+        "~/cc/node_modules/.bin/claude",
+        "~/.local/bin/claude",
+        "~/.claude/local/claude",
+        "~/.npm-global/bin/claude",
+        "/usr/local/bin/claude",
+    ),
+}
 
 
 def default_model_for(provider: "CliProvider") -> str:
