@@ -55,11 +55,18 @@ class Http(_Tmp):
             r2 = self.ws.http_answer({"id": q.id, "answer": "uzun bir yönerge cevabı burada"}, "default")
         self.assertEqual(r2["persisted"], {"tbd": "already", "todo": "already"})
 
-    def test_brain_answer_not_persisted(self):
-        q = sw.add_question("p", "TBD#7 x?", source="s", paths=None)
+    def _brain(self, text):
+        q, _ = sw.add_question_ex("p", "TBD#7 x?", source="s", routine=True)
         with mock.patch.object(self.ws, "_cwd_resolver", return_value=lambda n: self.cwd):
-            r = self.ws.http_answer({"id": q.id, "answer": "uzun bir yönerge cevabı burada", "actor": "brain"}, "default")
-        self.assertNotIn("persisted", r)
+            return self.ws.http_answer({"id": q.id, "answer": text, "actor": "brain"}, "default")
+
+    def test_brain_action_answer_persisted(self):          # 23 Kas kayıp önleme: beyin cevabı da yazılır
+        r = self._brain("uzun bir yönerge cevabı burada")
+        self.assertEqual(r["persisted"], {"tbd": "written", "todo": "written"})
+
+    def test_brain_short_or_nudge_answer_not_persisted(self):
+        self.assertNotIn("persisted", self._brain("evet"))
+        self.assertNotIn("persisted", self._brain("devam: şu işi bitir ve testleri çalıştır"))
 
 
 if __name__ == "__main__":

@@ -1632,6 +1632,17 @@ def answer_has_action(answer: str) -> bool:
     return len(a.split()) >= 4 or len(a) >= 40
 
 
+def todo_insert_directive(body: str, did: str, summary: str, date: str) -> Optional[str]:
+    """SAF. TODO.md içeriğine `- [ ] (tarih, direktif <id>) <özet>` ekler (sona). Aynı id VAR (açık/kapalı) ya da aynı özet AÇIK satırsa None."""
+    if f"direktif {did})" in body or f"direktif {did}," in body:
+        return None
+    for ln in body.splitlines():
+        m = re.match(r"^- \[ \] \([^)]*direktif [0-9a-f]+\) (.*)$", ln)
+        if m and " ".join(m.group(1).split()) == summary:
+            return None
+    return body + ("" if body.endswith("\n") or not body else "\n") + f"- [ ] ({date}, direktif {did}) {summary}\n"
+
+
 def todo_insert_answer(text: str, qid: str, answer: str, date: str) -> Optional[str]:
     """SAF. TODO.md içeriğine `- [ ] (sahip cevabı <qid>) ...` satırı ekler (sona). Aynı qid zaten varsa None."""
     if qid and f"(sahip cevabı {qid}," in text:

@@ -47,15 +47,35 @@ class DirectiveAutoTodo(unittest.TestCase):
         self.close_all()
         self.assertEqual(self.rec("şunu yap", "bbbbbbbbbbbb"), "added")
 
-    def test_brain_and_system_directives_skipped(self):
-        self.assertEqual(self.rec("x", "a1", actor="brain"), "skipped:system")
+    def test_brain_directive_recorded_unless_short_or_nudge(self):
+        self.assertEqual(self.rec("x", "a1", actor="brain"), "skipped:nudge")                       # eylemsiz kısa
+        self.assertEqual(self.rec("devam: şu işi bitir ve test et", "a9", actor="brain"), "skipped:nudge")
+        self.assertEqual(self.rec("TODO 632 için testleri yaz ve push et", "b1", actor="brain"), "added")
+        self.assertEqual(self.rec("TODO 632 için testleri yaz ve push et", "b2", actor="brain"), "duplicate")
+
+    def test_system_directives_skipped(self):
         self.assertEqual(self.rec("x", "a2", reason="restart: y"), "skipped:system")
         self.assertEqual(self.rec("x", "a3", reason="review_verify"), "skipped:system")
         self.assertEqual(self.body(), "# TODO\n")
 
-    def test_remote_or_missing_project_skipped(self):
+    def test_missing_project_skipped(self):
         self.assertEqual(ws._todo_record_directive(None, "okp", "x", "a4", {}), "skipped:no_local_project")
-        self.assertEqual(ws._todo_record_directive(sw.Project(name="r", host="yuhem"), "r", "x", "a5", {}), "skipped:no_local_project")
+
+    def test_remote_project_uses_host_routed_edit(self):
+        seen = {}
+
+        def fake(host, name, fname, edit, sid):
+            seen.update(host=host, name=name, fname=fname, out=edit("# TODO\n"))
+            return "written"
+        with mock.patch.object(ws, "_remote_edit_doc", fake):
+            r = ws._todo_record_directive(sw.Project(name="oiso", host="ulak_31"), "oiso", "şunu yap lütfen şimdi", "c1c1c1c1c1c1", {})
+        self.assertEqual(r, "added")
+        self.assertEqual((seen["host"], seen["fname"]), ("ulak_31", "TODO.md"))
+        self.assertIn("direktif c1c1c1c1c1c1) şunu yap lütfen şimdi", seen["out"])
+        with mock.patch.object(ws, "_remote_edit_doc", lambda *a: "already"):
+            self.assertEqual(ws._todo_record_directive(sw.Project(name="oiso", host="h"), "oiso", "x y z w", "d", {}), "duplicate")
+        with mock.patch.object(ws, "_remote_edit_doc", lambda *a: "remote_denied"):
+            self.assertEqual(ws._todo_record_directive(sw.Project(name="oiso", host="h"), "oiso", "x y z w", "d", {}), "error")
 
     def test_state_open_then_closed_then_missing(self):
         self.rec("şunu yap", "aaaaaaaaaaaa")

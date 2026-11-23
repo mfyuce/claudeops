@@ -6505,7 +6505,7 @@ def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
             except (OSError, subprocess.SubprocessError):
                 pass
         sw.log_event("answer_persisted", paths=sid, id=q.id, project=q.project, tbd=out["tbd"], todo=out["todo"])
-        if out["tbd"] not in ("written", "already"):
+        if out["tbd"] not in ("written", "already") and q.answered_by != "brain":      # beyin cevabında yazılamayan not sahibi rahatsız etmez
             _notify(cfg, (f"[{cfg.sid}] Cevabın {q.project} projesinin TOBEDECIDED.md'sine YAZILAMADI ({out['tbd']}): [{q.id}] {q.answer[:160]}"
                           if cfg.lang != "en" else
                           f"[{cfg.sid}] Your answer for {q.project} could NOT be written to TOBEDECIDED.md ({out['tbd']}): [{q.id}] {q.answer[:160]}"))
@@ -6636,7 +6636,8 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         return {"ok": False, "error": "unknown question id"}
     sw.log_event("answer", paths=sid, id=q.id, project=q.project, answered_by=q.answered_by)
     persisted: Dict[str, str] = {}
-    if q.answered_by in ("owner_phone", "owner_panel", "owner_cli", "cops") and q.source != "reviewer-where" and q.project:
+    if q.answered_by in ("owner_phone", "owner_panel", "owner_cli", "cops", "brain") and q.source != "reviewer-where" and q.project \
+            and (q.answered_by != "brain" or (sw.answer_has_action(q.answer) and not _directive_is_nudge(q.answer))):
         persisted = _persist_owner_answer(q, sid)       # sahip cevabı HER ZAMAN projenin TBD/TODO dosyasına (oturuma iletimden bağımsız)
     return {"ok": True, "question": dataclasses.asdict(q), **({"persisted": persisted} if persisted else {})}
 
@@ -6966,35 +6967,44 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
 _TODO_DIRECTIVE_SKIP_REASONS = ("restart", "review_verify")
 
 
-def _todo_record_directive(p: Optional[sw.Project], name: str, text: str, did: str, data: Dict[str, Any]) -> str:
-    """Sahip kuralı (20 Kas): her insan/cops/readlist direktifi hedef projenin TODO.md'sine `- [ ] (tarih, direktif <id>) <özet>`
-    olarak otomatik yazılır ("gönder deyince TODO olmalı yoksa kaybolur"). Aynı içerik zaten AÇIK satırsa ya da aynı id varsa
-    yeni satır AÇILMAZ. Beyin direktifi, restart/review_verify sistem direktifi, uzak host projesi, TODO.md'siz proje ATLANIR.
-    Dönen: added | duplicate | skipped:<neden> | error. Asla fırlatmaz. (Notes DB bu kod tabanında yok: hc/sesim TODO.md kullanır.)"""
+def _directive_is_nudge(text: str) -> bool:
+    """'devam: X' / 'devam et' gibi dürtmeler iş taşımaz: TODO satırı açılmaz."""
+    t = " ".join(str(text).split()).lower()
+    return t.startswith("devam") and len(t) < 120
+
+
+def _todo_record_directive(p: Optional[sw.Project], name: str, text: str, did: str, data: Dict[str, Any], sid: str = "default") -> str:
+    """Sahip kuralı (20 Kas; 23 Kas kayıp önleme): gönderilen HER eylem taşıyan direktif (insan/cops/readlist/BEYİN, yerel ya da uzak proje)
+    hedef projenin TODO.md'sine `- [ ] (tarih, direktif <id>) <özet>` olarak yazılır. Aynı içerik zaten AÇIK satırsa ya da aynı id varsa yeni
+    satır AÇILMAZ. Atlananlar: restart/review_verify sistem direktifi, beyin direktifinin eylemsiz kısası (`answer_has_action` süzgeci) ve
+    'devam: X' dürtmesi, TODO.md'siz proje. Uzak host projesi host-routed `files/read`+`files/write` ile (`_remote_edit_doc`, create bayrağı).
+    Dönen: added | duplicate | skipped:<neden> | error. Asla fırlatmaz."""
     try:
         actor = str(data.get("actor") or "")
         reason = str(data.get("reason") or "")
-        if actor == "brain" or reason.startswith(_TODO_DIRECTIVE_SKIP_REASONS):
+        if reason.startswith(_TODO_DIRECTIVE_SKIP_REASONS):
             return "skipped:system"
-        if not text.strip() or p is None or p.host:
+        if not text.strip() or p is None:
             return "skipped:no_local_project"
+        if actor == "brain" and (not sw.answer_has_action(text) or _directive_is_nudge(text)):
+            return "skipped:nudge"
+        flat = " ".join(text.split())
+        summary = flat if len(flat) <= 400 else flat[:397] + "..."
+        date = time.strftime('%Y-%m-%d')
+        if p.host:
+            res = _remote_edit_doc(p.host, p.name, "TODO.md", lambda t: sw.todo_insert_directive(t, did, summary, date), sid)
+            return {"written": "added", "already": "duplicate"}.get(res, "error")
         cwd = _cwd_resolver()(p.name)
         real = _doc_path(cwd, "TODO.md") if cwd else ""
         if not real:
             return "skipped:no_todo"
-        flat = " ".join(text.split())
-        summary = flat if len(flat) <= 400 else flat[:397] + "..."
         with open(real, encoding="utf-8", errors="replace") as f:
             body = f.read()
-        if f"direktif {did})" in body or f"direktif {did}," in body:
+        new = sw.todo_insert_directive(body, did, summary, date)
+        if new is None:
             return "duplicate"
-        for ln in body.splitlines():
-            m = re.match(r"^- \[ \] \([^)]*direktif [0-9a-f]+\) (.*)$", ln)
-            if m and " ".join(m.group(1).split()) == summary:
-                return "duplicate"
-        line = f"- [ ] ({time.strftime('%Y-%m-%d')}, direktif {did}) {summary}"
         with open(real, "a", encoding="utf-8") as f:
-            f.write(("" if body.endswith("\n") or not body else "\n") + line + "\n")
+            f.write(new[len(body):])
         return "added"
     except Exception as e:
         diag_log(f"direktif TODO satırı yazılamadı: {type(e).__name__}")
@@ -7060,7 +7070,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
                 return {"ok": False, "error": "unknown session/project"}
             p = sw.Project(name=name)   # ad hoc: kayıt açmadan sadece gönder
         did = str(data.get("_did") or "") or __import__("uuid").uuid4().hex[:12]
-        todo_res = _todo_record_directive(p, name, text, did, data)
+        todo_res = _todo_record_directive(p, name, text, did, data, sid)
         keep_phase = sw.directive_keeps_phase(text, data)      # toparla (commit+push+READY FOR HANDOVER) / --keep-phase: faz AÇILMAZ
         if keep_phase and p.phase in ("done", "paused"):
             sw.log_event("phase_keep", paths=sw.paths_for(sid), name=p.name, project=p.name, phase=p.phase, trigger="directive")
