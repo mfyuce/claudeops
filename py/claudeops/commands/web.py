@@ -1122,9 +1122,12 @@ def _find_gnome_terminal_server() -> Optional[psutil.Process]:
     return None
 
 
-def _diag_status() -> dict:
+def _diag_status(live: Optional[list] = None) -> dict:
     """Her /api/status poll'unda (4s) çalışır — subprocess'ler ucuz/hızlı (wmctrl
-    tek çağrı, /proc taramalar), aktif spawn-test/restart gibi pencere AÇMAZ."""
+    tek çağrı, /proc taramalar), aktif spawn-test/restart gibi pencere AÇMAZ.
+
+    `live`: çağıranın ZATEN ölçtüğü `find_sessions(measure_cpu=True)` sonucu (`_status_payload`); verilirse burada iki tarama daha
+    (biri 0,3 sn CPU örneklemeli) YAPILMAZ: /api/status ~0,9 sn -> ~0,3 sn (profil: time.sleep 0,6 sn, find_sessions x3)."""
     gt = _find_gnome_terminal_server()
     gt_info = None
     if gt is not None:
@@ -1149,7 +1152,7 @@ def _diag_status() -> dict:
     # None = bilinmiyor (tmux yok/hata), boş liste ile karıştırılmamalı.
     windowless = None
     try:
-        rows = [(s.name, tmux_client_count(s.name)) for s in find_sessions(measure_cpu=False)
+        rows = [(s.name, tmux_client_count(s.name)) for s in (live if live is not None else find_sessions(measure_cpu=False))
                 if is_tmux_backed(s.pid)]
         windowless = [n for n, c in rows if c == 0]
     except Exception:
@@ -1158,7 +1161,7 @@ def _diag_status() -> dict:
     orphans = None
     try:
         from ..discovery import orphan_report
-        orphans = orphan_report(find_sessions(measure_cpu=True), is_tmux_backed, time.time())
+        orphans = orphan_report(live if live is not None else find_sessions(measure_cpu=True), is_tmux_backed, time.time())
     except Exception:
         orphans = None
 
@@ -1921,7 +1924,7 @@ def _status_payload() -> dict:
             for name, p in PROVIDERS.items()
         },
         "layout_missing_deps": _missing_layout_deps(),
-        "diag": _diag_status(),
+        "diag": _diag_status(all_live),
         "server_started_at": _WEB_PROC_START_EPOCH,
         # Salt-okunur — `py/cops service install --label` (varsa) tarafından yazılan
         # tunnel URL/label dosyaları. service.py'yi İMPORT ETMİYORUZ (o modül tunnel.log'u
