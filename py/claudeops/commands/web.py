@@ -2275,7 +2275,9 @@ def _ho_stop_key(host: str, name: str) -> str:
     return f"{host}:{name}"
 
 
-def _ho_stop_run(key: str, host: str, name: str, lang: str, exact: bool = False) -> None:
+def _ho_stop_run(key: str, host: str, name: str, lang: str, exact: bool = False, principal: Any = None) -> None:
+    from .. import authz
+    authz.bind_principal(principal)      # istek dışı iş parçacığı: giden kimlik imzası ve K5 olayı isteği yapanı taşısın
     try:
         if host == LOCAL_HOST_NAME:
             res = None if exact else web_steward.human_stop_with_ho(name)    # kayıtlı proje + değnekçi act: motor kendi devir/kapatma yolu (ad/proje çözer: exact'ta atlanır)
@@ -2296,13 +2298,16 @@ def _ho_stop_run(key: str, host: str, name: str, lang: str, exact: bool = False)
         job = _HO_STOP_JOBS.get(key)
         if job is not None:
             job.update(state="ok" if res.get("ok") else "error", result=res, finished=time.time())
+    if res.get("ok"):
+        authz.emit_event("/api/stop", host, name, principal)      # K5: düz /api/stop ile aynı sahiplik kapatma olayı
+    authz.bind_principal(None)
     try:
         web_ws.notify_status_changed()
     except Exception:
         pass
 
 
-def _ho_stop_begin(host: str, name: str, lang: str = "tr", exact: bool = False) -> dict:
+def _ho_stop_begin(host: str, name: str, lang: str = "tr", exact: bool = False, principal: Any = None) -> dict:
     if not name:
         return {"ok": False, "error": "name required"}
     key = _ho_stop_key(host, name)
@@ -2314,7 +2319,7 @@ def _ho_stop_begin(host: str, name: str, lang: str = "tr", exact: bool = False) 
         if cur is not None and cur.get("state") == "pending":
             return {"ok": True, "pending": True, "name": name, "host": host, "already": True}     # aynı oturuma ikinci devir gitmez
         _HO_STOP_JOBS[key] = {"state": "pending", "started": now}
-    threading.Thread(target=_ho_stop_run, args=(key, host, name, lang, exact), daemon=True, name=f"ho-stop-{name}").start()
+    threading.Thread(target=_ho_stop_run, args=(key, host, name, lang, exact, principal), daemon=True, name=f"ho-stop-{name}").start()
     return {"ok": True, "pending": True, "name": name, "host": host}
 
 
@@ -6073,7 +6078,8 @@ class _Handler(BaseHTTPRequestHandler):
                             "code": "ho_force_conflict"}, status=400)
                 return
             ho_host = _host_from_body(data)
-            self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang, exact=data.get("exact") is True))
+            self._json(_ho_stop_begin(ho_host, str(data.get("name") or "").strip(), lang, exact=data.get("exact") is True,
+                                      principal=getattr(self, "_cur_principal", None)))
             return
 
         # Host-routing: 13 session-scoped route (bkz. web_hosts.HOST_ROUTED_PATHS) için
