@@ -715,7 +715,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             diag_log("ucli_flag_unsupported", name=session_name, flag="--usage-log", binary=argv[0])
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
-    sess_cap = float(opts.get("max_session_usd") or 0) or _default_session_cap()
+    # Evren (ücretsiz, fiyatsız) hizmette varsayılan tavan eklenmez: ucli "needs a price for this model" ile çıkar; açık değer yine geçer
+    sess_cap = float(opts.get("max_session_usd") or 0) or (0.0 if service in ("", "evren") else _default_session_cap())
     if sess_cap:
         binary = argv[0]
         if binary_supports_flag(binary, "--max-session-usd"):
