@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import steward as sw  # noqa: E402
-from test_steward import _cfg, _view  # noqa: E402
+from test_steward_core_a import _cfg, _view  # noqa: E402
 
 
 class TestClaims(unittest.TestCase):

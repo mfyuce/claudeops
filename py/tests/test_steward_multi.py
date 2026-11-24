@@ -236,12 +236,13 @@ class _DefaultWorldChecked:
             self.addCleanup(p.stop)
 
 
-import test_steward as _ts  # noqa: E402  (modül adıyla: sınıfları bu modülde İKİNCİ kez keşfedilmez)
+import test_steward_core_a, test_steward_core_b, test_steward_ctx, test_steward_http  # noqa: E402  (eski test_steward.py'nin dört parçası; modül adıyla: sınıflar bu modülde İKİNCİ kez keşfedilmez)
 
-for _n, _c in sorted(vars(_ts).items()):
-    if isinstance(_c, type) and issubclass(_c, unittest.TestCase) and _c.__module__ == _ts.__name__:
-        globals()[f"DefaultWorld_{_n}"] = type(f"DefaultWorld_{_n}", (_DefaultWorldChecked, _c), {})
-del _n, _c
+for _ts in (test_steward_core_a, test_steward_core_b, test_steward_ctx, test_steward_http):
+    for _n, _c in sorted(vars(_ts).items()):
+        if isinstance(_c, type) and issubclass(_c, unittest.TestCase) and _c.__module__ == _ts.__name__:
+            globals()[f"DefaultWorld_{_n}"] = type(f"DefaultWorld_{_n}", (_DefaultWorldChecked, _c), {})
+del _n, _c, _ts
 
 
 # ── sahiplik indeksi ───────────────────────────────────────────────────────────────────────────────────────────
