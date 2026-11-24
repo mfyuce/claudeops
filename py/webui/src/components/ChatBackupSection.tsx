@@ -76,16 +76,16 @@ export function ChatBackupSection() {
             {tr ? "Son yedek" : "Last backup"}: {s.last_done || (tr ? "kayıt yok" : "none yet")}
           </span>
           <div style={{ display: "flex", gap: ".5rem", flexBasis: "100%" }}>
-            <button type="button" className="go" disabled={busy || !s.script_exists} onClick={() => void act("install")}>
+            <button type="button" className="go" disabled={busy} onClick={() => void act("install")}>
               {s.installed ? (tr ? "Timer'ı yeniden kur" : "Reinstall timer") : tr ? "Kur" : "Install"}
             </button>
-            <button type="button" disabled={busy || !s.script_exists} onClick={() => void act("run")}>
+            <button type="button" disabled={busy} onClick={() => void act("run")}>
               {tr ? "Şimdi çalıştır" : "Run now"}
             </button>
           </div>
           {!s.script_exists && (
-            <span className="opts-hint" style={{ color: "var(--red)" }}>
-              {tr ? "chat_mirror.sh bulunamadı" : "chat_mirror.sh not found"}
+            <span className="opts-hint">
+              {tr ? "chat_mirror.sh henüz yok; Kur/Çalıştır oluşturur" : "chat_mirror.sh not created yet; Install/Run creates it"}
             </span>
           )}
           {manual && (

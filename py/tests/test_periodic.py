@@ -583,3 +583,9 @@ class TmpCleanupRegressionTest(unittest.TestCase):
         probe.run(res)
         self.assertTrue(res.wasSuccessful())
         self.assertFalse(os.path.exists(probe.d), probe.d)
+
+
+def test_local_sources_guncel_reviewer_koku_icerir():
+    from claudeops import periodic, steward
+    roots = [t[0] for t in periodic._local_sources()]
+    assert steward.paths_for("reviewer").reviews in roots

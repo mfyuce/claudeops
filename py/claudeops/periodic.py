@@ -418,6 +418,8 @@ def _local_sources() -> List[Tuple[str, ...]]:
         (os.path.join(mir, "ucli"), os.path.join("local", "claude-ucli"), "text"),
         # review koşuları (<proje>/<mod>/<model>/<id>/*.io.jsonl): `claude -p` transkripte düşmez (ölçüldü 11-17), yedeğe buradan girer
         (os.path.join(REPO_DIR, "reviews"), os.path.join("local", "claude-reviews"), "text"),
+        # R-3: güncel reviewer/default değnekçi kökleri (`StewardPaths.reviews`); hedef yol çakışırsa mtime'ı yeni olan kazanır
+        *_steward_review_sources(),
         # D1 (22 Kas): reviewer'ın izole `claude -p` yapılandırması (CLAUDE_CONFIG_DIR) transkriptleri; ana projects'e düşmez
         (os.path.join(CLAUDEOPS_DIR, "steward", "stewards", "reviewer", "claude_cfg", "projects"), os.path.join("local", "claude-reviewer-projects"), "text"),
     ]
@@ -428,6 +430,19 @@ def _local_sources() -> List[Tuple[str, ...]]:
         out.append((os.path.join(hdir, ".claude", "history.jsonl"), os.path.join("local", f"claude-{rh}-history"), "text"))
         out.append((os.path.join(hdir, ".codex", "sessions"), os.path.join("local", f"codex-{rh}-sessions"), "text"))
     out.extend(_memory_sources(home, mir))
+    return out
+
+
+
+def _steward_review_sources() -> List[Tuple[str, ...]]:
+    """Güncel review çıktı kökleri (reviewer + default kimlikleri). Çözülemezse boş döner (yedek akışı bozulmaz)."""
+    out: List[Tuple[str, ...]] = []
+    try:
+        from . import steward as _sw
+        for sid in ("reviewer", "default"):
+            out.append((_sw.paths_for(sid).reviews, os.path.join("local", "claude-reviews"), "text"))
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 

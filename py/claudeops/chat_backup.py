@@ -39,7 +39,10 @@ WantedBy=timers.target
 
 
 def _sysctl(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=30)
+    try:
+        return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:       # systemctl yok/takıldı: 500 yerine hata dönüşü
+        return subprocess.CompletedProcess(["systemctl", "--user", *args], 1, "", f"{type(e).__name__}: {e}"[:200])
 
 
 def _last_log() -> Dict[str, str]:

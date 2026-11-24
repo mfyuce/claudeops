@@ -86,6 +86,11 @@ function JobRow({ id, job, onChanged }: { id: string; job: PeriodicJob; onChange
   const [schedule, setSchedule] = useState(String(cfg.schedule ?? ""));
   const [start, setStart] = useState(String(cfg.start ?? ""));
   const [interval, setIntervalH] = useState(String(cfg.interval_hours ?? ""));
+  useEffect(() => {          // R-6: sunucu config'i değişince (sıfırlama/yenileme) giriş kutuları eşitlenir
+    setSchedule(String(cfg.schedule ?? ""));
+    setStart(String(cfg.start ?? ""));
+    setIntervalH(String(cfg.interval_hours ?? ""));
+  }, [cfg.schedule, cfg.start, cfg.interval_hours]);
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const [out, setOut] = useState("");

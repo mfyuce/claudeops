@@ -50,3 +50,19 @@ class T(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_sysctl_oserror_ve_timeout_fırlatmaz(monkeypatch):
+    import subprocess
+    from claudeops import chat_backup as cb
+
+    def boom(*a, **k):
+        raise FileNotFoundError("systemctl")
+    monkeypatch.setattr(cb.subprocess, "run", boom)
+    r = cb._sysctl("is-active", "x")
+    assert r.returncode == 1 and "FileNotFoundError" in r.stderr
+
+    def slow(*a, **k):
+        raise subprocess.TimeoutExpired("systemctl", 30)
+    monkeypatch.setattr(cb.subprocess, "run", slow)
+    assert cb._sysctl("is-active", "x").returncode == 1

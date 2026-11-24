@@ -69,6 +69,11 @@ def pull(tx: Transport, tag: str, day: str, dest: str, paths: Optional[List[str]
             return {"ok": False, "skipped": True, "msg": "shell meşgul, vazgeçildi (sonraki koşuda denenir)", "bytes": 0}
         root = tx.root()
         tx.send(cleanup_command(tag, day, root))     # bayat .done/.tgz kalıntısı eski arşivi indirtmesin
+        t_clean = clock()                              # R-2: temizlik gerçekten bitmeden pack gönderme (eski .done ile yarış)
+        while n["done"] in (ls0 := tx.listing(root)) or n["fail"] in ls0:
+            if clock() - t_clean > min(wait_s, 120):
+                return {"ok": False, "msg": "uzak ön temizlik bitmedi (bayat .done/.fail), vazgeçildi", "bytes": 0}
+            sleep(min(poll_s, 2))
         tx.send(pack_command(tag, day, paths, root))
         t0 = clock()
         while True:
