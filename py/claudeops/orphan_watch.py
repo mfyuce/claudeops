@@ -97,6 +97,10 @@ def _pane_pids(run: Callable[..., Any] = subprocess.run) -> Set[int]:
         return set()
 
 
+def _is_app_server(cmd: str) -> bool:
+    return "app-server" in cmd.split()
+
+
 def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Optional[Iterable[Any]] = None,
                pane_pids: Optional[Set[int]] = None) -> List[Dict[str, Any]]:
     """Tanınmayan (known_pids ve cops pane ağaçları dışı), yaşı > 1 sa CLI süreçleri. `procs` testte psutil.Process benzeri enjekte edilir."""
@@ -123,13 +127,20 @@ def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Op
             cmd = " ".join(info.get("cmdline") or [])
             if "native-host" in cmd or "--chrome" in cmd:       # Chrome eklentisinin köprü süreci, CLI oturumu değil
                 continue
+            if _is_app_server(cmd):                             # codex app-server: systemd altında kalıcı yardımcı daemon
+                continue
             chain: List[int] = []
             q = p
+            helper_child = False
             for _ in range(40):         # ata zinciri: tanınan oturum / cops pane / panelin kendisi altında mı?
                 q = q.parent()
                 if q is None:
                     break
                 chain.append(q.pid)
+                if _is_app_server(" ".join(getattr(q, "info", {}).get("cmdline") or [])):
+                    helper_child = True
+            if helper_child:            # app-server yardımcısının çocuğu ayrı sahipsiz sayılmaz
+                continue
             if me in chain or any(c in known or c in panes for c in chain):
                 continue
             out.append({"pid": pid, "name": name, "age_s": int(age), "cwd": str(info.get("cwd") or "")})

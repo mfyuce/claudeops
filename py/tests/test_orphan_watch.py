@@ -100,6 +100,12 @@ class Procs(unittest.TestCase):
         self.assertEqual(self.scan([P(30, "claude", 9000, cmdline=["claude", "--chrome-native-host"])]), [])
 
 
+    def test_codex_app_server_and_its_children_ignored(self):
+        srv = P(40, "codex", 9000, cmdline=["codex", "app-server"])
+        self.assertEqual(self.scan([srv]), [])
+        self.assertEqual(self.scan([P(41, "codex", 9000, parent=srv)]), [])
+
+
 class Job(unittest.TestCase):
     def run_job(self, keys, state):
         res = {"ok": True, "keys": keys, "sockets": {"deleted": [], "killed": [], "orphans": [{"name": "k"}] if keys else []},
