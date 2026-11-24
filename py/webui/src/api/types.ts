@@ -1083,6 +1083,9 @@ export interface StewardProject {
   last_visit: number;
   last_directive?: string;
   running?: boolean;
+  /** Open TOBEDECIDED.md decisions / open TODO.md items (absent = unknown, e.g. remote project). */
+  open_tbd?: number;
+  open_todo?: number;
   /** One line from the project card (`card_one_liner`), "" when no card yet. */
   next_step: string;
   card_updated_at: number;

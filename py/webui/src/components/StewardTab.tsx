@@ -765,6 +765,8 @@ export function StewardTab({ onOpenTerminal, search = "" }: { onOpenTerminal?: (
                   </td>
                   <td>
                     <span className="phase-badge">{p.phase}</span>
+                    {p.open_tbd ? <span className="cli-badge" style={{ marginLeft: ".3rem" }}>TBD {p.open_tbd}</span> : null}
+                    {p.open_todo ? <span className="cli-badge" style={{ marginLeft: ".3rem" }}>TODO {p.open_todo}</span> : null}
                   </td>
                   <td>{p.priority}</td>
                   <td>
