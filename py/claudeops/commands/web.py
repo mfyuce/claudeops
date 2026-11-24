@@ -2932,7 +2932,7 @@ def _session_facts(names: List[str]) -> dict:
             except Exception:
                 warn = 0
             try:
-                sub = bool(web_steward.subagent_active_for(s.cwd, s.sid, name=s.name))
+                sub = bool(web_steward.subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli))
             except Exception:
                 sub = False
         elif s.cli != "shell":

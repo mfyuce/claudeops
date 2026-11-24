@@ -14,7 +14,7 @@ class TestBrainDirectiveSubagentGate(unittest.TestCase):
     """Boşta görünen ama alt ajanı çalışan oturuma beyin direktifi gitmemeli (`cli` 2026-10-24 tekrarı)."""
 
     def _defer(self, sub):
-        live = [types.SimpleNamespace(cwd="/x", sid="s1", name="cli")]
+        live = [types.SimpleNamespace(cwd="/x", sid="s1", name="cli", cli="claude")]
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(sw, "paths_for", lambda sid: d), \
                 mock.patch.object(ws, "_act", lambda *a, **k: {"sessions": [{"name": "cli", "running": True, "busy": False}]}), \
@@ -26,7 +26,7 @@ class TestBrainDirectiveSubagentGate(unittest.TestCase):
                 mock.patch.object(ws.sw, "save_state", lambda *a, **k: None), \
                 mock.patch.object(ws.sw, "log_event", lambda *a, **k: None), \
                 mock.patch.object(ws, "_live_sessions", lambda name, sid="default": live), \
-                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None, name=None: sub):
+                mock.patch.object(ws, "subagent_active_for", lambda cwd, sid, now=None, name=None, cli="claude": sub):
             return ws._brain_directive_defer("cli", "ucli")
 
     def test_subagent_active_defers(self):

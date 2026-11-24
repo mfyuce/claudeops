@@ -57,7 +57,7 @@ class TestFactsEndpoint(unittest.TestCase):
                   mock.patch.object(web, "_process_started_at", lambda pid: time.time() - 120 if pid == 111 else None),
                   mock.patch.object(web, "get_provider", lambda cli: FakeProvider()),
                   mock.patch.object(web.web_steward, "context_tokens_for", lambda cwd, sid: 4321),
-                  mock.patch.object(web.web_steward, "subagent_active_for", lambda cwd, sid, name=None: True)):
+                  mock.patch.object(web.web_steward, "subagent_active_for", lambda cwd, sid, name=None, cli="claude": True)):
             p.start()
             self.addCleanup(p.stop)
 
