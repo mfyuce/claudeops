@@ -94,6 +94,7 @@ Farklar (agy/codex'e göre, ikisi de en yakın emsal):
   YOK — bkz. `settings.py`'nin `byok` yorumu.
 """
 from __future__ import annotations
+import json
 import os
 import re
 import shlex
@@ -205,6 +206,31 @@ _USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
 _USAGE_RESET_RE = re.compile(r"resets\s+in\s+([^\n•]+?)\s*(?:\n|$)")
 
 
+def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
+    """cwd'yi copilot'un `trustedFolders` listesine ekler (ilk açılıştaki "Confirm folder trust"
+    diyaloğunu önler; "Yes, and remember" ile aynı sonuç). Dosya yorum satırlı (JSONC) olduğundan
+    metin üzerinde yalnız diziye bir giriş eklenir; anahtar yoksa dokunulmaz. True = yazıldı."""
+    path = config_path or os.path.join(os.environ.get("COPILOT_HOME") or os.path.expanduser("~/.copilot"), "config.json")
+    try:
+        if not cwd or not os.path.isabs(cwd):
+            return False
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        m = re.search(r'"trustedFolders"\s*:\s*\[', text)
+        if not m or json.dumps(cwd) in text[m.end():text.find("]", m.end())]:
+            return False
+        rest = text[m.end():text.find("]", m.end())]
+        sep = "," if rest.strip() else ""
+        new = text[:m.end()] + "\n    " + json.dumps(cwd) + sep + text[m.end():]
+        tmp = path + ".cops.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(new)
+        os.replace(tmp, path)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def _connect_ro() -> sqlite3.Connection:
     # mode=ro: SADECE okuma — copilot'un kendi canlı DB'sine (aktif yazılıyor
     # olabilir) yanlışlıkla dokunmak/var-olmayan bir dosya yaratmak İSTENMİYOR
@@ -248,6 +274,7 @@ class CopilotProvider(CliProvider):
         # Mutlak yol — claude/agy/codex provider'larındaki AYNI fix'in yorumu
         # (pane'in kendi PATH'i tmux server'ın miras kaldığından farklı/eksik olabilir).
         binary = resolved_binary("copilot")
+        trust_folder(cwd)  # ilk açılış "Confirm folder trust" diyaloğunda takılmasın
         parts = [shlex.quote(binary)]
         if resume_id:
             parts += ["--resume", shlex.quote(resume_id)]
