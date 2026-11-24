@@ -60,9 +60,12 @@ def load_instances() -> Dict[str, dict]:
     global _cache_key, _cache
     try:
         st = os.stat(INSTANCES_JSON)
-    except FileNotFoundError:
-        _cache_key, _cache = None, {}
-        return {}
+    except FileNotFoundError:       # ayna dosya yok: db kipinde kayıtlar DB'de olabilir (önbelleksiz oku)
+        _cache_key = None
+        try:
+            return dict(read_strict()["instances"])
+        except InstancesCorrupt:
+            return {}
     key = (st.st_ino, st.st_mtime_ns, st.st_size)
     if key != _cache_key:
         try:

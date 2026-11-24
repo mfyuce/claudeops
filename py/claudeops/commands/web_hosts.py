@@ -1477,7 +1477,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
     name = host["name"]
     token = host["token"]
     if tier == "grpc":
-        make_call: Callable[[], Any] = lambda: web_grpc.open_status_stream(host["grpc_url"], token)
+        make_call: Callable[[], Any] = lambda: web_grpc.open_status_stream(host.get("grpc_url") or "", token)
         parse_item: Callable[[Any], Optional[dict]] = web_grpc._status_proto_to_dict
     else:  # "ws"
         url = _ws_url(host["base_url"], "/ws", token)
@@ -1707,7 +1707,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                 tier = get_tier(host_name)
                 token = host["token"]
                 if tier == "grpc":
-                    make_call: Callable[[], Any] = lambda: web_grpc.open_term_stream(host["grpc_url"], token, name, lang)
+                    make_call: Callable[[], Any] = lambda: web_grpc.open_term_stream(host.get("grpc_url") or "", token, name, lang)
                     parse_item: Callable[[Any], Optional[dict]] = web_grpc._term_proto_to_dict
                 else:
                     extra = {"lite": "1"} if lite else {}

@@ -4331,9 +4331,9 @@ def _notify_approvals(cfg: sw.Config) -> int:
             continue
         text = (f"{_ask_prefix(str(j.get('project') or ''), cfg.sid)} {j.get('service')} işi #{j.get('id')} "
                 f"({j.get('kind')}) ONAY BEKLİYOR: varaka'da insan yönetici onaylamalı")
-        if _notify(cfg, text):
+        if _notify(cfg, text):      # başarısız bildirim işaretlenmez: sonraki tick yeniden dener
             n += 1
-        sj.update_records({(str(j.get("service")), str(j.get("id"))): {"approval_phone": True}}, paths)
+            sj.update_records({(str(j.get("service")), str(j.get("id"))): {"approval_phone": True}}, paths)
     return n
 
 
