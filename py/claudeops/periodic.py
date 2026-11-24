@@ -685,6 +685,23 @@ def _private_remotes(repo: str) -> Tuple[Dict[str, str], List[str]]:
     return rems, bad
 
 
+def _push_stepped(repo: str, name: str, url: str) -> bool:
+    """Büyük tek push koparsa: uzak uçtan HEAD'e commit'leri eskiden yeniye TEK TEK it (force YOK). True = HEAD itildi.
+    Uzak uç yerelde bilinmiyorsa ya da bir adım düşerse False (koşu hata verir, sonraki deneme kalan yerden sürer)."""
+    cred = _gh_cred(url)
+    rc, br = _git(repo, "symbolic-ref", "--short", "HEAD")
+    rc2, ls = _git(repo, *cred, "ls-remote", name, f"refs/heads/{br.strip()}")
+    if rc != 0 or rc2 != 0:
+        return False
+    old = ls.split()[0] if ls.split() else ""
+    rc, lst = _git(repo, "rev-list", "--reverse", "--first-parent", f"{old}..HEAD" if old else "HEAD")
+    shas = lst.split() if rc == 0 else []
+    for sha in shas:
+        if _git(repo, *cred, "push", "-q", name, f"{sha}:refs/heads/{br.strip()}", timeout=3600)[0] != 0:
+            return False
+    return bool(shas)
+
+
 def _git_dated(repo: str, day: str, *args: str) -> Tuple[int, str]:
     """Commit tarihi = dosyaların son değişme günü (öğlen), geçmiş gün sırasıyla görünür."""
     return _git(repo, *args, env=dict(os.environ, GIT_AUTHOR_DATE=f"{day}T12:00:00", GIT_COMMITTER_DATE=f"{day}T12:00:00"))
@@ -850,6 +867,8 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
             if "github.com" in rems[name]:
                 args = ["-c", "credential.helper=!gh auth git-credential", *args]
             rc, out = _git(repo, *args, timeout=3600)
+            if rc != 0 and _push_stepped(repo, name, rems[name]):
+                rc = 0
             if rc != 0:
                 res.update(ok=False, msg=f"{g} push {name}: " + out[-200:])
                 return res

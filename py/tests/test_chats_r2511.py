@@ -59,6 +59,49 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(periodic._group_of(p), "claude")
 
 
+class SteppedPushTests(unittest.TestCase):
+    def _repo(self, d):
+        import subprocess
+        bare, wt = os.path.join(d, "bare.git"), os.path.join(d, "wt")
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@x", GIT_COMMITTER_NAME="t",
+                   GIT_COMMITTER_EMAIL="t@x")
+
+        def g(*a, cwd=wt):
+            return subprocess.run(["git", "-C", cwd, *a], check=True, capture_output=True, text=True, env=env).stdout.strip()
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", bare], check=True, env=env)
+        subprocess.run(["git", "init", "-q", "-b", "main", wt], check=True, env=env)
+        g("remote", "add", "o", bare)
+        for i in range(3):
+            g("commit", "-q", "--allow-empty", "-m", str(i))
+            if i == 0:
+                g("push", "-q", "o", "HEAD")
+        return bare, wt, g
+
+    def test_pushes_remaining_commits_one_by_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            bare, wt, g = self._repo(d)
+            real, pushed = periodic._git, []
+
+            def spy(repo, *a, **k):
+                if "push" in a:
+                    pushed.append(a[-1])
+                return real(repo, *a, **k)
+            with mock.patch.object(periodic, "_git", spy):
+                self.assertTrue(periodic._push_stepped(wt, "o", bare))
+            self.assertEqual(len(pushed), 2)
+            self.assertEqual(g("rev-parse", "main", cwd=bare), g("rev-parse", "HEAD"))
+
+    def test_diverged_remote_is_not_forced(self):
+        with tempfile.TemporaryDirectory() as d:
+            bare, wt, g = self._repo(d)
+            g("push", "-q", "o", "HEAD")
+            tip = g("rev-parse", "HEAD")
+            g("reset", "-q", "--hard", "HEAD~1")
+            g("commit", "-q", "--allow-empty", "-m", "other")
+            self.assertFalse(periodic._push_stepped(wt, "o", bare))
+            self.assertEqual(g("rev-parse", "main", cwd=bare), tip)
+
+
 class RetryTests(unittest.TestCase):
     CFG = {"enabled": "on", "start": "03:30", "interval_hours": 24, "retry_hours": 1}
 
