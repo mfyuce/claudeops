@@ -255,6 +255,13 @@ def _db_sources(home: str) -> List[Tuple[str, str, str]]:
             if key not in seen:
                 seen.add(key)
                 out.append(("gemini", key[0], p))
+    for base in (_reviewer_root(home), os.path.join(mir, "reviewer", "agy")):     # reviewer agy_home*: alt = reviewer-<kök>-<alt>
+        for p in sorted(glob.glob(os.path.join(base, "agy_home*", ".gemini", "*", "conversations", "*.db"))):
+            parts = p.split(os.sep)
+            alt = f"reviewer-{parts[-5]}-{parts[-3]}"
+            if (alt, parts[-1]) not in seen:
+                seen.add((alt, parts[-1]))
+                out.append(("gemini", alt, p))
     for ex in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host (yuhem, ulak_31): alt = <host>-<alt>
         rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(ex)))
         for p in sorted(glob.glob(os.path.join(ex, ".gemini", "*", "conversations", "*.db"))):
@@ -279,6 +286,14 @@ def _mirror_root(home: str) -> str:
         from .paths import CLAUDEOPS_DIR
         return os.path.join(str(CLAUDEOPS_DIR), "backups", "chat-mirror")
     return os.path.join(home, ".claude", "claudeops", "backups", "chat-mirror")
+
+
+def _reviewer_root(home: str) -> str:
+    """Reviewer kimliğinin kökü (agy_home* burada); `_mirror_root` ile aynı kural (test home'u home-göreli)."""
+    if os.path.abspath(home) == os.path.abspath(os.path.expanduser("~")):
+        from .chat_sources import REVIEWER_ROOT
+        return str(REVIEWER_ROOT)
+    return os.path.join(home, ".claude", "claudeops", "steward", "stewards", "reviewer")
 
 
 def db_sig(p: str) -> str:
@@ -372,6 +387,11 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
         rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(ex)))
         jobs.append((os.path.join(ex, ".gemini"), f"{rh}/gemini", gem_inc))
         jobs.append((os.path.join(ex, ".codex"), f"{rh}/codex", ["*.sqlite", "*.sqlite-wal"]))
+    for base in (_reviewer_root(home), os.path.join(mir, "reviewer", "agy")):
+        for gd in sorted(glob.glob(os.path.join(base, "agy_home*", ".gemini"))):
+            jobs.append((gd, f"reviewer/{os.path.basename(os.path.dirname(gd))}/gemini", gem_inc))
+    for base in (os.path.join(home, ".copilot"), os.path.join(mir, "copilot")):       # copilot oturum db'si git'e girmez, yalnız buraya
+        jobs.append((base, "copilot", ["/session-store.db", "/session-store.db-wal"]))
     errs = []
     for src, name, inc in jobs:
         if not os.path.isdir(src):

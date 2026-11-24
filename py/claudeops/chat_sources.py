@@ -20,7 +20,9 @@ REVIEWER_ROOT = os.path.join(CLAUDEOPS_DIR, "steward", "stewards", "reviewer")
 TOML_PATH = os.path.join(CLAUDEOPS_DIR, "chat_sources.toml")
 
 # Hiçbir kaynakta yedeğe girmez: kimlik, anahtar, izin ayarı, çalışma önbelleği.
-SECRET_EXCLUDES = ("auth.json", "auth.lock", "google_accounts.json", "oauth*", "installation_id", "*.credentials*", "settings.json")
+# Desenler dar tutulur: genel "*oauth*" adında oauth geçen sohbet/hafıza dosyalarını da yedekten düşürürdü.
+SECRET_EXCLUDES = ("auth.json", "auth.lock", "google_accounts.json", "oauth_creds.json", "*oauth-token*", "installation_id", "*.credentials*",
+                   "settings.json")
 CACHE_EXCLUDES = (".rustup", ".cargo", ".cache", "tmp", "bin", "node_repl", "packages")
 
 
@@ -44,8 +46,8 @@ def default_sources() -> List[Source]:
     return [
         Source("claude", "claude", "main", f"{HOME}/.claude/projects", "claude-projects", excludes=[]),
         Source("codex", "codex", "main", f"{HOME}/.codex", "codex",
-               excludes=["auth.json", "auth.lock", "cache", "tmp", "node_repl", "packages", "vendor_imports"]),
-        Source("agy", "agy", "main", f"{HOME}/.gemini", "gemini", excludes=["google_accounts.json", "oauth*", "tmp"]),
+               excludes=["cache", "tmp", "node_repl", "packages", "vendor_imports"]),
+        Source("agy", "agy", "main", f"{HOME}/.gemini", "gemini", excludes=["tmp"]),
         Source("copilot", "copilot", "main", f"{HOME}/.copilot", "copilot",
                includes=["data.db*", "command-history-state.json", "session-store.db*", "session-state/", "session-state/*/", "session-state/*/events.jsonl"],
                excludes=["*"]),
@@ -78,9 +80,12 @@ def load_sources(toml_path: Optional[str] = None) -> List[Source]:
 def _rsync_line(s: Source) -> str:
     """Tek kaynağın rsync komutu. `glob` doluysa her eşleşme ayrı hedefe (`dest/<ad>`)."""
     opts = ["-a"]
+    # kimlik dışlamaları HER kaynağa (toml üzerine yazması dahil) ve include'lardan ÖNCE (rsync: ilk eşleşen kazanır)
+    for exc in SECRET_EXCLUDES:
+        opts.append("--exclude=" + shlex.quote(exc))
     for inc in s.includes:
         opts.append("--include=" + shlex.quote(inc))
-    for exc in s.excludes:
+    for exc in (e for e in s.excludes if e not in SECRET_EXCLUDES):
         opts.append("--exclude=" + shlex.quote(exc))
     flags = " ".join(opts)
     if s.glob:

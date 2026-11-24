@@ -38,8 +38,39 @@ class MirrorScriptTests(unittest.TestCase):
                 self.assertFalse(any("oauth" in i or "google_accounts" in i for i in s.includes))
         for s in cs.default_sources():
             if s.id == "reviewer-reviews":
-                for sec in ("auth.json", "google_accounts.json", "oauth*", "settings.json"):
+                for sec in ("auth.json", "google_accounts.json", "*oauth-token*", "settings.json"):
                     self.assertIn(sec, s.excludes)
+
+    def test_credentials_excluded_from_every_source_but_oauth_named_chats_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "g")
+            os.makedirs(os.path.join(root, "antigravity-cli"))
+            names = ("antigravity-oauth-token", "installation_id", "settings.json", "oauth_creds.json", "feedback_oauth.md")
+            for n in names:
+                with open(os.path.join(root, "antigravity-cli", n), "w") as f:
+                    f.write("x")
+            src = cs.Source("t", "x", "main", root, "g", includes=["*oauth*", "antigravity-cli/"])    # include, kimlik dışlamasını yenemez
+            f = os.path.join(d, "m.sh")
+            with open(f, "w") as fh:
+                fh.write(cs.mirror_script([src]).replace("$HOME/.claude/claudeops/backups/chat-mirror", os.path.join(d, "dst")))
+            subprocess.run(["bash", f], check=True, env=dict(os.environ, HOME=d))
+            self.assertEqual(os.listdir(os.path.join(d, "dst", "g", "antigravity-cli")), ["feedback_oauth.md"])
+
+    def test_remote_archive_excludes_credentials(self):
+        from claudeops import chat_remote as cr
+        cmd = cr.pack_command("yuhem", "20261125", outdir="/tmp")
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, ".gemini", "antigravity-cli"))
+            for n in ("antigravity-oauth-token", "auth.lock", "keep.db"):
+                with open(os.path.join(d, ".gemini", "antigravity-cli", n), "w") as f:
+                    f.write("x")
+            ex = [f"--exclude={e}" for e in cr.EXCLUDES]
+            out = subprocess.run(f"tar cf - {' '.join(map(__import__('shlex').quote, ex))} -C {d} .gemini | tar tf -",
+                                 shell=True, capture_output=True, text=True, check=True).stdout
+        self.assertIn("keep.db", out)
+        self.assertNotIn("oauth-token", out)
+        self.assertNotIn("auth.lock", out)
+        self.assertIn("oauth-token", cmd)
 
     def test_disabled_source_omitted_and_write_is_idempotent(self):
         srcs = [cs.Source("a", "x", "main", "/tmp/nonexistent-a", "a"), cs.Source("b", "x", "main", "/tmp/nonexistent-b", "b", backup=False)]

@@ -64,6 +64,10 @@ def classify(rel: str) -> Optional[Dict[str, str]]:
     if p[0] != "local" or len(p) < 3:
         return None
     area = p[1]
+    if area == "claude-reviewer-projects":     # YEREL reviewer'ın izole `claude -p` transkriptleri; "reviewer" uzak host DEĞİL
+        return {"kind": "chat", "cli": "claude-reviewer", "project": p[2] if len(p) > 3 else "", "session": os.path.splitext(p[-1])[0]}
+    if area == "copilot-sessions" and len(p) >= 4:     # local/copilot-sessions/<oturum>/events.jsonl
+        return {"kind": "chat", "cli": "copilot", "project": "", "session": p[2]}
     m = re.match(r"^(claude|codex)-(.+)-(projects|sessions)$", area)
     if m and m.group(2):                       # uzak host: local/claude-<host>-projects, local/codex-<host>-sessions
         return {"kind": "chat", "cli": m.group(1), "host": m.group(2), "project": p[2] if m.group(3) == "projects" and len(p) > 3 else "",

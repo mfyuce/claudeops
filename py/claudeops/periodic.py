@@ -82,6 +82,7 @@ DEFAULT_CHAT_BACKUP: Dict[str, Any] = {
     "remote_tgz_keep": 3,        # uzak host başına saklanan en yeni tgz sayısı
     "remote_tgz_prune": "dry",   # dry = yalnız günlüğe listele (varsayılan) | on = sil | off; silme yalnız commit+push doğrulanınca, en yeni tgz açılmışsa
     "max_file_mb": 50,           # tek metin dosya sınırı; aşan ATLANMAZ (hiçbir chat kaybolmasın), CHUNK_MB'lık .partNNN parçalara bölünür. Üst sınır 95 (GitHub blob 100 MB)
+    "retry_hours": 1,            # başarısız günlük koşu bu kadar saat sonra yeniden denenir (en çok RETRY_MAX); 0 = kapalı
     "max_repo_mb": 8000,         # çalışma ağacı sınırı; aşılırsa iş durur (sahibe sorulur)
 }
 
@@ -132,7 +133,7 @@ def load_config() -> Dict[str, Dict[str, Any]]:
     return out
 
 
-_NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float, "max_repo_mb": float, "remote_tgz_keep": int,
+_NUM_FIELDS = {"interval_hours": float, "timeout_s": float, "max_file_mb": float, "max_repo_mb": float, "retry_hours": float, "remote_tgz_keep": int,
                "cargo_idle_days": float, "scratch_idle_days": float, "hot_pct": float, "hot_interval_hours": float}
 
 
@@ -339,6 +340,9 @@ def _hot_hours(cfg: Dict[str, Any]) -> Optional[float]:
     return None
 
 
+RETRY_MAX = 3            # günlük işte ardışık başarısızlıkta en çok bu kadar ek deneme (`retry_hours`)
+
+
 def is_due(cfg: Dict[str, Any], st: Dict[str, Any], now: Optional[datetime.datetime] = None) -> bool:
     """Açık mı + zamanı geldi mi. Saf fonksiyon (testlenir)."""
     if not _is_on(cfg.get("enabled")):
@@ -360,7 +364,12 @@ def is_due(cfg: Dict[str, Any], st: Dict[str, Any], now: Optional[datetime.datet
         today_start = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if now < today_start:
             return False
-        return last_dt is None or last_dt < today_start
+        if last_dt is None or last_dt < today_start:
+            return True
+        # başarısız koşu (örn. açılışta ağ yok -> private doğrulanamadı) ertesi günü beklemesin: retry_hours arayla, en çok RETRY_MAX kez
+        retry = float(cfg.get("retry_hours") or 0)
+        fails = int(st.get("fail_streak") or 0)
+        return retry > 0 and st.get("last_ok") is False and 0 < fails <= RETRY_MAX and (now - last_dt).total_seconds() >= retry * 3600
     return last_dt is None or (now - last_dt).total_seconds() >= hours * 3600
 
 
@@ -421,7 +430,14 @@ def _local_sources() -> List[Tuple[str, ...]]:
         # R-3: güncel reviewer/default değnekçi kökleri (`StewardPaths.reviews`); hedef yol çakışırsa mtime'ı yeni olan kazanır
         *_steward_review_sources(),
         # D1 (22 Kas): reviewer'ın izole `claude -p` yapılandırması (CLAUDE_CONFIG_DIR) transkriptleri; ana projects'e düşmez
+        (os.path.join(mir, "reviewer", "claude_cfg-projects"), os.path.join("local", "claude-reviewer-projects"), "text"),
         (os.path.join(CLAUDEOPS_DIR, "steward", "stewards", "reviewer", "claude_cfg", "projects"), os.path.join("local", "claude-reviewer-projects"), "text"),
+        (os.path.join(mir, "reviewer", "reviews"), os.path.join("local", "claude-reviews"), "text"),     # canlıdan silinmiş review'lar
+        # D1: copilot oturum olayları + ucli kullanım kayıtları (ikisi de claude reposuna, `_group_of`)
+        (os.path.join(mir, "copilot", "session-state"), os.path.join("local", "copilot-sessions"), "text"),
+        (os.path.join(home, ".copilot", "session-state"), os.path.join("local", "copilot-sessions"), "text"),
+        (os.path.join(mir, "ucli-usage"), os.path.join("local", "claude-ucli-usage"), "text"),
+        (os.path.join(home, ".claude", "claudeops", "ucli_usage"), os.path.join("local", "claude-ucli-usage"), "text"),
     ]
     for hdir in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host sohbetleri: local/<cli>-<host>-... (grup = cli)
         rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(hdir)))
@@ -485,7 +501,8 @@ def _group_of(prefix: str) -> str:
     parts = prefix.replace("\\", "/").split("/")
     if parts[0] == "memory" and len(parts) > 2:        # memory/<host>/<cli>/<proje>: grup = cli; copilot claude reposuna gider
         return "claude" if parts[2] == "copilot" else parts[2]
-    return (parts[1] if len(parts) > 1 else parts[0]).split("-")[0]
+    g = (parts[1] if len(parts) > 1 else parts[0]).split("-")[0]
+    return "claude" if g == "copilot" else g           # copilot'un ayrı repo'su yok
 
 
 def _group_repo(cfg: Dict[str, Any], group: str) -> str:
@@ -1191,6 +1208,7 @@ def run_job(name: str, apply: bool = True) -> Dict[str, Any]:
             st = state.setdefault(name, {})
             st["last_end"] = time.time()
             st["last_ok"] = bool(res.get("ok"))
+            st["fail_streak"] = 0 if st["last_ok"] else int(st.get("fail_streak") or 0) + 1
             st["last_msg"] = str(res.get("msg") or "")[:300]
             _notify_failure(name, res, st)
             _save_job_state(name, st)

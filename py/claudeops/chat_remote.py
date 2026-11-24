@@ -13,11 +13,13 @@ import shlex
 import time
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
+from .chat_sources import SECRET_EXCLUDES       # tek kaynak: yerel ayna ve uzak arşiv aynı kimlik listesini dışlar
+
 _TAG = re.compile(r"^[a-z0-9_-]{1,24}$")
 DEFAULT_PATHS = [".claude/projects", ".claude/history.jsonl", ".codex", ".gemini"]
 PART_MB = 150           # uzak panelin /api/files/download sınırı 200 MB: arşiv bu boyutlu parçalara bölünür, yerelde birleştirilir
 # CLI kimlik/oturum anahtarları arşive GİRMEZ (yerelde düz metin kalmasın, TBD#2 ile aynı ilke)
-EXCLUDES = ["auth.json", "oauth_creds.json", "google_accounts.json", "installation_id", ".credentials.json", "*.key", "*.pem"]
+EXCLUDES = [*SECRET_EXCLUDES, "*.key", "*.pem"]
 
 
 class Transport(Protocol):
