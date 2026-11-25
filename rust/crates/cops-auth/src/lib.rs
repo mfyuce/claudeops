@@ -1,7 +1,8 @@
 //! Tek kullanıcı kimlik: `web.token` dosyası tek doğruluk kaynağı. Python `_authorized` ile AYNI kural (docs/rust-strangler-plan.md bölüm 4):
 //! boş token = kapalı (fail-closed), aday `?token=` ya da `Authorization: Bearer`, sabit zamanlı karşılaştırma, ASCII olmayan aday = red.
-//! Çok kullanıcı (enterprise authenticator) kipi BURADA YOK: o kipte yerel uçlar Python'a iç kimlik sorusu soracak (D1 sonrası).
+//! Çok kullanıcı kipinin yalnız SÖZLEŞMESİ `authz`'da (tipler, eylem tablosu, trait'ler); doğrulama enterprise'ta, henüz bağlı değil.
 
+pub mod authz;
 mod sha256;
 pub use sha256::{hex, hmac_sha256, sha256};
 

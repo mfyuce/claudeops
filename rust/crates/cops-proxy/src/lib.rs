@@ -2,7 +2,9 @@
 //! Python'a aktarılan isteklerde kimlik, yetki ve yönlendirme KARARI vermez; yalnız başlık temizler ve `X-Forwarded-For` ekler.
 //! İstisnalar: Rust yerel uçları ve uygulama mount'ları (`mount.rs`, `/<id>/` -> derbent): bunlarda kimliği copsd kendisi denetler.
 
+pub mod gate;
 pub mod mount;
+pub mod resources;
 
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt};
