@@ -56,6 +56,18 @@ def _filter_env_overrides(overrides: dict) -> dict:
     return {k: v for k, v in overrides.items() if is_safe_env_name(k) and k not in _DANGEROUS_ENV_NAMES}
 
 
+DRY_RUN_PREVIEW_MAX = 600
+_SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSW|CREDENTIAL|AUTH", re.IGNORECASE)
+
+
+def _dry_run_preview(cwd: str, overrides: dict, cli_invocation: str) -> str:
+    """Dry-run satırı: `cd` + ortam + CLI komutu. Öncelik öneki (renice/ionice) gösterilmez; sır adlı env değeri maskelenir
+    (çıktı terminale/loga yazılır, çok kullanıcı kancası anahtar döndürebilir). Aşırı uzun komut (uzun prompt) sondan kesilir."""
+    env_part = "".join(f"{k}={'***' if _SECRET_ENV_RE.search(k) else shlex.quote(v)} " for k, v in overrides.items())
+    out = f"cd {shlex.quote(cwd)} && {env_part}{cli_invocation}"
+    return out if len(out) <= DRY_RUN_PREVIEW_MAX else out[:DRY_RUN_PREVIEW_MAX] + "..."
+
+
 def detect_display() -> str:
     """DISPLAY'i tespit et: env → :1 → :0 sırasıyla."""
     env = os.environ.get("DISPLAY", "")
@@ -245,7 +257,7 @@ def spawn_session(
     inner = f"cd {shlex.quote(cwd)} && {spawn_priority_prefix(name)}{env_prefix}{cli_invocation}"
 
     if dry_run:
-        return f"[dry-run] {kind}  cmd: {inner[:80]}..."
+        return f"[dry-run] {kind}  cmd: {_dry_run_preview(cwd, overrides, cli_invocation)}"
 
     _reclaim_ghost_session(name, cli)
 

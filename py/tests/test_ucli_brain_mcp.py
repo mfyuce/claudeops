@@ -253,6 +253,33 @@ class SpawnCwdWiringTests(unittest.TestCase):
             self.assertEqual(prov.seen, want)
 
 
+    def _preview(self, prefix="{ renice -n 10 -p $$; true; } && ", env=None, invocation="mycli --model m"):
+        prov = self._Prov(False)
+        prov.env_overrides = lambda name: dict(env or {})
+        prov.build_inner_command = lambda *a, **k: invocation
+        with mock.patch.object(spawn, "get_provider", lambda cli: prov), \
+                mock.patch.object(spawn, "_ids_held_by_others", lambda name: frozenset()), \
+                mock.patch.object(spawn, "spawn_priority_prefix", lambda name: prefix):
+            return spawn.spawn_session(name="n", cwd="/w/" + "d" * 60, model="m", display=":0", dry_run=True)
+
+    def test_dry_run_preview_shows_env_and_command_not_priority_prefix(self):
+        out = self._preview(env={"CLAUDE_CONFIG_DIR": "/u/ali/claude"})
+        self.assertIn("CLAUDE_CONFIG_DIR=/u/ali/claude mycli --model m", out)
+        self.assertNotIn("renice", out)
+        self.assertFalse(out.endswith("..."))
+
+    def test_dry_run_preview_masks_secret_env_values(self):
+        out = self._preview(env={"ANTHROPIC_API_KEY": "sk-gizli", "X_AUTH_TOKEN": "tok-gizli", "COPS_NAME": "n"})
+        self.assertNotIn("gizli", out)
+        self.assertIn("ANTHROPIC_API_KEY=***", out)
+        self.assertIn("COPS_NAME=n", out)
+
+    def test_dry_run_preview_caps_very_long_command(self):
+        out = self._preview(invocation="mycli " + "p" * 5000)
+        self.assertTrue(out.endswith("..."))
+        self.assertLess(len(out), spawn.DRY_RUN_PREVIEW_MAX + 60)
+
+
 class BrainUcliTests(_Brain):
     def test_default_claude_brain_passes_no_cli_opts(self):
         self.settings()
