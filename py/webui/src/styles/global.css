@@ -24,6 +24,7 @@
   --text: #e6edf3; --muted: #8b949e;
   --green: #3fb950; --red: #f85149; --amber: #d29922;
   --accent: #58a6ff;
+  --scheme: dark;
 }
 /* TODO L73 (2026-09-02): an explicit Settings-tab theme choice
  * (`data-theme="light"|"dark"` on <html>, set by theme.ts) must override
@@ -39,6 +40,7 @@
     --text: #1f2328; --muted: #59636e;
     --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
     --accent: #0969da;
+    --scheme: light;
   }
 }
 :root[data-theme="light"] {
@@ -46,6 +48,7 @@
   --text: #1f2328; --muted: #59636e;
   --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
   --accent: #0969da;
+  --scheme: light;
 }
 * { box-sizing: border-box; }
 body {
@@ -310,11 +313,12 @@ td.namecell { overflow-wrap: anywhere; }
   .toast { animation: none; }
 }
 .dot.off { background: var(--muted); opacity: .5; }
-button, select, input[type=text], input[type=password], textarea {
+button, select, input[type=text], input[type=password], input[type=number], input[type=date], input[type=search], input:not([type]), textarea {
   font: inherit; padding: .3rem .6rem; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
 }
-select, input[type=text], input[type=password], textarea { cursor: default; }
+select, input[type=text], input[type=password], input[type=number], input[type=date], input[type=search], input:not([type]), textarea { cursor: default; }
+input[type=number], input[type=date] { color-scheme: var(--scheme); }   /* takvim simgesi ve sayi oklari temaya uysun */
 button.start { border-color: var(--green); color: var(--green); }
 button.stop { border-color: var(--red); color: var(--red); }
 button.go { border-color: var(--accent); color: var(--accent); }
