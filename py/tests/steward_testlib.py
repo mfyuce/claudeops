@@ -10,7 +10,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 os.environ.setdefault("CLAUDEOPS_DIAG_LOG", os.path.join(tempfile.mkdtemp(prefix="cops-test-diag-"), "diag.log"))
-from claudeops import settings, steward as sw  # noqa: E402
+from claudeops import question_detail, settings, steward as sw  # noqa: E402
 from claudeops.commands import web_steward  # noqa: E402
 
 
@@ -19,6 +19,10 @@ class _Tmp(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         d = self.dir.name
+        # Soru açınca arka plan thread'i gerçek `claude -p` çağırır ve geçici dizine yazar (temizlikle yarışır).
+        qd_off = mock.patch.object(question_detail, "ensure_async", lambda *a, **k: None)
+        qd_off.start()
+        self.addCleanup(qd_off.stop)
         sd = os.path.join(d, "steward")
         patches = [
             mock.patch.object(settings, "SETTINGS_JSON", os.path.join(d, "settings.json")),

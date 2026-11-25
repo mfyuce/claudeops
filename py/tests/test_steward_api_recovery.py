@@ -186,9 +186,10 @@ class ApplyTest(unittest.TestCase):
         sess = mock.Mock(pid=1, cli="claude")
         sess.name = "cli"
         with mock.patch.object(ws, "_running", return_value=sess), mock.patch.object(ws, "is_tmux_backed", return_value=True), \
-                mock.patch.object(ws, "_send", return_value=True) as send, mock.patch.object(ws.sw, "log_event"):
+                mock.patch.object(ws, "_send", return_value=True) as send, mock.patch.object(ws.sw, "log_event"), \
+                mock.patch.object(ws, "_target", return_value=None), mock.patch.object(ws, "_box_has_typed_input", return_value=False):   # canlı tmux/roster okunmasın
             res = ws._apply(sw.Action("nudge", "cli", "x", {"text": "devam", "n": 1}), self.cfg, self.proj)
-        self.assertTrue(res["ok"])
+        self.assertTrue(res["ok"], res)
         send.assert_called_once_with("cli", "claude", "devam", sid=self.cfg.sid)
 
     def test_nudge_refused_when_not_tmux_or_not_running(self):

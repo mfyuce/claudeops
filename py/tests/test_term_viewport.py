@@ -257,7 +257,7 @@ class ViewportFrameTests(TmuxCase):
         with mock.patch.object(web, "_term_resolve", lambda name, lang="tr": (claude, None)):
             web._term_output_resolve_cache.clear()
             self.assertIsNone(web._term_output("t", "en", viewport=True)["mode"])      # durum çubuğu yok
-            self.tmux("send-keys", "-t", "t", "clear; echo 'plan mode on (shift+tab to cycle)'", "Enter")
+            self.tmux("send-keys", "-t", "t", "clear; echo 'plan mode ''on (shift+tab to cycle)'", "Enter")   # yazılan satır beklenen metni içermesin (yarış)
             self.wait_for("t", "plan mode on")
             self.assertEqual(web._term_output("t", "en", viewport=True)["mode"], "plan")
             self.assertEqual(web._term_output("t", "en")["mode"], "plan")              # eski yolla AYNI karar

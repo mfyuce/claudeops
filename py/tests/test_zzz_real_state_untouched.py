@@ -15,7 +15,7 @@ _HOME = os.path.expanduser("~")
 _REAL_DIR = os.path.join(_HOME, ".claude", "claudeops")
 _SETTINGS = os.path.join(_REAL_DIR, "settings.json")
 _DIAG = os.path.join(_REAL_DIR, "diag.log")
-_LEAK = re.compile(rb'name["\']?\s*[=:]\s*["\']?cops\b|base_guard')
+_LEAK = re.compile(rb'name["\']?\s*[=:]\s*["\']?cops(?![-\w])|base_guard')
 
 
 def _sha(path):
@@ -38,6 +38,10 @@ _DIAG_SIZE_BEFORE = _size(_DIAG)
 
 
 class RealStateUntouched(unittest.TestCase):
+    def test_leak_pattern_ignores_live_usage_sessions(self):
+        self.assertIsNone(_LEAK.search(b'{"name": "cops-usage-copilot-1"}'))
+        self.assertIsNotNone(_LEAK.search(b'{"event": "stop_end", "name": "cops"}'))
+
     def test_real_settings_json_unchanged(self):
         self.assertEqual(_SETTINGS_BEFORE, _sha(_SETTINGS), "test gerçek ~/.claude/claudeops/settings.json'u değiştirdi")
 
