@@ -3719,10 +3719,22 @@ def _usage_state_slice() -> dict:
         return {"at": 0, "stale": True, "providers": {}}
 
 
-def usage_refresh(source: str = "panel") -> dict:
-    """TEK okuma işi (periodic `usage_refresh` ve panelin "Kullanımı kontrol et" düğmesi): `_usage_all()` + `usage_state.set_all`. Asla fırlatmaz."""
+def _usage_without_auth_backoff(only: Optional[set]) -> Tuple[Optional[set], list]:
+    """Periyodik okuma (periodic/tick) için `(only, atlananlar)`: girişsiz CLI her turda açılmaz (`usage_state.auth_backoff`)."""
     from .. import usage_state
-    res = _usage_all()
+    names = set(only) if only is not None else set(PROVIDERS) | {"api"}
+    skipped = names & usage_state.auth_backoff()
+    return (names - skipped if skipped else only), sorted(skipped)
+
+
+def usage_refresh(source: str = "panel") -> dict:
+    """TEK okuma işi (periodic `usage_refresh` ve panelin "Kullanımı kontrol et" düğmesi): `_usage_all()` + `usage_state.set_all`. Asla fırlatmaz.
+    Düğme her sağlayıcıyı hemen okur; `periodic` girişsiz olanları seyrek dener ve `auth_backoff` listesinde bildirir."""
+    from .. import usage_state
+    only, skipped = _usage_without_auth_backoff(None) if source == "periodic" else (None, [])
+    res = _usage_all(only)
+    if skipped:
+        res["auth_backoff"] = skipped
     try:
         usage_state.set_all(res.get("providers") or {}, source=source)
     except Exception as e:      # yazma hatası kullanım sekmesini düşürmesin
@@ -3748,7 +3760,7 @@ def _usage_kinds() -> dict:
 def _usage_collect_store(only: Optional[set] = None) -> dict:
     """Değnekçi tick okuması (usage_mode=tick) de aynı tek kaynağa yazar."""
     from .. import usage_state
-    res = _usage_all(only)
+    res = _usage_all(_usage_without_auth_backoff(only)[0])
     try:
         usage_state.set_all(res.get("providers") or {}, source="tick")
     except Exception as e:

@@ -56,6 +56,28 @@ class UsageStateTest(unittest.TestCase):
         self.assertTrue(c["stale"])                     # hiç başarılı okuma yok
         self.assertIsNone(c["age_secs"])
 
+    def test_auth_backoff_expires_and_ignores_other_failures(self):
+        us.set_all({"agy": {"supported": True, "available": False, "reason": "auth_required"},
+                    "claude": {"supported": True, "available": False, "reason": "read_failed"}}, now=1000.0)
+        self.assertEqual(us.auth_backoff(1000.0 + 300), {"agy"})
+        self.assertEqual(us.auth_backoff(1000.0 + us.AUTH_RETRY_SECONDS), set())
+        us.set_all({"agy": {"supported": True, "available": True, "entries": [1]}}, now=1400.0)
+        self.assertEqual(us.auth_backoff(1500.0), set())
+
+    def test_periodic_and_tick_skip_logged_out_cli_but_button_reads_it(self):
+        from claudeops.commands import web
+        us.set_all({"agy": {"supported": True, "available": False, "reason": "auth_required"}})
+        with mock.patch.object(web, "_usage_all", return_value={"ok": True, "providers": {}}) as read:
+            res = web.usage_refresh(source="periodic")
+            only = read.call_args.args[0]
+            self.assertEqual(res["auth_backoff"], ["agy"])
+            self.assertNotIn("agy", only)
+            self.assertTrue({"claude", "api"} <= only)
+            web._usage_collect_store({"agy", "claude"})
+            self.assertEqual(read.call_args.args[0], {"claude"})
+            web.usage_refresh(source="panel")
+            self.assertIsNone(read.call_args.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

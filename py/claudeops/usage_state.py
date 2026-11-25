@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 from .atomic_json import atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
@@ -18,6 +18,7 @@ from .paths import CLAUDEOPS_DIR
 STATE_PATH = os.path.join(CLAUDEOPS_DIR, "usage_state.json")
 STALE_SECONDS = 600.0       # 10 dk: 5 dk'lık iki tur kaçarsa bayat (sahip 18 Kas)
 REFRESH_SECONDS = 300.0       # periodic işi aralığı: 5 dk (en eski veri 5 dk)
+AUTH_RETRY_SECONDS = 3600.0   # girişsiz CLI periyodik okumada saatte bir denenir (okuma OAuth kodu bekleyip zaman aşımına düşer)
 
 
 def _load() -> Dict[str, Any]:
@@ -49,6 +50,15 @@ def set_all(providers: Dict[str, Any], now: Optional[float] = None, source: str 
             if res.get("available"):
                 provs[name]["ok_at"] = t
         atomic_write_json(STATE_PATH, {"at": t, "source": source, "providers": provs}, mode=0o600)
+
+
+def auth_backoff(now: Optional[float] = None, retry_after: float = AUTH_RETRY_SECONDS) -> Set[str]:
+    """Son denemesi "giriş yok" ile biten ve yeniden deneme vadesi DOLMAMIŞ sağlayıcılar: periyodik okuyucular bunları atlar
+    (atlanan okuma kayda dokunmaz, `at` son gerçek denemede kalır). Panel düğmesi bu listeye bakmaz, hemen okur."""
+    t = time.time() if now is None else now
+    return {name for name, res in (_load().get("providers") or {}).items()
+            if isinstance(res, dict) and not res.get("available") and res.get("reason") == "auth_required"
+            and 0 <= t - float(res.get("at") or 0) < retry_after}
 
 
 def get(now: Optional[float] = None, stale_after: float = STALE_SECONDS) -> Dict[str, Any]:

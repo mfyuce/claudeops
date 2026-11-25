@@ -1047,7 +1047,10 @@ def run_usage_refresh(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -
     ok = [n for n, v in provs.items() if isinstance(v, dict) and v.get("available")]
     bad = sorted(n for n, v in provs.items() if isinstance(v, dict) and v.get("supported") and not v.get("available")
                  and v.get("reason") != "no_account_usage")      # codex/ucli: okunacak hesap kullanımı YOK (neden notlu), hata sayılmaz
-    return {"ok": True, "msg": f"{len(ok)} okundu" + (f", okunamayan: {', '.join(bad)}" if bad else ""), "applied": True}
+    waiting = res.get("auth_backoff") or []
+    msg = (f"{len(ok)} okundu" + (f", okunamayan: {', '.join(bad)}" if bad else "")
+           + (f", giriş yok (saatte bir denenir): {', '.join(waiting)}" if waiting else ""))
+    return {"ok": True, "msg": msg, "applied": True}
 
 
 DEFAULT_MODEL_WATCH: Dict[str, Any] = {
