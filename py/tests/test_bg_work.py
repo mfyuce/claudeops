@@ -78,6 +78,12 @@ class TranscriptFixture(unittest.TestCase):
         self.assertFalse(bg_work.transcript_pending([_use("t1", bg=False)], now=T))
         self.assertFalse(bg_work.transcript_pending([_use("t1")], now=T + 7 * 3600))
 
+    def test_errored_call_is_not_pending(self):
+        err = json.dumps({"message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": "Permission denied."}]}})
+        self.assertFalse(bg_work.transcript_pending([_use("t1"), err], now=T))
+        self.assertTrue(bg_work.transcript_pending([_use("t1"), _use("t2"), err], now=T))
+
     def test_one_of_two_pending(self):
         self.assertTrue(bg_work.transcript_pending([_use("t1"), _use("t2"), _notif("completed", i="t1")], now=T))
 

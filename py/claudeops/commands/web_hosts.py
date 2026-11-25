@@ -1197,6 +1197,8 @@ class _BoundedReader:
             return b""
         n = self._remaining if n is None or n < 0 else min(n, self._remaining)
         chunk = self._f.read(n)
+        if not chunk and n > 0:     # istemci erken kapattı: yarım gövdeyle host yanıtını beklemek yerine hemen düş
+            raise ConnectionAbortedError(f"upload body ended early, {self._remaining} bytes missing")
         self._remaining -= len(chunk)
         return chunk
 

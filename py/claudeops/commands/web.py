@@ -913,6 +913,9 @@ def _new_chat_source(name: str, fleet: dict) -> Optional[tuple]:
     return name, name, info["cwd"], info["cli"], info["model"]
 
 
+_NEW_CHAT_NAME_LOCK = threading.Lock()     # ad üretimi + instance kaydı tek adım (eşzamanlı iki new-chat aynı adı seçmesin)
+
+
 def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str = "",
               cli: str = "", lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """`base`'in blueprint'inden YENİ, otomatik-isimli (tarih[+_N]) bir instance başlat.
@@ -923,7 +926,6 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
     if src is None:
         return _err(lang, "base_not_in_roster", base=base)
     blueprint, prefix, cwd, src_cli, src_model = src
-    new_name = _generate_new_chat_name(prefix)
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else src_cli
     # bkz. _start()'taki aynı fix'in yorumu — cli değiştiyse eski model
     # yanlış provider'ın modeli olur, yeni cli'nin kendi varsayılanına düşülmeli.
@@ -939,9 +941,11 @@ def _new_chat(base: str, model: str = "", permission_mode: str = "", effort: str
             return {"ok": False, "error": opt_err}
     chosen_mode = permission_mode.strip() or "auto"
     chosen_effort = effort.strip() or default_effort_for(get_provider(chosen_cli))
-    inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
-                             permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat",
-                             **({"cli_opts": clean_opts} if clean_opts else {}))
+    with _NEW_CHAT_NAME_LOCK:
+        new_name = _generate_new_chat_name(prefix)
+        inst_mod.record_instance(new_name, blueprint=blueprint, cwd=cwd, cli=chosen_cli, model=chosen_model,
+                                 permission_mode=chosen_mode, effort=chosen_effort, origin="new_chat",
+                                 **({"cli_opts": clean_opts} if clean_opts else {}))
     spawned = False
     try:
         with guard_lock(timeout=GUARD_LOCK_ACQUIRE_TIMEOUT):
@@ -2962,10 +2966,6 @@ def _session_facts(names: List[str]) -> dict:
                 warn = int(context_threshold(steward_config(), s.model or "") or 0)
             except Exception:
                 warn = 0
-            try:
-                sub = bool(web_steward.subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli))
-            except Exception:
-                sub = False
         elif s.cli != "shell":
             # claude dışı tmux-pane CLI'lar (codex/copilot): sağlayıcının kendi `live_context` kancası; satır rozeti
             # (`_context_info_cached`) bunu zaten kullanıyordu, terminal başlığı + `cops watch` çubuğu kullanmıyordu.
@@ -2979,6 +2979,11 @@ def _session_facts(names: List[str]) -> dict:
                 warn = int(context_threshold(steward_config(), s.model or "") or 0)
             except Exception:
                 warn = 0
+        if s.cli != "shell":       # arka plan işi her CLI'da sağlayıcıya sorulur (codex arka plan terminali/alt ajan dahil)
+            try:
+                sub = bool(web_steward.subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli))
+            except Exception:
+                sub = False
         try:
             text = str((get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}).get("assistant") or "")
         except Exception:
@@ -3864,7 +3869,7 @@ def _live_jsonl_for(name: str, lang: str = "tr"):
     if (info["cli"] if info else s.cli) != "claude":
         return None, None, {"ok": True, "available": False, "reason": "unsupported"}
     jsonl = jsonl_path_for(info["cwd"] if info else s.cwd, s.sid)
-    if jsonl is None:
+    if jsonl is None or not s.sid or jsonl.name != f"{s.sid}.jsonl":     # aynı klasördeki komşu oturumun transkriptine düşme
         return None, None, {"ok": True, "available": False, "reason": "no_jsonl"}
     return s, jsonl, None
 
@@ -5399,9 +5404,10 @@ class _Handler(BaseHTTPRequestHandler):
                       "overwrite": "1" if overwrite else "0"}
             if dir_path:
                 query["path"] = dir_path
-            result, status = web_hosts.proxy_post_raw(
-                web_hosts.FILE_UPLOAD_PATH, host, query, self.rfile, length, content_type,
-            )
+            with self._body_timeout_ctx():      # sessizce kopan istemci iş parçacığını süresiz tutmasın
+                result, status = web_hosts.proxy_post_raw(
+                    web_hosts.FILE_UPLOAD_PATH, host, query, self.rfile, length, content_type,
+                )
             self._json(result, status=status)
             return
 

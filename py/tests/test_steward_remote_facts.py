@@ -94,6 +94,12 @@ class TestFactsEndpoint(unittest.TestCase):
             f = web._session_facts(["cx"])["sessions"]["cx"]
         self.assertEqual(f["context_tokens"], 98765)
 
+    def test_codex_background_work_reported(self):
+        live = [Session(name="cx", pid=333, cwd="/srv/c", sid="s1", cli="codex")]
+        with mock.patch.object(web, "find_sessions", lambda measure_cpu=False, **kw: live), \
+                mock.patch.object(web, "_process_started_at", lambda pid: None):
+            self.assertTrue(web._session_facts(["cx"])["sessions"]["cx"]["subagent_active"])
+
     def test_no_names_gives_capabilities_only(self):
         r = web._session_facts([])
         self.assertEqual((r["sessions"], r["api"]), ({}, 1))

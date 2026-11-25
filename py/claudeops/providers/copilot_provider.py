@@ -115,6 +115,7 @@ SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
 # ucli'nin TEK anahtarına karşı burada keyfi sayıda {ENV_VAR: value} çifti
 # olduğu için dosya içeriği `export KEY=VALUE` satırları (shlex-quoted).
 from ..envnames import is_safe_env_name
+from ..atomic_json import atomic_write_text
 _BYOK_ENV_FILE = os.path.expanduser("~/.claude/claudeops/copilot_byok_env")
 _BYOK_ENV_MANAGED_MARKER = _BYOK_ENV_FILE + ".managed"  # bkz. ucli_provider.py'nin AYNI deseni
 
@@ -222,10 +223,7 @@ def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
         rest = text[m.end():text.find("]", m.end())]
         sep = "," if rest.strip() else ""
         new = text[:m.end()] + "\n    " + json.dumps(cwd) + sep + text[m.end():]
-        tmp = path + ".cops.tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(new)
-        os.replace(tmp, path)
+        atomic_write_text(os.path.realpath(path), new)      # mevcut izin (0600) korunur; symlink ise hedef yazılır
         return True
     except (OSError, ValueError):
         return False

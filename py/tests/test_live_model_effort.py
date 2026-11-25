@@ -180,6 +180,18 @@ class LiveModelEndpointTests(TmpDirCase):
         self.assertEqual(self.call(web._live_effort, new), {"ok": True, "available": True, "effort": "high"})
 
 
+    def test_neighbour_transcript_is_not_reported(self):
+        p = self.jsonl([assistant(START + 5, "claude-sonnet-5", "high")], name="komsu.jsonl")
+        for sid in ("sid-1", None):
+            s = SimpleNamespace(name="vc", cli="claude", sid=sid, pid=4242, cwd="/w/p", model="m", effort="e")
+            with mock.patch.object(web, "_find_running_for_action", lambda name: ("exact", [s])), \
+                 mock.patch.object(web, "_fleet_status", lambda: {}), \
+                 mock.patch.object(web, "jsonl_path_for", lambda cwd, sid: p), \
+                 mock.patch.object(web, "_process_started_at", lambda pid: START):
+                for fn in (web._live_model, web._live_effort):
+                    self.assertEqual(fn("vc"), {"ok": True, "available": False, "reason": "no_jsonl"})
+
+
 if __name__ == "__main__":
     unittest.main()
 

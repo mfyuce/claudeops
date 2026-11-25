@@ -23,6 +23,14 @@ class TrustFolder(unittest.TestCase):
         self.assertTrue(trust_folder("/b", self.p))
         self.assertEqual(json.loads(open(self.p).read())["trustedFolders"], ["/b"])
 
+    def test_keeps_private_mode(self):
+        self._w('{"trustedFolders": []}')
+        os.chmod(self.p, 0o600)
+        old = os.umask(0o002)
+        self.addCleanup(os.umask, old)
+        self.assertTrue(trust_folder("/b", self.p))
+        self.assertEqual(os.stat(self.p).st_mode & 0o777, 0o600)
+
     def test_idempotent_and_missing(self):
         self._w('{"trustedFolders": ["/b"]}')
         self.assertFalse(trust_folder("/b", self.p))

@@ -60,7 +60,7 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
     done_use: Set[str] = set()
     done_task: Set[str] = set()
     for ln in lines:
-        if "run_in_background" not in ln and "task-notification" not in ln and "ackground" not in ln:
+        if "run_in_background" not in ln and "task-notification" not in ln and "ackground" not in ln and '"is_error"' not in ln:
             continue
         try:
             o = json.loads(ln)
@@ -85,6 +85,9 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
             if b.get("type") == "tool_use" and (b.get("input") or {}).get("run_in_background") is True and b.get("id"):
                 pending[b["id"]] = [ts or now, None]
             elif b.get("type") == "tool_result" and b.get("tool_use_id") in pending:
+                if b.get("is_error") is True:      # çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
+                    del pending[b["tool_use_id"]]
+                    continue
                 m = _RUNNING_ID_RE.search(str(b.get("content"))[:400])
                 if m:
                     pending[b["tool_use_id"]][1] = m.group(1)
