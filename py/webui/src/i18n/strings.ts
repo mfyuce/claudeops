@@ -625,6 +625,8 @@ export interface Strings {
   tabDiagStatus: string;
   tabDiagAsk: string;
   tabDiagLog: string;
+  hostPickLabel: string;
+  hostOutdated: string;
   usageWarning: string;
   usageCheckBtn: string;
   usageRefreshBtn: string;
@@ -1666,6 +1668,8 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDiagStatus: "durum",
     tabDiagAsk: "sor",
     tabDiagLog: "log",
+    hostPickLabel: "Makine",
+    hostOutdated: "o makinedeki claudeops güncel olmayabilir",
     usageWarning:
       "⚠ Kontrol, o CLI'nin ÇALIŞAN bir session'ına gerçekten `/usage` yazıp ekranını anlık değiştirir (kimse izlemiyorsa öncelik verilir) — otomatik/sürekli çalışmaz, sadece bastığında.",
     usageCheckBtn: "Kullanımı kontrol et",
@@ -2709,6 +2713,8 @@ export const STRINGS: Record<Lang, Strings> = {
     tabDiagStatus: "status",
     tabDiagAsk: "ask",
     tabDiagLog: "log",
+    hostPickLabel: "Machine",
+    hostOutdated: "claudeops on that machine may be out of date",
     usageWarning:
       "⚠ Checking actually sends `/usage` to a RUNNING session of that CLI, briefly changing its screen (one nobody's watching is preferred) — not automatic/continuous, only when you press it.",
     usageCheckBtn: "Check usage",

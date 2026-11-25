@@ -475,7 +475,11 @@ export interface UsageProviderResult {
   entries?: UsageEntry[];
 }
 
+export type ByokResult = { ok: true; byok: Record<string, Record<string, boolean>> } | { ok: false; error: string };
+
 export interface UsageResult {
+  /** `ok:false` (ör. uzak makineye ulaşılamadı) iken */
+  error?: string;
   ok: boolean;
   /** cached:true yanıtında (usage_state): okumanın yaşı (sn); hiç okuma yoksa null/0 */
   cached?: boolean;

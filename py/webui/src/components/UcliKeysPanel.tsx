@@ -11,13 +11,15 @@
  */
 
 import { useState } from "react";
-import { apiSaveSettings, ApiError } from "../api/client";
+import { apiSaveSettings } from "../api/client";
 import type { UcliServiceDef } from "../api/types";
 import { describeApiError } from "../api/errors";
-import { showToast } from "../state/toast";
 import { useLang } from "../i18n/LangContext";
 import { friendlyUcliError } from "../api/ucliErrors";
 import { useStatusContext } from "../state/StatusContext";
+import { LOCAL_HOST } from "../state/hosts";
+import { HostPick } from "./shared/HostPick";
+import { useByok } from "./shared/useByok";
 
 function hintOf(d: UcliServiceDef): string {
   return `${d.wire || "chat-completions"} · ${d.endpoint || "endpoint: ucli_endpoint"}`;
@@ -28,23 +30,18 @@ export function UcliKeysPanel() {
   const { data, refresh } = useStatusContext();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [host, setHost] = useState(LOCAL_HOST);
+  const keys = useByok(host);
   const [add, setAdd] = useState({ id: "", label: "", endpoint: "", env: "", anthropic: false });
   if (!data) return null;
   const services = data.settings.ucli_services ?? [];
-  const byok = data.settings.byok?.ucli ?? {};
+  const byok = keys.byok?.ucli ?? {};
   const cost = data.ucli_cost;
+  const local = host === LOCAL_HOST;     // hizmet listesi ve tavan bu makinenin ayarı: uzakta yalnız anahtar yazılır
 
   async function save(env: string, value: string) {
-    setError("");
-    try {
-      const res = await apiSaveSettings({ byok: { ucli: { [env]: value } }, lang });
-      if (!res.ok) setError(res.error);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
-      else setError(describeApiError(e, t));
-    }
     setDraft((p) => ({ ...p, [env]: "" }));
-    refresh();
+    await keys.setKey("ucli", env, value);
   }
 
   /** The service list lives in settings.json as ONE list: every edit sends the whole thing. */
@@ -66,15 +63,24 @@ export function UcliKeysPanel() {
       <span className="opts-hint" style={{ flexBasis: "100%" }}>
         <b>{t.ucliKeysTitle}</b> {t.ucliKeysDesc}
       </span>
+      <HostPick
+        value={host}
+        onChange={(h) => {
+          setDraft({});     // yazılan taslak başka makineye gitmesin
+          setHost(h);
+        }}
+      />
+      {keys.error && <pre className="layout-result">✗ {friendlyUcliError(keys.error, lang)}</pre>}
       {services.map((s) => {
         const isSet = byok[s.env] === true;
         return (
-          <label key={s.id} title={hintOf(s)}>
+          <label key={`${host}:${s.id}`} title={hintOf(s)}>
             {s.label} ({s.env})
             <input
               type="password"
               autoComplete="off"
-              placeholder={isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
+              placeholder={keys.byok === null ? "…" : isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
+              disabled={keys.byok === null}
               value={draft[s.env] ?? ""}
               onChange={(e) => setDraft((p) => ({ ...p, [s.env]: e.target.value }))}
               onBlur={(e) => {
@@ -87,7 +93,7 @@ export function UcliKeysPanel() {
               </button>
             )}
             <span className="opts-hint">{hintOf(s)}</span>
-            <input
+            {local && <input
               type="text"
               key={s.models.join(",")}
               defaultValue={s.models.join(", ")}
@@ -96,8 +102,8 @@ export function UcliKeysPanel() {
                 const models = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
                 if (models.join(",") !== s.models.join(",")) patchService(s.id, { models });
               }}
-            />
-            {s.id !== "evren" && (
+            />}
+            {local && s.id !== "evren" && (
               <button type="button" className="stop" onClick={() => void saveServices(services.filter((d) => d.id !== s.id))}>
                 {lang === "tr" ? "hizmeti kaldır" : "remove service"}
               </button>
@@ -105,7 +111,7 @@ export function UcliKeysPanel() {
           </label>
         );
       })}
-      <div className="opts" style={{ flexBasis: "100%" }}>
+      {local && <div className="opts" style={{ flexBasis: "100%" }}>
         <span className="opts-hint">{lang === "tr" ? "Hizmet ekle (OpenAI uyumlu uç):" : "Add a service (OpenAI-compatible endpoint):"}</span>
         <input type="text" size={8} placeholder="id (groq2)" value={add.id} onChange={(e) => setAdd({ ...add, id: e.target.value })} />
         <input type="text" size={14} placeholder={lang === "tr" ? "etiket" : "label"} value={add.label} onChange={(e) => setAdd({ ...add, label: e.target.value })} />
@@ -123,8 +129,8 @@ export function UcliKeysPanel() {
         >
           {lang === "tr" ? "ekle" : "add"}
         </button>
-      </div>
-      <label title={lang === "tr" ? "0 ya da boş = tavan yok. Aşılınca YENİ Claude oturumu açılmaz, çalışanlara dokunulmaz." : "0 or empty = no cap. Over the cap NEW Claude sessions are refused; running ones are untouched."}>
+      </div>}
+      {local && <label title={lang === "tr" ? "0 ya da boş = tavan yok. Aşılınca YENİ Claude oturumu açılmaz, çalışanlara dokunulmaz." : "0 or empty = no cap. Over the cap NEW Claude sessions are refused; running ones are untouched."}>
         {lang === "tr" ? "Claude günlük tavan (USD)" : "Claude daily cap (USD)"}
         <input
           type="number"
@@ -149,7 +155,7 @@ export function UcliKeysPanel() {
           {lang === "tr" ? "bugün" : "today"}: ${cost ? cost.today_usd.toFixed(2) : "0.00"}
           {cost && cost.pct !== null ? ` (%${cost.pct})` : ""} · {lang === "tr" ? "alt sınır tahmini; önbellek" : "lower-bound estimate; cache"} {cost?.cache_ttl ?? "1h"}
         </span>
-      </label>
+      </label>}
       {error && <pre className="layout-result">✗ {friendlyUcliError(error, lang)}</pre>}
     </div>
   );

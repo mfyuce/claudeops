@@ -78,6 +78,7 @@ import type {
   TermChatResult,
   TermOutputResult,
   UsageResult,
+  ByokResult,
   TestHostResult,
   ReviewStateResult,
   ReviewFinding,
@@ -549,20 +550,24 @@ export type SettingsPayload = Omit<Partial<Settings>, "byok"> & {
 export const apiSaveSettings = (p: SettingsPayload): Promise<SettingsResult> =>
   apiPost<SettingsResult>("/api/settings", p);
 
+/** TEK BYOK alanı, TEK makine. `value` yoksa yalnız durum okunur; boş string anahtarı siler. Yanıtta değer yok (bool). */
+export const apiByok = (p: { host: string; lang: Lang; cli?: string; env?: string; value?: string }): Promise<ByokResult> =>
+  apiPost<ByokResult>("/api/settings/byok", p);
+
 /** Her çağrı, provider başına GERÇEKTEN ÇALIŞAN bir session'a `/usage`
  * enjekte eder (bkz. `web.py`'nin `_usage_all()` docstring'i) — bu yüzden
  * SettingsTab'ın Kullanım sekmesi bunu bir poll DEĞİL, kullanıcının bastığı
  * bir "Kontrol et" butonuyla çağırır (`onDemand`, otomatik interval YOK). */
 /** Okuma ~10 sn sürer; tünel/aradaki katman ilk denemede 502/503/504 verebilir (sahip 19 Kas: "ilk denemede 503, ikincide oldu").
  * Okuma yan etkisizdir (idempotent), bu yüzden geçici ağ geçidi hatasında bir kez sessizce yeniden denenir. */
-export const apiUsage = async (lang: Lang, cached = false): Promise<UsageResult> => {
-  if (cached) return apiPost<UsageResult>("/api/usage", { lang, cached: true });   // usage_state'ten okur, okuma yapmaz
+export const apiUsage = async (lang: Lang, cached = false, host = "local"): Promise<UsageResult> => {
+  if (cached) return apiPost<UsageResult>("/api/usage", { lang, host, cached: true });   // usage_state'ten okur, okuma yapmaz
   try {
-    return await apiPost<UsageResult>("/api/usage", { lang });
+    return await apiPost<UsageResult>("/api/usage", { lang, host });
   } catch (e) {
     if (e instanceof ApiError && [502, 503, 504].includes(e.status)) {
       await new Promise((r) => setTimeout(r, 1500));
-      return apiPost<UsageResult>("/api/usage", { lang });
+      return apiPost<UsageResult>("/api/usage", { lang, host });
     }
     throw e;
   }

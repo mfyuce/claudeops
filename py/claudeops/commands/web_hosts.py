@@ -70,7 +70,18 @@ HOST_ROUTED_PATHS = {
     "/api/files/delete", "/api/files/rename", "/api/files/mkdir", "/api/files/write", "/api/files/validate",
     "/api/context", "/api/live-model", "/api/live-effort", "/api/session/activate",
     "/api/ucli/checks", "/api/ucli/checks-mode",     # run_checks: kayıt ve mod uzak hostun KENDİ diskinde (TBD#264, 21 Kas)
+    # Sahip kararı 22 Kas (TBD#69): kullanım TEK seçili hosttan okunur (toplam alınmaz: hostlar aynı hesabı paylaşabilir);
+    # ayarlardan yalnız TEK BYOK alanı uzağa yazılır (`/api/settings` bütün blobuyla yerel KALIR).
+    "/api/usage", "/api/settings/byok",
 }
+
+# Gövdesi sır taşıyan yollar: `value` alanı yalnız https ya da loopback (tünel) adresine gönderilir.
+SECRET_BODY_PATHS = ("/api/settings/byok",)
+
+
+def _secret_safe_url(url: str) -> bool:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme == "https" or (parts.hostname or "") in ("127.0.0.1", "localhost", "::1")
 
 # Terminal/Dosya GÖRÜNTÜLEME (GET, read-only) route'ları — POST'un aksiyon
 # proxy'sinden AYRI çünkü query-string tabanlar (JSON body yok) + biri
@@ -1042,6 +1053,9 @@ def proxy_action(path: str, host_name: str, body: Dict[str, Any],
     host = hosts_mod.get_host(host_name)
     if host is None:
         return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}, 200
+    if path in SECRET_BODY_PATHS and "value" in body and not _secret_safe_url(host["base_url"]):
+        return {"ok": False, "error": f"{host_name}: address is plain http, key not sent (use an https or loopback address)",
+                "code": "insecure_host"}, 200
     outgoing = dict(body)
     outgoing["host"] = LOCAL_HOST_NAME
     url = f"{host['base_url']}{path}?token={host['token']}"

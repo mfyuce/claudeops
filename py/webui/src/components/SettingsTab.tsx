@@ -53,6 +53,9 @@
 
 import { useEffect, useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
+import { HostPick } from "./shared/HostPick";
+import { useByok } from "./shared/useByok";
+import { LOCAL_HOST } from "../state/hosts";
 import { describeApiError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
@@ -193,7 +196,18 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
  * for providers that need it) — a background interval doing that
  * repeatedly, unprompted, to whatever real session happens to be picked,
  * would be a much worse trade than the small friction of a manual button. */
+/** Tek makinenin kullanımı (toplam alınmaz: makineler aynı hesabı paylaşabilir). `key={host}` eski yanıtı düşürür. */
 function UsagePanel() {
+  const [host, setHost] = useState(LOCAL_HOST);
+  return (
+    <div className="opts" id="settingsUsagePanel">
+      <HostPick value={host} onChange={setHost} />
+      <UsageReading key={host} host={host} />
+    </div>
+  );
+}
+
+function UsageReading({ host }: { host: string }) {
   const { t, lang } = useLang();
   const [state, setState] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "ok"; data: UsageResult } | { kind: "error"; message: string }>({
     kind: "idle",
@@ -202,28 +216,28 @@ function UsagePanel() {
   // Açılışta merkezi kaynağı (usage_state, periodic usage_refresh yazar) göster: okuma YAPMAZ, yaşıyla gelir.
   useEffect(() => {
     let alive = true;
-    apiUsage(lang, true)
+    apiUsage(lang, true, host)
       .then((res) => {
-        if (alive) setState((cur) => (cur.kind === "idle" ? { kind: "ok", data: res } : cur));
+        if (alive) setState((cur) => (cur.kind !== "idle" ? cur : res.ok === false ? { kind: "error", message: res.error ?? "" } : { kind: "ok", data: res }));
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [lang]);
+  }, [lang, host]);
 
   async function check() {
     setState({ kind: "loading" });
     try {
-      const res = await apiUsage(lang);
-      setState({ kind: "ok", data: res });
+      const res = await apiUsage(lang, false, host);
+      setState(res.ok === false ? { kind: "error", message: res.error ?? "" } : { kind: "ok", data: res });
     } catch (e) {
       setState({ kind: "error", message: describeApiError(e, t) });
     }
   }
 
   return (
-    <div className="opts" id="settingsUsagePanel">
+    <>
       <TabHint warn>{t.usageWarning}</TabHint>
       <button type="button" disabled={state.kind === "loading"} onClick={() => void check()}>
         {state.kind === "loading" ? t.usageChecking : t.usageRefreshBtn}
@@ -238,7 +252,7 @@ function UsagePanel() {
         Object.entries(state.data.providers).map(([cli, result]) => (
           <UsageProviderRow key={cli} cli={cli} result={result} t={t} />
         ))}
-    </div>
+    </>
   );
 }
 
@@ -260,6 +274,8 @@ export function SettingsTab() {
   // "ayarlı mı" bool'unu taşıyor, geri-doldurulacak bir şey yok) — draft
   // SADECE bu oturumda yazılanı tutar, blur'da gönderilip hemen temizlenir.
   const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
+  const [keyHost, setKeyHost] = useState(LOCAL_HOST);
+  const keys = useByok(keyHost);
   const [routingDraft, setRoutingDraft] = useState<string | null>(null);
   // Same draft-until-blur reasoning as `binDraft` — `provider_bin`'in aksine
   // (`isSet`/mask yok) mevcut değer doğrudan gösterilir, BYOK'un "boşsa
@@ -519,18 +535,27 @@ export function SettingsTab() {
             <span className="opts-hint" style={{ flexBasis: "100%" }}>
               <b>{t.byokLabel}</b> {t.byokDesc}
             </span>
+            <HostPick
+              value={keyHost}
+              onChange={(h) => {
+                setByokDraft({});     // yazılan taslak başka makineye gitmesin
+                setKeyHost(h);
+              }}
+            />
+            {keys.error && <pre className="layout-result">✗ {keys.error}</pre>}
             {data.cli_list
               .filter((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli")
               .map((cli) => {
                 const envName = BYOK_PRIMARY_ENV[cli];
-                const isSet = settings.byok[cli]?.[envName] === true;
+                const isSet = keys.byok?.[cli]?.[envName] === true;
                 return (
-                  <label key={cli}>
+                  <label key={`${keyHost}:${cli}`}>
                     {cli} ({envName})
                     <input
                       type="password"
                       autoComplete="off"
-                      placeholder={isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
+                      placeholder={keys.byok === null ? "…" : isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
+                      disabled={keys.byok === null}
                       value={byokDraft[cli] ?? ""}
                       onChange={(e) => setByokDraft((prev) => ({ ...prev, [cli]: e.target.value }))}
                       onBlur={(e) => {
@@ -540,7 +565,7 @@ export function SettingsTab() {
                         // anahtarı silmemek için); temizlemek isteyen "temizle"
                         // butonunu kullanır (aşağıda).
                         if (!v) return;
-                        void save({ byok: { [cli]: { [envName]: v } } });
+                        void keys.setKey(cli, envName, v);
                         setByokDraft((prev) => ({ ...prev, [cli]: "" }));
                       }}
                     />
@@ -548,7 +573,7 @@ export function SettingsTab() {
                       <button
                         type="button"
                         className="stop"
-                        onClick={() => void save({ byok: { [cli]: { [envName]: "" } } })}
+                        onClick={() => void keys.setKey(cli, envName, "")}
                       >
                         {t.byokClearBtn}
                       </button>

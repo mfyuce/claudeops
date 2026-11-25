@@ -52,6 +52,7 @@ import psutil
 
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
+from ..envnames import is_safe_env_name
 from .. import dist_check as _dist_check
 from .. import extensions, read_ticket, term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
@@ -2047,6 +2048,22 @@ def _save_settings(patch: dict, lang: str = "tr") -> dict:
     if routing_sync is not None:
         out["routing_sync"] = routing_sync
     return out
+
+
+def _settings_byok(data: dict) -> dict:
+    """`/api/settings/byok`: TEK BYOK alanı (`byok[cli][env]`). `value` yoksa yalnız durum ("ayarlı mı" bool'ları), boş string
+    anahtarı siler (`save_settings` kuralı). Değer yanıta ve günlüğe girmez. Uzak hosta yazmanın tek yolu budur (host-routed)."""
+    if "value" not in data:
+        return {"ok": True, "byok": _redact_settings_for_wire(load_settings()).get("byok") or {}}
+    cli, env, value = data.get("cli"), data.get("env"), data.get("value")
+    if not isinstance(cli, str) or cli not in PROVIDERS:
+        return {"ok": False, "error": "unknown cli"}
+    if not is_safe_env_name(env):
+        return {"ok": False, "error": "invalid env name"}
+    if not isinstance(value, str) or any(c in value for c in "\r\n\0"):
+        return {"ok": False, "error": "value must be a single-line string"}
+    new = save_settings({"byok": {cli: {env: value}}})
+    return {"ok": True, "byok": _redact_settings_for_wire(new).get("byok") or {}}
 
 
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
@@ -5957,7 +5974,7 @@ class _Handler(BaseHTTPRequestHandler):
                          "/api/new-chat", "/api/layout", "/api/register", "/api/edit", "/api/close",
                          "/api/handover", "/api/compact", "/api/adopt", "/api/term/input", "/api/term/key",
                          "/api/term/raw", "/api/term/resize", "/api/term/set-mode",
-                         "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/usage", "/api/context", "/api/live-model",
+                         "/api/term/open-window", "/api/term/mirror-window", "/api/settings", "/api/settings/byok", "/api/usage", "/api/context", "/api/live-model",
                          "/api/live-effort", "/api/session/activate", "/api/session/lock", "/api/session/unlock",
                          "/api/diag/spawn-test", "/api/diag/restart-gt", "/api/diag/ask", "/api/io/ask",
                          "/api/desktop/start", "/api/desktop/stop", "/api/files/validate",
@@ -6225,12 +6242,15 @@ class _Handler(BaseHTTPRequestHandler):
             self._json_notify(_save_settings(patch, lang=lang))
             return
 
+        if path == "/api/settings/byok":
+            res = _settings_byok(data)
+            (self._json_notify if "value" in data else self._json)(res)
+            return
+
         if path == "/api/usage":
-            # İsim/host GEREKMEZ — hesap-seviyesinde, provider başına ilk uygun
+            # İsim GEREKMEZ — hesap-seviyesinde, provider başına ilk uygun
             # çalışan session'ı kendisi bulur (bkz. `_usage_all()`'ın docstring'i).
-            # Çoklu-host federasyonuna henüz BAĞLANMADI (`web_hosts.proxy_action`'ın
-            # HOST_ROUTED_PATHS'ine eklenmedi) — bugün sadece LOKAL fleet'in
-            # kullanımını gösterir, TODO.md'ye not düşüldü.
+            # `host` != local ise istek yukarıdaki host-routing bloğunda o hosta gider (tek host, toplam yok).
             if data.get("cached") is True:
                 self._json(usage_cached_view())
                 return
