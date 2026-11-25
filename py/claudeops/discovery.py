@@ -23,7 +23,7 @@ import time
 import psutil
 
 from .mirrors import note_mirror
-from .paths import proc_stat_fields
+from .paths import proc_ppid, proc_stat_fields
 from .session import Session
 from .providers import PROVIDERS
 
@@ -118,6 +118,33 @@ def fold_background(sessions: List[Session]) -> List[Session]:
             f.sid = b.sid
         drop.add(id(b))
     return [s for s in sessions if id(s) not in drop]
+
+
+def _ancestors(pid: int) -> List[int]:
+    """/proc'tan ata-pid zinciri (init hariç); okunamayan halkada durur."""
+    out: List[int] = []
+    for _ in range(64):
+        try:
+            pid = proc_ppid(pid)
+        except (OSError, ValueError, IndexError):
+            break
+        if pid <= 1:
+            break
+        out.append(pid)
+    return out
+
+
+def fold_subshells(sessions: List[Session], ancestors: Callable[[int], List[int]] = _ancestors) -> List[Session]:
+    """Düz shell oturumunun alt kabukları (`( ... ) &`, `$(...)`) argv[0]'ı ve `COPS_NAME`'i miras alır: aynı oturum
+    ikinci satır/DUP olmasın. Atalarından biri AYNI adlı shell satırı olan satır düşer. Ebeveyni ölmüş (init'e bağlanmış)
+    alt kabuk ve aynı adlı bağımsız ikinci shell KALIR (gerçek anomali görünür kalsın). Yalnız shell: öteki CLI'larda
+    aynı adlı alt süreç ayrı bir konuşma olabilir. SAF (yeni liste)."""
+    pids: Dict[str, set] = {}
+    for s in sessions:
+        if s.cli == "shell":
+            pids.setdefault(s.name, set()).add(s.pid)
+    return [s for s in sessions
+            if not (s.cli == "shell" and len(pids[s.name]) > 1 and pids[s.name].intersection(ancestors(s.pid)))]
 
 
 def fallback_name(cli: str, cwd: str, pid: int) -> str:
@@ -309,7 +336,7 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
                 except psutil.Error:
                     pass
 
-    return fold_background(list(by_key.values()))
+    return fold_subshells(fold_background(list(by_key.values())))
 
 
 def find_by_name(name: str, measure_cpu: bool = False) -> List[Session]:
