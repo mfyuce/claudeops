@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from claudeops import bg_work
@@ -93,7 +94,7 @@ class SubagentActiveForUsesBoth(unittest.TestCase):
         p = os.path.join(d, "s.jsonl")
         with open(p, "w") as f:
             f.write(_use("t1", ts="2099-01-01T00:00:00Z") + "\n")
-        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=p), \
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=Path(p)), \
              mock.patch.object(web_steward, "tmux_capture", return_value=""):
             self.assertTrue(web_steward.subagent_active_for("/x", "sid", name="n"))
 

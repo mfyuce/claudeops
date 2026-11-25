@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,7 +39,7 @@ class Base(unittest.TestCase):
             with open(p, "w") as f:
                 for k in range(n):
                     f.write(_row(f"{name}{k}", cr=1_000_000))
-            self.paths[name] = p
+            self.paths[name] = Path(p)      # jsonl_path_for gerçekte Path döndürür
         os.makedirs(os.path.join(tmp.name, "big", "subagents"))
         with open(os.path.join(tmp.name, "big", "subagents", "agent-1.jsonl"), "w") as f:
             f.write(_row("sub1", i=5, cw=0, cr=0, out=7))

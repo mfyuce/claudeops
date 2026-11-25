@@ -14,8 +14,15 @@ from claudeops import tmux_backend as tb  # noqa: E402
 
 
 def _proc(pid, name, cmdline, parent=None, ct=1.0):
-    return SimpleNamespace(pid=pid, info={"pid": pid, "name": name}, name=lambda: name,
-                           cmdline=lambda: cmdline, create_time=lambda: ct, parent=lambda: parent)
+    """`psutil.Process`/`parent()` sahtesi: gerçekte `.info` YOK."""
+    return SimpleNamespace(pid=pid, name=lambda: name, cmdline=lambda: cmdline, create_time=lambda: ct, parent=lambda: parent)
+
+
+def _listed(pid, name, cmdline, ct=1.0):
+    """`process_iter(["pid", "name"])` öğesi: `.info` yalnız bunlarda."""
+    p = _proc(pid, name, cmdline, ct=ct)
+    p.info = {"pid": pid, "name": name}
+    return p
 
 
 class ListClientsTests(unittest.TestCase):
@@ -37,7 +44,7 @@ class ListClientsTests(unittest.TestCase):
     def test_find_uses_native_first_then_falls_back(self):
         with mock.patch.object(tb, "_outer_bash_via_list_clients", return_value=[(1, 2.0)]):
             self.assertEqual(tb.find_outer_bash_pids("n"), [(1, 2.0)])
-        scan = _proc(7, "bash", ["bash", "-c", "tmux -L cops new-session -A -s n -c /x; exec bash"], ct=3.0)
+        scan = _listed(7, "bash", ["bash", "-c", "tmux -L cops new-session -A -s n -c /x; exec bash"], ct=3.0)
         with mock.patch.object(tb, "_outer_bash_via_list_clients", return_value=[]), \
              mock.patch("psutil.process_iter", return_value=[scan]):
             self.assertEqual(tb.find_outer_bash_pids("n"), [(7, 3.0)])
@@ -45,7 +52,7 @@ class ListClientsTests(unittest.TestCase):
     def test_fallback_matches_open_window_exact_target(self):
         """open_window() penceresi `attach-session -t =NAME` (tmux_attach_shell_fragment) ile açılır: yedek tarama onu da bulmalı."""
         frag = tb.tmux_attach_shell_fragment("n")
-        scan = _proc(9, "bash", ["bash", "-c", frag + "; exec bash"], ct=4.0)
+        scan = _listed(9, "bash", ["bash", "-c", frag + "; exec bash"], ct=4.0)
         with mock.patch.object(tb, "_outer_bash_via_list_clients", return_value=[]), \
              mock.patch("psutil.process_iter", return_value=[scan]):
             self.assertEqual(tb.find_outer_bash_pids("n"), [(9, 4.0)])

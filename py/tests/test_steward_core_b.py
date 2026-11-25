@@ -423,12 +423,12 @@ class OneLiveSessionPerProjectTest(_Tmp):
             f.write(_json.dumps({"message": {"role": "assistant", "usage": {"input_tokens": 3, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 50}}}) + "\n")
             f.write(_json.dumps({"message": {"role": "user", "content": "x"}}) + "\n")
             f.write(_json.dumps({"message": {"role": "assistant", "usage": {"input_tokens": 5, "cache_read_input_tokens": 400000, "cache_creation_input_tokens": 200}}}) + "\n")
-        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: Path(path)):
             self.assertEqual(web_steward.context_tokens_for("/x", "sid"), 400205)
         with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: None):
             self.assertIsNone(web_steward.context_tokens_for("/x", "sid"))
         # sid bilinmiyorsa mtime tahmini YOK: başka konuşmanın transkripti sahte eşik aşımı üretmişti
-        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: Path(path)):
             self.assertIsNone(web_steward.context_tokens_for("/x", None))
 
 

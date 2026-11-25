@@ -73,7 +73,10 @@ class Sockets(unittest.TestCase):
 
 
 class P:
+    """`process_iter` öğesi (`.info` YALNIZ bunlarda var); üst süreç hep `Parent`."""
+
     def __init__(self, pid, name, age, parent=None, cmdline=()):
+        assert not hasattr(parent, "info"), "parent() sahtesi .info taşımamalı"
         self.pid = pid
         self.info = {"pid": pid, "name": name, "create_time": NOW - age, "cwd": "/tmp/x", "cmdline": list(cmdline)}
         self._parent = parent
@@ -111,7 +114,7 @@ class Procs(unittest.TestCase):
         self.assertEqual([x["pid"] for x in got], [10])
 
     def test_under_cops_pane_or_known_ancestor_not_flagged(self):
-        top = P(100, "bash", 9000)
+        top = Parent(100, ["bash"])
         self.assertEqual(self.scan([P(20, "copilot", 9000, parent=top)], panes=[100]), [])
         self.assertEqual(self.scan([P(21, "copilot", 9000, parent=top)], known=[100]), [])
         self.assertEqual([x["pid"] for x in self.scan([P(22, "copilot", 9000, parent=top)])], [22])
@@ -123,7 +126,7 @@ class Procs(unittest.TestCase):
     def test_codex_app_server_and_its_children_ignored(self):
         srv = P(40, "codex", 9000, cmdline=["codex", "app-server"])
         self.assertEqual(self.scan([srv]), [])
-        self.assertEqual(self.scan([P(41, "codex", 9000, parent=srv)]), [])
+        self.assertEqual(self.scan([P(41, "codex", 9000, parent=Parent(40, ["codex", "app-server"]))]), [])
 
 
 class Job(unittest.TestCase):

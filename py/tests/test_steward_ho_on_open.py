@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -35,7 +36,7 @@ class ResumeLacksHoTest(unittest.TestCase):
                 mock.patch.object(ws, "_project_cli", lambda n: cli), \
                 mock.patch.object(ws, "_launch_kwargs", lambda n, m, e: launch or {}), \
                 mock.patch.object(ws, "get_provider", lambda c: prov), \
-                mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: path):
+                mock.patch("claudeops.providers.claude_provider.jsonl_path_for", lambda cwd, sid: Path(path) if path else path):
             return ws._resume_lacks_ho("p", cfg)
 
     def tearDown(self):
