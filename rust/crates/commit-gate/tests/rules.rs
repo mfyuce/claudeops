@@ -57,6 +57,6 @@ fn fix_warns_only_on_new_public_surface() {
 
 #[test]
 fn numstat_with_rename_and_binary() {
-    let raw = "3\t1\tpy/a.py\0-\t-\timg.png\05\t0\t\0old.py\0py/new.py\0";
+    let raw = "3\t1\tpy/a.py\0-\t-\timg.png\x005\t0\t\0old.py\0py/new.py\0";
     assert_eq!(parse_numstat(raw), [f("py/a.py", 3, 1), f("img.png", 0, 0), f("py/new.py", 5, 0)]);
 }
