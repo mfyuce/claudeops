@@ -1124,6 +1124,20 @@ class UcliProvider(CliProvider):
             return None
         return n
 
+    def live_tools(self, cwd: str, sid: Optional[str]) -> Optional[List[str]]:
+        # Durum dosyasındaki `tools` (unified-cli): son görevde modele gönderilen adlar; ilk görevden önce null. Eski ikili,
+        # null ya da bozuk şekil -> None.
+        if not sid:
+            return None
+        try:
+            status = read_status_file(cwd, sid)
+        except Exception:
+            return None
+        names = status.get("tools") if status else None
+        if not isinstance(names, list) or not all(isinstance(n, str) and n for n in names):
+            return None
+        return names
+
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         # Durum dosyasındaki `context_bytes` (oturumun GÜNCEL bağlam boyutu, bayt) / 4 = kaba token tahmini. `usage.prompt_tokens`
         # süreç boyunca TOPLAM (her istekte bağlam yeniden sayılır) olduğundan güncel boyutu vermez: seçilmedi.

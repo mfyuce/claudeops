@@ -1666,12 +1666,13 @@ _UCLI_FLAGS_CACHE: dict = {}  # pid -> özet dict (süreç cmdline'ı ömür boy
 
 def _ucli_flags(s) -> Optional[dict]:
     """Çalışan ucli oturumunun cmdline'ından panel rozetleri için özet: `write` (--allow-edit), `exec`
-    (--allow-exec*), `max_cost_usd` (--max-cost-usd). ucli değilse/okunamazsa None. Asla fırlatmaz."""
+    (--allow-exec*), `max_cost_usd` (--max-cost-usd); durum dosyası araç listesini bildiriyorsa `tools` (her çağrıda
+    okunur, bilinmiyorsa anahtar yok). ucli değilse/okunamazsa None. Asla fırlatmaz."""
     if s is None or s.cli != "ucli":
         return None
     hit = _UCLI_FLAGS_CACHE.get(s.pid)
     if hit is not None:
-        return hit
+        return _with_ucli_tools(s, hit)
     try:
         cmd = psutil.Process(s.pid).cmdline()
     except Exception:
@@ -1689,7 +1690,15 @@ def _ucli_flags(s) -> Optional[dict]:
            "ask": "--ask-dir" in cmd,
            "checks": "--allow-checks" in cmd}
     _UCLI_FLAGS_CACHE[s.pid] = out
-    return out
+    return _with_ucli_tools(s, out)
+
+
+def _with_ucli_tools(s, flags: dict) -> dict:
+    try:
+        tools = get_provider(s.cli).live_tools(s.cwd, s.sid)
+    except Exception:
+        tools = None
+    return flags if tools is None else {**flags, "tools": tools}
 
 
 def _live_model_effort(s) -> tuple:

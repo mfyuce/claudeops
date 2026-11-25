@@ -581,6 +581,11 @@ class CliProvider(ABC):
         kullanacağını belirsizleştirirdi."""
         return None
 
+    def live_tools(self, cwd: str, sid: Optional[str]) -> Optional[List[str]]:
+        """Oturumda modele sunulan araç adları, CLI'nin KENDİ yapılandırılmış durum dosyasından (modele sormadan). None
+        (VARSAYILAN) = bilinmiyor; boş listeyle KARIŞTIRMA."""
+        return None
+
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         """Oturumun GÜNCEL bağlam boyutu: son model isteğine giden toplam girdi token'ı (cache okuma/yazma DAHİL,
         ayrıca eklenmez). `web.py`nin `_context_info_cached`ı bunu `ctx NNNK` rozetine koyar. None (VARSAYILAN) =

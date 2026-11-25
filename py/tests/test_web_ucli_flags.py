@@ -2,8 +2,10 @@
 
 Çalıştırma:  python3 py/tests/test_web_ucli_flags.py -v
 """
+import json
 import os
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -47,6 +49,26 @@ class UcliFlagsTest(unittest.TestCase):
         with mock.patch.object(web.psutil, "Process", side_effect=RuntimeError("gone")):
             self.assertIsNone(web._ucli_flags(_s()))
         self.assertNotIn(424242, web._UCLI_FLAGS_CACHE)
+
+    def test_tools_from_status_file_are_read_each_time(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, ".ucli", "chat"))
+            path = os.path.join(d, ".ucli", "chat", "x.status.json")
+            s = SimpleNamespace(cli="ucli", pid=424242, cwd=d, sid="x")
+
+            def status(body):
+                with open(path, "w") as f:
+                    json.dump(body, f)
+            status({"tools": None})
+            self.assertNotIn("tools", self._run(["ucli"], s))
+            status({"tools": ["exec", "read_file"]})
+            self.assertEqual(web._ucli_flags(s)["tools"], ["exec", "read_file"])
+            for bad in ({}, {"tools": "exec"}, {"tools": ["a", 1]}):
+                status(bad)
+                self.assertNotIn("tools", web._ucli_flags(s), bad)
+            status({"tools": []})
+            self.assertEqual(web._ucli_flags(s)["tools"], [])
+        self.assertNotIn("tools", web._UCLI_FLAGS_CACHE[424242])
 
     def test_cached_per_pid(self):
         self._run(["ucli", "--allow-edit"])
