@@ -3640,10 +3640,18 @@ def _usage_fresh_tui_run(provider) -> Optional[dict]:
 
 # Oturumsuz/oturumlu kullanım yolu OLMAYAN sağlayıcıların "desteklenmiyor" yerine NEDENİ (18 Kas araştırması, kaynak ve deneme sonucu).
 _NO_USAGE_NOTES = {
-    "codex": "codex 0.166: `codex exec` içinde /status ya da kota komutu yok (yalnız TUI); rollout `token_count.rate_limits` bu hesapta null; "
-             "kullanım sınırı mesajı (yenilenme zamanı) yalnız bir koşu reddedilince çıkar: reviewer engelinde görünür.",
-    "ucli": "ucli bir model hizmeti değil istemcidir: kota hizmete bağlıdır. Evren için `api:Evren` satırı (GET /v1/quota), Claude hizmeti için "
-            "`api:Anthropic API` satırı (yerel --usage-log sayacı).",
+    "codex": {
+        "tr": "codex 0.166: `codex exec` içinde /status ya da kota komutu yok (yalnız TUI); rollout `token_count.rate_limits` bu hesapta null; "
+              "kullanım sınırı mesajı (yenilenme zamanı) yalnız bir koşu reddedilince çıkar: reviewer engelinde görünür.",
+        "en": "codex 0.166: `codex exec` has no /status or quota command (TUI only); rollout `token_count.rate_limits` is null on this account; "
+              "the usage limit message (with the reset time) only appears when a run is rejected: it shows up in the reviewer block.",
+    },
+    "ucli": {
+        "tr": "ucli bir model hizmeti değil istemcidir: kota hizmete bağlıdır. Evren için `api:Evren` satırı (GET /v1/quota), Claude hizmeti için "
+              "`api:Anthropic API` satırı (yerel --usage-log sayacı).",
+        "en": "ucli is a client, not a model service: quota depends on the service. For Evren see the `api:Evren` row (GET /v1/quota), for the "
+              "Claude service the `api:Anthropic API` row (local --usage-log counter).",
+    },
 }
 
 
@@ -3651,7 +3659,18 @@ def _no_usage_row(cli_name: str) -> dict:
     note = _NO_USAGE_NOTES.get(cli_name)
     if note is None:
         return {"supported": False}
-    return {"supported": True, "available": False, "reason": "no_account_usage", "note": note}
+    return {"supported": True, "available": False, "reason": "no_account_usage", "note": note["tr"]}
+
+
+def _usage_localized(res: dict, lang: str) -> dict:
+    """`/api/usage` yanıtındaki arka uç notlarını istek diline çevirir (`usage_state` dilden bağımsız tek kopya tutar, TR yazılır).
+    Girdiyi DEĞİŞTİRMEZ."""
+    if lang != "en":
+        return res
+    provs = {name: ({**row, "note": _NO_USAGE_NOTES[name]["en"]}
+                    if name in _NO_USAGE_NOTES and isinstance(row, dict) and row.get("reason") == "no_account_usage" else row)
+             for name, row in (res.get("providers") or {}).items()}
+    return {**res, "providers": provs}
 
 
 def _usage_all(only: Optional[set] = None) -> dict:
@@ -6346,10 +6365,8 @@ class _Handler(BaseHTTPRequestHandler):
             # İsim GEREKMEZ — hesap-seviyesinde, provider başına ilk uygun
             # çalışan session'ı kendisi bulur (bkz. `_usage_all()`'ın docstring'i).
             # `host` != local ise istek yukarıdaki host-routing bloğunda o hosta gider (tek host, toplam yok).
-            if data.get("cached") is True:
-                self._json(usage_cached_view())
-                return
-            self._json(usage_refresh(source="panel"))
+            view = usage_cached_view() if data.get("cached") is True else usage_refresh(source="panel")
+            self._json(_usage_localized(view, lang))
             return
 
         if path == "/api/context":

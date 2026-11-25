@@ -128,6 +128,17 @@ class NoUsageRows(unittest.TestCase):
             self.assertTrue(r["note"])
         self.assertEqual(web._no_usage_row("shell"), {"supported": False})
 
+    def test_note_follows_request_language_without_mutating_state(self):
+        from claudeops.commands import web
+        res = {"ok": True, "at": 1.0, "providers": {n: web._no_usage_row(n) for n in ("codex", "ucli")}}
+        res["providers"]["claude"] = {"supported": True, "available": True, "entries": []}
+        self.assertIs(web._usage_localized(res, "tr"), res)
+        en = web._usage_localized(res, "en")
+        for n in ("codex", "ucli"):
+            self.assertEqual(en["providers"][n]["note"], web._NO_USAGE_NOTES[n]["en"])
+            self.assertEqual(res["providers"][n]["note"], web._NO_USAGE_NOTES[n]["tr"])
+        self.assertEqual((en["at"], en["providers"]["claude"]), (1.0, res["providers"]["claude"]))
+
 
 class PruneTranscripts(unittest.TestCase):
     def test_only_pure_usage_command_files_after_since_are_removed(self):
