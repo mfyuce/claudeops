@@ -1718,6 +1718,17 @@ def report_incomplete(text: str) -> bool:
     return bool(_INCOMPLETE_RE.search(t)) and not _HAS_FINDING_RE.search(t)
 
 
+def report_bodyless(text: str) -> bool:
+    """Bulgu başlığı VAR ama başlık dışı satırlarda içerik yok: harf/rakam hiç yok ('', '...') ya da tek karakter 3+ kez
+    tekrarlıyor ('aaa'). Böyle bir metin rapor değildir (2026-11-07 Evren glm-5.3 koşusu). Kısa gerçek gövde ('ok') sayılmaz."""
+    t = text or ""
+    if not _HAS_FINDING_RE.search(t):
+        return False
+    body = "".join(ln for ln in t.splitlines() if not ln.lstrip().startswith("#"))
+    chars = [c for c in body.casefold() if c.isalnum()]
+    return not chars or (len(chars) >= 3 and len(set(chars)) == 1)
+
+
 
 def anthropic_price(model: str) -> Tuple[float, float, float, float]:
     m = str(model or "")

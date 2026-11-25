@@ -529,6 +529,43 @@ class TestBannerLimit(Base):
         self.assertEqual(rv.next_utc_month_start(calendar.timegm((2026, 12, 31, 23, 0, 0))), calendar.timegm((2027, 1, 1, 0, 0, 0)))
 
 
+class TestBodyless(Base):
+    """Gövdesiz rapor (bulgu başlığı var, gövde yok/tek harf tekrarı) rapor değil: `error` + ders, bulgu kaydedilmez."""
+    JUNK = "## R-1 | P3 | py/a.py:41 | bir başlık\n\naaa\n"
+
+    def _lessons(self):
+        try:
+            with open(os.path.join(self.paths.root, wr.sl.LESSONS_FILE), encoding="utf-8") as f:
+                return f.read()
+        except OSError:
+            return ""
+
+    def _check_error(self):
+        rec = self.pair(EV)
+        self.assertEqual(rec["status"], "error")
+        self.assertIn("gövdesiz", rec["error"])
+        self.assertEqual(open(rec["file"], encoding="utf-8").read().strip(), self.JUNK.strip())   # kanıt saklanır
+        self.assertEqual(rv.load_findings(self.paths), {})
+        self.assertIn("model=" + EV.model, self._lessons())
+
+    def test_failed_run_with_junk_body_is_error(self):
+        self.ev(popen=self.popen(out=json.dumps({"error": "wall clock", "partial_turn": {"assistant_text": self.JUNK}}), rc=1))
+        self._check_error()
+
+    def test_successful_exit_with_junk_body_is_error(self):
+        self.ev(popen=self.popen(out=json.dumps({"answer": self.JUNK})))
+        self._check_error()
+
+    def test_report_bodyless_rule(self):
+        self.assertTrue(rv.report_bodyless("## R-1 | P3 | a.py:1 | x"))
+        self.assertTrue(rv.report_bodyless(self.JUNK + "## R-2 | P2 | b.py:2 | y\n...\n"))
+        self.assertFalse(rv.report_bodyless(self.JUNK + "## R-2 | P2 | b.py:2 | y\ngerçek açıklama\n"))
+        self.assertFalse(rv.report_bodyless("## R-1 | P2 | a.py:1 | x\nok"))
+        self.assertFalse(rv.report_bodyless("## R-1 | P2 | a.py:1 | x\nb"))
+        self.assertFalse(rv.report_bodyless("BULGU YOK"))
+        self.assertFalse(rv.report_bodyless(""))
+
+
 class TestRecover(Base):
     def test_recover_on_start(self):
         rv.update_pair(self.paths, "proj", EV, status="running", started_at=1.0)

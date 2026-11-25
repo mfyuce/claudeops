@@ -1284,8 +1284,11 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         if text.strip():
             _write_report(path, text)
             fields["file"] = path
+        bodyless = target.mode in rv.UCLI_MODES and not job.cancelled and rv.report_bodyless(text)
         if job.cancelled:
             status, error = ("partial" if text.strip() else "error"), "cancelled"
+        elif bodyless:      # dosya kanıt olarak kalır; bulgu kaydedilmez, ders yazılır
+            status, error = "error", f"gövdesiz rapor (bulgu başlığı var, içerik yok) exit={rc} {_tail(jerr or err, live.learned())}".strip()
         elif timed_out:
             status, error = ("partial" if text.strip() else "error"), f"timeout {int(timeout // 60)} dk"
         elif jerr:
@@ -1329,7 +1332,7 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             error = f"{rv.CAPACITY_ERROR_PREFIX} sağlayıcı sıkışık (429/503); {int(wait)} sn sonra yeniden denenecek. {error}"[:300]
             fields["retry_at"] = now() + wait
         elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
-                and (not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
+                and (bodyless or not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
             _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
             ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started, agy_before), target.model)
