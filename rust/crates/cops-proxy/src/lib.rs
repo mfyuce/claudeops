@@ -953,18 +953,20 @@ impl Proxy {
             mount::Hit::Bare(a) => (a, true),
         };
         let query = req.uri().query().unwrap_or("").to_string();
-        let by_query = cfg.token.authorized(&query, None);
+        // Tek istek tek token değeri görür (döndürme anında eski token'la yeni çerez basılmasın).
+        let token = cfg.token.snapshot();
+        let by_query = token.authorized(&query, None);
         let bearer = req
             .headers()
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok());
-        let by_bearer = !by_query && cfg.token.authorized("", bearer);
+        let by_bearer = !by_query && token.authorized("", bearer);
         let by_cookie = req
             .headers()
             .get_all(COOKIE)
             .iter()
             .filter_map(|v| v.to_str().ok())
-            .any(|c| cfg.token.cookie_ok(c));
+            .any(|c| token.cookie_ok(c));
         if !by_query && !by_bearer && !by_cookie {
             let html = req
                 .headers()
@@ -975,9 +977,9 @@ impl Proxy {
         }
         let https = client_https(req.headers(), peer);
         let set_cookie = if by_query && !by_cookie {
-            cfg.token
+            token
                 .cookie_value()
-                .and_then(|v| HeaderValue::from_str(&ext_cookie(v, https)).ok())
+                .and_then(|v| HeaderValue::from_str(&ext_cookie(&v, https)).ok())
         } else {
             None
         };

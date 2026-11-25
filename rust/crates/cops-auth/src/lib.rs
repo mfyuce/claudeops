@@ -9,10 +9,53 @@ pub use sha256::{hex, hmac_sha256, sha256};
 /// Panel oturum çerezinin adı (Python `extensions.COOKIE_NAME`).
 pub const COOKIE_NAME: &str = "cops_ext";
 
-/// `raw`: token baytları; `cookie`: `HMAC-SHA256(key=token, "claudeops-ext-session")` hex (token boşsa boş), kurulumda bir kez hesaplanır.
+/// Panel token'ı: sabit değer ([`Token::new`]) ya da dosya ([`Token::from_file`]). Dosyalı olan HER sorguda yeniden okunur
+/// (Python gibi): silinen/döndürülen token anında geçersiz.
+#[derive(Clone)]
 pub struct Token {
+    src: Source,
+}
+
+#[derive(Clone)]
+enum Source {
+    Fixed(Value),
+    File(std::path::PathBuf),
+}
+
+/// `raw`: token baytları; `cookie`: `HMAC-SHA256(key=token, "claudeops-ext-session")` hex (token boşsa boş).
+#[derive(Clone)]
+struct Value {
     raw: Vec<u8>,
     cookie: String,
+}
+
+impl Value {
+    fn new(raw: &str) -> Value {
+        let raw = raw.trim().as_bytes().to_vec();
+        let cookie = if raw.is_empty() {
+            String::new()
+        } else {
+            hex(&hmac_sha256(&raw, b"claudeops-ext-session"))
+        };
+        Value { raw, cookie }
+    }
+
+    /// Okunamayan ya da grup/diğer izni olan dosya = boş (kapalı). İzin ve içerik aynı açık dosyadan okunur.
+    fn read(path: &std::path::Path) -> Value {
+        use std::io::Read;
+        use std::os::unix::fs::PermissionsExt;
+        let mut raw = String::new();
+        let ok = std::fs::File::open(path).is_ok_and(|mut f| {
+            f.metadata()
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o077 == 0)
+                && f.read_to_string(&mut raw).is_ok()
+        });
+        Value::new(if ok { &raw } else { "" })
+    }
+
+    fn matches(&self, cand: &str) -> bool {
+        !self.raw.is_empty() && cand.is_ascii() && ct_eq(self.raw.as_slice(), cand.as_bytes())
+    }
 }
 
 /// Sabit zamanlı bayt eşitliği (uzunluk farkı da tüm uzunluk boyunca gezer; erken çıkış yok).
@@ -72,48 +115,57 @@ pub fn query_param(query: &str, name: &str) -> Option<String> {
 }
 
 impl Token {
-    /// `web.token` içeriği (satır sonu kırpılır). Boş = her istek reddedilir.
+    /// Sabit değer (satır sonu kırpılır). Boş = her istek reddedilir.
     pub fn new(raw: &str) -> Token {
-        let raw = raw.trim().as_bytes().to_vec();
-        let cookie = if raw.is_empty() {
-            String::new()
-        } else {
-            hex(&hmac_sha256(&raw, b"claudeops-ext-session"))
-        };
-        Token { raw, cookie }
+        Token {
+            src: Source::Fixed(Value::new(raw)),
+        }
     }
 
+    /// `web.token` dosyası: her sorguda yeniden okunur; yok/okunamaz/0600 değil = boş.
     pub fn from_file(path: &std::path::Path) -> Token {
-        Token::new(&std::fs::read_to_string(path).unwrap_or_default())
+        Token {
+            src: Source::File(path.to_path_buf()),
+        }
+    }
+
+    fn value(&self) -> std::borrow::Cow<'_, Value> {
+        match &self.src {
+            Source::Fixed(v) => std::borrow::Cow::Borrowed(v),
+            Source::File(p) => std::borrow::Cow::Owned(Value::read(p)),
+        }
+    }
+
+    /// Şu anki değeri sabitleyen kopya: tek isteğin birden çok sorgusu (kimlik + çerez basma) AYNI token'ı görsün.
+    pub fn snapshot(&self) -> Token {
+        Token {
+            src: Source::Fixed(self.value().into_owned()),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.raw.is_empty()
-    }
-
-    fn matches(&self, cand: &str) -> bool {
-        !self.raw.is_empty() && cand.is_ascii() && ct_eq(self.raw.as_slice(), cand.as_bytes())
+        self.value().raw.is_empty()
     }
 
     /// `cops_ext` çerez değeri (Python `extensions.cookie_value`); token boşsa None.
-    pub fn cookie_value(&self) -> Option<&str> {
-        if self.cookie.is_empty() {
-            None
-        } else {
-            Some(&self.cookie)
-        }
+    pub fn cookie_value(&self) -> Option<String> {
+        Some(self.value().into_owned().cookie).filter(|c| !c.is_empty())
     }
 
     /// Python `extensions.cookie_ok` ile aynı kural: `;` ile bölünen parçalardan adı `cops_ext` olanın değeri sabit zamanlı eşit mi.
     pub fn cookie_ok(&self, cookie_header: &str) -> bool {
-        if self.cookie.is_empty() || cookie_header.is_empty() {
+        if cookie_header.is_empty() {
+            return false;
+        }
+        let v_now = self.value();
+        if v_now.cookie.is_empty() {
             return false;
         }
         let mut ok = false;
         for part in cookie_header.split(';') {
             let (k, v) = part.trim().split_once('=').unwrap_or((part.trim(), ""));
             if k == COOKIE_NAME {
-                ok |= ct_eq(v.as_bytes(), self.cookie.as_bytes());
+                ok |= ct_eq(v.as_bytes(), v_now.cookie.as_bytes());
             }
         }
         ok
@@ -121,16 +173,17 @@ impl Token {
 
     /// `query`: ham sorgu dizesi (`?` olmadan); `authorization`: `Authorization` başlığı değeri.
     pub fn authorized(&self, query: &str, authorization: Option<&str>) -> bool {
-        if self.raw.is_empty() {
+        let v = self.value();
+        if v.raw.is_empty() {
             return false;
         }
         let mut ok = false;
         if let Some(t) = query_param(query, "token") {
-            ok |= self.matches(&t);
+            ok |= v.matches(&t);
         }
         if let Some(a) = authorization {
             if let Some(b) = a.strip_prefix("Bearer ") {
-                ok |= self.matches(b.trim());
+                ok |= v.matches(b.trim());
             }
         }
         ok
@@ -164,7 +217,7 @@ mod tests {
     fn cookie_matches_python_rule() {
         let t = Token::new("sekret\n");
         let v = "fd10ed735fac0d564927ae5896d62a45609190913ff450ca45453c6c12801d81";
-        assert_eq!(t.cookie_value(), Some(v));
+        assert_eq!(t.cookie_value().as_deref(), Some(v));
         assert!(t.cookie_ok(&format!("cops_ext={v}")));
         assert!(t.cookie_ok(&format!("a=1; cops_ext={v}; grafana_session=x")));
         assert!(!t.cookie_ok("cops_ext=fd10"));
@@ -189,5 +242,34 @@ mod tests {
             "a=1&&b",
             "token yoksa sorgu birebir aynı kalır"
         );
+    }
+
+    #[test]
+    fn file_token_follows_rotation_deletion_and_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("cops-auth-tok-{}", std::process::id()));
+        let put = |v: &str, mode: u32| {
+            std::fs::write(&path, v).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        put("eski\n", 0o600);
+        let t = Token::from_file(&path);
+        assert!(t.authorized("token=eski", None));
+        let old_cookie = t.cookie_value().unwrap();
+        let snap = t.snapshot();
+        put("yeni\n", 0o600);
+        assert!(snap.authorized("token=eski", None), "anlık görüntü sabit");
+        assert!(
+            !t.authorized("token=eski", None),
+            "döndürülen token geçersiz"
+        );
+        assert!(t.authorized("", Some("Bearer yeni")));
+        assert!(!t.cookie_ok(&format!("cops_ext={old_cookie}")));
+        assert!(t.cookie_ok(&format!("cops_ext={}", t.cookie_value().unwrap())));
+        put("yeni\n", 0o644);
+        assert!(!t.authorized("token=yeni", None), "0600 değilse kapalı");
+        std::fs::remove_file(&path).unwrap();
+        assert!(!t.authorized("token=yeni", None), "silinen token geçersiz");
+        assert!(t.is_empty());
     }
 }

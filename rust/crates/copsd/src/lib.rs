@@ -3,6 +3,7 @@
 //! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
 //! `--mounts-file` (varsayılan ~/.claude/claudeops/derbent/mounts.json): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
 //! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
+//! `web.token` açılışta yalnız uçları açmak için denetlenir; değeri her istekte dosyadan okunur (silme/döndürme anında geçerli).
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
