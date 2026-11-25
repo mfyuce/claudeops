@@ -4724,8 +4724,12 @@ class _Handler(BaseHTTPRequestHandler):
     token = ""  # run() içinde atanır
     BODY_READ_TIMEOUT = 60.0     # sahip 14 Kas (TBD): POST gövde okuması için; YALNIZ okuma süresince (WS/tünel/boşta bağlantılar etkilenmez)
     HEADER_READ_TIMEOUT = 15.0   # TBD#54: istek satırı + başlık okuma fazı (slowloris); başlık bitince eski değere dönülür
+    DRAIN_MAX_BYTES = 64 * 1024  # yanıt öncesi atılacak okunmamış gövde sınırı; büyüğünde bağlantı kapatılır
+    DRAIN_TIMEOUT = 5.0          # boşaltmanın TOPLAM süresi (kimliksiz istek thread tutamasın)
+    _body_pending = 0            # bu isteğin soketten henüz okunmamış gövde baytı; -1 = uzunluk bilinmiyor
 
     def handle_one_request(self):
+        self._body_pending = 0
         try:
             self._body_timeout = self.connection.gettimeout()
             self.connection.settimeout(self.HEADER_READ_TIMEOUT)
@@ -4739,7 +4743,42 @@ class _Handler(BaseHTTPRequestHandler):
             self.connection.settimeout(getattr(self, "_body_timeout", None))
         except Exception:
             pass
+        if ok:
+            self._body_pending = self._declared_body_length()
         return ok
+
+    def _declared_body_length(self) -> int:
+        """Başlıkların bildirdiği gövde boyu; chunked / geçersiz / çelişkili uzunluk = -1 (sınır bilinmiyor)."""
+        if self.headers.get("Transfer-Encoding"):
+            return -1
+        values = {v.strip() for v in (self.headers.get_all("Content-Length") or [])}
+        if not values:
+            return 0
+        v = values.pop()
+        return int(v) if not values and v.isascii() and v.isdigit() else -1
+
+    def _drain_body(self) -> bool:
+        """Erken ret (404/401/403...) gövdeyi okumadan yanıt verirse keep-alive'da kalan bayt sonraki isteğin başı sanılır
+        (canlı 25 Kas: panelde `bad response (not JSON)`). Küçük gövde atılır (True); yapılamıyorsa False -> bağlantı kapanır."""
+        left, self._body_pending = self._body_pending, 0
+        if left < 0 or left > self.DRAIN_MAX_BYTES:
+            return False
+        deadline = time.monotonic() + self.DRAIN_TIMEOUT
+        with self._body_timeout_ctx():
+            try:
+                while left:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    with contextlib.suppress(Exception):
+                        self.connection.settimeout(remaining)
+                    chunk = self.rfile.read1(left)
+                    if not chunk:
+                        return False
+                    left -= len(chunk)
+            except OSError:
+                return False
+        return True
 
     def log_message(self, fmt, *a):
         pass  # stdout'u kirletme — sessiz
@@ -4775,6 +4814,10 @@ class _Handler(BaseHTTPRequestHandler):
         # kullanımı kapsıyor; şema-joker'leri sadece gelecekteki bir XSS'in
         # keyfi bir `wss://` adresine veri sızdırmasını `script-src 'self'`in
         # engellemeye çalıştığı SINIFTAN bir delik olarak açık bırakıyordu.
+        # Tek geçit: her yanıt buradan geçer, gövdeyi okumadan dönen HER dal kapsanır. `close_connection` zaten True ise
+        # (yükleme akışı, aşırı büyük gövde) dokunulmaz.
+        if self._body_pending and not getattr(self, "close_connection", True) and not self._drain_body():
+            self.send_header("Connection", "close")      # `send_header` close_connection'ı da True yapar
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         if not getattr(self, "_ext_own_csp", False):     # eklenti yolu (`RouteRequest.send`) kendi CSP/XFO'sunu koyduysa ikinci (kesişen) CSP EKLENMEZ
@@ -5820,6 +5863,8 @@ class _Handler(BaseHTTPRequestHandler):
                 raise _BodyTimeout(str(e)) from e
         if len(data) < length:
             raise _BodyTimeout("short body")
+        if getattr(self, "_body_pending", 0) > 0:
+            self._body_pending = max(0, self._body_pending - len(data))
         return data
 
     def do_POST(self):
