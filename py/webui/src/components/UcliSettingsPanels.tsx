@@ -81,6 +81,12 @@ export function UcliSettingsPanels({ group }: { group: "global" | "start" }) {
       {group === "global" && (
         <>
           <div className="opts" id="settingsUcliEndpointPanel">
+            <span className="opts-hint">
+              <b>{lang === "tr" ? "Yerel panel ayarları" : "Local panel settings"}</b>{" "}
+              {lang === "tr"
+                ? "Buradan aşağısı yukarıda seçilen uzak makineyi değil, bu paneli etkiler."
+                : "Everything below applies to this panel, not to the remote machine selected above."}
+            </span>
             <label title={t.ucliEndpointHint} style={{ flexBasis: "100%" }}>
               {t.ucliEndpointLabel}
               <input

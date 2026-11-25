@@ -310,11 +310,11 @@ td.namecell { overflow-wrap: anywhere; }
   .toast { animation: none; }
 }
 .dot.off { background: var(--muted); opacity: .5; }
-button, select, input[type=text], textarea {
+button, select, input[type=text], input[type=password], textarea {
   font: inherit; padding: .3rem .6rem; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--border); background: var(--panel); color: var(--text);
 }
-select, input[type=text], textarea { cursor: default; }
+select, input[type=text], input[type=password], textarea { cursor: default; }
 button.start { border-color: var(--green); color: var(--green); }
 button.stop { border-color: var(--red); color: var(--red); }
 button.go { border-color: var(--accent); color: var(--accent); }
@@ -391,6 +391,10 @@ button:disabled { opacity: .5; cursor: default; }
 .tab-hint .opts-hint, .tab-hint .warn-banner { margin-top: .3rem; }
 #layoutPanel { background: var(--panel2); border-radius: 6px; padding: .7rem; margin-bottom: .5rem; }
 #layoutPanel input[type=text] { min-width: 220px; }
+/* ucli anahtar paneli: sütun genişliği ipucu metnine göre değişmesin, kutular eşit olsun */
+#ucliKeysPanel > label { width: 22rem; max-width: 100%; overflow-wrap: anywhere; }
+/* ucli > Global: uzak makine seçili anahtar bloğunun altındaki yerel ayar, o makineninmiş gibi okunmasın */
+#settingsUcliEndpointPanel { border-top: 1px solid var(--border); margin-top: .8rem; padding-top: .7rem; }
 .layout-result { font-size: .78rem; color: var(--muted); white-space: pre-wrap; margin: 0; }
 .desktop-viewport {
   border: 1px solid var(--border); border-radius: 6px; background: var(--panel2);
@@ -437,6 +441,7 @@ button.linkbtn { background: none; border: 0; padding: 0; color: var(--accent, i
   .ucli-spend [role="progressbar"] { max-width: 100% !important; }
   .opts select, .opts input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; min-height: 36px; font-size: 16px; box-sizing: border-box; }
   .opts button, button.linkbtn { min-height: 36px; }
+  .tab-hint button.tab-hint-toggle { width: 36px; height: 36px; }   /* yalnız yükseklik büyürse daire dikey ovale dönüyordu */
 }
 
 /* Project labels (LabelChips.tsx) */
