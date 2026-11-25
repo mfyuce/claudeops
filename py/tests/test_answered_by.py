@@ -112,7 +112,7 @@ class CmdAnswerGuardTest(_Tmp):
         from claudeops.commands import steward as cs
         a = argparse.Namespace(id=qid, answer=ans, force=force, as_owner=True, on_behalf=False, steward=None)
         buf = io.StringIO()
-        with redirect_stdout(buf):
+        with mock.patch.object(cs.mcp_queue, "_api", lambda *a, **k: {"ok": True}), redirect_stdout(buf):     # canlı panele gitmesin
             rc = cs.cmd_answer(a)
         return rc, buf.getvalue()
 

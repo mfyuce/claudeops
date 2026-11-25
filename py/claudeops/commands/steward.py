@@ -465,6 +465,20 @@ def cmd_fix_answered_by(args) -> int:
     return 0 if not missing else 1
 
 
+def _persist_cli_answer(args, q) -> None:
+    """CLI cevabı da projenin TBD/TODO dosyasına yazılır: önce panel (uzak proje yalnız oradan yazılır), panel yoksa ya da
+    eski sürümse bu süreçte (yalnız yerel proje). Yazılamayan dosya söylenir; cevap kaydı bundan etkilenmez."""
+    res = _api(getattr(args, "port", mcp_queue.DEFAULT_PORT), "POST", "/api/steward/answer", {"id": q.id, "persist_only": True}, _sid(args))
+    if res.get("ok"):
+        persisted = res.get("persisted") or {}
+    else:
+        from . import web_steward
+        persisted = web_steward._persist_if_due(q, _sid(args))
+    bad = {k: v for k, v in persisted.items() if v not in ("written", "already", "skipped")}
+    if bad:
+        print("uyarı: cevap proje dosyasına YAZILAMADI (" + ", ".join(f"{k}={v}" for k, v in bad.items()) + ")")
+
+
 def cmd_answer(args) -> int:
     prev = sw.find_question(args.id, _sid(args))
     if prev is not None and prev.status != "open" and not getattr(args, "force", False):
@@ -492,6 +506,7 @@ def cmd_answer(args) -> int:
             qa_log.append_qa(_pr.local_path, "answer", "cli", q.answer, ref=q.id)
     except Exception:
         pass
+    _persist_cli_answer(args, q)
     print(f"✓ cevaplandı — motor bir sonraki tick'te {q.project or 'beyne'} iletir (hemen: py/cops steward{_sflag(_sid(args))} tick)")
     return 0
 
@@ -1266,6 +1281,7 @@ def register(sub):
     pa.add_argument("--as-owner", action="store_true", help="sahibin kendi cevabı (answered_by=owner_cli); varsayılan: claudeops oturumundan çağrılırsa cops (sahip adına)")
     pa.add_argument("--on-behalf", action="store_true", help="kontrol oturumu sahip adına cevaplıyor (answered_by=cops; cevaba '(sahip adına cops)' öneki konur)")
     pa.add_argument("--force", action="store_true", help="zaten cevaplanmış sorunun cevabını ez")
+    pa.add_argument("--port", type=int, default=mcp_queue.DEFAULT_PORT)
     pa.set_defaults(func=cmd_answer)
     pask = s.add_parser("ask", help="soru aç (panel üzerinden: telefona bildirim + /q/<id> bağlantısı)")
     pask.add_argument("text")

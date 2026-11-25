@@ -55,6 +55,50 @@ class Http(_Tmp):
             r2 = self.ws.http_answer({"id": q.id, "answer": "uzun bir yönerge cevabı burada"}, "default")
         self.assertEqual(r2["persisted"], {"tbd": "already", "todo": "already"})
 
+    def test_phone_page_answer_persisted(self):
+        q = sw.add_question("p", "TBD#7 telefon?", source="s")
+        with mock.patch.object(self.ws, "_cwd_resolver", return_value=lambda n: self.cwd):
+            st, _html = self.ws.http_question_page(q.id, q.key, False, {"answer": "yuhem adımını atla, açılınca yap"})
+        self.assertEqual(st, 200)
+        self.assertIn(f"[{q.id}]", open(os.path.join(self.cwd, "TOBEDECIDED.md")).read())
+        self.assertIn(f"(sahip cevabı {q.id}", open(os.path.join(self.cwd, "TODO.md")).read())
+
+    def _cli(self, q, api):
+        from claudeops.commands import steward as cli
+        ap = __import__("argparse").ArgumentParser()
+        cli.register(ap.add_subparsers())
+        args = ap.parse_args(["steward", "answer", q.id, "yuhem adımını atla, açılınca yap", "--as-owner"])
+        out = __import__("io").StringIO()
+        with mock.patch.object(cli.mcp_queue, "_api", api), mock.patch.object(self.ws, "_cwd_resolver", return_value=lambda n: self.cwd), \
+                __import__("contextlib").redirect_stdout(out):
+            self.assertEqual(args.func(args), 0)
+        return out.getvalue()
+
+    def test_cli_answer_asks_panel_to_persist(self):
+        q = sw.add_question("p", "TBD#7 cli?", source="s")
+        calls = []
+
+        def api(port, method, path, body=None, timeout=15):
+            calls.append((path, body))
+            return self.ws.http_answer(body, "default")
+        self.assertNotIn("uyarı", self._cli(q, api))
+        self.assertEqual(calls, [("/api/steward/answer", {"id": q.id, "persist_only": True})])
+        self.assertIn(f"[{q.id}]", open(os.path.join(self.cwd, "TOBEDECIDED.md")).read())
+
+    def test_cli_answer_persists_locally_when_panel_down(self):
+        from claudeops.commands import mcp_queue
+        q = sw.add_question("p", "TBD#7 kapali?", source="s")
+
+        def api(*a, **k):
+            raise mcp_queue.ApiError("cannot reach claudeops panel")
+        self._cli(q, api)
+        self.assertIn(f"(sahip cevabı {q.id}", open(os.path.join(self.cwd, "TODO.md")).read())
+
+    def test_persist_only_rejects_open_question(self):
+        q = sw.add_question("p", "acik?", source="s")
+        self.assertFalse(self.ws.http_answer({"id": q.id, "persist_only": True}, "default")["ok"])
+        self.assertEqual(sw.find_question(q.id).status, "open")
+
     def _brain(self, text):
         q, _ = sw.add_question_ex("p", "TBD#7 x?", source="s", routine=True)
         with mock.patch.object(self.ws, "_cwd_resolver", return_value=lambda n: self.cwd):

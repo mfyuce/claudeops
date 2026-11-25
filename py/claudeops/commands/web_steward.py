@@ -6327,6 +6327,7 @@ def http_question_page(qid: str, key: str, token_ok: bool, form: Optional[Dict[s
         return 400, sw.question_page_html(q, lang, "ask", error=sw._QPAGE_TXT["en" if lang == "en" else "tr"]["empty"],
                                           action=action)
     sw.log_event("answer", paths=found_sid, id=q.id, project=q.project, source="phone")
+    _persist_if_due(answered, found_sid)
     invalidate_summary()
     web_ws.notify_status_changed()
     return 200, sw.question_page_html(answered, lang, "done", action=action)
@@ -6637,7 +6638,23 @@ def _record_brain_denied(sid: str, qid: str) -> None:
         sw.save_state(state, paths)
 
 
+def _persist_if_due(q: "sw.Question", sid: str) -> Dict[str, str]:
+    """Cevaplanmış soru projenin dosyasına yazılmalı mı: evetse `_persist_owner_answer`, değilse {}. TEK kapı: panel, telefon
+    sayfası ve CLI aynı kuralı kullanır (beyin yalnız eylem taşıyan, dürtme olmayan cevapta)."""
+    if q.status == "open" or not q.project or q.source == "reviewer-where" \
+            or q.answered_by not in ("owner_phone", "owner_panel", "owner_cli", "cops", "brain"):
+        return {}
+    if q.answered_by == "brain" and (not sw.answer_has_action(q.answer) or _directive_is_nudge(q.answer)):
+        return {}
+    return _persist_owner_answer(q, sid)
+
+
 def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
+    if data.get("persist_only"):        # CLI cevabı depoya kendi yazdı; dosya yazımı (uzak proje dahil) bu süreçte
+        q = next((x for x in sw.load_questions(sw.paths_for(sid)) if x.id == str(data.get("id") or "")), None)
+        if q is None or q.status == "open":
+            return {"ok": False, "error": "unknown or unanswered question id"}
+        return {"ok": True, "persisted": _persist_if_due(q, sid)}
     # kim cevapladı: beyin actor'ı `brain`; açıkça verilen `by` (CLI: owner_cli/cops) tanınıyorsa o; yoksa panel = owner_panel
     by = "brain" if str(data.get("actor") or "") == "brain" else (str(data.get("by") or "") if str(data.get("by") or "") in ("owner_phone", "owner_panel", "owner_cli", "cops") else "owner_panel")
     if str(data.get("actor") or "") == "brain":
@@ -6673,10 +6690,7 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     if q is None:
         return {"ok": False, "error": "unknown question id"}
     sw.log_event("answer", paths=sid, id=q.id, project=q.project, answered_by=q.answered_by)
-    persisted: Dict[str, str] = {}
-    if q.answered_by in ("owner_phone", "owner_panel", "owner_cli", "cops", "brain") and q.source != "reviewer-where" and q.project \
-            and (q.answered_by != "brain" or (sw.answer_has_action(q.answer) and not _directive_is_nudge(q.answer))):
-        persisted = _persist_owner_answer(q, sid)       # sahip cevabı HER ZAMAN projenin TBD/TODO dosyasına (oturuma iletimden bağımsız)
+    persisted = _persist_if_due(q, sid)       # sahip cevabı HER ZAMAN projenin TBD/TODO dosyasına (oturuma iletimden bağımsız)
     return {"ok": True, "question": dataclasses.asdict(q), **({"persisted": persisted} if persisted else {})}
 
 
