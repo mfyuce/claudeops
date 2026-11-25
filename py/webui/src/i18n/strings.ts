@@ -499,8 +499,6 @@ export interface Strings {
   providerBinLabel: string;
   providerBinDesc: string;
   providerBinPlaceholder: string;
-  byokLabel: string;
-  byokDesc: string;
   byokSetPlaceholder: string;
   byokEmptyPlaceholder: string;
   byokClearBtn: string;
@@ -1528,9 +1526,6 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "Bir CLI normal PATH'te bulunamıyorsa (ör. proje-yerel bir kurulum) buraya tam yolunu yazın — boş bırakılırsa normal PATH araması kullanılır. Bu makineye özeldir, paylaşımlı bir PATH konumuna dokunmaz.",
     providerBinPlaceholder: "/tam/yol/binary",
-    byokLabel: "API anahtarları (BYOK)",
-    byokDesc:
-      "Provider'ın kendi bring-your-own-key mekanizmasına geçilecek anahtar. Sadece bu makinede, chmod 600 saklanır; buraya yazdığın değer bir daha hiç geri gösterilmez, sadece \"ayarlı\" durumu görünür.",
     byokSetPlaceholder: "•••• (ayarlı, değiştirmek için yaz)",
     byokEmptyPlaceholder: "henüz ayarlanmadı",
     byokClearBtn: "temizle",
@@ -2576,9 +2571,6 @@ export const STRINGS: Record<Lang, Strings> = {
     providerBinDesc:
       "If a CLI isn't found on the normal PATH (e.g. a project-local install), enter its full path here — leave blank to use normal PATH lookup. This is machine-local, it never touches a shared PATH location.",
     providerBinPlaceholder: "/full/path/to/binary",
-    byokLabel: "API keys (BYOK)",
-    byokDesc:
-      "Key passed into the provider's own bring-your-own-key mechanism. Stored on this machine only, chmod 600; once saved it's never shown again, only whether it's set.",
     byokSetPlaceholder: "•••• (set, type to replace)",
     byokEmptyPlaceholder: "not set yet",
     byokClearBtn: "clear",

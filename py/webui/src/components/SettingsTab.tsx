@@ -54,7 +54,6 @@
 import { useEffect, useState } from "react";
 import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { HostPick } from "./shared/HostPick";
-import { useByok } from "./shared/useByok";
 import { LOCAL_HOST } from "../state/hosts";
 import { describeApiError, describeHostError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
@@ -78,10 +77,6 @@ export type SettingsPatch = {
   default_model?: Record<string, string>;
   provider_bin?: Record<string, string>;
   history_warn_at?: number;
-  /** Write-only — `Settings.byok`'un (okuma tarafı) aksine burada GERÇEK
-   * değer gönderilir; backend bunu asla aynen geri yansıtmaz (bkz. o alanın
-   * yorumu). Boş string bir provider'ın o ENV_VAR'ını temizler. */
-  byok?: Record<string, Record<string, string>>;
   /** {max_steps, max_context_kib, max_tool_calls: string} — bkz. `Settings.ucli_limits`.
    * Boş string bir alanı preset varsayılanına döndürür. */
   ucli_limits?: Record<string, string>;
@@ -126,12 +121,6 @@ const OFF_WORDS = new Set(["off", "0", "false", "no", "n", "hayir", "hayır", "k
 function asText(v: unknown): string {
   return Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v);
 }
-
-/** cli → bugün bilinen TEK en-önemli BYOK env değişkeni. copilot'un aslında
- * 3'ü var (COPILOT_PROVIDER_BASE_URL/_API_KEY/_MODEL, bkz. copilot_provider.py)
- * ama henüz hiçbiri UI'da yok — bu liste sadece şu an gerçekten kullanılan
- * (ucli) için, genelleştirmek ayrı bir iş. */
-const BYOK_PRIMARY_ENV: Record<string, string> = { ucli: "UCLI_API_KEY" };
 
 type SettingsSubTab = "general" | "models" | "fleet" | "layout" | "usage" | "periodic";
 
@@ -267,8 +256,8 @@ export function SettingsTab() {
   const { data, refresh } = useStatusContext();
   const [error, setError] = useState("");
   const [subTab, setSubTab] = useState<SettingsSubTab>("general");
-  // models panel: 3 independent groups -> nested sub-tabs (owner rule 16 Nov: two+ separate sections never stack on one page)
-  const [modelSub, setModelSub] = useState<"defaults" | "cli" | "keys">("defaults");
+  // models panel: independent groups -> nested sub-tabs (owner rule 16 Nov: two+ separate sections never stack on one page)
+  const [modelSub, setModelSub] = useState<"defaults" | "cli">("defaults");
   // Free-text path input — auto-save-on-blur (not on every keystroke like the
   // <select> controls below, that would save a half-typed path on every char).
   // Local draft so typing doesn't fight the settings poll's own value.
@@ -276,16 +265,7 @@ export function SettingsTab() {
   // Same draft-until-blur reasoning as `binDraft` — typing "1900" digit by
   // digit shouldn't fire 4 separate saves.
   const [historyWarnDraft, setHistoryWarnDraft] = useState<string | null>(null);
-  // BYOK alanları hep BOŞ başlar (`Settings.byok` zaten değeri değil sadece
-  // "ayarlı mı" bool'unu taşıyor, geri-doldurulacak bir şey yok) — draft
-  // SADECE bu oturumda yazılanı tutar, blur'da gönderilip hemen temizlenir.
-  const [byokDraft, setByokDraft] = useState<Record<string, string>>({});
-  const [keyHost, setKeyHost] = useState(LOCAL_HOST);
-  const keys = useByok(keyHost);
   const [routingDraft, setRoutingDraft] = useState<string | null>(null);
-  // Same draft-until-blur reasoning as `binDraft` — `provider_bin`'in aksine
-  // (`isSet`/mask yok) mevcut değer doğrudan gösterilir, BYOK'un "boşsa
-  // dokunma" korumasına gerek yok (sır değil).
 
   if (!data) return null;
   const settings = data.settings;
@@ -315,7 +295,7 @@ export function SettingsTab() {
   // fallback handles the rest, same as an empty/unset override).
   const effortOptions = Array.from(new Set(Object.values(data.cli_options).flatMap((o) => o.effort_levels)));
 
-  const hasByok = data.cli_list.some((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli");
+
   return (
     <>
       <TabHint warn>{t.settingsSingleUserWarning}</TabHint>
@@ -433,11 +413,6 @@ export function SettingsTab() {
             <button type="button" className={modelSub === "cli" ? "active" : ""} onClick={() => setModelSub("cli")}>
               CLI
             </button>
-            {hasByok && (
-              <button type="button" className={modelSub === "keys" ? "active" : ""} onClick={() => setModelSub("keys")}>
-                {lang === "en" ? "Keys" : "Anahtarlar"}
-              </button>
-            )}
           </div>
           {modelSub === "defaults" && (
           <>
@@ -534,60 +509,6 @@ export function SettingsTab() {
           <CliInstallSection />
           <ChatBackupSection />
           </>
-          )}
-          {/* ucli's keys moved to the ucli tab (Global settings > Model keys); the block shows only the other CLIs. */}
-          {modelSub === "keys" && hasByok && (
-          <div className="opts" id="settingsByokPanel">
-            <span className="opts-hint" style={{ flexBasis: "100%" }}>
-              <b>{t.byokLabel}</b> {t.byokDesc}
-            </span>
-            <HostPick
-              value={keyHost}
-              onChange={(h) => {
-                setByokDraft({});     // yazılan taslak başka makineye gitmesin
-                setKeyHost(h);
-              }}
-            />
-            {keys.error && <pre className="layout-result">✗ {keys.error}</pre>}
-            {data.cli_list
-              .filter((cli) => BYOK_PRIMARY_ENV[cli] && cli !== "ucli")
-              .map((cli) => {
-                const envName = BYOK_PRIMARY_ENV[cli];
-                const isSet = keys.byok?.[cli]?.[envName] === true;
-                return (
-                  <label key={`${keyHost}:${cli}`}>
-                    {cli} ({envName})
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      placeholder={keys.byok === null ? "…" : isSet ? t.byokSetPlaceholder : t.byokEmptyPlaceholder}
-                      disabled={keys.byok === null}
-                      value={byokDraft[cli] ?? ""}
-                      onChange={(e) => setByokDraft((prev) => ({ ...prev, [cli]: e.target.value }))}
-                      onBlur={(e) => {
-                        const v = e.target.value;
-                        // Boş bırakıp başka yere tıklamak "temizle" DEĞİL —
-                        // hiç yazılmadıysa dokunma (yanlışlıkla var olan bir
-                        // anahtarı silmemek için); temizlemek isteyen "temizle"
-                        // butonunu kullanır (aşağıda).
-                        if (!v) return;
-                        void keys.setKey(cli, envName, v);
-                        setByokDraft((prev) => ({ ...prev, [cli]: "" }));
-                      }}
-                    />
-                    {isSet && (
-                      <button
-                        type="button"
-                        className="stop"
-                        onClick={() => void keys.setKey(cli, envName, "")}
-                      >
-                        {t.byokClearBtn}
-                      </button>
-                    )}
-                  </label>
-                );
-              })}
-          </div>
           )}
         </>
       )}
