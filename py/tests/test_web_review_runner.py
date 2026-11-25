@@ -602,10 +602,27 @@ class TestDetached(Base):
         end = time.time() + secs
         while time.time() < end:
             rec = rv.load_history(self.paths)["pairs"].get(key) or {}
-            if rec.get("status") not in (None, "running"):
+            if rec.get("status") not in (None, "running") and key not in wr.busy_keys():     # iş kaydı en son (finally) bırakılır
                 return rec
             time.sleep(0.1)
         self.fail("koşu bitmedi")
+
+    def test_findings_are_saved_before_pair_turns_done(self):
+        md = self.md("20261108180007")
+        key = rv.pair_key("proj", EV)
+        rv.update_pair(self.paths, "proj", EV, status="running", started_at=time.time())
+        seen = []
+        real = rv.update_pair
+
+        def spy(*args, **fields):
+            if fields.get("status") == "done":
+                seen.append([f["ref"] for f in rv.load_findings(self.paths).values()])
+            return real(*args, **fields)
+
+        with mock.patch.object(rv, "update_pair", spy), mock.patch.object(wr, "_default_popen", subprocess.Popen):
+            wr._execute(wr._Job(key), self.paths, self.cfg, "proj", EV, self.script(), dict(os.environ), self.cwd, md,
+                        time.time(), wr._default_popen, self.logdir, time.time)
+        self.assertEqual(seen, [["R-1"]])
 
     def test_detached_run_writes_files_and_finishes(self):
         md = self.md("20261108180001")

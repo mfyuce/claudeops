@@ -1344,12 +1344,14 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         fields.update(status=status, error=error)
         live.system(f"bitti: {status}" + (f" ({error})" if error else "") + (f"; dosya: {fields['file']}" if fields.get("file") else ""))
         live.close()
-        rv.update_pair(paths, project, target, **fields)
         if status in ("done", "partial") and fields.get("file"):
+            # bulgular çift durumundan ÖNCE yazılır: `done` görüldüğünde bulgular hazırdır; arada servis ölürse kayıt `running`
+            # kalır, sahiplenme raporu yeniden işler (add_findings aynı dosyayı çoğaltmaz)
             try:    # bulgular state=new ile kaydedilir; ayrıştırma hatası koşunun sonucunu bozmaz
                 rv.add_findings(paths, project, path, rv.parse_findings(text))
             except Exception as e:
                 sw.log_event("review_findings_failed", paths=paths, project=project, error=_tail(repr(e)))
+        rv.update_pair(paths, project, target, **fields)
         if detached:
             _remove_streams(path)
     except Exception as e:   # çalıştırıcı asla `running` bırakıp ölmesin
