@@ -410,6 +410,14 @@ MEM_SKIP = ("-shm", ".tmp", ".lock", ".swp")
 STAGE_DIR = os.path.join(CLAUDEOPS_DIR, "backups", "chat-dump")
 
 
+_DB_NAME = re.compile(r"\.(db|sqlite3?)(-wal|-journal)?$", re.I)
+
+
+def _is_db(path: str, head: bytes) -> bool:
+    """İkili veritabanı: repoya GİRMEZ (sır maskelenemez; sahip kararı 25 Kas), yalnız `raw_remote`'a yüklenir."""
+    return head.startswith(b"SQLite format 3\0") or bool(_DB_NAME.search(path))
+
+
 def _local_sources() -> List[Tuple[str, ...]]:
     """(kaynak yol, repo içi hedef öneki[, tür]) demetleri. tür: "text" (jsonl, sır maskelenir) | "bin" (ham, büyükse parçalanır).
     Ayna (chat-mirror) canlı dizinden SİLİNMİŞ eski sohbetleri de taşır; aynı hedef yolda mtime'ı yeni olan kazanır.
@@ -613,7 +621,7 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
     chunk = CHUNK_MB * 1024 * 1024
     written: List[str] = []
     sigs: Dict[str, str] = {}
-    stats: Dict[str, Any] = {"redacted": 0, "skipped_big": [], "unchanged": 0, "days": {}, "skipped_group": {}}
+    stats: Dict[str, Any] = {"redacted": 0, "skipped_big": [], "unchanged": 0, "days": {}, "skipped_group": {}, "db": []}
     for ent in plan["changed"]:
         group = ent.get("group", "claude")
         repo = _group_repo(cfg, group)
@@ -624,6 +632,9 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             with open(ent["src"], "rb") as f:
                 raw = f.read()
         except OSError:
+            continue
+        if _is_db(ent["src"], raw[:16]):
+            stats["db"].append(ent)       # sig burada KAYDEDİLMEZ: yalnız yükleme başarılıysa (yoksa sonraki koşuda yeniden)
             continue
         if ent.get("kind") == "mem":
             ent = dict(ent, kind="bin" if b"\0" in raw[:8192] else "text")
@@ -815,6 +826,19 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         wcfg["repo_dir"] = ""             # doğrulanmamış (public olabilir) repo_dir'e ASLA yazma
     written, sigs, stats = _write_changed(plan, wcfg)
     res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"], missing=missing)
+    if stats["db"]:                      # repoya girmeyen veritabanları: ham yedek
+        raw_remote = str(cfg.get("raw_remote") or "").strip()
+        if not raw_remote:
+            warns.append(f"{len(stats['db'])} veritabanı YEDEKLENMEDİ (repoya girmez, raw_remote boş)")
+        else:
+            from . import chat_dump
+            bad = chat_dump.upload_files(raw_remote, [(e["src"], e["dest"]) for e in stats["db"]])
+            for e in stats["db"]:
+                if e["src"] not in bad:
+                    sigs[e["src"]] = e["sig"]
+                    sigs[_DEST_PFX + e["dest"]] = str(int(e["mt"]))
+            if bad:
+                warns.append(f"{len(bad)} veritabanı ham yedeğe yüklenemedi: {next(iter(bad.values()))}"[:160])
     for g in sorted(remotes):
         stats["days"].setdefault(g, {})
     for g, days in sorted(stats["days"].items()):

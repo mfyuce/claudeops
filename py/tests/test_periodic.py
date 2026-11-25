@@ -273,7 +273,7 @@ class ChatBackupTest(_Tmp):
         self.addCleanup(patch_chunk.stop)
         codex = os.path.join(self.d, "codexrepo")
         os.makedirs(os.path.join(codex, ".git"))
-        big = os.path.join(self.d, "g", "c.db")
+        big = os.path.join(self.d, "g", "c.pb")
         os.makedirs(os.path.dirname(big))
         with open(big, "wb") as f:
             f.write(b"x" * (P.CHUNK_MB * 1024 * 1024 + 10))
@@ -285,7 +285,7 @@ class ChatBackupTest(_Tmp):
             ent = [e for e in plan["changed"] if e["src"] == big][0]
             self.assertEqual((ent["group"], ent["kind"]), ("codex", "bin"))
             written, _sigs, stats = P._write_changed(plan, cfg)
-        parts = sorted(w for w in written if w.startswith("local/codex-db/c.db.part"))
+        parts = sorted(w for w in written if w.startswith("local/codex-db/c.pb.part"))
         self.assertEqual(len(parts), 2)
         self.assertIn(ent["day"], stats["days"]["codex"])
         with open(os.path.join(codex, parts[0]), "rb") as f:
@@ -298,9 +298,9 @@ class ChatBackupTest(_Tmp):
         os.makedirs(md)
         with open(os.path.join(md, "m.md"), "w") as f:
             f.write("key sk-ant-api03-ABCDEFGHIJKL\n")
-        with open(os.path.join(md, "x.db"), "wb") as f:
+        with open(os.path.join(md, "x.pb"), "wb") as f:
             f.write(b"SQLite\0\0\1")
-        with open(os.path.join(md, "x.db-shm"), "wb") as f:
+        with open(os.path.join(md, "x.pb-shm"), "wb") as f:
             f.write(b"s")
         srcs = P._memory_sources(home, os.path.join(home, "mir"))
         with mock.patch.object(P, "_local_sources", return_value=srcs):
@@ -312,7 +312,7 @@ class ChatBackupTest(_Tmp):
             written, _s, stats = P._write_changed(plan, self.cfg)
         txt = open(os.path.join(repo, [w for w in written if w.endswith("m.md")][0])).read()
         self.assertNotIn("ABCDEFGHIJKL", txt)
-        self.assertEqual(open(os.path.join(repo, [w for w in written if w.endswith("x.db")][0]), "rb").read(), b"SQLite\0\0\1")
+        self.assertEqual(open(os.path.join(repo, [w for w in written if w.endswith("x.pb")][0]), "rb").read(), b"SQLite\0\0\1")
 
     def test_zst_and_unvalidated_claude(self):
         repo = self._setup_repo()
@@ -340,9 +340,9 @@ class ChatBackupTest(_Tmp):
         self._setup_repo()
         codex = os.path.join(self.d, "codexrepo2")
         os.makedirs(os.path.join(codex, ".git"))
-        src = os.path.join(self.d, "g2", "c.db")
+        src = os.path.join(self.d, "g2", "c.pb")
         os.makedirs(os.path.dirname(src))
-        old = os.path.join(codex, "local", "codex-db", "c.db.part001")
+        old = os.path.join(codex, "local", "codex-db", "c.pb.part001")
         os.makedirs(os.path.dirname(old))
         open(old, "wb").write(b"eski")
         open(src, "wb").write(b"kucuk")
@@ -352,8 +352,8 @@ class ChatBackupTest(_Tmp):
             plan = P.plan_chat_backup(cfg, {})
             written, _s, st = P._write_changed(plan, cfg)
         self.assertFalse(os.path.exists(old))
-        self.assertIn("local/codex-db/c.db.part001", written)
-        self.assertEqual(open(os.path.join(codex, "local/codex-db/c.db"), "rb").read(), b"kucuk")
+        self.assertIn("local/codex-db/c.pb.part001", written)
+        self.assertEqual(open(os.path.join(codex, "local/codex-db/c.pb"), "rb").read(), b"kucuk")
 
     def test_notify_failure_cooldown(self):
         sent = []

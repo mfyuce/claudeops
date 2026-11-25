@@ -102,6 +102,33 @@ class SteppedPushTests(unittest.TestCase):
             self.assertEqual(g("rev-parse", "main", cwd=bare), tip)
 
 
+class NoDatabaseInRepoTests(unittest.TestCase):
+    def _plan(self, d):
+        ents = []
+        for name, body in (("data.db", b"SQLite format 3\0x"), ("m.sqlite-wal", b"\0w"), ("noext", b"SQLite format 3\0y"), ("n.md", b"metin")):
+            f = os.path.join(d, name)
+            with open(f, "wb") as fh:
+                fh.write(body)
+            ents.append({"src": f, "dest": "memory/h/codex/m/" + name, "kind": "mem", "group": "claude", "day": "2026-11-25", "sig": "s", "mt": 1.0})
+        return {"changed": ents}
+
+    def test_databases_skip_repo_and_are_not_marked_done(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            os.makedirs(os.path.join(repo, ".git"))
+            written, sigs, stats = periodic._write_changed(self._plan(d), {"repo_dir": repo, "repos": {"claude": repo}})
+            self.assertEqual(written, ["memory/h/codex/m/n.md"])
+            self.assertEqual(sorted(os.path.basename(e["src"]) for e in stats["db"]), ["data.db", "m.sqlite-wal", "noext"])
+            self.assertEqual([k for k in sigs if k.endswith(("data.db", "noext", "-wal"))], [])
+
+    def test_upload_reports_only_failed_sources(self):
+        res = [mock.Mock(returncode=0, stderr=""), mock.Mock(returncode=1, stderr="ag yok")]
+        with mock.patch("subprocess.run", side_effect=res) as run:
+            bad = chat_dump.upload_files("r:x", [("/a.db", "memory/a.db"), ("/b.db", "memory/b.db")])
+        self.assertEqual(list(bad), ["/b.db"])
+        self.assertTrue(run.call_args_list[0][0][0][-1].endswith("/repo-disi/memory/a.db"))
+
+
 class RetryTests(unittest.TestCase):
     CFG = {"enabled": "on", "start": "03:30", "interval_hours": 24, "retry_hours": 1}
 

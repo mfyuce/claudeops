@@ -408,6 +408,21 @@ def raw_to_remote(remote: str, home: Optional[str] = None, timeout: int = 10800)
     return "; ".join(errs)
 
 
+def upload_files(remote: str, files: List[Tuple[str, str]], timeout: int = 3600) -> Dict[str, str]:
+    """Repoya girmeyen veritabanları: `<remote>/<host>/repo-disi/<repo içi hedef yol>`. Dönüş: {yüklenemeyen kaynak: hata}."""
+    import socket, subprocess
+    base = f"{remote.rstrip('/')}/{socket.gethostname()}/repo-disi"
+    bad: Dict[str, str] = {}
+    for src, dest in files:
+        try:
+            r = subprocess.run(["rclone", "copyto", src, f"{base}/{dest}"], capture_output=True, text=True, timeout=timeout)
+            if r.returncode != 0:
+                bad[src] = f"rc={r.returncode} {r.stderr[-150:]}"
+        except (OSError, subprocess.TimeoutExpired) as e:
+            bad[src] = type(e).__name__
+    return bad
+
+
 # ------------------------------------------------------------------ uzak host arşivleri (yuhem, ulak_31)
 def prune_remote_archives(mir: str, keep: int = 3, apply: bool = False) -> List[Tuple[str, int]]:
     """Eski uzak tgz'leri budar: host başına en yeni `keep` arşiv kalır. Silme YALNIZ en yeni arşiv doğrulanmışsa (başarıyla açıldı:
