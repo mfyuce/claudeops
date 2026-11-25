@@ -1,0 +1,5023 @@
+{
+ "actions": [
+  [
+   "GET",
+   "",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/",
+   "status.read"
+  ],
+  [
+   "get",
+   "/",
+   "status.read"
+  ],
+  [
+   "GET",
+   "//",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "//",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "//",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/API/status",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/API/status",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/API/status",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/alt",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/alt",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/alt",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/%73tatus",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/%73tatus",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/%73tatus",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/_internal",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/_internal",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/_internal",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/_internal/",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/_internal/",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/_internal/",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/_internal/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/_internal/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/_internal/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/_internal/x",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/_internal/x",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/_internal/x",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/_internalx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/_internalx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/_internalx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/adopt",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/adopt",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/adopt",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/adopt/alt",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/adopt/alt",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/adopt/alt",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/adoptx",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/adoptx",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/adoptx",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/agents",
+   "agents.use"
+  ],
+  [
+   "POST",
+   "/api/agents",
+   "agents.use"
+  ],
+  [
+   "get",
+   "/api/agents",
+   "agents.use"
+  ],
+  [
+   "GET",
+   "/api/agents/",
+   "agents.use"
+  ],
+  [
+   "POST",
+   "/api/agents/",
+   "agents.use"
+  ],
+  [
+   "get",
+   "/api/agents/",
+   "agents.use"
+  ],
+  [
+   "GET",
+   "/api/agents/alt",
+   "agents.use"
+  ],
+  [
+   "POST",
+   "/api/agents/alt",
+   "agents.use"
+  ],
+  [
+   "get",
+   "/api/agents/alt",
+   "agents.use"
+  ],
+  [
+   "GET",
+   "/api/agents/x",
+   "agents.use"
+  ],
+  [
+   "POST",
+   "/api/agents/x",
+   "agents.use"
+  ],
+  [
+   "get",
+   "/api/agents/x",
+   "agents.use"
+  ],
+  [
+   "GET",
+   "/api/agentsx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/agentsx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/agentsx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/audio",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/audio",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/audio",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/audio/",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/audio/",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/audio/",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/audio/alt",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/audio/alt",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/audio/alt",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/audio/x",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/audio/x",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/audio/x",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/audiox",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/audiox",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/audiox",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/auth",
+   "auth.login"
+  ],
+  [
+   "POST",
+   "/api/auth",
+   "auth.login"
+  ],
+  [
+   "get",
+   "/api/auth",
+   "auth.login"
+  ],
+  [
+   "GET",
+   "/api/auth/",
+   "auth.login"
+  ],
+  [
+   "POST",
+   "/api/auth/",
+   "auth.login"
+  ],
+  [
+   "get",
+   "/api/auth/",
+   "auth.login"
+  ],
+  [
+   "GET",
+   "/api/auth/alt",
+   "auth.login"
+  ],
+  [
+   "POST",
+   "/api/auth/alt",
+   "auth.login"
+  ],
+  [
+   "get",
+   "/api/auth/alt",
+   "auth.login"
+  ],
+  [
+   "GET",
+   "/api/auth/x",
+   "auth.login"
+  ],
+  [
+   "POST",
+   "/api/auth/x",
+   "auth.login"
+  ],
+  [
+   "get",
+   "/api/auth/x",
+   "auth.login"
+  ],
+  [
+   "GET",
+   "/api/authx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/authx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/authx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/brand-new",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/brand-new",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/brand-new",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/chat-backup",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/chat-backup",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/chat-backup",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/chat-backup/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/chat-backup/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/chat-backup/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/chat-backupx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/chat-backupx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/chat-backupx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/cli",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/cli",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/cli",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/cli/",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/cli/",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/cli/",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/cli/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/cli/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/cli/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/cli/x",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/cli/x",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/cli/x",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/clix",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/clix",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/clix",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/close",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/close",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/close",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/close/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/close/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/close/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/closex",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/closex",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/closex",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/compact",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/compact",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/compact",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/compact/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/compact/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/compact/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/compactx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/compactx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/compactx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/context",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/context",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/context",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/context/alt",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/context/alt",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/context/alt",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/contextx",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/contextx",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/contextx",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/desktop",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/desktop",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/desktop",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/desktop/",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/desktop/",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/desktop/",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/api/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/api/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/api/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/diag",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/diag",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/diag",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/diag/",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/diag/",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/diag/",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/diag/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/diag/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/diag/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/diag/x",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/diag/x",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/diag/x",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/diagx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/diagx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/diagx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/edit",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/edit",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/edit",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/edit/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/edit/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/edit/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/editx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/editx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/editx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/enterprise/x",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/enterprise/x",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/enterprise/x",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/files",
+   "files.read"
+  ],
+  [
+   "POST",
+   "/api/files",
+   "files.read"
+  ],
+  [
+   "get",
+   "/api/files",
+   "files.read"
+  ],
+  [
+   "GET",
+   "/api/files/",
+   "files.read"
+  ],
+  [
+   "POST",
+   "/api/files/",
+   "files.read"
+  ],
+  [
+   "get",
+   "/api/files/",
+   "files.read"
+  ],
+  [
+   "GET",
+   "/api/files/alt",
+   "files.read"
+  ],
+  [
+   "POST",
+   "/api/files/alt",
+   "files.read"
+  ],
+  [
+   "get",
+   "/api/files/alt",
+   "files.read"
+  ],
+  [
+   "GET",
+   "/api/files/delete",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/delete",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/delete",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/delete/alt",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/delete/alt",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/delete/alt",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/deletex",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/deletex",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/deletex",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/mkdir",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/mkdir",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/mkdir",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/mkdir/alt",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/mkdir/alt",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/mkdir/alt",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/mkdirx",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/mkdirx",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/mkdirx",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/rename",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/rename",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/rename",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/rename/alt",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/rename/alt",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/rename/alt",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/renamex",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/renamex",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/renamex",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/upload",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/upload",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/upload",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/upload/alt",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/upload/alt",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/upload/alt",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/uploadx",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/uploadx",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/uploadx",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/write",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/write",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/write",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/write/alt",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/write/alt",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/write/alt",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/writex",
+   "files.write"
+  ],
+  [
+   "POST",
+   "/api/files/writex",
+   "files.write"
+  ],
+  [
+   "get",
+   "/api/files/writex",
+   "files.write"
+  ],
+  [
+   "GET",
+   "/api/files/x",
+   "files.read"
+  ],
+  [
+   "POST",
+   "/api/files/x",
+   "files.read"
+  ],
+  [
+   "get",
+   "/api/files/x",
+   "files.read"
+  ],
+  [
+   "GET",
+   "/api/filesx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/filesx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/filesx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/handover",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/handover",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/handover",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/handover/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/handover/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/handover/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/handoverx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/handoverx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/handoverx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/hosts",
+   "admin.hosts"
+  ],
+  [
+   "POST",
+   "/api/hosts",
+   "admin.hosts"
+  ],
+  [
+   "get",
+   "/api/hosts",
+   "admin.hosts"
+  ],
+  [
+   "GET",
+   "/api/hosts/alt",
+   "admin.hosts"
+  ],
+  [
+   "POST",
+   "/api/hosts/alt",
+   "admin.hosts"
+  ],
+  [
+   "get",
+   "/api/hosts/alt",
+   "admin.hosts"
+  ],
+  [
+   "GET",
+   "/api/hostsx",
+   "admin.hosts"
+  ],
+  [
+   "POST",
+   "/api/hostsx",
+   "admin.hosts"
+  ],
+  [
+   "get",
+   "/api/hostsx",
+   "admin.hosts"
+  ],
+  [
+   "GET",
+   "/api/instances",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/instances",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/instances",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/instances/",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/instances/",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/instances/",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/instances/alt",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/instances/alt",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/instances/alt",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/instances/x",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/instances/x",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/instances/x",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/instancesx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/instancesx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/instancesx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/io",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/io",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/io",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/io/",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/io/",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/io/",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/io/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/io/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/io/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/io/x",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/io/x",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/io/x",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/iox",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/iox",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/iox",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/labels",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/labels",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/labels",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/labels/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/labels/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/labels/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/labelsx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/labelsx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/labelsx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/layout",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/layout",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/layout",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/layout/alt",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/layout/alt",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/layout/alt",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/layoutx",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/layoutx",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/layoutx",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/live-effort",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-effort",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-effort",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/live-effort/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-effort/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-effort/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/live-effortx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-effortx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-effortx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/live-model",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-model",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-model",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/live-model/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-model/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-model/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/live-modelx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/live-modelx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/live-modelx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/new-chat",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/new-chat",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/new-chat",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/new-chat/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/new-chat/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/new-chat/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/new-chatx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/new-chatx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/new-chatx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/orch",
+   "orch.run"
+  ],
+  [
+   "POST",
+   "/api/orch",
+   "orch.run"
+  ],
+  [
+   "get",
+   "/api/orch",
+   "orch.run"
+  ],
+  [
+   "GET",
+   "/api/orch/",
+   "orch.run"
+  ],
+  [
+   "POST",
+   "/api/orch/",
+   "orch.run"
+  ],
+  [
+   "get",
+   "/api/orch/",
+   "orch.run"
+  ],
+  [
+   "GET",
+   "/api/orch/alt",
+   "orch.run"
+  ],
+  [
+   "POST",
+   "/api/orch/alt",
+   "orch.run"
+  ],
+  [
+   "get",
+   "/api/orch/alt",
+   "orch.run"
+  ],
+  [
+   "GET",
+   "/api/orch/x",
+   "orch.run"
+  ],
+  [
+   "POST",
+   "/api/orch/x",
+   "orch.run"
+  ],
+  [
+   "get",
+   "/api/orch/x",
+   "orch.run"
+  ],
+  [
+   "GET",
+   "/api/orchx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/orchx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/orchx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/periodic",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/periodic",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/periodic",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/periodic/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/periodic/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/periodic/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/periodicx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/periodicx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/periodicx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/reactivate",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/reactivate",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/reactivate",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/reactivate/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/reactivate/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/reactivate/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/reactivatex",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/reactivatex",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/reactivatex",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/register",
+   "session.create"
+  ],
+  [
+   "POST",
+   "/api/register",
+   "session.create"
+  ],
+  [
+   "get",
+   "/api/register",
+   "session.create"
+  ],
+  [
+   "GET",
+   "/api/register/alt",
+   "session.create"
+  ],
+  [
+   "POST",
+   "/api/register/alt",
+   "session.create"
+  ],
+  [
+   "get",
+   "/api/register/alt",
+   "session.create"
+  ],
+  [
+   "GET",
+   "/api/registerx",
+   "session.create"
+  ],
+  [
+   "POST",
+   "/api/registerx",
+   "session.create"
+  ],
+  [
+   "get",
+   "/api/registerx",
+   "session.create"
+  ],
+  [
+   "GET",
+   "/api/retire",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/retire",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/retire",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/retire/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/retire/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/retire/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/retirex",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/retirex",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/retirex",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/session",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/session",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/session",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/session/",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/session/",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/session/",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/session/activate",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/session/activate",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/session/activate",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/session/activate/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/session/activate/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/session/activate/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/session/activatex",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/session/activatex",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/session/activatex",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/session/facts",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/session/facts",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/session/facts",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/session/facts/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/session/facts/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/session/facts/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/session/factsx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/session/factsx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/session/factsx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/session/graphical",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/session/graphical",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/session/graphical",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/session/graphical/alt",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/session/graphical/alt",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/session/graphical/alt",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/session/graphicalx",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/session/graphicalx",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/session/graphicalx",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/session/lock",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/lock",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/lock",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/session/lock/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/lock/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/lock/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/session/lockx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/lockx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/lockx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/session/unlock",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/unlock",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/unlock",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/session/unlock/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/unlock/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/unlock/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/session/unlockx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/session/unlockx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/session/unlockx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/settings",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/settings",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/settings",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/settings/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/settings/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/settings/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/settingsx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/settingsx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/settingsx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/snapshot",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/snapshot",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/snapshot",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/snapshot/alt",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/snapshot/alt",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/snapshot/alt",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/snapshotx",
+   "fleet.admin"
+  ],
+  [
+   "POST",
+   "/api/snapshotx",
+   "fleet.admin"
+  ],
+  [
+   "get",
+   "/api/snapshotx",
+   "fleet.admin"
+  ],
+  [
+   "GET",
+   "/api/start",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/start",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/start",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/start/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/start/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/start/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/startx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/startx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/startx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/status",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/status",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/status",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/status/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/status/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/status/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/statusx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/statusx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/statusx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/steward",
+   "steward.use"
+  ],
+  [
+   "POST",
+   "/api/steward",
+   "steward.use"
+  ],
+  [
+   "get",
+   "/api/steward",
+   "steward.use"
+  ],
+  [
+   "GET",
+   "/api/steward/",
+   "steward.use"
+  ],
+  [
+   "POST",
+   "/api/steward/",
+   "steward.use"
+  ],
+  [
+   "get",
+   "/api/steward/",
+   "steward.use"
+  ],
+  [
+   "GET",
+   "/api/steward/alt",
+   "steward.use"
+  ],
+  [
+   "POST",
+   "/api/steward/alt",
+   "steward.use"
+  ],
+  [
+   "get",
+   "/api/steward/alt",
+   "steward.use"
+  ],
+  [
+   "GET",
+   "/api/steward/x",
+   "steward.use"
+  ],
+  [
+   "POST",
+   "/api/steward/x",
+   "steward.use"
+  ],
+  [
+   "get",
+   "/api/steward/x",
+   "steward.use"
+  ],
+  [
+   "GET",
+   "/api/stewardx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/stewardx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/stewardx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/stop",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/stop",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/stop",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/stop/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/stop/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/stop/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/stopx",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/stopx",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/stopx",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/term",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/api/term",
+   "term.read"
+  ],
+  [
+   "get",
+   "/api/term",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/api/term/",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/api/term/",
+   "term.read"
+  ],
+  [
+   "get",
+   "/api/term/",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/api/term/alt",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/api/term/alt",
+   "term.read"
+  ],
+  [
+   "get",
+   "/api/term/alt",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/api/term/input",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/input",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/input",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/input/alt",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/input/alt",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/input/alt",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/inputx",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/inputx",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/inputx",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/key",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/key",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/key",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/key/alt",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/key/alt",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/key/alt",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/keyx",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/keyx",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/keyx",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/mirror-window",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/mirror-window",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/mirror-window",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/mirror-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/mirror-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/mirror-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/mirror-windowx",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/mirror-windowx",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/mirror-windowx",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/open-window",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/open-window",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/open-window",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/open-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/open-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/open-window/alt",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/open-windowx",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/term/open-windowx",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/term/open-windowx",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/term/raw",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/raw",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/raw",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/raw/alt",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/raw/alt",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/raw/alt",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/rawx",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/rawx",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/rawx",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/resize",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/resize",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/resize",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/resize/alt",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/resize/alt",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/resize/alt",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/resizex",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/resizex",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/resizex",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/set-mode",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/set-mode",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/set-mode",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/set-mode/alt",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/set-mode/alt",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/set-mode/alt",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/set-modex",
+   "term.write"
+  ],
+  [
+   "POST",
+   "/api/term/set-modex",
+   "term.write"
+  ],
+  [
+   "get",
+   "/api/term/set-modex",
+   "term.write"
+  ],
+  [
+   "GET",
+   "/api/term/x",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/api/term/x",
+   "term.read"
+  ],
+  [
+   "get",
+   "/api/term/x",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/api/termx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/termx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/termx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/ucli",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/approvals",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ucli/approvals",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/approvals",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ucli/approvals/",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/approvals/",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/approvals/",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/approvals/alt",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/approvals/alt",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/approvals/alt",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/approvalsx",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/approvalsx",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/approvalsx",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/ask",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/ask",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/ask",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/ask/alt",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/ask/alt",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/ask/alt",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/askx",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/api/ucli/askx",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/api/ucli/askx",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/api/ucli/checks",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/checks",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/checks",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/checks-mode",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/ucli/checks-mode",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/ucli/checks-mode",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/ucli/checks-mode/alt",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/ucli/checks-mode/alt",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/ucli/checks-mode/alt",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/ucli/checks-modex",
+   "session.control"
+  ],
+  [
+   "POST",
+   "/api/ucli/checks-modex",
+   "session.control"
+  ],
+  [
+   "get",
+   "/api/ucli/checks-modex",
+   "session.control"
+  ],
+  [
+   "GET",
+   "/api/ucli/checks/alt",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/checks/alt",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/checks/alt",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/checksx",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/checksx",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/checksx",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/ucli/metrics",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ucli/metrics",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ucli/metrics",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ucli/metrics/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ucli/metrics/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ucli/metrics/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ucli/metricsx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ucli/metricsx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ucli/metricsx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ucli/x",
+   "admin.config"
+  ],
+  [
+   "POST",
+   "/api/ucli/x",
+   "admin.config"
+  ],
+  [
+   "get",
+   "/api/ucli/x",
+   "admin.config"
+  ],
+  [
+   "GET",
+   "/api/uclix",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/uclix",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/uclix",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/ui",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ui",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ui",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ui/",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ui/",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ui/",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ui/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ui/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ui/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ui/x",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ui/x",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ui/x",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/uix",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/uix",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/uix",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/usage",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/usage",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/usage",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/usage/alt",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/usage/alt",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/usage/alt",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/usagex",
+   "usage.read"
+  ],
+  [
+   "POST",
+   "/api/usagex",
+   "usage.read"
+  ],
+  [
+   "get",
+   "/api/usagex",
+   "usage.read"
+  ],
+  [
+   "GET",
+   "/api/uzakgoz/freshness",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/uzakgoz/freshness",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/uzakgoz/freshness",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/uzakgoz/freshness/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/uzakgoz/freshness/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/uzakgoz/freshness/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/uzakgoz/freshnessx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/uzakgoz/freshnessx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/uzakgoz/freshnessx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/vscode",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/vscode",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/vscode",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/vscode/",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/vscode/",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/vscode/",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/vscode/alt",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/vscode/alt",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/vscode/alt",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/vscode/x",
+   "admin.desktop"
+  ],
+  [
+   "POST",
+   "/api/vscode/x",
+   "admin.desktop"
+  ],
+  [
+   "get",
+   "/api/vscode/x",
+   "admin.desktop"
+  ],
+  [
+   "GET",
+   "/api/vscodex",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/api/vscodex",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/api/vscodex",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/api/ws-ticket",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ws-ticket",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ws-ticket",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ws-ticket/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ws-ticket/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ws-ticket/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/api/ws-ticketx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/api/ws-ticketx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/api/ws-ticketx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/assets/a.js",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/assets/a.js",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/assets/a.js",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/desktop",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/desktop",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/desktop",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/desktop/",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/desktop/",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/desktop/",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/desktop/x",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/desktopx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/q",
+   "steward.answer"
+  ],
+  [
+   "POST",
+   "/q",
+   "steward.answer"
+  ],
+  [
+   "get",
+   "/q",
+   "steward.answer"
+  ],
+  [
+   "GET",
+   "/q/",
+   "steward.answer"
+  ],
+  [
+   "POST",
+   "/q/",
+   "steward.answer"
+  ],
+  [
+   "get",
+   "/q/",
+   "steward.answer"
+  ],
+  [
+   "GET",
+   "/q/alt",
+   "steward.answer"
+  ],
+  [
+   "POST",
+   "/q/alt",
+   "steward.answer"
+  ],
+  [
+   "get",
+   "/q/alt",
+   "steward.answer"
+  ],
+  [
+   "GET",
+   "/q/x",
+   "steward.answer"
+  ],
+  [
+   "POST",
+   "/q/x",
+   "steward.answer"
+  ],
+  [
+   "get",
+   "/q/x",
+   "steward.answer"
+  ],
+  [
+   "GET",
+   "/qx",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/qx",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/qx",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/readfile/x",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/readfile/x",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/readfile/x",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/v1",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/v1",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/v1",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/v1/",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/v1/",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/v1/",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/v1/alt",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/v1/alt",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/v1/alt",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/v1/x",
+   "session.chat"
+  ],
+  [
+   "POST",
+   "/v1/x",
+   "session.chat"
+  ],
+  [
+   "get",
+   "/v1/x",
+   "session.chat"
+  ],
+  [
+   "GET",
+   "/v1x",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/v1x",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/v1x",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "/ws",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/ws",
+   "status.read"
+  ],
+  [
+   "get",
+   "/ws",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/ws/",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/ws/",
+   "status.read"
+  ],
+  [
+   "get",
+   "/ws/",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/ws/alt",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/ws/alt",
+   "status.read"
+  ],
+  [
+   "get",
+   "/ws/alt",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/ws/desktop",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/ws/desktop",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/ws/desktop",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/ws/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/ws/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/ws/desktop/alt",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/ws/desktopx",
+   "desktop.use"
+  ],
+  [
+   "POST",
+   "/ws/desktopx",
+   "desktop.use"
+  ],
+  [
+   "get",
+   "/ws/desktopx",
+   "desktop.use"
+  ],
+  [
+   "GET",
+   "/ws/term",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/ws/term",
+   "term.read"
+  ],
+  [
+   "get",
+   "/ws/term",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/ws/term/",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/ws/term/",
+   "term.read"
+  ],
+  [
+   "get",
+   "/ws/term/",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/ws/term/alt",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/ws/term/alt",
+   "term.read"
+  ],
+  [
+   "get",
+   "/ws/term/alt",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/ws/termx",
+   "term.read"
+  ],
+  [
+   "POST",
+   "/ws/termx",
+   "term.read"
+  ],
+  [
+   "get",
+   "/ws/termx",
+   "term.read"
+  ],
+  [
+   "GET",
+   "/wsx",
+   "status.read"
+  ],
+  [
+   "POST",
+   "/wsx",
+   "status.read"
+  ],
+  [
+   "get",
+   "/wsx",
+   "status.read"
+  ],
+  [
+   "GET",
+   "/x",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "/x",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "/x",
+   "admin.unmapped"
+  ],
+  [
+   "GET",
+   "x",
+   "admin.unmapped"
+  ],
+  [
+   "POST",
+   "x",
+   "admin.unmapped"
+  ],
+  [
+   "get",
+   "x",
+   "admin.unmapped"
+  ]
+ ],
+ "approvals": {
+  "bos": "",
+  "k1": "s-onay"
+ },
+ "legacy": {
+  "kind": "legacy",
+  "roles": [
+   "admin"
+  ],
+  "uid": "owner"
+ },
+ "resources": [
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/status",
+   "query": ""
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=a"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h1",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=a&host=h1"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=a&name=b"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "b",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=&name=b"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h\u00fc",
+     "kind": "session",
+     "name": "a b c",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "n%61me=a+b%20c&host=h%C3%BC"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "%zz%4",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=%zz%4"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "\ufffd",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=%FF"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=+++"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h1",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "host=h1"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a;host=b",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=a;host=b"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a=b",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=a=b&&=x"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=%1Ca%1F"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=%C2%A0a%E2%80%83"
+  },
+  {
+   "body": "{\"name\": \" g \", \"host\": \"h2\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h2",
+     "kind": "session",
+     "name": "g",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": \"\", \"host\": \"\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "qh",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q&host=qh"
+  },
+  {
+   "body": "{\"name\": null}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": 0}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": false}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": []}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": {}}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": 0.0}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "q",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": "name=q"
+  },
+  {
+   "body": "{\"name\": \"a\", \"name\": \"b\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "b",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": ""
+  },
+  {
+   "body": "{}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": ""
+  },
+  {
+   "body": "{\"model\": \"m1\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "m1",
+     "steward": ""
+    }
+   ],
+   "path": "/v1/chat/completions",
+   "query": ""
+  },
+  {
+   "body": "{\"model\": \"m1\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "m1",
+     "steward": ""
+    }
+   ],
+   "path": "/v1/chat/completions",
+   "query": "name=m1"
+  },
+  {
+   "body": "{\"model\": \"m1\", \"name\": \"m1\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "m1",
+     "steward": ""
+    },
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "m1",
+     "steward": ""
+    }
+   ],
+   "path": "/v1/chat/completions",
+   "query": "host=h"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/v1/models",
+   "query": "model=q"
+  },
+  {
+   "body": "{\"model\": \"m1\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/start",
+   "query": ""
+  },
+  {
+   "body": "{\"participants\": [{\"host\": \"h\", \"name\": \"a\"}, {\"name\": \"b\"}, 5, \"c\", {\"host\": \"h\", \"name\": \"a\"}]}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    },
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "b",
+     "steward": ""
+    }
+   ],
+   "path": "/api/orch/run",
+   "query": ""
+  },
+  {
+   "body": "{\"participants\": \"a\", \"names\": \"b\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/orch/run",
+   "query": "host=h"
+  },
+  {
+   "body": "{\"names\": [\"d\", \" a \", \"\", null]}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "d",
+     "steward": ""
+    },
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    },
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "b",
+     "steward": ""
+    },
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "c",
+     "steward": ""
+    }
+   ],
+   "path": "/api/handover",
+   "query": "host=h&names=a,b&names=c"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/handover",
+   "query": "names=,,%2C"
+  },
+  {
+   "body": "{\"host\": \"h\", \"names\": [\"a\", \"a\"]}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/handover",
+   "query": ""
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "steward",
+     "name": "",
+     "steward": "default"
+    }
+   ],
+   "path": "/api/steward/status",
+   "query": ""
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "steward",
+     "name": "",
+     "steward": "bo"
+    }
+   ],
+   "path": "/api/steward/status",
+   "query": "steward=bo&name=proje"
+  },
+  {
+   "body": "{\"steward\": \"ayse\", \"name\": \"p\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "steward",
+     "name": "",
+     "steward": "ayse"
+    }
+   ],
+   "path": "/api/steward/status",
+   "query": "steward=bo"
+  },
+  {
+   "body": "{\"steward\": \"  \"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "steward",
+     "name": "",
+     "steward": "default"
+    }
+   ],
+   "path": "/api/steward/status",
+   "query": ""
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "steward",
+     "name": "",
+     "steward": "default"
+    }
+   ],
+   "path": "/api/steward/status",
+   "query": "steward=+"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/stewardx",
+   "query": "name=a"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "s-onay",
+     "steward": ""
+    }
+   ],
+   "path": "/api/ucli/approvals",
+   "query": "run_key=k1"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/ucli/approvals",
+   "query": "run_key=yok"
+  },
+  {
+   "body": "{\"run_key\": \"k1\", \"name\": \"baska\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "session",
+     "name": "s-onay",
+     "steward": ""
+    }
+   ],
+   "path": "/api/ucli/approvals",
+   "query": ""
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/ucli/approvals",
+   "query": "run_key=bos"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/ucli/approvals",
+   "query": ""
+  },
+  {
+   "body": "{\"name\": 5}",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"name\": true}",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"name\": [\"a\"]}",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"name\": \"a\", \"host\": 1}",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"participants\": [{\"name\": 7}]}",
+   "path": "/api/orch/run",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"participants\": [{\"host\": [\"h\"], \"name\": \"a\"}]}",
+   "path": "/api/orch/run",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"names\": [1]}",
+   "path": "/api/handover",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"model\": {\"a\": 1}}",
+   "path": "/v1/chat/completions",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"steward\": 3}",
+   "path": "/api/steward/status",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"run_key\": 1}",
+   "path": "/api/ucli/approvals",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "[1]",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "null",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{bozuk",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"name\": NaN}",
+   "path": "/api/start",
+   "query": "",
+   "rust_rejects": true
+  }
+ ],
+ "table": [
+  [
+   "/api/auth/",
+   "auth.login"
+  ],
+  [
+   "/api/ws-ticket",
+   "status.read"
+  ],
+  [
+   "/api/status",
+   "status.read"
+  ],
+  [
+   "/api/ui/",
+   "status.read"
+  ],
+  [
+   "/api/usage",
+   "usage.read"
+  ],
+  [
+   "/api/context",
+   "usage.read"
+  ],
+  [
+   "/ws/term",
+   "term.read"
+  ],
+  [
+   "/ws/desktop",
+   "desktop.use"
+  ],
+  [
+   "/ws",
+   "status.read"
+  ],
+  [
+   "/api/term/open-window",
+   "admin.desktop"
+  ],
+  [
+   "/api/term/mirror-window",
+   "admin.desktop"
+  ],
+  [
+   "/api/term/input",
+   "term.write"
+  ],
+  [
+   "/api/term/key",
+   "term.write"
+  ],
+  [
+   "/api/term/raw",
+   "term.write"
+  ],
+  [
+   "/api/term/resize",
+   "term.write"
+  ],
+  [
+   "/api/term/set-mode",
+   "term.write"
+  ],
+  [
+   "/api/term/",
+   "term.read"
+  ],
+  [
+   "/api/files/upload",
+   "files.write"
+  ],
+  [
+   "/api/files/write",
+   "files.write"
+  ],
+  [
+   "/api/files/delete",
+   "files.write"
+  ],
+  [
+   "/api/files/rename",
+   "files.write"
+  ],
+  [
+   "/api/files/mkdir",
+   "files.write"
+  ],
+  [
+   "/api/files/",
+   "files.read"
+  ],
+  [
+   "/api/orch/",
+   "orch.run"
+  ],
+  [
+   "/api/ucli/ask",
+   "session.chat"
+  ],
+  [
+   "/api/_internal/",
+   "admin.config"
+  ],
+  [
+   "/api/chat-backup",
+   "admin.config"
+  ],
+  [
+   "/api/ucli/metrics",
+   "status.read"
+  ],
+  [
+   "/api/uzakgoz/freshness",
+   "status.read"
+  ],
+  [
+   "/api/ucli/checks-mode",
+   "session.control"
+  ],
+  [
+   "/api/ucli/checks",
+   "admin.config"
+  ],
+  [
+   "/api/ucli/approvals",
+   "session.chat"
+  ],
+  [
+   "/api/agents/",
+   "agents.use"
+  ],
+  [
+   "/api/register",
+   "session.create"
+  ],
+  [
+   "/api/adopt",
+   "fleet.admin"
+  ],
+  [
+   "/api/instances/",
+   "fleet.admin"
+  ],
+  [
+   "/api/snapshot",
+   "fleet.admin"
+  ],
+  [
+   "/api/start",
+   "session.control"
+  ],
+  [
+   "/api/stop",
+   "session.control"
+  ],
+  [
+   "/api/retire",
+   "session.control"
+  ],
+  [
+   "/api/reactivate",
+   "session.control"
+  ],
+  [
+   "/api/close",
+   "session.control"
+  ],
+  [
+   "/api/handover",
+   "session.control"
+  ],
+  [
+   "/api/compact",
+   "session.control"
+  ],
+  [
+   "/api/new-chat",
+   "session.control"
+  ],
+  [
+   "/api/edit",
+   "session.control"
+  ],
+  [
+   "/api/session/activate",
+   "session.control"
+  ],
+  [
+   "/api/live-model",
+   "session.control"
+  ],
+  [
+   "/api/live-effort",
+   "session.control"
+  ],
+  [
+   "/api/hosts",
+   "admin.hosts"
+  ],
+  [
+   "/api/steward/",
+   "steward.use"
+  ],
+  [
+   "/api/layout",
+   "admin.desktop"
+  ],
+  [
+   "/api/vscode/",
+   "admin.desktop"
+  ],
+  [
+   "/api/desktop/",
+   "desktop.use"
+  ],
+  [
+   "/api/audio/",
+   "desktop.use"
+  ],
+  [
+   "/api/settings",
+   "admin.config"
+  ],
+  [
+   "/api/cli/",
+   "admin.config"
+  ],
+  [
+   "/api/diag/",
+   "admin.config"
+  ],
+  [
+   "/api/io/",
+   "admin.config"
+  ],
+  [
+   "/api/labels",
+   "admin.config"
+  ],
+  [
+   "/api/periodic",
+   "admin.config"
+  ],
+  [
+   "/api/session/facts",
+   "status.read"
+  ],
+  [
+   "/api/session/graphical",
+   "admin.desktop"
+  ],
+  [
+   "/api/ucli/",
+   "admin.config"
+  ],
+  [
+   "/desktop/",
+   "desktop.use"
+  ],
+  [
+   "/api/session/lock",
+   "admin.config"
+  ],
+  [
+   "/api/session/unlock",
+   "admin.config"
+  ],
+  [
+   "/v1/",
+   "session.chat"
+  ],
+  [
+   "/q/",
+   "steward.answer"
+  ],
+  [
+   "/",
+   "status.read"
+  ]
+ ],
+ "unmapped": "admin.unmapped"
+}
