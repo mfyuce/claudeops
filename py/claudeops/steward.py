@@ -1207,6 +1207,56 @@ def find_open_topic(questions: List["Question"], project: str, text: str,
     return best
 
 
+# 25 Kas (iso canlı): aynı soru açıkken yeniden açılıyordu. (1) günlük paused süpürmesi 24 saatte bir sorar, `find_open_similar`
+# penceresi de 24 saat: pencere hep dolmuş oluyordu; (2) aynı soru cümlesi farklı girişle yazılınca Jaccard 0,46, tek konu jetonu yetmiyor.
+_PAUSED_SWEEP_RE = re.compile(r"^\S+ duraklatılmış, TODO\.md'sinde \d+ açık madde var\. Açayım mı\?$")
+# Yalnız SAYIM değeri ("14 açık madde"); kimlik/bölüm numarası ("TBD#12", "Faz 2", "soru 3") farklı soru demektir, dokunulmaz.
+_COUNT_RE = re.compile(r"(?<![\w#.,-])\d+(?=\s+(?:açık\s+|open\s+)?(?:madde|karar|soru|bulgu|dosya|kayıt|item|decision|question|finding|file)\w*)")
+SAME_SENTENCE_MIN_SIMILARITY = 0.4      # aynı soru cümlesi + metnin geri kalanı da en az bu kadar benzer ("... Commit edeyim mi?" tek başına yetmez)
+
+
+def paused_sweep_text(project: str, open_items: Any) -> str:
+    return f"{project} duraklatılmış, TODO.md'sinde {open_items} açık madde var. Açayım mı?"
+
+
+def _question_sentences(text: str) -> set:
+    """Soru işaretiyle biten, en az 3 anlamlı kelimeli cümleler (kelime dizisi olarak)."""
+    out = set()
+    for part in re.split(r"(?<=[.!?;:])\s+|\n", text):
+        if part.rstrip(" \"'`*_)").endswith("?"):
+            words = tuple(_WORD_RE.findall(part.lower()))
+            if sum(1 for w in words if len(w) > 2) >= 3:
+                out.add(words)
+    return out
+
+
+def find_open_same_ask(questions: List["Question"], project: str, text: str,
+                       now: Optional[float] = None) -> Optional["Question"]:
+    """Aynı projede AÇIK ve AYNI soruyu soran kayıt (en yenisi): süpürme sorusu (yaş sınırı yok), yalnız sayım değeri farklı
+    metin, ya da birebir aynı soru cümlesi + benzer metin (`TOPIC_OPEN_WINDOW_SECONDS` içinde)."""
+    now = _now() if now is None else now
+    sweep = bool(_PAUSED_SWEEP_RE.match(text))
+    masked = _COUNT_RE.sub("#", " ".join(text.split()).lower())
+    mine, sentences = _words(text), _question_sentences(text)
+    found = []
+    for q in questions:
+        if q.status != "open" or q.project != project:
+            continue
+        if sweep and _PAUSED_SWEEP_RE.match(q.text):
+            found.append(q)
+            continue
+        if now - q.created_at > TOPIC_OPEN_WINDOW_SECONDS:
+            continue
+        theirs = _words(q.text)
+        if ("#" in masked and len(mine) >= OPEN_MERGE_MIN_WORDS
+                and masked == _COUNT_RE.sub("#", " ".join(q.text.split()).lower())):
+            found.append(q)
+        elif (sentences & _question_sentences(q.text)
+              and len(mine & theirs) / max(1, len(mine | theirs)) >= SAME_SENTENCE_MIN_SIMILARITY):
+            found.append(q)
+    return max(found, key=lambda q: q.created_at, default=None)
+
+
 def find_answered_hold(questions: List["Question"], project: str, text: str,
                        now: Optional[float] = None) -> Optional["Question"]:
     """L7: aynı projede `TOPIC_HOLD_WINDOW_SECONDS` içinde "bekle / sonra / yeniden sorma" (`HOLD_ANSWER_RE`) diye
@@ -1287,16 +1337,21 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                     return q, "promoted"
                 return q, "same"
         # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
-        sim = None if is_job else find_open_similar(questions, project, text)
+        sim = None if is_job else find_open_same_ask(questions, project, text)
+        newer = sim is not None      # birleşen soruda en yeni metin görünsün
+        if sim is None and not is_job:
+            sim = find_open_similar(questions, project, text)
         if sim is None and not is_job:
             sim = find_open_topic(questions, project, text)
-            if sim is not None:
-                # L7: AYNI KONU, farklı anlatım: en yeni sürüm görünsün (oturum ilerledi), eskisi kaybolmasın (yanlış
-                # birleştirmede sahip iki içeriği de görür). Cevap yeni soranın oturumuna gitsin.
+            newer = sim is not None
+        if sim is not None and newer:
+            # L7: AYNI KONU, farklı anlatım: en yeni sürüm görünsün (oturum ilerledi), eskisi kaybolmasın (yanlış
+            # birleştirmede sahip iki içeriği de görür). Cevap yeni soranın oturumuna gitsin. Süpürme sorusunda eski sayı saklanmaz.
+            if not _PAUSED_SWEEP_RE.match(text):
                 sim.prev_texts = ([sim.text] + list(sim.prev_texts or []))[:TOPIC_PREV_KEEP]
-                sim.text = text
-                if source:
-                    sim.source = source
+            sim.text = text
+            if source:
+                sim.source = source
         if sim is None and not is_job and not routine:
             # L7b: proje başına açık soru sınırı. Sahibe giden (rutin olmayan, iş isteği olmayan) açık soru sayısı sınıra ulaştıysa yeni soru
             # AÇILMAZ: en yeni açık soruya "ek" olarak eklenir (sahip tek yerde okur, tek cevapla kapatır; konu benzerliği düşük olsa da).
@@ -4472,7 +4527,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 n = ow(p.name)
                 actions.append(Action("ask_user", p.name, "paused projenin TODO'suna madde geldi",
                                       {"project": p.name, "options": ["Aç", "Paused kalsın"],
-                                       "text": f"{p.name} duraklatılmış, TODO.md'sinde {n} açık madde var. Açayım mı?"}))
+                                       "text": paused_sweep_text(p.name, n)}))
                 paused_asked[p.name] = now
         if todo_seen:
             st["todo_seen"] = todo_seen
