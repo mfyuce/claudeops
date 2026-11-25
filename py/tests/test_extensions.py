@@ -115,6 +115,36 @@ class LoaderTest(_Isolated):
         self.assertIn("Ayrıca: <yol:satır>", rv.build_review_prompt("p", "/w", "tr", "dry"))
 
 
+class AutoloadInTestsTest(unittest.TestCase):
+    def _blocked(self, argv0, env=None):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(ext.ENV_SWITCH, None)
+            if env is not None:
+                os.environ[ext.ENV_SWITCH] = env
+            with mock.patch.object(sys, "argv", [argv0]):
+                return ext._autoload_blocked(), os.environ.get(ext.ENV_SWITCH)
+
+    def test_test_runners_block_and_children_inherit(self):
+        for a0 in ("python3 -m unittest", "/usr/bin/pytest", "/x/site-packages/pytest/__main__.py"):
+            self.assertEqual(self._blocked(a0), (True, "0"), a0)
+
+    def test_normal_process_loads(self):
+        self.assertEqual(self._blocked("/x/py/claudeops/__main__.py"), (False, None))
+
+    def test_env_switch_wins_both_ways(self):
+        self.assertFalse(self._blocked("python3 -m unittest", env="1")[0])
+        self.assertTrue(self._blocked("/x/cops", env="off")[0])
+
+    def test_installed_package_not_imported_when_blocked(self):
+        with mock.patch.dict(sys.modules), mock.patch.dict(ext._STATE, {"loaded": False}), \
+                mock.patch.object(ext, "_autoload_blocked", return_value=True), \
+                mock.patch.object(ext.importlib, "import_module") as imp:
+            sys.modules.pop(ext.PACKAGE, None)
+            ext.load()
+            imp.assert_not_called()
+            self.assertFalse(ext._STATE["loaded"])       # engel kalıcı durum yazmaz
+
+
 class OneWayDependencyTest(unittest.TestCase):
     def test_core_never_imports_enterprise_directly(self):
         root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "claudeops")

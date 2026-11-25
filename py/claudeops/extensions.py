@@ -15,6 +15,7 @@ import hmac
 import hashlib
 import importlib
 import json
+import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
@@ -352,11 +353,30 @@ def _log(event: str, **kw: Any) -> None:
         pass
 
 
+ENV_SWITCH = "CLAUDEOPS_EXTENSIONS"      # "0"/"off": eklenti otomatik yüklenmez; başka bir değer: yüklenir
+
+
+def _autoload_blocked() -> bool:
+    """Test sürecinde (unittest/pytest) KURULU eklenti kendiliğinden yüklenmez: arka plan iş parçacıkları canlı duruma
+    dokunur. `ENV_SWITCH` her iki yönde de üstündür; engel alt süreçlere de miras kalır."""
+    v = os.environ.get(ENV_SWITCH)
+    if v is not None:
+        return v.strip().lower() in ("0", "off")
+    a0 = sys.argv[0] if sys.argv else ""
+    under_test = (a0.endswith(" -m unittest") or os.path.basename(a0).startswith("pytest")
+                  or os.path.basename(os.path.dirname(a0)) == "pytest")
+    if under_test:
+        os.environ[ENV_SWITCH] = "0"
+    return under_test
+
+
 def load(force: bool = False) -> Dict[str, Any]:
     """`claudeops_enterprise` import edilebiliyorsa `register(api)` çağırır; yoksa sessizce geçer. Idempotent (`force` yeniden dener).
     Döner: {status: absent|loaded|incompatible|error, detail, lenses}."""
     with _LOCK:
         if _STATE["loaded"] and not force:
+            return status()
+        if not force and PACKAGE not in sys.modules and _autoload_blocked():     # testin koyduğu sahte modül engellenmez
             return status()
         _STATE.update(loaded=True, status="absent", detail="")      # lenses KORUNUR: kayıtlı mercek yeniden yüklemede silinmez
         try:
