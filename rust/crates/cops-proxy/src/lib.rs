@@ -1,6 +1,7 @@
 //! D0 saf vekil: dış porttaki HTTP istek ve WebSocket yükseltmelerini Python'un iç portuna aktarır.
 //! Python'a aktarılan isteklerde kimlik, yetki ve yönlendirme KARARI vermez; yalnız başlık temizler ve `X-Forwarded-For` ekler.
 //! İstisnalar: Rust yerel uçları ve uygulama mount'ları (`mount.rs`, `/<id>/` -> derbent): bunlarda kimliği copsd kendisi denetler.
+//! Takılabilir ön süzgeç ([`gate::ForwardFilter`], enterprise) aktarılan istekteki GEÇERSİZ kimlik bilgisini siler (karar yine Python'da).
 
 pub mod gate;
 pub mod mount;
@@ -55,6 +56,7 @@ pub struct MountCfg {
 
 pub struct Proxy {
     local_auth: Option<Arc<dyn gate::LocalAuth>>,
+    forward_filter: Option<Arc<dyn gate::ForwardFilter>>,
     mounts: Option<MountCfg>,
     metrics: Option<MetricsCfg>,
     local: Option<LocalCfg>,
@@ -232,6 +234,78 @@ pub fn strip_panel_cookies(h: &mut hyper::HeaderMap) {
     if !kept.is_empty() {
         if let Ok(v) = HeaderValue::from_str(&kept.join("; ")) {
             h.insert(COOKIE, v);
+        }
+    }
+}
+
+/// Python `str.strip()` boşluğu, başlık baytı Latin-1 okunduğunda (Python `http.server` gibi): `\t\n\v\f\r`, U+001C..U+001F,
+/// boşluk, U+0085, U+00A0.
+fn py_ws(b: u8) -> bool {
+    matches!(b, 0x09..=0x0d | 0x1c..=0x20 | 0x85 | 0xa0)
+}
+
+fn py_trim(mut s: &[u8]) -> &[u8] {
+    while let [f, rest @ ..] = s {
+        if !py_ws(*f) {
+            break;
+        }
+        s = rest;
+    }
+    while let [rest @ .., l] = s {
+        if !py_ws(*l) {
+            break;
+        }
+        s = rest;
+    }
+    s
+}
+
+/// Ön süzgeç kararını uygular ([`gate::CredStrip`]). Atlatılamazlık: TÜM `Authorization` satırları; TÜM `Cookie` satırlarında
+/// adı (Python boşluk kümesiyle kırpılmış, ASCII harf duyarsız) listedeki her parça. Değerler BAYT olarak işlenir (görünmez
+/// ASCII dışı bayt içeren satır atlanmaz). Değişmeyen satır bayt bayt aynı (değişenin baş/son SP/HTAB'ı kırpılır), satır sırası korunur; boşalan satır kalkar.
+pub fn strip_credentials(h: &mut hyper::HeaderMap, s: &gate::CredStrip) {
+    if s.authorization {
+        h.remove(AUTHORIZATION);
+    }
+    if s.cookies.is_empty() || !h.contains_key(COOKIE) {
+        return;
+    }
+    let hit = |part: &[u8]| {
+        let name = part.split(|b| *b == b'=').next().unwrap_or(part);
+        let name = py_trim(name);
+        s.cookies
+            .iter()
+            .any(|c| c.as_bytes().eq_ignore_ascii_case(name))
+    };
+    let mut changed = false;
+    let mut out: Vec<HeaderValue> = Vec::new();
+    for v in h.get_all(COOKIE).iter() {
+        let parts: Vec<&[u8]> = v.as_bytes().split(|b| *b == b';').collect();
+        if !parts.iter().any(|p| hit(p)) {
+            out.push(v.clone());
+            continue;
+        }
+        changed = true;
+        let kept: Vec<&[u8]> = parts.into_iter().filter(|p| !hit(p)).collect();
+        if kept.iter().all(|p| py_trim(p).is_empty()) {
+            continue;
+        }
+        let joined = kept.join(&b';');
+        let mut v: &[u8] = &joined;
+        while let [b' ' | b'\t', rest @ ..] = v {
+            v = rest;
+        }
+        while let [rest @ .., b' ' | b'\t'] = v {
+            v = rest;
+        }
+        if let Ok(nv) = HeaderValue::from_bytes(v) {
+            out.push(nv);
+        }
+    }
+    if changed {
+        h.remove(COOKIE);
+        for v in out {
+            h.append(COOKIE, v);
         }
     }
 }
@@ -419,6 +493,7 @@ impl Proxy {
             .build_http();
         Arc::new(Proxy {
             local_auth: None,
+            forward_filter: None,
             mounts: None,
             metrics: None,
             local: None,
@@ -459,6 +534,22 @@ impl Proxy {
             }),
             Err(me) => {
                 eprintln!("copsd: with_local_auth: vekil paylaşılmış, kanca takılmadı");
+                me
+            }
+        }
+    }
+
+    /// Vekillenen istekler için kimlik bilgisi ön süzgecini tak (enterprise, plan §7.3). Takılmazsa aktarılan istek bugünkü gibi.
+    /// Yalnız Python iç portuna aktarılan isteklere uygulanır (WS yükseltmesi dahil); yerel uçlar, statikler ve mount'lar hariç.
+    /// Proxy paylaşılmışsa değişmeden döner ve günlüğe yazar.
+    pub fn with_forward_filter(self: Arc<Self>, f: Arc<dyn gate::ForwardFilter>) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                forward_filter: Some(f),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_forward_filter: vekil paylaşılmış, süzgeç takılmadı");
                 me
             }
         }
@@ -635,6 +726,7 @@ impl Proxy {
             .build_http();
         Arc::new(Proxy {
             local_auth: None,
+            forward_filter: None,
             mounts: None,
             metrics: None,
             local: None,
@@ -778,6 +870,10 @@ impl Proxy {
         let mut req = req;
         if let Some(r) = self.try_local(&req, peer).await {
             return Ok(r);
+        }
+        if let Some(f) = &self.forward_filter {
+            let strip = gate::forward_check(f.clone(), request_view(&req, peer)).await;
+            strip_credentials(req.headers_mut(), &strip);
         }
         req.headers_mut().remove("x-cops-front");
         drop_untrusted_client_ip(req.headers_mut(), peer);

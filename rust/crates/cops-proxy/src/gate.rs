@@ -3,6 +3,9 @@
 //!
 //! [`LocalAuth`]: yerel uçların (Rust'ın kendi cevapladığı uçlar) kararını dışarıdan takılan bir sağlayıcıya veren en küçük
 //! kanca. Takılmamışsa ya da [`LocalVerdict::Default`] dönerse bugünkü `web.token` yolu AYNEN çalışır.
+//!
+//! [`ForwardFilter`]: Python'a aktarılan isteklerdeki kimlik bilgisini aktarmadan önce süzen kanca ([`CredStrip`]: silinecek
+//! `Authorization` ve çerez adları; silme işini çekirdek [`crate::strip_credentials`] yapar). Takılmamışsa istek bayt bayt aynı.
 
 use cops_auth::authz::{
     AuditSink, Authenticator, Authorizer, BoxFut, Principal, RequestView, Resource,
@@ -83,6 +86,44 @@ pub async fn local_decide(hook: Arc<dyn LocalAuth>, view: RequestView) -> LocalV
     )
     .await
     .unwrap_or(LocalVerdict::Unauthorized)
+}
+
+/// Vekillenen (Python'a aktarılan) isteğin kimlik bilgisi süzme kararı. Varsayılan: hiçbir şey silinmez.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CredStrip {
+    /// `true`: TÜM `Authorization` satırları silinir.
+    pub authorization: bool,
+    /// Adı (Python `strip()` boşluk kümesiyle kırpılmış, ASCII büyük/küçük harf duyarsız) bu listede olan TÜM çerez parçaları
+    /// TÜM `Cookie` satırlarından silinir; boşalan satır kalkar. Dokunulmayan satır bayt bayt aynı kalır.
+    pub cookies: Vec<String>,
+}
+
+impl CredStrip {
+    pub fn is_noop(&self) -> bool {
+        !self.authorization && self.cookies.is_empty()
+    }
+}
+
+/// Vekillenen istekler için kimlik bilgisi ön süzgeci (enterprise; plan §7.3). Takılmamışsa istek bugünkü gibi aktarılır.
+/// Süzgeç 401 DÖNMEZ: geçersiz bulduğunu siler, yanıt biçimi Python'da kalır.
+pub trait ForwardFilter: Send + Sync {
+    fn check<'a>(&'a self, view: &'a RequestView) -> BoxFut<'a, CredStrip>;
+    /// [`check`](ForwardFilter::check) panikler ya da [`DECISION_TIMEOUT`]'u aşarsa uygulanan süzme (fail-closed). Her istekte
+    /// `check`'ten ÖNCE hesaplanır: engellemez, G/Ç ve yan etki yok.
+    fn on_failure(&self, view: &RequestView) -> CredStrip;
+}
+
+/// Süzgeci ayrı görevde, [`DECISION_TIMEOUT`] sınırıyla çağırır; panik ya da süre aşımı = `on_failure`.
+pub async fn forward_check(f: Arc<dyn ForwardFilter>, view: RequestView) -> CredStrip {
+    let fail = f.on_failure(&view);
+    let task = tokio::spawn(async move { f.check(&view).await });
+    bounded(
+        task,
+        Instant::now() + DECISION_TIMEOUT,
+        "authz_forward_filter_failed",
+    )
+    .await
+    .unwrap_or(fail)
 }
 
 impl Gate {

@@ -6,7 +6,8 @@
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
-//! kimlik/yetki kancası ([`cops_proxy::gate::LocalAuth`]) takabilir; kanca `None` ise davranış `copsd` ile aynıdır.
+//! kimlik/yetki kancası ([`cops_proxy::gate::LocalAuth`]), [`run_with_hooks`] ile ek olarak vekillenen istek ön süzgeci
+//! ([`cops_proxy::gate::ForwardFilter`]) takabilir; kanca yoksa davranış `copsd` ile aynıdır.
 use std::future::Future;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -52,9 +53,18 @@ fn read_secret() -> Result<Option<String>, String> {
     }
 }
 
+/// Takılabilir kancalar (hepsi isteğe bağlı; `Default` = hiçbiri: davranış `copsd` ile aynı).
+#[derive(Default)]
+pub struct Hooks {
+    /// Yerel uç kimlik/yetki kancası.
+    pub local_auth: Option<Arc<dyn cops_proxy::gate::LocalAuth>>,
+    /// Python'a aktarılan istekler için kimlik bilgisi ön süzgeci.
+    pub forward_filter: Option<Arc<dyn cops_proxy::gate::ForwardFilter>>,
+}
+
 /// `copsd` ikilisi: kanca yok.
 pub async fn run() -> std::io::Result<()> {
-    run_with(|_| async { None }).await
+    run_with_hooks(|_| async { Hooks::default() }).await
 }
 
 /// `hook`: dinlemeye başlamadan hemen önce bir kez çağrılır (`--once` kipinde çağrılmaz). `None` = kanca yok.
@@ -62,6 +72,22 @@ pub async fn run_with<F, Fut>(hook: F) -> std::io::Result<()>
 where
     F: FnOnce(Ctx) -> Fut,
     Fut: Future<Output = Option<Arc<dyn cops_proxy::gate::LocalAuth>>>,
+{
+    run_with_hooks(|ctx| async move {
+        Hooks {
+            local_auth: hook(ctx).await,
+            forward_filter: None,
+        }
+    })
+    .await
+}
+
+/// [`run_with`] + vekillenen istek ön süzgeci. `hooks`: dinlemeye başlamadan hemen önce bir kez çağrılır (`--once` kipinde
+/// çağrılmaz).
+pub async fn run_with_hooks<F, Fut>(hooks: F) -> std::io::Result<()>
+where
+    F: FnOnce(Ctx) -> Fut,
+    Fut: Future<Output = Hooks>,
 {
     let listen: SocketAddr = arg("--listen")
         .or_else(|| std::env::var("COPSD_LISTEN").ok())
@@ -221,13 +247,17 @@ where
             proxy
         }
     };
-    let proxy = match hook(Ctx {
+    let h = hooks(Ctx {
         upstream: up,
         front_secret: Some(front_secret).filter(|s| !s.is_empty()),
     })
-    .await
-    {
+    .await;
+    let proxy = match h.local_auth {
         Some(h) => proxy.with_local_auth(h),
+        None => proxy,
+    };
+    let proxy = match h.forward_filter {
+        Some(f) => proxy.with_forward_filter(f),
         None => proxy,
     };
     cops_proxy::serve(listen, proxy).await
