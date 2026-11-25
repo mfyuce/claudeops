@@ -231,7 +231,10 @@ impl Mounts {
                                 &learned_file,
                                 learned_file.with_extension("json.migrated"),
                             );
-                            eprintln!("copsd: rootrel_learned.json -> SQLite ({} satır)", old.len());
+                            eprintln!(
+                                "copsd: rootrel_learned.json -> SQLite ({} satır)",
+                                old.len()
+                            );
                         }
                         m = old;
                     }
