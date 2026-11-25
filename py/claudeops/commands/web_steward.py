@@ -4025,15 +4025,15 @@ def _oldest_open_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
     return first
 
 
-def _todo_text_of(projects: Dict[str, sw.Project], proj: str) -> str:
-    """Projenin YEREL TODO.md metni; uzak, başkasının dosyası, okunamayan ya da 2 MB üstü = ''."""
+def _doc_text_of(projects: Dict[str, sw.Project], proj: str, fname: str) -> str:
+    """Projenin YEREL `fname` (TODO.md/DONE.md) metni; uzak, başkasının dosyası, okunamayan ya da 2 MB üstü = ''."""
     try:
         p = projects.get(proj)
         if p is None or p.host:
             return ""
         resolve = _cwd_resolver()
         cwd = resolve(proj)
-        real = _doc_path(cwd, "TODO.md")
+        real = _doc_path(cwd, fname)
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES or _todo_owned_by_other(projects, proj, cwd, real, resolve):
             return ""
         with open(real, encoding="utf-8", errors="replace") as f:
@@ -4047,7 +4047,8 @@ def _fresh_note_project(projects: Dict[str, sw.Project], p: sw.Project, lang: st
     try:
         if p.host or not sw._NEXT_NOTE_RE.search(p.notes or ""):
             return p      # not yoksa TODO hiç okunmaz
-        return sw.without_stale_note(p, _todo_text_of(projects, p.name), lang)
+        return sw.without_stale_note(p, _doc_text_of(projects, p.name, "TODO.md"), lang,
+                                     _doc_text_of(projects, p.name, "DONE.md"))
     except Exception as e:      # denetim direktifi/tick'i hiçbir zaman engellemez
         diag_log("stale_note_check_failed", project=p.name, error=repr(e))
         return p
@@ -4255,9 +4256,10 @@ def _claim_check_of(projects: Dict[str, sw.Project]) -> Callable[[str], List[str
             if p is None or p.host or not (p.notes or "").strip():
                 return []
             out: List[str] = []
-            stale = sw.stale_next_note(p.notes, _todo_text_of(projects, proj)) if sw._NEXT_NOTE_RE.search(p.notes) else ""
+            stale = (sw.stale_next_note(p.notes, _doc_text_of(projects, proj, "TODO.md"), _doc_text_of(projects, proj, "DONE.md"))
+                     if sw._NEXT_NOTE_RE.search(p.notes) else "")
             if stale:
-                out.append(f"notta sıradaki iş \"{stale}\" deniyor ama TODO.md'de KAPALI; notu açık bir maddeyle güncelle")
+                out.append(f"notta sıradaki iş \"{stale}\" deniyor ama TODO.md/DONE.md'de KAPALI; notu açık bir maddeyle güncelle")
             claims = sw.note_claims(p.notes)
             if claims["pids"] or claims["gate"]:
                 cwd = _cwd_resolver()(proj)
