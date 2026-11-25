@@ -3663,14 +3663,21 @@ def _no_usage_row(cli_name: str) -> dict:
 
 
 def _usage_localized(res: dict, lang: str) -> dict:
-    """`/api/usage` yanıtındaki arka uç notlarını istek diline çevirir (`usage_state` dilden bağımsız tek kopya tutar, TR yazılır).
-    Girdiyi DEĞİŞTİRMEZ."""
+    """`/api/usage` yanıtındaki arka uç metinlerini istek diline çevirir (`usage_state` dilden bağımsız tek kopya tutar, TR yazılır):
+    codex/ucli notu `_NO_USAGE_NOTES`ten, `api:*` satırları girdilerin `label_en`/`detail_en` alanlarından. Girdiyi DEĞİŞTİRMEZ."""
     if lang != "en":
         return res
-    provs = {name: ({**row, "note": _NO_USAGE_NOTES[name]["en"]}
-                    if name in _NO_USAGE_NOTES and isinstance(row, dict) and row.get("reason") == "no_account_usage" else row)
-             for name, row in (res.get("providers") or {}).items()}
-    return {**res, "providers": provs}
+
+    def _row(name: str, row: Any) -> Any:
+        if not isinstance(row, dict):
+            return row
+        if name in _NO_USAGE_NOTES and row.get("reason") == "no_account_usage":
+            row = {**row, "note": _NO_USAGE_NOTES[name]["en"]}
+        if row.get("entries"):
+            row = {**row, "entries": [{**e, "label": e.get("label_en", e.get("label")), "detail": e.get("detail_en", e.get("detail"))}
+                                      if isinstance(e, dict) and "label_en" in e else e for e in row["entries"]]}
+        return row
+    return {**res, "providers": {name: _row(name, row) for name, row in (res.get("providers") or {}).items()}}
 
 
 def _usage_all(only: Optional[set] = None) -> dict:

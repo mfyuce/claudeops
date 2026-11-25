@@ -78,6 +78,27 @@ class Balance(unittest.TestCase):
         self.assertEqual(api_balance.evren("k", fetch=lambda: None)["reason"], "request_failed")
         self.assertEqual(api_balance.evren("k", fetch=lambda: {})["reason"], "parse_failed")
 
+    def test_english_response_translates_api_rows_and_keeps_stored_turkish(self):
+        from claudeops.commands import web
+        q = {"used_tokens": 1, "cap": 10, "daily_limit_tokens": 10, "daily_remaining_tokens": 5, "daily_reset_at": "R",
+             "reset_at": "S", "concurrency_limit": 2}
+        cost = {"today_usd": 1.0, "cap_usd": 16, "pct": 6, "credit_left_usd": 100, "days_left": 3, "credit_until": "2026-12-01",
+                "daily_budget_usd": 33}
+        opener = lambda req, timeout=None: _Resp(b'{"data": {"usage": 1, "limit": 4, "limit_remaining": 3}}')
+        with mock.patch("claudeops.evren_scale.fetch_quota", return_value=q):
+            rows = api_balance.collect({"UCLI_API_KEY": "e", "ANTHROPIC_API_KEY": "a", "OPENROUTER_API_KEY": "o"}, cost, opener)
+        res = {"ok": True, "providers": rows}
+        before = json.dumps(res, ensure_ascii=False)
+        en = web._usage_localized(res, "en")
+        shown = " ".join(f"{e['label']} {e['detail']}" for row in en["providers"].values() for e in row["entries"])
+        for turkish in "çğışöüÇĞİŞÖÜ":
+            self.assertNotIn(turkish, shown)
+        for word in ("kald", "tavan", "limit yok", "harcand", "Kredi", "Anahtar"):
+            self.assertNotIn(word, shown)
+        self.assertIn("3 days left (2026-12-01)", shown)
+        self.assertEqual(json.dumps(res, ensure_ascii=False), before)
+        self.assertIn("Günlük kalan (token)", before)
+
     def test_collect_empty(self):
         self.assertEqual(api_balance.collect({}, None), {})
         self.assertEqual(api_balance.collect(None, None), {})
