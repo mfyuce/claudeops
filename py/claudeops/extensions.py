@@ -226,7 +226,8 @@ class RouteRequest:
         self.query: Dict[str, str] = {k: v[0] for k, v in parse_qs(urlparse(handler.path).query).items()}
         self._extra = dict(extra_headers or {})
         self.sent = False
-        self.client_addr = str(handler.client_address[0]) if getattr(handler, "client_address", None) else ""
+        client_ip = getattr(handler, "_client_ip", None)      # ön kapı/tünel arkasında soket eşi hep loopback: güvenilen çözüm
+        self.client_addr = client_ip() if client_ip else (str(handler.client_address[0]) if getattr(handler, "client_address", None) else "")
         self.principal = getattr(handler, "_cur_principal", None)      # K12: çözülmüş kimlik (api yolunda dolu), yoksa None
 
     def header(self, name: str) -> str:

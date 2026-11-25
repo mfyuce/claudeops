@@ -28,6 +28,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import faulthandler
+import ipaddress
 import json
 import mimetypes
 import os
@@ -4778,15 +4779,22 @@ from .. import front as front_mod  # noqa: E402
 
 
 def trusted_forwarded_ip(peer: str, headers, secret: str) -> str:
-    """Saf yardımcı (test edilebilir): güvenilen X-Forwarded-For çözümü, bkz. `_Handler._client_ip`."""
-    if not secret or peer not in ("127.0.0.1", "::1"):
+    """Saf yardımcı (test edilebilir): güvenilen istemci IP çözümü, bkz. `_Handler._client_ip`."""
+    loopback = ("127.0.0.1", "::1")
+    if peer not in loopback:
         return peer
+    ip = peer
     import hmac
     got = headers.get("X-Cops-Front") or ""
-    if not hmac.compare_digest(got.encode(), secret.encode()):
-        return peer
-    xff = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()      # ön kapı kendi eşini SONA ekler/ezer: son değer güvenilir
-    return xff or peer
+    if secret and hmac.compare_digest(got.encode(), secret.encode()):
+        xff = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip()  # ön kapı kendi eşini SONA ekler/ezer: son değer güvenilir
+        ip = xff or peer
+    if ip in loopback:      # aynı makinedeki tünel (cloudflared): gerçek istemci Cf-Connecting-IP'de; copsd uzak eşten gelen bu başlığı siler
+        try:
+            ip = str(ipaddress.ip_address((headers.get("Cf-Connecting-IP") or "").strip()))
+        except ValueError:
+            pass
+    return ip
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -5443,8 +5451,9 @@ class _Handler(BaseHTTPRequestHandler):
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
 
     def _client_ip(self) -> str:
-        """İstemci IP'si. Rust ön kapı (copsd) önündeyken `X-Forwarded-For`a YALNIZ bağlantı loopback'ten gelir VE `X-Cops-Front`
-        başlığı ön kapı gizlisiyle (`CLAUDEOPS_FRONT_SECRET`) eşleşirse güvenilir; aksi halde soket eşi (sahte başlık etkisiz)."""
+        """İstemci IP'si; iletilen başlıklara YALNIZ bağlantı loopback'ten gelirse bakılır. Rust ön kapının (copsd) `X-Forwarded-For`u
+        `X-Cops-Front` gizlisi (`CLAUDEOPS_FRONT_SECRET`) eşleşirse, ardından sonuç hâlâ loopback ise tünelin `Cf-Connecting-IP`si;
+        aksi halde soket eşi (uzak eşin sahte başlığı etkisiz)."""
         peer = str(self.client_address[0]) if getattr(self, "client_address", None) else ""
         return trusted_forwarded_ip(peer, self.headers, front_mod.read_secret())
 

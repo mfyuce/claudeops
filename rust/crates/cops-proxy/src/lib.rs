@@ -112,6 +112,14 @@ pub fn client_https(h: &hyper::HeaderMap, peer: SocketAddr) -> bool {
             .is_some_and(|v| v.trim().eq_ignore_ascii_case("https"))
 }
 
+/// `Cf-Connecting-IP`yi yalnız AYNI makinedeki tünel (loopback eş) söyleyebilir: uzak eşinki silinir (Python giriş hız
+/// sınırı istemci IP'sini bu başlıktan okur; sahtesi sınırı aşmaya yarardı).
+pub fn drop_untrusted_client_ip(h: &mut hyper::HeaderMap, peer: SocketAddr) {
+    if !peer.ip().to_canonical().is_loopback() {
+        h.remove("cf-connecting-ip");
+    }
+}
+
 /// Python web.py ile aynı öznitelikler (`Path=/` panel ile mount arasında aynı çerez geçsin diye); `Secure` yalnız istemci https ise.
 pub fn ext_cookie(value: &str, secure: bool) -> String {
     format!(
@@ -690,6 +698,7 @@ impl Proxy {
             return Ok(r);
         }
         req.headers_mut().remove("x-cops-front");
+        drop_untrusted_client_ip(req.headers_mut(), peer);
         if let Some(sec) = &self.secret {
             req.headers_mut()
                 .insert(HeaderName::from_static("x-cops-front"), sec.clone());
@@ -924,5 +933,25 @@ pub async fn serve(listen: SocketAddr, proxy: Arc<Proxy>) -> std::io::Result<()>
                 .with_upgrades()
                 .await;
         });
+    }
+}
+
+#[cfg(test)]
+mod client_ip_tests {
+    use super::*;
+
+    #[test]
+    fn cf_connecting_ip_survives_only_from_loopback_peer() {
+        for (peer, kept) in [
+            ("127.0.0.1:5", true),
+            ("[::1]:5", true),
+            ("[::ffff:127.0.0.1]:5", true),
+            ("10.0.0.5:5", false),
+        ] {
+            let mut h = hyper::HeaderMap::new();
+            h.insert("cf-connecting-ip", HeaderValue::from_static("203.0.113.7"));
+            drop_untrusted_client_ip(&mut h, peer.parse().unwrap());
+            assert_eq!(h.contains_key("cf-connecting-ip"), kept, "{peer}");
+        }
     }
 }
