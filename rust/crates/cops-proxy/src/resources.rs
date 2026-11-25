@@ -38,7 +38,7 @@ fn unquote(s: &str) -> String {
 }
 
 /// Python `parse_qs`: `=`siz ve boş değerli parçalar atlanır, ad ve değer yüzde çözülür (bozuk kaçış aynen kalır).
-fn parse_qs(query: &str) -> Vec<(String, String)> {
+pub fn parse_qs(query: &str) -> Vec<(String, String)> {
     query
         .split('&')
         .filter_map(|kv| kv.split_once('='))

@@ -1,7 +1,12 @@
 //! Çok kullanıcı kapısı (fail-closed). HENÜZ HİÇBİR UCA BAĞLI DEĞİL: kapı kurulmadıkça yerel uçlar bugünkü
 //! `cops_auth::Token` yolunu kullanır. Kimlik ve yetki sağlayıcısı birlikte verilir (yarım kurulum yok).
+//!
+//! [`LocalAuth`]: yerel uçların (Rust'ın kendi cevapladığı uçlar) kararını dışarıdan takılan bir sağlayıcıya veren en küçük
+//! kanca. Takılmamışsa ya da [`LocalVerdict::Default`] dönerse bugünkü `web.token` yolu AYNEN çalışır.
 
-use cops_auth::authz::{AuditSink, Authenticator, Authorizer, Principal, RequestView, Resource};
+use cops_auth::authz::{
+    AuditSink, Authenticator, Authorizer, BoxFut, Principal, RequestView, Resource,
+};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::Duration;
@@ -49,6 +54,35 @@ async fn bounded<T>(mut task: JoinHandle<T>, deadline: Instant, event: &str) -> 
             None
         }
     }
+}
+
+/// Yerel uç kararı.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalVerdict {
+    /// Sağlayıcı bu isteğe karar vermiyor: bugünkü `web.token` yolu.
+    Default,
+    Allow,
+    /// 401.
+    Unauthorized,
+    /// 403.
+    Forbidden,
+}
+
+/// Yerel uç kimlik/yetki kancası. Çağrı [`local_decide`] ile süre sınırlı ve panik korumalıdır.
+pub trait LocalAuth: Send + Sync {
+    fn decide<'a>(&'a self, view: &'a RequestView) -> BoxFut<'a, LocalVerdict>;
+}
+
+/// Kancayı ayrı görevde, [`DECISION_TIMEOUT`] sınırıyla çağırır: panik ya da süre aşımı = 401 (fail-closed).
+pub async fn local_decide(hook: Arc<dyn LocalAuth>, view: RequestView) -> LocalVerdict {
+    let task = tokio::spawn(async move { hook.decide(&view).await });
+    bounded(
+        task,
+        Instant::now() + DECISION_TIMEOUT,
+        "authz_local_hook_failed",
+    )
+    .await
+    .unwrap_or(LocalVerdict::Unauthorized)
 }
 
 impl Gate {

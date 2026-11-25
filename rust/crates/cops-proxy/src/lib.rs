@@ -54,6 +54,7 @@ pub struct MountCfg {
 }
 
 pub struct Proxy {
+    local_auth: Option<Arc<dyn gate::LocalAuth>>,
     mounts: Option<MountCfg>,
     metrics: Option<MetricsCfg>,
     local: Option<LocalCfg>,
@@ -120,6 +121,36 @@ pub fn drop_untrusted_client_ip(h: &mut hyper::HeaderMap, peer: SocketAddr) {
     if !peer.ip().to_canonical().is_loopback() {
         h.remove("cf-connecting-ip");
     }
+}
+
+/// Kimlik sağlayıcısına verilen salt okunur istek görünümü. Başlık adları küçük harf, sıra istekteki sıra; değer baytları
+/// Latin-1 olarak çözülür (Python `http.server` başlıkları böyle okur). `client_ip` bağlanan eşin adresidir.
+pub fn request_view<B>(req: &Request<B>, peer: SocketAddr) -> cops_auth::authz::RequestView {
+    let ip = peer.ip().to_canonical();
+    cops_auth::authz::RequestView {
+        method: req.method().as_str().to_string(),
+        path: req.uri().path().to_string(),
+        raw_query: req.uri().query().unwrap_or("").to_string(),
+        headers: req
+            .headers()
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.as_str().to_string(),
+                    v.as_bytes().iter().map(|b| char::from(*b)).collect(),
+                )
+            })
+            .collect(),
+        client_ip: ip,
+        peer_loopback: ip.is_loopback(),
+    }
+}
+
+fn forbidden() -> Response<Body> {
+    json_resp(
+        StatusCode::FORBIDDEN,
+        serde_json::json!({"ok": false, "error": "forbidden"}),
+    )
 }
 
 /// Python web.py ile aynı öznitelikler (`Path=/` panel ile mount arasında aynı çerez geçsin diye); `Secure` yalnız istemci https ise.
@@ -387,6 +418,7 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            local_auth: None,
             mounts: None,
             metrics: None,
             local: None,
@@ -414,6 +446,30 @@ impl Proxy {
             local: Some(local),
             ..me
         })
+    }
+
+    /// Yerel uç kimlik/yetki kancasını tak (enterprise). Takılmazsa yerel uçlar yalnız `web.token` kabul eder (bugünkü davranış).
+    /// Kanca yalnız GET yerel uçlarında sorulur (`/api/steward/questions`, `/api/metrics/series|names`); `POST /api/metrics/points`
+    /// makine kimliğiyle (web.token ya da loopback + ön kapı gizlisi) kalır. Proxy paylaşılmışsa değişmeden döner ve günlüğe yazar.
+    pub fn with_local_auth(self: Arc<Self>, hook: Arc<dyn gate::LocalAuth>) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                local_auth: Some(hook),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_local_auth: vekil paylaşılmış, kanca takılmadı");
+                me
+            }
+        }
+    }
+
+    /// Kanca takılı değilse `Default` (bugünkü yol).
+    async fn local_verdict<B>(&self, req: &Request<B>, peer: SocketAddr) -> gate::LocalVerdict {
+        match &self.local_auth {
+            None => gate::LocalVerdict::Default,
+            Some(h) => gate::local_decide(h.clone(), request_view(req, peer)).await,
+        }
     }
 
     /// `/api/metrics/{points,series,names}` uçlarını aç (depo + kimlik).
@@ -468,8 +524,21 @@ impl Proxy {
             .get("x-cops-front")
             .and_then(|v| v.to_str().ok())
             .map(|s| format!("Bearer {s}"));
-        let ok = m.token.authorized(&query, auth.as_deref())
-            || (post && peer.ip().is_loopback() && m.front_secret.authorized("", front.as_deref()));
+        let ok = match if post {
+            gate::LocalVerdict::Default
+        } else {
+            self.local_verdict(&req, peer).await
+        } {
+            gate::LocalVerdict::Default => {
+                m.token.authorized(&query, auth.as_deref())
+                    || (post
+                        && peer.ip().is_loopback()
+                        && m.front_secret.authorized("", front.as_deref()))
+            }
+            gate::LocalVerdict::Allow => true,
+            gate::LocalVerdict::Unauthorized => false,
+            gate::LocalVerdict::Forbidden => return Ok(forbidden()),
+        };
         if !ok {
             return Ok(json_resp(
                 StatusCode::UNAUTHORIZED,
@@ -514,7 +583,11 @@ impl Proxy {
     }
 
     /// Yerel uç eşleşirse yanıt döner (kimlik DENETİMİ dahil); eşleşmezse None = Python'a aktar.
-    async fn try_local(self: &Arc<Self>, req: &Request<Incoming>) -> Option<Response<Body>> {
+    async fn try_local(
+        self: &Arc<Self>,
+        req: &Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Option<Response<Body>> {
         let local = self.local.as_ref()?;
         if req.method() != hyper::Method::GET || req.uri().path() != "/api/steward/questions" {
             return None;
@@ -527,7 +600,13 @@ impl Proxy {
             .headers()
             .get("authorization")
             .and_then(|v| v.to_str().ok());
-        if !local.token.authorized(&query, auth) {
+        let ok = match self.local_verdict(req, peer).await {
+            gate::LocalVerdict::Default => local.token.authorized(&query, auth),
+            gate::LocalVerdict::Allow => true,
+            gate::LocalVerdict::Unauthorized => false,
+            gate::LocalVerdict::Forbidden => return Some(forbidden()),
+        };
+        if !ok {
             return Some(json_resp(
                 StatusCode::UNAUTHORIZED,
                 serde_json::json!({"ok": false, "error": "unauthorized"}),
@@ -555,6 +634,7 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            local_auth: None,
             mounts: None,
             metrics: None,
             local: None,
@@ -696,7 +776,7 @@ impl Proxy {
             Err(r) => r,
         };
         let mut req = req;
-        if let Some(r) = self.try_local(&req).await {
+        if let Some(r) = self.try_local(&req, peer).await {
             return Ok(r);
         }
         req.headers_mut().remove("x-cops-front");
