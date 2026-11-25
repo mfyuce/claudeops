@@ -64,7 +64,9 @@ MIT licensed — see [`LICENSE`](LICENSE).
 
 **Stays up on its own**
 - `py/cops service install` — systemd persistence: the panel and tunnel survive logout and reboot,
-  and restart themselves if they crash
+  and restart themselves if they crash. Re-running it restarts the tunnel only when its unit or script
+  changed or it is not running, so the URL stays put; `--restart-tunnel` forces it (needed after setting up
+  a named tunnel or upgrading `cloudflared`)
 - `py/cops service notify` — a phone push notification (via [ntfy.sh](https://ntfy.sh), no account
   needed) whenever the tunnel URL actually changes, e.g. `claudeops tunnel: https://random-words.trycloudflare.com`
   — delivery isn't guaranteed (Android background restrictions, ntfy.sh's short server-side retention),

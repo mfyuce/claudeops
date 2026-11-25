@@ -5,6 +5,8 @@ WEB_UNIT_TEMPLATE'in üstündeki yorum).
 
 Kullanım:
   py/cops service install [--tunnel-name NAME]   # unit'leri yaz + linger aç + enable+start
+                   [--restart-tunnel]             # tunnel yalnız unit'i/betiği değişince ya da çalışmıyorsa
+                                                  # yeniden başlar; bu bayrak zorlar (URL değişir)
   py/cops service status                          # ikisinin durumu + güncel tunnel URL
   py/cops service uninstall                       # durdur + devre dışı bırak + unit'leri sil
   py/cops service watchdog [--uninstall]          # oomd user@.service'i öldürürse geri açan
@@ -19,7 +21,8 @@ bir Cloudflare hesabı + domain gerekir) + `cloudflared tunnel create <isim>` +
 (data/run-tunnel.sh, install'da ~/.claude/claudeops/'a kopyalanır) bunu OTOMATİK algılar,
 unit'lere veya bu komuta DOKUNMAK GEREKMEZ. Seçilen hostname'i
 ~/.claude/claudeops/tunnel_fixed_hostname.txt'e yazarsan tunnel_url.txt'e de yansır.
-Kurulu değilse (varsayılan durum) sessizce quick-tunnel'a (rastgele URL) düşer.
+Kurulu değilse (varsayılan durum) sessizce quick-tunnel'a (rastgele URL) düşer. Named tunnel'ı SONRADAN kurduysan
+`install --restart-tunnel` (ya da `systemctl --user restart claudeops-tunnel.service`) gerekir.
 
 Web unit'i `bash -ic '<python> -m claudeops web'` ile çalışır (düz `<python> -m claudeops web`
 DEĞİL): systemd --user servisleri `.bashrc`/`.profile`'ı hiç sourcelamaz, PATH'i sadece
@@ -69,6 +72,7 @@ dakika içinde geri getiriyor). Root gerektirdiği için `sudo` şifre soracak �
 denemede ancak çalıştı) tek komut + tek şifre istemi.
 """
 from __future__ import annotations
+import hashlib
 import os
 import shutil
 import subprocess
@@ -83,6 +87,9 @@ WEB_UNIT = SYSTEMD_USER_DIR / "claudeops-web.service"
 TUNNEL_UNIT = SYSTEMD_USER_DIR / "claudeops-tunnel.service"
 RUN_TUNNEL_SRC = Path(__file__).resolve().parents[1] / "data" / "run-tunnel.sh"
 RUN_TUNNEL_DEST = Path(CLAUDEOPS_DIR) / "run-tunnel.sh"
+# Çalışan tunnel'a EN SON uygulanan (unit + run-tunnel.sh) içeriğin özeti: `install` yalnız bu değişince tunnel'ı
+# restart eder (quick-tunnel'da her restart URL'i değiştirir).
+TUNNEL_APPLIED_FILE = Path(CLAUDEOPS_DIR) / "tunnel_applied.sha256"
 TUNNEL_LOG = Path(CLAUDEOPS_DIR) / "tunnel.log"
 TUNNEL_URL_FILE = Path(CLAUDEOPS_DIR) / "tunnel_url.txt"
 NTFY_TOPIC_FILE = Path(CLAUDEOPS_DIR) / "ntfy_topic.txt"
@@ -180,6 +187,9 @@ def register(sub):
                                  "('failed to dial to edge with quic: timeout' döngüsü, canlı "
                                  "bulundu 2026-09-07); boş bırakılırsa cloudflared'ın kendi "
                                  "varsayılanı (değişmez)")
+    p_install.add_argument("--restart-tunnel", action="store_true", dest="restart_tunnel",
+                            help="tunnel'ı unit/betik değişmese de yeniden başlat (named tunnel kurulumu ya da "
+                                 "cloudflared güncellemesi sonrası; quick-tunnel'da URL değişir)")
     p_install.set_defaults(func=run_install)
 
     p_status = s.add_parser("status", help="servislerin durumu + güncel tunnel URL")
@@ -205,6 +215,17 @@ def _sh(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True)
 
 
+def _tunnel_digest(unit: bytes, script: bytes) -> str:
+    return hashlib.sha256(unit + b"\x00" + script).hexdigest()
+
+
+def _read_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
+
+
 def run_install(args) -> int:
     repo_py = str(Path(REPO_DIR) / "py")
     if not (Path(repo_py) / "claudeops").is_dir():
@@ -214,8 +235,16 @@ def run_install(args) -> int:
     Path(CLAUDEOPS_DIR).mkdir(parents=True, exist_ok=True)
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
-    shutil.copyfile(RUN_TUNNEL_SRC, RUN_TUNNEL_DEST)
-    RUN_TUNNEL_DEST.chmod(0o755)
+    # Üzerine yazmadan ÖNCE: işaret yoksa diskteki (uygulanmış varsayılan) hali kaydet; böylece yarıda kalan bir
+    # `install` (ör. check hatası) sonrası ikinci koşu değişikliği hâlâ "uygulanmadı" görür.
+    if not TUNNEL_APPLIED_FILE.exists():
+        TUNNEL_APPLIED_FILE.write_text(_tunnel_digest(_read_bytes(TUNNEL_UNIT), _read_bytes(RUN_TUNNEL_DEST)))
+
+    # Atomik değiştirme: çalışan bash betiği yerinde üzerine yazılırsa okuma konumu bozulur.
+    tmp_script = RUN_TUNNEL_DEST.with_name(RUN_TUNNEL_DEST.name + ".tmp")
+    shutil.copyfile(RUN_TUNNEL_SRC, tmp_script)
+    tmp_script.chmod(0o755)
+    os.replace(tmp_script, RUN_TUNNEL_DEST)
     print(f"✓ {RUN_TUNNEL_DEST}")
 
     WEB_UNIT.write_text(WEB_UNIT_TEMPLATE.format(repo_py=repo_py, python=sys.executable))
@@ -266,12 +295,23 @@ def run_install(args) -> int:
     # daemon-reload oldu ama tünel restart olmadığı için eski (QUIC ile başarısız)
     # cloudflared süreci sessizce çalışmaya devam etti). `restart` fresh-install'da da
     # güvenli (unit henüz çalışmıyorsa start ile aynı davranır).
-    r = _sh("systemctl", "--user", "restart", *UNIT_NAMES)
+    # Tunnel yalnız kendi unit'i/betiği değiştiyse, çalışmıyorsa ya da istenirse restart edilir (URL gereksiz dönmesin).
+    digest = _tunnel_digest(_read_bytes(TUNNEL_UNIT), _read_bytes(RUN_TUNNEL_DEST))
+    web_unit, tunnel_unit = UNIT_NAMES
+    restart_tunnel = (getattr(args, "restart_tunnel", False)
+                      or _read_bytes(TUNNEL_APPLIED_FILE).decode(errors="replace").strip() != digest
+                      or _sh("systemctl", "--user", "is-active", tunnel_unit).stdout.strip() != "active")
+    units = UNIT_NAMES if restart_tunnel else [web_unit]
+    r = _sh("systemctl", "--user", "restart", *units)
     if r.returncode != 0:
         print(f"✗ restart: {r.stderr.strip()}", file=sys.stderr)
         print("  İpucu: port 8765 zaten elle çalışan bir `claudeops web` tarafından kullanılıyor olabilir "
               "— önce onu durdurun (Ctrl-C / kill), sonra tekrar deneyin.", file=sys.stderr)
         return 1
+    if restart_tunnel:
+        TUNNEL_APPLIED_FILE.write_text(digest)
+    else:
+        print("✓ tunnel değişmedi, yeniden başlatılmadı (URL aynı kalır; zorlamak için --restart-tunnel)")
 
     print()
     print("✓ kuruldu ve başlatıldı. Durum için: py/cops service status")

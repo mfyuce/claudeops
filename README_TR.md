@@ -66,7 +66,9 @@ MIT lisanslı — bkz. [`LICENSE`](LICENSE).
 
 **Kendi kendine ayakta kalır**
 - `py/cops service install` — systemd kalıcılığı: panel ve tunnel logout/reboot'ta hayatta kalır,
-  çökerse kendini toplar
+  çökerse kendini toplar. Yeniden çalıştırınca tunnel yalnız unit'i ya da betiği değiştiyse veya çalışmıyorsa
+  yeniden başlar, URL aynı kalır; `--restart-tunnel` zorlar (named tunnel kurduktan ya da `cloudflared`
+  güncelledikten sonra gerekir)
 - `py/cops service notify` — tunnel URL'i GERÇEKTEN değiştiğinde ([ntfy.sh](https://ntfy.sh) üzerinden,
   hesap gerekmez) telefonuna push bildirimi, ör. `claudeops tunnel: https://random-words.trycloudflare.com`
   — ulaşması garanti değil (Android arka-plan kısıtlamaları, ntfy.sh'nin kısa sunucu-taraflı saklama
