@@ -234,7 +234,7 @@ TOOLS: List[Dict[str, Any]] = [
                           "options": {"type": "array", "items": _S, "description": "Up to 6 short choices; omit for a free-text question."}},
                          ["question"])},
     {"name": "steward_answer",
-     "description": "Answer a ROUTINE QUESTION (a project session's process question: when to reopen, which order, which model, with the handover note?) yourself; the engine delivers the answer to the session. Never use it for owner decisions (copyright, spending, commit/push): those stay with the owner.",
+     "description": "Answer a ROUTINE QUESTION (a project session's process question: when to reopen, which order, which model, with the handover note?) yourself; the engine delivers the answer to the session. Never use it for owner decisions (copyright, spending, commit/push): those stay with the owner. Exception: items a tour lists as OWNER QUESTION may be answered with your prediction of the owner's answer; it goes through a gate (shadow mode only records it; a refused answer must not be retried).",
      "inputSchema": _obj({"id": _S, "answer": _S}, ["id", "answer"])},
     {"name": "steward_note",
      "description": "Your own note on a project (replaces the previous one; included in the next directive).",

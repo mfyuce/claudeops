@@ -643,6 +643,9 @@ def cmd_config(args) -> int:
     if field == "mode" and value is not None and args.value not in sw.MODES:
         print(f"hata: mode {' | '.join(sw.MODES)} olmalı")
         return 1
+    if field == "ask_gate" and value is not None and args.value not in ("off", "shadow", "on"):
+        print("hata: ask_gate off | shadow | on olmalı")
+        return 1
     if field == "summary_hour" and value is not None and not (args.value.isdigit() and 0 <= int(args.value) <= 23):
         print("hata: summary_hour 0-23 arası bir saat olmalı")
         return 1

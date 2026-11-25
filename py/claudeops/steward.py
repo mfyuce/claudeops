@@ -287,6 +287,9 @@ class Config:
     history_min_age_minutes: int = 15   # satır eşiği (yedek yol) yalnız bu kadar dakikadan yaşlı oturumda tetikler; 0 = yaşa bakma
     context_warn_tokens_fable: int = 150000   # Fable oturumlarında eşik (token başına daha pahalı: 0 = genel eşiği kullan). NOT: genel eşik (context_warn_tokens) 0 ise Fable eşiği de DEVRE DIŞI (0 = tüm bağlam handover'ı kapalı)
     context_warn_tokens: int = 300000   # oturumun bağlamı (son turun girdi+cache token'ı) bu sayıyı aşarsa handover (0 = kapalı); her tur bağlamın TAMAMI yeniden okunur
+    ask_gate: str = "off"               # beyin STEWARD-ASK sorularını da görsün mü: off | shadow (yalnız kayıt) | on (kapıdan geçen cevap yazılır)
+    ask_gate_threshold: float = 0.7     # kapının güven eşiği (ölçülmedi: gölge tablosundan sonra gözden geçirilecek)
+    ask_gate_owner_projects: str = ""   # virgüllü proje adları: soruları HER ZAMAN sahibe kalır
     auto_context_answer: bool = True    # "bu oturumda mı sürdüreyim, devirle mi" sorusunu motor bağlam ölçümüne bakıp kendisi cevaplar
     drain: bool = False                 # YENİ İŞ ALMA: oturum başlatma (uğrama/cevap-başlatma) ve beyin direktifi durur; çalışan iş, cevap iletimi, devir sürer
     auto_context_ratio: float = 0.7     # bağlam devir eşiğinin bu oranını aşmışsa cevap "önce devir" (altındaysa "bu oturumda sürdür")
@@ -1027,6 +1030,9 @@ REASK_MIN_SIMILARITY = 0.6         # kelime kümesi Jaccard benzerliği eşiği
 TOUR_INLINE_MAX_CHARS = 4000        # tur bundan uzunsa tmux'e gömülmez: dosyaya yazılır, beyne kısa 'şunu oku' mesajı gider (>10K kesiliyordu)
 TOUR_FILES_KEEP = 5
 TOUR_MAX_ITEMS = 8                  # bir turda en çok bu kadar madde (büyük prompt beynin giriş kutusunda takılıyordu); kalanı sonraki tura
+TOUR_MAX_QUESTION_ITEMS = 16        # ASK kapısı açıkken soru maddeleri (rutin + sahip sorusu) için ayrı tavan
+ASK_ITEM_CHARS = 450                # tur metnine giren sahip sorusu uzunluğu (seçenekler ayrıca eklenir)
+BRAIN_ASK_PREFIX = "(sahip adına değnekçi beyni) "
 BLOCKED_ESCALATE_SECONDS = 4 * 3600   # TBD#140: `Takıldım:` (STEWARD-BLOCKED) maddesi beyinde kalır; bu kadar çözülmezse sahibe "beyin çözemedi" olarak düşer
 BLOCKED_TEXT_PREFIX = "Takıldım: "     # `ask_user` STEWARD-BLOCKED metninin öneki (blocked ile rutin soruyu ayırt eder)
 # Sahibe AİT konular: `OWNER_ONLY_RE`nin insan-okunur karşılığı; protokol ve araç kılavuzu BURADAN türer (metin/kod çelişmesin, TBD#140)
@@ -1405,7 +1411,8 @@ ANSWERED_BY = ("owner_phone", "owner_panel", "owner_cli", "cops", "brain", "moto
 ON_BEHALF_PREFIX = "(sahip adına cops) "
 
 
-def answer_question(question_id: str, answer: str, paths: Any = None, by: str = "") -> Optional[Question]:
+def answer_question(question_id: str, answer: str, paths: Any = None, by: str = "",
+                    only_open: bool = False, prefix: str = "") -> Optional[Question]:
     """`by`: ANSWERED_BY değeri (tanınmayan = boş). `cops` ise iletilen cevabın başına kısa `ON_BEHALF_PREFIX` konur ki transkriptte
     sahibin kendi cevabından ayırt edilsin (reviewer "nerede" sorusunda cevap ayrıştırıldığı için önek konmaz)."""
     by = by if by in ANSWERED_BY else ""
@@ -1417,6 +1424,8 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
         questions = load_questions(paths)
         for q in questions:
             if q.id == question_id:
+                if only_open and q.status != "open":
+                    return None      # beyin kapıdayken sahip cevapladı: ezilmez
                 if q.status == "open" and not q.routine and is_defer_answer(answer) \
                         and not any(o.casefold() == " ".join(answer.split()).casefold() for o in q.options):
                     q.deferred_until = _now() + DEFER_SECONDS      # D19: soru AÇIK kalır, oturuma cevap gitmez; 24 sa sonra özette yeniden görünür
@@ -1426,6 +1435,8 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
                 q.answer = resolve_answer(q, answer)[:_MAX_QUESTION_CHARS]
                 if by == "cops" and q.source != review_remote.ASK_SOURCE and not q.answer.startswith(ON_BEHALF_PREFIX):
                     q.answer = (ON_BEHALF_PREFIX + q.answer)[:_MAX_QUESTION_CHARS]
+                if prefix:
+                    q.answer = (prefix + q.answer)[:_MAX_QUESTION_CHARS]
                 q.answered_by = by
                 q.status = "answered"
                 q.answered_at = _now()
@@ -2639,6 +2650,13 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             "other model/effort if needed), steward_stop, steward_answer (ROUTINE QUESTION: answer process questions yourself, do not ask me), steward_ask_user (needs my decision), steward_set_project, "
             "steward_idea_update, steward_register_project, steward_skip. Ask when unsure, never ask what you can decide."
         )
+    if any(it.get("kind") == "ask" for it in items):
+        lines.append("SAHİP SORUSU maddelerinde sahibin ne diyeceğini tahmin edip `steward_answer id cevap` çağır (seçenek varsa "
+                     "seçenek metnini aynen yaz); cevap kapıdan geçer. Karar gerçekten sahibinse ya da emin değilsen `steward_skip`; "
+                     "reddedilen cevabı yeniden deneme." if tr else
+                     "For OWNER QUESTION items predict the owner's answer and call `steward_answer id answer` (copy the option text "
+                     "when there are options); the answer goes through a gate. If it is truly the owner's call or you are unsure, "
+                     "`steward_skip`; never retry a refused answer.")
     if open_qs:
         lines.append("")
         lines.append("Bana sorulmuş, hâlâ cevapsız sorular (tekrar sorma):" if tr else "Open questions already waiting on me (do not re-ask):")
@@ -2651,7 +2669,8 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
         label = {"idle": "BOŞTA" if tr else "IDLE", "review": "GÖZDEN GEÇİR" if tr else "REVIEW",
                  "idea": "FİKİR" if tr else "IDEA", "due": "SIRASI GELDİ" if tr else "DUE",
                  "blocked": "TAKILDI" if tr else "BLOCKED",
-                 "routine": "RUTİN SORU" if tr else "ROUTINE QUESTION"}.get(kind, kind.upper())
+                 "routine": "RUTİN SORU" if tr else "ROUTINE QUESTION",
+                 "ask": "SAHİP SORUSU" if tr else "OWNER QUESTION"}.get(kind, kind.upper())
         lines.append(f"### {n}. {label} — {name or it.get('id', '')}")
         if kind == "idea":
             lines.append(f"id={it.get('id')}  {_clip(it.get('text', ''), 600)}")
@@ -2964,6 +2983,29 @@ def check_note_claims(notes: str, pid_alive: Callable[[int], Optional[bool]],
     return out
 
 
+def cut_tour_items(items: List[Dict[str, Any]], ask_gate: str = "off") -> List[Dict[str, Any]]:
+    """SAF. Bir turda gidecek maddeler: soru/takılma önce. ASK kapısı kapalıyken toplam `TOUR_MAX_ITEMS`; açıkken soru
+    maddeleri (rutin + sahip sorusu) `TOUR_MAX_QUESTION_ITEMS`, diğerleri `TOUR_MAX_ITEMS`."""
+    rank = {"routine": 0, "blocked": 0, "ask": 1}
+    ordered = sorted(items, key=lambda it: rank.get(it.get("kind"), 2))
+    if ask_gate == "off":
+        return ordered[:TOUR_MAX_ITEMS]
+    questions = [it for it in ordered if it.get("kind") in ("routine", "ask")][:TOUR_MAX_QUESTION_ITEMS]
+    others = [it for it in ordered if it.get("kind") not in ("routine", "ask")][:TOUR_MAX_ITEMS]
+    return sorted(questions + others, key=lambda it: rank.get(it.get("kind"), 2))
+
+
+def mark_ask_seen(state: Dict[str, Any], items: List[Dict[str, Any]], now: float) -> None:
+    """Turda gönderilen sahip sorularını `state.ask_seen`e say (soru maddesi yoksa state'e dokunmaz)."""
+    asked = [str(it.get("id")) for it in items if it.get("kind") == "ask"]
+    if not asked:
+        return
+    seen = dict(state.get("ask_seen") or {})
+    for qid in asked:
+        seen[qid] = {"n": int((seen.get(qid) or {}).get("n") or 0) + 1, "at": now}
+    state["ask_seen"] = seen
+
+
 def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Config, now: float,
                  questions: List[Question], ideas: List[Idea], *, skip: Optional[set] = None,
                  last_directive_at: Optional[Dict[str, float]] = None,
@@ -2972,7 +3014,8 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
                  skip_seen: Optional[Dict[str, Any]] = None,
                  sigs_out: Optional[Dict[str, str]] = None,
                  open_work: Optional[Callable[[str], Optional[int]]] = None,
-                 claim_check: Optional[Callable[[str], List[str]]] = None) -> List[Dict[str, Any]]:
+                 claim_check: Optional[Callable[[str], List[str]]] = None,
+                 state: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Beynin yargısını gerektiren maddeler: boşta bekleyen proje oturumu (`idle`), uzun süredir meşgul
     olup gözden geçirilmemiş oturum (`review`), yeni fikir (`idea`), oturuma iletilemeyen cevap
     (`blocked`). `plan_tick` bunu çağırır; elle "tur" (`web_steward.run_tour(force=True)`) de aynı listeyi alır.
@@ -3032,6 +3075,14 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
             items.append({"kind": "routine", "name": q.project or "-", "id": q.id, "age_min": age,
                           "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
                                   + (f" [{age} dk önce soruldu: beklemede, öncelik ver]" if age >= 20 else "") + f": {q.text}"})
+    if cfg.ask_gate != "off":
+        from . import steward_ask
+        for q in questions:
+            if steward_ask.tour_eligible(q, projects, cfg, state or {}, now):
+                opts = f"\nSeçenekler: {_clip(' | '.join(q.options), 120)}" if q.options else ""
+                items.append({"kind": "ask", "name": q.project, "id": q.id,
+                              "text": f"Sahip sorusu [{q.id}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): "
+                                      f"{_clip(q.text, ASK_ITEM_CHARS)}{opts}"})
     stale_ids = {q.id for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running})}
     for q in undelivered_answers(questions):
         if q.id in stale_ids:
@@ -4629,7 +4680,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     sigs: Dict[str, str] = {}
     items = review_items(views, projects, cfg, now, questions, ideas,
                          skip=busy_names | set(ho_pending), last_directive_at=last_directive_at, reviewed_at=reviewed_at,
-                         world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work, claim_check=claim_check)
+                         world=world, skip_seen=skip_seen, sigs_out=sigs, open_work=open_work, claim_check=claim_check, state=st)
     for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running}):      # bayat blokaj kaydı: kapat (her tick beyne düşmesin)
         actions.append(Action("close_stale_answer", q.project, "bayat blokaj kaydı", {"question_id": q.id}))
     # `blocked` maddesinin beynin yapabileceği bir şeyi yok (iletim aracı yok, `skip` kalıcı değil): aynı madde art arda
@@ -4642,8 +4693,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     last_tour = float(st.get("last_tour") or 0.0)
     brain = by_name.get(cfg.brain_name)
     tour_gap = (cfg.tour_retry_minutes if st.get("tour_deferred") else cfg.tour_minutes) * 60
-    fresh_routine = {q.id for q in questions if q.status == "open" and q.routine and q.created_at > last_tour}   # yalnız YENİ rutin soru acil
-    if any((it.get("kind") == "routine" and it.get("id") in fresh_routine)
+    fresh_q = {q.id for q in questions if q.status == "open" and q.created_at > last_tour}   # yalnız YENİ soru maddesi acil
+    if any((it.get("kind") in ("routine", "ask") and it.get("id") in fresh_q)
            or (it.get("kind") == "blocked" and not blocked_tours.get(str(it.get("id"))))
            for it in items):
         tour_gap = min(tour_gap, 60)      # YENİ acil madde (işleyiş sorusu/iletilemeyen cevap): tur aralığını beklemeden bir sonraki tick'te
@@ -4651,7 +4702,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     all_items = list(items)
     total_items = len(items)             # panel sayısı: tur gönderilsin ya da gönderilmesin KESİLMEMİŞ liste (eskiden ≤8 ile tam arasında zıplardı)
     if items and (now - last_tour) >= tour_gap and brain is not None and brain.running and brain.busy is False:
-        items = sorted(items, key=lambda it: 0 if it.get("kind") in ("routine", "blocked") else 1)[:TOUR_MAX_ITEMS]
+        items = cut_tour_items(items, cfg.ask_gate)
+        mark_ask_seen(st, items, now)
         st.pop("tour_deferred", None)
         actions.append(Action("tour", cfg.brain_name, f"{len(items)} madde", {"items": items}))
         for it in items:
@@ -4662,6 +4714,14 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         for it in items:
             if it["kind"] == "review":
                 reviewed_at[it["name"]] = now
+    open_ids = {q.id for q in questions if q.status == "open"}
+    for key in ("ask_seen", "ask_gated"):      # kapanan sorunun kaydı düşer
+        if key in st:
+            kept = {k: v for k, v in dict(st[key] or {}).items() if k in open_ids}
+            if kept:
+                st[key] = kept
+            else:
+                st.pop(key)
     if skip_seen:
         st["skip_seen"] = skip_seen
     else:
@@ -6033,8 +6093,28 @@ def _kind_counts(entries: List[Dict[str, Any]], key: str = "kind") -> str:
     return ", ".join(f"{k} {v}" for k, v in sorted(c.items()))
 
 
+def _ask_gate_lines(events: List[Dict[str, Any]], answered_by: Dict[str, str], en: bool) -> List[str]:
+    """SAF. Günün ASK kapısı kayıtları: beynin sahip adına yazdığı cevaplar (sahip sonradan ezdiyse işaretli) + sayılar."""
+    if not events:
+        return []
+    applied = [e for e in events if e.get("applied")]
+    shadow = [e for e in events if e.get("mode") == "shadow"]
+    denied = len(events) - len(applied) - len(shadow)
+    passed = sum(1 for e in shadow if e.get("allow"))
+    head = (f"- ASK gate: brain answered for the owner {len(applied)}, refused {denied}, shadow {len(shadow)} ({passed} would pass)" if en else
+            f"- ASK kapısı: beyin sahip adına {len(applied)}, kapıdan dönen {denied}, gölge {len(shadow)} (geçerdi {passed})")
+    out = [head]
+    for e in applied:
+        over = answered_by.get(str(e.get("id")), "") not in ("", "brain")
+        mark = (" (overridden by owner)" if en else " (sahip ezdi)") if over else ""
+        out.append(f"  - [{e.get('id')}] {e.get('project')}: {_clip(str(e.get('question') or ''), 120)} → "
+                   f"{_clip(str(e.get('answer') or ''), 120)}{mark}")
+    return out
+
+
 def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
-                  pending: Optional[Dict[str, int]] = None, orphans: Optional[Dict[str, int]] = None) -> str:
+                  pending: Optional[Dict[str, int]] = None, orphans: Optional[Dict[str, int]] = None,
+                  answered_by: Optional[Dict[str, str]] = None) -> str:
     """`log.jsonl` kayıtlarından (o güne ait olanlar süzülür) bir günün özeti — SAF, markdown. Sayılanlar: tick,
     uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
     handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
@@ -6081,6 +6161,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     answers = ev("answer")
     if asks or answers:
         lines.append(f"- {T['questions']}: {len(asks)} {T['opened']}, {len(answers)} {T['answered']}")
+    lines += _ask_gate_lines(ev("ask_gate"), answered_by or {}, lang == "en")
     if ideas:
         lines.append(f"- {T['ideas']}: {len(ideas)} {T['new']}")
     if cards:
@@ -6128,7 +6209,8 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
         orphans = {"servers": int(o.get("servers") or 0), "procs": int(o.get("procs") or 0)}
     except Exception:
         orphans = None
-    return daily_summary(log_entries_for_date(date, paths), date, lang, pending, orphans)
+    return daily_summary(log_entries_for_date(date, paths), date, lang, pending, orphans,
+                         {q.id: q.answered_by for q in load_questions(paths)})
 
 
 def write_daily(date: str, text: str, paths: Any = None) -> str:

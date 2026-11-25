@@ -964,6 +964,7 @@ def steward_config(sid: str = "default") -> "Config":
         pass
     if cfg.lang not in ("tr", "en"):
         cfg.lang = "tr"
+    cfg.ask_gate = cfg.ask_gate.lower() if cfg.ask_gate.lower() in ("shadow", "on") else "off"     # bilinmeyen = kapalı
     if cfg.mode not in MODES:      # bilinmeyen kip = en güvenlisi (hiçbir şeye dokunma)
         cfg.mode = "observe"
     cfg.summary_hour = min(23, cfg.summary_hour)

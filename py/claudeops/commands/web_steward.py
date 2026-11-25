@@ -34,6 +34,8 @@ from .. import hosts as hosts_mod
 from .. import instances as inst_mod
 from .. import review as rv
 from .. import steward as sw
+from .. import steward_ask
+from .. import extensions
 from .. import steward_jobs as sj
 from .. import steward_lessons as sl
 from .. import steward_keepwarm as skw
@@ -2843,6 +2845,7 @@ def ensure_workspace(cfg: Optional[sw.Config] = None) -> str:
     persona = sw.persona_text(shared if cfg.sid == "default" else (cfg.persona_text or shared))
     has_remote = any(pr.host for pr in sw.load_projects(cfg.sid).values())
     text = sw.build_workspace_claude_md(persona, lang=cfg.lang, sid=cfg.sid, label=cfg.label, remote=has_remote, role=cfg.role)
+    text += steward_ask.decisions_section(cfg.lang)
     path = os.path.join(workspace, "CLAUDE.md")
     try:
         with open(path, encoding="utf-8") as f:
@@ -3035,7 +3038,7 @@ GENERIC_DOC_CHARS = 6000     # generic iş listesi için TODO.md/TOBEDECIDED.md 
 def _attach_backlog(it: Dict[str, Any], projects: Dict[str, sw.Project]) -> None:
     """generic tur maddesine `backlog` ({auto, decide}) ekle: kart + YEREL TODO.md/TOBEDECIDED.md başı. Uzak projede
     yerel dosya sistemi okunmaz (yalnız kart). Proje dışı madde (fikir, genel soru) dokunulmaz."""
-    if it.get("kind") in ("idea", "routine") or it.get("name") not in projects:
+    if it.get("kind") in ("idea", "routine", "ask") or it.get("name") not in projects:
         return
     name = str(it["name"])
     todo = tbd = ""
@@ -3111,13 +3114,15 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     projects = sw.load_projects(paths)
     if world is None:
         world = _world(cfg.sid, cfg)
+    manual = items is None
     if items is None:
         state = sw.load_state(paths)
         views = _collect_views(cfg)
         items = sw.review_items(views, projects, cfg, time.time(), sw.load_questions(paths), sw.load_ideas(paths),
                                 skip=set(state.get("ho_pending") or {}),
                                 last_directive_at=state.get("last_directive_at") or {},
-                                reviewed_at=state.get("reviewed_at") or {}, world=world)
+                                reviewed_at=state.get("reviewed_at") or {}, world=world, state=state)
+        items = sw.cut_tour_items(items, cfg.ask_gate) if cfg.ask_gate != "off" else items
         if not items and not force:
             return {"ok": False, "error": "no review items right now"}
     res = brain_start(cfg)
@@ -3133,7 +3138,7 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     enriched = [_enrich_item(it, projects, world) for it in items]
     answered = [q for q in sw.load_questions(paths) if q.status == "answered"]
     for it in enriched:     # karar hafızası: rutin/takılma maddelerine sahibin benzer geçmiş cevapları
-        if it.get("kind") in ("routine", "blocked") and it.get("text") and answered:
+        if it.get("kind") in ("routine", "blocked", "ask") and it.get("text") and answered:
             sims = sw.similar_answers(it["text"], answered, project=it.get("name") if it.get("name") != "-" else "",
                                       exclude_id=str(it.get("id") or ""))
             if sims:
@@ -3151,6 +3156,8 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     with sw.steward_lock(paths):
         state = sw.load_state(paths)
         state["last_tour"] = time.time()
+        if manual:      # zamanlayıcı turu `plan_tick`te sayıldı
+            sw.mark_ask_seen(state, enriched, time.time())
         sw.save_state(state, paths)
     sw.log_event("tour", paths=paths, items=len(enriched), chars=len(prompt), **({"file": tour_file} if tour_file else {}))
     return {"ok": True, "items": len(enriched), "chars": len(prompt)}
@@ -6640,6 +6647,78 @@ def _record_brain_denied(sid: str, qid: str) -> None:
         sw.save_state(state, paths)
 
 
+def _claim_ask_gate(sid: str, qid: str) -> bool:
+    """Soru başına TEK kapı çağrısı: çağrıdan ÖNCE `state.ask_gated`e işaretle (yoksa beyin kapıyla uyuşana dek dener)."""
+    paths = sw.paths_for(sid)
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        gated = dict(state.get("ask_gated") or {})
+        if qid in gated:
+            return False
+        gated[qid] = time.time()
+        state["ask_gated"] = gated
+        sw.save_state(state, paths)
+    return True
+
+
+def _brain_ask_answer(q0: "sw.Question", answer: str, sid: str, cfg: sw.Config) -> Dict[str, Any]:
+    """Beynin SAHİP sorusuna cevabı (`ask_gate` shadow|on). Sahibe ait sınıf kapıya gitmez; kanca yoksa/hata verirse kapalı
+    düşer; `shadow` (ve PANIC) yalnız kayıt; `on` + üç koşul = cevap yalnız soru hâlâ açıksa yazılır."""
+    closed = {"ok": False, "code": "already_answered", "error": "question already answered"}
+    if q0.status != "open":
+        return closed
+    why = steward_ask.blocked_reason(q0, sw.load_projects(sid), cfg)
+    if why:
+        sw.log_event("answer_denied", paths=sid, id=q0.id, project=q0.project, reason=why)
+        _record_brain_denied(sid, q0.id)
+        return {"ok": False, "code": "owner_only", "error": f"owner question ({why}): only the owner answers it"}
+    if not answer:
+        return {"ok": False, "error": "empty answer"}
+    if sw.is_defer_answer(answer):
+        return {"ok": False, "code": "defer_not_allowed", "error": "the brain cannot defer an owner question; use steward_skip"}
+    mode = "shadow" if cfg.ask_gate != "on" or sw.panic_active() else "on"
+    refused = {"ok": False, "code": "gate_denied", "error": "gate refused; the question stays with the owner, do not retry"}
+    if not _claim_ask_gate(sid, q0.id):
+        return {"ok": True, "shadow": True} if mode == "shadow" else refused
+    reply: Dict[str, Any] = {}
+    error = ""
+    gate = extensions.answer_gate()
+    if gate is None:
+        error = "no_gate"
+    else:
+        question = dataclasses.asdict(q0)
+        question.pop("key", None)      # soru sayfasının anahtarı eklentiye verilmez
+        try:
+            res = gate({"sid": sid, "mode": mode, "threshold": cfg.ask_gate_threshold, "question": question, "answer": answer})
+            reply = res if isinstance(res, dict) else {}
+        except Exception as e:          # noqa: BLE001  kapı hatası = kapalı
+            error = f"{type(e).__name__}: {e}"[:200]
+    allow = steward_ask.passes(reply, cfg.ask_gate_threshold)
+    record = {"id": q0.id, "project": q0.project, "mode": mode, "allow": allow, "agree": reply.get("agree"),
+              "confidence": reply.get("confidence"), "risk": reply.get("risk"), "predicted": str(reply.get("predicted") or "")[:200],
+              "question": q0.text[:200], "answer": answer[:200], **({"error": error} if error else {})}
+    if mode == "shadow":
+        sw.log_event("ask_gate", paths=sid, applied=False, **record)
+        return {"ok": True, "shadow": True}
+    if allow:
+        q = sw.answer_question(q0.id, answer, sid, by="brain", only_open=True, prefix=sw.BRAIN_ASK_PREFIX)
+        if q is None:
+            return closed
+        sw.log_event("ask_gate", paths=sid, applied=True, **record)
+        sw.log_event("answer", paths=sid, id=q.id, project=q.project, answered_by=q.answered_by)
+        persisted = _persist_if_due(q, sid)
+        return {"ok": True, "question": dataclasses.asdict(q), **({"persisted": persisted} if persisted else {})}
+    now_q = sw.find_question(q0.id, sid)
+    if now_q is None or now_q.status != "open":
+        return closed
+    sw.log_event("ask_gate", paths=sid, applied=False, **record)
+    _record_brain_denied(sid, q0.id)
+    line = (f"{_ask_prefix(q0.project, sid)} Beyin önerisi: {answer[:200]} | Danış: {record['predicted'] or '-'} "
+            f"(güven {reply.get('confidence', '-')}) | {q0.text[:160]} → {sw.ask_hint(q0.id, sid)}")
+    _notify(cfg, " ".join(line.split()))
+    return refused
+
+
 def _persist_if_due(q: "sw.Question", sid: str) -> Dict[str, str]:
     """Cevaplanmış soru projenin dosyasına yazılmalı mı: evetse `_persist_owner_answer`, değilse {}. TEK kapı: panel, telefon
     sayfası ve CLI aynı kuralı kullanır (beyin yalnız eylem taşıyan, dürtme olmayan cevapta)."""
@@ -6661,6 +6740,10 @@ def http_answer(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     by = "brain" if str(data.get("actor") or "") == "brain" else (str(data.get("by") or "") if str(data.get("by") or "") in ("owner_phone", "owner_panel", "owner_cli", "cops") else "owner_panel")
     if str(data.get("actor") or "") == "brain":
         q0 = next((q for q in sw.load_questions(sw.paths_for(sid)) if q.id == str(data.get("id") or "")), None)
+        if q0 is not None and not q0.routine:
+            cfg = steward_config(sid)
+            if cfg.ask_gate != "off":
+                return _brain_ask_answer(q0, str(data.get("answer") or "").strip(), sid, cfg)
         if q0 is not None:
             ok, why = sw.brain_may_answer(q0)
             if not ok:
@@ -7336,7 +7419,7 @@ UI_CONFIG_INT = {"tick_seconds": (15, 3600), "tour_minutes": (1, 1440), "tour_re
 UI_CONFIG_BOOL = ("drain", "review_auto_verify", "review_store_commit", "review_auto_export", "auto_start")
 
 # Seçenek listeli metin ayarlar. `review_evren_script` kapatma değeri "off" (boş değer anahtarı SİLER, varsayılan "read" geri gelir).
-UI_CONFIG_CHOICE = {"claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "dry", "act"), "wake_gate": ("off", "dry", "act"),
+UI_CONFIG_CHOICE = {"ask_gate": ("off", "shadow", "on"), "claude_idle": ("off", "dry", "act"), "keepwarm": ("off", "dry", "act"), "wake_gate": ("off", "dry", "act"),
                     "review_evren_script": ("read", "off"), "review_evren_autoscale": ("on", "off"), "review_verify_mode": ("session", "self"),
                     # boş değer = claude (save_settings anahtarı siler)
                     "review_verify_provider": ("", "claude", "codex", "evren", "agy"),

@@ -32,9 +32,19 @@ _COMMANDS: Dict[str, Dict[str, Any]] = {}     # K11: CLI alt komutu adı -> {fn,
 UI_EXTENSION_API = 1
 API_EXT_PREFIX = "/api/enterprise/"          # K12: eklenti API önekı (kimlik + eylem kapısı + denetimden geçer)
 _UI_EXTS: Dict[str, Dict[str, Any]] = {}     # K10: id -> {title, assets_dir, roles, entry}
+_ANSWER_GATE: List[Optional[Callable[[Dict[str, Any]], Any]]] = [None]     # ASK kapısı (tek kanca)
 COOKIE_NAME = "cops_ext"
 MAX_BODY = 1_000_000          # `body()` varsayılan sınırı
 HARD_BODY = 64 * 1024 * 1024  # `body(limit=...)` ile istenebilecek en büyük gövde (PDF yükleme gibi)
+
+
+def answer_gate() -> Optional[Callable[[Dict[str, Any]], Any]]:
+    return _ANSWER_GATE[0]
+
+
+def set_answer_gate(fn: Optional[Callable[[Dict[str, Any]], Any]]) -> None:
+    with _LOCK:
+        _ANSWER_GATE[0] = fn
 
 
 class ExtensionAPI:
@@ -48,6 +58,13 @@ class ExtensionAPI:
         rv.register_lens(name, tr, en, format_tr, format_en)
         _STATE["lenses"].append(name)
 
+
+    def register_answer_gate(self, fn: Callable[[Dict[str, Any]], Any]) -> None:
+        """ASK kapısı: `fn({sid, mode, threshold, question, answer}) -> {allow, agree, confidence, risk, predicted}`. Değnekçi
+        beyni sahip sorusuna cevap verince soru başına BİR kez çağrılır; kanca yoksa ya da hata verirse kapalı düşer."""
+        if not callable(fn):
+            raise ValueError("answer gate must be callable")
+        set_answer_gate(fn)
 
     def register_route(self, prefix: str, fn: Callable[["RouteRequest"], None], methods: Any = ("GET",)) -> None:
         """`prefix` ("/reader/") ile başlayan yollar `fn(req)`e gider. Aynı önek yeniden kaydedilirse idempotent (üzerine yazar)."""
