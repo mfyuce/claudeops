@@ -641,6 +641,9 @@ export interface Strings {
   usageNoEndpoint: string;
   usageNoAccount: string;
   usageAuthFailed: string;
+  usageNotInstalled: string;
+  usageAuthRequired: string;
+  usageReadFailed: string;
   usageRequestFailed: string;
   usageCheckedVia: (name: string) => string;
   contextBtn: string;
@@ -1685,6 +1688,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageNoEndpoint: "kalan kota sunulmuyor (sağlayıcı bakiye uç noktası yok; hata değil)",
     usageNoAccount: "kalan kota gösterilmez (bu araçta hesap kotası okunamaz; hata değil, neden aşağıda)",
     usageAuthFailed: "anahtar reddedildi",
+    usageNotInstalled: "bu makinede kurulu değil (ya da servis yolunda bulunamıyor)",
+    usageAuthRequired: "bu makinede CLI girişi yapılmamış",
+    usageReadFailed: "okunamadı",
     usageRequestFailed: "istek başarısız",
     usageCheckedVia: (name) => `${name} üzerinden`,
     contextBtn: "Bağlamı kontrol et",
@@ -2730,6 +2736,9 @@ export const STRINGS: Record<Lang, Strings> = {
     usageNoEndpoint: "no remaining quota offered (provider has no balance endpoint; not an error)",
     usageNoAccount: "remaining quota not shown (this tool exposes no account quota; not an error, reason below)",
     usageAuthFailed: "key was rejected",
+    usageNotInstalled: "not installed on this machine (or not found on the service path)",
+    usageAuthRequired: "the CLI is not signed in on this machine",
+    usageReadFailed: "could not be read",
     usageRequestFailed: "request failed",
     usageCheckedVia: (name) => `via ${name}`,
     contextBtn: "Check context",

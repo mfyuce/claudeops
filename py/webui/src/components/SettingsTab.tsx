@@ -160,6 +160,12 @@ function UsageProviderRow({ cli, result, t }: { cli: string; result: UsageResult
             ? t.usageSendFailed
             : result.reason === "no_account_usage"
               ? t.usageNoAccount
+            : result.reason === "not_installed"
+              ? t.usageNotInstalled
+            : result.reason === "auth_required"
+              ? t.usageAuthRequired
+            : result.reason === "read_failed"
+              ? t.usageReadFailed
             : result.reason === "no_endpoint"
               ? t.usageNoEndpoint
               : result.reason === "auth_failed"

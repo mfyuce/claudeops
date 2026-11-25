@@ -446,6 +446,11 @@ class AgyProvider(CliProvider):
         5 saatlik kalan ve ISO sıfırlanma). Reviewer engelleri AYNI komutu kullanır (`web_review.fetch_agy_usage`)."""
         return [resolved_binary("agy"), "--print=/usage"]
 
+    def usage_auth_missing(self, output: str) -> bool:
+        # 25 Kas yuhem, girişsiz: "Waiting for authentication (timeout 60s)..." / "error: authentication failed or timed out"
+        low = output.lower()
+        return "waiting for authentication" in low or "authentication failed" in low
+
     def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
         return self.parse_usage_text(text)
 

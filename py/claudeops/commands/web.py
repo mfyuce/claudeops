@@ -3453,6 +3453,8 @@ def _usage_fresh(provider) -> Optional[dict]:
     started = time.time() - 2.0
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=USAGE_FRESH_TIMEOUT, env=env, cwd="/tmp", stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired as e:      # giriş yapılmamış CLI OAuth kodu bekleyip zaman aşımına düşer
+        return _usage_auth_row(provider, e.stdout, e.stderr)
     except (OSError, subprocess.SubprocessError):
         return None
     finally:
@@ -3460,8 +3462,14 @@ def _usage_fresh(provider) -> Optional[dict]:
             _prune_usage_transcripts(started)
     entries = provider.parse_fresh_usage(strip_ansi(r.stdout or "")) if r.returncode == 0 else None
     if not entries:
-        return None
+        return _usage_auth_row(provider, r.stdout, r.stderr) if r.returncode != 0 else None
     return {"available": True, "checked_via": "fresh", "entries": entries}
+
+
+def _usage_auth_row(provider, *outputs) -> Optional[dict]:
+    """Başarısız oturumsuz okumanın çıktısı "giriş yok" diyorsa o satır, değilse None. Çıktı (OAuth adresi taşır) saklanmaz."""
+    text = "\n".join(o.decode("utf-8", "replace") if isinstance(o, bytes) else (o or "") for o in outputs)
+    return {"available": False, "reason": "auth_required"} if provider.usage_auth_missing(text) else None
 
 
 _USAGE_TUI_TTL = 1800.0                  # TUI okuması ağır (~15 sn, tmux+CLI açılışı): 30 dk'da bir (sahip 19 Kas: "seyrek yeterli")
@@ -3483,6 +3491,7 @@ def _usage_fresh_tui(provider, now: Optional[float] = None) -> Optional[dict]:
     return None
 
 
+_USAGE_BOX_CHARS = str.maketrans({c: " " for c in "│╭╮╰╯"})      # diyalog kutusu: seçenek satırı `│ ❯ 1. Yes │`
 _USAGE_SOCK_PREFIX = "cops-usage-"
 _USAGE_SOCK_MAX_AGE = 600.0      # bir okuma en çok ~45 sn sürer; 10 dk'dan eski soket yetimdir (panel okuma ortasında öldürüldü/yeniden başlatıldı)
 
@@ -3547,7 +3556,9 @@ def usage_tui_sweep(now: Optional[float] = None, sock_dir: Optional[str] = None)
 
 def _usage_fresh_tui_run(provider) -> Optional[dict]:
     """Oturumsuz okuma, TUI yolu: ayrı tmux soketinde geçici CLI (fleet'e/oturumlara dokunmaz), `/usage` yaz, ekranı oku, kapat.
-    Başarısızlıkta None. Soket HER yolda kapatılır."""
+    Başarısızlıkta None. Soket HER yolda kapatılır. CLI panelin KENDİ boş klasöründe (0700) açılır: güven diyaloğu çıkarsa
+    yalnız "bu oturum için Yes" seçilir (`trust_dialog.handle`); diyalog açıkken ya da istem görünmeden komut YAZILMAZ
+    (25 Kas ulak_31: `/tmp` güvenilir değildi, `/usage` diyaloğa gitip okuma hep düşüyordu)."""
     argv = provider.usage_fresh_tui_argv()
     cmd = provider.usage_command()
     if not argv or not cmd:
@@ -3566,13 +3577,29 @@ def _usage_fresh_tui_run(provider) -> Optional[dict]:
 
     def _screen() -> str:
         return strip_ansi(_t("capture-pane", "-p", "-t", "0").stdout or "")
-    try:
-        r = _t("new-session", "-d", "-x", "200", "-y", "50", "-c", "/tmp", shlex.join(argv))
-        if r.returncode != 0:
-            return None
+    def _dialog_screen(_name: str = "") -> str:
+        return _screen().translate(_USAGE_BOX_CHARS)
+
+    def _ready() -> bool:
         deadline = time.time() + 25
-        while time.time() < deadline and "❯" not in _screen():      # girdi istemi hazır olana dek
+        while time.time() < deadline:
+            res = trust_dialog.handle(sock, registered=True, capture=_dialog_screen,
+                                      send_key=lambda _n, k: _t("send-keys", k), send_raw=lambda _n, k: _t("send-keys", "-l", k),
+                                      strip=lambda s: s, log=diag_log, wait=10.0, step=0.5)
+            if res == "unregistered":       # Yes seçilemedi: kör tuş yok
+                return False
+            text = _dialog_screen()
+            if "❯" in text and not trust_dialog.is_trust_dialog(text):
+                return True
             time.sleep(0.5)
+        return False
+    try:
+        from ..paths import CLAUDEOPS_DIR
+        cwd = os.path.join(CLAUDEOPS_DIR, "usage-cwd")
+        os.makedirs(cwd, mode=0o700, exist_ok=True)
+        r = _t("new-session", "-d", "-x", "200", "-y", "50", "-c", cwd, shlex.join(argv))
+        if r.returncode != 0 or not _ready():
+            return None
         _t("send-keys", "-l", cmd)
         time.sleep(0.5)
         _t("send-keys", "Enter")
@@ -3665,7 +3692,9 @@ def _usage_all(only: Optional[set] = None) -> dict:
         # P0 (23 Kas): CANLI oturuma /usage enjekte eden yedek yol KALDIRILDI (yuhem'de fresh düşünce boştaki oturuma ayarlar
         # penceresi düşüyordu; eskiden de Escape görev kesiyor, masked'a metin karışıyordu). Oturumsuz okuma düşerse
         # yalnız "okunamadı" döner, hiçbir oturuma tmux_send_keys gitmez.
-        out[cli_name] = {"supported": True, "available": False, "reason": "read_failed"}
+        argv = provider.usage_fresh_argv() or provider.usage_fresh_tui_argv()
+        reason = "not_installed" if argv and not shutil.which(argv[0]) else "read_failed"
+        out[cli_name] = {"supported": True, "available": False, "reason": reason}
     if api_thread is not None:
         api_thread.join(timeout=60)
         out.update(api_box)

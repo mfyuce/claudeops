@@ -292,6 +292,10 @@ class CliProvider(ABC):
         `usage_command()` yazılır, ekran `parse_fresh_usage` ile okunur, kapatılır (`web._usage_fresh_tui`). None = yok."""
         return None
 
+    def usage_auth_missing(self, output: str) -> bool:
+        """Başarısız `usage_fresh_argv()` çıktısı "bu makinede giriş yapılmamış" mı diyor. Yalnız canlı görülen metinle override."""
+        return False
+
     def parse_fresh_usage(self, text: str) -> Optional[List[Dict[str, str]]]:
         """`usage_fresh_argv()` çıktısını girdilere çevirir; varsayılan TUI ayrıştırıcısı."""
         return self.parse_usage_text(text)

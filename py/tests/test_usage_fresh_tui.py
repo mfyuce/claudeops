@@ -1,6 +1,8 @@
 """copilot oturumsuz kullanım (TUI yolu): ayrıştırma (canlı ekran fikstürü) + TTL önbelleği. Gerçek tmux/copilot YOK."""
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -56,6 +58,47 @@ class IsolatedNoRealRead(unittest.TestCase):
         from claudeops import paths
         with mock.patch.object(paths, "CLAUDEOPS_DIR", os.path.join(paths.CLAUDE_DIR, "claudeops")):
             self.assertFalse(web._isolated_state())
+
+
+FAKE_CLI = r"""#!/usr/bin/env bash
+log="$(dirname "$0")/log"; pwd >> "$log"
+printf '\u256d\u2500\u2500\u256e\n\u2502 Do you trust the files in this folder?\n\u2502 \u276f 1. Yes\n\u2502   2. Yes, and remember\n\u2502   3. No (Esc)\n'
+IFS= read -r -s -n1 k; [ -z "$k" ] && echo trusted >> "$log" || { echo typed-into-dialog >> "$log"; exit 1; }
+printf '\033[2J\033[H\u276f \n'
+IFS= read -r line; echo "cmd=$line" >> "$log"
+printf '   Plan       \u25a0\u25a0 35%% used \u2022 resets in 11 days\n   530 / 1,500 AIC\n'
+read -r -t 20 _
+"""
+
+
+@unittest.skipUnless(shutil.which("tmux") and shutil.which("bash"), "tmux + bash")
+class RealTmuxTrustDialog(unittest.TestCase):
+    """Güvenilmeyen klasör diyaloğu (25 Kas ulak_31): önce "Yes" (Enter), komut diyalog kapandıktan SONRA; cwd panelin özel klasörü."""
+
+    def test_dialog_accepted_before_command_in_private_cwd(self):
+        from claudeops import paths
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        script = os.path.join(d, "fakecli")
+        with open(script, "w") as f:
+            f.write(FAKE_CLI)
+        os.chmod(script, 0o755)
+
+        class Fake(CopilotProvider):
+            name = "fakecli"
+
+            def usage_fresh_tui_argv(self):
+                return [script]
+        state = os.path.join(d, "state")
+        with mock.patch.object(web, "_isolated_state", return_value=False), mock.patch.object(web, "usage_tui_sweep"), \
+             mock.patch.object(paths, "CLAUDEOPS_DIR", state):
+            res = web._usage_fresh_tui_run(Fake())
+        with open(os.path.join(d, "log")) as f:
+            log = f.read().split()
+        cwd = os.path.join(state, "usage-cwd")
+        self.assertEqual(log, [os.path.realpath(cwd), "trusted", "cmd=/usage"])
+        self.assertEqual(os.stat(cwd).st_mode & 0o777, 0o700)
+        self.assertEqual(res["entries"][0]["percent"], "35")
 
 
 class Sweep(unittest.TestCase):

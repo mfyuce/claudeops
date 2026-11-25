@@ -1,5 +1,6 @@
 """Oturumsuz kullanım okuması (`claude -p /usage`): ayrıştırma + `_usage_all` önce taze yolu dener, olmazsa oturum yoluna düşer."""
 import os
+import subprocess
 import types
 import unittest
 from unittest import mock
@@ -62,9 +63,28 @@ class FreshRun(unittest.TestCase):
         with mock.patch("subprocess.run", side_effect=OSError):
             self.assertIsNone(web._usage_fresh(PROVIDERS["claude"]))
 
+    def test_signed_out_agy_is_auth_required_not_read_failed(self):
+        agy = PROVIDERS["agy"]
+        err = "Waiting for authentication (timeout 60s)...\n"
+        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("agy", 45, stderr=err.encode())):
+            self.assertEqual(web._usage_fresh(agy), {"available": False, "reason": "auth_required"})
+        r = types.SimpleNamespace(returncode=1, stdout="", stderr="error: authentication failed or timed out\n")
+        with mock.patch("subprocess.run", return_value=r):
+            self.assertEqual(web._usage_fresh(agy)["reason"], "auth_required")
+        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("agy", 45)):
+            self.assertIsNone(web._usage_fresh(agy))
+
+    def test_missing_binary_is_not_installed(self):
+        with mock.patch("claudeops.api_balance.collect", return_value={}), \
+             mock.patch.object(web, "_usage_fresh", return_value=None), \
+             mock.patch.object(web, "_usage_fresh_tui", return_value=None), \
+             mock.patch.object(web.shutil, "which", return_value=None):
+            self.assertEqual(web._usage_all({"copilot"})["providers"]["copilot"]["reason"], "not_installed")
+
     def test_usage_all_prefers_fresh_and_skips_sessions(self):
         with mock.patch.object(web, "find_sessions", return_value=[]), \
              mock.patch("claudeops.api_balance.collect", return_value={"api:X": {"supported": True, "available": False, "reason": "no_endpoint"}}), \
+             mock.patch.object(web.shutil, "which", return_value="/usr/bin/x"), \
              mock.patch.object(web, "_usage_fresh", side_effect=lambda p: {"available": True, "checked_via": "fresh", "entries": []} if p.name == "claude" else None):
             out = web._usage_all()["providers"]
         self.assertEqual(out["claude"]["checked_via"], "fresh")
