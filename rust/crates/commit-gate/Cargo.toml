@@ -1,0 +1,8 @@
+[package]
+name = "commit-gate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Git kancası: yeni geliştirme Rust'ta olsun (feat commit'i Python büyütemez)"
+
+[dependencies]
