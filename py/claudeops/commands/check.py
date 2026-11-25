@@ -45,6 +45,20 @@ def run_checks(py_root: Path, python: str = None) -> list:
     return errs
 
 
+def _gate_warnings(repo_root: Path) -> list:
+    """Rust `commit-gate check` ince kancası (kural orada): kurulu mu, gönderilmemiş commit'ler uyuyor mu. Yalnız uyarı."""
+    from .. import paths
+    exe = Path(paths.CLAUDEOPS_DIR) / "bin" / "commit-gate"
+    if not exe.is_file():
+        return ["commit-gate kurulu değil (scripts/commit-gate-install.sh)"]
+    try:
+        r = subprocess.run([str(exe), "check", "--core", str(repo_root)], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return [f"commit-gate çalışmadı: {e}"]
+    lines = r.stderr.strip().splitlines()
+    return lines or ([] if r.returncode == 0 else [f"commit-gate çıkış kodu {r.returncode}"])
+
+
 def register(sub):
     p = sub.add_parser("check", help="deploy öncesi smoke: derleme + import + dist")
     p.set_defaults(func=run)
@@ -60,4 +74,6 @@ def run(args) -> int:
     for fr in (_uf.freshness(), _uf.uzakgoz_freshness()):      # bayat teslim edilmiş ikili: UYARI (hata değil, deploy'u durdurmaz)
         if fr.get("stale"):
             print(f"uyarı: {fr['message']}", file=sys.stderr)
+    for w in _gate_warnings(Path(__file__).resolve().parents[3]):
+        print(f"uyarı: {w}", file=sys.stderr)
     return 1 if errs else 0
