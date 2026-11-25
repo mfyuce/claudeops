@@ -2479,7 +2479,8 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
             compact = _same_life(stored, born, bool(host))
         except Exception:
             compact = False
-    message = sw.build_directive(project, lang=lang, extra=text, answer=answer, more=more, compact=compact,
+    shown = project if compact else _fresh_note_project({project.name: project, **sw.load_projects(paths)}, project, lang)
+    message = sw.build_directive(shown, lang=lang, extra=text, answer=answer, more=more, compact=compact,
                                 paths=paths)
     if not started_here and _wake_gate(cfg, paths, sname, reason, answer, message, actor):
         return {"ok": True, "name": sname, "skipped": "wake_repeat"}
@@ -4024,6 +4025,34 @@ def _oldest_open_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
     return first
 
 
+def _todo_text_of(projects: Dict[str, sw.Project], proj: str) -> str:
+    """Projenin YEREL TODO.md metni; uzak, başkasının dosyası, okunamayan ya da 2 MB üstü = ''."""
+    try:
+        p = projects.get(proj)
+        if p is None or p.host:
+            return ""
+        resolve = _cwd_resolver()
+        cwd = resolve(proj)
+        real = _doc_path(cwd, "TODO.md")
+        if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES or _todo_owned_by_other(projects, proj, cwd, real, resolve):
+            return ""
+        with open(real, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _fresh_note_project(projects: Dict[str, sw.Project], p: sw.Project, lang: str) -> sw.Project:
+    """`sıradaki:` işi TODO.md'de kapanmışsa o satırı uyarıyla değiştirilmiş KOPYA (kayıt değişmez; beyin `claim_check` ile uyarılır)."""
+    try:
+        if p.host or not sw._NEXT_NOTE_RE.search(p.notes or ""):
+            return p      # not yoksa TODO hiç okunmaz
+        return sw.without_stale_note(p, _todo_text_of(projects, p.name), lang)
+    except Exception as e:      # denetim direktifi/tick'i hiçbir zaman engellemez
+        diag_log("stale_note_check_failed", project=p.name, error=repr(e))
+        return p
+
+
 def _open_work_of(projects: Dict[str, sw.Project], skip_cila: bool = False) -> Callable[[str], Optional[int]]:
     """`plan_tick` için: projenin YEREL TODO.md'sindeki açık `- [ ]` satırı sayısı (sahibe bağlı etiketliler hariç; `_scan_todo`).
     None = bilinmiyor (ön-kontrol atlanır, teyit kanıta kalır). Yalnız teyit gelince çağrılır."""
@@ -4225,10 +4254,15 @@ def _claim_check_of(projects: Dict[str, sw.Project]) -> Callable[[str], List[str
             p = projects.get(proj)
             if p is None or p.host or not (p.notes or "").strip():
                 return []
-            if not sw.note_claims(p.notes)["pids"] and not sw.note_claims(p.notes)["gate"]:
-                return []
-            cwd = _cwd_resolver()(proj)
-            return sw.check_note_claims(p.notes, _pid_alive, lambda: _gate_ahead(cwd) if cwd else None)
+            out: List[str] = []
+            stale = sw.stale_next_note(p.notes, _todo_text_of(projects, proj)) if sw._NEXT_NOTE_RE.search(p.notes) else ""
+            if stale:
+                out.append(f"notta sıradaki iş \"{stale}\" deniyor ama TODO.md'de KAPALI; notu açık bir maddeyle güncelle")
+            claims = sw.note_claims(p.notes)
+            if claims["pids"] or claims["gate"]:
+                cwd = _cwd_resolver()(proj)
+                out += sw.check_note_claims(p.notes, _pid_alive, lambda: _gate_ahead(cwd) if cwd else None)
+            return out
         except Exception as e:      # doğrulama beyin turunu hiçbir zaman engellemez
             diag_log("claim_check_failed", project=proj, error=repr(e))
             return []
@@ -4578,9 +4612,11 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             _check_outcomes(cfg, views, paths, t0)        # L5: önceki tick'lerin eylemleri gerçekten sonuç verdi mi
             if sw.load_state(paths).get("act_journal"):
                 _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri
+            # Planlayıcılar `sıradaki:` işi kapanmış notu görmez (kopya; `_apply` ve kayıt yazımı asıl `projects`i kullanır)
+            planning = {n: _fresh_note_project(projects, p, cfg.lang) for n, p in projects.items()}
             with sw.steward_lock(paths):     # state RMW atomik (CLI süreci de aynı dosyaya yazar)
                 prev_state = sw.load_state(paths)
-                actions, new_state = sw.plan_tick(views, projects, prev_state, cfg, t0,
+                actions, new_state = sw.plan_tick(views, planning, prev_state, cfg, t0,
                                                   sw.load_questions(paths), sw.load_ideas(paths), world=world,
                                                   open_work=_open_work_of(projects), open_tbd=_open_tbd_of(projects),
                                                   claim_check=_claim_check_of(projects), todo_sha=_todo_sha_of(projects),
@@ -4597,7 +4633,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 if cfg.mode != "observe":   # observe durumu DEĞİŞTİRMEZ (direktif zamanı işaretlenmez): her tick would: üretebilir
                     new_state = planned_state
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
-                kw_actions, kw_state = skw.plan_keepwarm(views, projects, new_state, cfg, t0, actions, world,
+                kw_actions, kw_state = skw.plan_keepwarm(views, planning, new_state, cfg, t0, actions, world,
                                                               open_work=_open_work_of(projects),
                                                               owner_projects={q.project for q in sw.open_questions(paths=paths) if not q.routine},
                                                               answer_pending={q.project for q in sw.undelivered_answers(paths=paths) if not q.undeliverable})
@@ -4621,7 +4657,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     if nw_ctx["errors"]:        # bekleyen-şey bilgisi eksik: bu tick'te hiçbir şey kapatılmaz (bilinmeyen = iş var say)
                         sw.log_event("no_work_ctx_error", paths=paths, errors=nw_ctx["errors"][:3])
                     else:
-                        nw_actions, new_state = snw.plan_no_work_close(views, projects, new_state, cfg, t0, actions, world,
+                        nw_actions, new_state = snw.plan_no_work_close(views, planning, new_state, cfg, t0, actions, world,
                                                                        open_work=_open_work_of(projects), ctx=nw_ctx)
                         for a in nw_actions:
                             if cfg.no_work_close == "dry":
@@ -4635,7 +4671,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 if cfg.mode != "observe":
                     new_state = planned_state
                 actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
-                idle_actions, new_state = sw.plan_ucli_idle(views, projects, new_state, cfg, t0, actions, world,
+                idle_actions, new_state = sw.plan_ucli_idle(views, planning, new_state, cfg, t0, actions, world,
                                                             open_work=_open_work_of(projects))
                 if cfg.ucli_idle == "dry":
                     for a in idle_actions:          # YALNIZ ölçüm (act kipinde de): oturuma dokunmaz
@@ -4643,7 +4679,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                                      **{k: a.payload.get(k) for k in ("project", "idle_secs", "threshold", "n", "next", "mode", "marker")})
                 else:
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
-                cl_actions, new_state = sw.plan_claude_idle(views, projects, new_state, cfg, t0, actions, world,
+                cl_actions, new_state = sw.plan_claude_idle(views, planning, new_state, cfg, t0, actions, world,
                                                             open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
                                                             todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects),
                                                             has_question=_has_question_of(paths))
@@ -4656,7 +4692,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, dry, new_state = sw.observe_filter(actions, cfg.mode, new_state, t0)
                 actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
                 try:        # "neden ilerlemiyor" (panel proje satırı): motorun bu tick'teki kararlarıyla aynı koşullar; hata tick'i düşürmez
-                    ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, projects, dict(new_state, dialog_stuck=dict(_DIALOG_STUCK), send_fail=dict(_SEND_FAILS)), cfg, t0, sw.load_questions(paths), actions,
+                    ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, planning, dict(new_state, dialog_stuck=dict(_DIALOG_STUCK), send_fail=dict(_SEND_FAILS)), cfg, t0, sw.load_questions(paths), actions,
                                                                          world, open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))}
                 except Exception as e_why:
                     diag_log("steward_explain_idle_failed", sid=sid, error=repr(e_why))

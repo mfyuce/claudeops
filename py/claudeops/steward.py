@@ -5209,6 +5209,57 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
     return "TODO.md'deki ilk açık iş" if n else ""
 
 
+# Proje notundaki `sıradaki:` işi TODO.md'de KAPANMIŞ olabilir (25 Kas: not "TODO.md 632" dedi, madde 22 Kas'ta kapalıydı). Satır numarası
+# kayar (yeni maddeler üste eklenir), o yüzden METİN eşlenir: nottaki işin sözcükleri bir kapalı `[x]` maddede çoksa ve açık maddelerde yoksa bayat.
+_TODO_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s*\[([ ~xX])\]\s*(.*)$")
+_NOTE_WORD_RE = re.compile(r"[\w]{3,}")
+_NOTE_STOPWORDS = frozenset({"todo", "satır", "satir", "madde", "için", "icin", "sıradaki", "siradaki", "next", "the", "and", "bir", "ile"})
+STALE_NOTE_MIN_WORDS = 5        # bundan az ayırt edici sözcüklü not eşlenmez (tahmin yok)
+STALE_NOTE_CLOSED_MIN = 0.6     # sözcüklerin bu kadarı kapalı maddede geçmeli
+STALE_NOTE_MARGIN = 0.2         # en iyi AÇIK madde bundan daha yakınsa iş sürüyor sayılır
+
+
+def _note_words(text: str) -> Set[str]:
+    return {w for w in _NOTE_WORD_RE.findall((text or "").casefold()) if w not in _NOTE_STOPWORDS and not w.isdigit()}
+
+
+def stale_next_note(notes: str, todo_text: str) -> str:
+    """Notun `sıradaki:` işi TODO.md'de kapanmışsa o notun iş metni, yoksa "" (bilinmeyen = bayat DEĞİL). SAF."""
+    for line in (notes or "").splitlines():
+        m = _NEXT_NOTE_RE.search(line)
+        if not m:
+            continue
+        what = re.split(r"[;.,]?\s*(?:neden|reason)\s*:", m.group(1), maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        words = _note_words(what)
+        if len(words) < STALE_NOTE_MIN_WORDS:
+            return ""
+        best = {True: 0.0, False: 0.0}      # kapalı mı -> en iyi örtüşme
+        for ln in (todo_text or "").splitlines():
+            it = _TODO_ITEM_RE.match(ln)
+            if it:
+                closed = it.group(1) in "xX"
+                best[closed] = max(best[closed], len(words & _note_words(it.group(2))) / len(words))
+        stale = best[True] >= STALE_NOTE_CLOSED_MIN and best[True] - best[False] >= STALE_NOTE_MARGIN
+        return clip_words(what, 160) if stale else ""     # yalnız İLK `sıradaki:` satırı (`next_work_hint` ile aynı öncelik)
+    return ""
+
+
+def without_stale_note(proj: Project, todo_text: str, lang: str = "tr") -> Project:
+    """`sıradaki:` işi kapanmışsa o not satırı uyarıyla değiştirilmiş KOPYA (kayıt DEĞİŞMEZ), yoksa aynı nesne. SAF."""
+    what = stale_next_note(proj.notes, todo_text)
+    if not what:
+        return proj
+    warn = (f"Değnekçi notundaki iş TODO.md'de KAPALI görünüyor, onu yapma: «{what}». TODO.md'deki açık işi al." if lang != "en" else
+            f"The job in the steward note looks CLOSED in TODO.md, do not redo it: «{what}». Take an open TODO.md item.")
+    warn = re.sub(r"(?i)s[ıi]radaki|next\s*:", "", warn)      # uyarı yeni bir `sıradaki:` işi sanılmasın
+    lines = proj.notes.splitlines()
+    for i, line in enumerate(lines):
+        if _NEXT_NOTE_RE.search(line):
+            lines[i] = warn
+            break
+    return dataclasses.replace(proj, notes="\n".join(lines))
+
+
 _OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
 
 
