@@ -152,7 +152,8 @@ NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 from .needs_ho import rfh_marker_in
 
-_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# Proje/servis adı: roster adları tire taşıyabilir (`ancient-script-pipeline-fd`); baştaki/sondaki/ardışık tire yok.
+_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$")
 _MAX_QUESTION_CHARS = 2000
 QUESTION_MAX_OPTIONS = 6         # soru seçenekleri (evet/hayır, A/B/C, sonra): telefon sayfasında tek dokunuş
 _MAX_OPTION_CHARS = 80
