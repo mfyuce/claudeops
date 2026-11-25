@@ -68,6 +68,21 @@ class Authz(unittest.TestCase):
         r = front.internal_authz({"method": "GET", "path": "/api/status", "headers": {"Cookie": "sid=bad"}}, "tok")
         self.assertFalse(r["authenticated"])
 
+    def test_resource_steward_reaches_authorizer(self):
+        # Rust `resource.steward` yollar; atılırsa değnekçi sahibi iç uçtan 403 alır (normal yolda izinli).
+        seen = []
+        authz.set_authenticator(lambda v: authz.Principal(uid="ali", roles=("user",), kind="human"))
+        authz.set_authorizer(lambda p, action, res: seen.append(res) or (res.kind == "steward" and res.steward == "default"))
+        r = front.internal_authz({"method": "GET", "path": "/api/steward/questions",
+                                  "resource": {"kind": "steward", "steward": "default"}}, "tok")
+        self.assertTrue(r["allowed"])
+        r = front.internal_authz({"method": "GET", "path": "/api/steward/questions",
+                                  "resource": {"kind": "steward", "steward": "iso"}}, "tok")
+        self.assertFalse(r["allowed"])
+        r = front.internal_authz({"method": "GET", "path": "/api/steward/questions", "resource": {"kind": "steward"}}, "tok")
+        self.assertFalse(r["allowed"])                     # kimlik yoksa fail-closed ("default" varsayılmaz)
+        self.assertEqual([x.steward for x in seen], ["default", "iso", ""])
+
     def test_ws_ticket_fallback_for_ws_paths(self):
         authz.set_authenticator(lambda v: None)
         t = ws_ticket.issue(principal=authz.Principal(uid="u2", roles=("viewer",)))

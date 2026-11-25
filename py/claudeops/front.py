@@ -66,7 +66,7 @@ def trusted_front(peer: str, headers: Mapping[str, str], secret: Optional[str] =
 
 
 def internal_authz(payload: Dict[str, Any], token: str) -> Dict[str, Any]:
-    """Rust'un sorusu: {method, path, query, headers{cookie, authorization}, client_ip, resource?{kind,host,name}} ->
+    """Rust'un sorusu: {method, path, query, headers{cookie, authorization}, client_ip, resource?{kind,host,name,steward}} ->
     {ok, authenticated, principal?{uid,roles,kind,ticket_id}, allowed?, action}. Karar Python'un bugünkü kurallarıyla aynı."""
     from . import authz
     method = str(payload.get("method") or "GET").upper()
@@ -109,7 +109,8 @@ def internal_authz(payload: Dict[str, Any], token: str) -> Dict[str, Any]:
     if p is not None:
         out["principal"] = {"uid": p.uid, "roles": list(p.roles), "kind": p.kind, "ticket_id": p.ticket_id}
         r = payload.get("resource") or {}
-        res = authz.Resource(kind=str(r.get("kind") or "global"), host=str(r.get("host") or ""), name=str(r.get("name") or ""))
+        res = authz.Resource(kind=str(r.get("kind") or "global"), host=str(r.get("host") or ""), name=str(r.get("name") or ""),
+                             steward=str(r.get("steward") or ""))
         out["allowed"] = bool(authz.check(p, action, res))
     return out
 
