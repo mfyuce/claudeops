@@ -37,6 +37,17 @@ const FIELDS: [&str; 10] = [
     "answered_by",
 ];
 
+/// İstek bu uca mı ait: yalnız `all`/`since` biçimi (Danış). Aynı yolun Python sözleşmesi (`status=`, `steward=`, parametresiz;
+/// gövde `{"ok":true,"questions":[...]}`: panel, `mcp_steward`) Python'a aktarılır; bu uç çıplak dizi döndürür.
+pub fn handles(query: &str) -> bool {
+    let keys: Vec<&str> = query
+        .split('&')
+        .map(|kv| kv.split_once('=').map_or(kv, |(k, _)| k))
+        .collect();
+    keys.iter().any(|k| matches!(*k, "all" | "since"))
+        && !keys.iter().any(|k| matches!(*k, "status" | "steward"))
+}
+
 /// `GET /api/steward/questions?sid=&all=1&since=EPOCH` gövdesi: JSON dizisi (id, sid, project, text, options, routine, status,
 /// created_at, answered_at, answer, answered_by). Varsayılan yalnız açık sorular; `all=1` ya da `since` hepsi.
 /// `since` (epoch sn): `created_at` YA DA `answered_at` bu değerden büyük/eşit olanlar. Hata metni `Err`.

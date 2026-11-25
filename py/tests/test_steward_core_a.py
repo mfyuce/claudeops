@@ -1379,7 +1379,7 @@ class MergedAnswersTest(unittest.TestCase):
             os.makedirs(sub)
             f = os.path.join(sub, "agent-x.jsonl")
             open(f, "w").close()
-            with um.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=tr):
+            with um.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=Path(tr)):     # gerçek dönüş tipi
                 self.assertTrue(ws.subagent_active_for("/x", "abc"))
                 old = os.path.getmtime(f) - 1000
                 os.utime(f, (old, old))

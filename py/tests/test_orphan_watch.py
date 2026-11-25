@@ -82,7 +82,27 @@ class P:
         return self._parent
 
 
+class Parent:
+    """`psutil.Process.parent()` gerçekte `.info` taşımaz."""
+
+    def __init__(self, pid, cmdline):
+        self.pid = pid
+        self._cmd = list(cmdline)
+
+    def cmdline(self):
+        return self._cmd
+
+    def parent(self):
+        return None
+
+
 class Procs(unittest.TestCase):
+    def test_app_server_child_skipped_when_parent_has_no_info(self):
+        child = P(10, "codex", 7200, parent=Parent(9, ["codex", "app-server"]))
+        self.assertEqual(self.scan([child]), [])
+        other = P(11, "codex", 7200, parent=Parent(9, ["bash"]))
+        self.assertEqual([p["pid"] for p in self.scan([other])], [11])
+
     def scan(self, procs, known=(), panes=()):
         return ow.scan_procs(known, now=NOW, procs=procs, pane_pids=set(panes))
 

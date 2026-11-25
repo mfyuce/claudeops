@@ -101,6 +101,15 @@ def _is_app_server(cmd: str) -> bool:
     return "app-server" in cmd.split()
 
 
+def _ancestor_cmd(q: Any) -> str:
+    """Ata sürecin komut satırı. `process_iter` yalnız döngüdeki nesnelere `.info` ekler; `parent()` düz `psutil.Process` döner."""
+    try:
+        info = getattr(q, "info", None)
+        return " ".join((info.get("cmdline") if info is not None else q.cmdline()) or [])
+    except Exception:  # noqa: BLE001 — erişim yok / süreç öldü: bilinmiyor
+        return ""
+
+
 def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Optional[Iterable[Any]] = None,
                pane_pids: Optional[Set[int]] = None) -> List[Dict[str, Any]]:
     """Tanınmayan (known_pids ve cops pane ağaçları dışı), yaşı > 1 sa CLI süreçleri. `procs` testte psutil.Process benzeri enjekte edilir."""
@@ -137,7 +146,7 @@ def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Op
                 if q is None:
                     break
                 chain.append(q.pid)
-                if _is_app_server(" ".join(getattr(q, "info", {}).get("cmdline") or [])):
+                if _is_app_server(_ancestor_cmd(q)):
                     helper_child = True
             if helper_child:            # app-server yardımcısının çocuğu ayrı sahipsiz sayılmaz
                 continue

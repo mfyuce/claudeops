@@ -1276,8 +1276,8 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
         pass
     if cli != "claude":     # transkript/alt ajan dosyası yedeği yalnız claude'a özgü; diğerleri yalnız sağlayıcıyı sorar
         return False
-    path = jsonl_path_for(cwd, sid)
-    if not path or not path.endswith(".jsonl"):
+    path = str(jsonl_path_for(cwd, sid) or "")      # sağlayıcı `Path` döndürür
+    if not path.endswith(".jsonl"):
         return False
     d = os.path.join(path[:-len(".jsonl")], "subagents")
     try:

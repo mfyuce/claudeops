@@ -57,20 +57,20 @@ async fn questions_endpoint_is_local_authenticated_and_everything_else_proxies()
 
     let r = raw(
         addr,
-        "GET /api/steward/questions HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        "GET /api/steward/questions?all=1 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
     )
     .await;
     assert!(r.starts_with("HTTP/1.1 401"), "{r}");
     assert!(!r.contains("PYTHON"));
     let r = raw(
         addr,
-        "GET /api/steward/questions?token=yanlis HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        "GET /api/steward/questions?all=1&token=yanlis HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
     )
     .await;
     assert!(r.starts_with("HTTP/1.1 401"), "{r}");
     let r = raw(
         addr,
-        "GET /api/steward/questions?token=sekret HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        "GET /api/steward/questions?all=1&token=sekret HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
     )
     .await;
     assert!(
@@ -79,8 +79,22 @@ async fn questions_endpoint_is_local_authenticated_and_everything_else_proxies()
             && r.contains("\"sid\":\"default\""),
         "{r}"
     );
-    let r = raw(addr, "GET /api/steward/questions?sid=BAD HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer sekret\r\nConnection: close\r\n\r\n").await;
+    let r = raw(addr, "GET /api/steward/questions?all=1&sid=BAD HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer sekret\r\nConnection: close\r\n\r\n").await;
     assert!(r.starts_with("HTTP/1.1 400"), "{r}");
+    // Python sözleşmesi (parametresiz / status / steward) Python'a gider: gövde biçimi farklı
+    for q in [
+        "",
+        "?status=answered",
+        "?status=open&steward=iso",
+        "?all=1&status=open",
+    ] {
+        let r = raw(
+            addr,
+            &format!("GET /api/steward/questions{q} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer sekret\r\nConnection: close\r\n\r\n"),
+        )
+        .await;
+        assert!(r.contains("PYTHON"), "{q}: {r}");
+    }
     // yöntem/yol farkı Python'a gider (POST aynı yol, başka yol)
     let r = raw(addr, "POST /api/steward/questions HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
     assert!(r.contains("PYTHON"), "{r}");

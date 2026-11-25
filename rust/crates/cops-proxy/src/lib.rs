@@ -510,6 +510,9 @@ impl Proxy {
             return None;
         }
         let query = req.uri().query().unwrap_or("").to_string();
+        if !cops_local::handles(&query) {
+            return None;
+        }
         let auth = req
             .headers()
             .get("authorization")
