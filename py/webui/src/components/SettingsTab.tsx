@@ -56,7 +56,7 @@ import { apiSaveSettings, apiUsage, ApiError } from "../api/client";
 import { HostPick } from "./shared/HostPick";
 import { useByok } from "./shared/useByok";
 import { LOCAL_HOST } from "../state/hosts";
-import { describeApiError } from "../api/errors";
+import { describeApiError, describeHostError } from "../api/errors";
 import { friendlyError } from "../api/ucliErrors";
 import { ErrorBox } from "./shared/ErrorBox";
 import { showToast } from "../state/toast";
@@ -232,7 +232,7 @@ function UsageReading({ host }: { host: string }) {
       const res = await apiUsage(lang, false, host);
       setState(res.ok === false ? { kind: "error", message: res.error ?? "" } : { kind: "ok", data: res });
     } catch (e) {
-      setState({ kind: "error", message: describeApiError(e, t) });
+      setState({ kind: "error", message: describeHostError(e, t, host !== LOCAL_HOST) });
     }
   }
 

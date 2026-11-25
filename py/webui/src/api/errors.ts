@@ -37,6 +37,12 @@ export function describeApiError(err: unknown, t: Strings): string {
   return t.requestFailed + message;
 }
 
+/** Host-routed çağrı hatası: eski sürümdeki uzak host yolu tanımaz (404). Genel "tünel/URL geçersiz" metni orada yanıltır. */
+export function describeHostError(err: unknown, t: Strings, remote: boolean): string {
+  if (remote && err instanceof ApiError && err.status === 404) return `${t.requestFailed}${t.hostOutdated} (http 404)`;
+  return describeApiError(err, t);
+}
+
 /** Failure text of an `ok:false` result for a plain string list (bulk actions): a refused start (`code:"spawn_refused"`) is localized like `callAction` does. */
 export function describeResError(res: { error?: string; code?: string; reason?: string }, t: Strings): string {
   if (res.code === "spawn_refused" && res.reason) {

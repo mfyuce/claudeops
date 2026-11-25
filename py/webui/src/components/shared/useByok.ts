@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { apiByok, apiSaveSettings } from "../../api/client";
-import { describeApiError } from "../../api/errors";
+import { describeHostError } from "../../api/errors";
 import { useLang } from "../../i18n/LangContext";
 import { useStatusContext } from "../../state/StatusContext";
 import { LOCAL_HOST } from "../../state/hosts";
@@ -20,11 +20,7 @@ export function useByok(host: string) {
   const [localError, setLocalError] = useState("");
   const local = host === LOCAL_HOST;
 
-  /** Eski sürümdeki host yolu tanımaz (404): "host güncel değil" diye söyle. */
-  const explain = (e: unknown) => {
-    const msg = describeApiError(e, t);
-    return /not found|404/i.test(msg) ? `${msg} (${t.hostOutdated})` : msg;
-  };
+  const explain = (e: unknown) => describeHostError(e, t, !local);
 
   useEffect(() => {
     if (local) return;
