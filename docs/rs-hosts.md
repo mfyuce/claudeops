@@ -3,11 +3,12 @@
 ## Durum (26 Kas 2026, devir anı): BİRLEŞTİRMEYE HAZIR DEĞİL
 
 Kütüphane kodu yazıldı ve derleniyor; `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz;
-`cargo test -p cops-hosts` 70/70 geçiyor (17 birim + 53 sahte sunuculu entegrasyon; art arda 6 koşu, oynak değil).
+`cargo test -p cops-hosts` 102/102 geçiyor (17 birim + 85 sahte sunuculu entegrasyon; art arda 6 koşu, oynak değil).
 Birim: `endpoint`, `guard`, `record`, `flight`, `tier`. Entegrasyon (iş 1, `tests/fake_*.rs`): `http` havuzu ve zaman
 aşımları, `proxy` (vekil, dedup, yükleme/indirme), `sign` (imza kapısı), `net` (REST yolunda DNS-loopback reddi).
 İş 2 (`tests/fake_poller.rs`, `tests/fake_health.rs`): `status`, `federation` (poller/prober REST yolu), `health`.
-`relay`, `push`, `ws`, `grpc` için HİÇ test yok (iş 3); Python parite testi yok (iş 4).
+İş 3 (`tests/fake_ws.rs`, `fake_grpc.rs`, `fake_tls.rs`, `fake_restart.rs`): `relay`, `push`, `ws`, `grpc`, TLS, poller
+takılma/panik. Python parite testi yok (iş 4).
 Test edilmemiş davranış doğrulanmış sayılmaz.
 Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
 
@@ -25,9 +26,10 @@ Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). G
    - imza: her denemede yeni imza, `Unbound`da imza yok, red = 502 ve istek GİTMEZ, panik ve yasak başlık = red.
 2. BİTTİ (26 Kas): poller/health testleri, `tests/fake_poller.rs` (13) + `tests/fake_health.rs` (13); destek
    `support::{MemSource, RecEvents, closed_port, count_path}`. Eşleme aşağıda "İş 2 test eşlemesi".
-3. WS ve gRPC: sahte `/ws`, `/ws/term` (tokio-tungstenite server) ve sahte tonic servisi; sessizlik watchdog'u, ölü
-   relay yeniden kurma, DNS adı loopback'e çözülünce red (sahte `Resolver`). TLS: özel kök ile bir tur.
-   gRPC'de `Dial` + `origin` ile https yolunun gerçekten çalıştığı DOĞRULANMADI.
+3. BİTTİ (26 Kas): destek `support::{ws::WsFake (aynı portta REST + /ws + /ws/term, hyper upgrade, isteğe bağlı TLS),
+   grpc::GrpcFake (tonic, crate'in `pb` mesajlarıyla), tls::Ca (rcgen geçici kök)}`; testler `fake_ws.rs` (18),
+   `fake_grpc.rs` (7), `fake_tls.rs` (5), `fake_restart.rs` (2). Eşleme aşağıda "İş 3 test eşlemesi".
+   gRPC'de `Dial` + `origin` ile https yolu ÇALIŞIYOR (sunucu `:scheme=https` görüyor, `origin` kaldırılınca test düşer).
 4. `tests/parity.rs`: route kümeleri = `web_hosts.py`; her host-routed yol `cops_auth::authz::action_for` ile
    `UNMAPPED` değil; `grpc::pb` alan numaraları = `host_bridge.proto`; hata metinleri = `hosts.ERR`.
 5. Bu belgedeki kontrol listelerini test adlarıyla güncelle, sonra "BİRLEŞTİRMEYE HAZIR".
@@ -139,6 +141,66 @@ Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli da
 - `_probe_facts`: `capabilities` metin gelirse karakterlerine bölünür; Rust dizi olmayanı boş, metin olmayan öğeyi
   atar (Python `str()` ile tutar). `has("exact_target")` sonucu iki tarafta aynı.
 
+### İş 3 test eşlemesi
+
+| Senaryo | Test |
+|---|---|
+| WS yoklaması: 101 yeter, kapanış el sıkışmasıyla kapanır; ret (401/200/kapalı port) = rest; kademe anında yükselir, 5 düşük yoklamada düşer | `fake_ws::ws_probe_raises_tier_at_once_and_lowers_it_only_after_tolerance` |
+| push tüketicili poller: rest kademede tüketici yok; yeni akışın turu REST; veri getiren canlı akışta REST yok; kopunca REST + yeni akış + token'sız ölüm olayı; kademe rest'e düşünce soket kapanır | `fake_ws::poller_skips_rest_only_while_a_live_push_stream_has_delivered_data` |
+| bozuk/ilgisiz kareler (dizi, JSON değil, başka tür, `data` nesne değil, bozuk ikili) akışı öldürmez, veri sayılmaz (REST sürer); JSON ikili kare veri sayılır | `fake_ws::junk_frames_keep_the_stream_alive_but_rest_polling_continues` |
+| durum sessizlik watchdog'u: 44 sn güvenilir, 46 sn'de yenisi + o tur REST, eski soket kapanır, olay; ölüm sayılmaz | `fake_ws::status_silence_watchdog_boundary` (sanal saat yalnız ağsız pencerede) |
+| durum akışı token/adres/grpc_url değişince yeniden kurulur, `extra_urls` değişince KURULMAZ | `fake_ws::status_stream_is_rebuilt_when_address_or_token_changes_not_extra_urls` |
+| term relay: ilk okuma "henüz veri gelmedi", sorgu (name/lang/token), seçenek başına ayrı akış (lite/interval/viewport sorguda), geçersiz aralık yok sayılır, bozuk kare son kareyi ezmez, kayıtsız host | `fake_ws::term_relay_streams_frames_and_keeps_one_stream_per_option_set` |
+| ölü relay donmuş kareyi VERMEZ, 2 sn içinde yeniden kurulmaz, sonra kurulur | `fake_ws::dead_relay_never_serves_its_frozen_frame_and_is_rebuilt_after_min_interval` |
+| sessiz relay 45 sn sınırı, bayat kare verilmez, olay, eski soket kapanır | `fake_ws::silent_relay_is_restarted_after_45s_without_serving_the_stale_frame` |
+| relay kayıt (token/adres) değişince yeniden kurulur, `extra_urls` ile kurulmaz | `fake_ws::relay_is_rebuilt_when_the_host_record_changes` |
+| boştaki relay 10 sn'de biçilir (9 sn'de değil), soket kapanır | `fake_ws::idle_relays_are_reaped_and_their_sockets_closed` |
+| WS mesaj sınırı tam 16 MiB (tek çerçeve ve parçalı mesaj); fazlası akışı öldürür, kare verilmez | `fake_ws::ws_message_limit_is_16_mib_exactly`, `fragmented_ws_message_over_16_mib_is_refused` |
+| taban yolu `/panel/ws`, `/panel/ws/term`; imza taban yollu | `fake_ws::base_path_is_kept_for_ws_and_signed_over_it` |
+| Federation düşünce 60 akışın soketi kapanır, fd sayısı tabana döner; host silinince tur tüketiciyi bırakır | `fake_ws::dropped_streams_close_their_sockets_and_leak_no_fds` |
+| DNS adı loopback'e çözülünce WS yoklaması/relay/durum akışı reddedilir, sunucu kabulü 0; IP literali kontrol | `fake_ws::dns_name_resolving_to_loopback_is_refused_for_ws_before_connecting` |
+| WS el sıkışmasında panel (legacy) kimliğiyle her bağlantıya yeni imza, sorgusuz yol, gövdesiz | `fake_ws::ws_handshake_carries_a_fresh_panel_signature_per_connection` |
+| imza reddi/panik/yasak başlık (connection, upgrade, sec-websocket-*, geçersiz ad) = bağlantı AÇILMAZ (kabul 0) | `fake_ws::ws_signer_refusal_panic_or_bad_header_opens_no_connection` |
+| H18: sunucu Ping'ine Pong, akış bozulmaz; sunucu Close'una istemci Close yanıtı, `stream_ended` | `fake_ws::server_ping_gets_pong_and_server_close_is_acknowledged` |
+| gRPC `Ping` (taşıma + `Bearer` token + servis); yanlış token ws'e düşer (5 düşük yoklama toleransı); grpc_url boşsa bağlantı yok; susan uç 1 sn'de biter; HTTP/1 uç gRPC sayılmaz | `fake_grpc::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` |
+| gRPC durum akışı poller'ı besler (etiket, build, extras süzgeci), canlıyken REST yok, WS açılmaz; sunucu bitirince ölüm (grpc) + REST + yeni akış; URL başına tek kanal | `fake_grpc::grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest` |
+| gRPC term relay: istek (ad, dil), alanlar, `ok:false` güncellemesi | `fake_grpc::grpc_term_relay_serves_frames_and_error_updates` |
+| gRPC mesaj sınırı tam 4 MiB (Python varsayılanı) | `fake_grpc::grpc_message_limit_is_4_mib` |
+| akışlar tek HTTP/2 bağlantıda; Federation düşünce akışlar iptal + TCP kapanır; host silinince kanal bırakılır | `fake_grpc::dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_channel` |
+| gRPC DNS adı loopback'e çözülünce red (kabul 0) | `fake_grpc::grpc_dns_name_resolving_to_loopback_is_refused_before_connecting` |
+| gRPC imzalanmaz (bilinen eşit davranış; reddeden signer hiç çağrılmaz) | `fake_grpc::grpc_calls_are_not_signed_known_parity_with_python` |
+| TLS: özel kökle REST + wss yoklaması + wss term akışı | `fake_tls::wss_and_https_rest_work_with_a_custom_root` |
+| TLS: güvenilmeyen kök, yalnız sistem kökleri, ad uyuşmazlığı: REST/WS reddi, sunucuya HTTP isteği ULAŞMAZ, hata metni temiz | `fake_tls::wrong_root_wrong_name_or_system_roots_refuse_tls_and_send_no_request` |
+| gRPC https: kendi `Dial` (ALPN h2) + `origin` ile `:scheme=https`, `:authority`; yoklama + iki akış tek TLS bağlantısında | `fake_tls::grpc_over_https_works_through_own_dial_and_origin`, `grpc_plain_http_sends_http_scheme` |
+| gRPC TLS: yanlış kök / sistem kökleri / ad uyuşmazlığı reddi, hiçbir çağrı ulaşmaz | `fake_tls::grpc_tls_with_wrong_root_or_name_is_refused_and_no_call_arrives` |
+| poller takılması (adım sınırı > 90 sn): tur 90 sn'de iptal, `stalled:true`, kalp atışı tazelenmez, takılan turların soketi birikmez, host düzelince toparlanır | `fake_restart::stalled_turn_is_cancelled_and_the_poller_restarts_then_recovers` (sanal saat) |
+| panik eden tur sayılır (`stalled:false`), poller yaşar, sonra normal turlar | `fake_restart::panicking_turn_is_counted_and_the_poller_keeps_running` (sanal saat) |
+
+Mutasyonla doğrulandı (21 mutasyon, hepsi düştü; kaynak geri alındı): WS mesaj sınırı (parçalı testle; tek çerçeve
+testini çerçeve sınırı da yakalar), taban yolu, el sıkışma imzası, durum sessizlik denetimi, `has_data`, rest
+kademede tüketiciyi bırakma, `POLLER_STALL` zaman aşımı, kayıt anahtarı karşılaştırması, relay sessizlik denetimi,
+relay 2 sn kuralı, ölü relay'i kaldırma, `PushConsumer` düşünce abort (WS ve gRPC), DNS-loopback peer denetimi (WS ve
+gRPC), gRPC `origin`, gRPC 4 MiB sınırı, `GrpcClient::retain`, boştaki relay biçme, ikili çerçeve ayrıştırma.
+
+Kapanamayanlar (iş 3): gerçek 60+ sn sessiz WS bağlantısının canlılığı (sessizlik zaten 45 sn'de yeniden kurar;
+Python ile aynı); prober'ın kendi takılma yeniden başlatması (`CAPABILITY_PROBE_INTERVAL` zaman aşımı) testsiz:
+yoklamalar kısa zaman aşımlı, takılma üretmek için üretim koduna dikiş gerekirdi; tarayıcı + Python `websockets`
+ikili e2e (H18) copsd entegrasyonunda. Özel ağ http istisnası (iş 2'deki gerekçe).
+
+İş 3'te düzeltilen (Python ile eşitleme, `federation.rs`/`relay.rs`): durum tüketicisinin "uç değişti" anahtarı tüm
+`HostRecord`du (`extra_urls` ya da tanınmayan alan değişince canlı akış kapatılıp yeniden kuruluyordu); artık Python
+R-18 anahtarı `(base_url, grpc_url, token)` + kademe (`StreamEndpoint`). Term relay aynı adres anahtarını kullanır,
+kademe değişimi tek başına relay'i yenilemez (Python gibi; önceki Rust davranışı da buydu).
+Üretim koduna dikiş EKLENMEDİ: özel kök mevcut programatik `Connector.tls` alanıyla verildi (ortam değişkeni/ayar yok),
+doğrulama gevşetilmedi. Dev-bağımlılık: `rcgen 0.14` (`crypto`, `ring`; Cargo.lock'a yalnız test bağımlılıkları).
+
+Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli):
+- `web_hosts._parse_ws_status_frame` / `_parse_ws_term_frame`: JSON dizi/sayı karesi `parsed.get` AttributeError
+  verir (yalnız JSONDecodeError/TypeError yakalanıyor); `_PushConsumer._run` istisnayla ölür, tek bozuk kare akışı
+  düşürür. Rust kareyi atlar (`junk_frames_keep_the_stream_alive_but_rest_polling_continues`).
+- Yarış (Python ile aynı, ders H3 açık): yeni akışın ilk karesi aynı turun REST sonucundan önce gelirse REST onu ezer
+  (her iki kaynak da `record` eder, sıra/damga yok). Bir tur kadar daha eski veri; sonraki kare düzeltir.
+
 ## Modüller
 
 | Modül | Python karşılığı |
@@ -172,7 +234,11 @@ Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli da
 - `/api/status` yoklamasında 2xx dışı yanıt hata.
 - `extra_urls` seçimi (`probe_choice`) kayıtlı adaylarla ve https düşürmeme kuralıyla sınırlı.
 - WS en büyük mesaj 16 MiB (Python varsayılanı 1 MiB). Uzak WS URL'si taban yolunu korur (Python düşürüyordu).
-- Term relay kayıt (adres/token) değişince yeniden kurulur.
+- Term relay kayıt (adres/token/grpc_url) değişince yeniden kurulur (Python hiç yenilemiyordu); `extra_urls` ya da kademe
+  değişimi yenilemez.
+- Bozuk WS karesi (JSON dizi vb.) akışı öldürmez (Python'da AttributeError ile ölüyordu).
+- `interval` sorgu biçimi Rust `f64::to_string` (Python `{:g}`): 0.5/1/2.5 aynı; çok küçük/büyük değerde metin farklı
+  (`1e-05` / `0.00001`). 0, negatif, NaN, sonsuz aralık Rust'ta yok sayılır (Python olduğu gibi iletir).
 - Bilinen eşit davranış (düzeltilmedi): gRPC çağrıları imzalanmaz.
 
 ## Ders listesi 2.11 (federasyon)
@@ -191,7 +257,7 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 | Açık, uzun zaman aşımı | T (adım + tavan + terminal deneme sınırı), K (`long_read`) | `Timeouts` (`long_read` 90 sn çağıran seçer) |
 | İmzalı kimlik: istemci başlığı güvenilmez, gövde özeti | T (signer tam gövdeyi ve sorgusuz yolu alır) | vekil istemci başlığı taşımaz, gövde signer'a verilir; doğrulama alıcıda |
 | hosts.json kilitli yaz, db kipinde DB | gerekçe | bu crate yazmaz (`cops-state`); `record` saf |
-| Uzak WS kapanışı + sessizlik watchdog'u | K | `push`, `STATUS_PUSH_SILENCE`, `TERM_RELAY_SILENCE`; düşürülen görev soketi kapatır |
+| Uzak WS kapanışı + sessizlik watchdog'u | T | iş 3: sessizlik sınırları, ölü/sessiz relay, düşürülen görev soketi kapatır, Ping/Pong, Close yanıtı |
 
 ## Genel gözden geçirme listesi (20 madde)
 
@@ -200,17 +266,17 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 | 1 hedef Unique | T (`ambiguous_or_inexact_target_sends_nothing`) | `exact_target` tam ad, birden çok eşleşme `ambiguous` |
 | 2 atomik yazım | gerekçe | dosya yazımı yok |
 | 3 belirsiz = kapalı | kısmen T | signer paniği ve yasak başlık red (T, iş 1), bozuk belge yazılmaz (T), `Remote` ayrımı (K) |
-| 4 sonuç doğrulama + negatif test | kısmen T | iş 1-2 negatifleri sunucu sayacıyla (T); iş 3 açık |
+| 4 sonuç doğrulama + negatif test | T | iş 1-3 negatifleri sunucu sayacıyla (bağlantı/istek/çağrı GİTMEDİ) |
 | 5 hata yutma | A | `.ok()`/`let _` taraması yapılmadı (WS kapanışı ve TCP nodelay bilerek yutuluyor) |
 | 6 bayat önbellek | T | kayıtlar her turda okunur; hata `last_good`u ezmez (T, iş 2). Sistem TLS kökleri süreçte bir kez yüklenir |
 | 7 sınırlı döngü | kısmen T | yeniden deneme 2 ve 3 (T, iş 1); poller/prober sonsuz ama `Running` düşünce durur (T, iş 2); dedup TTL + LRU (T) |
 | 8 CLI/TUI fixture | gerekçe | TUI yok |
-| 9 sahiplik, fd sızıntı testi | T (REST) | `fake_fd` (200 zaman aşımı, sunucu her soketin kapandığını görür); iptal edilen görev uçuşu bırakır (T). WS/relay görevleri iş 3. Havuz bağlantı görevi karşı taraf kapatınca biter |
-| 10 girdi sınırları | kısmen T | URL, kayıt, belge; uzak REST yanıt tipleri ve gövde sınırı (T, iş 1); WS/gRPC iş 3 |
+| 9 sahiplik, fd sızıntı testi | T | `fake_fd` (REST); WS/relay/gRPC: görev düşünce soket kapanır, fd tabana döner (`dropped_streams_close_their_sockets_and_leak_no_fds`, `dropped_grpc_consumers_...`) |
+| 10 girdi sınırları | T | REST gövde sınırı (iş 1); WS 16 MiB (tek ve parçalı), gRPC 4 MiB, bozuk kareler (iş 3) |
 | 11 metin ayrıştırma | gerekçe | yok |
 | 12 Python paritesi | A | iş 4; `py_strip` kullanıldı, `$HOME` erişimi yok |
 | 13 sırlar | T (kayıt) | `Secret`, `public()`; hata metinlerinde URL/port/token yok (T, `error_texts_carry_no_url_port_or_token`) |
-| 14 adres denetimi | T (guard, REST bağlantısı), A (WS/gRPC) | canonical `::ffff:` testli; DNS adı loopback'e çözülünce REST bağlantısı yok (T); WS/gRPC iş 3 |
+| 14 adres denetimi | T | canonical `::ffff:` testli; DNS adı loopback'e çözülünce REST/WS/gRPC bağlantısı yok (sunucu kabulü 0); TLS ad/kök denetimi (T, iş 3) |
 | 15 kullanıcı yolu e2e | A | copsd entegrasyonundan sonra |
 | 16 route tabloları | A | iş 4 |
 | 17 test yalıtımı | T | testler dosya yazmaz, canlı dizine dokunmaz |
@@ -218,5 +284,5 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 | 19 GIT_SHA / geri dönüş | gerekçe | ikili yok |
 | 20 kanıt | yapıldı | perf iddiası yok; Python'a yazılmadı |
 
-H1-H21'den bu ize değen diğerleri: H1 (bağlantı sahipliği: REST fd testi T), H18 (WS çerçeveleme: iş 3), H20 (olaylar
+H1-H21'den bu ize değen diğerleri: H1 (bağlantı sahipliği: REST/WS/gRPC T), H18 (WS çerçeveleme: Ping/Pong, Close, sınır T; iki gerçek istemcili e2e copsd'de), H20 (olaylar
 `Events` ile, token'sız alanlar), H15/H4/H6 kapsam dışı (vekil sunucu, TUI, metin işareti yok).

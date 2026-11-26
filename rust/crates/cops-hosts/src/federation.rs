@@ -44,9 +44,39 @@ pub(crate) fn epoch_now() -> f64 {
         .map_or(0.0, |d| d.as_secs_f64())
 }
 
+/// Akışı etkileyen kayıt alanları + kademe (Python R-18 anahtarı `(grpc_url, base_url, token)` + tier). `extra_urls`
+/// ya da tanınmayan alanlar değişince canlı akış yeniden kurulmaz.
+#[derive(Clone, PartialEq)]
+pub(crate) struct StreamEndpoint {
+    tier: Tier,
+    base_url: String,
+    grpc_url: String,
+    token: record::Secret,
+}
+
+impl StreamEndpoint {
+    pub(crate) fn of(tier: Tier, h: &HostRecord) -> StreamEndpoint {
+        StreamEndpoint {
+            tier,
+            base_url: h.base_url.clone(),
+            grpc_url: h.grpc_url.clone(),
+            token: h.token.clone(),
+        }
+    }
+
+    pub(crate) fn tier(&self) -> Tier {
+        self.tier
+    }
+
+    /// Kademe hariç (term relay: Python gibi kademe değişimi tek başına akışı yenilemez).
+    pub(crate) fn same_address(&self, o: &StreamEndpoint) -> bool {
+        (&self.base_url, &self.grpc_url, &self.token) == (&o.base_url, &o.grpc_url, &o.token)
+    }
+}
+
 struct StatusConsumer {
     consumer: PushConsumer,
-    endpoint: (Tier, HostRecord),
+    endpoint: StreamEndpoint,
 }
 
 pub struct Federation {
@@ -237,7 +267,7 @@ impl Federation {
             map.remove(&host.name);
             return false;
         }
-        let endpoint = (tier, host.clone());
+        let endpoint = StreamEndpoint::of(tier, host);
         if let Some(c) = map.get(&host.name) {
             if c.consumer.is_alive() && c.endpoint == endpoint {
                 if c.consumer.silent() <= STATUS_PUSH_SILENCE {

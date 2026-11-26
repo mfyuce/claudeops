@@ -2,6 +2,10 @@
 //! `Fake` = hyper sunucusu (betikli işleyici), `Raw` = çıplak TCP (susan, damla damla yanıt veren, dev gövde).
 #![allow(dead_code)]
 
+pub mod grpc;
+pub mod tls;
+pub mod ws;
+
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -540,6 +544,8 @@ pub struct MemSource {
     /// `None` = varsayılan reach portları.
     pub ports: Mutex<Option<std::collections::BTreeSet<u16>>>,
     pub choice: Mutex<Option<String>>,
+    /// true = `load` panikler (poller/prober panik kurtarma testi).
+    pub panic_load: std::sync::atomic::AtomicBool,
 }
 
 impl MemSource {
@@ -565,6 +571,9 @@ impl MemSource {
 impl cops_hosts::HostSource for MemSource {
     fn load(&self) -> Vec<HostRecord> {
         self.loads.fetch_add(1, Ordering::SeqCst);
+        if self.panic_load.load(Ordering::SeqCst) {
+            panic!("test: host source panicked");
+        }
         self.hosts.lock().unwrap().clone()
     }
     fn promote(&self, name: &str, new_base_url: &str) {

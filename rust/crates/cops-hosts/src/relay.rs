@@ -7,9 +7,9 @@ use serde_json::{json, Value};
 use tokio::time::Instant;
 
 use crate::consts::{TERM_RELAY_IDLE_TTL, TERM_RELAY_RESTART_MIN_INTERVAL, TERM_RELAY_SILENCE};
-use crate::federation::Federation;
+use crate::federation::{Federation, StreamEndpoint};
 use crate::push::PushConsumer;
-use crate::record::{self, HostRecord};
+use crate::record;
 use crate::tier::Tier;
 use crate::ws;
 
@@ -37,8 +37,8 @@ struct Relay {
     consumer: PushConsumer,
     created: Instant,
     last_read: Instant,
-    /// Adres/token/kademe değişince akış yeniden kurulur.
-    endpoint: (Tier, HostRecord),
+    /// Adres/token değişince akış yeniden kurulur (kademe değişimi tek başına yenilemez).
+    endpoint: StreamEndpoint,
 }
 
 #[derive(Default)]
@@ -81,10 +81,10 @@ impl Federation {
             interval: interval.clone(),
             viewport: opts.viewport,
         };
-        let endpoint = (self.tiers.get(host_name), host.clone());
+        let endpoint = StreamEndpoint::of(self.tiers.get(host_name), host);
         let mut map = self.relays.map.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(r) = map.get(&key) {
-            if r.endpoint.1 != endpoint.1 {
+            if !r.endpoint.same_address(&endpoint) {
                 map.remove(&key);
             } else if r.consumer.is_alive() && r.consumer.silent() > TERM_RELAY_SILENCE {
                 self.client.events.log(
@@ -103,7 +103,7 @@ impl Federation {
         let relay = map.entry(key).or_insert_with(|| {
             let latest: Arc<Mutex<Option<Value>>> = Arc::default();
             let sink = latest.clone();
-            let tier = endpoint.0;
+            let tier = endpoint.tier();
             let open = if tier == Tier::Grpc {
                 self.grpc
                     .term_stream(&host.grpc_url, host.token.expose(), name, lang)

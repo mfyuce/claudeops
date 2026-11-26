@@ -26,3 +26,5 @@ http = "1"
 tempfile = "3"
 tokio = { workspace = true, features = ["sync", "test-util"] }
 tonic = { version = "0.14", default-features = false, features = ["channel", "codegen", "server", "router"] }
+# Yalnız testlerde: özel kök + yaprak sertifika üretimi (üretim TLS doğrulamasına dokunmaz).
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
