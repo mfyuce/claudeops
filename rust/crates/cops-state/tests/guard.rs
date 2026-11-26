@@ -72,6 +72,7 @@ fn writers_panic_in_live_dir_and_write_nothing() {
             &j,
             None
         ))));
+        assert!(panics(|| docs.diag_log("x")));
         let out = other.root().join("yedek.db");
         let st = Store::open(&other.dir().db()).unwrap();
         assert!(panics(|| drop(st.backup(&d.join("yedek.db")))));
