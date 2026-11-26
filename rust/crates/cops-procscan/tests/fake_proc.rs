@@ -194,13 +194,25 @@ fn other_users_processes_are_never_read() {
             probe.terminal_lost(20),
             probe.started_at(20),
         );
-        tx.send((sessions, flags)).unwrap();
+        // Birleştirme kapısı (Python orphan_watch uid süzgeci): crate'te orphan_watch karşılığı yok (T7); en yakın yol
+        // `OrphanTracker::report`. Elle verilen başka kullanıcı satırı bile (yüksek CPU, terminalsiz) rapora girmez ve
+        // içeriği okunmaz (FIFO'lar takılırdı).
+        let forged = Session {
+            name: "yabanci".into(),
+            pid: 20,
+            cli: "claude".into(),
+            cpu: 99.0,
+            ..Default::default()
+        };
+        let orphans = cops_procscan::status::OrphanTracker::default().report(&probe, &[forged], 1e9);
+        tx.send((sessions, flags, orphans.len())).unwrap();
     });
-    let (sessions, flags) = rx
+    let (sessions, flags, orphans) = rx
         .recv_timeout(Duration::from_secs(10))
         .expect("başka kullanıcının dosyası okundu");
     assert_eq!(sessions.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["mine"]);
     assert_eq!(flags, (false, false, false, None));
+    assert_eq!(orphans, 0, "başka kullanıcının süreci yetim raporuna girdi");
 }
 
 #[test]
