@@ -56,6 +56,35 @@ class SendVerified(unittest.TestCase):
         self.assertEqual(verify(p), "delivered")
         self.assertEqual(p.enters, 1)
 
+    def test_pasted_text_ignoring_enter_gets_space_then_enter(self):
+        """Sahip gözlemi (16 Kas): yapışık metinde yalın Enter gitmiyor; karakter yazıp Enter'layınca gidiyor."""
+        keys = []
+
+        class Stuck(Pane):
+            def raw(self, name, data):
+                keys.append(data)
+                if data == "\r" and " " in keys:
+                    self.text = "\n" + MSG
+                return True
+
+        p = Stuck("", on_send=lambda self, m: "x\n❯ [Pasted text #1 +3 lines]")
+        self.assertEqual(verify(p), "delivered")
+        self.assertEqual(keys, ["\r", " ", "\r"])     # önce yalın Enter, sonra ayrı yazımlarla boşluk + Enter
+        self.assertEqual(p.sends, 1)
+
+    def test_permanently_stuck_paste_fails_without_resend(self):
+        keys = []
+
+        class Dead(Pane):
+            def raw(self, name, data):
+                keys.append(data)
+                return True
+
+        p = Dead("", on_send=lambda self, m: "x\n❯ [Pasted text #1 +3 lines]")
+        self.assertEqual(verify(p), "failed")
+        self.assertEqual(keys.count("\r"), ws.DELIVERY_MAX_ENTERS)
+        self.assertEqual(p.sends, 1)
+
     def test_resend_when_nothing_arrived(self):
         n = {"k": 0}
 

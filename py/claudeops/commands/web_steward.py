@@ -7070,6 +7070,7 @@ def _extension_park_note(name: str, text: str, p: Optional[sw.Project], sid: str
 DELIVERY_VERIFY_POLLS = 12
 DELIVERY_VERIFY_DELAY = 1.0
 DELIVERY_MAX_ENTERS = 3
+DELIVERY_NUDGE_DELAY = 0.3      # boşluk ile Enter arası: TUI ikisini tek yapıştırma saymasın
 DELIVERY_MAX_RESENDS = 2
 DELIVERY_KEEP = 200
 _DELIVERIES: Dict[str, Dict[str, Any]] = {}      # {id: {id,name,status: queued|delivered|failed, reason, attempts, at, done_at}}
@@ -7136,7 +7137,8 @@ def _pane_norm(text: str) -> str:
 
 def _send_verified(name: str, cli: str, message: str, sid: str = "default",
                    sleep: Callable[[float], None] = time.sleep) -> str:
-    """Gönder, sonra pane'i oku: giriş kutusunda `[Pasted text]` kaldıysa Enter (en çok `DELIVERY_MAX_ENTERS`); mesaj panede
+    """Gönder, sonra pane'i oku: giriş kutusunda `[Pasted text]` kaldıysa Enter (en çok `DELIVERY_MAX_ENTERS`; ikinciden
+    itibaren önce bir boşluk yazılır); mesaj panede
     HİÇ görünmüyorsa yeniden gönder (en çok `DELIVERY_MAX_RESENDS`, gönderim öncesi sayımla: eski aynı başlık yanıltmaz).
     Dönen: `delivered` | `failed` | `unverified` (ucli: kendi kutu denetimi var; gönderim ok)."""
     head = _pane_norm(message)[:40]
@@ -7153,6 +7155,9 @@ def _send_verified(name: str, cli: str, message: str, sid: str = "default",
         if "[Pastedtext" in tail:
             if enters >= DELIVERY_MAX_ENTERS:
                 return "failed"
+            if enters:      # yalın Enter yetmedi: boşluk yazıp (ayrı yazım) yeniden Enter (sahip gözlemi, 16 Kas)
+                tmux_send_raw(name, " ")
+                sleep(DELIVERY_NUDGE_DELAY)
             tmux_send_raw(name, "\r")
             enters += 1
             continue
