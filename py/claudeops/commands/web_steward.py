@@ -1120,17 +1120,22 @@ def _remote_ref(host: str, name: str, sid: str = "") -> Tuple[str, str]:
     Sıra: adı TAM `name` olan satır (çalışan ya da kapalı); yoksa ad bu host'taki bir projeye çözülüyorsa (proje adı
     `oiso`, oturum `oiso20261017`) projenin TEK çalışan oturumu; çalışan yoksa projeye çözülen kapalı satırlar (hepsi
     aynı klasördeyse ilki). Projenin iki çalışan oturumu varsa ya da kapalı satırların klasörleri farklıysa tahmin
-    edilmez: ("", ""). `sid` verilirse ve ad kuralı tutmuyorsa değnekçinin İZLEDİĞİ oturum (`state.owned`)."""
+    edilmez: ("", ""). `sid` verilirse ve ad kuralı tutmuyorsa değnekçinin İZLEDİĞİ oturum (`state.owned`). Aranan ada
+    sahip iki ÇALIŞAN satır varsa (klasörleri aynı olsa da) belirsiz: ("", ""), başka yola da düşülmez (TBD#380)."""
     st = _remote.status(host)
     if not _host_fresh(st) or _backing_off(host, time.time()):
         return "", ""
     rows = {k: [r for r in (st.get(k) or []) if isinstance(r, dict)] for k in ("sessions", "closed")}
+    if len(_remote_named_rows(rows["sessions"], name)) > 1:
+        return "", ""
     for key in ("sessions", "closed"):
         for r in rows[key]:
             if r.get("name") == name and r.get("cwd"):
                 return name, str(r["cwd"])
     tracked = str((sw.load_state(sw.paths_for(sid)).get("owned") or {}).get(name) or "") if sid else ""
     if tracked:     # 26 Kas asp_fd: izlenen oturumun adı proje adından türemiyor (`ancient-script-pipeline-fd20261118`)
+        if len(_remote_named_rows(rows["sessions"], tracked)) > 1:
+            return "", ""
         for key in ("sessions", "closed"):
             for r in rows[key]:
                 if r.get("name") == tracked and r.get("cwd"):
@@ -1185,9 +1190,16 @@ def _remote_last_exchange(host: str, name: str, budget: float) -> Dict[str, Any]
 def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str, ...] = DOCS,
                          head: int = DOC_HEAD_CHARS) -> Dict[str, Any]:
     """`http_context`in uzak karşılığı: son konuşma + (istenirse) belge başları, TOPLAM `REMOTE_READ_BUDGET_SECONDS`.
-    Hata/zaman aşımı boş döner, fırlatmaz. Çıktı: {"last_exchange", "docs", "remote_cwd"}."""
+    Hata/zaman aşımı boş döner, fırlatmaz. Aynı adlı iki çalışan oturum varsa hiçbir uzak okuma yapılmaz.
+    Çıktı: {"last_exchange", "docs", "remote_cwd"}."""
     deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
     real, cwd = _remote_ref(host, name)
+    if not real:        # son konuşma `name` ile okunurdu: adaşlardan hangisininki döneceği belirsiz
+        rows, world = _remote_rows(host) or [], _world()
+        key = _remote_key(name, host, world)
+        mine = [str(r.get("name") or "") for r in _remote_project_rows(rows, host, key, world)] if key else []
+        if len(_remote_named_rows(rows, name)) > 1 or len(mine) != len(set(mine)):
+            return {"last_exchange": {}, "docs": {}, "remote_cwd": ""}
     name = real or name         # okumalar oturumun GERÇEK adıyla (proje adı `oiso`, oturum `oiso20261017`)
     out: Dict[str, Any] = {"last_exchange": _remote_last_exchange(host, name, deadline - time.monotonic()),
                            "docs": {}, "remote_cwd": cwd}
@@ -8585,12 +8597,15 @@ class RemoteReviewDriver:
         return _remote_rows(self.host)
 
     def _project_cwd_remote(self, rows: List[Dict[str, Any]]) -> str:
+        """Projenin uzak klasörü; seçilen adda iki ÇALIŞAN satır varsa belirsiz: "" (başka satıra düşülmez, TBD#380)."""
+        if len(_remote_named_rows(rows, self.project)) > 1:
+            return ""
         for r in rows:
             if r.get("name") == self.project and r.get("cwd"):
                 return str(r["cwd"])
         for r in rows:
             if r.get("cwd") and (r.get("blueprint") == self.project or str(r.get("name") or "").startswith(self.project)):
-                return str(r["cwd"])
+                return "" if len(_remote_named_rows(rows, str(r.get("name") or ""))) > 1 else str(r["cwd"])
         return ""
 
     def _ambiguous(self, rows: Optional[List[Dict[str, Any]]] = None) -> str:
