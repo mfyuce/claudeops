@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from typing import Any, Dict, Tuple
 
-from .atomic_json import atomic_write_text
+from .atomic_json import atomic_write_text, file_lock
 from .paths import CLAUDEOPS_DIR
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_checks")
@@ -156,21 +156,38 @@ def save_registry(data: Any, owner: str = "", binary: str = "") -> Tuple[bool, s
     return True, ""
 
 
+def _registry_lock(owner: str):
+    """Kayıt için oku-değiştir-yaz kilidi (geçersiz sahip `ValueError`)."""
+    path = registry_path(owner)
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    return file_lock(path)
+
+
 def replace_checks(checks: Any, owner: str = "", binary: str = "") -> Tuple[bool, str]:
     """`check` listesini değiştirir; kaydın diğer üst düzey anahtarları ([full] bölümü vb.) korunur (kayıt bütün belge)."""
-    cur, err = load_registry(owner)
-    base = dict(cur) if (not err and isinstance(cur, dict)) else {}
-    return save_registry({**base, "check": checks}, owner, binary=binary)
+    try:
+        lock = _registry_lock(owner)
+    except ValueError as e:
+        return False, str(e)
+    with lock:
+        cur, err = load_registry(owner)
+        base = dict(cur) if (not err and isinstance(cur, dict)) else {}
+        return save_registry({**base, "check": checks}, owner, binary=binary)
 
 
 def delete_check(name: str, owner: str = "", binary: str = "") -> Tuple[bool, str]:
-    data, err = load_registry(owner)
-    if err:
-        return False, err
-    items = [c for c in data["check"] if c.get("name") != name]
-    if len(items) == len(data["check"]):
-        return False, "kontrol bulunamadı"
-    return save_registry({**data, "check": items}, owner, binary=binary)
+    try:
+        lock = _registry_lock(owner)
+    except ValueError as e:
+        return False, str(e)
+    with lock:
+        data, err = load_registry(owner)
+        if err:
+            return False, err
+        items = [c for c in data["check"] if c.get("name") != name]
+        if len(items) == len(data["check"]):
+            return False, "kontrol bulunamadı"
+        return save_registry({**data, "check": items}, owner, binary=binary)
 
 
 def mode_file(state_dir: str, session: str) -> str:
@@ -188,22 +205,23 @@ def set_mode(state_dir: str, session: str, mode: str, cap: str, *, confirm: bool
         path = mode_file(state_dir, session)
     except ValueError as e:
         return 400, {"ok": False, "error": str(e)}
-    cur, seq = "off", 0
-    try:
-        with open(path, encoding="utf-8") as f:
-            d = json.load(f)
-        cur, seq = str(d.get("mode") or "off"), int(d.get("seq") or 0)
-    except (OSError, ValueError, TypeError):
-        pass
-    if _RANK[mode] > _RANK[cap]:
-        return 409, {"ok": False, "error": "tavanı aşıyor: oturumu yeni tavanla yeniden aç", "max": cap}
-    if _RANK[mode] > _RANK.get(cur, 0) and not confirm:
-        return 400, {"ok": False, "error": "genişletme confirm:true ister", "need_confirm": True}
-    at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
-    atomic_write_text(path, json.dumps({"v": 1, "mode": mode, "seq": seq + 1, "set_by": user or "panel", "at": at}), mode=0o600)
-    audit({"at": at, "user": user, "session": session, "from": cur, "to": mode, "max": cap, "ip": ip})
-    return 200, {"ok": True, "mode": mode, "seq": seq + 1}
+    with file_lock(path):       # `seq` oku-artır-yaz
+        cur, seq = "off", 0
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            cur, seq = str(d.get("mode") or "off"), int(d.get("seq") or 0)
+        except (OSError, ValueError, TypeError):
+            pass
+        if _RANK[mode] > _RANK[cap]:
+            return 409, {"ok": False, "error": "tavanı aşıyor: oturumu yeni tavanla yeniden aç", "max": cap}
+        if _RANK[mode] > _RANK.get(cur, 0) and not confirm:
+            return 400, {"ok": False, "error": "genişletme confirm:true ister", "need_confirm": True}
+        at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        atomic_write_text(path, json.dumps({"v": 1, "mode": mode, "seq": seq + 1, "set_by": user or "panel", "at": at}), mode=0o600)
+        audit({"at": at, "user": user, "session": session, "from": cur, "to": mode, "max": cap, "ip": ip})
+        return 200, {"ok": True, "mode": mode, "seq": seq + 1}
 
 
 def audit(rec: Dict[str, Any]) -> None:

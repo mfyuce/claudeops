@@ -403,7 +403,10 @@ def resources_from(path: str, qs: Mapping[str, Any], data: Optional[dict]) -> Li
         if n and (h, n) not in seen:
             seen.add((h, n))
             out.append(Resource(kind="session", host=h, name=n))
-    add(host, src.get("name") or _q("name"))
+    if path == "/api/new-chat":                  # handler gövdedeki `base`ten türetir, `name`i okumaz: kaynak `base`
+        add(host, src.get("base"))
+    else:
+        add(host, src.get("name") or _q("name"))
     if path.startswith("/v1/"):
         add("", src.get("model"))
     parts = src.get("participants")

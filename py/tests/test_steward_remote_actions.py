@@ -154,12 +154,13 @@ class TestRemoteActions(_Actions):
         self.act()
         self.fake.mode = "old"                                                # eski host: facts 404
         self.fake.set(HOST, [_row("oiso")])
-        sw.save_state({"preamble_sent": {f"{HOST}:oiso": time.time() - 600}})
+        seeded = time.time() - 600
+        sw.save_state({"preamble_sent": {f"{HOST}:oiso": seeded}})
         self.answered()
         ws.tick_once("manual")
         body = self.posts("/api/term/input")[0][2]
         self.assertIn("amac-metni", body["text"])
-        self.assertAlmostEqual(sw.load_state()["preamble_sent"][f"{HOST}:oiso"], time.time() - 600, delta=5)
+        self.assertEqual(sw.load_state()["preamble_sent"][f"{HOST}:oiso"], seeded)   # yeni damga yazılmadı (saatten bağımsız)
 
     def test_start_waits_on_the_poller_cache_without_network(self):
         self.act()

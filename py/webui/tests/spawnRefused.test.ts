@@ -13,6 +13,10 @@ test("corrupt owner record explains the repair, with the session name", () => {
   assert.match(describeSpawnRefused("ownership_corrupt", "s1", "tr"), /sahip kaydı bozuk.*yönetici.*\nownership_corrupt: s1$/s);
   assert.match(describeSpawnRefused("ownership_corrupt", "s1", "en"), /owner record is corrupt.*administrator.*\nownership_corrupt: s1$/s);
 });
+test("corrupt owner record message also covers a refused reassignment (document corrupt)", () => {
+  assert.match(describeSpawnRefused("ownership_corrupt", "s1", "tr"), /atama da reddedilirse.*elle onarılmalı/);
+  assert.match(describeSpawnRefused("ownership_corrupt", "s1", "en"), /assignment is refused too.*repaired by hand/);
+});
 test("unknown code falls back to raw", () => {
   assert.equal(describeSpawnRefused("weird", "x", "en"), "weird: x");
   assert.equal(describeSpawnRefused("weird", "", "en"), "weird");

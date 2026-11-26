@@ -33,6 +33,8 @@ RES = [
     ("/v1/chat/completions", "", '{"model": "m1"}'), ("/v1/chat/completions", "name=m1", '{"model": "m1"}'),
     ("/v1/chat/completions", "host=h", '{"model": "m1", "name": "m1"}'), ("/v1/models", "model=q", None),
     ("/api/start", "", '{"model": "m1"}'),
+    ("/api/new-chat", "", '{"base": " a ", "name": "benim", "host": "h"}'), ("/api/new-chat", "base=q&name=n", '{"name": "n"}'),
+    ("/api/new-chat", "host=qh", '{"base": "a"}'), ("/api/new-chat", "", None),
     ("/api/orch/run", "", '{"participants": [{"host": "h", "name": "a"}, {"name": "b"}, 5, "c", {"host": "h", "name": "a"}]}'),
     ("/api/orch/run", "host=h", '{"participants": "a", "names": "b"}'),
     ("/api/handover", "host=h&names=a,b&names=c", '{"names": ["d", " a ", "", null]}'),
@@ -49,7 +51,7 @@ RUST_REJECTS = [
     ("/api/start", "", '{"name": "a", "host": 1}'), ("/api/orch/run", "", '{"participants": [{"name": 7}]}'),
     ("/api/orch/run", "", '{"participants": [{"host": ["h"], "name": "a"}]}'), ("/api/handover", "", '{"names": [1]}'),
     ("/v1/chat/completions", "", '{"model": {"a": 1}}'), ("/api/steward/status", "", '{"steward": 3}'),
-    ("/api/ucli/approvals", "", '{"run_key": 1}'), ("/api/start", "", '[1]'), ("/api/start", "", 'null'),
+    ("/api/ucli/approvals", "", '{"run_key": 1}'), ("/api/new-chat", "", '{"base": 5}'), ("/api/start", "", '[1]'), ("/api/start", "", 'null'),
     ("/api/start", "", '{bozuk'), ("/api/start", "", '{"name": NaN}'),
 ]
 

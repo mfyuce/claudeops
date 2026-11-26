@@ -142,10 +142,45 @@ class StartTests(WaBase):
         self.assertEqual([c for c in self.ops.calls if c[0] == "start"][0][3], "allow-edit")
 
     def test_validation(self):
-        for kw in ({"model": "nope"}, {"effort": "max"}, {"mode": "root"}, {"task": "  "}, {"model": ""}):
+        for kw in ({"model": "nope"}, {"mode": "root"}, {"task": "  "}, {"model": ""}):
             self.assertFalse(self.start(**kw)[0]["ok"], kw)
-        self.assertFalse(self.start(effort="low")[0]["ok"])             # m-evren effort low desteklemiyor
-        self.assertTrue(self.start(model="claude-sonnet-5-5", effort="low")[0]["ok"])
+
+    def _started_effort(self, **kw):
+        body, st = self.start(**kw)
+        self.assertEqual((body["ok"], st), (True, 200), (kw, body))
+        start = [c for c in self.ops.calls if c[0] == "start"][-1]
+        self.assertEqual(ag.get_child(body["name"])["effort"], start[4])
+        self.ops.live.pop(body["name"])                                 # canlı çocuk sınırına takılma
+        ag.mark_stopped(body["name"], "test")
+        return start[4]
+
+    def test_unsupported_effort_is_ignored_not_rejected(self):
+        # m-evren "low" desteklemiyor: verilmemiş sayılır = medium. Boş geçseydi panel ucli'nin EN YÜKSEK ön ayarını uygular.
+        self.assertEqual(self._started_effort(effort="low"), "medium")
+        self.assertEqual(self._started_effort(effort="max"), "medium")
+        only_high = [{"id": "m-high", "service": "x", "efforts": ["high"]}]
+        with mock.patch.object(wa, "models_catalog", lambda: only_high):
+            self.assertEqual(self._started_effort(model="m-high", effort="low"), "")
+        self.assertEqual(self._started_effort(model="claude-sonnet-5-5", effort="LOW"), "low")
+
+    def test_ignored_effort_is_reported_to_the_client(self):
+        body, st = self.start(effort="MAX")
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body["effort_ignored"], "max")
+        self.assertIn("m-evren", body["warning"])
+        self.assertIn("medium, high", body["warning"])
+        self.assertTrue(body["warning"].endswith("using medium"), body["warning"])
+        for effort in ("high", ""):                                     # desteklenen / verilmemiş: bildirim yok
+            ag.mark_stopped(body["name"], "stopped")                    # üst başına canlı çocuk sınırı
+            self.ops.live.pop(body["name"], None)
+            body, st = self.start(effort=effort)
+            self.assertEqual(sorted(body), ["name", "ok"], body)
+
+    def test_omitted_effort_is_medium_only_when_supported(self):
+        self.assertEqual(self._started_effort(effort=""), "medium")
+        only_high = [{"id": "m-high", "service": "x", "efforts": ["high"]}]
+        with mock.patch.object(wa, "models_catalog", lambda: only_high):
+            self.assertEqual(self._started_effort(model="m-high", effort=""), "")
 
     def test_child_cannot_start_and_parent_must_run(self):
         self.ops.live["p_aj1"] = NS(name="p_aj1", cli="ucli", cwd="/proj", permission_mode="read-only")

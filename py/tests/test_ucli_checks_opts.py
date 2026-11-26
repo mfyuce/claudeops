@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -69,6 +71,47 @@ class Registry(unittest.TestCase):
         os.chmod(real, 0o600)
         os.symlink(real, os.path.join(self.tmp, "owner.json"))
         self.assertIn("düz dosya", uck.load_registry()[1])
+
+
+class ReadModifyWrite(unittest.TestCase):
+    """Eşzamanlı oku-değiştir-yaz güncellemeyi kaybetmemeli (yazım yapay olarak yavaşlatılır: kilitsiz kod her koşuda düşer)."""
+
+    def setUp(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, tmp, True)
+        real = uck.atomic_write_text
+
+        def slow(*a, **k):
+            time.sleep(0.05)
+            real(*a, **k)
+        for target, value in (("ROOT", tmp), ("AUDIT", os.path.join(tmp, "audit.jsonl")), ("atomic_write_text", slow)):
+            p = mock.patch.object(uck, target, value)
+            p.start()
+            self.addCleanup(p.stop)
+        self.tmp = tmp
+
+    def run_all(self, calls):
+        out = [None] * len(calls)
+
+        def go(i):
+            out[i] = calls[i]()
+        ts = [threading.Thread(target=go, args=(i,)) for i in range(len(calls))]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(20)
+        return out
+
+    def test_set_mode_seq_counts_every_write(self):
+        res = self.run_all([lambda: uck.set_mode(self.tmp, "s", "off", "full") for _ in range(4)])
+        self.assertEqual(sorted(r[1]["seq"] for r in res), [1, 2, 3, 4])
+
+    def test_two_deletes_both_stick(self):
+        three = [{"name": n, "argv": ["x"]} for n in ("a", "b", "c")]
+        self.assertEqual(uck.save_registry({"check": three}), (True, ""))
+        res = self.run_all([lambda: uck.delete_check("a"), lambda: uck.delete_check("b")])
+        self.assertEqual(res, [(True, ""), (True, "")])
+        self.assertEqual([c["name"] for c in uck.load_registry()[0]["check"]], ["c"])
 
 
 class Apply(unittest.TestCase):

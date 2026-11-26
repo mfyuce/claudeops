@@ -9,8 +9,9 @@ pub use sha256::{hex, hmac_sha256, sha256};
 /// Panel oturum çerezinin adı (Python `extensions.COOKIE_NAME`).
 pub const COOKIE_NAME: &str = "cops_ext";
 
-/// Python `str.strip()` (argümansız): Rust `trim()` kümesine ek olarak U+001C..U+001F'yi de kırpar.
-fn py_strip(s: &str) -> &str {
+/// Python `str.strip()` (argümansız): Rust `trim()` kümesine ek olarak U+001C..U+001F'yi de kırpar. Çekirdekte TEK yardımcı
+/// (`cops-proxy` de bunu kullanır, H14).
+pub fn py_strip(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
 }
 
@@ -64,7 +65,7 @@ impl Value {
 }
 
 /// Sabit zamanlı bayt eşitliği (uzunluk farkı da tüm uzunluk boyunca gezer; erken çıkış yok).
-fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     let mut diff = (a.len() ^ b.len()) as u32;
     let n = a.len().max(b.len());
     for i in 0..n {
