@@ -1,7 +1,7 @@
 # rs/state (W0-a): `cops-state` crate'i
 
-Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK (boşluk kapatma turu). **Birleştirme kapısı cops'ta**;
-sahip soruları S1-S12 cevapsız (aşağıda).
+Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK (boşluk kapatma turu). **BİRLEŞTİRMEYE HAZIR DEĞİL**:
+sahip TBD#374'ü (a) cevapladı (q20261126_182502_d29f: S1-S9 iki tarafta düzelsin), HENÜZ UYGULANMADI; S11-S12 TBD#379'da.
 Kod: `31f9868` (ilk); ikinci tur `d438cd1`, `a4dfdda`, `becc4d6`, `56ebd96`, `15b97b5`, `bd11a27`; boşluk turu `98384f1`
 (K1, K6), `a172591` (K2, K3), sonrası K4 + test boşlukları ve belge commit'leri.
 Doğrulama (rust/ içinde): `cargo fmt -p cops-state --check`, `cargo clippy -p cops-state --all-targets -- -D warnings`,
