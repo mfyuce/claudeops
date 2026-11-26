@@ -59,11 +59,21 @@ def register(sub):
     p.set_defaults(func=run)
 
 
+def _sd_quote(v: str) -> str:
+    """systemd tırnağı: `\\`, `"`, `%`, `$` kaçışlı, çift tırnak içinde."""
+    return '"' + v.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$") + '"'
+
+
+def _sd_quote_if_needed(v: str) -> str:
+    """`bin`/`dist`: boşluk ya da systemd için anlamlı karakter varsa tırnaklı (boşluklu yol ExecStart'ı bölmesin)."""
+    return _sd_quote(v) if any(c.isspace() or c in "\"'\\%$" for c in v) else v
+
+
 def _unit_text(binp: str, listen: str, internal: str) -> str:
     """Birim metni. copsd'nin durum dizini Python'un gizliyi yazdığı dizinle (`front.secret_path`) aynı olsun; systemd tırnağı."""
-    d = os.path.abspath(front_mod.paths.CLAUDEOPS_DIR)
-    state = '"' + d.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$") + '"'
-    return FRONT_UNIT_TEMPLATE.format(bin=binp, listen=listen, internal=internal, dist=DIST_DIR, state=state)
+    state = _sd_quote(os.path.abspath(front_mod.paths.CLAUDEOPS_DIR))
+    return FRONT_UNIT_TEMPLATE.format(bin=_sd_quote_if_needed(binp), listen=listen, internal=internal,
+                                      dist=_sd_quote_if_needed(str(DIST_DIR)), state=state)
 
 
 def web_execstart(unit_text: str) -> Optional[str]:
@@ -314,6 +324,9 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
     new = with_internal_port(es, internal) if es else None
     if new is None:
         blockers.append("claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir")
+    for what, v in (("ikili", binp), ("dist", str(DIST_DIR)), ("durum dizini", front_mod.paths.CLAUDEOPS_DIR)):
+        if any(unicodedata.category(c) == "Cc" for c in v):
+            blockers.append(f"{what} yolu denetim karakteri içeriyor (birim dosyasını bozar): {_rdbg(v)}")
     la = ia = None
     try:
         la = _parse_listen(listen)

@@ -234,5 +234,37 @@ class P5RelativeBin(Env):
         self.assertIn(f"ikili çalıştırılabilir dosya değil: {self.root}\n", out)
 
 
+class P6Quoting(Env):
+    """6: `bin`/`dist` tırnaksızdı, boşluklu yol ExecStart'ı bölüyordu; denetim karakterli yol birimi bozuyordu."""
+
+    def test_bin_and_dist_with_spaces_are_quoted(self):
+        with mock.patch.object(f, "DIST_DIR", Path("/a b/dist")):
+            u = f._unit_text("/x y/copsd", "a:1", "b:2")
+        self.assertIn('ExecStart="/x y/copsd" --listen a:1 --upstream b:2 --dist "/a b/dist" --state-dir', u)
+        u = f._unit_text("/b/copsd", "a:1", "b:2")
+        self.assertIn("ExecStart=/b/copsd --listen a:1 --upstream b:2 --dist /repo/py/webui/dist --state-dir", u)
+        with mock.patch.object(f, "DIST_DIR", "/d%i$X"):
+            self.assertIn('ExecStart="/b\\"q" --listen a:1 --upstream b:2 --dist "/d%%i$$X"', f._unit_text('/b"q', "a:1", "b:2"))
+
+    def test_applied_unit_with_spaced_bin_has_one_execstart_word(self):
+        b = self.root / "ikili dizini" / "copsd"
+        b.parent.mkdir(); b.write_text("#!/bin/sh\n"); b.chmod(0o755)
+        self.run_front("on", True, binp=str(b))
+        line = [x for x in self.front.read_text().splitlines() if x.startswith("ExecStart=")][0]
+        self.assertTrue(line.startswith(f'ExecStart="{b}" --listen '), line)
+
+    def test_control_characters_in_paths_block(self):
+        b = self.root / "a\nExecStartPre=evil"
+        b.write_text(""); b.chmod(0o755)
+        rc, out = self.run_front("on", True, binp=str(b))
+        self.assertEqual(rc, 1, out)
+        self.assertIn('ikili yolu denetim karakteri içeriyor (birim dosyasını bozar): "%s/a\\nExecStartPre=evil"' % self.root, out)
+        self.assertEqual(self.w.calls, [])
+        self.assertFalse(self.front.exists())
+        with mock.patch.object(f.front_mod.paths, "CLAUDEOPS_DIR", str(self.root / "s\tx")):
+            rc, out = self.run_front("on", False)
+        self.assertIn("durum dizini yolu denetim karakteri içeriyor", out)
+
+
 if __name__ == "__main__":
     unittest.main()

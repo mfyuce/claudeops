@@ -249,6 +249,33 @@ fn parity_relative_or_non_executable_bin_is_a_blocker() {
 }
 
 #[test]
+fn parity_control_characters_in_bin_block() {
+    // "Python hatası?" 6 düzeltildi: denetim karakterli yol iki tarafta aynı engel (tırnaklama: birim testleri).
+    let sb = Sandbox::new();
+    std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
+    let evil = sb.state().join("a\nExecStartPre=evil");
+    sb.exe(&evil);
+    let (p, r) = both(
+        &sb,
+        &[
+            "front",
+            "on",
+            "--apply",
+            "--listen",
+            "127.0.0.1:1",
+            "--internal",
+            "127.0.0.1:2",
+            "--bin",
+            evil.to_str().unwrap(),
+        ],
+    );
+    same(&p, &r, "denetim karakteri");
+    assert_eq!(r.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&r.stdout).contains("denetim karakteri"));
+    assert!(!sb.sc_log().exists());
+}
+
+#[test]
 fn parity_delegated_commands_and_argparse_errors() {
     let sb = Sandbox::new();
     for args in [
