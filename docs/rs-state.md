@@ -93,12 +93,13 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 | `proc_ppid` alan eksik | `IndexError` | `ProcError::Parse` | İkisi de hata |
 | `load_instances` `stat` EACCES | istisna | boş sözlük | Okuyucu toleranslı; yazıcı (`try_mutate`) yine hata verir |
 | Değnekçi kimliğinde sondaki satır sonu (`"kitap\n"`) | geçerli sayılır | reddedilir | SIKI: S11. `parity_steward::steward_id_trailing_newline_documented_divergence` |
+| `instances.json.lock` sembolik bağ / başkasının dosyası | `open("w")`: bağ izlenir, hedef boşaltılır (geçici dizinde yeniden üretildi) | reddedilir, hedefe dokunulmaz | SIKI: TBD#383 (4). `fsutil::tests::exclusive_lock_symlink_refused` |
 | `diag.log` iletisindeki istisna metni | `{e!r}` | Rust hata metni | Dile özgü; olay öneki, biçim, yol ve izin aynı. `parity_statedocs::diag_log_matches_python` |
 
 ## Sahibe soruldu
 
 Sahip cevabı (TBD#374, q20261126_182502_d29f): (a). S1-S9 UYGULANDI (aşağıdaki tablo sorulduğu andaki durumu gösterir;
-güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 TBD#379'da açık.
+güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 TBD#379'da açık. Sonradan bulunan dört Python yazım/kilit davranışı TBD#383'te açık.
 
 | # | Konu | Python | Rust (şimdi) | Seçenek A | Seçenek B | Öneri |
 |---|---|---|---|---|---|---|

@@ -269,11 +269,21 @@ impl FileLock {
     pub fn exclusive_within(lock_file: &Path, timeout: Duration) -> io::Result<FileLock> {
         crate::paths::guard_write(lock_file);
         fs::create_dir_all(parent_of(lock_file))?;
+        // Python'dan SIKI (TBD#383): bağ izlenmez, içerik boşaltılmaz, başkasının dosyası kullanılmaz.
         let f = OpenOptions::new()
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
+            .custom_flags(libc::O_NOFOLLOW)
             .open(lock_file)?;
+        let m = f.metadata()?;
+        // SAFETY: getuid her zaman başarılıdır.
+        if !lock_file_usable(m.is_file(), m.uid(), unsafe { libc::getuid() }) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "kilit dosyası bize ait değil",
+            ));
+        }
         flock_within(&f, timeout)?;
         Ok(FileLock {
             file: Rc::new(f),
@@ -340,6 +350,18 @@ mod tests {
         std::os::unix::fs::symlink(&target, env.dir().join("b.lock")).unwrap();
         assert!(FileLock::acquire(&env.dir().join("b")).is_err());
         assert!(!target.exists(), "bağın hedefi oluşturulmadı");
+    }
+
+    /// TBD#383: oturum kaydı kilidi de sembolik bağı izlemez, hedefin içeriğine dokunmaz.
+    #[test]
+    fn exclusive_lock_symlink_refused() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let target = env.root().join("kurban");
+        fs::write(&target, "onemli").unwrap();
+        let p = env.dir().join("instances.json.lock");
+        std::os::unix::fs::symlink(&target, &p).unwrap();
+        assert!(FileLock::exclusive(&p).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "onemli");
     }
 
     /// TBD#374 S6: oturum kaydı kilidi süresiz beklemez.
