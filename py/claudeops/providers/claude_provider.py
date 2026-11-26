@@ -114,13 +114,17 @@ def jsonl_path_for(cwd: str, sid: Optional[str]) -> Optional[Path]:
     `_compact()`'i 2026-09-14'e kadar bunun yerine düz `find_latest_jsonl(cwd)`
     kullanıyordu — aynı cwd'de birden fazla session çalışırken (COMPACT HATASI,
     bkz. TODO.md) yanlış session'ın jsonl'ını izleyip 180s timeout'a düşüyordu.
-    `sid` yoksa (fresh --new, henüz atanmamış) mtime fallback'e düşer."""
-    # sid tek yol parçası olmalı (TBD#365): `/` (`../x` dahil) dizinin dışına çıkarırdı, NUL `is_file`i ValueError'la
-    # düşürürdü. Geçersiz sid = sid yok (aşağıdaki eski tahmin).
-    if sid and "/" not in str(sid) and "\0" not in str(sid):
-        candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
-        if candidate.is_file():
-            return candidate
+    `sid` YOKSA (fresh --new, henüz atanmamış) mtime fallback'e düşer.
+
+    Sözleşme (TBD#365, birleştirme kapısı): `sid` verildiyse YALNIZ `<sid>.jsonl`; geçersiz sid (`/`, NUL) ya da dosyası
+    olmayan sid doğrudan `None` (= transkript yok). Tahmin ortak cwd'de BAŞKA oturumun transkriptini döndürür (needs_ho,
+    usage yanlış), bu yüzden yalnız sid gerçekten yokken yapılır. Rust `transcript::jsonl_path_for` hiç tahmin etmez."""
+    if sid:
+        s = str(sid)
+        if "/" in s or "\0" in s:       # tek yol parçası olmalı: `../x` dizinin dışına çıkarır, NUL is_file'ı düşürür
+            return None
+        candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{s}.jsonl"
+        return candidate if candidate.is_file() else None
     return find_latest_jsonl(cwd)
 
 

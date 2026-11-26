@@ -253,6 +253,26 @@ class SidPathTest(unittest.TestCase):
                 with self.subTest(sid=sid):
                     self.assertIsNone(cp.jsonl_path_for("/w/p", sid))
 
+    def test_invalid_or_missing_sid_file_never_guesses(self):
+        """Birleştirme kapısı: geçersiz sid (ya da dosyası olmayan sid) `find_latest_jsonl` tahminine düşüyordu; ortak cwd'de
+        başka oturumun transkripti döner, needs_ho/usage yanlış olurdu. `find_latest_jsonl` SAHTELENMEZ: aynı dizinde gerçek
+        bir "en yeni" dosya var. Tahmin yalnız sid gerçekten yokken."""
+        root = _tmpdir(self)
+        proj = root / cp._encode_cwd("/w/p")
+        proj.mkdir()
+        (proj / "ok.jsonl").write_text("")
+        other = proj / "baska-oturum.jsonl"
+        other.write_text("{}\n")
+        os.utime(other, (2_000_000_000, 2_000_000_000))      # en yeni dosya: tahmin bunu döndürürdü
+        with mock.patch.object(cp, "PROJECTS_DIR", str(root)):
+            self.assertEqual(cp.jsonl_path_for("/w/p", "ok"), proj / "ok.jsonl")
+            for sid in ["../baska-oturum", "a/b", "a\x00b", "yok-boyle-sid"]:
+                with self.subTest(sid=sid):
+                    self.assertIsNone(cp.jsonl_path_for("/w/p", sid))
+            for sid in [None, ""]:
+                with self.subTest(sid=sid):
+                    self.assertEqual(cp.jsonl_path_for("/w/p", sid), other)
+
 
 def _urow(mid, model="claude-sonnet-5-5", out=5, rid="r", **extra):
     r = {"type": "assistant", "requestId": rid,
