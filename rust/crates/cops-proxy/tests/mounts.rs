@@ -1173,6 +1173,9 @@ async fn prefixed_redirect_never_leaves_the_origin() {
         ("//evil.example/a?token=x", "/evil.example/a"),
         ("///evil.example/a?token=x&b=1", "/evil.example/a?b=1"),
         ("//\\evil.example/a?token=x", "/evil.example/a"),
+        // Yüzde kodlu `/` ve `\` yol içinde kalır (tarayıcı çözüp otorite saymaz): aynı köken.
+        ("/%2f%2fevil.example/a?token=x", "/%2f%2fevil.example/a"),
+        ("/%5C%5Cevil.example/a?token=x", "/%5C%5Cevil.example/a"),
     ] {
         for extra in [&ck, &referer] {
             let r = raw(p, &get(path, extra)).await;
