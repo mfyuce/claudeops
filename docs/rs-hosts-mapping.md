@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
 | tanım | 361 | 245 | 116 | 0 |
-| test durumu (63 dosya) | 906 | 165 | 741 | 0 |
+| test durumu (63 dosya) | 910 | 165 | 745 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
@@ -750,44 +750,44 @@ Yok.
 | `test_remote_duplicate_name.py::TestCallers.test_nudge_handover_and_stop_send_nothing` | 62 | kapsam dışı | yok | uzak oturum yönetimi çağıranları. İz: T10 (değnekçi) |
 | `test_remote_duplicate_name.py::TestCallers.test_waits_do_not_report_ready_or_closed` | 71 | kapsam dışı | yok | uzak oturum yönetimi çağıranları. İz: T10 (değnekçi) |
 | `test_remote_duplicate_name.py::TestCallers.test_panel_stop_with_handover_fails_closed_without_plain_stop_fallback` | 75 | kapsam dışı | yok | panel devirli durdurma. İz: T4 (yaşam döngüsü) |
-| `test_remote_duplicate_name.py::TestReviewDriver.test_start_stop_send_and_sweep_post_nothing` | 93 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewDriver.test_poll_reports_unknown_not_ended` | 104 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewDriver.test_single_review_session_still_gets_stop_and_send` | 107 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestTwinAppearsDuringHandover.test_no_second_handover_request` | 133 | kapsam dışı | yok | panel devirli durdurma (`web.py`). İz: T4 (yaşam döngüsü) |
-| `test_remote_duplicate_name.py::TestTwinAppearsDuringHandover.test_no_stop_after_reply` | 136 | kapsam dışı | yok | panel devirli durdurma (`web.py`). İz: T4 (yaşam döngüsü) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_remote_ref_refuses` | 161 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_closed_row_of_the_same_name_does_not_rescue_twins` | 166 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_tracked_session_twins_are_refused` | 171 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_one_running_and_one_closed_row_still_resolves` | 182 | karşılandı | `health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown`<br>`tests/parity.rs::steward_client_parts_match_python` | satır sayımı kuralı; uzak klasör seçimi T10 |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_context_and_file_views_read_nothing` | 186 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_card_is_not_read_or_overwritten` | 196 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_advance_todo_status_is_unknown` | 206 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_idea_export_writes_nothing_and_keeps_the_idea` | 215 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_owner_answer_stays_queued_for_retry` | 223 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_directive_reports_the_unwritten_todo_line` | 232 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_review_driver_has_no_folder_and_keeps_findings` | 238 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_review_cwd_fallback_refuses_dated_twins` | 256 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestMirrorWindowTwins.test_twins_are_refused_whatever_their_folder_or_tmux_state` | 282 | kapsam dışı | yok | masaüstü yansı penceresi. İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestMirrorWindowTwins.test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one` | 291 | kapsam dışı | yok | masaüstü yansı penceresi. İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_running_row_wins_over_an_earlier_stopped_one` | 299 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_running_row_without_folder_does_not_borrow_a_stopped_one` | 303 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_stopped_twins_with_different_folders_are_refused` | 307 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_stopped_twins_with_one_folder_resolve` | 311 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_tracked_session_follows_the_same_rule` | 315 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_prefix_of_another_project_is_not_matched` | 333 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_two_dated_sessions_with_different_names_are_refused` | 336 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_running_session_wins_over_a_stopped_one` | 339 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_stopped_sessions_need_a_common_folder` | 343 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_exact_name_prefers_the_running_row` | 348 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
-| `test_remote_duplicate_name.py::TestContextAmbiguity.test_two_sessions_of_the_project_with_different_names` | 361 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestContextAmbiguity.test_stopped_twins_with_different_folders` | 365 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestWindowRowTwins.test_two_running_rows_give_no_row` | 376 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestWindowRowTwins.test_running_row_wins` | 379 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestWindowRowTwins.test_stopped_twins_need_a_common_folder` | 383 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestWindowRowTwins.test_action_reports_ambiguity_and_posts_nothing` | 388 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
-| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_edit_doc_does_not_write` | 426 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_idea_append_does_not_write` | 430 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
-| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_export_file_does_not_write` | 435 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewDriver.test_start_stop_send_and_sweep_post_nothing` | 94 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewDriver.test_poll_reports_unknown_not_ended` | 105 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewDriver.test_single_review_session_still_gets_stop_and_send` | 108 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestTwinAppearsDuringHandover.test_no_second_handover_request` | 134 | kapsam dışı | yok | panel devirli durdurma (`web.py`). İz: T4 (yaşam döngüsü) |
+| `test_remote_duplicate_name.py::TestTwinAppearsDuringHandover.test_no_stop_after_reply` | 137 | kapsam dışı | yok | panel devirli durdurma (`web.py`). İz: T4 (yaşam döngüsü) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_remote_ref_refuses` | 162 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_closed_row_of_the_same_name_does_not_rescue_twins` | 167 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_tracked_session_twins_are_refused` | 172 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_one_running_and_one_closed_row_still_resolves` | 183 | karşılandı | `health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown`<br>`tests/parity.rs::steward_client_parts_match_python` | satır sayımı kuralı; uzak klasör seçimi T10 |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_context_and_file_views_read_nothing` | 187 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_card_is_not_read_or_overwritten` | 197 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_advance_todo_status_is_unknown` | 207 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_idea_export_writes_nothing_and_keeps_the_idea` | 216 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_owner_answer_stays_queued_for_retry` | 224 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_directive_reports_the_unwritten_todo_line` | 233 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları. İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_review_driver_has_no_folder_and_keeps_findings` | 239 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestRemoteRefTwins.test_review_cwd_fallback_refuses_dated_twins` | 257 | kapsam dışı | yok | uzak review sürücüsü. İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestMirrorWindowTwins.test_twins_are_refused_whatever_their_folder_or_tmux_state` | 283 | kapsam dışı | yok | masaüstü yansı penceresi. İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestMirrorWindowTwins.test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one` | 292 | kapsam dışı | yok | masaüstü yansı penceresi. İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_running_row_wins_over_an_earlier_stopped_one` | 300 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_running_row_without_folder_does_not_borrow_a_stopped_one` | 304 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_stopped_twins_with_different_folders_are_refused` | 308 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_stopped_twins_with_one_folder_resolve` | 312 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRemoteRefRowChoice.test_tracked_session_follows_the_same_rule` | 316 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_prefix_of_another_project_is_not_matched` | 334 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_two_dated_sessions_with_different_names_are_refused` | 337 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_running_session_wins_over_a_stopped_one` | 340 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_stopped_sessions_need_a_common_folder` | 344 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestReviewFolderFallback.test_exact_name_prefers_the_running_row` | 349 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
+| `test_remote_duplicate_name.py::TestContextAmbiguity.test_two_sessions_of_the_project_with_different_names` | 362 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestContextAmbiguity.test_stopped_twins_with_different_folders` | 366 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestWindowRowTwins.test_two_running_rows_give_no_row` | 377 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestWindowRowTwins.test_running_row_wins` | 380 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestWindowRowTwins.test_stopped_twins_need_a_common_folder` | 384 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestWindowRowTwins.test_action_reports_ambiguity_and_posts_nothing` | 389 | kapsam dışı | yok | pencere eylemi satır seçimi (TBD#390). İz: T2 (terminal) |
+| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_edit_doc_does_not_write` | 427 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_idea_append_does_not_write` | 431 | kapsam dışı | yok | uzak dosya hedefi ve çağıranları (TBD#390). İz: T10 (değnekçi) |
+| `test_remote_duplicate_name.py::TestRecheckBeforeWrite.test_export_file_does_not_write` | 436 | kapsam dışı | yok | uzak review sürücüsü (TBD#390). İz: T8 (reviewer) |
 
 ### `py/tests/test_remote_resume_context.py`
 
@@ -1253,28 +1253,32 @@ Yok.
 | `test_stop_with_handover.py::LocalTest.test_english_message` | 94 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
 | `test_stop_with_handover.py::ReaskTest.test_reask_then_ready` | 115 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
 | `test_stop_with_handover.py::ReaskTest.test_reask_still_none_does_not_close` | 122 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_success_handover_then_forced_exact_stop` | 148 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_timeout_does_not_stop` | 155 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_handover_failure_does_not_stop` | 160 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_unreadable_baseline_does_nothing` | 165 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_not_applicable_returns_none` | 170 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_unreadable_host_does_not_stop` | 174 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_each_outcome_is_logged` | 180 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteFallbackTest.test_fallback_stop_is_exact_and_logged` | 190 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_without_ho_field_old_behaviour_byte_for_byte` | 265 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_force_with_ho_is_a_400_conflict_never_a_silent_plain_stop` | 271 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_still_hands_over_with_the_exact_flag` | 278 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_not_applicable_falls_back_to_exact_plain_stop` | 290 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_without_ho_stays_plain_stop` | 298 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_remote_without_ho_goes_straight_to_proxy` | 302 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_returns_pending_immediately_while_job_blocks` | 308 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_failure_is_reported_and_never_plain_stops` | 314 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_success` | 322 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_not_applicable_falls_back_to_plain_stop_inside_the_job` | 329 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_second_ho_while_pending_does_not_start_second_job` | 336 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_remote_ho_runs_remote_helper_in_job` | 344 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_job_exception_becomes_error_with_force_hint` | 350 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_status_unknown_after_restart_is_none` | 356 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_success_handover_then_forced_exact_stop` | 150 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_timeout_does_not_stop` | 157 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_handover_failure_does_not_stop` | 162 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_unreadable_baseline_does_nothing` | 167 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_not_applicable_returns_none` | 172 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_unreadable_host_does_not_stop` | 176 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_each_outcome_is_logged` | 182 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_stale_cache_recovers_within_the_wait` | 212 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_stale_cache_gives_up_after_the_wait` | 217 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_twin_rows_are_ambiguous_without_waiting` | 222 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_ambiguous_message_in_both_languages` | 227 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteFallbackTest.test_fallback_stop_is_exact_and_logged` | 237 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_without_ho_field_old_behaviour_byte_for_byte` | 312 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_force_with_ho_is_a_400_conflict_never_a_silent_plain_stop` | 318 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_still_hands_over_with_the_exact_flag` | 325 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_not_applicable_falls_back_to_exact_plain_stop` | 337 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_without_ho_stays_plain_stop` | 345 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_remote_without_ho_goes_straight_to_proxy` | 349 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_returns_pending_immediately_while_job_blocks` | 355 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_failure_is_reported_and_never_plain_stops` | 361 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_success` | 369 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_not_applicable_falls_back_to_plain_stop_inside_the_job` | 376 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_second_ho_while_pending_does_not_start_second_job` | 383 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_remote_ho_runs_remote_helper_in_job` | 391 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_job_exception_becomes_error_with_force_hint` | 397 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_status_unknown_after_restart_is_none` | 403 | kapsam dışı | yok | devirli durdurma (yerel + uzak). İz: T4 (yaşam döngüsü) |
 
 ### `py/tests/test_term_dedup.py`
 
