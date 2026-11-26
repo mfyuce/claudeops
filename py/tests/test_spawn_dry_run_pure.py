@@ -23,6 +23,7 @@ from claudeops import spawn, discovery, ucli_agents
 from claudeops.providers.base import McpServerSpec
 
 home, work, cli, opts = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+name = os.environ["SESSION"]
 
 class FakeProc:
     pid = 999999
@@ -44,7 +45,7 @@ def tree():
 
 ucli_agents.set_panel_port(1)
 spec = McpServerSpec(name="s", command="/bin/true", args=("x",), allowed_tools=("t",))
-kw = dict(name="s1", cwd=work, model="m", display=":9", permission_mode="auto", effort="medium", cli=cli,
+kw = dict(name=name, cwd=work, model="m", display=":9", permission_mode="auto", effort="medium", cli=cli,
           mcp_server=spec, cli_opts=opts or None)
 with mock.patch.object(discovery.psutil, "process_iter", return_value=[FakeProc()]), \
         mock.patch.object(discovery, "_sessions_from_json", return_value={}), \
@@ -66,7 +67,7 @@ print(json.dumps({"changed": changed, "calls": calls, "dry": dry.split("cmd: ", 
 
 
 class DryRunPureTest(unittest.TestCase):
-    def _run(self, cli, opts=None, settings=None, seed=()):
+    def _run(self, cli, opts=None, settings=None, seed=(), session="s1"):
         d = tempfile.TemporaryDirectory()
         self.addCleanup(d.cleanup)
         home, work, bindir = (os.path.join(d.name, x) for x in ("home", "work", "bin"))
@@ -92,7 +93,8 @@ class DryRunPureTest(unittest.TestCase):
             with open(path, "w") as f:
                 f.write(text)
         env = {"HOME": home, "CLAUDEOPS_DIR": state, "PATH": bindir + ":/usr/bin:/bin", "PYTHONPATH": PY_DIR,
-               "CLAUDEOPS_EXTENSIONS": "off", "CALLS": calls, "PYTHONDONTWRITEBYTECODE": "1"}
+               "CLAUDEOPS_EXTENSIONS": "off", "CALLS": calls, "PYTHONDONTWRITEBYTECODE": "1",
+               "SESSION": session}
         res = subprocess.run([sys.executable, "-c", SCRIPT, home, work, cli, json.dumps(opts or {})], env=env,
                              cwd=d.name, capture_output=True, text=True, timeout=90)
         self.assertEqual(res.returncode, 0, res.stderr)
@@ -134,6 +136,11 @@ class DryRunPureTest(unittest.TestCase):
         for rel in ("ucli_api_key", "ucli_agent_tokens/s1", "ucli_metrics"):
             self.assertTrue(any(rel in p for p in out["real_changed"]), (rel, out["real_changed"]))
         self.assertIn(os.path.join(out["work"], ".ucli"), out["real_changed"])
+
+    def test_ucli_unsafe_name_gets_no_agent_flags_in_either_run(self):
+        out = self._run("ucli", session="a b")
+        self._assert_pure(out)
+        self.assertNotIn("--allow-agents", out["dry"])
 
     def test_ucli_claude_service_with_ask_dir(self):
         out = self._run("ucli", opts={"service": "claude", "ask_dir": True})

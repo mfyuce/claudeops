@@ -163,6 +163,8 @@ def issue_token(session_name: str) -> str:
     if is_child_name(session_name):
         raise ValueError("child sessions do not get an agent token (depth 1)")
     if preview.active():      # kuru kurulum token ÜRETMEZ/dosya yazmaz (çalışan oturumun token'ı bozulmasın)
+        if not _SAFE_NAME_RE.match(session_name or ""):
+            raise ValueError("unsafe session name")      # gerçek koşuyla aynı red
         return token_file(session_name)
     token = secrets.token_hex(32)
     with _LOCK:     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
