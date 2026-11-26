@@ -27,6 +27,7 @@ pub mod questions;
 pub mod recovery;
 pub mod report;
 pub mod store;
+pub mod tick;
 pub mod tour;
 #[rustfmt::skip]
 mod types_gen;

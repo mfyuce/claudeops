@@ -1052,6 +1052,175 @@ for date, sid in itertools.product(["2026-11-26", "", "a/b", "/kök"], [None, "d
     # Rust'ta kök parametredir: vektördeki yol `STEWARD_DIR` yerine verilen köke taşınır
     add("daily_path", {"base": base, "date": date, "sid": sid}, call=lambda: sw.daily_path(date, paths).replace(sw.STEWARD_DIR, base))
 
+# ── grup 5: plan_tick (kaydın kapsamadığı dallar; 3 tick'lik zincirler, durum bir sonrakine geçer) ──
+rnd = random.Random(5)
+sw._now = lambda: NOW
+TP = ["alfa", "beta", "gama", "delta", "eps"]
+T_SESS = [p + suf for p in TP for suf in ("", "20261126", "20261126_2")] + ["degnekci", "degnekci_x", "adhoc1", "yok20261001"]
+T_TEXTS = ["", "çalışıyorum", "devir notu\nREADY FOR HANDOVER", "STEWARD-DONE", "STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt",
+           "STEWARD-DONE-CONFIRMED: kanıt yok", "STEWARD-DONE-CONFIRMED: abc1234 kalan 2", "STEWARD-PLAN-READY", "STEWARD-ASK: hangisi?",
+           "STEWARD-ROUTINE: ne zaman?", "STEWARD-BLOCKED: pdf yok", "STEWARD-IDEA: fikir", "STEWARD-NEXT: raporu yaz", "STEWARD-NEXT: yok",
+           "STEWARD-ASK: Which one should I pick for the report?", "API Error: 500 overloaded", "API Error: 400 bad request",
+           "STEWARD-LESSON: ders", "STEWARD-JOB: embed a.txt", "uzun cevap " * 30]
+T_QTEXTS = ["Bu oturumda mı devam edeyim, yoksa devir ile yeni oturumda mı?", "Should I continue in this session or do a handover?",
+            "bu oturumda mı sürdüreyim, devir mi? commit atayım mı?", "x: STEWARD-DONE-CONFIRMED geldi ama çelişti", "hangisi?",
+            sw.BLOCKED_TEXT_PREFIX + "pdf yok", "rutin soru?"]
+T_ANS = ["evet", "aç", "Aç", "hayır", "paused kalsın", "bitti", "bitmedi", "bitti ama testler kaldı", "devam et lütfen, " + "uzun talimat " * 8, ""]
+T_TIMES = [0.0, NOW - 30, NOW - 61, NOW - 600, NOW - 1799, NOW - 1801, NOW - 3000, NOW - 4000, NOW - 7300, NOW - 15000, NOW - 90000]
+
+
+def t_proj():
+    out = {}
+    for name in rnd.sample(TP, rnd.randint(1, 5)):
+        out[name] = P(name, phase=rnd.choice(["planning", "planned", "planned", "done", "paused", "idea"]), priority=rnd.randint(1, 4),
+                      cadence_minutes=rnd.choice([0, 30, 60, 60]), last_visit=rnd.choice([0.0, NOW - 600, NOW - 4000, NOW - 90000]),
+                      notes=rnd.choice(["", "", "", "BEKLEME: veri", sw.NO_DONE_TAG]), model=rnd.choice(["", "claude-fable-5-1"]))
+    return out
+
+
+def t_view(name):
+    return V(name, rnd.random() < 0.85, tmux=rnd.random() < 0.9, blueprint=rnd.choice([None, None, None, "", rnd.choice(TP)]),
+             busy=rnd.choice([None, True, False, False, False]), history_size=rnd.choice([None, 10, 1950, 5000]),
+             context_tokens=rnd.choice([None, None, 0, 50000, 160000, 250000, 310000, 450000]),
+             model=rnd.choice(["", "claude-opus-4", "claude-fable-5-1"]), last_assistant=rnd.choice(T_TEXTS) + rnd.choice(["", "\n" + rnd.choice(T_TEXTS)]),
+             last_activity=rnd.choice(T_TIMES), started_at=rnd.choice(T_TIMES), subagent_active=rnd.random() < 0.15,
+             subagent_unknown=rnd.random() < 0.15, host=rnd.choice(["", "", "h1"]))
+
+
+def t_question(i, projects):
+    proj = rnd.choice(list(projects) + ["", "degnekci", "yok", "adhoc1"])
+    status = rnd.choice(["open", "answered", "answered"])
+    text = rnd.choice(T_QTEXTS)
+    if "STEWARD-DONE" in text:
+        text = f"{proj}: " + text
+    return sw.Question(f"q{i}", proj, text, created_at=rnd.choice(T_TIMES), status=status, answer=rnd.choice(T_ANS) if status == "answered" else "",
+                       answered_at=rnd.choice(T_TIMES) if status == "answered" else 0.0, delivered_at=rnd.choice([0.0, 0.0, 0.0, NOW - 5]),
+                       source=rnd.choice(T_SESS + [""]), routine=rnd.random() < 0.3, notified_at=rnd.choice([0.0, NOW - 50]),
+                       answered_by=rnd.choice(["", "owner_panel", "brain", "motor"]))
+
+
+def t_state(projects, names):
+    st = {}
+    pick = lambda xs, k: rnd.sample(xs, min(len(xs), rnd.randint(0, k)))   # noqa: E731
+    opt = lambda key, val: st.__setitem__(key, val) if rnd.random() < 0.35 else None   # noqa: E731
+    opt("ho_pending", {n: rnd.choice([NOW - 60, NOW - 2000, NOW - 99999]) for n in pick(names + ["oldgone"], 3)})
+    opt("ho_close", {n: rnd.choice(TP) for n in pick(names, 2)})
+    opt("ho_pause", {n: rnd.choice(["keepwarm", ""]) for n in pick(names, 2)})
+    opt("done_pending", {n: rnd.choice(TP + ["yok"]) for n in pick(names, 2)})
+    opt("done_confirm", {p: rnd.choice([NOW - 60, NOW - 30000]) for p in pick(TP, 2)})
+    opt("ho_deferred", {n: rnd.choice([{"since": NOW - 60, "why": "busy"}, {"since": NOW - 4000, "why": "subagent_active"}, {"why": "busy"}, "eski"])
+                        for n in pick(names, 3)})
+    opt("pause_close", {p: rnd.choice([NOW - 60, NOW - 30000]) for p in pick(TP, 2)})
+    opt("last_directive_at", {n: rnd.choice([NOW - 30, NOW - 5000]) for n in pick(names, 3)})
+    opt("reviewed_at", {n: NOW - 9000 for n in pick(names, 2)})
+    opt("observed_visit", {p: rnd.choice([NOW - 30, 0]) for p in pick(TP, 2)})
+    opt("tbd_asked", {p: rnd.choice([NOW - 30, NOW - 30000]) for p in pick(TP, 2)})
+    opt("todo_seen", {p: rnd.choice(["s1", "s2"]) for p in pick(TP, 3)})
+    opt("todo_swept", {p: rnd.choice([NOW - 30, NOW - 90000]) for p in pick(TP, 2)})
+    opt("todo_paused_asked", {p: rnd.choice([NOW - 30, NOW - 90000]) for p in pick(TP, 2)})
+    opt("brain_stopped", {n: rnd.choice([NOW - 30, NOW - 90000, None]) for n in pick(names, 2)})
+    opt("skip_seen", {n: rnd.choice([{"at": NOW - 30, "sig": "x"}, {"at": NOW - 90000}, "bozuk"]) for n in pick(names, 2)})
+    opt("blocked_tours", {f"q{i}": rnd.choice([0, 1, 2, 3]) for i in pick(list(range(6)), 3)})
+    opt("last_tour", rnd.choice([0.0, NOW - 30, NOW - 4000]))
+    opt("tour_deferred", rnd.choice([True, 0]))
+    opt("ask_seen", {f"q{i}": {"n": 1, "at": NOW - 30} for i in pick(list(range(6)), 2)})
+    opt("ask_gated", {f"q{i}": 1 for i in pick(list(range(6)), 2)})
+    opt("no_work_paused", rnd.choice([{p: NOW for p in pick(TP, 2)}, [rnd.choice(TP)], {}]))
+    opt("api_err", {n: {"since": NOW - 900, "nudges": rnd.randint(0, 3), "last_nudge": NOW - 700, "gave_up": False, "hash": "x"} for n in pick(names, 2)})
+    opt("api_outage", {"since": NOW - 900, "probe": rnd.choice(["", names[0] if names else ""]), "probe_at": NOW - 10, "woken": [], "recovered": rnd.random() < 0.5})
+    opt("seen_assistant", {n: "0" * 16 for n in pick(names, 2)})
+    opt("owned", {p: rnd.choice(names) for p in pick(TP, 2)} if names else {})
+    return st
+
+
+def t_world(projects, cfg):
+    sid = rnd.choice(["default", "default", "iso"])
+    owners = {p: rnd.choice([sid, sid, sid, "default", "iso", ""]) for p in projects}
+    owners = {p: o for p, o in owners.items() if o}
+    return sw.World(sid=sid, owners=owners, conflicts=frozenset(rnd.sample(list(projects), rnd.choice([0, 0, 0, 1])) if projects else []),
+                    brains={cfg.brain_name or "degnekci": sid}, is_adhoc_owner=sid == "default", starts_left=rnd.choice([None, None, 0, 1, 3]),
+                    owned={p: rnd.choice(T_SESS) for p in rnd.sample(list(projects), rnd.choice([0, 0, 1]))},
+                    unavailable=frozenset(rnd.sample(list(projects), rnd.choice([0, 0, 0, 1]))),
+                    quota_held=frozenset(rnd.sample(list(projects), rnd.choice([0, 0, 0, 1]))))
+
+
+def t_cfg():
+    return C(enabled=True, max_active=rnd.choice([0, 1, 2, 4]), max_starts_per_tick=rnd.choice([0, 1, 2]), auto_start=rnd.random() < 0.8,
+             drain=rnd.random() < 0.1, auto_context_answer=rnd.random() < 0.8, done_handover=rnd.random() < 0.6,
+             done_handover_min_ratio=rnd.choice([0.0, 0.3]), max_active_total=rnd.choice([0, 2, 6]), lang=rnd.choice(["tr", "tr", "en"]),
+             history_min_age_minutes=rnd.choice([0, 15]), context_warn_tokens=rnd.choice([0, 300000, 300000]),
+             handover_defer_max_minutes=rnd.choice([0, 30]), ask_gate=rnd.choice(["off", "on", "shadow"]), tour_minutes=rnd.choice([1, 15]),
+             stop_idle_minutes=rnd.choice([30, 45]), brain_name=rnd.choice(["degnekci", "degnekci", ""]))
+
+
+def t_callbacks(projects):
+    keys = list(projects)
+    cbs = {}
+    if rnd.random() < 0.7:
+        cbs["open_work"] = {p: rnd.choice([None, 0, 0, 2]) for p in keys}
+    if rnd.random() < 0.6:
+        cbs["open_tbd"] = {p: rnd.choice([None, 0, 1]) for p in keys}
+    if rnd.random() < 0.5:
+        cbs["open_work_real"] = {p: rnd.choice([None, 0, 3]) for p in keys}
+    if rnd.random() < 0.5:
+        cbs["todo_sha"] = {p: rnd.choice(["s1", "s2", "", None, "raise"]) for p in keys}
+    if rnd.random() < 0.4:
+        cbs["claim_check"] = {p: rnd.choice([[], [], ["not çelişkisi"]]) for p in keys}
+    return cbs
+
+
+def t_tick(views, projects, state, cfg, questions, ideas, world, cbs):
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": questions, "ideas": ideas, "world": world}
+    holder = []
+
+    def run(live):
+        ret = sw.plan_tick(**args, **live)
+        holder.append(ret)
+        return ret
+    add_cb("plan_tick", args, run, cbs)
+    return holder[0][1] if holder else state
+
+
+for _ in range(220):
+    projects = t_proj()
+    cfg = t_cfg()
+    names = rnd.sample(T_SESS, rnd.randint(0, 7))
+    state = t_state(projects, names)
+    questions = [t_question(i, projects) for i in range(rnd.randint(0, 6))]
+    ideas = [sw.Idea(id="i1", text="fikir", created_at=NOW - 100)] if rnd.random() < 0.3 else []
+    world = t_world(projects, cfg) if rnd.random() < 0.5 else None
+    cbs = t_callbacks(projects)
+    views = [t_view(n) for n in names]
+    for step in range(3):
+        state = t_tick(views, projects, state, cfg, questions, ideas, world, cbs)
+        # sonraki tick: bazı oturumlar devir notu yazdı, kapandı ya da boşaldı
+        for v in views:
+            r = rnd.random()
+            if r < 0.25:
+                v.last_assistant = "devir notu\nREADY FOR HANDOVER"
+            elif r < 0.35:
+                v.running = False
+            elif r < 0.5:
+                v.busy = False
+            elif r < 0.6:
+                v.last_assistant = rnd.choice(T_TEXTS)
+# rastgele zincirlerin ulaşmadığı dallar (tick_cover.py): erişilemeyen host'ta erteleme/DONE izi korunur; keepwarm zinciri kapatması
+W_UN = sw.World(sid="default", owners={"alfa": "default"}, brains={"degnekci": "default"}, unavailable=frozenset({"alfa"}))
+for st in [{"ho_deferred": {"alfa20261126": {"since": NOW - 60, "why": "busy"}}, "done_pending": {"alfa20261126": "alfa"}},
+           {"ho_deferred": {"alfa20261126": "eski", "beta": {"why": "x"}}, "done_pending": {"alfa20261126": "yok", "beta": "alfa"}}]:
+    t_tick([], {"alfa": P("alfa", phase="planned")}, st, C(enabled=True), [], [], W_UN, {})
+for why, lang in [("keepwarm", "tr"), ("", "tr"), ("keepwarm zinciri", "en")]:
+    t_tick([V("beta", True, tmux=True, busy=False, last_assistant="not\nREADY FOR HANDOVER")], {"beta": P("beta", phase="planned")},
+           {"ho_pending": {"beta": NOW - 60}, "ho_close": {"beta": "beta"}, "ho_pause": {"beta": why}}, C(enabled=True, lang=lang), [], [], None, {})
+# bozuk tipli durum alanları: Python TypeError/ValueError -> Rust hata
+for key, val in [("done_confirm", {"alfa": "x"}), ("blocked_tours", {"q1": None}), ("ho_pending", {"alfa": "x"}), ("tbd_asked", {"alfa": "x"}),
+                 ("skip_seen", {"a": {"at": "x"}}), ("last_tour", "x"), ("observed_visit", {"alfa": "x"}), ("todo_swept", {"alfa": None})]:
+    projects = {"alfa": P("alfa", phase="planned", cadence_minutes=30)}
+    views = [V("alfa", True, tmux=True, busy=False, context_tokens=400000)]
+    add_cb("plan_tick", {"views": views, "projects": projects, "state": {key: val}, "cfg": C(enabled=True), "now": NOW, "questions": [], "ideas": [], "world": None},
+           lambda live: sw.plan_tick(views, projects, {key: val}, C(enabled=True), NOW, [], [], **live),
+           {"open_work": {"alfa": 1}, "todo_sha": {"alfa": "s"}})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

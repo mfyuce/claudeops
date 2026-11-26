@@ -20,5 +20,6 @@ mod questions;
 mod recovery;
 mod report;
 mod store;
+mod tick;
 mod tour;
 mod world;
