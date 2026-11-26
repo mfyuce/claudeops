@@ -378,8 +378,8 @@ fn failed_records(b: &mut Build<'_>) {
     let c = put(put(b.case("hata-tireli", "ucli", Some("cli-2"), ""), "cli-2-5-1.json", "{}"), "cli-7-1.json", "{}");
     b.push(c);
     let c = put(b.case("hata-ust-simge", "ucli", Some("s1"), ""), "s1-5-1.json", r#"{"error":"x"}"#);
-    let c = put(c, "s1-²-1.json", "{}")
-        .known("üst simge rakamlı ad: Python `int()` ValueError ile TÜM kayıtları gizler, Rust yalnız o adı atlar");
+    // üst simge rakamlı ad iki tarafta da yalnız kendisi atlanır
+    let c = put(c, "s1-²-1.json", "{}");
     b.push(c);
     let c = put(b.case("hata-dev-unix", "ucli", Some("s1"), ""), "s1-99999999999999999999999999-1.json", "{}")
         .known("u64'e sığmayan zaman: Python sınırsız int, Rust u64::MAX");

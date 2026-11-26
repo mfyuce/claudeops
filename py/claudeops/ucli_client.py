@@ -305,7 +305,8 @@ def failed_turn_records(cwd: str, session: str) -> list:
             if not nm.endswith(".json"):
                 continue
             parts = nm[:-5].rsplit("-", 2)
-            if len(parts) != 3 or parts[0] != session or not parts[1].isdigit() or not parts[2].isdigit():
+            # `isdecimal`: `isdigit` üst simgeyi de kabul eder, `int()` onda istisna atıp TÜM kayıtları gizliyordu
+            if len(parts) != 3 or parts[0] != session or not parts[1].isdecimal() or not parts[2].isdecimal():
                 continue
             out.append((int(parts[1]), int(parts[2]), os.path.join(fd, nm)))
     out.sort()

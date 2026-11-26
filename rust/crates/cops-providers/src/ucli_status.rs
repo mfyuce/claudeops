@@ -84,7 +84,7 @@ pub fn status_is_busy(status: &Py) -> bool {
     status.get("activity").and_then(Py::as_str) != Some("waiting_for_stdin")
 }
 
-/// `str.isdigit()` dizgisi mi ve değeri (yalnız ondalık rakamlar; Python üst simge rakamında istisna atar).
+/// `str.isdecimal()` dizgisi mi ve değeri (yalnız ondalık rakamlar; üst simge sayılmaz).
 fn decimal_number(s: &str) -> Option<u64> {
     if s.is_empty() {
         return None;
