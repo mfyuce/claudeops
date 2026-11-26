@@ -66,6 +66,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-cli"
+version = "0.1.0"
+dependencies = [
+ "cops-auth",
+ "cops-proxy",
+ "libc",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "cops-local"
 version = "0.1.0"
 dependencies = [
