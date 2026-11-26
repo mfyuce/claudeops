@@ -8,13 +8,13 @@ polled every ~150-250ms from a ThreadingHTTPServer request thread ([[tmux-backed
 web CLI plan]]).
 """
 from __future__ import annotations
+import itertools
 import os
 import re
 import shlex
 import shutil
 import subprocess
 import termios
-import threading
 import time
 import unicodedata
 from pathlib import Path
@@ -221,40 +221,52 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
     timeout = max(_TIMEOUT, 5.0 + len(text) / 1500.0)
     try:
         target = _exact(name)     # hedeflenemeyen ad: tampon bile yüklenmeden False (TBD#366)
-        if "\n" in text or "\r" in text:
-            # Çok satırlı mesaj: `send-keys -l` içindeki satır sonu TUI'de Enter sayılıp mesajı PARÇALI gönderirdi.
-            # Tek parça bracketed paste (`load-buffer` + `paste-buffer -p`) ile yapıştır, sonra tek Enter.
-            buf = "cops-%d-%d" % (os.getpid(), threading.get_ident())
-            rl = subprocess.run(_base_argv() + ["load-buffer", "-b", buf, "-"], input=text.encode("utf-8"),
-                                capture_output=True, timeout=timeout)
-            if rl.returncode != 0:
-                return False
-            rp = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", target],
-                                capture_output=True, timeout=timeout)
-            if rp.returncode != 0:
-                subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True, timeout=_TIMEOUT)
-                return False
-            time.sleep(max(settle_delay, 0.15))     # TUI yapıştırmayı işlesin, sonra Enter
-            r2 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "Enter"],
-                                 capture_output=True, timeout=_TIMEOUT)
-            return r2.returncode == 0
-        # `--` ZORUNLU (`tmux_send_raw`'daki AYNI tuzak, burada 2026-09-14'e
-        # kadar eksikti — bilinen açık bug, bkz. TODO.md): `--` olmadan tire
-        # ile başlayan literal metin ("-help", "--foo", markdown "- item",
-        # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
-        # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
-        arg = text[:-1] + "\\;" if text.endswith(";") else text      # sondaki `;` tmux'ta komut ayıracı: `\;` literal verir (ölçüldü: 'abc;' -> 'abc')
-        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "-l", "--", arg],
-                             capture_output=True, timeout=timeout)
-        if r1.returncode != 0:
+        if "\x00" in text:
             return False
-        if settle_delay > 0:
+        if text:
+            # Metin ASLA argv'ye girmez (TBD#369: `/proc/<pid>/cmdline`ı başka kullanıcı okuyabilir): stdin'den tampona
+            # yüklenir, tek parça bracketed paste ile yapıştırılır (`-p`: uygulama istemişse), sonra tek Enter. Satır
+            # sonu TUI'de Enter sayılıp mesajı bölmez.
+            if not _paste_text(target, text, timeout):
+                return False
+            time.sleep(max(settle_delay, _PASTE_SETTLE))     # TUI yapıştırmayı işlesin, sonra Enter
+        elif settle_delay > 0:
             time.sleep(settle_delay)
-        r2 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "Enter"],
-                             capture_output=True, timeout=_TIMEOUT)
-        return r2.returncode == 0
+        r = subprocess.run(_base_argv() + ["send-keys", "-t", target, "Enter"],
+                           capture_output=True, timeout=_TIMEOUT)
+        return r.returncode == 0
     except Exception:
         return False
+
+
+_PASTE_SETTLE = 0.15
+_BUFFER_SEQ = itertools.count()
+
+
+def _paste_text(target: str, text: str, timeout: float) -> bool:
+    """`load-buffer -` (stdin) + `paste-buffer -p -d`. Yapıştırma olmadıysa (hata, zaman aşımı, istisna) tampon SİLİNİR:
+    metin (parola olabilir) tmux sunucusunda okunabilir kalmaz (TBD#369 P9)."""
+    buf = "cops-%d-%d" % (os.getpid(), next(_BUFFER_SEQ))
+    pasted = False
+    try:
+        r = subprocess.run(_base_argv() + ["load-buffer", "-b", buf, "-"], input=text.encode("utf-8"),
+                           capture_output=True, timeout=timeout)
+        if r.returncode != 0:
+            return False
+        r = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", target],
+                           capture_output=True, timeout=timeout)
+        pasted = r.returncode == 0
+        return pasted
+    finally:
+        if not pasted:
+            _delete_buffer(buf)
+
+
+def _delete_buffer(buf: str) -> None:
+    try:
+        subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True, timeout=_TIMEOUT)
+    except Exception:
+        pass     # sunucu cevap vermiyor: yapacak bir şey yok, gönderim zaten "olmadı"
 
 
 # Only these key-names may go through non-literal send-keys (never pass arbitrary

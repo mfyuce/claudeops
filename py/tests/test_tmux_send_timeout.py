@@ -14,7 +14,7 @@ class SendTimeoutTest(unittest.TestCase):
     def _timeouts(self, text):
         seen = []
 
-        def fake_run(argv, capture_output=True, timeout=None):
+        def fake_run(argv, capture_output=True, timeout=None, input=None):
             seen.append(timeout)
             return subprocess.CompletedProcess(argv, 0)
 

@@ -1,4 +1,4 @@
-"""Çok satırlı mesaj tek parça bracketed paste ile gider (load-buffer + paste-buffer -p + tek Enter); tek satır eski yolda. tmux'a DOKUNMAZ."""
+"""Çok satırlı mesaj tek parça bracketed paste ile gider (load-buffer + paste-buffer -p + tek Enter); tek satır da aynı yoldan (TBD#369). tmux'a DOKUNMAZ."""
 import os
 import subprocess
 import sys
@@ -35,11 +35,12 @@ class MultilineSendTest(unittest.TestCase):
         self.assertIn("Enter", calls[2][1])
         self.assertNotIn("-l", calls[2][1])
 
-    def test_single_line_keeps_literal_path(self):
+    def test_single_line_uses_the_same_buffer_path(self):
         ok, calls = _run("merhaba")
         self.assertTrue(ok)
-        self.assertEqual([c[0] for c in calls], ["send-keys", "send-keys"])
-        self.assertIn("-l", calls[0][1])
+        self.assertEqual([c[0] for c in calls], ["load-buffer", "paste-buffer", "send-keys"])
+        self.assertEqual(calls[0][2], b"merhaba")
+        self.assertNotIn("merhaba", calls[0][1] + calls[1][1] + calls[2][1])
 
     def test_paste_failure_returns_false_and_cleans_buffer(self):
         ok, calls = _run("a\nb", fail_on="paste-buffer")
