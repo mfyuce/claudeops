@@ -184,6 +184,11 @@ fn path_id(path: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `Location` için yol: baştaki `/` ve `\\` dizisi tek `/` olur (tarayıcı `//ana` ve `/\\ana`yı başka site sayar).
+fn same_origin_path(path: &str) -> String {
+    format!("/{}", path.trim_start_matches(['/', '\\']))
+}
+
 /// Köke göre yazılan isteği taşıyan uygulama çerezi (rootrel mount kimliği).
 pub const APP_COOKIE: &str = "cops_app";
 
@@ -1101,7 +1106,11 @@ impl Proxy {
                 Some(id) if prefixed => path[id.len() + 1..].to_string(),
                 _ => path.clone(),
             };
-            let loc_path = if bare { format!("{path}/") } else { public };
+            let loc_path = if bare {
+                format!("{path}/")
+            } else {
+                same_origin_path(&public)
+            };
             let loc = if q.is_empty() {
                 loc_path
             } else {

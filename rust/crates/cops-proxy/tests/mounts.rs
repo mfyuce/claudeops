@@ -1162,3 +1162,22 @@ async fn query_token_on_a_learned_root_keeps_the_public_path() {
         "{r}"
     );
 }
+
+/// Vekilin `/<id>` önekini eklediği istekte yol `//evil...` ise `Location` protokole göreli adres (başka site) OLMAMALI.
+#[tokio::test]
+async fn prefixed_redirect_never_leaves_the_origin() {
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let ck = format!("Cookie: cops_ext={COOKIE}; cops_app=gw\r\n");
+    let referer = format!("{ck}Referer: http://panel.example:8765/gw/x\r\n");
+    for (path, want) in [
+        ("//evil.example/a?token=x", "/evil.example/a"),
+        ("///evil.example/a?token=x&b=1", "/evil.example/a?b=1"),
+        ("//\\evil.example/a?token=x", "/evil.example/a"),
+    ] {
+        for extra in [&ck, &referer] {
+            let r = raw(p, &get(path, extra)).await;
+            assert!(r.starts_with("HTTP/1.1 302"), "{path}: {r}");
+            assert_eq!(header(&r, "location"), Some(want), "{path}: {r}");
+        }
+    }
+}
