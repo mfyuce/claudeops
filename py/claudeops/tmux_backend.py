@@ -198,7 +198,7 @@ def tmux_capture_range(name: str, start: int, end: int) -> Optional[str]:
 # Eşleştirmeden önce mutlaka ANSI temizlenmeli — frontend'in `stripAnsi`'siyle
 # aynı iki desen (SGR + OSC).
 ANSI_SGR_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*\x07")
+ANSI_OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")    # bitiş BEL ya da ST (`ESC \`)
 
 
 def strip_ansi(text: str) -> str:
