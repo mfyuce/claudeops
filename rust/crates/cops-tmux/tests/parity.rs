@@ -325,7 +325,7 @@ fn writes_match_python() {
         let mut calls = Vec::new();
         let mut rust = Vec::new();
         for text in texts {
-            calls.push(json!(["tmux_send_keys", py_name, text]));
+            calls.push(json!(["tmux_send_keys", py_name, text, 0.0, false]));
             rust.push(
                 t.send_text(&rs_name, text, Duration::ZERO, MaskGuard::UserTyped)
                     .is_ok(),
@@ -842,9 +842,11 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         (&[("send-keys.rc", "0\n1")][..], "tek"),
         (&[("send-keys.rc", "1")][..], "a\nb"),
     ] {
-        t(files, json!(["tmux_send_keys", "a", text, 0.0]), &|x| {
-            ok(x.send_text("a", text, Duration::ZERO, MaskGuard::UserTyped))
-        });
+        t(
+            files,
+            json!(["tmux_send_keys", "a", text, 0.0, false]),
+            &|x| ok(x.send_text("a", text, Duration::ZERO, MaskGuard::UserTyped)),
+        );
     }
     let long = format!("{};{}", "ş".repeat(1999), "q".repeat(2600));
     for (files, data) in [
@@ -1047,7 +1049,7 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         json!(["tmux_has_session", "a"]),
         json!(["tmux_pane_snapshot", "a"]),
         json!(["tmux_capture", "a", 10]),
-        json!(["tmux_send_keys", "a", "x", 0.0]),
+        json!(["tmux_send_keys", "a", "x", 0.0, false]),
         json!(["tmux_set_ctx", "a", "x"]),
         json!(["tmux_client_session", "/dev/pts/1"]),
         json!(["tmux_ghost_session", "a", 1.0]),

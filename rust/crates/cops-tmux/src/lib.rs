@@ -33,8 +33,8 @@ pub use mask::tty_is_masked;
 pub use proc::{pid_childless, CtxPusher, OuterBash, ANCESTOR_WALK_LIMIT};
 pub use query::{PaneInfo, PaneSize, SessionInfo, Snapshot, HISTORY_LIMIT, SNAPSHOT_FORMAT};
 pub use runner::{
-    addressable, escape_arg, exact_target, Tmux, DEFAULT_TIMEOUT, MAX_TIMEOUT, REAP_GRACE,
-    TMUX_SOCKET,
+    addressable, escape_arg, exact_target, format_literal, Tmux, DEFAULT_TIMEOUT, MAX_TIMEOUT,
+    REAP_GRACE, TMUX_SOCKET,
 };
 pub use shell::{shell_quote, tmux_available, tmux_conf_path, GHOST_MIN_AGE_SECONDS, GHOST_SHELLS};
 pub use text::{

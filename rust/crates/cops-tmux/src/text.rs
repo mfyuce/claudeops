@@ -11,7 +11,8 @@ macro_rules! regex {
 }
 
 regex!(ANSI_SGR_RE, r"\x1b\[[0-9;]*[a-zA-Z]");
-regex!(ANSI_OSC_RE, r"\x1b\][^\x07]*\x07");
+// Bitiş BEL ya da ST (`ESC \`).
+regex!(ANSI_OSC_RE, r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)");
 regex!(SGR_RE, r"\x1b\[([0-9;]*)m");
 regex!(ANSI_ANY_RE, r"\x1b\[[0-9;?]*[A-Za-z]");
 

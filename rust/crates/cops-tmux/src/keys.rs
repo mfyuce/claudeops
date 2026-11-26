@@ -55,8 +55,13 @@ impl Tmux {
         self.run(&["send-keys", "-t", target, "Enter"]).map(drop)
     }
 
-    /// Metni yazar ve tek Enter gönderir. Çok satırlı metin tek parça bracketed paste ile gider (satır sonu TUI'de
-    /// Enter sayılıp mesajı bölerdi). `settle`: metinle Enter arasındaki bekleme (codex ister).
+    /// Metni yazar ve tek Enter gönderir. Metin ASLA argv'ye girmez (TBD#369: `/proc/<pid>/cmdline`ı başka kullanıcı
+    /// okuyabilir): stdin'den tampona yüklenir, tek parça bracketed paste ile yapıştırılır (satır sonu TUI'de Enter
+    /// sayılıp mesajı bölmez). Yapıştırma olmazsa (hata, zaman aşımı) tampon silinir. `settle`: metinle Enter arasındaki
+    /// bekleme (codex ister). NUL içeren metin `BadArgument("text")`.
+    ///
+    /// YARIŞ (kapatılamaz): `guard` denetimi ile yapıştırma AYRI tmux çağrılarıdır; arada açılan bir parola istemi
+    /// yakalanmaz. Pencere, yoklama + iki tmux süreci kadardır.
     pub fn send_text(
         &self,
         name: &str,
@@ -65,42 +70,44 @@ impl Tmux {
         guard: MaskGuard,
     ) -> Result<(), TmuxError> {
         let target = exact_target(name)?;
+        if text.contains('\0') {
+            return Err(TmuxError::BadArgument("text"));
+        }
         self.guard(name, guard)?;
-        let timeout = self.timeout.max(send_text_timeout(text.chars().count()));
-        if text.contains(['\n', '\r']) {
-            static SEQ: AtomicU64 = AtomicU64::new(0);
-            let buf = format!(
-                "cops-rs-{}-{}",
-                std::process::id(),
-                SEQ.fetch_add(1, Ordering::Relaxed)
-            );
-            let load = ["load-buffer", "-b", &buf, "-"];
-            self.exec(
-                Call {
-                    input: Some(text.as_bytes()),
-                    ..Call::new(&load)
-                },
-                timeout,
-            )?;
-            let paste = ["paste-buffer", "-p", "-d", "-b", &buf, "-t", &target];
-            if let Err(e) = self.exec(Call::new(&paste), timeout) {
-                // Python gibi yalnız tmux "olmadı" dediyse sil (zaman aşımında tampon kalır).
-                if matches!(e, TmuxError::Failed { .. }) {
-                    if let Err(del) = self.run(&["delete-buffer", "-b", &buf]) {
-                        swallow(Swallowed::DeleteBuffer, &del);
-                    }
-                }
-                return Err(e);
-            }
-            thread::sleep(settle.max(PASTE_SETTLE));
-        } else {
-            // `--` ŞART: `-` ile başlayan metin tmux bayrağı sanılır.
-            let arg = escape_arg(text);
-            let send = ["send-keys", "-t", &target, "-l", "--", &arg];
-            self.exec(Call::new(&send), timeout)?;
+        if text.is_empty() {
             thread::sleep(settle);
+        } else {
+            let timeout = self.timeout.max(send_text_timeout(text.chars().count()));
+            self.paste_text(&target, text, timeout)?;
+            thread::sleep(settle.max(PASTE_SETTLE));
         }
         self.enter(&target)
+    }
+
+    fn paste_text(&self, target: &str, text: &str, timeout: Duration) -> Result<(), TmuxError> {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let buf = format!(
+            "cops-rs-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let load = ["load-buffer", "-b", &buf, "-"];
+        let paste = ["paste-buffer", "-p", "-d", "-b", &buf, "-t", target];
+        let call = Call {
+            input: Some(text.as_bytes()),
+            ..Call::new(&load)
+        };
+        let result = self
+            .exec(call, timeout)
+            .and_then(|_| self.exec(Call::new(&paste), timeout));
+        if let Err(e) = result {
+            // Zaman aşımında da sil: metin (parola olabilir) sunucuda okunabilir kalmasın (TBD#369 P9).
+            if let Err(del) = self.run(&["delete-buffer", "-b", &buf]) {
+                swallow(Swallowed::DeleteBuffer, &del);
+            }
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// Ham tuş verisi (xterm.js `onData`): Enter EKLEMEZ. NUL argv'den geçemez, atılır.

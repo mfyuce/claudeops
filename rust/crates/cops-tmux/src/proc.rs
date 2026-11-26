@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
 
-use crate::runner::{exact_target, Tmux};
+use crate::runner::{escape_arg, exact_target, Tmux};
 use crate::shell::shell_quote;
 use crate::text::py_split;
 
@@ -204,6 +204,8 @@ impl Tmux {
         }
         let needles = [
             format!("-s {} -c ", shell_quote(session)),
+            // Güncel parça sondaki `;`i kaçışlı yazar.
+            format!("-s {} -c ", shell_quote(&escape_arg(session))),
             format!("attach-session -t {};", shell_quote(session)),
             format!("attach-session -t {};", shell_quote(&exact)),
         ];

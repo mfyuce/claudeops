@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::proc::pid_childless;
-use crate::runner::{addressable, escape_arg, exact_target, Call, Tmux};
+use crate::runner::{addressable, escape_arg, exact_target, format_literal, Call, Tmux};
 use crate::text::{py_splitlines, py_strip};
 use crate::TmuxError;
 
@@ -82,7 +82,7 @@ impl Tmux {
             shell_quote(conf),
             // `;` ile biten argv elemanı tmux komut ayıracı (TBD#366 P4): `\;` literal verir.
             shell_quote(&escape_arg(name)),
-            shell_quote(&escape_arg(cwd)),
+            shell_quote(&escape_arg(&format_literal(cwd))),
             shell_quote(&escape_arg(inner))
         ))
     }
@@ -123,7 +123,7 @@ impl Tmux {
         let conf = conf.to_str().ok_or(TmuxError::BadArgument("conf"))?;
         let command = format!("{inner}; exec bash");
         // `;` ile biten ad/cwd tmux'ta komut ayıracı olurdu ("unknown command: -c", TBD#366 P4).
-        let (name, cwd) = (escape_arg(name), escape_arg(cwd));
+        let (name, cwd) = (escape_arg(name), escape_arg(&format_literal(cwd)));
         let args = [
             "-f",
             conf,

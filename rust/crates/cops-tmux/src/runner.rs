@@ -29,9 +29,32 @@ pub fn exact_target(name: &str) -> Result<String, TmuxError> {
 
 /// `=ad:` hedefi tmux'ta YALNIZ bu oturuma çözülür mü (Python `_addressable`; tmux 3.2a ölçümü): boş ad (`=:` en son
 /// oturum), `$` ile başlayan ad (`=$0:` oturum KİMLİĞİ) ve `:` içeren ad (`=zeta:0:` display-message'ta zeta; tmux
-/// adlarda `:` bırakmaz) başka oturumu hedefler.
+/// adlarda `:` bırakmaz) başka oturumu hedefler. `#` ve denetim karakteri de reddedilir: `new-session -s` değeri BİÇİM
+/// olarak genişletilir; `#(komut)` kabukta ÇALIŞIR, `victim#{?0,x,}` var olan `victim`e bağlanır.
 pub fn addressable(name: &str) -> bool {
-    !name.is_empty() && !name.starts_with('$') && !name.contains(':')
+    !name.is_empty()
+        && !name.starts_with('$')
+        && !name.contains([':', '#'])
+        && !name.contains(char::is_control)
+}
+
+/// tmux'un BİÇİM genişlettiği argv değeri (`new-session -c`) için literal metin (Python `_tmux_format_literal`): `#`
+/// ikilenir; `[` ile biten `#` dizisi AYNEN kalır (tmux 3.2a onu zaten olduğu gibi bırakır, komut çalıştırmaz).
+pub fn format_literal(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut run = 0;
+    for c in value.chars() {
+        if c == '#' {
+            run += 1;
+            continue;
+        }
+        let copies = if c == '[' { run } else { run * 2 };
+        out.extend(std::iter::repeat_n('#', copies));
+        out.push(c);
+        run = 0;
+    }
+    out.extend(std::iter::repeat_n('#', run * 2));
+    out
 }
 
 /// `;` ile biten argv elemanını literal yapar (`\;`; tmux ters bölüyü soyar). Diğer metin aynen kalır.

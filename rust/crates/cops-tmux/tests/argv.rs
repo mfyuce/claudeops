@@ -51,15 +51,17 @@ impl Fake {
 }
 
 #[test]
-fn single_line_is_literal_send_then_enter() {
+fn single_line_goes_through_stdin_never_argv() {
     let f = Fake::new();
     f.tmux.send_text("x", "foo;", NOW, USER).unwrap();
     assert_eq!(
-        f.calls(),
-        [
-            vec!["send-keys", "-t", "=x:", "-l", "--", r"foo\;"],
-            vec!["send-keys", "-t", "=x:", "Enter"],
-        ]
+        f.subcommands(),
+        ["load-buffer", "paste-buffer", "send-keys"]
+    );
+    assert!(f.calls().iter().flatten().all(|a| !a.contains("foo")));
+    assert_eq!(
+        std::fs::read_to_string(f.dir.path().join("stdin")).unwrap(),
+        "foo;"
     );
 }
 
@@ -124,11 +126,11 @@ fn paste_failure_deletes_the_buffer_and_sends_no_enter() {
 }
 
 #[test]
-fn load_failure_stops_before_paste() {
+fn load_failure_deletes_the_buffer_and_stops_before_paste() {
     let f = Fake::new();
     f.set("load-buffer.rc", "1\n");
     assert!(f.tmux.send_text("x", "a\nb", NOW, USER).is_err());
-    assert_eq!(f.subcommands(), ["load-buffer"]);
+    assert_eq!(f.subcommands(), ["load-buffer", "delete-buffer"]);
 }
 
 #[test]
