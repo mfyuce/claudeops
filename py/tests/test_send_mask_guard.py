@@ -20,8 +20,11 @@ class BackendGuardTests(unittest.TestCase):
 
     def send(self, masked, fn, *args, **kw):
         calls = []
+        done = mock.Mock(returncode=0, stdout=b"paste-buffer (pasteb) [-dpr]\n")      # ham yol sürümü yoklar
+        tb._reset_raw_paste_probe()
+        self.addCleanup(tb._reset_raw_paste_probe)
         with mock.patch.object(tb, "pane_is_masked_input", lambda n: masked), \
-                mock.patch.object(tb.subprocess, "run", lambda argv, **k: calls.append(argv) or mock.Mock(returncode=0)), \
+                mock.patch.object(tb.subprocess, "run", lambda argv, **k: calls.append(argv) or done), \
                 mock.patch.object(tb.time, "sleep", lambda s: None):
             return fn("k", *args, **kw), calls
 

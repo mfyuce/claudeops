@@ -91,7 +91,7 @@ def _tmux_format_literal(value: str) -> str:
 def _tmux_arg(arg: str) -> str:
     """`;` ile BİTEN tmux argv elemanı komut ayıracıdır (`new-session -s 'semi;'` "unknown command: -c", TBD#366 P4/P6):
     sondaki `;` `\\;` olur, tmux bir ters bölüyü soyup literal `;` verir (`bar\\;` -> `bar\\\\;` -> `bar\\;`). Diğer
-    metin aynen kalır (`tmux_send_raw`daki kaçışla aynı kural)."""
+    metin aynen kalır."""
     return arg[:-1] + "\\;" if arg.endswith(";") else arg
 
 
@@ -263,20 +263,29 @@ _PASTE_SETTLE = 0.15
 _BUFFER_SEQ = itertools.count()
 
 
+def _next_buffer() -> str:
+    return "cops-%d-%d" % (os.getpid(), next(_BUFFER_SEQ))
+
+
 def _paste_text(target: str, text: str, timeout: float) -> bool:
-    """`load-buffer -` (stdin) + `paste-buffer -p -d`. Yapıştırma olmadıysa (hata, zaman aşımı, istisna) tampon SİLİNİR:
-    metin (parola olabilir) tmux sunucusunda okunabilir kalmaz (TBD#369 P9)."""
-    buf = "cops-%d-%d" % (os.getpid(), next(_BUFFER_SEQ))
+    """`load-buffer -` (stdin) + `paste-buffer -p -d` (tek parça bracketed paste)."""
+    buf = _next_buffer()
+    return _paste_buffered(buf, [["load-buffer", "-b", buf, "-"], ["paste-buffer", "-p", "-d", "-b", buf, "-t", target]],
+                           text.encode("utf-8"), timeout)
+
+
+def _paste_buffered(buf: str, commands: List[List[str]], payload: bytes, timeout: float) -> bool:
+    """tmux komutlarını sırayla koşar; `payload` İLKİNİN stdin'ine verilir. Yapıştırma olmadıysa (hata, zaman aşımı,
+    istisna) tampon SİLİNİR: metin (parola olabilir) tmux sunucusunda okunabilir kalmaz (TBD#369 P9)."""
     pasted = False
     try:
-        r = subprocess.run(_base_argv() + ["load-buffer", "-b", buf, "-"], input=text.encode("utf-8"),
-                           capture_output=True, timeout=timeout)
-        if r.returncode != 0:
-            return False
-        r = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", target],
-                           capture_output=True, timeout=timeout)
-        pasted = r.returncode == 0
-        return pasted
+        for i, command in enumerate(commands):
+            extra = {"input": payload} if i == 0 else {}
+            r = subprocess.run(_base_argv() + command, capture_output=True, timeout=timeout, **extra)
+            if r.returncode != 0:
+                return False
+        pasted = True
+        return True
     finally:
         if not pasted:
             _delete_buffer(buf)
@@ -373,11 +382,33 @@ def tmux_send_special_key(name: str, key: str) -> bool:
         return False
 
 
-# Tek bir `send-keys -l` çağrısında gönderilen en fazla karakter — `argv`
-# sınırına (yüzlerce KB) göre fazlasıyla muhafazakâr; 5000 karakterlik tek
-# parça izole testte sorunsuz geçti, bu yüzden bölme SADECE bir güvenlik
-# marjı, davranışsal bir gereklilik değil.
-_RAW_CHUNK_CHARS = 2000
+# tmux sürüm yoklamasının ömrü (sn): sunucu panel çalışırken yenilenirse yanlış bayrakla en çok bu kadar gönderilir.
+_RAW_PROBE_TTL = 60.0
+_raw_probe: Optional[tuple] = None      # (monotonic an, bayraklar)
+
+
+def _reset_raw_paste_probe() -> None:
+    global _raw_probe
+    _raw_probe = None
+
+
+def _raw_paste_flags() -> Optional[List[str]]:
+    """Ham yapıştırmanın baytları olduğu gibi yazması için gereken ek bayraklar. tmux 3.7+ `paste-buffer`, `-S`
+    verilmezse kontrol karakterlerini (Esc, Ctrl-C, Backspace) görünür metne çevirir; eski sürümler `-S`i tanımaz.
+    Sunucunun kendi `list-commands` çıktısından okunur; okunamazsa None (hiçbir şey gönderilmez)."""
+    global _raw_probe
+    now = time.monotonic()
+    if _raw_probe is not None and now - _raw_probe[0] < _RAW_PROBE_TTL:
+        return _raw_probe[1]
+    r = subprocess.run(_base_argv() + ["list-commands"], capture_output=True, timeout=_TIMEOUT)
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.decode("utf-8", "replace").split("\n"):
+        if line.startswith("paste-buffer "):
+            flags = line.partition("[-")[2].partition("]")[0]
+            _raw_probe = (now, ["-S"] if "S" in flags else [])
+            return _raw_probe[1]
+    return None
 
 
 def tmux_send_raw(name: str, data: str, guard: bool = False) -> bool:
@@ -389,33 +420,34 @@ def tmux_send_raw(name: str, data: str, guard: bool = False) -> bool:
     kendisi zaten veri içinde `\\r` olarak gelir, (2) tek bir "mesaj" değil,
     tuş vuruşu/kontrol dizisi/yapıştırma bloğu taşır.
 
-    tmux 3.2a'da izole bir scratch pane'e (raw-mode okuyan bir python) karşı
-    doğrulandı: `send-keys -l` ham baytları (0x03, `ESC [ A`, çok baytlı UTF-8
-    `şğüİ`) HİÇ dokunmadan geçiriyor ve ters-bölü kaçışlarını YORUMLAMIYOR
-    (`a\\nb` literal olarak `a\\nb` gidiyor). İki gerçek tuzak da orada
-    bulundu: `--` ZORUNLU (tire ile başlayan bir parça — kullanıcının yazdığı
-    düz bir `-` bile — aksi halde `tmux: unknown option` ile ölür) ve NUL
-    baytı argv'den geçemez (Ctrl+Space) — sessizce atılır, tuş vuruşunun
-    tamamını başarısız saymaktansa o tek karakteri kaybetmek yeğdir.
+    Veri (parola olabilir) ASLA argv'ye girmez (TBD#385): stdin'den tampona
+    yüklenir ve AYNI tmux sürecinde `paste-buffer -r` ile yazılır (`-r`: satır
+    sonu çevrilmez, `-p` YOK: bracketed paste eklenmez; `-d`: tampon silinir).
+    NUL (Ctrl+Space) dahil her bayt geçer. Yazım olmazsa tampon silinir.
+    `send-keys`ten farkı: pane copy-mode'dayken de veri uygulamaya gider.
 
     `guard` (varsayılan kapalı: bu yol insanın canlı yazımıdır): otomatik çağıran True verir (TBD#367, kapalı yön)."""
-    data = data.replace("\x00", "")
     if not data:
         return True
     try:
+        target = _exact(name)
+        payload = data.encode("utf-8")
         if guard and not _mask_allows(name):
             return False
-        for i in range(0, len(data), _RAW_CHUNK_CHARS):
-            chunk = data[i:i + _RAW_CHUNK_CHARS]
-            if chunk.endswith(";"):
-                # tmux `;` ile biten argv parçasını KOMUT AYIRACI sayar (sondaki `;` kaybolur, tmux 3.2a ile doğrulandı);
-                # `\;` literal `;` verir (bir ters-bölü tmux'ça soyulur: `bar\;` metni `bar\\;` olmalı)
-                chunk = chunk[:-1] + "\\;"
-            r = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", chunk],
-                                capture_output=True, timeout=_TIMEOUT)
-            if r.returncode != 0:
-                return False
-        return True
+        flags = _raw_paste_flags()
+        if flags is None:
+            return False
+        buf = _next_buffer()
+        ok = False
+        try:
+            ok = _paste_buffered(
+                buf,
+                [["load-buffer", "-b", buf, "-", ";", "paste-buffer", "-r"] + flags + ["-d", "-b", buf, "-t", target]],
+                payload, max(_TIMEOUT, 5.0 + len(data) / 1500.0))
+        finally:
+            if not ok:          # zaman aşımı dahil: bir sonraki gönderim sürümü yeniden yoklar
+                _reset_raw_paste_probe()
+        return ok
     except Exception:
         return False
 

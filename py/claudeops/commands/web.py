@@ -2840,7 +2840,7 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
 # tamponunu her ~25ms'de boşaltıyor, yani bu sınıra ancak GERÇEKTEN büyük bir
 # yapıştırma çarpar. Amacı pane'i korumak değil (aynı metin komut kutusundan
 # da gönderilebilirdi), kazara/hatalı bir istemcinin megabaytlık bir gövdeyi
-# tmux argv'sine akıtmasını engellemek.
+# tmux tamponuna ve pane'e akıtmasını engellemek.
 MAX_TERM_RAW_CHARS = 8192
 
 
