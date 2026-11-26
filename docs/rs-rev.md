@@ -16,9 +16,13 @@ Sonlu olmayan sayı (`Infinity`, `NaN`, float'a sığmayan tam sayı) de bozuk k
 0 sayıp loglar, `_field`/`badrec::field` kaydı atlatır, `usage_cost_usd` satırı, `duration_summary` süreyi (`unknown`) atlar.
 Atlanan kullanım satırı günlük bütçe sayacına girmez.
 
-Kapı için cops'a kalanlar: `rs/state` (ikinci tur `e5a684e` bu dala birleştirildi; kendi eşleme tablosu henüz açık), `rust/Cargo.lock` üretimi, `main` ile
-birleşik ağaçta testler, bağımsız gözden geçirme. `main`deki yeni 5 commit `review.py` ve testlerine dokunmuyor (deneme
-birleştirmesinde çakışma yok). Çekirdek hiçbir yere bağlı değil: canlıya alınacak uç yok (koşucu T8).
+`rs/state` ucu `c14e258c` bu dala birleştirildi (26 Kas gece, `1d919349`, çakışma yok). Birleşik dalda: clippy temiz
+(iki crate), cargo testleri temiz, review paritesi 123.987 çağrı / 103 işlev / 0 fark, eşleme tablosu yenilendi.
+Python tam paket 5711 test (yük ortalaması ~33): 4 hata + 1 error, hepsi zaman aşımı/süre ölçümü (`test_authz`,
+`test_run_tunnel_script`, `test_steward_engine_multi`, `test_ucli_metrics`); bu dört sınıf ayrıca koşuldu, 50/50 geçti.
+
+Kapı için cops'a kalanlar: önce `rs/state`, `rust/Cargo.lock` üretimi, `main` ile birleşik ağaçta testler, bağımsız
+gözden geçirme. Çekirdek hiçbir yere bağlı değil: canlıya alınacak uç yok (koşucu T8).
 
 Yapılan:
 - Crate yazıldı: `targets`, `planner`, `limits`, `prompts` (`LensRegistry` = `register_lens` karşılığı), `parse`, `redact`,
@@ -165,7 +169,7 @@ atlanan işlev: 31
 | Python | Rust | Parite / birim testi | Durum |
 |---|---|---|---|
 | `WINDOW_SECONDS` (sabit, review.py:24) | `targets.rs::WINDOW_SECONDS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `next_review` (2613), `project_complete` (2507), `update_pair` (638), `window_seconds` (99) | karşılandı (değer eşit) |
-| `HISTORY_VERSION` (sabit, review.py:25) | `targets.rs::HISTORY_VERSION` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `load_history` (165) | karşılandı (değer eşit) |
+| `HISTORY_VERSION` (sabit, review.py:25) | `targets.rs::HISTORY_VERSION` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `load_history` (177) | karşılandı (değer eşit) |
 | `HISTORY_RUNS_MAX` (sabit, review.py:26) | `targets.rs::HISTORY_RUNS_MAX` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `save_history` (32) | karşılandı (değer eşit) |
 | `MAX_ATTEMPTS` (sabit, review.py:27) | `targets.rs::MAX_ATTEMPTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `max_attempts` (51) | karşılandı (değer eşit) |
 | `MODE_MAX_ATTEMPTS` (sabit, review.py:28) | `targets.rs::MODE_MAX_ATTEMPTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `max_attempts` (51) | karşılandı (değer eşit) |
@@ -305,7 +309,7 @@ atlanan işlev: 31
 | `R10_SUB_SINCE` (sabit, review.py:1154) | `store.rs::R10_SUB_SINCE` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `migrate_r10_sub` (8) | karşılandı (değer eşit) |
 | `R10_MARK` (sabit, review.py:1155) | `store.rs::R10_MARK` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `migrate_r10_sub` (8) | karşılandı (değer eşit) |
 | `migrate_r10_sub` (işlev, review.py:1158) | `store.rs::migrate_r10_sub` | `migrate_r10_sub`: 8 çağrı, 5 test (ör. test_review.R10SubMigrationTest::test_idempotent, parity_edges.TestEdges::test_history_functions) | karşılandı (parite) |
-| `load_history` (işlev, review.py:1186) | `store.rs::ReviewStore::load_history` | `load_history`: 165 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
+| `load_history` (işlev, review.py:1186) | `store.rs::ReviewStore::load_history` | `load_history`: 177 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
 | `save_history` (işlev, review.py:1199) | `store.rs::ReviewStore::save_history` | `save_history`: 32 çağrı, 14 test (ör. test_review_bad_records.BadRecordTest::test_update_pair_replaces_non_object_record, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) | karşılandı (parite) |
 | `_run_seconds` (işlev, review.py:1207) | `store.rs::run_seconds` | parite, şu çağrılar üzerinden: `update_pair` (638); `helpers::run_seconds_cases` | karşılandı (dolaylı parite) |
 | `update_pair` (işlev, review.py:1216) | `store.rs::ReviewStore::update_pair` | `update_pair`: 638 çağrı, 95 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_pair_lifecycle) | karşılandı (parite) |
@@ -929,7 +933,7 @@ Bu çağrılar karşılaştırılmadı; son sütun aynı işlevin başka çağr�
 | `finding_paths` | review işlevi taklit edilmiş: 1 | `finding_paths`: 79 çağrı, 55 test (ör. test_recover_draft_precedence.Precedence::test_chatty_stdout_loses_to_draft, parity_edges.TestEdges::test_paths) |
 | `is_short_banner` | review işlevi taklit edilmiş: 1 | `is_short_banner`: 151 çağrı, 37 test (ör. test_review_findings_flow.TestAutoFindings::test_done_review_records_findings_as_new, parity_edges.TestEdges::test_text_functions) |
 | `load_findings` | review işlevi taklit edilmiş: 5 | `load_findings`: 546 çağrı, 125 test (ör. test_review.TestPathsAndStores::test_dedup_canonical_prefers_live_over_refuted, parity_edges.TestStoreEdges::test_broken_files) |
-| `load_history` | review işlevi taklit edilmiş: 2 | `load_history`: 165 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) |
+| `load_history` | okuma sırasında başka iş parçacığı yazdı (dosya karşılaştırılmadı): 1; review işlevi taklit edilmiş: 2 | `load_history`: 177 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) |
 | `mark_verify_sent` | review işlevi taklit edilmiş: 1 | `mark_verify_sent`: 28 çağrı, 24 test (ör. test_review_findings_flow.TestAutoVerify::test_sends_once_per_tick_and_marks, parity_edges.TestStoreEdges::test_findings_lifecycle) |
 | `migrate_r10_sub` | review işlevi taklit edilmiş: 2 | `migrate_r10_sub`: 8 çağrı, 5 test (ör. test_review.R10SubMigrationTest::test_idempotent, parity_edges.TestEdges::test_history_functions) |
 | `pair_key` | review işlevi taklit edilmiş: 2 | `pair_key`: 31005 çağrı, 102 test (ör. test_review.TestEffortPairs::test_same_model_two_efforts_are_separate_pairs, parity_edges.TestEdges::test_planner_random) |
