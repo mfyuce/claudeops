@@ -8,6 +8,8 @@
 #[allow(clippy::expect_used)] // sabit desenler: derleme `generated` + parite testleriyle sınanır
 #[rustfmt::skip]
 pub mod consts_gen;
+pub mod identity;
+pub mod markers;
 #[rustfmt::skip]
 mod types_gen;
 pub mod pyc;
