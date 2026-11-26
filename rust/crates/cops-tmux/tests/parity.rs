@@ -1321,7 +1321,7 @@ fn clients_messages_ctx_and_sizes_match_python_on_a_real_server() {
         [ok(s.tmux.message("/dev/pts/yok", "x", 10))]
     );
 
-    // `@cops_ctx`: aynı dizi iki oturuma; yazılan değer ve dönüşler aynı (P6 dahil: sondaki `;` kaybolur).
+    // `@cops_ctx`: aynı dizi iki oturuma; yazılan değer ve dönüşler aynı (P6 dahil: sondaki `;` artık korunur).
     let opt = |n: &str| {
         s.raw(&[
             "show-options",
@@ -1347,6 +1347,10 @@ fn clients_messages_ctx_and_sizes_match_python_on_a_real_server() {
         ];
         assert_eq!(py, rs, "{label:?}");
         assert_eq!(opt("cpy"), opt("crs"), "{label:?}");
+        // P6 (TBD#366): sondaki `;` korunur.
+        if !label.is_empty() {
+            assert_eq!(opt("crs").trim_end_matches('\n'), label, "{label:?}");
+        }
         assert_eq!(opt("zpy"), opt("zrs"), "{label:?}");
     }
     assert_eq!(
@@ -1488,10 +1492,18 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
         "hiçbir oturum yanlış hedefle kapanmadı"
     );
 
-    // P4: `;` ile biten ad ya da cwd ile açılış iki tarafta da başarısız ve iz bırakmaz.
+    // P4: `;` ile biten ad ya da cwd ile açılış iki tarafta da başarılı (TBD#366: argüman `\;` ile kaçırılır); oturum
+    // tam o adla, o dizinde açılır.
     let (a, b) = twins(&[]);
     let conf = core_conf();
-    for (name, cwd) in [("semi;", "/tmp"), ("ok", "/tmp;"), ("düz", "/tmp")] {
+    let semi_dir = a.path().join("w;");
+    std::fs::create_dir(&semi_dir).unwrap();
+    let semi_dir = semi_dir.display().to_string();
+    for (name, cwd) in [
+        ("semi;", "/tmp"),
+        ("ok", semi_dir.as_str()),
+        ("düz", "/tmp"),
+    ] {
         let py = python(
             &a,
             &[json!([
@@ -1506,11 +1518,20 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
             .tmux
             .spawn_direct(&conf, name, cwd, "sleep 60", spawn_env(&b)));
         assert_eq!(py, std::slice::from_ref(&rs), "{name:?} {cwd:?}");
-        if name == "düz" {
-            assert_eq!(rs, json!(true));
-        }
+        assert_eq!(rs, json!(true), "{name:?} {cwd:?}");
         assert_eq!(sessions(&a), sessions(&b));
+        for s in [&a, &b] {
+            let path = s.raw(&[
+                "display-message",
+                "-p",
+                "-t",
+                &format!("={name}:"),
+                "#{pane_current_path}",
+            ]);
+            assert_eq!(path.trim(), cwd, "{name:?}");
+        }
     }
+    assert_eq!(sessions(&b), ["düz", "ok", "semi;"]);
 
     // P5: C yerelinde `-F` sekmesi `_` olur: `client_session` ve `ghost_session` iki tarafta da bulamaz.
     let s = Server::new();

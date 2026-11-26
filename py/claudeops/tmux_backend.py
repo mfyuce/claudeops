@@ -68,6 +68,13 @@ def _addressable(name: str) -> bool:
     return isinstance(name, str) and bool(name) and not name.startswith("$") and ":" not in name
 
 
+def _tmux_arg(arg: str) -> str:
+    """`;` ile BİTEN tmux argv elemanı komut ayıracıdır (`new-session -s 'semi;'` "unknown command: -c", TBD#366 P4/P6):
+    sondaki `;` `\\;` olur, tmux bir ters bölüyü soyup literal `;` verir (`bar\\;` -> `bar\\\\;` -> `bar\\;`). Diğer
+    metin aynen kalır (`tmux_send_raw`daki kaçışla aynı kural)."""
+    return arg[:-1] + "\\;" if arg.endswith(";") else arg
+
+
 def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     """Bash-fragment (NOT executed here) spawn.py splices into its gnome-terminal
     command: `tmux -L cops -f <conf> new-session -A -s NAME -c CWD -x 100 -y 30 INNER`.
@@ -82,8 +89,8 @@ def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
         raise ValueError("tmux hedefi olamayan oturum adı")
     return (
         f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} "
-        f"new-session -A -s {shlex.quote(name)} -c {shlex.quote(cwd)} "
-        f"-x 100 -y 30 {shlex.quote(inner)}"
+        f"new-session -A -s {shlex.quote(_tmux_arg(name))} -c {shlex.quote(_tmux_arg(cwd))} "
+        f"-x 100 -y 30 {shlex.quote(_tmux_arg(inner))}"
     )
 
 
@@ -112,7 +119,7 @@ def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
         return False
     cmd = _base_argv() + [
         "-f", tmux_conf_path(), "new-session", "-d", "-A",
-        "-s", name, "-c", cwd, "-x", "100", "-y", "30",
+        "-s", _tmux_arg(name), "-c", _tmux_arg(cwd), "-x", "100", "-y", "30",
         f"{inner}; exec bash",
     ]
     try:
@@ -268,7 +275,7 @@ def tmux_set_ctx(name: str, label: str) -> bool:
     Oturum yoksa/tmux yoksa sessizce False. Yalnız yerel tmux oturumları."""
     try:
         argv = _base_argv() + ["set-option", "-t", _exact(name)]
-        argv += ["-u", "@cops_ctx"] if not label else ["@cops_ctx", label]
+        argv += ["-u", "@cops_ctx"] if not label else ["@cops_ctx", _tmux_arg(label)]
         return subprocess.run(argv, capture_output=True, timeout=_TIMEOUT).returncode == 0
     except (OSError, subprocess.SubprocessError, ValueError):
         return False

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::proc::pid_childless;
-use crate::runner::{addressable, exact_target, Call, Tmux};
+use crate::runner::{addressable, escape_arg, exact_target, Call, Tmux};
 use crate::text::{py_splitlines, py_strip};
 use crate::TmuxError;
 
@@ -80,9 +80,10 @@ impl Tmux {
             "{} -f {} new-session -A -s {} -c {} -x 100 -y 30 {}",
             self.shell_base(),
             shell_quote(conf),
-            shell_quote(name),
-            shell_quote(cwd),
-            shell_quote(inner)
+            // `;` ile biten argv elemanı tmux komut ayıracı (TBD#366 P4): `\;` literal verir.
+            shell_quote(&escape_arg(name)),
+            shell_quote(&escape_arg(cwd)),
+            shell_quote(&escape_arg(inner))
         ))
     }
 
@@ -121,6 +122,8 @@ impl Tmux {
         }
         let conf = conf.to_str().ok_or(TmuxError::BadArgument("conf"))?;
         let command = format!("{inner}; exec bash");
+        // `;` ile biten ad/cwd tmux'ta komut ayıracı olurdu ("unknown command: -c", TBD#366 P4).
+        let (name, cwd) = (escape_arg(name), escape_arg(cwd));
         let args = [
             "-f",
             conf,
@@ -128,9 +131,9 @@ impl Tmux {
             "-d",
             "-A",
             "-s",
-            name,
+            &name,
             "-c",
-            cwd,
+            &cwd,
             "-x",
             "100",
             "-y",

@@ -1,7 +1,7 @@
 //! Salt okuma: oturum/pane listesi, capture, boyut, istemciler.
 
 use crate::mask::tty_is_masked;
-use crate::runner::{exact_target, Tmux};
+use crate::runner::{escape_arg, exact_target, Tmux};
 use crate::text::{py_split, py_splitlines, py_strip, strip_ansi};
 use crate::TmuxError;
 
@@ -263,14 +263,15 @@ impl Tmux {
             }))
     }
 
-    /// `@cops_ctx` kullanıcı seçeneğini yazar; boş etiket seçeneği siler.
+    /// `@cops_ctx` kullanıcı seçeneğini yazar; boş etiket seçeneği siler. Sondaki `;` kaçırılır (TBD#366 P6).
     pub fn set_ctx(&self, name: &str, label: &str) -> Result<(), TmuxError> {
         let target = exact_target(name)?;
+        let label = escape_arg(label);
         let mut args = vec!["set-option", "-t", &target];
         if label.is_empty() {
             args.extend(["-u", "@cops_ctx"]);
         } else {
-            args.extend(["@cops_ctx", label]);
+            args.extend(["@cops_ctx", &label]);
         }
         self.run(&args).map(drop)
     }

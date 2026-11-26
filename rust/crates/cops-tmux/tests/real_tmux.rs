@@ -302,12 +302,11 @@ fn attached_client_is_counted_and_receives_safe_message() {
         Err(TmuxError::BadArgument("client"))
     ));
     t.set_ctx("m", "ctx 1K;").unwrap();
-    // Python eşliği: etiket kaçırılmaz, sondaki `;` tmux'ta komut ayıracı olur (docs/rs-tmux.md "Python hatası?").
-    // `ctx_label` hiç `;` üretmez.
+    // Sondaki `;` kaçırılır, etiket olduğu gibi yazılır (TBD#366 P6; Python da aynı).
     assert_eq!(
         s.raw(&["show-options", "-v", "-t", "=m:", "@cops_ctx"])
             .trim(),
-        "ctx 1K"
+        "ctx 1K;"
     );
     t.set_ctx("m", "").unwrap();
     assert_eq!(
