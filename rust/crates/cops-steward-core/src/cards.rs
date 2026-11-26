@@ -67,24 +67,91 @@ pub struct RawCard {
     pub source_hash: String,
 }
 
-/// UZAK projenin ham kartı: yalnız belge başları, git bilgisi yok.
-///
-/// py: raw_card_from_docs
-pub fn raw_card_from_docs(docs: &IndexMap<String, String>) -> RawCard {
+/// `source_hash`: belge başları (`CARD_DOCS` sırasıyla) + `git log` satırlarının sha1 özetinin ilk 16 hanesi.
+fn source_hash(docs: &IndexMap<String, String>, git_log: &[String]) -> String {
     let mut data = Vec::new();
     for d in CARD_DOCS {
         if let Some(body) = docs.get(*d) {
             data.extend_from_slice(format!("\0{d}\0{body}").as_bytes());
         }
     }
-    let hash = pyc::sha1_hex(&data);
+    for ln in git_log {
+        data.extend_from_slice(format!("\0{ln}").as_bytes());
+    }
+    pyc::head(&pyc::sha1_hex(&data), 16).to_string()
+}
+
+/// UZAK projenin ham kartı: yalnız belge başları, git bilgisi yok.
+///
+/// py: raw_card_from_docs
+pub fn raw_card_from_docs(docs: &IndexMap<String, String>) -> RawCard {
     RawCard {
         docs: docs.clone(),
         git_log: Vec::new(),
         last_commit: 0.0,
         git_unknown: true,
-        source_hash: pyc::head(&hash, 16).to_string(),
+        source_hash: source_hash(docs, &[]),
     }
+}
+
+/// `subprocess.run(argv)`: `Some((çıkış kodu, stdout))`, istisnada `None`.
+pub type RunGit<'a> = &'a dyn Fn(&[String]) -> Option<(i32, String)>;
+
+/// `git log` çağrısının argv'si (`_git_recent`).
+pub fn git_recent_argv(cwd: &str, n: i64) -> Vec<String> {
+    ["git", "-C", cwd, "log", &format!("-{n}"), "--format=%h\t%ct\t%cs\t%s"].map(str::to_string).to_vec()
+}
+
+/// (`<kısa-sha> <tarih> <konu>` satırları, son commit epoch'u). `cwd` boşsa ya da `<cwd>/.git` yoksa git HİÇ
+/// çalıştırılmaz (üst klasördeki başka deponun geçmişi alınmasın). G/Ç çağıranda: `exists(yol)` = `os.path.exists`;
+/// `run(argv)` = `subprocess.run(..., text=True, timeout=5)`, `Some((çıkış kodu, stdout))`, istisnada (zaman aşımı,
+/// `OSError`, UTF-8 olmayan çıktı) `None`. Hata/çalıştırılmadı: `([], 0.0)`.
+///
+/// py: _git_recent
+pub fn git_recent(cwd: &str, n: i64, exists: &dyn Fn(&str) -> bool, run: RunGit<'_>) -> (Vec<String>, f64) {
+    if cwd.is_empty() || !exists(&pyc::path_join(cwd, ".git")) {
+        return (Vec::new(), 0.0);
+    }
+    match run(&git_recent_argv(cwd, n)) {
+        Some((0, stdout)) => parse_git_log(&stdout),
+        _ => (Vec::new(), 0.0),
+    }
+}
+
+/// `git log --format=%h\t%ct\t%cs\t%s` çıktısının ayrıştırılması (`_git_recent` gövdesi): dört parçadan az satır
+/// atlanır; `float(%ct)` olmayan zaman yok sayılır ama satır kalır; en büyük zaman (NaN hiçbir zaman büyük değildir).
+pub fn parse_git_log(stdout: &str) -> (Vec<String>, f64) {
+    let mut lines = Vec::new();
+    let mut last = 0.0_f64;
+    for ln in pyc::splitlines(stdout) {
+        let parts: Vec<&str> = ln.splitn(4, '\t').collect();
+        let [sha, ct, day, subject] = parts.as_slice() else { continue };
+        if let Some(t) = pyc::to_float(&Value::from(*ct)) {
+            if t > last {
+                last = t;
+            }
+        }
+        lines.push(format!("{sha} {day} {subject}"));
+    }
+    (lines, last)
+}
+
+/// Modelsiz ham kart: belge başları + son commit'ler + `source_hash` (Python ile birebir aynı özet; aynı
+/// üretilmezse geçişte tüm kartlar eskimiş sayılır). G/Ç çağıranda: `read_head(belge)` = `_read_doc_head(cwd, belge)`
+/// (yalnız `cwd` doluysa çağrılır), `git()` = `_git_recent(cwd)` (bkz. [`git_recent`]).
+///
+/// py: build_raw_card
+pub fn build_raw_card(cwd: &str, read_head: &dyn Fn(&str) -> String, git: &dyn Fn() -> (Vec<String>, f64)) -> RawCard {
+    let mut docs = IndexMap::new();
+    for d in CARD_DOCS {
+        let head = if cwd.is_empty() { String::new() } else { read_head(d) };
+        if !head.is_empty() {
+            docs.insert(d.to_string(), head);
+        }
+    }
+    let (git_log, last_commit) = git();
+    let source_hash = source_hash(&docs, &git_log);
+    RawCard { docs, git_log, last_commit, git_unknown: false, source_hash }
 }
 
 /// `_short(text, n)`: boşluklar teke iner, `n` kod noktasında `…` ile kesilir. `n` verilmezse Python'daki `CARD_TEXT_CHARS`.

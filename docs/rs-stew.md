@@ -440,7 +440,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `upsert_project` (steward.py:773) | `store::upsert_project` | store::upsert_project_vectors, store::wrong_field_type_is_rejected_without_changes | tamam |
 | `auto_remove_labels` (steward.py:846) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
 | `remove_project` (steward.py:860) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
-| `transfer_project` (steward.py:870) | - | - | AÇIK: depo işlemi; proje devrinde hangi soru ve işin taşınacağı kararı ve hata koşulları Rust'ta yok, T10 |
+| `transfer_project` (steward.py:870) | `store::transfer_project` | iocore::transfer_project_io_cases | tamam |
 | `load_ideas` (steward.py:933) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `save_ideas` (steward.py:938) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `add_idea` (steward.py:943) | `store::add_idea` | store::add_idea_vectors | tamam |
@@ -511,7 +511,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `ON_BEHALF_PREFIX` (steward.py:1429) | `consts_gen::ON_BEHALF_PREFIX` | generated::generated_files_are_current | tamam |
 | `answer_question` (steward.py:1432) | `store::answer_question` | store::answer_question_vectors | tamam |
 | `set_answered_by` (steward.py:1476) | `store::set_answered_by` | store::set_answered_by_vectors | tamam |
-| `apply_review_where_answer` (steward.py:1492) | - | - | AÇIK: review cevabını projeye yazma; `review_remote.parse_answer` ve alan eşlemesi Rust'ta yok, T8/T10 |
+| `apply_review_where_answer` (steward.py:1492) | `store::apply_review_where_answer` | iocore::apply_review_where_answer_io_cases | tamam |
 | `find_question` (steward.py:1514) | `questions::find_question` | questions::find_question_vectors | tamam |
 | `mark_notified` (steward.py:1518) | `store::mark_notified` | store::mark_notified_vectors | tamam |
 | `question_link` (steward.py:1528) | `notify::question_link` | notify::question_link_vectors | tamam |
@@ -550,13 +550,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_log_dedup` (steward.py:1845) | `logdedup::log_dedup` | logdedup::old_subjects_are_evicted_past_the_cap, logdedup::p_log_dedup | tamam |
 | `log_event` (steward.py:1871) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `_rewrite_log` (steward.py:1891) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `compact_log` (steward.py:1896) | - | - | AÇIK: günlük dosyası işlevi; tick satırlarını tek `ticks` satırına katlama kuralı Rust'ta yok, T10 |
+| `compact_log` (steward.py:1896) | `report::compact_log` | iocore::compact_log_io_cases | tamam |
 | `rotate_log` (steward.py:1936) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `tail_log` (steward.py:1950) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `card_path` (steward.py:1972) | `cards::card_path` | cards::card_path_vectors | tamam |
 | `_read_doc_head` (steward.py:1976) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `_git_recent` (steward.py:1984) | - | - | AÇIK: alt süreç işlevi; `git log` satırı ayrıştırma Rust'ta yok, T10 |
-| `build_raw_card` (steward.py:2011) | - | - | AÇIK: G/Ç işlevi; `source_hash` özeti Rust'ta yok (aynı üretilmezse geçişte tüm kartlar eskimiş sayılır), T10 |
+| `_git_recent` (steward.py:1984) | `cards::git_recent` | iocore::p_git_recent_io_cases | tamam |
+| `build_raw_card` (steward.py:2011) | `cards::build_raw_card` | iocore::build_raw_card_io_cases | tamam |
 | `raw_card_from_docs` (steward.py:2029) | `cards::raw_card_from_docs` | cards::raw_card_from_docs_vectors | tamam |
 | `_short` (steward.py:2039) | `cards::short` | cards::p_short | tamam |
 | `_str_list` (steward.py:2043) | `cards::str_list` | cards::p_str_list | tamam |
@@ -576,7 +576,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `card_refresh_reason` (steward.py:2244) | `cards::card_refresh_reason` | cards::card_refresh_reason_vectors | tamam |
 | `note_card_failure` (steward.py:2263) | `cards::note_card_failure` | store::note_card_failure_vectors | tamam |
 | `card_one_liner` (steward.py:2274) | `cards::card_one_liner` | cards::card_one_liner_vectors | tamam |
-| `persona_text` (steward.py:2280) | - | - | AÇIK: G/Ç işlevi ama içinde Rust'ta olmayan saf mantık var (taşınmadı), T10: `persona_text` override kolu |
+| `persona_text` (steward.py:2280) | `prompts::persona_text` | iocore::persona_text_io_cases | tamam |
 | `_unwrap_ticks` (steward.py:2293) | `markers::unwrap_ticks` | markers::p_unwrap_ticks | tamam |
 | `_PLACEHOLDER_BODY_RE` (steward.py:2306) | `consts_gen::P_PLACEHOLDER_BODY_RE` | generated::generated_files_are_current | tamam |
 | `count_open_tbd` (steward.py:2309) | `markers::count_open_tbd` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors | tamam |
@@ -676,7 +676,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_context_owner_topic` (steward.py:3613) | `closing::context_owner_topic` | closing::p_context_owner_topic | tamam |
 | `is_context_question` (steward.py:3619) | `closing::is_context_question` | closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits | tamam |
 | `context_answer` (steward.py:3626) | `closing::context_answer` | closing::context_answer_vectors | tamam |
-| `tour_delivery` (steward.py:3640) | - | - | AÇIK: G/Ç işlevi; satır içi eşiği, TR/EN yönlendirme metni ve saklanacak tur dosyası seçimi Rust'ta yok, T10 |
+| `tour_delivery` (steward.py:3640) | `tour::tour_delivery` | iocore::tour_delivery_io_cases | tamam |
 | `SLOT_RECENT_SECONDS` (steward.py:3663) | `consts_gen::SLOT_RECENT_SECONDS` | generated::generated_files_are_current | tamam |
 | `DIRECTIVE_MIN_GAP_SECONDS` (steward.py:3664) | `consts_gen::DIRECTIVE_MIN_GAP_SECONDS` | generated::generated_files_are_current | tamam |
 | `OWNER_ONLY_RE` (steward.py:3669) | `consts_gen::OWNER_ONLY_RE` | generated::generated_files_are_current | tamam |
@@ -873,21 +873,21 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `explain_idle_all` (steward.py:5993) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
 | `observe_filter` (steward.py:6020) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
 | `daily_path` (steward.py:6071) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6075) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `log_entries_for_date` (steward.py:6075) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
 | `DRY_KIPS` (steward.py:6094) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
 | `DRY_REPORT_HOURS` (steward.py:6096) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `dry_report` (steward.py:6099) | - | - | AÇIK: günlük okuyan işlev; `would:` olaylarını türe göre sayma Rust'ta yok (`dry_report_text` yalnız biçimler), T10 |
+| `dry_report` (steward.py:6099) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
 | `dry_report_text` (steward.py:6129) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
 | `dry_ask_due` (steward.py:6141) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
 | `summary_due` (steward.py:6152) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6159) | - | - | AÇIK: dosya okuyan işlev; kaçan özet günlerini seçme kuralı Rust'ta yok, T10 |
+| `missed_summary_dates` (steward.py:6159) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
 | `_NO_LOG_DAYS` (steward.py:6183) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
 | `_SUMMARY_TXT` (steward.py:6186) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
 | `_names` (steward.py:6210) | `report::names_line` | report::p_names | tamam |
 | `_kind_counts` (steward.py:6215) | `report::kind_counts` | report::p_kind_counts | tamam |
 | `_ask_gate_lines` (steward.py:6220) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
 | `daily_summary` (steward.py:6239) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6323) | - | - | AÇIK: depo okuyan sarmalayıcı; bekleyen sayıları toplama Rust'ta yok (`daily_summary` hazır alır), T10 |
+| `summary_text` (steward.py:6323) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
 | `write_daily` (steward.py:6341) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `summarize_projects` (steward.py:6348) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
@@ -898,7 +898,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 
 ### Python testleri (1856 satır)
 
-Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 10.
+Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 184; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1546,7 +1546,7 @@ Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; pa
 | `test_steward_core_a.StoreTest.test_defer_answer_keeps_question_open` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+15) |
 | `test_steward_core_a.StoreTest.test_questions_dedup_answer_deliver` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+17) |
 | `test_steward_core_a.StoreTest.test_ideas_and_log` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+4); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_ideas, steward.log_event, steward.tail_log |
-| `test_steward_core_a.StoreTest.test_persona_override_and_bundled` | AÇIK (taşınmadı ya da kısmen): `steward.persona_text`: paketli `data/steward.md` okuma (G/Ç) ve ayar override'ı kolu (strip + satır sonu; tek satır saf) Rust'ta yok, iz T10 |
+| `test_steward_core_a.StoreTest.test_persona_override_and_bundled` | Rust testi: iocore::persona_override_and_bundled |
 | `test_steward_core_a.MarkerTest.test_scan_markers_ask_ending_with_colon_takes_following_lines` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_core_a.MarkerTest.test_scan_markers_ignores_writing_examples` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_core_a.MarkerTest.test_scan_markers_ignores_inline_code_mention_in_prose` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
@@ -1576,8 +1576,8 @@ Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; pa
 | `test_steward_core_a.RulesTest.test_instance_sessions_map_to_blueprint_project` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_tour_only_when_brain_idle_and_due` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_phase_model_effort` | prompts::phase_model_effort_vectors |
-| `test_steward_core_a.CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` | AÇIK (taşınmadı ya da kısmen): `steward.build_raw_card`: belge başı ve `git log` okur (G/Ç); içindeki saf parçalar (git satırı ayrıştırma, `source_hash` özeti) Rust'ta yok, özet aynı üretilmezse tüm kartlar eskimiş sayılır, iz T10 |
-| `test_steward_core_a.CardCoreTest.test_raw_card_without_git_or_docs` | AÇIK (taşınmadı ya da kısmen): `steward.build_raw_card`: belge başı ve `git log` okur (G/Ç); içindeki saf parçalar (git satırı ayrıştırma, `source_hash` özeti) Rust'ta yok, özet aynı üretilmezse tüm kartlar eskimiş sayılır, iz T10 |
+| `test_steward_core_a.CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` | Rust testi: iocore::build_raw_card_doc_heads_and_git |
+| `test_steward_core_a.CardCoreTest.test_raw_card_without_git_or_docs` | Rust testi: iocore::raw_card_without_git_or_docs |
 | `test_steward_core_a.CardCoreTest.test_parse_card_json_variants` | cards::p_short, cards::p_str_list, cards::parse_card_json_vectors, prompts::p_clip |
 | `test_steward_core_a.CardCoreTest.test_make_card_falls_back_to_raw_fields` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+2) |
 | `test_steward_core_a.CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` | cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short, identity::p_pp (+4); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_card, steward.save_card |
@@ -1712,8 +1712,8 @@ Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; pa
 | `test_steward_core_b.BrainAuthorityAndDeferTest.test_plain_routine_is_answerable` | gates::brain_may_answer_vectors, gates::long_texts_stay_within_regex_limits |
 | `test_steward_core_b.BrainAuthorityAndDeferTest.test_defer_reason` | gates::directive_defer_reason_vectors |
 | `test_steward_core_b.BrainAuthorityAndDeferTest.test_tour_retry_gap_after_deferral` | Rust testi: pytests::default_tour_retry_is_five_minutes |
-| `test_steward_core_b.TourDeliveryTest.test_short_tour_inline` | AÇIK (taşınmadı ya da kısmen): `steward.tour_delivery`: uzun turu dosyaya yazar ve eskileri budar (G/Ç); içindeki saf parçalar (satır içi eşiği, TR/EN yönlendirme metni, saklanacak dosya seçimi) Rust'ta yok, iz T10 |
-| `test_steward_core_b.TourDeliveryTest.test_long_tour_goes_to_file_and_old_files_pruned` | AÇIK (taşınmadı ya da kısmen): `steward.tour_delivery`: uzun turu dosyaya yazar ve eskileri budar (G/Ç); içindeki saf parçalar (satır içi eşiği, TR/EN yönlendirme metni, saklanacak dosya seçimi) Rust'ta yok, iz T10 |
+| `test_steward_core_b.TourDeliveryTest.test_short_tour_inline` | Rust testi: iocore::short_tour_inline |
+| `test_steward_core_b.TourDeliveryTest.test_long_tour_goes_to_file_and_old_files_pruned` | Rust testi: iocore::long_tour_goes_to_file_and_old_files_pruned |
 | `test_steward_core_b.ShutdownKeepModeTest.test_keep_does_not_stop` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors, markers::needs_ho_rfh_marker_in |
 | `test_steward_core_b.ShutdownKeepModeTest.test_default_stops` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors, markers::needs_ho_rfh_marker_in |
 | `test_steward_core_b.ShutdownOnlyTest.test_only_closes_selected_project_and_leaves_rest` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors, markers::needs_ho_rfh_marker_in |

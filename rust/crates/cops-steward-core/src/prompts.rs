@@ -795,3 +795,15 @@ pub fn mark_ask_seen(state: &mut Map<String, Value>, items: &[Map<String, Value>
     state.insert("ask_seen".into(), Value::Object(seen));
     Ok(())
 }
+
+/// Etkin persona: ayardaki override (kırpılmış) doluysa o + satır sonu, yoksa paketlenmiş `data/steward.md`.
+/// G/Ç çağıranda: `bundled()` = paketli dosyanın içeriği, okunamazsa (`OSError`) `None` -> "".
+///
+/// py: persona_text
+pub fn persona_text(override_text: &str, bundled: &dyn Fn() -> Option<String>) -> String {
+    let own = pyc::strip(override_text);
+    if !own.is_empty() {
+        return format!("{own}\n");
+    }
+    bundled().unwrap_or_default()
+}

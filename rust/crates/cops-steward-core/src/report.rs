@@ -410,3 +410,211 @@ pub fn summarize_projects(projects: &IndexMap<String, Project>) -> IndexMap<Stri
     }
     out
 }
+
+// ── günlük dosyası (`log.jsonl`) üzerindeki saf kararlar: okuma/yazma çağıranda ──
+//
+// Ortak JSON farkı: Python `json.loads` `NaN`/`Infinity` sabitlerini, eşi olmayan `\ud800` kaçışlarını ve sınırsız
+// tam sayıları kabul eder; `serde_json` ilk ikisini reddeder (satır bozuk sayılır), i64/u64'e sığmayan tam sayıyı
+// float yapar. `log_event` bunları yalnız alan değeri NaN/inf ise yazar.
+
+fn json_line(ln: &str) -> Option<Value> {
+    serde_json::from_str(ln).ok()
+}
+
+/// `log.jsonl` metninden o güne (`YYYY-MM-DD`) ait kayıtlar: satırın ilk 40 kod noktasında `"ts": "<tarih>` geçen,
+/// JSON olarak çözülebilen satırlar (nesne olmayabilir: Python da süzmez). `text` = dosyanın UTF-8 içeriği
+/// (okunamazsa çağıran boş liste kullanır).
+///
+/// py: log_entries_for_date
+pub fn log_entries_for_date(text: &str, date: &str) -> Vec<Value> {
+    let needle = format!("\"ts\": \"{date}");
+    pyc::readlines(text)
+        .iter()
+        .filter(|ln| pyc::head(ln, 40).contains(&needle))
+        .filter_map(|ln| json_line(ln))
+        .collect()
+}
+
+/// O günün `tick` satırlarını TEK `ticks` satırına katlar (`{"ts": "<date>T23:59:59", "event": "ticks", "n",
+/// "manual", "errors", "mode"}`); toplam satırı sonraki günün ilk kaydından önce, yoksa sona girer. Diğer satırlar
+/// yerinde. `text` = `log.jsonl` içeriği (okunamazsa Python 0 döner, dosyaya dokunmaz: çağıran bunu çağırmaz).
+/// Dönen: `None` = katlanacak tick yok (dosyaya dokunma); `Some((yeni içerik, katlanan sayı))` = atomik yeniden yaz.
+///
+/// py: compact_log
+pub fn compact_log(date: &str, text: &str) -> Option<(String, i64)> {
+    let (mut n, mut manual, mut errors, mut mode) = (0_i64, 0_i64, 0_i64, String::new());
+    let mut out: Vec<String> = Vec::new();
+    let mut placed = false;
+    let agg_line = |n: i64, manual: i64, errors: i64, mode: &str| {
+        let s = |x: &str| serde_json::to_string(x).unwrap_or_default();
+        format!(
+            "{{\"ts\": {}, \"event\": \"ticks\", \"n\": {n}, \"manual\": {manual}, \"errors\": {errors}, \"mode\": {}}}\n",
+            s(&format!("{date}T23:59:59")),
+            s(mode)
+        )
+    };
+    for ln in pyc::readlines(text) {
+        let ts =
+            if ln.starts_with("{\"ts\": \"") { pyc::head(pyc::skip(&ln, 8), 19).to_string() } else { String::new() };
+        if ts.starts_with(date) && ln.contains("\"event\": \"tick\"") {
+            let Some(e) = json_line(&ln) else {
+                out.push(ln);
+                continue;
+            };
+            n += 1;
+            if e.get("trigger").and_then(Value::as_str) != Some("timer") {
+                manual += 1;
+            }
+            if e.get("error").is_some_and(pyc::truthy) {
+                errors += 1;
+            }
+            if let Some(m) = e.get("mode").filter(|m| pyc::truthy(m)) {
+                mode = pyc::str_of(m);
+            }
+            continue;
+        }
+        if n != 0 && !placed && !ts.is_empty() && pyc::head(&ts, 10) > date {
+            out.push(agg_line(n, manual, errors, &mode));
+            placed = true;
+        }
+        out.push(ln);
+    }
+    if n == 0 {
+        return None;
+    }
+    if !placed {
+        out.push(agg_line(n, manual, errors, &mode));
+    }
+    Some((out.concat(), n))
+}
+
+/// `log.jsonl.1` ve `log.jsonl` (bu sırayla; `None` = okunamadı, atlanır) içindeki `would:<tür>` olaylarını son
+/// `hours` saatte türe göre sayar: `{tür: {count, names: {ad: n}, chars, first, last}}`. `ts` yerel saattir
+/// (`time.mktime`; `TZ`ye uyar). Python'un yakalamadığı istisnalar (nesne olmayan JSON satırı, `int()` edilemeyen
+/// `chars`) hata.
+///
+/// py: dry_report
+pub fn dry_report(logs: &[Option<&str>], hours: f64, now: f64) -> Result<Doc, BadValue> {
+    let mut out = Doc::new();
+    for text in logs.iter().flatten() {
+        for ln in pyc::readlines(text) {
+            if !ln.contains("\"would:") {
+                continue;
+            }
+            let Some(e) = json_line(&ln) else { continue };
+            let e = e.as_object().ok_or_else(|| bad(&e))?; // Python: `e.get` AttributeError (yakalanmaz)
+            let raw_ts = pyc::str_of(e.get("ts").unwrap_or(&Value::Null));
+            let Some(ts) = pyc::mktime_iso_seconds(pyc::head(&raw_ts, 19)) else { continue };
+            let ev = e.get("event").map_or_else(String::new, pyc::str_of);
+            let Some(kind) = ev.strip_prefix("would:") else { continue };
+            if now - ts > hours * 3600.0 {
+                continue;
+            }
+            let name = e.get("name").filter(|v| pyc::truthy(v)).map_or_else(|| "-".to_string(), pyc::str_of);
+            let chars = int_of(e.get("chars"))?;
+            let r = out.entry(kind.to_string()).or_insert_with(|| {
+                Value::Object(doc_from([
+                    ("count", Value::from(0)),
+                    ("names", Value::Object(Doc::new())),
+                    ("chars", Value::from(0)),
+                    ("first", Value::from(ts)),
+                    ("last", Value::from(ts)),
+                ]))
+            });
+            let r = r.as_object_mut().ok_or_else(|| BadValue("report row".into()))?;
+            let bump = |v: Option<&Value>, by: i64| -> Result<Value, BadValue> {
+                let cur = v.and_then(Value::as_i64).unwrap_or(0);
+                cur.checked_add(by).map(Value::from).ok_or_else(|| BadValue("overflow".into()))
+            };
+            let count = bump(r.get("count"), 1)?;
+            r.insert("count".into(), count);
+            if let Some(names) = r.get_mut("names").and_then(Value::as_object_mut) {
+                let c = bump(names.get(&name), 1)?;
+                names.insert(name, c);
+            }
+            let total = bump(r.get("chars"), chars)?;
+            r.insert("chars".into(), total);
+            let first = r.get("first").and_then(Value::as_f64).unwrap_or(ts);
+            let last = r.get("last").and_then(Value::as_f64).unwrap_or(ts);
+            r.insert("first".into(), Value::from(if ts < first { ts } else { first }));
+            r.insert("last".into(), Value::from(if ts > last { ts } else { last }));
+        }
+    }
+    Ok(out)
+}
+
+fn doc_from<const N: usize>(pairs: [(&str, Value); N]) -> Doc {
+    pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+}
+
+/// Özeti KAÇMIŞ geçmiş günler (eskiden yeniye): bugün hariç son `days` günden `daily/<tarih>.md`si olmayan
+/// (`has_daily`) ve günlükte kaydı bulunan (`has_entries`; [`log_entries_for_date`] boş değil) günler. Python'un
+/// "kayıtsız gün" önbelleği (`_NO_LOG_DAYS`, günlük dosyası imzasıyla) yalnız hız içindir, sonucu değiştirmez:
+/// çağıranda kalır. `now` yerel tarihe çevrilemezse (NaN, taşma) Python `time.localtime` istisnası: hata.
+///
+/// py: missed_summary_dates
+pub fn missed_summary_dates(
+    now: f64,
+    days: i64,
+    has_daily: &dyn Fn(&str) -> bool,
+    has_entries: &dyn Fn(&str) -> bool,
+) -> Result<Vec<String>, BadValue> {
+    use chrono::{Local, TimeZone};
+    let mut out = Vec::new();
+    for back in (1..=days.max(0)).rev() {
+        let t = now - back as f64 * 86400.0;
+        let ok = t.is_finite() && Local.timestamp_opt(t.floor() as i64, 0).earliest().is_some();
+        if !ok {
+            return Err(BadValue(format!("localtime: {t}")));
+        }
+        let date = pyc::localtime(t).format("%Y-%m-%d").to_string();
+        if has_daily(&date) {
+            continue;
+        }
+        if has_entries(&date) {
+            out.push(date);
+        }
+    }
+    Ok(out)
+}
+
+/// Depolardan bir günün özeti: bekleyen sayıları (açık soru, yeni fikir, `state.pending_items`, iletilmemiş cevap) ve
+/// sahipsiz kaynak satırını kurup [`daily_summary`]i çağırır. Depo okuması çağıranda: `entries` =
+/// [`log_entries_for_date`]; `orphans` = `periodic.orphan_summary()` sonucu, istisnada `None` (sözlük değilse ya da
+/// sayılar `int()` edilemezse Python satırı atlar). `date` verilmezse Python bugünü (yerel) alır: çağıran verir.
+/// `pending_items` `int()` edilemezse Python istisnası: hata.
+///
+/// py: summary_text
+pub fn summary_text(
+    date: &str,
+    lang: &str,
+    state: &Doc,
+    questions: &[crate::types::Question],
+    ideas: &[crate::types::Idea],
+    entries: &[Value],
+    orphans: Option<&Value>,
+) -> Result<String, BadValue> {
+    let pending = doc_from([
+        ("open_questions", Value::from(crate::questions::open_questions(questions).len())),
+        ("ideas_new", Value::from(ideas.iter().filter(|i| i.status == "new").count())),
+        ("pending_items", Value::from(int_of(state.get("pending_items"))?)),
+        ("undelivered_answers", Value::from(crate::questions::undelivered_answers(questions).len())),
+    ]);
+    let orphans = orphans.and_then(Value::as_object).and_then(|o| {
+        let servers = int_of(o.get("servers")).ok()?;
+        let procs = int_of(o.get("procs")).ok()?;
+        Some(doc_from([("servers", Value::from(servers)), ("procs", Value::from(procs))]))
+    });
+    let mut answered_by = IndexMap::new();
+    for q in questions {
+        answered_by.insert(q.id.clone(), q.answered_by.clone());
+    }
+    let entries: Vec<Doc> =
+        entries.iter().map(|e| e.as_object().cloned().ok_or_else(|| bad(e))).collect::<Result<_, _>>()?;
+    daily_summary(
+        &entries,
+        date,
+        lang,
+        SummaryExtras { pending: Some(&pending), orphans: orphans.as_ref(), answered_by: Some(&answered_by) },
+    )
+}

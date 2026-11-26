@@ -379,3 +379,48 @@ pub fn plan_markers(
     st.insert("seen_assistant".into(), Value::Object(seen));
     Ok((actions, st))
 }
+
+/// `tour_delivery` sonucu: gönderilecek mesaj; uzun turda yazılacak dosya (`path`, boş = satır içi) ve klasörü (`dir`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TourDelivery {
+    pub message: String,
+    pub path: String,
+    pub dir: String,
+}
+
+/// Kısa tur olduğu gibi gider; `TOUR_INLINE_MAX_CHARS` kod noktasını aşan tur `<workspace>/tours/tour-<int(now)>.md`
+/// dosyasına yazılır ve mesaj yalnız yolu gösterir (TR; `lang == "en"` İngilizce). G/Ç çağıranda: `path` doluysa
+/// `dir`i oluştur, `prompt`u yaz, sonra `dir` listesini [`tour_prune`]a verip dönen adları sil (silinemeyen atlanır).
+/// `now` sonlu değilse Python `int(now)` istisnası: hata.
+///
+/// py: tour_delivery
+pub fn tour_delivery(prompt: &str, workspace: &str, now: f64, lang: &str) -> Result<TourDelivery, BadValue> {
+    if pyc::len(prompt) as i64 <= TOUR_INLINE_MAX_CHARS {
+        return Ok(TourDelivery { message: prompt.to_string(), path: String::new(), dir: String::new() });
+    }
+    let dir = pyc::path_join(workspace, "tours");
+    let stamp = pyc::int_str(now).ok_or_else(|| BadValue(format!("now: {now}")))?;
+    let path = pyc::path_join(&dir, &format!("tour-{stamp}.md"));
+    let message = if lang == "en" {
+        format!(
+            "[tour] The items are long, so they are in a file: {path} . Read the WHOLE file first (Read tool), then act on each \
+             item with the matching tool exactly as the file says. Do not answer from this message alone."
+        )
+    } else {
+        format!(
+            "[tur] Maddeler uzun olduğu için dosyada: {path} . Önce dosyanın TAMAMINI oku (Read aracı), sonra dosyada yazdığı gibi \
+             her madde için ilgili aracı çağır. Yalnız bu mesaja bakarak cevap verme."
+        )
+    };
+    Ok(TourDelivery { message, path, dir })
+}
+
+/// Tur klasöründe silinecek eski dosyalar: `sorted(os.listdir(d))[:-TOUR_FILES_KEEP]` (yeni dosya yazıldıktan sonra).
+pub fn tour_prune(names: &[String]) -> Vec<String> {
+    let mut sorted: Vec<String> = names.to_vec();
+    sorted.sort();
+    let keep = usize::try_from(TOUR_FILES_KEEP).unwrap_or(0);
+    let cut = sorted.len().saturating_sub(keep);
+    sorted.truncate(cut);
+    sorted
+}

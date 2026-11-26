@@ -705,3 +705,201 @@ pub fn upsert_project(
         .map(|o| format!("phase {o}->{}", p.phase));
     Ok(Upserted { project: p, host_changed, auto_label_via })
 }
+
+// ── proje devri ve review yeri cevabı ─────────────────────────────────────────
+
+/// `transfer_project` hatası: Python `ValueError` (ileti aynı) ya da `ReviewerRefused`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferError {
+    Value(String),
+    Reviewer(ReviewerRefused),
+}
+
+impl fmt::Display for TransferError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransferError::Value(m) => f.write_str(m),
+            TransferError::Reviewer(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for TransferError {}
+
+/// Devrin kaynağı ve kimlik kilitlerinin alınma sırası (ada göre sıralı: kilitlenme yok).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferSource {
+    pub src: String,
+    pub locks: [String; 2],
+}
+
+/// `transfer_project`in kimlik kilitlerinden ÖNCEKİ denetimleri (sıra Python'la aynı). Çağıran `.ownership.lock`u
+/// alır, `owner` = `project_owner(name)` ("" = hiçbir kimlikte yok) okur, bunu çağırır, sonra `locks` sırasıyla iki
+/// kimlik kilidini alıp depoları okur ve [`transfer_project`]i çağırır. `steward_ids`: ayarda tanımlı kimlikler;
+/// `reviewers`: reviewer rolündekiler.
+pub fn transfer_source(
+    name: &str,
+    to_sid: &str,
+    steward_ids: &BTreeSet<String>,
+    reviewers: &BTreeSet<String>,
+    owner: &str,
+) -> Result<TransferSource, TransferError> {
+    let repr = pyc::repr_str;
+    if !identity::valid_steward_id(to_sid) {
+        return Err(TransferError::Value(format!("invalid steward id: {}", repr(to_sid))));
+    }
+    if !steward_ids.contains(to_sid) {
+        return Err(TransferError::Value(format!("unknown steward id: {} (not defined in settings)", repr(to_sid))));
+    }
+    if identity::is_reviewer(Some(to_sid), reviewers) {
+        return Err(TransferError::Reviewer(ReviewerRefused(format!(
+            "steward {} is a reviewer: projects cannot be transferred to it",
+            repr(to_sid)
+        ))));
+    }
+    if !owner.is_empty() && identity::is_reviewer(Some(owner), reviewers) {
+        return Err(TransferError::Reviewer(ReviewerRefused(format!(
+            "steward {} is a reviewer: projects cannot be transferred from it",
+            repr(owner)
+        ))));
+    }
+    if owner.is_empty() {
+        return Err(TransferError::Value(format!("project {} not found in any steward", repr(name))));
+    }
+    if owner == to_sid {
+        return Err(TransferError::Value(format!(
+            "project {} already belongs to steward {}",
+            repr(name),
+            repr(to_sid)
+        )));
+    }
+    let mut locks = [owner.to_string(), to_sid.to_string()];
+    locks.sort();
+    Ok(TransferSource { src: owner.to_string(), locks })
+}
+
+/// Devrin yazılacak hâlleri. Yazım sırası (Python): hedef projeler -> (iş taşındıysa) hedef işler -> hedef sorular
+/// -> kaynak projeler -> (iş taşındıysa) kaynak işler -> kaynak sorular; sonra iki günlükte `transfer` olayı
+/// (`questions`, `jobs` sayılarıyla). `*_jobs` `None` = iş dosyasına dokunma.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransferPlan {
+    pub src_projects: IndexMap<String, Project>,
+    pub dst_projects: IndexMap<String, Project>,
+    pub src_questions: Vec<Question>,
+    pub dst_questions: Vec<Question>,
+    pub src_jobs: Option<Vec<Value>>,
+    pub dst_jobs: Option<Vec<Value>>,
+    pub questions: usize,
+    pub jobs: usize,
+}
+
+/// Kilitler altında taşıma kararı: kayıt; projenin açık ya da iletilmemiş soruları; iki iş listesi de liste ise
+/// `project` alanı bu ad olan iş kayıtları. Hata: hedefte aynı ad / kaynakta yok (`ValueError`). `src_jobs`/`dst_jobs`:
+/// `_load_json(jobs, [])` sonucu (liste değilse iş taşınmaz).
+///
+/// py: transfer_project
+#[allow(clippy::too_many_arguments)]
+pub fn transfer_project(
+    name: &str,
+    to_sid: &str,
+    src: &str,
+    mut src_projects: IndexMap<String, Project>,
+    mut dst_projects: IndexMap<String, Project>,
+    src_questions: Vec<Question>,
+    mut dst_questions: Vec<Question>,
+    src_jobs: &Value,
+    dst_jobs: &Value,
+) -> Result<TransferPlan, TransferError> {
+    let repr = pyc::repr_str;
+    if dst_projects.contains_key(name) {
+        return Err(TransferError::Value(format!("project {} already exists in steward {}", repr(name), repr(to_sid))));
+    }
+    let Some(project) = src_projects.shift_remove(name) else {
+        return Err(TransferError::Value(format!("project {} not found in steward {}", repr(name), repr(src))));
+    };
+    dst_projects.insert(name.to_string(), project);
+    let mut keep = Vec::new();
+    let mut moved_q = 0;
+    for q in src_questions {
+        if q.project == name && (q.status == "open" || q.delivered_at == 0.0) {
+            dst_questions.push(q);
+            moved_q += 1;
+        } else {
+            keep.push(q);
+        }
+    }
+    let mine_of = |j: &Value| j.as_object().is_some_and(|o| o.get("project").and_then(Value::as_str) == Some(name));
+    let (mut new_src, mut new_dst, mut moved_jobs) = (None, None, 0);
+    if let (Value::Array(sj), Value::Array(dj)) = (src_jobs, dst_jobs) {
+        let mine: Vec<Value> = sj.iter().filter(|j| mine_of(j)).cloned().collect();
+        moved_jobs = mine.len();
+        if !mine.is_empty() {
+            new_dst = Some(dj.iter().cloned().chain(mine).collect());
+            new_src = Some(sj.iter().filter(|j| !mine_of(j)).cloned().collect());
+        }
+    }
+    Ok(TransferPlan {
+        src_projects,
+        dst_projects,
+        src_questions: keep,
+        dst_questions,
+        src_jobs: new_src,
+        dst_jobs: new_dst,
+        questions: moved_q,
+        jobs: moved_jobs,
+    })
+}
+
+/// `apply_review_where_answer` sonucu. `upserted` dolu ise çağıran projeleri kaydeder (ve `upsert_project`
+/// sözleşmesinin geri kalanını uygular); `failed` = `review_where_failed` olayının `error` alanı; `delivered` = soru
+/// bulundu (sorular kaydedilir); `event` = `review_where` olayının alanları (`project`, `where`, `path`, `answer`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviewWhereApplied {
+    pub fields: Map<String, Value>,
+    pub upserted: Option<Upserted>,
+    pub failed: Option<String>,
+    pub delivered: bool,
+    pub event: Map<String, Value>,
+}
+
+/// Reviewer'ın "uzak projeyi nerede review edeyim?" sorusunun cevabı projeye yazılır; cevap oturuma İLETİLMEZ
+/// (soru `delivered_at` alır). `parsed` = `review_remote.parse_answer(q.answer)` (bu crate'te değil); `local` ve yol
+/// boşsa `find_local_copy(proje)`. Tanınmayan cevapta alan yazılmaz. `upsert_project` hatası yutulur (`failed`).
+///
+/// py: apply_review_where_answer
+pub fn apply_review_where_answer(
+    q: &Question,
+    parsed: (&str, &str),
+    find_local_copy: &dyn Fn(&str) -> String,
+    projects: &mut IndexMap<String, Project>,
+    ctx: &UpsertContext<'_>,
+    questions: &mut [Question],
+) -> ReviewWhereApplied {
+    let (where_, path) = parsed;
+    let mut fields = Map::new();
+    if where_ == "local" {
+        let path = if path.is_empty() { find_local_copy(&q.project) } else { path.to_string() };
+        fields.insert("review_where".into(), Value::from("local"));
+        fields.insert("local_path".into(), Value::from(path));
+    } else if !where_.is_empty() {
+        fields.insert("review_where".into(), Value::from(where_));
+    }
+    let (mut upserted, mut failed) = (None, None);
+    if !fields.is_empty() {
+        match upsert_project(projects, &q.project, &fields, ctx) {
+            Ok(u) => upserted = Some(u),
+            Err(e) => {
+                failed = Some(e.to_string());
+                fields = Map::new();
+            }
+        }
+    }
+    let delivered = mark_delivered(questions, &q.id, ctx.now);
+    let text = |k: &str| fields.get(k).cloned().unwrap_or_else(|| Value::from(""));
+    let mut event = Map::new();
+    event.insert("project".into(), Value::from(q.project.clone()));
+    event.insert("where".into(), text("review_where"));
+    event.insert("path".into(), text("local_path"));
+    event.insert("answer".into(), Value::from(pyc::head(&q.answer, 80)));
+    ReviewWhereApplied { fields, upserted, failed, delivered, event }
+}
