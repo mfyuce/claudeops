@@ -125,7 +125,7 @@ function readStoredLiveInput(): boolean {
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
 }
 
 interface XtermInstance {
@@ -1306,13 +1306,15 @@ export function TerminalView({ name, host, activeSubTab, onView }: TerminalViewP
                 ? t.contextBusy
                 : contextState.reason === "masked"
                   ? t.contextMasked
-                  : contextState.reason === "no_tmux"
-                    ? t.contextNoTmux
-                    : contextState.reason === "send_failed"
-                      ? t.contextSendFailed
-                      : contextState.reason === "unsupported"
-                        ? t.contextUnsupported
-                        : t.contextParseFailed}
+                  : contextState.reason === "mask_unknown"
+                    ? t.contextMaskUnknown
+                    : contextState.reason === "no_tmux"
+                      ? t.contextNoTmux
+                      : contextState.reason === "send_failed"
+                        ? t.contextSendFailed
+                        : contextState.reason === "unsupported"
+                          ? t.contextUnsupported
+                          : t.contextParseFailed}
             </span>
           )}
           {contextState.kind === "error" && <span className="opts-hint">{contextState.message}</span>}
