@@ -89,7 +89,7 @@ impl RequestView {
         self.header("cookie")?
             .split(';')
             .map(|p| {
-                let p = p.trim();
+                let p = crate::py_strip(p);
                 p.split_once('=').unwrap_or((p, ""))
             })
             .rfind(|(k, _)| *k == name)

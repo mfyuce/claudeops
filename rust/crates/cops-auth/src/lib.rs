@@ -9,6 +9,11 @@ pub use sha256::{hex, hmac_sha256, sha256};
 /// Panel oturum çerezinin adı (Python `extensions.COOKIE_NAME`).
 pub const COOKIE_NAME: &str = "cops_ext";
 
+/// Python `str.strip()` (argümansız): Rust `trim()` kümesine ek olarak U+001C..U+001F'yi de kırpar.
+fn py_strip(s: &str) -> &str {
+    s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
+}
+
 /// Panel token'ı: sabit değer ([`Token::new`]) ya da dosya ([`Token::from_file`]). Dosyalı olan HER sorguda yeniden okunur
 /// (Python gibi): silinen/döndürülen token anında geçersiz.
 #[derive(Clone)]
@@ -31,7 +36,7 @@ struct Value {
 
 impl Value {
     fn new(raw: &str) -> Value {
-        let raw = raw.trim().as_bytes().to_vec();
+        let raw = py_strip(raw).as_bytes().to_vec();
         let cookie = if raw.is_empty() {
             String::new()
         } else {
@@ -177,7 +182,8 @@ impl Token {
         }
         let mut ok = false;
         for part in cookie_header.split(';') {
-            let (k, v) = part.trim().split_once('=').unwrap_or((part.trim(), ""));
+            let part = py_strip(part);
+            let (k, v) = part.split_once('=').unwrap_or((part, ""));
             if k == COOKIE_NAME {
                 ok |= ct_eq(v.as_bytes(), v_now.cookie.as_bytes());
             }
@@ -197,7 +203,7 @@ impl Token {
         }
         if let Some(a) = authorization {
             if let Some(b) = a.strip_prefix("Bearer ") {
-                ok |= v.matches(b.trim());
+                ok |= v.matches(py_strip(b));
             }
         }
         ok
@@ -240,6 +246,24 @@ mod tests {
         let closed = Token::new("");
         assert_eq!(closed.cookie_value(), None);
         assert!(!closed.cookie_ok("cops_ext="));
+    }
+
+    #[test]
+    fn whitespace_stripping_matches_python_str_strip() {
+        let t = Token::new("\u{1c}sekret\u{1f}\n");
+        assert!(t.authorized("token=sekret", None), "token dosyası");
+        assert!(t.authorized("", Some("Bearer \u{1d}sekret\u{1e}")));
+        let v = t.cookie_value().unwrap();
+        assert!(t.cookie_ok(&format!("a=1;\u{1c}cops_ext={v}\u{1f}")));
+        let req = authz::RequestView {
+            headers: vec![("cookie".into(), "a=1;\u{1c}b=2\u{1f}".into())],
+            method: "GET".into(),
+            path: "/".into(),
+            raw_query: String::new(),
+            client_ip: std::net::Ipv4Addr::LOCALHOST.into(),
+            peer_loopback: true,
+        };
+        assert_eq!(req.cookie("b"), Some("2"));
     }
 
     #[test]
