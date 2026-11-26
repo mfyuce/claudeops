@@ -274,3 +274,65 @@ fn roster_by_name_and_blueprint_cwds_match_python() {
     );
     assert_eq!(format!("{}\n{}\n", by.to_compact(), bp.to_compact()), py);
 }
+
+/// Eşlenmemiş vekil (`"\ud800"`): Python okur ama yazamaz; Rust okur (U+FFFD), yazıcı hata verir, dosya ve DB değişmez.
+#[test]
+fn lone_surrogate_readable_not_writable() {
+    let doc = r#"{"version": 1, "instances": {"a": {"cwd": "/x\ud800y", "cli": "claude"}, "b": {"cwd": "/b"}}}"#;
+    for (mode, backend) in [
+        ("files", Backend::Files),
+        ("dual", Backend::Dual),
+        ("db", Backend::Db),
+    ] {
+        let (a, b) = (Env::new(), Env::new());
+        for e in [&a, &b] {
+            e.py(
+                mode,
+                "from claudeops.store import default_store\ndefault_store()",
+            );
+            e.write("instances.json", doc);
+        }
+        let py = a.py(
+            mode,
+            "from claudeops import instances as i\nprint(sorted(i.load_instances()))\ntry:\n    i.forget_instance('b'); print('yazdi')\nexcept Exception as ex:\n    print('hata')\n\
+             from claudeops.store import default_store\nprint(default_store().get_doc('instances') is None)",
+        );
+        let docs = b.docs(backend);
+        let i = Instances::new(&docs);
+        let mut keys: Vec<String> = i.load().keys().cloned().collect();
+        keys.sort();
+        let wrote = if i.forget("b").is_ok() {
+            "yazdi"
+        } else {
+            "hata"
+        };
+        let db_none = b.py(mode, "from claudeops.store import default_store\nprint(default_store().get_doc('instances') is None)");
+        assert_eq!(
+            format!("{keys:?}\n{wrote}\n{}", db_none.trim()).replace('"', "'"),
+            py.trim_end(),
+            "{mode}"
+        );
+        assert_eq!(a.read("instances.json"), doc);
+        assert_eq!(b.read("instances.json"), doc);
+    }
+    // settings: diğer anahtarlar okunur (Python gibi), varsayılanlara düşülmez
+    let e = Env::new();
+    e.write(
+        "settings.json",
+        r#"{"theme": "dark", "handover_effort": "x\udc00", "store_backend": "db"}"#,
+    );
+    let s = cops_state::settings::load(&e.dir());
+    assert_eq!(s.str_of("theme"), "dark");
+    assert_eq!(e.docs(Backend::Files).backend(), Backend::Files, "isolated");
+    let docs = cops_state::StateDocs::isolated(e.dir(), None, "");
+    assert_eq!(
+        docs.backend(),
+        Backend::Db,
+        "store_backend vekilli dosyadan da okunur"
+    );
+    let py = e.py(
+        "files",
+        "from claudeops.settings import load_settings\nprint(load_settings()['theme'])",
+    );
+    assert_eq!(py.trim(), "dark");
+}

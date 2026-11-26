@@ -41,14 +41,29 @@ impl std::error::Error for ParseError {}
 
 impl Json {
     pub fn parse(text: &str) -> Result<Json, ParseError> {
-        let mut p = Parser { s: text, i: 0 };
+        Self::parse_inner(text, None).map(|(v, _)| v)
+    }
+
+    /// Python `json.loads` gibi eşlenmemiş vekil kaçışını (`"\ud800"`) KABUL eder: Rust dizesinde tutulamadığı için U+FFFD
+    /// yazılır ve ikinci değer `true` döner. YALNIZ okuyucular için: bu değer geri yazılırsa veri değişir; yazıcılar
+    /// `true` gördüğünde yazmamalı (Python da bu belgeyi yazamaz: UTF-8'e kodlanamaz).
+    pub fn parse_lossy(text: &str) -> Result<(Json, bool), ParseError> {
+        Self::parse_inner(text, Some(false))
+    }
+
+    fn parse_inner(text: &str, lossy: Option<bool>) -> Result<(Json, bool), ParseError> {
+        let mut p = Parser {
+            s: text,
+            i: 0,
+            lossy,
+        };
         p.ws();
         let v = p.value(0)?;
         p.ws();
         if p.i != text.len() {
             return Err(p.err("fazla veri"));
         }
-        Ok(v)
+        Ok((v, p.lossy.unwrap_or(false)))
     }
 
     pub fn object() -> Json {
@@ -344,6 +359,8 @@ fn write_val(out: &mut String, v: &Json, indent: bool, depth: usize) {
 struct Parser<'a> {
     s: &'a str,
     i: usize,
+    /// `Some`: eşlenmemiş vekil U+FFFD olur ve bayrak kalkar; `None`: hata.
+    lossy: Option<bool>,
 }
 
 impl Parser<'_> {
@@ -534,12 +551,21 @@ impl Parser<'_> {
                             let mut u = self.hex4()?;
                             if (0xD800..0xDC00).contains(&u) && self.eat("\\u") {
                                 let lo = self.hex4()?;
-                                if !(0xDC00..0xE000).contains(&lo) {
-                                    return Err(self.err("eşlenmemiş vekil"));
+                                if (0xDC00..0xE000).contains(&lo) {
+                                    u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
+                                } else {
+                                    // Python: ikinci kaçış tüketilmez, ayrı karakter olarak okunur
+                                    self.i -= 6;
                                 }
-                                u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
                             }
-                            char::from_u32(u).ok_or_else(|| self.err("eşlenmemiş vekil"))?
+                            match (char::from_u32(u), &mut self.lossy) {
+                                (Some(c), _) => c,
+                                (None, Some(flag)) => {
+                                    *flag = true;
+                                    '\u{fffd}'
+                                }
+                                (None, None) => return Err(self.err("eşlenmemiş vekil")),
+                            }
                         }
                         _ => return Err(self.err("geçersiz kaçış")),
                     });

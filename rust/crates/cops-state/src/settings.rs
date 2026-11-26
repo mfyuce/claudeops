@@ -52,7 +52,8 @@ impl Settings {
     /// Dosya içeriğinden (`None` / bozuk / nesne değil = varsayılanlar).
     pub fn from_text(text: Option<&str>) -> Settings {
         let mut out = defaults().clone();
-        if let Some(Ok(Json::Object(stored))) = text.map(Json::parse) {
+        // Python `json.load` eşlenmemiş vekili kabul eder: okuma için U+FFFD (ayarlar Rust'ta yazılmaz)
+        if let Some(Ok((Json::Object(stored), _))) = text.map(Json::parse_lossy) {
             for (k, v) in stored {
                 if let Some(slot) = out.get_mut(&k) {
                     *slot = v;
@@ -154,7 +155,7 @@ pub fn backup_if_corrupt(dir: &StateDir) -> Option<std::io::Result<std::path::Pa
         return None;
     }
     if let Ok(t) = std::str::from_utf8(&raw) {
-        if matches!(Json::parse(t), Ok(Json::Object(_))) {
+        if matches!(Json::parse_lossy(t), Ok((Json::Object(_), _))) {
             return None;
         }
     }

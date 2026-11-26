@@ -184,10 +184,21 @@ impl<'a> Instances<'a> {
 
     /// Belgenin tamamı; yoksa boş şekil, bozuksa hata.
     pub fn read_strict(&self) -> Result<Json, InstancesError> {
+        self.read_checked().map(|(d, _)| d)
+    }
+
+    /// (belge, eşlenmemiş vekil okundu mu): `true` ise belge okunabilir ama yazılamaz (Python'da yazım
+    /// `UnicodeEncodeError` verir; burada [`Self::try_mutate`] yazmadan hata döner).
+    fn read_checked(&self) -> Result<(Json, bool), InstancesError> {
         let path = self.docs.dir().instances_json();
         let corrupt = |m: &str| InstancesError::Corrupt(format!("{} {m}", path.display()));
+        let mut lossy = false;
         let from_file = match read_file(&path) {
             Read::Value(v) => v,
+            Read::Lossy(v) => {
+                lossy = true;
+                v
+            }
             Read::Corrupt => return Err(corrupt("okunamadı")),
             Read::Missing if path.exists() => return Err(corrupt("okunamadı")),
             Read::Missing => {
@@ -197,13 +208,16 @@ impl<'a> Instances<'a> {
                 Json::Object(m)
             }
         };
-        let data = self
-            .docs
-            .read(DOC, &path)
-            .into_option()
-            .unwrap_or(from_file);
+        let data = match self.docs.read(DOC, &path) {
+            Read::Value(v) => v,
+            Read::Lossy(v) => {
+                lossy = true;
+                v
+            }
+            _ => from_file,
+        };
         match data.get("instances") {
-            Some(Json::Object(_)) => Ok(data),
+            Some(Json::Object(_)) => Ok((data, lossy)),
             _ => Err(corrupt("beklenen şekilde değil")),
         }
     }
@@ -259,7 +273,12 @@ impl<'a> Instances<'a> {
         let path = self.docs.dir().instances_json();
         let _lock = FileLock::blocking(&self.docs.dir().join("instances.json.lock"))
             .map_err(InstancesError::Lock)?;
-        let mut data = self.read_strict()?;
+        let (mut data, lossy) = self.read_checked()?;
+        if lossy {
+            return Err(InstancesError::Corrupt(
+                "eşlenmemiş vekil içeren belge yazılamaz (Python UnicodeEncodeError)".into(),
+            ));
+        }
         let shape = || InstancesError::Corrupt("beklenen şekilde değil".into());
         let obj = data.as_object_mut().ok_or_else(shape)?;
         let items = obj

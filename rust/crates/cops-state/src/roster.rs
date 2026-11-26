@@ -284,7 +284,7 @@ impl<'a> Roster<'a> {
 
     /// İki TSV için TEK kilit (`<dizin>/roster.lock`; Python panel/CLI ile aynı). İç içe alma.
     pub fn lock(&self) -> io::Result<RosterGuard<'a>> {
-        let lock = FileLock::acquire(&self.docs.dir().join("roster"))?;
+        let lock = FileLock::roster(&self.path(Tsv::Roster))?;
         Ok(RosterGuard {
             roster: *self,
             _lock: lock,

@@ -1,10 +1,13 @@
 //! Atomik yazım ve süreçler arası kilit (Python `atomic_json.py` ve `web._atomic_write_text`).
 use crate::json::Json;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -143,11 +146,31 @@ pub fn atomic_write_tsv(path: &Path, text: &str) -> io::Result<()> {
     write_replace(&tmp, path, text.as_bytes(), Some(0o600))
 }
 
-/// Tutulan `flock`; düşünce bırakılır. Aynı süreçte iç içe ALINMAZ (ikinci tanıtıcı kendini bekler): kilit isteyen
-/// iç işlevler guard referansı alır.
+thread_local! {
+    /// Bu iş parçacığının tuttuğu `file_lock` kilitleri: normalize yol -> açık kilit tanıtıcısı.
+    static HELD: RefCell<HashMap<PathBuf, Weak<File>>> = RefCell::new(HashMap::new());
+}
+
+/// Tutulan `flock`; son tutamaç düşünce bırakılır. [`FileLock::acquire`] AYNI iş parçacığında yeniden girilebilir (Python
+/// `file_lock` gibi: iç içe alma yeni `flock` almaz, dış kilidi paylaşır; düşürme sırası önemsiz). Kilit iş parçacığına
+/// bağlıdır: tutamaç `Send` DEĞİL (başka iş parçacığına taşınan tutamaç yeniden girişi bozardı; async kod
+/// `spawn_blocking` içinde alıp bırakmalı).
 #[derive(Debug)]
 pub struct FileLock {
-    _file: File,
+    file: Rc<File>,
+    /// Yeniden girilebilir kilidin anahtarı (normalize yol); `blocking` kilitte yok.
+    key: Option<PathBuf>,
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        if let Some(k) = &self.key {
+            if Rc::strong_count(&self.file) == 1 {
+                // son tutamaç: kayıt silinir, tanıtıcı kapanınca flock bırakılır
+                let _ = HELD.try_with(|h| h.borrow_mut().remove(k));
+            }
+        }
+    }
 }
 
 fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
@@ -164,15 +187,26 @@ fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
 }
 
 impl FileLock {
-    /// Python `file_lock(path)`: `path + ".lock"`, `O_NOFOLLOW`, kendi dosyamız olmalı, 30 sn beklenir.
-    /// Sapma: alınamazsa HATA (Python uyarıp yalnız iş parçacığı kilidiyle sürer).
+    /// Python `file_lock(path)`: yol `normpath(abspath)`, kilit `<yol>.lock` (`O_NOFOLLOW`, 0600, bize ait normal dosya),
+    /// 30 sn beklenir. Aynı iş parçacığında iç içe alınabilir.
+    /// Sapmalar (sahibe soruldu, `docs/rs-state.md`): zaman aşımında ve kilit dosyası bize ait değilse HATA (Python
+    /// uyarıp yalnız iş parçacığı kilidiyle, süreçler arası korumasız sürer).
     pub fn acquire(path: &Path) -> io::Result<FileLock> {
         Self::acquire_within(path, LOCK_TIMEOUT)
     }
 
     pub fn acquire_within(path: &Path, timeout: Duration) -> io::Result<FileLock> {
-        fs::create_dir_all(parent_of(path))?;
-        let lock = with_suffix(path, ".lock");
+        let key = crate::paths::abs_normpath(path);
+        let held = HELD.with(|h| h.borrow().get(&key).and_then(Weak::upgrade));
+        if let Some(file) = held {
+            return Ok(FileLock {
+                file,
+                key: Some(key),
+            });
+        }
+        let lock = with_suffix(&key, ".lock");
+        crate::paths::guard_write(&lock);
+        fs::create_dir_all(parent_of(&key))?;
         let f = OpenOptions::new()
             .read(true)
             .write(true)
@@ -192,7 +226,7 @@ impl FileLock {
         let deadline = Instant::now() + timeout;
         loop {
             match flock(&f, libc::LOCK_EX | libc::LOCK_NB) {
-                Ok(()) => return Ok(FileLock { _file: f }),
+                Ok(()) => break,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     if Instant::now() >= deadline {
                         return Err(io::Error::new(io::ErrorKind::TimedOut, "flock zaman aşımı"));
@@ -202,10 +236,24 @@ impl FileLock {
                 Err(e) => return Err(e),
             }
         }
+        let file = Rc::new(f);
+        HELD.with(|h| h.borrow_mut().insert(key.clone(), Rc::downgrade(&file)));
+        Ok(FileLock {
+            file,
+            key: Some(key),
+        })
     }
 
-    /// Python `instances._locked`: verilen kilit dosyasında süresiz bekleyen `LOCK_EX`.
+    /// Python `atomic_json.roster_lock(tsv)`: roster.tsv + models.tsv için TEK kilit `<dizin>/roster.lock`.
+    pub fn roster(tsv_path: &Path) -> io::Result<FileLock> {
+        let dir = crate::paths::abs_normpath(tsv_path);
+        let dir = dir.parent().unwrap_or(Path::new("/"));
+        Self::acquire(&dir.join("roster"))
+    }
+
+    /// Python `instances._locked`: verilen kilit dosyasında süresiz bekleyen `LOCK_EX` (yeniden girilemez; Python'da da).
     pub fn blocking(lock_file: &Path) -> io::Result<FileLock> {
+        crate::paths::guard_write(lock_file);
         fs::create_dir_all(parent_of(lock_file))?;
         let f = OpenOptions::new()
             .write(true)
@@ -213,6 +261,50 @@ impl FileLock {
             .truncate(true)
             .open(lock_file)?;
         flock(&f, libc::LOCK_EX)?;
-        Ok(FileLock { _file: f })
+        Ok(FileLock {
+            file: Rc::new(f),
+            key: None,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reentrant_same_thread_exclusive_across_threads() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let p = env.dir().join("belge.json");
+        let outer = FileLock::acquire(&p).unwrap();
+        // aynı iş parçacığı: farklı yazımla da (a/../belge.json) hemen alınır
+        let alias = env.dir().join("alt/../belge.json");
+        let inner = FileLock::acquire_within(&alias, Duration::from_millis(50)).unwrap();
+        // başka iş parçacığı alamaz
+        let p2 = p.clone();
+        let t = std::thread::spawn(move || {
+            FileLock::acquire_within(&p2, Duration::from_millis(100)).map(|_| ())
+        });
+        assert_eq!(
+            t.join().unwrap().unwrap_err().kind(),
+            io::ErrorKind::TimedOut
+        );
+        // dış önce düşse de iç tutamaç kilidi tutar
+        drop(outer);
+        let p3 = p.clone();
+        let t = std::thread::spawn(move || {
+            FileLock::acquire_within(&p3, Duration::from_millis(100)).map(|_| ())
+        });
+        assert!(
+            t.join().unwrap().is_err(),
+            "iç tutamaç yaşarken kilit sürmeli"
+        );
+        drop(inner);
+        let p4 = p.clone();
+        let t = std::thread::spawn(move || {
+            FileLock::acquire_within(&p4, Duration::from_millis(500)).map(|_| ())
+        });
+        assert!(t.join().unwrap().is_ok(), "son tutamaç düşünce bırakılır");
+        assert!(HELD.with(|h| h.borrow().is_empty()));
     }
 }

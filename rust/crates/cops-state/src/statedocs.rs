@@ -44,8 +44,9 @@ pub enum Backend {
 }
 
 impl Backend {
+    /// `s.strip().lower()` `files|dual|db` ise.
     pub fn parse(s: &str) -> Option<Backend> {
-        match s.trim().to_lowercase().as_str() {
+        match crate::pycompat::lower(crate::pycompat::strip(s)).as_str() {
             "files" => Some(Backend::Files),
             "dual" => Some(Backend::Dual),
             "db" => Some(Backend::Db),
@@ -58,6 +59,9 @@ impl Backend {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Read {
     Value(Json),
+    /// Dosyada eşlenmemiş vekil kaçışı vardı (U+FFFD ile okundu, [`Json::parse_lossy`]): okunabilir ama GERİ YAZILAMAZ
+    /// (Python da yazamaz). DB'ye aktarılmaz.
+    Lossy(Json),
     Missing,
     /// Dosya var ama JSON/UTF-8 değil.
     Corrupt,
@@ -66,7 +70,7 @@ pub enum Read {
 impl Read {
     pub fn into_option(self) -> Option<Json> {
         match self {
-            Read::Value(v) => Some(v),
+            Read::Value(v) | Read::Lossy(v) => Some(v),
             _ => None,
         }
     }
@@ -108,17 +112,27 @@ fn sig(path: &Path) -> Sig {
         .map(|m| (m.mtime(), m.mtime_nsec(), m.size()))
 }
 
-/// Dosya okuma (UTF-8 + JSON).
+/// Dosya okuma (UTF-8 + JSON; Python `json.load` gibi eşlenmemiş vekil kabul, bkz. [`Read::Lossy`]).
 pub fn read_file(path: &Path) -> Read {
     match std::fs::read(path) {
         Err(_) => Read::Missing,
         Ok(b) => match std::str::from_utf8(&b)
             .ok()
-            .and_then(|t| Json::parse(t).ok())
+            .and_then(|t| Json::parse_lossy(t).ok())
         {
-            Some(v) => Read::Value(v),
+            Some((v, false)) => Read::Value(v),
+            Some((v, true)) => Read::Lossy(v),
             None => Read::Corrupt,
         },
+    }
+}
+
+/// DB'ye aktarılacak dosya değeri: `Lossy` Python'daki `set_doc` kodlama istisnası gibi hata (üst kat dosyaya düşer).
+fn for_db(r: &Read, name: &str) -> Result<Option<Json>, StoreError> {
+    match r {
+        Read::Value(v) => Ok(Some(v.clone())),
+        Read::Lossy(_) => Err(StoreError::BadDoc(format!("{name}: eşlenmemiş vekil"))),
+        _ => Ok(None),
     }
 }
 
@@ -155,6 +169,8 @@ type Logger = Box<dyn Fn(&str) + Send + Sync>;
 pub struct StateDocs {
     dir: StateDir,
     forced: Option<Backend>,
+    /// `CLAUDEOPS_STORE_BACKEND` her çağrıda okunur (Python `backend()` gibi); `isolated` kapatır.
+    read_env: bool,
     db_url: String,
     state: Mutex<State>,
     logger: Logger,
@@ -163,13 +179,11 @@ pub struct StateDocs {
 impl StateDocs {
     /// Ortam: `CLAUDEOPS_STORE_BACKEND` (kip), `CLAUDEOPS_DB_URL`.
     pub fn new(dir: StateDir) -> StateDocs {
-        let forced = std::env::var("CLAUDEOPS_STORE_BACKEND")
-            .ok()
-            .and_then(|v| Backend::parse(&v));
         let db_url = std::env::var("CLAUDEOPS_DB_URL").unwrap_or_default();
         StateDocs {
             dir,
-            forced,
+            forced: None,
+            read_env: true,
             db_url,
             state: Mutex::new(State::default()),
             logger: Box::new(|m| eprintln!("statedocs {m}")),
@@ -179,6 +193,7 @@ impl StateDocs {
     pub fn isolated(dir: StateDir, backend: Option<Backend>, db_url: &str) -> StateDocs {
         let mut s = StateDocs::new(dir);
         s.forced = backend;
+        s.read_env = false;
         s.db_url = db_url.to_string();
         s
     }
@@ -197,10 +212,17 @@ impl StateDocs {
         (self.logger)(msg)
     }
 
-    /// Ortam > settings.json `store_backend` (5 sn önbellek) > files.
+    /// Ortam (her çağrıda) > settings.json `store_backend` (5 sn önbellek) > files.
     pub fn backend(&self) -> Backend {
         if let Some(b) = self.forced {
             return b;
+        }
+        if self.read_env {
+            if let Some(b) = std::env::var_os("CLAUDEOPS_STORE_BACKEND")
+                .and_then(|v| Backend::parse(&v.to_string_lossy()))
+            {
+                return b;
+            }
         }
         let mut st = self.lock();
         if let Some((at, b)) = st.backend {
@@ -338,17 +360,22 @@ impl StateDocs {
             // DB açılamasa da dosya (doğruluk kaynağı) döner: hata üst katta dosyaya düşer
             let st = self.store()?;
             let r = read_file(path);
-            if let Read::Value(v) = &r {
+            if matches!(r, Read::Value(_) | Read::Lossy(_)) {
                 let sg = sig(path);
                 if self.lock().synced.get(name) != Some(&sg) {
                     let have = st.get_doc(name)?;
-                    if !have.as_ref().is_some_and(|h| h.py_eq(v)) {
+                    let same = match (&have, &r) {
+                        (Some(h), Read::Value(v)) => h.py_eq(v),
+                        _ => false,
+                    };
+                    if !same {
+                        let v = for_db(&r, name)?.unwrap_or_default();
                         self.log(&if have.is_none() {
                             format!("import {name}: DB'de yoktu, dosyadan alındı")
                         } else {
                             format!("drift {name}: DB dosyaya uyduruldu")
                         });
-                        st.set_doc(name, v)?;
+                        st.set_doc(name, &v)?;
                     }
                     self.lock().synced.insert(name.to_string(), sg);
                 }
@@ -362,7 +389,8 @@ impl StateDocs {
         let st = self.store()?;
         if self.lock().dirty.contains(name) {
             // son DB yazımı başarısızdı: dosya daha yeni
-            if let Read::Value(v) = read_file(path) {
+            let r = read_file(path);
+            if let Some(v) = for_db(&r, name)? {
                 st.set_doc(name, &v)?;
                 self.lock().dirty.remove(name);
                 self.log(&format!("recover {name}: DB dosyadan yeniden yazıldı"));
@@ -373,8 +401,8 @@ impl StateDocs {
             return Ok(Read::Value(v));
         }
         let r = read_file(path); // tembel içe aktarma
-        if let Read::Value(v) = &r {
-            st.set_doc(name, v)?;
+        if let Some(v) = for_db(&r, name)? {
+            st.set_doc(name, &v)?;
         }
         Ok(r)
     }
