@@ -907,7 +907,7 @@ class UcliProvider(CliProvider):
         if not binary_supports_flag(binary, "--with-mcp"):
             diag_log("ucli_flag_unsupported", flag="--with-mcp", binary=binary)
             return []
-        tools = [str(t) for t in spec.allowed_tools if _MCP_TOOL_RE.match(str(t))]
+        tools = [str(t) for t in spec.allowed_tools if _MCP_TOOL_RE.fullmatch(str(t))]
         if not tools:
             diag_log("ucli_mcp_skipped", server=spec.name, reason="no allowed tools")
             return []
