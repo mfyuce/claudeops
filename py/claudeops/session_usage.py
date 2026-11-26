@@ -34,6 +34,12 @@ _summaries: Dict[str, Dict[str, Any]] = {}
 # Atlanan bozuk satırlar (TBD#365: dizgi olmayan model ya da hashlenemeyen tur anahtarı tüm toplamı None yapıyordu,
 # alt ajan dosyasındaki dahil). Süreç ömrü boyunca birikir; log'a yazılmaz.
 _skipped: Counter = Counter()
+# Satır üst sınırı (TBD#365 birleştirme kapısı; gerekçe ve ölçüm `needs_ho._MAX_LINE_BYTES`): aşan satır atlanır ve
+# `_skipped["usage_line_too_long"]`a girer, okuma satır başına en çok sınır+1 bayt. Dosya sonunda yazımı süren satır sınırı
+# aştıysa da atlanır (bir kez sayılır, `skip` bayrağı kalanını sonraki okumada atar); sınırı aşmamış yarım satırda offset
+# başında kalır.
+_MAX_LINE_BYTES = 64 * 1024 * 1024
+_SKIP_CHUNK = 1 << 20
 
 
 def _int(v: Any) -> int:
@@ -97,7 +103,7 @@ def _update_file(path: str) -> Optional[Dict[str, Any]]:
         # (TBD#365: dolu tabloda en eski başka girdiyi boşuna attırıyordu).
         if cur is None and len(_files) >= _MAX_CACHED_FILES:
             _files.pop(next(iter(_files)), None)
-        cur = {"offset": 0, "size": 0, "mtime": 0.0, "turns": {}}
+        cur = {"offset": 0, "size": 0, "mtime": 0.0, "turns": {}, "skip": False}
         _files[path] = cur
     if st.st_size == cur["offset"]:
         cur["size"], cur["mtime"] = st.st_size, st.st_mtime
@@ -106,10 +112,22 @@ def _update_file(path: str) -> Optional[Dict[str, Any]]:
         with open(path, "rb") as f:
             f.seek(cur["offset"])
             while True:
-                line = f.readline()
+                if cur.get("skip"):           # sınırı aşan satırın kalanı
+                    rest = f.readline(_SKIP_CHUNK)
+                    if not rest:
+                        break
+                    cur["offset"] += len(rest)
+                    cur["skip"] = not rest.endswith(b"\n")
+                    continue
+                line = f.readline(_MAX_LINE_BYTES + 1)
                 if not line:
                     break
                 if not line.endswith(b"\n"):
+                    if len(line) > _MAX_LINE_BYTES:
+                        _skipped["usage_line_too_long"] += 1
+                        cur["offset"] += len(line)
+                        cur["skip"] = True
+                        continue
                     break                     # yarım son satır: offset onun başında kalır, sonra tamamlanınca okunur
                 cur["offset"] += len(line)
                 got = _parse(line)

@@ -445,5 +445,109 @@ class UsageRowsTest(unittest.TestCase):
             self.assertEqual(list(su._files), paths)
 
 
+class LongLineTest(unittest.TestCase):
+    """Birleştirme kapısı: transkript satırı sınırsız okunuyordu (tek dev satır belleği doldurur). Sınırı aşan satır atlanır
+    ve sayılır; bellek de sınırlı (satır önce tümüyle okunmaz). Sınırda kabul, sınır+1 atlanır; dosya sonundaki yarım uzun satır
+    offset'i bozmaz. Gerçek sınır 64 MiB (ölçülen en uzun satır 13.234.801 bayt); testte küçük."""
+
+    LIMIT = 200
+
+    def setUp(self):
+        self.dir = _tmpdir(self)
+        su._files.clear()
+        self.addCleanup(su._files.clear)
+        for mod in (su, needs_ho):
+            _reset(mod)
+            p = mock.patch.object(mod, "_MAX_LINE_BYTES", self.LIMIT, create=True)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _pad(self, row, total):
+        """`row` (sonda `}` ile biten JSON) satır içeriği `total` bayt olacak biçimde doldurulur (satır sonu hariç)."""
+        base = row.rstrip("\n")
+        pad = total - len(base.encode()) - len(',"p":""')
+        self.assertGreaterEqual(pad, 0)
+        return base[:-1] + ',"p":"' + "x" * pad + '"}'
+
+    def test_usage_limit_boundary_and_partial_tail(self):
+        main = self.dir / "s.jsonl"
+        at = self._pad(_urow("a", out=1), self.LIMIT)
+        over = self._pad(_urow("b", out=10), self.LIMIT + 1)
+        main.write_text(at + "\n" + over + "\n" + _urow("c", out=100))
+        u = su.usage_for_path(str(main))
+        self.assertEqual((u["turns"], u["out"]), (2, 101))
+        self.assertEqual(su._skipped["usage_line_too_long"], 1)
+        st = su._files[str(main)]
+        self.assertEqual(st["offset"], main.stat().st_size)
+        # dosya sonunda yazımı süren uzun satır: atlanır (bir kez sayılır), tamamlanınca sonrası okunur
+        long_row = self._pad(_urow("d", out=1000), self.LIMIT * 5)
+        with open(main, "a") as f:
+            f.write(long_row[: self.LIMIT * 3])
+        self.assertEqual(su.usage_for_path(str(main))["turns"], 2)
+        self.assertEqual(su._skipped["usage_line_too_long"], 2)
+        with open(main, "a") as f:
+            f.write(long_row[self.LIMIT * 3:] + "\n" + _urow("e", out=7))
+        u = su.usage_for_path(str(main))
+        self.assertEqual((u["turns"], u["out"]), (3, 108))
+        self.assertEqual(su._skipped["usage_line_too_long"], 2)
+        # sınırda yarım satır henüz "uzun" değildir: offset başında kalır, tamamlanınca sayılır
+        with open(main, "a") as f:
+            f.write(self._pad(_urow("f", out=1), self.LIMIT))
+        size_before = su._files[str(main)]["offset"]
+        self.assertEqual(su.usage_for_path(str(main))["turns"], 3)
+        self.assertEqual(su._files[str(main)]["offset"], size_before)
+        with open(main, "a") as f:
+            f.write("\n")
+        self.assertEqual(su.usage_for_path(str(main))["turns"], 4)
+
+    def test_usage_memory_is_bounded(self):
+        main = self.dir / "m.jsonl"
+        main.write_text(_urow("a") + "y" * (self.LIMIT * 50) + "\n" + _urow("b"))
+        real_open = open
+        sizes = []
+
+        class Spy:
+            def __init__(self, f):
+                self.f = f
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                self.f.close()
+
+            def seek(self, *a):
+                return self.f.seek(*a)
+
+            def readline(self, size=-1):
+                sizes.append(size)
+                return self.f.readline(size)
+
+        with mock.patch("builtins.open", lambda p, m="r", *a, **k: Spy(real_open(p, m, *a, **k))):
+            u = su.usage_for_path(str(main))
+        self.assertEqual(u["turns"], 2)
+        bound = max(self.LIMIT + 1, su._SKIP_CHUNK)     # gerçekte parça (1 MiB) sınırın (64 MiB) altında
+        self.assertTrue(sizes and all(0 < s <= bound for s in sizes), sizes[:5])
+
+    def test_needs_ho_long_line_skipped_and_counted(self):
+        user = json.dumps({"type": "user", "message": {"content": "iş"}})
+        rfh = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "READY FOR HANDOVER"}]}})
+        at = self._pad(user + "\n", self.LIMIT)
+        over = self._pad(rfh + "\n", self.LIMIT + 1)
+        p = self.dir / "t.jsonl"
+        p.write_text(at + "\n" + over + "\n")
+        self.assertTrue(needs_ho.has_real_user_turn(str(p)))
+        self.assertFalse(needs_ho.handover_done(str(p)))         # tek RFH satırı sınırı aşıyor: atlandı
+        self.assertEqual(needs_ho._skipped["transcript_line_too_long"], 1)
+        p.write_text(at + "\n" + self._pad(rfh + "\n", self.LIMIT) + "\n")
+        self.assertTrue(needs_ho.handover_done(str(p)))
+        # yalnız uzun ve yarım son satır; ondan önceki karar korunur
+        p.write_text(at + "\n" + "z" * (self.LIMIT * 3))
+        self.assertTrue(needs_ho.has_real_user_turn(str(p)))
+        # CR ile ayrılmış satırlar (metin kipi) sınır içinde yine ayrı satır
+        p.write_text(user + "\r" + rfh + "\n")
+        self.assertTrue(needs_ho.handover_done(str(p)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@ import json
 import re
 import subprocess
 from collections import Counter
-from typing import Optional
+from typing import Iterator, Optional
 
 from .atomic_json import atomic_write_text
 from .paths import STATE_DIR as _STATE_DIR  # handover ile AYNI kök (CLAUDEOPS_DIR izole koşuda da)
@@ -17,6 +17,30 @@ _BASELINE_DIR = _STATE_DIR / "baselines"
 
 # Beklenmeyen tipte transkript satırı/bloğu (TBD#365): karar düşmez, satır atlanır ve burada sayılır (log'a yazılmaz).
 _skipped: Counter = Counter()
+
+# Transkript satırı üst sınırı (TBD#365 birleştirme kapısı): sınırsız satır belleği doldurabilirdi. 26 Kas ölçümü: bu
+# kullanıcının ~/.claude/projects altındaki 2,38 milyon satırın en uzunu 13.234.801 bayt; sınır ~5 kat pay. Aşan satır
+# atlanır ve `_skipped["transcript_line_too_long"]`a girer; okuma da sınırlı (satır önce tümüyle belleğe alınmaz).
+# Rust karşılığı `cops_procscan::MAX_LINE_BYTES`.
+_MAX_LINE_BYTES = 64 * 1024 * 1024
+_SKIP_CHUNK = 1 << 20
+
+
+def _lines(f) -> "Iterator[str]":
+    """İkili dosyadan metin kipi satırları (`\\n`, `\\r\\n`, `\\r` satır sonu; geçersiz UTF-8 yerine U+FFFD).
+    Sınırı (satır sonu hariç) aşan satır atlanır ve sayılır; bellek satır başına en çok sınır+1 bayt."""
+    while True:
+        raw = f.readline(_MAX_LINE_BYTES + 1)
+        if not raw:
+            return
+        if len(raw) > _MAX_LINE_BYTES and not raw.endswith(b"\n"):
+            _skipped["transcript_line_too_long"] += 1
+            while True:                       # satırın kalanı parça parça atılır
+                rest = f.readline(_SKIP_CHUNK)
+                if not rest or rest.endswith(b"\n"):
+                    break
+            continue
+        yield from raw.decode("utf-8", "replace").split("\r")
 
 
 # ── Git helpers ──────────────────────────────────────────────────────────────
@@ -174,8 +198,8 @@ def handover_done(jsonl_path: str) -> bool:
     last_user = -1
     i = 0
     try:
-        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
-            for line in f:
+        with open(jsonl_path, "rb") as f:
+            for line in _lines(f):
                 line = line.strip()
                 if not line:
                     continue
@@ -224,8 +248,8 @@ def has_real_user_turn(jsonl_path: str) -> bool:
     hiç geçmemiş — `needs_ho()` bu durumda diğer TÜM sinyalleri (RFH dahil) atlayıp
     False döner, çünkü hiç çalışmamış bir session'ın wrap-up'a ihtiyacı olamaz."""
     try:
-        with open(jsonl_path, encoding="utf-8", errors="replace") as f:
-            for line in f:
+        with open(jsonl_path, "rb") as f:
+            for line in _lines(f):
                 line = line.strip()
                 if not line:
                     continue
