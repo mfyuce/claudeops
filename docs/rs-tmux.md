@@ -2,7 +2,9 @@
 
 Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 iki tarafta işlendi, "Birleştirme kapısı"). Açık: "Açık işler" 1-3 (birleştirme sonrası / canlıya alma). TBD 385 YAPILDI ("Ham tuş yolu").
 
-Kapı öncesi doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` dalın içinde, geride 0): Python tam paket 5715 test OK (23 atlanan, 1036 sn), `cargo test -p cops-tmux` 92/92, `clippy --all-targets -D warnings` temiz.
+Son doğrulama (27 Kas 00:41, `09893dfe`; `origin/main` `feae0764` dalın içinde, geride 0): Python tam paket 5829 test OK (23 atlanan, 584 sn), `cargo test --workspace` 534/534, `clippy --workspace --all-targets -D warnings` temiz, eşleme tablosu denetimi farksız.
+
+Önceki doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` dalın içinde, geride 0): Python tam paket 5715 test OK (23 atlanan, 1036 sn), `cargo test -p cops-tmux` 92/92, `clippy --all-targets -D warnings` temiz.
 
 ## Yapılan
 `rust/crates/cops-tmux`, `py/claudeops/tmux_backend.py` karşılığı. `ast` listesindeki her tanımın Rust karşılığı var; satır satır tablo "Eşleme tablosu" bölümünde.
