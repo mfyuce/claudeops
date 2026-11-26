@@ -68,28 +68,41 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn pct_decode(s: &str) -> Option<String> {
+/// Python `urllib.parse.unquote_plus` (`errors="replace"`): `+` boşluk, `%XX` bayt; bozuk kaçış (`%zz`, sondaki `%2`) AYNEN
+/// kalır, geçersiz UTF-8 U+FFFD olur.
+pub fn unquote_plus(s: &str) -> String {
     let b = s.as_bytes();
+    let hex = |i: usize| b.get(i).and_then(|c| (*c as char).to_digit(16));
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        match b[i] {
-            b'%' => {
-                let h = std::str::from_utf8(b.get(i + 1..i + 3)?).ok()?;
-                out.push(u8::from_str_radix(h, 16).ok()?);
+        match (b[i], hex(i + 1), hex(i + 2)) {
+            (b'%', Some(h), Some(l)) => {
+                out.push((h * 16 + l) as u8);
                 i += 3;
             }
-            b'+' => {
+            (b'+', ..) => {
                 out.push(b' ');
                 i += 1;
             }
-            c => {
+            (c, ..) => {
                 out.push(c);
                 i += 1;
             }
         }
     }
-    String::from_utf8(out).ok()
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Python `parse_qs` (`keep_blank_values=False`, ayraç yalnız `&`): `=`siz ve boş değerli parçalar atlanır, ad ve değer
+/// [`unquote_plus`] ile çözülür; sıra korunur.
+pub fn parse_qs(query: &str) -> Vec<(String, String)> {
+    query
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| (unquote_plus(k), unquote_plus(v)))
+        .collect()
 }
 
 /// Sorgu dizesinden adı (yüzde-çözülmüş hâliyle) `name` olan TÜM parametreleri siler, kalanları (boş parçalar dahil) aynen ve sırayla korur (Python `parse_qs` anahtarı
@@ -99,19 +112,20 @@ pub fn strip_query_param(query: &str, name: &str) -> String {
         .split('&')
         .filter(|kv| {
             let k = kv.split_once('=').map_or(*kv, |(k, _)| k);
-            pct_decode(k).as_deref() != Some(name)
+            unquote_plus(k) != name
         })
         .collect::<Vec<_>>()
         .join("&")
 }
 
-/// Sorgu dizesinden (ilk) `name` değeri, yüzde-çözülmüş.
+/// `name`'in değeri, Python `(parse_qs(sorgu).get(name) or [""])[0]` ile aynı (R1-11): ad da çözülür (`tok%65n` = `token`), boş
+/// değerler atlanır, İLK dolu değer. Yoksa `None`. Önceden ham adın ilk eşleşmesi (boş dahil) alınıyordu; Python başka bir
+/// aday görüyordu.
 pub fn query_param(query: &str, name: &str) -> Option<String> {
-    query
-        .split('&')
-        .filter_map(|kv| kv.split_once('='))
-        .find(|(k, _)| *k == name)
-        .and_then(|(_, v)| pct_decode(v))
+    parse_qs(query)
+        .into_iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v)
 }
 
 impl Token {

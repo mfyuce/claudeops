@@ -13,39 +13,9 @@ fn strip(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
 }
 
-fn unquote(s: &str) -> String {
-    let b = s.as_bytes();
-    let hex = |i: usize| b.get(i).and_then(|c| (*c as char).to_digit(16));
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        match (b[i], hex(i + 1), hex(i + 2)) {
-            (b'%', Some(h), Some(l)) => {
-                out.push((h * 16 + l) as u8);
-                i += 3;
-            }
-            (b'+', ..) => {
-                out.push(b' ');
-                i += 1;
-            }
-            (c, ..) => {
-                out.push(c);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Python `parse_qs`: `=`siz ve boş değerli parçalar atlanır, ad ve değer yüzde çözülür (bozuk kaçış aynen kalır).
-pub fn parse_qs(query: &str) -> Vec<(String, String)> {
-    query
-        .split('&')
-        .filter_map(|kv| kv.split_once('='))
-        .filter(|(_, v)| !v.is_empty())
-        .map(|(k, v)| (unquote(k), unquote(v)))
-        .collect()
-}
+/// Python `parse_qs`: `=`siz ve boş değerli parçalar atlanır, ad ve değer yüzde çözülür (bozuk kaçış aynen kalır). Tek
+/// gerçekleştirme `cops_auth::parse_qs` (token ayrıştırması da onu kullanır).
+pub use cops_auth::parse_qs;
 
 /// Gövde alanı: boş sayılan değer (Python "falsy") = `None`; dolu ama metin olmayan = red.
 fn text(v: Option<&Value>) -> Result<Option<&str>, BadResource> {

@@ -58,3 +58,23 @@ fn duplicate_cookie_takes_last_and_header_takes_first() {
     assert_eq!(view.cookie("x"), Some(""));
     assert_eq!(view.cookie("yok"), None);
 }
+
+/// R1-11: `?token=` ayrıştırması Python `parse_qs` ilk dolu değeriyle aynı (ad yüzde-çözülür, boş değer atılır); token
+/// karşılaştırması da bu adayı kullanır.
+#[test]
+fn token_query_matches_python_parse_qs() {
+    let v = vectors();
+    let cases = v["token_query"].as_array().unwrap();
+    assert!(cases.len() >= 20);
+    let tok = cops_auth::Token::new("abc");
+    for c in cases {
+        let q = c["query"].as_str().unwrap();
+        let want = c["token"].as_str().unwrap();
+        assert_eq!(
+            cops_auth::query_param(q, "token").unwrap_or_default(),
+            want,
+            "{q:?}"
+        );
+        assert_eq!(tok.authorized(q, None), want == "abc", "{q:?}");
+    }
+}
