@@ -1949,17 +1949,21 @@ def rotate_log(max_bytes: int = LOG_MAX_BYTES, paths: Any = None) -> bool:
 
 
 def tail_log(n: int = 50, paths: Any = None) -> List[Dict[str, Any]]:
+    """Son `n` satırın kayıtları; bozuk satır (geçersiz UTF-8/JSON, sözlük olmayan) atlanır."""
     try:
-        with open(_pp(paths).log, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8", errors="surrogateescape") as f:
             lines = f.readlines()[-n:]
     except OSError:
         return []
     out = []
     for ln in lines:
         try:
-            out.append(json.loads(ln))
-        except json.JSONDecodeError:
+            ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
+            e = json.loads(ln)
+        except ValueError:
             continue
+        if isinstance(e, dict):
+            out.append(e)
     return out
 
 

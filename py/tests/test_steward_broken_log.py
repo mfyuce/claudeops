@@ -1,4 +1,4 @@
-"""Bozuk günlük kaydı/sayısı: `dry_report`, `summary_text`, `compact_log` düşmez, veriyi bozmaz (kapalı yön)."""
+"""Bozuk günlük kaydı/sayısı: `dry_report`, `summary_text`, `compact_log`, `tail_log` düşmez, veriyi bozmaz (kapalı yön)."""
 import json
 import os
 import sys
@@ -104,6 +104,14 @@ class CompactLogTest(_Log):
             self.assertEqual(f.read(), data)
         after = os.stat(path)
         self.assertEqual((after.st_ino, after.st_mtime_ns), (before.st_ino, before.st_mtime_ns))
+
+
+class TailLogTest(_Log):
+    def test_broken_lines_skipped(self):
+        good = _line(ts=f"{D}T01:00:00", event="tick")
+        self.write_log(good + b"bozuk \xff\n" + _line(ts=D, event="x", y="y").replace(b'"y"}', b'"\xff"}')
+                       + b'["liste"]\n3\n{yarim\n' + good)
+        self.assertEqual([e["event"] for e in sw.tail_log(50)], ["tick", "tick"])
 
 
 if __name__ == "__main__":
