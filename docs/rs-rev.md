@@ -2,6 +2,9 @@
 
 ## Durum (26 Kas 2026 akşam): BİRLEŞTİRMEYE HAZIR (önce `rs/state` birleşmeli)
 
+Sahip TBD#368'i (b) ile cevapladı (iki tarafta düzeltme): HENÜZ UYGULANMADI (TODO); bu dal davranışı aynen koruyor.
+5-7. maddeler ayrı soru: TBD#375.
+
 Kapı için cops'a kalanlar: `rs/state` (ikinci tur `e5a684e` bu dala birleştirildi; kendi eşleme tablosu henüz açık), `rust/Cargo.lock` üretimi, `main` ile
 birleşik ağaçta testler, bağımsız gözden geçirme. `main`deki yeni 5 commit `review.py` ve testlerine dokunmuyor (deneme
 birleştirmesinde çakışma yok). Çekirdek hiçbir yere bağlı değil: canlıya alınacak uç yok (koşucu T8).
