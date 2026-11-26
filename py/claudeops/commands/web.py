@@ -5314,7 +5314,8 @@ class _Handler(BaseHTTPRequestHandler):
     def _files_ticket(self):
         """`/api/files/ticket` (POST, token ŞART): {name, path, host?, lang?} -> {ok, url: "/readfile/<bilet>/<ad>"}. Yerel dosya hemen doğrulanır
         (yok/yasak/büyük = hata, bilet verilmez); uzak host dosyası okuma anında proxy'lenir. Yanıt, eklenti oturum çerezini de verir
-        (yeni sekmede `/reader/` açılırken token URL'e girmesin)."""
+        (yeni sekmede `/reader/` açılırken token URL'e girmesin); çok kullanıcılı kipte yalnız admin'e (çerez `web.token`'dan
+        türer, copsd uygulama mount'larını tek başına açar)."""
         try:
             length = int(self.headers.get("Content-Length", 0) or 0)
         except ValueError:
@@ -5359,7 +5360,10 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Set-Cookie", f"{extensions.COOKIE_NAME}={extensions.cookie_value(self.token)}; Path=/; HttpOnly; SameSite=Strict")
+            from .. import authz as _az
+            pr = getattr(self, "_cur_principal", None)
+            if not _az.has_authenticator() or (pr is not None and pr.has_role("admin")):
+                self.send_header("Set-Cookie", f"{extensions.COOKIE_NAME}={extensions.cookie_value(self.token)}; Path=/; HttpOnly; SameSite=Strict")
             self.end_headers()
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError, OSError) as e:

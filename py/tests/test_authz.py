@@ -158,6 +158,25 @@ class HttpTest(unittest.TestCase):
         self.assertNotEqual(code, 403)
         self.assertEqual(self.call("POST", "/api/files/ticket", {"Cookie": "x=1"}, {"name": "theirs", "path": "a"})[0], 403)
 
+    def _ticket_cookie(self, headers):
+        """Uzak host bileti (dosya çözümü yok): yanıtın `Set-Cookie` başlığı."""
+        r = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/files/ticket", method="POST", headers=headers,
+                                   data=json.dumps({"name": "mine", "path": "a", "host": "uzak1"}).encode())
+        with urllib.request.urlopen(r, timeout=45) as resp:
+            self.assertTrue(json.loads(resp.read())["url"].startswith("/readfile/"))
+            return resp.headers.get("Set-Cookie") or ""
+
+    def test_ticket_gives_panel_cookie_only_to_admin_in_multi_user(self):
+        """`cops_ext` web.token'dan türer ve copsd uygulama mount'larını tek başına açar: admin olmayana verilmez."""
+        for roles in (("user",), ("viewer",), ()):
+            authz.set_authenticator(lambda v, r=roles: authz.Principal("u1", r))
+            self.assertNotIn(extensions.COOKIE_NAME, self._ticket_cookie({"Cookie": "x=1"}), roles)
+        authz.set_authenticator(lambda v: authz.Principal("a1", ("admin",)))
+        self.assertIn(extensions.cookie_value("tok"), self._ticket_cookie({"Cookie": "x=1"}))
+
+    def test_ticket_keeps_panel_cookie_in_single_user(self):
+        self.assertIn(extensions.cookie_value("tok"), self._ticket_cookie({"Authorization": "Bearer tok"}))
+
     def test_orch_get_names_query_denied_if_any_name_denied(self):
         res = []
         authz.set_authenticator(lambda v: authz.Principal("u1", ("user",)))
