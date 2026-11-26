@@ -1716,7 +1716,7 @@ def changed_after_review(row: Dict[str, Any], cwd: str) -> bool:
     try:
         t = os.path.getmtime(path)
         if os.path.exists(os.path.join(cwd, ".git")):  # dizin ya da worktree'deki .git DOSYASI
-            out = subprocess.run(["git", "-C", cwd, "log", "-1", "--format=%ct", "--", path], capture_output=True,
+            out = subprocess.run(["git", "-C", cwd, "--literal-pathspecs", "log", "-1", "--format=%ct", "--", path], capture_output=True,
                                  text=True, timeout=10).stdout.strip()
             if out.isdigit():
                 t = float(out)
