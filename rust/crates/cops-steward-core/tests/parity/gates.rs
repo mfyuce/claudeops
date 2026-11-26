@@ -175,3 +175,18 @@ fn bad_values_are_errors() {
         assert!(tour_eligible(&open, &Projects::new(), &Config::default(), &obj(state), 1.0).is_err());
     }
 }
+
+// Python testlerinden kaydedilen çağrılar (`now` verilmezse kayıt anı).
+parity!("steward_ask.owner_class", steward_ask_owner_class, |c| owner_class(
+    &c.arg::<Question>("q"),
+    &text(c, "owner_projects"),
+    &text(c, "note"),
+    c.opt("now").unwrap_or(c.now)
+));
+
+parity!("steward_ask.blocked_reason", steward_ask_blocked_reason, |c| blocked_reason(
+    &c.arg::<Question>("q"),
+    &c.arg::<Projects>("projects"),
+    &c.arg::<Config>("cfg"),
+    c.opt("now").unwrap_or(c.now)
+));

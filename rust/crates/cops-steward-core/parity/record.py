@@ -297,7 +297,8 @@ def install_deps():
     rfh = wrap("needs_ho.rfh_marker_in", needs_ho.rfh_marker_in)
     needs_ho.rfh_marker_in = rfh
     sw.rfh_marker_in = rfh
-    steward_ask.tour_eligible = wrap("steward_ask.tour_eligible", steward_ask.tour_eligible)
+    for name in ("tour_eligible", "owner_class", "blocked_reason"):     # modül içi çağrılar da sarmaldan geçer
+        setattr(steward_ask, name, wrap(f"steward_ask.{name}", getattr(steward_ask, name)))
 
 
 def test_files():

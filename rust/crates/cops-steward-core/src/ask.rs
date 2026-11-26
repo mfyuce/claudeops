@@ -61,7 +61,7 @@ static ASK_OWNER_NOTE: Fancy = LazyLock::new(|| pyc::py_regex("(?i)sahibe sor|sa
 /// Soru HER ZAMAN sahibe kalıyorsa sınıf adı, beyne gidebiliyorsa "". `owner_projects` virgüllü proje listesi,
 /// `note` proje notu.
 ///
-/// py: owner_class
+/// py: owner_class, steward_ask.owner_class
 pub fn owner_class(q: &Question, owner_projects: &str, note: &str, now: f64) -> &'static str {
     if q.project.is_empty() {
         return "no_project";
@@ -101,7 +101,7 @@ pub fn owner_class(q: &Question, owner_projects: &str, note: &str, now: f64) -> 
 
 /// `owner_class` + proje durumu (kayıtsız ya da bitmiş/duraklatılmış proje sahibindir).
 ///
-/// py: blocked_reason
+/// py: blocked_reason, steward_ask.blocked_reason
 pub fn blocked_reason(q: &Question, projects: &IndexMap<String, Project>, cfg: &Config, now: f64) -> &'static str {
     let Some(p) = projects.get(&q.project) else {
         return "no_project";

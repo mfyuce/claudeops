@@ -14,7 +14,7 @@ REPO = os.path.dirname(PY)
 DOC = os.path.join(REPO, "docs", "rs-stew.md")
 BEGIN, END = "<!-- MAP:BEGIN (parity/map.py üretir) -->", "<!-- MAP:END -->"
 # steward.py'nin dışarıdan kullandığı saf yardımcılar (modüllerinin geri kalanı başka izlerde)
-DEPS = {"needs_ho.py": ["rfh_marker_in"], "textutil.py": ["collapse_ws"], "steward_ask.py": ["tour_eligible"]}
+DEPS = {"needs_ho.py": ["rfh_marker_in"], "textutil.py": ["collapse_ws"], "steward_ask.py": ["owner_class", "blocked_reason", "tour_eligible"]}
 
 
 def load(name):
