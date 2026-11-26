@@ -1,0 +1,2 @@
+{"type":"user","type":"assistant","message":{"id":"d","model":"x","usage":{"output_tokens":1},"usage":{"output_tokens":6}}}
+{"type": "assistant", "requestId": "r", "message": {"id": "m1", "model": "claude-sonnet-5-5", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 2, "cache_read_input_tokens": 3}}}

@@ -1,0 +1,3 @@
+{"type": "assistant", "requestId": "r", "message": {"id": "a", "model": "Claude-FABLE-x", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 2, "cache_read_input_tokens": 3}}}
+{"type": "assistant", "requestId": "r", "message": {"id": "b", "model": "sonnet-opus", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 2, "cache_read_input_tokens": 3}}}
+{"type": "assistant", "requestId": "r", "message": {"id": "c", "model": "HAIKU", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 2, "cache_read_input_tokens": 3}}}

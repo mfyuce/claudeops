@@ -1,0 +1,8 @@
+# Süreç öldürme/sinyal yasağı (ders H1, CLAUDE: yalnız kill.py). Tek istisna `proc_cmd::ChildGuard` (kendi çocuğu).
+disallowed-methods = [
+    { path = "libc::kill", reason = "sinyal yasak: süreç öldürme claudeops kill modülünün işi (ProcId doğrulamasıyla)" },
+    { path = "libc::killpg", reason = "süreç grubu öldürme yasak" },
+    { path = "libc::tgkill", reason = "sinyal yasak" },
+    { path = "libc::raise", reason = "sinyal yasak" },
+    { path = "std::process::Child::kill", reason = "yalnız proc_cmd::ChildGuard (kendi çocuğu, Drop'ta kill+wait)" },
+]

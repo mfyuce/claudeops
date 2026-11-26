@@ -73,13 +73,13 @@ def running_mirrors(uid: Optional[int] = None) -> Dict[str, List[int]]:
     """Şu an çalışan mirror görüntüleyicileri: `host:ad` → [pid, ...] (yalnız `uid`'in, varsayılan bu kullanıcı)."""
     uid = os.getuid() if uid is None else uid
     found: Dict[str, List[int]] = {}
-    for proc in psutil.process_iter(["pid", "cmdline", "uids"]):
+    for proc in psutil.process_iter(["pid", "uids"]):   # cmdline yalnız süzgeçten geçende okunur (TBD#365)
         try:
             info = proc.info
             uids = info.get("uids")
             if uids is None or uids.real != uid:
                 continue
-            note_mirror(found, info["pid"], info.get("cmdline"))
+            note_mirror(found, info["pid"], proc.cmdline())
         except (psutil.Error, OSError):
             continue
     return found

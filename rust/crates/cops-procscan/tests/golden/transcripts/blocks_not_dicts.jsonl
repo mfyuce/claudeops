@@ -1,0 +1,2 @@
+{"type": "user", "message": {"content": ["x", 1, null, {"type": "text", "text": "y"}]}}
+{"type": "assistant", "message": {"content": "## READY FOR HANDOVER"}}

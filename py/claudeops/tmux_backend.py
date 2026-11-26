@@ -782,11 +782,14 @@ def is_tmux_backed(pid: int) -> bool:
         return False
 
     want = ["tmux", "-L", TMUX_SOCKET]
+    me = os.getuid()
     for _ in range(_ANCESTOR_WALK_LIMIT):
         try:
             proc = proc.parent()
             if proc is None:
                 return False
+            if proc.uids().real != me:
+                return False                    # başka kullanıcının atası: içeriği okunmaz, bizim tmux'umuz değil (TBD#365)
             cmd = proc.cmdline()
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             return False
