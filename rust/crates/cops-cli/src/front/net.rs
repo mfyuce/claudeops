@@ -181,16 +181,24 @@ fn listeners(proc_root: &Path, a: SocketAddr) -> Vec<(u64, u32)> {
 }
 
 /// `/proc/<pid>/cgroup` içindeki birim adı (yolun son parçası `.service`/`.scope` ise).
+///
+/// Yalnız systemd'nin birim ağacını tutan satırlara bakılır: birleşik ağaç `0::<yol>` (cgroup v2 ve hibrit), yoksa
+/// `N:name=systemd:<yol>` (v1). v1/hibrit makinede denetleyici satırları (`12:pids:/user.slice/.../user@1000.service`) kullanıcı
+/// yöneticisinin yolunu gösterir ve dosyada ÖNCE gelir; onlara bakmak her süreci `user@<uid>.service` sayardı (yuhem 20.04).
 pub fn unit_of(proc_root: &Path, pid: u32) -> Option<String> {
     let text = std::fs::read_to_string(proc_root.join(pid.to_string()).join("cgroup")).ok()?;
-    for line in text.lines() {
-        let path = line.splitn(3, ':').nth(2)?;
-        let last = path.rsplit('/').next()?;
-        if last.ends_with(".service") || last.ends_with(".scope") {
-            return Some(last.to_string());
-        }
-    }
-    None
+    let path_of = |want: &dyn Fn(&str, &str) -> bool| {
+        text.lines().find_map(|line| {
+            let mut it = line.splitn(3, ':');
+            let (id, ctl, path) = (it.next()?, it.next()?, it.next()?);
+            want(id, ctl).then_some(path)
+        })
+    };
+    let path = path_of(&|id, ctl| id == "0" && ctl.is_empty())
+        .filter(|p| *p != "/")
+        .or_else(|| path_of(&|_, ctl| ctl == "name=systemd"))?;
+    let last = path.rsplit('/').next()?;
+    (last.ends_with(".service") || last.ends_with(".scope")).then(|| last.to_string())
 }
 
 /// Bkz. modül belgesi.
@@ -348,6 +356,20 @@ mod tests {
         std::os::unix::fs::symlink("socket:[4242]", p.join("78/fd/9")).unwrap();
         std::fs::write(p.join("78/cgroup"), "0::/user.slice/x.scope/\n").unwrap();
         assert!(!port_owner(p, uid, a).is_unit(WEB_UNIT_NAME));
+        // cgroup v1/hibrit: denetleyici satırları (önce gelir) kullanıcı yöneticisini gösterir; birim name=systemd / 0:: satırında
+        let hybrid = "12:pids:/user.slice/user-1000.slice/user@1000.service\n\
+                      11:memory:/user.slice/user-1000.slice/user@1000.service\n\
+                      1:name=systemd:/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-web.service\n\
+                      0::/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-web.service\n";
+        std::fs::write(p.join("78/cgroup"), hybrid).unwrap();
+        assert_eq!(unit_of(p, 78).as_deref(), Some(WEB_UNIT_NAME));
+        assert!(port_owner(p, uid, a).is_unit(WEB_UNIT_NAME));
+        let v1 = "12:pids:/user.slice/user-1000.slice/user@1000.service\n\
+                  1:name=systemd:/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-front.service\n";
+        std::fs::write(p.join("78/cgroup"), v1).unwrap();
+        assert_eq!(unit_of(p, 78).as_deref(), Some(FRONT_UNIT_NAME));
+        std::fs::write(p.join("78/cgroup"), "12:pids:/user.slice/u@1.service\n").unwrap();
+        assert_eq!(unit_of(p, 78), None);
         // başka kullanıcının soketi
         assert_eq!(
             port_owner(p, uid.wrapping_add(1), a),
