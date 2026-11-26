@@ -352,6 +352,9 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err
             else:
                 blockers.append(f"iç port başka bir süreçte: {internal} ({_describe(o)}); drop-in var ama dinleyen "
                                 f"{WEB_UNIT_NAME} değil")
+    for u in (FRONT_UNIT, DROPIN):
+        if os.path.islink(u):           # atomik yazım bağı düz dosyaya çevirirdi: kapalı yön, elle düzenlensin
+            blockers.append(f"birim dosyası sembolik bağ: {u} (yazım bağı düz dosyaya çevirir; bağı kaldırın)")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
              f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR} "
              f"--state-dir {front_mod.paths.CLAUDEOPS_DIR})",
@@ -405,7 +408,10 @@ def _read_web_unit() -> Tuple[str, Optional[str]]:
 
 
 def _snapshot(p: Path):
-    """Yazmadan önceki durum: yoksa None, varsa (içerik, izin bitleri); okunamazsa OSError (geri alınamayacak dosyaya yazılmaz)."""
+    """Yazmadan önceki durum: yoksa None, sembolik bağsa hedefi (str), dosyaysa (içerik, izin bitleri); okunamazsa OSError
+    (geri alınamayacak dosyaya yazılmaz)."""
+    if os.path.islink(p):
+        return os.readlink(p)
     try:
         with open(p, "rb") as fh:
             data = fh.read()
@@ -456,6 +462,12 @@ def _restore(p: Path, prev) -> None:
             os.unlink(p)
         except FileNotFoundError:
             pass
+    elif isinstance(prev, str):         # yalnız `off` bir bağı siler (`on` bağlı birimi reddeder)
+        try:
+            os.unlink(p)
+        except FileNotFoundError:
+            pass
+        os.symlink(prev, p)
     else:
         _atomic_write(p, prev[0], prev[1])
 
@@ -468,7 +480,10 @@ class _Undo:
         self.failed = False
 
     def file(self, p: Path, prev) -> None:
-        what = f"sil: {p} (önceden yoktu)" if prev is None else f"geri yaz: {p} (önceki içerik)"
+        if prev is None:
+            what = f"sil: {p} (önceden yoktu)"
+        else:
+            what = f"geri yaz: {p} (önceki {'sembolik bağ' if isinstance(prev, str) else 'içerik'})"
         try:
             _restore(p, prev)
             self.lines.append(f"  {what}: tamam")
@@ -675,8 +690,10 @@ def _on(args) -> int:
 
         def ok():
             return _is_unit(_port_owner(lk), FRONT_UNIT_NAME) and (not web_needed or _is_unit(_port_owner(ik), WEB_UNIT_NAME))
-        if not _wait_for(_TIMING["front_up"], ok):
-            secs = int(_TIMING["front_up"])
+        # web yeniden başlatıldıysa açılışı ön kapınınkinden uzun sürer: `off` ile aynı pay
+        limit = max(_TIMING["front_up"], _TIMING["web_up"]) if web_needed else _TIMING["front_up"]
+        if not _wait_for(limit, ok):
+            secs = int(limit)
             if not _is_unit(_port_owner(lk), FRONT_UNIT_NAME):
                 print(f"HATA: ön kapı {args.listen} üzerinde dinlemiyor ({secs} sn içinde {FRONT_UNIT_NAME} görülmedi: "
                       f"{_describe(_port_owner(lk))})")

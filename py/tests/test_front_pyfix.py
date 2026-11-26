@@ -2,7 +2,7 @@
 
 Gerçek systemctl, gerçek birim dizini ve gerçek durum dizini HİÇ kullanılmaz: yollar geçici dizinde, `_sc`, `port_busy`,
 `_port_owner` sahte (Rust `src/front/tests.rs` `World` karşılığı)."""
-import contextlib, io, os, sys, tempfile, unittest
+import contextlib, io, os, sys, tempfile, time, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -569,6 +569,55 @@ class P3Rollback(Env):
         with self.assertRaises(OSError):
             f._atomic_write(d, b"z")
         self.assertEqual(sorted(x for x in os.listdir(self.root) if x.startswith(".")), [])
+
+
+class P9SlowWebAndSymlinkUnits(Env):
+    """9 (rs/cli kapı notu): web yeniden başlatılırken `front_up` yetmez; sembolik bağlı birim dosyası düz dosyaya dönmesin."""
+
+    def test_slow_web_restart_is_waited_with_web_up(self):
+        self.web_outside()
+        seen = []
+
+        def slow(hp):
+            if hp == I:
+                seen.append(time.monotonic())
+                if seen[-1] - seen[0] < 0.2:
+                    return ("none",)
+            return self.w.owner(hp)
+        with mock.patch.object(f, "_port_owner", slow), mock.patch.dict(f._TIMING, {"web_up": 3.0}):
+            rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+
+    def _link(self, p, name):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        target = self.root / name
+        target.write_text(p.read_text() if p.exists() else "bagli icerik\n")
+        if p.exists():
+            p.unlink()
+        p.symlink_to(target)
+        return target
+
+    def test_on_refuses_symlinked_unit_files(self):
+        for p, name in ((self.front, "front-hedef"), (self.dropin, "dropin-hedef")):
+            target = self._link(p, name)
+            rc, out = self.run_front("on", True)
+            self.assertEqual(rc, 1, out)
+            self.assertIn(f"birim dosyası sembolik bağ: {p} (", out)
+            self.assertTrue(p.is_symlink())
+            self.assertEqual(target.read_text(), "bagli icerik\n")
+            self.assertEqual(self.w.calls, [])
+            p.unlink()
+
+    def test_off_rollback_restores_symlink(self):
+        self.front_on()
+        target = self._link(self.dropin, "dropin-hedef")
+        self.w.fail_always["restart claudeops-web.service"] = 3
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 3, out)
+        self.assertTrue(self.dropin.is_symlink(), out)
+        self.assertEqual(os.readlink(self.dropin), str(target))
+        self.assertEqual(target.read_text(), "eski drop-in\n")
+        self.assertIn(f"geri yaz: {self.dropin} (önceki sembolik bağ): tamam", out)
 
 
 class P4RestartRunningFront(Env):

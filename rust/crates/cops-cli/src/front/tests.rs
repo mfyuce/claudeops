@@ -27,6 +27,9 @@ struct World {
     front_enabled: bool,
     /// durum sorgusu çalıştırılamasın
     query_err: bool,
+    /// bu adres ilk sorgudan itibaren verilen süre boyunca dinlemiyor görünsün (yavaş web açılışı)
+    slow: Option<(SocketAddr, Duration)>,
+    slow_since: std::cell::Cell<Option<std::time::Instant>>,
 }
 
 #[derive(Clone, Default)]
@@ -40,12 +43,16 @@ impl Net for Fake {
         )
     }
     fn owner(&self, a: SocketAddr) -> PortOwner {
-        self.0
-            .borrow()
-            .owners
-            .get(&a)
-            .cloned()
-            .unwrap_or(PortOwner::NoListener)
+        let w = self.0.borrow();
+        if let Some((_, d)) = w.slow.filter(|(s, _)| *s == a) {
+            let now = std::time::Instant::now();
+            let since = w.slow_since.get().unwrap_or(now);
+            w.slow_since.set(Some(since));
+            if now.duration_since(since) < d {
+                return PortOwner::NoListener;
+            }
+        }
+        w.owners.get(&a).cloned().unwrap_or(PortOwner::NoListener)
     }
 }
 
@@ -144,6 +151,17 @@ fn fast() -> Timing {
 
 impl Env {
     fn run(&self, action: Action, apply: bool, listen: &str, internal: &str) -> (i32, String) {
+        self.run_timed(action, apply, listen, internal, fast())
+    }
+
+    fn run_timed(
+        &self,
+        action: Action,
+        apply: bool,
+        listen: &str,
+        internal: &str,
+        timing: Timing,
+    ) -> (i32, String) {
         let mut sc = self.w.clone();
         let mut out = Vec::new();
         let rc = {
@@ -153,7 +171,7 @@ impl Env {
                 net: &self.w,
                 sc: &mut sc,
                 out: &mut out,
-                timing: fast(),
+                timing,
             };
             super::run(
                 &mut ctx,
@@ -233,6 +251,75 @@ impl Env {
             ),
         ];
     }
+}
+
+// ---- Python P9SlowWebAndSymlinkUnits karşılıkları ----
+
+#[test]
+fn slow_web_restart_is_waited_with_web_up() {
+    let e = env();
+    e.web_outside();
+    e.w.0.borrow_mut().slow = Some((ia(), Duration::from_millis(200)));
+    let timing = Timing {
+        web_up: Duration::from_secs(3),
+        ..fast()
+    };
+    let (rc, out) = e.run_timed(Action::On, true, L, I, timing);
+    assert_eq!(rc, 0, "{out}");
+}
+
+fn link(e: &Env, p: &str, name: &str) -> PathBuf {
+    let p = Path::new(p);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    let target = e.root.join(name);
+    let body = std::fs::read(p).unwrap_or_else(|_| b"bagli icerik\n".to_vec());
+    std::fs::write(&target, body).unwrap();
+    let _ = std::fs::remove_file(p);
+    std::os::unix::fs::symlink(&target, p).unwrap();
+    target
+}
+
+#[test]
+fn on_refuses_symlinked_unit_files() {
+    let e = env();
+    for (p, name) in [
+        (e.paths.front_unit.clone(), "front-hedef"),
+        (e.paths.dropin.clone(), "dropin-hedef"),
+    ] {
+        let target = link(&e, &p, name);
+        let (rc, out) = e.run(Action::On, true, L, I);
+        assert_eq!(rc, 1, "{out}");
+        assert!(
+            out.contains(&format!("birim dosyası sembolik bağ: {p} (")),
+            "{out}"
+        );
+        assert_eq!(std::fs::read_link(&p).unwrap(), target);
+        assert_eq!(std::fs::read(&target).unwrap(), b"bagli icerik\n");
+        assert!(e.calls().is_empty());
+        std::fs::remove_file(&p).unwrap();
+    }
+}
+
+#[test]
+fn off_rollback_restores_symlink() {
+    let e = env();
+    e.front_on();
+    let target = link(&e, &e.paths.dropin, "dropin-hedef");
+    e.w.0
+        .borrow_mut()
+        .fail_always
+        .insert("restart claudeops-web.service".into(), 3);
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 3, "{out}");
+    assert_eq!(std::fs::read_link(&e.paths.dropin).unwrap(), target);
+    assert_eq!(std::fs::read(&target).unwrap(), "eski drop-in\n".as_bytes());
+    assert!(
+        out.contains(&format!(
+            "geri yaz: {} (önceki sembolik bağ): tamam",
+            e.paths.dropin
+        )),
+        "{out}"
+    );
 }
 
 // ---- Python test_front_cmd.py karşılıkları ----
