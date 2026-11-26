@@ -67,6 +67,15 @@ class Probes(unittest.TestCase):
         self.assertIsNone(searxng._int(float("inf")))
 
 
+class Inspect(unittest.TestCase):
+    def test_unexpected_shapes_are_docker_unavailable_not_an_exception(self):
+        for body in ("{}", '[{"State": "x"}]', '[{"HostConfig": {"PortBindings": {"8080/tcp": 5}}}]'):
+            done = mock.Mock(returncode=0, stdout=body, stderr="")
+            with mock.patch.object(searxng, "_docker", lambda *a, **k: done):
+                with self.assertRaises(searxng.DockerUnavailable, msg=body):
+                    searxng.inspect_box()
+
+
 class State(unittest.TestCase):
     def test_concurrent_updates_keep_both_keys(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(searxng, "STATE_DIR", d):

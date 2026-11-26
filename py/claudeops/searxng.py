@@ -209,11 +209,11 @@ def inspect_box() -> Box:
         labels = (info.get("Config") or {}).get("Labels") or {}
         state = info.get("State") or {}
         binds = ((info.get("HostConfig") or {}).get("PortBindings") or {}).get(f"{CONTAINER_PORT}/tcp") or [{}]
-    except (ValueError, IndexError, TypeError, AttributeError):
+        key, _, val = LABEL.partition("=")
+        return Box(exists=True, ours=labels.get(key) == val, running=bool(state.get("Running")),
+                   status=str(state.get("Status") or ""), port=_int((binds[0] or {}).get("HostPort")))
+    except (ValueError, LookupError, TypeError, AttributeError):
         raise DockerUnavailable("inspect çıktısı ayrıştırılamadı")
-    key, _, val = LABEL.partition("=")
-    return Box(exists=True, ours=labels.get(key) == val, running=bool(state.get("Running")),
-               status=str(state.get("Status") or ""), port=_int((binds[0] or {}).get("HostPort")))
 
 
 # ── HTTP yoklamaları (docker'sız) ────────────────────────────────────────────────────────────────────
