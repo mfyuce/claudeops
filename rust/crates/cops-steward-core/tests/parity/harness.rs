@@ -55,6 +55,19 @@ impl Case {
     }
 }
 
+pub type Lookup = Box<dyn Fn(&str) -> Value>;
+
+/// Tek metin argümanlı geri çağrı (`proje -> sonuç`): parametre verilmemişse `None`; kayıtsız çağrı test hatasıdır.
+/// Python'da istisna fırlatan çağrının sonucu elle girdilerde `null`dur.
+pub fn by_name(c: &Case, name: &str) -> Option<Lookup> {
+    let table = c.callback(name)?;
+    let name = name.to_string();
+    Some(Box::new(move |arg: &str| {
+        let key = serde_json::json!([arg]).to_string();
+        table.get(&key).unwrap_or_else(|| panic!("kayıtsız çağrı: {name}({arg})")).clone()
+    }))
+}
+
 /// JSON eşitliği: sayılar değerce (1 == 1.0), nesnelerde anahtar sırası önemsiz.
 pub fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {

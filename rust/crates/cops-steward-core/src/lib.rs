@@ -11,15 +11,19 @@ pub mod closing;
 #[allow(clippy::expect_used)] // sabit desenler: derleme `generated` + parite testleriyle sınanır
 #[rustfmt::skip]
 pub mod consts_gen;
+pub mod explain;
 pub mod gates;
 pub mod generic;
 pub mod identity;
+pub mod idle;
+pub mod idletext;
 pub mod inserts;
 pub mod logdedup;
 pub mod markers;
 pub mod notify;
 pub mod prompts;
 pub mod questions;
+pub mod recovery;
 pub mod store;
 pub mod tour;
 #[rustfmt::skip]

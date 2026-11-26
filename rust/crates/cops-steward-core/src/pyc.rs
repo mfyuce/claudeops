@@ -168,6 +168,13 @@ pub fn ci_input(s: &str) -> String {
     s.replace(['İ', 'ı'], "i")
 }
 
+/// `ci_input` çıktısındaki bayt aralığının özgün metindeki karşılığı (karakter sayısı korunur, bayt konumları değişir).
+pub fn ci_span<'a>(original: &'a str, folded: &str, start: usize, end: usize) -> &'a str {
+    let chars = |at: usize| folded.get(..at).map_or_else(|| len(folded), len);
+    let from = chars(start);
+    head(skip(original, from), chars(end).saturating_sub(from))
+}
+
 const WORD_CLASS: &str = r"\p{L}\p{N}_";
 const SPACE_CLASS: &str = r"\s\x1c-\x1f";
 
@@ -175,7 +182,9 @@ const SPACE_CLASS: &str = r"\s\x1c-\x1f";
 /// işaret sözcük değil, U+001C..U+001F boşluk). `(?i)` ile başlayan desende `ı` -> `i`; girdiyi `ci_input`tan geçirin.
 /// Yalnız bu crate'in taşıdığı desenlerin kullandığı sözdizimi desteklenir (sınıf içinde `\W`/`\S`/`\b` yok).
 pub fn py_pattern(pattern: &str) -> String {
-    let ci = pattern.starts_with("(?i)");
+    // baştaki bayrak grubu (`(?i)`, `(?im)`, `(?is)`)
+    let flags = pattern.strip_prefix("(?").and_then(|r| r.split_once(')')).map_or("", |(f, _)| f);
+    let ci = flags.contains('i') && flags.chars().all(|c| "imsx".contains(c));
     let word = format!("(?-i:[{WORD_CLASS}])");
     let mut out = String::new();
     let mut in_class = false;
@@ -557,6 +566,14 @@ mod tests {
         assert!(is_match(&re, "bir SONRA.") && !is_match(&re, "sonrası") && is_match(&re, "sonra\u{307}"));
         assert!(is_match(&re, "\u{307}x\u{1c}y#"));
         assert_eq!(py_pattern(r"(?i)ı[\s\w]"), r"(?i)i[\s\x1c-\x1f\p{L}\p{N}_]");
+        assert_eq!(
+            (py_pattern("(?im)^ı"), py_pattern("(?:ı)"), py_pattern("(?s)ı")),
+            ("(?im)^i".into(), "(?:ı)".into(), "(?s)ı".into())
+        );
+        let (orig, folded) = ("İşı: değer", ci_input("İşı: değer"));
+        let at = folded.find("de").unwrap();
+        assert_eq!(ci_span(orig, &folded, at, folded.len()), "değer");
+        assert_eq!(ci_span(orig, &folded, 0, folded.find(':').unwrap()), "İşı");
     }
 
     #[test]

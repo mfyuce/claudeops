@@ -33,8 +33,7 @@
   "remove_project",
   "transfer_project",
   "apply_review_where_answer",
-  "build_raw_card",
-  "explain_idle_all"
+  "build_raw_card"
  ],
  "G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı": [
   "_log_guard",

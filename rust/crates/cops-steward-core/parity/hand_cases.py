@@ -638,6 +638,351 @@ for busy, act, ho_at, last, mode, at in itertools.product([None, True, False], [
                           "sd": {"started": NOW - 800, "init": True, "items": {"a": it}, "modes": {} if mode is None else {"a": mode}},
                           "cfg": C(brain_name="degnekci"), "now": NOW, "world": None, "blockers": None})
 
+# ── grup 3: kurtarma, boşta, neden açıklaması ──
+rnd = random.Random(3)
+sw._now = lambda: NOW
+
+
+def add_cb(name, args, fn, callbacks):
+    """`callbacks`: {parametre: tablo}; tablo {proje: sonuç}, `"raise"` istisna (vektörde None). Rust aynı tabloyu okur."""
+    before = json.loads(json.dumps(enc(args)))
+    live, logs = {}, {}
+    for p, table in callbacks.items():
+        def call(key, table=table):
+            v = table[key]
+            if v == "raise":
+                raise RuntimeError("geri çağrı")
+            return v
+        live[p] = call
+        logs[p] = [[[k], None if v == "raise" else v] for k, v in table.items()]
+    try:
+        ret = fn(live)
+    except (TypeError, ValueError) as e:
+        ret = {"__error__": type(e).__name__, "msg": str(e)}
+    rec = {"args": before, "ret": enc(ret), "now": NOW}
+    if logs:
+        rec["callbacks"] = logs
+    OUT.setdefault(name, []).append(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
+
+
+G3 = ["API Error:", "api error:", "APİ ERROR:", "apı error:", " 500", "429", "503x", "٥٠٠", "overloaded", "TİMED OUT", "timed-out", "rate limit", "RATE-LİMİT", "rate_limit", "(429)", "can't reach", "cant reach",
+      "EAI_AGAIN", "400 invalid request", "This turn failed", "THIS TURN FAILED", "HTTP 404", "http503", "status code: 500", "status: 429", "error", "errors", "failed", "unavailable", "timeout",
+      "kapı onayı bekliyor", "KAPI KARARI BEKLENİYOR", "kapıya haber", "kapi onayi icin bekliyor", "waiting for the gate", "sıradaki:", "SIRADAKİ:", "Sıradaki iş:", "siradaki adim：", "next:", "NEXT STEP:",
+      "next task :", "yok", "YOK.", "none", "n/a", "bitti", "done", "-", "—", "`yok`", "nothing", "yoksa", "sonraki turda", "şimdi X'e geçiyorum", "ŞİMDİ rapora başlıyorum", "kalan bağımsız iş", "açık kalan teknik işler",
+      "next I'll move on", "I will now start ", "i'll continue ", "hayır", "HAYIR", "hayir", "no", "nope", "açma", "AÇMA", "bekle", "dur", "kalsın", "paused kalsın", "şimdi değil", "sonra", "şimdilik hayır", "gerek yok", "olmasın",
+      "aç", "Aç", "AÇILSIN", "başla", "BAŞLAYABİLİRSİN", "evet", "EVET", "planned", "devam", "yes", "start", "ok", "okey", "TBD", "gelene dek", "yapma", "2)", "3.", "1 -", "fable", "FABLE", "cila", "CİLA", "cilası", "nesir cila", "üslup cila",
+      "prose polish", "style polish", "olursa", "gelirse", "varsa", "eğer", "if", "after", "sahipte", "SAHİPTE", "sahibin kararı", "sahip kararı bekliyor", "owner's decision", "waiting on the owner", "STEWARD-DONE", "STEWARD-DONE-CONFIRMED",
+      "NO-STEWARD-DONE", "STEWARD-DONE yazmıyorum", "STEWARD-NEXT: raporu yaz", "STEWARD-NEXT: yok", "READY FOR HANDOVER", "# READY FOR HANDOVER", "yapacak iş yok", "yapılacak başka iş yok demiyorum", "no work left", "nothing left to do, not true",
+      "no more work değil", "STEWARD-ASK: x?", "STEWARD-BLOCKED: y", "STEWARD-ROUTINE: z?", "STEWARD-JOB: embed a", "```", "> ", "- ", "* ", "• ", ". ", ".", "\n", "\n\n", "\r\n", "\u001c", " ", " ", "  ", ":", "：", ";", "`", "!", ")", "]",
+      "neden:", "REASON :", "İ", "ı", "ß", "ﬁ", "😀", "çğışöü", "rapor", "modeli", "eğitimi", "ölçüm", "betiğini", "yaz", "kontrol", "et", "5", "TODO.md'deki", "[x]", "[ ]"]
+G3S = lambda n: " ".join(rnd.choice(G3) for _ in range(rnd.randint(0, n)))
+G3T = lambda n: "".join(rnd.choice(G3) + rnd.choice([" ", " ", "", "\n"]) for _ in range(rnd.randint(0, n)))
+TEXTS = G3 + [G3S(6) for _ in range(500)] + [G3T(14) for _ in range(500)]
+for t in TEXTS:
+    for fn in ("api_error_kind", "next_none_stated", "turn_failed", "waiting_for_gate", "is_negative_answer", "is_open_answer", "is_fable_polish", "next_line", "stated_next_work", "owner_wait", "idle_finish_marker", "_note_words"):
+        add(fn, {"text": t})
+    add("_done_at_line_end", {"line": t})
+    add("one_line", {"text": t, "limit": rnd.choice([0, 1, 5, 40, 400])})
+    add("expired_handover_note", {"last_assistant": t, "lang": rnd.choice(["tr", "en"])})
+    add("api_error_kind", {"text": "API Error: " + t})
+    add("is_open_answer", {"text": rnd.choice(["2) ", "12. ", " 1: ", "3 - ", "٣) "]) + t})
+for lead, body in itertools.product(["", "x ", "x" * 299, "x" * 296], ["500", " overloaded", "timeout"]):
+    add("api_error_kind", {"text": "API Error: " + lead + body})
+for pad, mark in itertools.product([590, 600, 601, 800, 801], ["This turn failed", "kapı onayı bekliyor"]):
+    for fn in ("turn_failed", "waiting_for_gate"):
+        add(fn, {"text": mark + "x" * (pad - len(mark))})
+for t in ["x", "çok uzun " * 200, "a" * 1200, "a" * 1201]:
+    add("expired_handover_note", {"last_assistant": t, "lang": "tr"})
+for n in (59, 60, 61):
+    add("is_negative_answer", {"text": "hayır " + "x" * (n - 6)})
+    for prefix, by, routine in itertools.product(["", sw.ON_BEHALF_PREFIX], ["", "brain", "motor", "owner_cli"], [False, True]):
+        add("_held_instruction_item", {"q": Q("q1", "p", "t", answer=f" {prefix}{'ö' * n} ", answered_by=by, routine=routine)})
+for ttl in ["", "1h", " 1H ", "5m", "1 h"]:
+    add("ucli_idle_threshold", {"cfg": C(ucli_idle_nudge_secs=7, ucli_idle_nudge_secs_1h=9), "cache_ttl": ttl})
+
+NOTE_BITS = ["sıradaki:", "Sıradaki iş:", "SIRADAKİ:", "next:", "siradaki", "sıradaki", "BEKLEME", "model", "eğitimi", "ölçüm", "betiğini", "yaz", "rapor", "tabloyu", "güncelle", "yok", "YOK.", "none", "-", "fable cila", "veri gelirse", "olursa",
+             "çiz", "TODO.md", "632", "için", "next", "neden: eski", ";", ",", ".", "reason :", "İŞ", "ılık", "x", "ab"]
+NOTE = lambda: "\n".join(" ".join(rnd.choice(NOTE_BITS) for _ in range(rnd.randint(0, 9))) for _ in range(rnd.randint(0, 4)))
+LONGNOTE = "sıradaki: model eğitimi ölçüm betiğini yaz rapor tabloyu güncelle"
+WORDS5 = ["model", "eğitimi", "ölçüm", "betiğini", "yaz", "rapor", "tabloyu", "güncelle", "başka", "konu"]
+
+
+def todo_text():
+    out = []
+    for _ in range(rnd.randint(0, 5)):
+        lead = rnd.choice(["- [x] ", "- [X] ", "- [ ] ", "- [~] ", "* [x] ", "1. [x] ", "12) [ ] ", "- ", "+ ", "", "-[x]", "  - [x]", "- [y] ", "# ", "- [  ] "])
+        out.append(lead + " ".join(rnd.sample(WORDS5, rnd.randint(0, 10))))
+    return "\n".join(out)
+
+
+for _ in range(1200):
+    notes = rnd.choice([NOTE(), NOTE(), LONGNOTE, LONGNOTE + rnd.choice(["; neden: x", ". Reason: y", "\nsıradaki: yok", " (olursa)"]), "x\n" + LONGNOTE + "\ny", "notlarda sıradaki var", "sıradaki olursa"])
+    todo, done = todo_text(), todo_text()
+    add("stale_next_note", {"notes": notes, "todo_text": todo, "done_text": done})
+    proj = P("p", notes=notes)
+    add("without_stale_note", {"proj": proj, "todo_text": todo, "lang": rnd.choice(["tr", "en"]), "done_text": done})
+    real = rnd.random() < 0.4
+    table = {"p": rnd.choice([None, 0, 1, -1, 5, "raise"])}
+    if rnd.random() < 0.8:
+        add_cb("next_work_hint", {"proj": proj, "real_only": real}, lambda c: sw.next_work_hint(proj, c["open_work"], real), {"open_work": table})
+    else:
+        add("next_work_hint", {"proj": proj, "real_only": real})
+    add("notes_wait", {"proj": P("p", notes=rnd.choice(["", " ", "-", "# ", "[(", "\t", " ", "> "]) + rnd.choice(["BEKLEME x", "bekleme", "BEKLEMİYOR", "Bekle", notes]))})
+for text in [None, "", "  ", "madde", "uzun " * 100, "raise"]:
+    add_cb("_forced_open_nudge", {"proj": "p", "n_open": 3}, lambda c: sw._forced_open_nudge(c["oldest_open"], "p", 3), {"oldest_open": {"p": text}})
+
+# döngü kesici, sonuç doğrulama, API kurtarma
+LK = ["start", "stop", "tour", "deliver_answer", "directive", "restart", "nudge", "keepwarm", "ask_user", "idea", "loop_break", "idle_nudge"]
+NAMES = ["", "a", "ab", "a20261126", "a20261126_2", "a_3", "mkt", "hc", "hc20261120", "hcr20261120", "x_1\n", "a2026112", "p_12_3"]
+
+
+def aview(names=NAMES):
+    return V(rnd.choice(names), rnd.random() < 0.8, blueprint=rnd.choice([None, None, "", "a", "mkt", "hc"]), busy=rnd.choice([None, True, False, False]),
+             subagent_active=rnd.random() < 0.1, subagent_unknown=rnd.random() < 0.08,
+             last_activity=rnd.choice([0.0, NOW - 30, NOW - 59.9, NOW - 60, NOW - 599, NOW - 5400, NOW + 5]), started_at=rnd.choice([0.0, NOW - 29, NOW - 30, NOW - 700, NOW - 7000]),
+             last_assistant=rnd.choice(["", "iş", "API Error: 500 x", "API Error: 529 overloaded", "API Error: 400 bad", "api error: timeout", "ok"]))
+
+
+for _ in range(1500):
+    views = [aview() for _ in range(rnd.randint(0, 4))]
+    actions = []
+    for _ in range(rnd.randint(0, 4)):
+        kind = rnd.choice(LK)
+        items = rnd.choice([None, [], "ab", {"k": 1}, [{"kind": "ask", "id": "q1"}], [{"kind": "idle", "name": "a"}, 5, {"id": 0, "name": None}], [{}, {"kind": None, "id": [1, "x"]}]])
+        actions.append(sw.Action(kind, rnd.choice(NAMES[:5]), rnd.choice(["neden", "u" * 250]), {} if items is None else {"items": items}))
+    guard = {}
+    for a in actions:
+        if rnd.random() < 0.8:
+            sig = sw._loop_sig(a.name, views)
+            its = a.payload.get("items") or []
+            fp = hashlib.sha1("|".join(sorted(f"{i.get('kind')}:{i.get('id') or i.get('name')}" for i in its if isinstance(i, dict))).encode()).hexdigest()[:8]
+            full = sig + ":" + fp if a.kind == "tour" else sig
+            guard[f"{a.kind}|{a.name}"] = rnd.choice([{"n": rnd.choice([1, 7, 8, 9]), "sig": full, "first": rnd.choice([NOW - 10, NOW - 86399, NOW - 86400, 0, None])},
+                                                      {"n": 8, "sig": full, "first": NOW - 5, "fp": rnd.choice([fp, "eski", "", None])}, {"until": rnd.choice([NOW + 5, NOW, NOW - 5, None]), "first": NOW - 5},
+                                                      {"n": "8", "sig": full, "first": str(NOW - 5)}, {"n": 3, "sig": "x", "first": NOW - 90000}, {}, "bozuk", {"until": NOW - 1, "first": NOW - 90000}])
+    if rnd.random() < 0.3:
+        guard[rnd.choice(["start|zz", "yalnız", "|", "a|b|c"])] = rnd.choice([{"until": NOW + 100}, {"first": NOW - 5}, {"until": "x"} if rnd.random() < 0.2 else {}, 7])
+    st = rnd.choice([{}, {"x": 1}, {"x": 1, "loop_guard": guard, "z": 2}, {"loop_guard": guard}, {"loop_guard": None}])
+    if rnd.random() < 0.2:
+        st = {"loop_guard": guard}
+    add("loop_guard", {"actions": actions, "views": views, "st": st, "now": NOW})
+    add("loop_paused", {"st": st, "now": NOW})
+    name = rnd.choice(NAMES)
+    add("_loop_sig", {"name": name, "views": views})
+    add("_outcome_views", {"name": name, "views": views})
+    add("_outcome_project", {"name": name, "views": rnd.choice([views, []])})
+    kind = rnd.choice(["start", "respawn", "directive", "nudge"])
+    add("outcome_baseline", {"kind": kind, "name": name, "views": views, "now": NOW})
+    pending = {}
+    for i in range(rnd.randint(0, 5)):
+        n = rnd.choice(NAMES[1:])
+        rec = sw.outcome_baseline(rnd.choice(["start", "respawn", "directive", "nudge", ""]), n, views, rnd.choice([NOW, NOW - 599, NOW - 600, NOW - 6000, NOW + 40]))
+        if rnd.random() < 0.3:
+            rec["sigs"] = rnd.choice([None, {}, {n: "x"}])
+        if rnd.random() < 0.3:
+            rec["via"] = rnd.choice(["panel", "", 5, None])
+        pending[f"k{i}"] = rnd.choice([rec, rec, rec, rec, {}, None, 0, []])
+    add("check_outcomes", {"pending": pending, "views": views, "now": NOW})
+    add("_via", {"rec": rnd.choice([{}, {"via": 0}, {"via": "m"}, {"via": 2.5}, {"via": [1, "a"]}])})
+add("check_outcomes", {"pending": {f"k{i}": {"kind": "nudge", "name": "a", "at": NOW - (i * 37 % 205)} for i in range(215)}, "views": [], "now": NOW})
+for _ in range(2500):
+    views = [aview() for _ in range(rnd.randint(0, 6))]
+    st_err = {}
+    for v in views:
+        if rnd.random() < 0.7:
+            h = hashlib.sha1(v.last_assistant.encode()).hexdigest()[:10]
+            rec = {"hash": rnd.choice([h, h, h, "x"]), "since": rnd.choice([NOW - 59, NOW - 60, NOW - 5000]), "nudges": rnd.choice([0, 0, 1, 2, 3, 3, 4, -1, "2"]),
+                   "last_nudge": rnd.choice([0.0, NOW - 179, NOW - 180, NOW - 600, NOW - 599]), "gave_up": rnd.random() < 0.2}
+            for k in ("since", "last_nudge"):
+                if rnd.random() < 0.03:
+                    rec.pop(k)
+            st_err[v.name] = rnd.choice([rec] * 8 + [{}, None, 5])
+    probe = rnd.choice(["", "a", "ab", "mkt"])
+    st_out = rnd.choice([{}, {}, None, "x", {"since": NOW - 100, "probe": probe, "probe_at": rnd.choice([0.0, NOW, NOW + 5]), "woken": rnd.choice([[], ["a"], ["a", "ab", "zz"], "ab", None, [5]]), "recovered": rnd.random() < 0.5},
+                         {"x": 1}, {"recovered": True, "woken": ["a", "mkt", "hc"]}])
+    table = {v.name: rnd.random() < 0.9 for v in views}
+    skip = set(rnd.sample(NAMES, rnd.choice([0, 0, 1])))
+    before = json.loads(json.dumps(enc({"views": views, "skip": skip, "st_err": st_err, "st_out": st_out, "now": NOW})))
+    log = []
+
+    def eligible(v):
+        log.append([[enc(v)], table[v.name]])
+        return table[v.name]
+    try:
+        ret = enc(sw.plan_api_recovery(views, eligible, skip, st_err, st_out, NOW))
+    except (KeyError, IndexError, TypeError, ValueError):
+        continue
+    OUT.setdefault("plan_api_recovery", []).append(json.dumps({"args": before, "ret": ret, "now": NOW, "callbacks": {"eligible": log}}, ensure_ascii=False, separators=(",", ":")))
+    add("api_error_brief", {"st": rnd.choice([{}, {"api_err": None}, {"api_err": st_err}])})
+for _ in range(100):
+    kind = rnd.choice(["deliver_findings", "deliver_lesson", "start"])
+    add("_observe_cluster", {"a": sw.Action(kind, "p", "", rnd.choice([{}, {"rows": [{"id": 5}, {"id": "b"}, "x", {}], "hashes": ["b", "a", 3, None]}, {"rows": None, "hashes": []}]))})
+
+# boşta planları ve neden açıklaması
+INAMES = ["a", "ab", "mkt", "ncs", "kitap", "degnekci", "a_aj1", "a_aj12\n", "a20261126", "ncs2"]
+ILAST = ["", "iş sürüyor", "READY FOR HANDOVER", "bitti\nSTEWARD-DONE", "yapacak iş yok", "This turn failed", "API Error: 500", "kapı onayı bekliyor", "STEWARD-NEXT: raporu yaz", "STEWARD-NEXT: raporu yaz\nSTEWARD-ASK: x?", "STEWARD-NEXT: yok",
+         "sıradaki: yok", "iş sahipte", "sahip kararı bekliyorum", "sıradaki: yok, kalanlar sahipte", "STEWARD-ASK: hangisi?", "STEWARD-JOB: embed a", "sahipte ama STEWARD-DONE", "sıradaki: testleri koş", "soru: STEWARD-BLOCKED pdf"]
+INOTES = ["", "", "sıradaki: veri temizliği", "sıradaki: yok", "BEKLEME: dış girdi", "sıradaki: veri gelirse çiz", "notlarda sıradaki var", "sıradaki: fable cila"]
+MODES = ["dry", "act", "act", "act", "off"]
+
+
+def iview(cli):
+    return V(rnd.choice(INAMES), rnd.random() < 0.95, cli=rnd.choice([cli] * 9 + ["codex"]), tmux=rnd.random() < 0.95, host=rnd.choice(["local"] * 9 + ["", "yuhem"]),
+             blueprint=rnd.choice([None] * 6 + ["", "a", "mkt"]), busy=rnd.choice([False] * 8 + [True, None]), subagent_active=rnd.random() < 0.04, subagent_unknown=rnd.random() < 0.03,
+             idle_since=rnd.choice([0.0, NOW - 100, NOW - 700, NOW - 700, NOW - 4000, NOW - 90000]), last_activity=rnd.choice([0.0, NOW - 100, NOW - 700, NOW - 700, NOW - 4000, NOW - 90000]),
+             cache_ttl=rnd.choice(["", "1h", "5m"]), last_assistant=rnd.choice(ILAST))
+
+
+def iproj():
+    return {p: P(p, phase=rnd.choice(["planned"] * 6 + ["planning", "done", "paused"]), notes=rnd.choice(INOTES), cadence_minutes=rnd.choice([0, 60, 240]),
+                 last_visit=rnd.choice([0.0, NOW - 100, NOW - 14400, NOW - 90000]), host=rnd.choice(["", "yuhem"])) for p in rnd.sample(["a", "ab", "mkt", "ncs", "kitap", "degnekci"], rnd.randint(2, 6))}
+
+
+def iworld():
+    if rnd.random() < 0.6:
+        return None
+    return sw.World(sid="default", owners={p: rnd.choice(["default"] * 5 + ["ab"]) for p in ["a", "ab", "mkt", "ncs", "kitap", "degnekci"]}, brains={"degnekci": "default"},
+                    owned=rnd.choice([{}, {"a": "a"}, {"a": "a20261126", "mkt": "zz"}]), unavailable=frozenset(rnd.choice([[], [], ["a"], ["mkt"]])))
+
+
+def irec(views, mode):
+    out = {}
+    for v in views:
+        if rnd.random() < 0.5:
+            since = max(v.idle_since, v.last_activity)
+            rec = {"at": rnd.choice([0, since - 1, since, since + 1, NOW - 10, NOW - 90000]), "n": rnd.choice([0, 1, 2, 3, 9]), "mode": rnd.choice([mode, mode, mode, "dry"]),
+                   "text": rnd.choice(["", "devam: veri temizliği" + sw.IDLE_STALE_NOTE_ESCAPE, "devam: TODO.md'deki ilk açık iş"]), "failed_closed": rnd.random() < 0.2}
+            if rnd.random() < 0.15:
+                rec.pop("mode")
+            out[v.name] = rec
+    return out
+
+
+PKEYS = ["a", "ab", "mkt", "ncs", "kitap", "degnekci"]
+for _ in range(2500):
+    views = [iview("ucli") for _ in range(rnd.randint(0, 4))]
+    mode = rnd.choice(MODES)
+    cfg = C(ucli_idle=mode, ucli_idle_nudge_secs=rnd.choice([0, 600, 600, 600]), ucli_idle_nudge_secs_1h=rnd.choice([0, 3000]), drain=rnd.random() < 0.03, mode=rnd.choice(["act", "act", "observe"]),
+            ucli_idle_max_consecutive=rnd.choice([1, 3]), brain_name="degnekci")
+    projects, world = iproj(), iworld()
+    state = rnd.choice([{}, {"x": 1, "ucli_idle": irec(views, mode)}, {"ucli_idle": irec(views, mode), "ho_pending": rnd.choice([{}, {"a": 1.0}, None]), "ho_close": rnd.choice([{}, {"zz": "p"}])}])
+    planned = [sw.Action("start", rnd.choice(INAMES))] if rnd.random() < 0.15 else []
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "planned": planned, "world": world}
+    table = {p: rnd.choice([None, 0, 2, "raise"]) for p in PKEYS}
+    add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, planned, world, c["open_work"]), {"open_work": table})
+for _ in range(4000):
+    views = [iview("claude") for _ in range(rnd.randint(0, 4))]
+    mode = rnd.choice(MODES)
+    cfg = C(claude_idle=mode, claude_idle_nudge_secs=rnd.choice([0, 600, 600, 600]), drain=rnd.random() < 0.03, ucli_idle_max_consecutive=rnd.choice([1, 3, 3]), brain_name="degnekci")
+    projects, world = iproj(), iworld()
+    state = {}
+    if rnd.random() < 0.8:
+        state["claude_idle"] = irec(views, mode)
+    for p in PKEYS:
+        if rnd.random() < 0.15:
+            state.setdefault("owner_todo_move", {})[p] = {"at": rnd.choice([NOW - 10, NOW - 86400]), "mode": rnd.choice([mode, "dry"])}
+        if rnd.random() < 0.25:
+            state.setdefault("todo_triage", {})[p] = {"sha": rnd.choice(["abc", "abcdefabcdef999", "x"]), "mode": rnd.choice([mode, mode, "dry"])}
+        if rnd.random() < 0.15:
+            state.setdefault("owner_claim_nudge", {})[p] = {"session": rnd.choice([p, "a"]), "at": rnd.choice([0, NOW - 10, NOW - 90000])}
+        if rnd.random() < 0.25:
+            state.setdefault("next_none", {})[p] = {"open": rnd.choice([0, 2, "2"]), "session": rnd.choice([p, p, "x"]), "at": 1.0}
+    if rnd.random() < 0.1:
+        state["ho_pending"] = {"a": 1.0}
+    planned = [sw.Action("start", rnd.choice(INAMES))] if rnd.random() < 0.15 else []
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "planned": planned, "world": world}
+    tables = {"open_work": {p: rnd.choice([None, 0, 2, 2, "raise"]) for p in PKEYS}, "owner_todo": {p: rnd.choice([None, 0, 0, 0, 3, "raise"]) for p in PKEYS},
+              "todo_sha": {p: rnd.choice(["abc", "abcdefabcdef999", "", None, "raise"]) for p in PKEYS}, "oldest_open": {p: rnd.choice(["", None, "ilk madde " * rnd.randint(1, 60), "raise"]) for p in PKEYS},
+              "has_question": {p: rnd.choice([True, False, False, "raise"]) for p in PKEYS}}
+    tables = {k: v for k, v in tables.items() if rnd.random() < 0.85}
+    add_cb("plan_claude_idle", args, lambda c: sw.plan_claude_idle(views, projects, state, cfg, NOW, planned, world, c.get("open_work"), c.get("owner_todo"), c.get("todo_sha"), c.get("oldest_open"), c.get("has_question")), tables)
+for code, lang in itertools.product([*sw._WHY_TR, "bilinmeyen"], ["tr", "en", "de"]):
+    detail, extra = rnd.choice(["", "d"]), rnd.choice([{}, {"until": 1.5, "kind": "x"}])
+    add("_why", {"code": code, "lang": lang, "detail": detail, "extra": extra}, call=lambda: sw._why(code, lang, detail, **extra))
+for i in range(5000):
+    cli = rnd.choice(["claude", "claude", "claude", "ucli"])
+    views = [iview(cli) for _ in range(rnd.choice([0, 0, 1, 1, 1, 2, 3]))]
+    projects = iproj()
+    name = rnd.choice(list(projects))
+    proj = projects[name]
+    if views and rnd.random() < 0.7:
+        views[0].name, views[0].blueprint, views[0].running = name, None, True
+        views = views[:1] if rnd.random() < 0.85 else views
+    if rnd.random() < 0.75:
+        proj.phase, proj.notes = "planned", rnd.choice([n for n in INOTES if not n.startswith("BEKLEME")])
+    cfg = C(lang=rnd.choice(["tr", "en"]), claude_idle=rnd.choice(MODES), claude_idle_nudge_secs=rnd.choice([0, 600, 600, 600]), drain=rnd.random() < 0.04, auto_start=rnd.random() < 0.8,
+            ucli_idle_max_consecutive=rnd.choice([1, 3]), brain_name="degnekci")
+    questions = []
+    if rnd.random() < 0.2:
+        questions = [Q(f"q{j}", rnd.choice([name, name, "zz"]), rnd.choice(["soru\n metni", "u " * 120]), status=rnd.choice(["open", "answered", "closed"]), routine=rnd.random() < 0.3,
+                       delivered_at=rnd.choice([0.0, 5.0]), undeliverable=rnd.choice(["", "yok"])) for j in range(rnd.randint(1, 3))]
+    state = {}
+    if rnd.random() < 0.12:
+        state["loop_guard"] = {rnd.choice([f"start|{name}", f"nudge|{name}20261126", "tour|degnekci", name]): rnd.choice([{"until": NOW + 3600}, {"until": NOW - 1}, 5, {}])}
+    if rnd.random() < 0.15:
+        state["brain_stopped"] = {rnd.choice([name, name + "20261126", "zz"]): rnd.choice([NOW - 10, NOW - 14399, NOW - 14400, 0, None])}
+    if rnd.random() < 0.15:
+        state["observed_visit"] = {name: rnd.choice([NOW - 10, 0, None, NOW - 3599.5])}
+    if rnd.random() < 0.15:
+        state["start_blocked"] = rnd.choice([{"projects": [name], "reason": rnd.choice(["max_starts", "max_active", "başka", "", None])}, {"projects": [], "reason": "x"}, {"projects": None}, {"projects": name + "x", "reason": "auto_start_off"}, {}])
+    vname = views[0].name if views else name
+    if rnd.random() < 0.08:
+        state["dialog_stuck"] = {vname: rnd.choice([{"kind": "trust", "head": "H" * 250, "since": NOW}, {}, {"kind": None, "head": 5, "since": None}, "x"])}
+    if rnd.random() < 0.1:
+        state["send_fail"] = {vname: rnd.choice([{"n": 3, "error": "e" * 250, "since": NOW}, {"n": 2}, {"n": "4"}, {"n": 5, "error": None}, 1])}
+    if views and rnd.random() < 0.5:
+        state["claude_idle"] = irec(views, cfg.claude_idle)
+    if rnd.random() < 0.3:
+        state["todo_triage"] = {name: rnd.choice([{"sha": "a"}, {}, None])}
+    if rnd.random() < 0.3:
+        state["next_none"] = {name: rnd.choice([{"open": 0}, {"open": 2}, {"x": 1}, {}])}
+    if rnd.random() < 0.3:
+        state["project_next"] = {name: rnd.choice([{"text": "T" * 250, "none": 1, "at": NOW, "session": "s"}, {"text": ""}, {"text": 5}, "x", {"text": "t", "at": None}])}
+    actions = []
+    if rnd.random() < 0.2:
+        actions = [sw.Action(rnd.choice(["start", "idle_nudge"]), rnd.choice([name, vname]), "neden", rnd.choice([{}, {"next": "n" * 200}, {"next": None}, {"next": 7}]))]
+    world = iworld()
+    args = {"proj": proj, "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": questions, "actions": actions, "world": world}
+    table = {p: rnd.choice([None, 0, 0, 2, "raise"]) for p in PKEYS}
+    add_cb("explain_idle", args, lambda c: sw.explain_idle(proj, views, projects, state, cfg, NOW, questions, actions, world, c["open_work"]), {"open_work": table})
+    if i % 5 == 0:
+        args = {k: v for k, v in args.items() if k != "proj"}
+        owner = {p: rnd.choice([None, 0, 3, "raise"]) for p in PKEYS}
+        add_cb("explain_idle_all", args, lambda c: sw.explain_idle_all(views, projects, state, cfg, NOW, questions, actions, world, c["open_work"], c["owner_todo"]), {"open_work": table, "owner_todo": owner})
+
+# nadir boşta dalları: tek uygun oturum, yoğun durum
+for i in range(2500):
+    cli = rnd.choice(["claude", "ucli"])
+    since = NOW - rnd.choice([700, 3600, 3601, 90000])
+    txt = rnd.choice(["sıradaki: yok", "sıradaki: yok", "iş sahipte", "This turn failed", "iş sürüyor", "yapacak iş yok", "sıradaki: yok\niş sahipte"])
+    v = V("a", True, cli=cli, tmux=True, busy=False, idle_since=since, last_activity=since, last_assistant=txt, cache_ttl=rnd.choice(["", "1h"]))
+    projects = {"a": P("a", phase="planned", notes=rnd.choice(INOTES))}
+    mode = rnd.choice(["dry", "act"])
+    rec = {"at": rnd.choice([since - 1, since, since + 1]), "n": rnd.choice([0, 1, 2, 3]), "mode": rnd.choice([mode, mode, "dry"]), "failed_closed": rnd.random() < 0.2,
+           "text": rnd.choice(["", "devam: veri temizliği" + sw.IDLE_STALE_NOTE_ESCAPE])}
+    n_open = rnd.choice([0, 2])
+    state = {"claude_idle": {"a": rec}, "ucli_idle": {"a": rec}}
+    if rnd.random() < 0.6:
+        state["next_none"] = {"a": {"open": rnd.choice([n_open, n_open, 7]), "session": rnd.choice(["a", "a", "x"]), "at": 1.0}}
+    if rnd.random() < 0.4:
+        state["todo_triage"] = {"a": {"sha": rnd.choice(["abc", "x"]), "mode": rnd.choice([mode, "dry"])}}
+    cfg = C(claude_idle=mode, claude_idle_nudge_secs=600, ucli_idle=mode, ucli_idle_nudge_secs=600, ucli_idle_nudge_secs_1h=600, ucli_idle_max_consecutive=rnd.choice([1, 3]), mode=rnd.choice(["act", "observe"]), brain_name="degnekci")
+    views = [v]
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "planned": [], "world": None}
+    tables = {"open_work": {"a": n_open}}
+    if cli == "claude":
+        if rnd.random() < 0.5:
+            tables["todo_sha"] = {"a": rnd.choice(["abc", "raise"])}
+        if rnd.random() < 0.8:
+            tables["oldest_open"] = {"a": rnd.choice(["ilk açık madde", "uzun madde " * 90, "", "raise"])}
+        if rnd.random() < 0.5:
+            tables["has_question"] = {"a": rnd.choice([True, False, "raise"])}
+        add_cb("plan_claude_idle", args, lambda c: sw.plan_claude_idle(views, projects, state, cfg, NOW, [], None, c.get("open_work"), c.get("owner_todo"), c.get("todo_sha"), c.get("oldest_open"), c.get("has_question")), tables)
+        eargs = {"proj": projects["a"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": [], "world": None}
+        add_cb("explain_idle", eargs, lambda c: sw.explain_idle(projects["a"], views, projects, state, cfg, NOW, [], [], None, c["open_work"]), {"open_work": {"a": n_open}})
+    else:
+        add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, [], None, c["open_work"]), tables)
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):
