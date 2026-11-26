@@ -3,11 +3,12 @@
 //! Okuma artımlıdır; yarım son satır beklenir, küçülen dosya baştan okunur.
 
 use crate::py;
+use crate::transcript::Line;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -254,8 +255,10 @@ struct FileState {
     offset: u64,
     size: u64,
     turns: HashMap<Key, Turn>,
-    /// Atlanan bozuk satırlar (dosya baştan okununca sıfırlanır).
+    /// Atlanan bozuk ve sınırı aşan satırlar (dosya baştan okununca sıfırlanır).
     bad: u64,
+    /// Sınırı aşan satırın ortasındayız (dosya sonunda yarım kaldı): kalanı satır sonuna dek atılır.
+    skip: bool,
 }
 
 /// Dosya başına artımlı okuma durumu. Uzun yaşayan süreç tek örnek tutar.
@@ -263,6 +266,9 @@ struct FileState {
 pub struct UsageReader {
     files: Ordered<FileState>,
     unique: u64,
+    /// Test: okunan satır tamponunun tepe boyu (bellek sınırı denetimi).
+    #[cfg(test)]
+    peak_line: usize,
 }
 
 impl UsageReader {
@@ -288,13 +294,39 @@ impl UsageReader {
             f.seek(SeekFrom::Start(st.offset)).ok()?;
             let mut r = BufReader::new(f);
             let mut line = Vec::new();
+            let max = crate::transcript::max_line();
             loop {
-                line.clear();
-                match r.read_until(b'\n', &mut line) {
+                if st.skip {
+                    // satırın kalanı: sınır 0 ile her parça tampona alınmadan tüketilir
+                    match crate::transcript::read_line(&mut r, &mut line, 0) {
+                        Err(_) => return None,
+                        Ok(Line::Eof) => break,
+                        Ok(Line::TooLong { consumed, complete }) => {
+                            st.offset += consumed as u64;
+                            st.skip = !complete;
+                            continue;
+                        }
+                        Ok(Line::Full(n) | Line::Partial(n)) => {
+                            st.offset += n as u64; // boş kalan ("\\n")
+                            st.skip = false;
+                            continue;
+                        }
+                    }
+                }
+                match crate::transcript::read_line(&mut r, &mut line, max) {
                     Err(_) => return None,
-                    Ok(0) => break,
-                    Ok(_) if line.last() != Some(&b'\n') => break,
-                    Ok(_) => {}
+                    Ok(Line::Eof | Line::Partial(_)) => break, // yarım son satır: offset başında kalır
+                    Ok(Line::TooLong { consumed, complete }) => {
+                        st.offset += consumed as u64;
+                        st.bad += 1;
+                        st.skip = !complete;
+                        continue;
+                    }
+                    Ok(Line::Full(_)) => {}
+                }
+                #[cfg(test)]
+                {
+                    self.peak_line = self.peak_line.max(line.len());
                 }
                 st.offset += line.len() as u64;
                 let Ok(parsed) = parse(&line, &mut self.unique) else {
@@ -516,6 +548,55 @@ mod tests {
         // baştan okunan dosyada sayaç sıfırlanır (kalan 2 alt ajan dosyasının)
         fs::write(&p, row("m1", "\"x\"", 1)).unwrap();
         assert_eq!(r.usage_for_path(&p).unwrap().skipped_rows, 2);
+    }
+
+    /// Birleştirme kapısı: satır başına üst sınır. Sınırda kabul, sınır+1 atlanır ve sayılır; bellek sınırlı
+    /// (okunan tampon sınırı aşmaz); dosya sonunda yazımı süren aşırı uzun satır bir kez sayılır, offset bozulmaz.
+    #[test]
+    fn long_lines_are_skipped_and_counted() {
+        const LIMIT: usize = 200;
+        crate::transcript::TEST_MAX_LINE.with(|c| c.set(Some(LIMIT)));
+        let pad = |row: String, total: usize| {
+            let base = row.trim_end_matches('\n');
+            let n = total - base.len() - r#","p":"""#.len();
+            format!("{},\"p\":\"{}\"}}", &base[..base.len() - 1], "x".repeat(n))
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        let at = pad(row("a", "\"x\"", 1), LIMIT);
+        assert_eq!(at.len(), LIMIT);
+        let over = pad(row("b", "\"x\"", 10), LIMIT + 1);
+        append(&p, &format!("{at}\n{over}\n{}", row("c", "\"x\"", 100)));
+        let mut r = UsageReader::default();
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.main.output, u.skipped_rows), (2, 101, 1));
+        assert_eq!(r.files.get(&p).unwrap().offset, fs::metadata(&p).unwrap().len());
+        // yazımı süren uzun satır: bir kez sayılır, tamamlanınca sonrası okunur
+        let long = pad(row("d", "\"x\"", 1000), LIMIT * 5);
+        append(&p, &long[..LIMIT * 3]);
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.skipped_rows), (2, 2));
+        assert_eq!(r.files.get(&p).unwrap().offset, fs::metadata(&p).unwrap().len());
+        append(&p, &format!("{}\n{}", &long[LIMIT * 3..], row("e", "\"x\"", 7)));
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.main.output, u.skipped_rows), (3, 108, 2));
+        // sınırda yarım satır henüz uzun değil: offset başında kalır, tamamlanınca sayılır
+        let before = r.files.get(&p).unwrap().offset;
+        append(&p, &pad(row("f", "\"x\"", 1), LIMIT));
+        assert_eq!(r.usage_for_path(&p).unwrap().main.turns, 3);
+        assert_eq!(r.files.get(&p).unwrap().offset, before);
+        append(&p, "\n");
+        assert_eq!(r.usage_for_path(&p).unwrap().main.turns, 4);
+        // bellek: tampon sınır+1'i aşmaz
+        let m = tmp.path().join("m.jsonl");
+        append(
+            &m,
+            &format!("{}{}\n{}", row("a", "\"x\"", 1), "y".repeat(LIMIT * 50), row("b", "\"x\"", 1)),
+        );
+        let mut r = UsageReader::default();
+        assert_eq!(r.usage_for_path(&m).unwrap().main.turns, 2);
+        assert!(r.peak_line <= LIMIT + 1, "tepe tampon {}", r.peak_line);
+        crate::transcript::TEST_MAX_LINE.with(|c| c.set(None));
     }
 
     #[test]

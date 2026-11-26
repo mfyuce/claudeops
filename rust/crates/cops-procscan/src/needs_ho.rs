@@ -1,12 +1,13 @@
 //! Oturum devir (ho) gerektiriyor mu (`needs_ho.py`): git sinyalleri ve transkript.
 
+use crate::transcript::Line;
 use crate::{proc_cmd, py};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha1::{Digest, Sha1};
 use std::fmt::Write;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write as _};
+use std::io::{BufReader, Write as _};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -312,17 +313,22 @@ pub fn rfh_marker_in(text: &str) -> bool {
     false
 }
 
-/// Transkriptin ayrıştırılabilen nesne satırları; nesne olmayan satır atlanır ve `skipped`a eklenir.
+/// Transkriptin ayrıştırılabilen nesne satırları; nesne olmayan satır ve satır sınırını
+/// ([`crate::transcript::MAX_LINE_BYTES`]) aşan satır atlanır ve `skipped`a eklenir (bellek satır başına sınırlı).
 /// Okuma hatası `None`.
 fn each_row(path: &Path, skipped: &mut u32, mut f: impl FnMut(&Map<String, Value>, &mut u32) -> ControlFlow<()>) -> Option<()> {
     let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
+    let max = crate::transcript::max_line();
     loop {
-        buf.clear();
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(0) => return Some(()),
-            Ok(_) => {}
+        match crate::transcript::read_line(&mut reader, &mut buf, max) {
+            Ok(Line::Eof) => return Some(()),
+            Ok(Line::Full(_) | Line::Partial(_)) => {}
+            Ok(Line::TooLong { .. }) => {
+                *skipped += 1;
+                continue;
+            }
             Err(_) => return None,
         }
         // metin kipi: `\r` de satır sonu; geçersiz utf-8 yerine U+FFFD
@@ -489,6 +495,43 @@ mod tests {
         assert!(!has_real_user_turn(transcript(&[with("isMeta"), with("isSidechain"), row("user", "  ")]).path()).value);
         assert!(has_real_user_turn(transcript(&[json!({"type": "user", "message": {"content": "x"}})]).path()).value);
         assert!(!has_real_user_turn(transcript(&[json!({"type": "user"})]).path()).value);
+    }
+
+    /// Birleştirme kapısı: sınırı aşan transkript satırı atlanır ve `skipped`a girer; sınırda kabul; yarım uzun son satır.
+    #[test]
+    fn long_lines_are_skipped_and_counted() {
+        const LIMIT: usize = 200;
+        crate::transcript::TEST_MAX_LINE.with(|c| c.set(Some(LIMIT)));
+        let pad =
+            |row: &str, total: usize| format!("{},\"p\":\"{}\"}}", &row[..row.len() - 1], "x".repeat(total - row.len() - 7));
+        let user = r#"{"type":"user","message":{"content":"iş"}}"#;
+        let rfh = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"READY FOR HANDOVER"}]}}"#;
+        let at = pad(user, LIMIT);
+        assert_eq!(at.len(), LIMIT);
+        let f = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(f.path(), format!("{at}\n{}\n", pad(rfh, LIMIT + 1))).unwrap();
+        assert_eq!(has_real_user_turn(f.path()), Checked { value: true, skipped: 0 });
+        assert_eq!(
+            handover_done(f.path()),
+            Checked {
+                value: false,
+                skipped: 1
+            }
+        );
+        std::fs::write(f.path(), format!("{at}\n{}\n", pad(rfh, LIMIT))).unwrap();
+        assert_eq!(handover_done(f.path()), Checked { value: true, skipped: 0 });
+        std::fs::write(f.path(), format!("{at}\n{}", "z".repeat(LIMIT * 3))).unwrap();
+        assert!(has_real_user_turn(f.path()).value);
+        assert_eq!(
+            handover_done(f.path()),
+            Checked {
+                value: false,
+                skipped: 1
+            }
+        );
+        std::fs::write(f.path(), format!("{user}\r{rfh}\n")).unwrap();
+        assert!(handover_done(f.path()).value);
+        crate::transcript::TEST_MAX_LINE.with(|c| c.set(None));
     }
 
     #[test]
