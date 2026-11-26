@@ -1,24 +1,30 @@
 # İz T5 federasyon istemcisi (`rs/hosts`, crate `cops-hosts`)
 
-## Durum (26 Kas 2026 gece): BİRLEŞTİRME KAPISINA HAZIR (copsd sonrası e2e cops'ta)
+## Durum (27 Kas 2026 00:42): BİRLEŞTİRMEYE HAZIR `ce8c1b2f` + bu belge commit'i (copsd sonrası e2e cops'ta)
 
-`cargo test -p cops-hosts` 125/125 geçiyor (`tests/parity.rs` 12 dahil);
-`cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz. Eşleme tablosu `docs/rs-hosts-mapping.md` (üreteç ve
-denetim `rust/crates/cops-hosts/tools/mapping.py`, `--check` temiz): tanım 361, Python test durumu 906, 0 AÇIK.
-Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
+`origin/main` (`feae0764`; `rs/proc`, `rs/cli`, `rs/state` dahil) dalda. Birleşik ağaçta (`ce8c1b2f`):
+- tam Python paketi 5857 test OK (23 atlanan);
+- `cargo test -p cops-hosts -p cops-auth -p cops-proxy -p cops-parity -p cops-procscan -p cops-cli -p cops-state`
+  533/533;
+- `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz;
+- eşleme tablosu `docs/rs-hosts-mapping.md` (`rust/crates/cops-hosts/tools/mapping.py --check`): tanım 361, Python
+  test durumu 906, 0 AÇIK, 0 hata.
+
+Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı. Canlıya
+alınınca web restart + uzak deploy gerekir (TBD#372/#376/#380/#384/#390 düzeltmeleri Python davranışını değiştirir).
 
 Kalan:
 - Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
 - Açık soru TBD#392 (gRPC köprüsü `require` kipine tabi değil; birleştirmeyi tutmaz, Python'da bugün de öyle).
 - Bilinen fark (belgeli): `orphan_watch` sayıları `i64`e sığmayan sonlu bir sayıysa (`1e300`) Rust `i64::MAX`a kırpar,
   Python büyük tam sayı üretir. Anlamlı bir sayaç değeri değil; `serde_json` keyfi büyüklükte tam sayı taşımaz.
+- Bu izin dışında bir kez düşen test: `cops-proxy` `mounts::dead_app_upstream_is_502` (yük altında; tekrarında geçti).
 
-## Birleştirme notu (26 Kas gece)
+## Birleştirme notu
 
-`origin/main` (`1ad764dc`) dala birleştirildi; tek çakışma `rust/Cargo.toml` members satırıydı. Birleşik ağaçta
-`cargo test -p cops-hosts -p cops-auth -p cops-proxy -p cops-parity` 238/238, `py/cops test --base origin/main` 3126
-test OK (1 atlanan; seçilmiş alt küme, tam paket değil). `mapping.py --check` satır numarasına duyarlıdır: `main` ya
-da Python ilerleyince betik `--check` olmadan yeniden koşulup tablo commit'lenir.
+`main` ilerlerse beklenen çakışma `rust/Cargo.toml` members satırı (birleşim alınır) ve `rust/Cargo.lock` (dalın kilidi
+alınıp `cargo metadata --offline --filter-platform x86_64-unknown-linux-gnu` ile eksikler eklenir). `mapping.py --check`
+satır numarasına ve Python test adlarına duyarlıdır: veri uyarlanır, betik `--check` olmadan koşulup tablo commit'lenir.
 
 ## Sıradaki işler (sırayla)
 
