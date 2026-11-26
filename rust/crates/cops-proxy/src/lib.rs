@@ -7,6 +7,7 @@
 
 mod base_href;
 pub mod force;
+pub mod front;
 pub mod gate;
 pub mod mount;
 pub mod resources;
@@ -97,7 +98,8 @@ pub struct Proxy {
     local: Option<LocalCfg>,
     upstream: SocketAddr,
     dist: Option<std::path::PathBuf>,
-    secret: Option<HeaderValue>,
+    front: Option<Arc<front::FrontSecret>>,
+    version: Option<String>,
     client: Client<HttpConnector, Incoming>,
 }
 
@@ -123,23 +125,121 @@ fn err(code: StatusCode, msg: &str) -> Response<Body> {
     let b = http_body_util::Full::new(Bytes::from(msg.to_string()))
         .map_err(|never| match never {})
         .boxed();
-    Response::builder()
+    let mut r = Response::builder()
         .status(code)
         .header("content-type", "text/plain; charset=utf-8")
         .body(b)
-        .unwrap()
+        .unwrap();
+    r.extensions_mut().insert(Generated);
+    r
+}
+
+/// copsd'nin KENDİ ürettiği yanıt (üst sunucudan gelmedi): Python yolunda [`harden`] uygulanır.
+#[derive(Clone, Copy)]
+struct Generated;
+
+/// Python `_Handler.end_headers` güvenlik başlıkları (`py/claudeops/commands/web.py`): `X-Content-Type-Options: nosniff`,
+/// `Referrer-Policy: no-referrer`; yanıt kendi CSP'sini taşımıyorsa (Python `_ext_own_csp`) ek olarak `X-Frame-Options: DENY`
+/// ve [`CSP`]. Yanıtta zaten olan başlık değiştirilmez. Rust'ın kendi cevapladığı yanıtlara ve Python yolunda copsd'nin ürettiği
+/// hata yanıtlarına uygulanır; mount yanıtlarına (uygulamanın kendi sayfaları) ve Python'dan gelen yanıta UYGULANMAZ.
+pub fn harden(h: &mut hyper::HeaderMap) {
+    let mut put = |k: &'static str, v: &'static str| {
+        if !h.contains_key(k) {
+            h.insert(k, HeaderValue::from_static(v));
+        }
+    };
+    put("x-content-type-options", "nosniff");
+    put("referrer-policy", "no-referrer");
+    if !h.contains_key("content-security-policy") {
+        h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+        h.insert("content-security-policy", HeaderValue::from_static(CSP));
+    }
+}
+
+/// Python'un istek hedefinden çıkardığı yol (3.10 `parse_request`: baştaki `//...` tek `/`ye iner; `urlparse(...).path`).
+pub fn python_path(target: &str) -> String {
+    let t = if target.starts_with("//") {
+        format!("/{}", target.trim_start_matches('/'))
+    } else {
+        target.to_string()
+    };
+    let t = t.split(['?', '#']).next().unwrap_or("").to_string();
+    // Mutlak biçim (`http://h/yol`): `urlparse` yolu otoriteden sonra başlatır.
+    match t.split_once("://") {
+        Some((scheme, rest))
+            if !scheme.is_empty()
+                && scheme
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(&b))
+                && !scheme.contains('/') =>
+        {
+            rest.find('/')
+                .map_or_else(String::new, |i| rest[i..].to_string())
+        }
+        _ => t,
+    }
+}
+
+/// İç uç engeli: Rust'ın gördüğü yol YA DA Python'un aynı hedeften çıkaracağı yol (`python_path`) `/api/_internal` ile
+/// başlıyorsa (baştaki `/`ler atılır, harf duyarsız: Python harf duyarlıdır, Rust daha sıkı).
+pub fn is_internal_target(path: &str, path_and_query: &str) -> bool {
+    let hit = |p: &str| {
+        p.trim_start_matches('/')
+            .to_ascii_lowercase()
+            .starts_with("api/_internal")
+    };
+    hit(path) || hit(&python_path(path_and_query))
 }
 
 fn json_resp(code: StatusCode, v: serde_json::Value) -> Response<Body> {
     let b = http_body_util::Full::new(Bytes::from(v.to_string()))
         .map_err(|never| match never {})
         .boxed();
-    Response::builder()
+    let mut r = Response::builder()
         .status(code)
         .header("content-type", "application/json; charset=utf-8")
         .header("cache-control", "no-store")
         .body(b)
-        .unwrap()
+        .unwrap();
+    r.extensions_mut().insert(Generated);
+    r
+}
+
+/// Python `do_POST` `_BodyTimeout` yanıtı: 408 `{"ok": false, "error": "request body timeout"}` + bağlantı kapanır (gövde
+/// tamamlanmadı: kalan baytlar sonraki isteğin başı sanılmasın).
+fn body_timeout_resp() -> Response<Body> {
+    let mut r = json_resp(
+        StatusCode::REQUEST_TIMEOUT,
+        serde_json::json!({"ok": false, "error": "request body timeout"}),
+    );
+    r.headers_mut()
+        .insert(CONNECTION, HeaderValue::from_static("close"));
+    r
+}
+
+/// Gövdeyi `limit` bayta ve `timeout` süresine kadar okur. `Err(None)` = zaman aşımı ya da erken kopan/eksik gövde (Python
+/// `_read_body_raw` `_BodyTimeout`: 408), `Err(Some(TooLarge))` = sınır aşıldı.
+pub async fn read_body_limited<B>(
+    body: B,
+    limit: usize,
+    timeout: std::time::Duration,
+) -> Result<Bytes, Option<gate::BodyError>>
+where
+    B: hyper::body::Body,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    // Bildirilen uzunluk sınırı aşıyorsa hiç okumadan (Python: `Content-Length` > sınır = hemen ret).
+    if body.size_hint().lower() > limit as u64 {
+        return Err(Some(gate::BodyError::TooLarge));
+    }
+    let read = http_body_util::Limited::new(body, limit).collect();
+    match tokio::time::timeout(timeout, read).await {
+        Ok(Ok(c)) => Ok(c.to_bytes()),
+        Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => {
+            Err(Some(gate::BodyError::TooLarge))
+        }
+        Ok(Err(_)) | Err(_) => Err(None),
+    }
 }
 
 /// İstemci https mi: copsd TLS sonlandırmaz; https yalnız AYNI makinedeki ön uçtan (tünel, ters vekil: loopback eş) gelen
@@ -544,7 +644,8 @@ impl Proxy {
             local: None,
             upstream,
             dist: None,
-            secret: None,
+            front: None,
+            version: None,
             client,
         })
     }
@@ -734,12 +835,10 @@ impl Proxy {
             return None;
         }
         let header = |n: &str| req.headers().get(n).and_then(|v| v.to_str().ok());
-        let front = header("x-cops-front").map(|s| format!("Bearer {s}"));
         let ok = cfg
             .token
             .authorized(req.uri().query().unwrap_or(""), header("authorization"))
-            || (peer.ip().to_canonical().is_loopback()
-                && cfg.front_secret.authorized("", front.as_deref()));
+            || self.front_trusted(req, peer, &cfg.front_secret);
         if !ok {
             return Some(json_resp(
                 StatusCode::UNAUTHORIZED,
@@ -748,10 +847,9 @@ impl Proxy {
         }
         let routes = self.table.iter().flat_map(|(t, _)| t.routes()).collect();
         let force = self.force.as_ref().map(|f| f.list()).unwrap_or_default();
-        Some(json_resp(
-            StatusCode::OK,
-            self.stats.snapshot(routes, force),
-        ))
+        let mut v = self.stats.snapshot(routes, force);
+        v["version"] = self.version.as_deref().unwrap_or("unknown").into();
+        Some(json_resp(StatusCode::OK, v))
     }
 
     /// Rust'ın cevaplayabileceği istek: statik, metrik, rota tablosu, tek kanca, yerel uç (bu sırayla). `Ok` ikinci alan sayaç
@@ -796,6 +894,21 @@ impl Proxy {
     }
 }
 
+/// Python'a aktarılan isteğin istemci/ön kapı başlıkları: istemcinin `X-Cops-Front` kopyası silinir, uzak eşin
+/// `Cf-Connecting-IP`si eşin kendi adresiyle ezilir ([`front::pin_client_ip`]), `secret` varsa `X-Cops-Front` eklenir,
+/// `X-Forwarded-For` = eşin kanonik adresi.
+pub fn prepare_forward_headers(h: &mut hyper::HeaderMap, peer: SocketAddr, secret: Option<&str>) {
+    h.remove("x-cops-front");
+    drop_untrusted_client_ip(h, peer);
+    front::pin_client_ip(h, peer);
+    if let Some(v) = secret.and_then(|s| HeaderValue::from_str(s).ok()) {
+        h.insert(HeaderName::from_static("x-cops-front"), v);
+    }
+    if let Ok(v) = HeaderValue::from_str(&peer.ip().to_canonical().to_string()) {
+        h.insert(HeaderName::from_static("x-forwarded-for"), v);
+    }
+}
+
 /// Kancanın üstlendiği isteği çalıştırır: gövde sınırlı ve süreli okunur.
 async fn run_hook(
     hook: Arc<dyn gate::RouteHook>,
@@ -805,18 +918,12 @@ async fn run_hook(
     peer: SocketAddr,
 ) -> Response<Body> {
     let https = client_https(req.headers(), peer);
-    let read = http_body_util::Limited::new(req.into_body(), limit).collect();
-    let body = match tokio::time::timeout(hook.body_timeout(), read).await {
-        Ok(Ok(c)) => Ok(c.to_bytes()),
-        Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => Err(gate::BodyError::TooLarge),
-        Ok(Err(_)) => Err(gate::BodyError::Read),
-        // Gövde tamamlanmadı: kalan baytlar sonraki isteğin başı sanılmasın, bağlantı kapanır.
-        Err(_) => {
-            let mut r = err(StatusCode::REQUEST_TIMEOUT, "request body timeout");
-            r.headers_mut()
-                .insert(hyper::header::CONNECTION, HeaderValue::from_static("close"));
-            return r;
-        }
+    // Süre aşımı ve erken kopan/eksik gövde Python gibi 408 + bağlantı kapanır (kanca çağrılmaz; `BodyError::Read` artık
+    // kancaya ulaşmaz). Sınır aşımı kancaya `TooLarge` olarak gider.
+    let body = match read_body_limited(req.into_body(), limit, hook.body_timeout()).await {
+        Ok(b) => Ok(b),
+        Err(Some(e)) => Err(e),
+        Err(None) => return body_timeout_resp(),
     };
     let r = gate::route_call(hook, gate::RouteRequest { view, body, https }).await;
     let mut b = Response::builder()
@@ -892,22 +999,13 @@ impl Proxy {
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
-        let front = req
-            .headers()
-            .get("x-cops-front")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| format!("Bearer {s}"));
+        let front_ok = post && self.front_trusted(&req, peer, &m.front_secret);
         let ok = match if post {
             gate::LocalVerdict::Default
         } else {
             self.local_verdict(&req, peer).await
         } {
-            gate::LocalVerdict::Default => {
-                m.token.authorized(&query, auth.as_deref())
-                    || (post
-                        && peer.ip().to_canonical().is_loopback()
-                        && m.front_secret.authorized("", front.as_deref()))
-            }
+            gate::LocalVerdict::Default => m.token.authorized(&query, auth.as_deref()) || front_ok,
             gate::LocalVerdict::Allow => true,
             gate::LocalVerdict::Unauthorized => false,
             gate::LocalVerdict::Forbidden => return Ok(forbidden()),
@@ -924,17 +1022,19 @@ impl Proxy {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         let body = if post {
-            match http_body_util::Limited::new(req.into_body(), 1 << 20)
-                .collect()
-                .await
-            {
-                Ok(b) => b.to_bytes(),
-                Err(_) => {
-                    return Ok(json_resp(
+            match read_body_limited(req.into_body(), 1 << 20, gate::ROUTE_BODY_TIMEOUT).await {
+                Ok(b) => b,
+                Err(Some(_)) => {
+                    let mut r = json_resp(
                         StatusCode::PAYLOAD_TOO_LARGE,
                         serde_json::json!({"ok": false, "error": "body too large"}),
-                    ))
+                    );
+                    // Gövdenin kalanı okunmadı: bağlantı kapanır (sonraki isteğin başı sanılmasın).
+                    r.headers_mut()
+                        .insert(CONNECTION, HeaderValue::from_static("close"));
+                    return Ok(r);
                 }
+                Err(None) => return Ok(body_timeout_resp()),
             }
         } else {
             Bytes::new()
@@ -1019,9 +1119,51 @@ impl Proxy {
             local: None,
             upstream,
             dist: None,
-            secret: HeaderValue::from_str(secret).ok(),
+            front: Some(Arc::new(front::FrontSecret::fixed(Some(secret)))),
+            version: None,
             client,
         })
+    }
+
+    /// Ön kapı gizlisini tak ([`front::FrontSecret`]: dosya imzası değişince yeniden okunur, yok/bozuk = gizli yok). Takılıysa
+    /// aktarılan isteğe her istekte o anki değer eklenir ve `X-Cops-Front` denetimleri ([`StatsCfg`], [`MetricsCfg`]) BUNU
+    /// kullanır (cfg'deki `front_secret` yok sayılır). Proxy paylaşılmışsa değişmeden döner ve günlüğe yazar.
+    pub fn with_front_secret(self: Arc<Self>, f: Arc<front::FrontSecret>) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                front: Some(f),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_front_secret: vekil paylaşılmış, gizli takılmadı");
+                me
+            }
+        }
+    }
+
+    /// İkili sürümü (`GIT_SHA`): `/api/front/stats` `version` alanında görünür. Proxy paylaşılmışsa değişmeden döner.
+    pub fn with_version(self: Arc<Self>, v: &str) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                version: Some(v.to_string()),
+                ..me
+            }),
+            Err(me) => me,
+        }
+    }
+
+    /// `X-Cops-Front` denetimi: takılı [`front::FrontSecret`] varsa o (Python `trusted_front`), yoksa cfg token'ı (loopback eş).
+    fn front_trusted<B>(&self, req: &Request<B>, peer: SocketAddr, cfg: &cops_auth::Token) -> bool {
+        let h = req.headers().get("x-cops-front");
+        match &self.front {
+            Some(f) => f.trusted(peer.ip(), h.map(HeaderValue::as_bytes)),
+            None => {
+                let v = h
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| format!("Bearer {s}"));
+                peer.ip().to_canonical().is_loopback() && cfg.authorized("", v.as_deref())
+            }
+        }
     }
 
     /// `peer`: bağlanan istemcinin adresi (X-Forwarded-For için). İstemcinin gönderdiği X-Forwarded-For'a GÜVENİLMEZ, üzerine yazılır.
@@ -1032,14 +1174,20 @@ impl Proxy {
     ) -> Result<Response<Body>, hyper::Error> {
         // İç uçlar (`/api/_internal/*`) dışarıdan ASLA aktarılmaz: ön kapı gizlisi her aktarılan isteğe eklendiği için, aktarılırsa
         // herkes iç kimlik/bilet uçlarını güvenilir çağrıcı gibi çağırabilirdi. Yalnız Rust'un KENDİ iç çağrıları (loopback) bu yola gider.
-        if req
+        // Python'un aynı hedeften çıkaracağı yol da denetlenir (`//api/...`, mutlak biçim). Yanıt Python'un dış istemciye verdiği
+        // 404 ile aynı: `{"error": "not found"}` + güvenlik başlıkları.
+        let pq_raw = req
             .uri()
-            .path()
-            .trim_start_matches('/')
-            .to_ascii_lowercase()
-            .starts_with("api/_internal")
-        {
-            return Ok(err(StatusCode::NOT_FOUND, "not found"));
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/");
+        if is_internal_target(req.uri().path(), pq_raw) {
+            let mut r = json_resp(
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": "not found"}),
+            );
+            harden(r.headers_mut());
+            return Ok(r);
         }
         if let Some(cfg) = &self.mounts {
             if let Some(hit) = cfg.mounts.lookup(req.uri().path()) {
@@ -1148,7 +1296,8 @@ impl Proxy {
             }
         }
         let asked = req.headers_mut().remove(PARITY_HEADER).is_some();
-        if let Some(r) = self.try_stats(&req, peer) {
+        if let Some(mut r) = self.try_stats(&req, peer) {
+            harden(r.headers_mut());
             return Ok(mark_served(r, asked, "local"));
         }
         let method = req.method().as_str().to_string();
@@ -1158,7 +1307,8 @@ impl Proxy {
             req
         } else {
             match self.answer_locally(req, peer).await {
-                Ok((r, key)) => {
+                Ok((mut r, key)) => {
+                    harden(r.headers_mut());
                     self.stats
                         .record(&method, key, r.status().as_u16(), stats::Outcome::Local);
                     return Ok(mark_served(r, asked, "local"));
@@ -1170,22 +1320,18 @@ impl Proxy {
             let strip = gate::forward_check(f.clone(), request_view(&req, peer)).await;
             strip_credentials(req.headers_mut(), &strip);
         }
-        req.headers_mut().remove("x-cops-front");
-        drop_untrusted_client_ip(req.headers_mut(), peer);
-        if let Some(sec) = &self.secret {
-            req.headers_mut()
-                .insert(HeaderName::from_static("x-cops-front"), sec.clone());
-        }
-        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_canonical().to_string()) {
-            req.headers_mut()
-                .insert(HeaderName::from_static("x-forwarded-for"), v);
-        }
+        // Gizli her istekte o anki değerle (döndürme/silme anında etkili); yoksa başlık eklenmez (Python da güvenmez).
+        let sec = self.front.as_ref().and_then(|f| f.current());
+        prepare_forward_headers(req.headers_mut(), peer, sec.as_deref());
         let pq = req
             .uri()
             .path_and_query()
             .map(|p| p.as_str().to_string())
             .unwrap_or_else(|| "/".into());
-        let r = self.forward(req, self.upstream, &pq).await;
+        let mut r = self.forward(req, self.upstream, &pq).await;
+        if r.extensions().get::<Generated>().is_some() {
+            harden(r.headers_mut());
+        }
         let outcome = stats::Outcome::Python {
             forced,
             upstream_error: r.extensions().get::<UpstreamError>().is_some(),
@@ -1726,14 +1872,29 @@ pub async fn serve(listen: SocketAddr, proxy: Arc<Proxy>) -> std::io::Result<()>
     serve_on(tokio::net::TcpListener::bind(listen).await?, proxy).await
 }
 
+/// İstek satırı + başlıkların okunma süre sınırı (Python `_Handler.HEADER_READ_TIMEOUT`, slowloris). Aşılırsa bağlantı kapanır.
+pub const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// `serve`, hazır bağlanmış dinleyiciyle (port seçimiyle dinleme arasında başkası portu alamaz).
 pub async fn serve_on(ln: tokio::net::TcpListener, proxy: Arc<Proxy>) -> std::io::Result<()> {
+    serve_on_with(ln, proxy, HEADER_READ_TIMEOUT).await
+}
+
+/// [`serve_on`], başlık okuma süre sınırı verilerek (sınama için).
+pub async fn serve_on_with(
+    ln: tokio::net::TcpListener,
+    proxy: Arc<Proxy>,
+    header_read_timeout: std::time::Duration,
+) -> std::io::Result<()> {
     loop {
         let (sock, peer) = ln.accept().await?;
         let p = proxy.clone();
         tokio::spawn(async move {
             let svc = hyper::service::service_fn(move |r| p.clone().handle(r, peer));
+            // hyper'ın varsayılan 30 sn başlık sınırı zamanlayıcı olmadan UYGULANMAZ: zamanlayıcı açıkça verilir.
             let _ = hyper::server::conn::http1::Builder::new()
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(header_read_timeout)
                 .serve_connection(TokioIo::new(sock), svc)
                 .with_upgrades()
                 .await;

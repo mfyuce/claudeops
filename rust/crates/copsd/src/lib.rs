@@ -1,5 +1,9 @@
-//! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan 127.0.0.1:18765).
-//! Ön kapı gizlisi: `--secret-file` (varsayılan ~/.claude/claudeops/front.secret; 0600 değilse REDDEDİLİR) ya da `CLAUDEOPS_FRONT_SECRET`.
+//! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan
+//! [`DEFAULT_UPSTREAM`] = 127.0.0.1:28765, `cops front` `DEFAULT_INTERNAL` ile aynı).
+//! Ön kapı gizlisi: `CLAUDEOPS_FRONT_SECRET` (boş değilse) ya da `--secret-file` (varsayılan `$HOME/.claude/claudeops/front.secret`,
+//! Python `front.secret_path` ile aynı). AÇILIŞTA dosya var ama kullanılamıyorsa (0600 değil, UTF-8 değil, okunamıyor) süreç çıkış
+//! kodu 2 ile durur (Python gizliyi yok sayar; Rust daha sıkı). ÇALIŞIRKEN dosya her istekte `stat` edilir, değişince yeniden okunur;
+//! yok/gevşek/bozuk olursa gizli YOK sayılır (kapalı yön), bkz. [`cops_proxy::front`].
 //! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
 //! `--mounts-file` (varsayılan [`state_dir`]`/derbent/mounts.json`): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
 //! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
@@ -28,6 +32,12 @@ pub struct Ctx {
     /// Ön kapı gizlisi (`X-Cops-Front`); yoksa `None`.
     pub front_secret: Option<String>,
 }
+
+/// `--upstream`/`COPSD_UPSTREAM` verilmezse Python iç portu (`py/claudeops/commands/front_cmd.py` `DEFAULT_INTERNAL`).
+pub const DEFAULT_UPSTREAM: &str = "127.0.0.1:28765";
+
+/// Derlenen kaynağın git commit'i (`build.rs`).
+pub const GIT_SHA: &str = env!("COPSD_GIT_SHA");
 
 /// Komut satırında `name` bayrağının değeri.
 pub fn arg(name: &str) -> Option<String> {
@@ -66,26 +76,32 @@ pub fn token_file() -> std::path::PathBuf {
     state_path("--token-file", "web.token")
 }
 
+/// Gizli dosyasının yolu: `--secret-file`, yoksa `$HOME/.claude/claudeops/front.secret` (Python `front.secret_path`; durum dizinini
+/// izlemez, "Python hatası?" 3).
+pub fn secret_file() -> std::path::PathBuf {
+    arg("--secret-file").map(Into::into).unwrap_or_else(|| {
+        format!(
+            "{}/.claude/claudeops/front.secret",
+            std::env::var("HOME").unwrap_or_default()
+        )
+        .into()
+    })
+}
+
+/// Açılış denetimi: ortam değişkeni (boş değilse, kırpılmadan) ya da dosya. Dosya yoksa ya da yalnız boşluksa `Ok(None)`; var ama
+/// kullanılamıyorsa `Err` (copsd çıkar).
 fn read_secret() -> Result<Option<String>, String> {
     if let Ok(s) = std::env::var("CLAUDEOPS_FRONT_SECRET") {
         if !s.is_empty() {
             return Ok(Some(s));
         }
     }
-    let path = arg("--secret-file").unwrap_or_else(|| {
-        format!(
-            "{}/.claude/claudeops/front.secret",
-            std::env::var("HOME").unwrap_or_default()
-        )
-    });
-    match std::fs::metadata(&path) {
-        Err(_) => Ok(None),
-        Ok(m) => {
-            if m.permissions().mode() & 0o077 != 0 {
-                return Err(format!("{path}: izinler 0600 değil, reddedildi"));
-            }
-            let s = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
-            Ok(Some(s.trim().to_string()).filter(|s| !s.is_empty()))
+    let path = secret_file();
+    match cops_proxy::front::read_secret_file(&path) {
+        cops_proxy::front::SecretFile::Missing => Ok(None),
+        cops_proxy::front::SecretFile::Value(v) => Ok(Some(v).filter(|s| !s.is_empty())),
+        cops_proxy::front::SecretFile::Unusable(why) => {
+            Err(format!("{}: {why}, reddedildi", path.display()))
         }
     }
 }
@@ -169,7 +185,7 @@ where
         .expect("--listen");
     let up: SocketAddr = arg("--upstream")
         .or_else(|| std::env::var("COPSD_UPSTREAM").ok())
-        .unwrap_or_else(|| "127.0.0.1:18765".into())
+        .unwrap_or_else(|| DEFAULT_UPSTREAM.into())
         .parse()
         .expect("--upstream");
     let secret = match read_secret() {
@@ -181,17 +197,19 @@ where
     };
     let front_secret = secret.clone().unwrap_or_default();
     eprintln!(
-        "copsd: {listen} -> {up} (gizli: {})",
+        "copsd {GIT_SHA}: {listen} -> {up} (gizli: {})",
         if secret.is_some() {
             "var"
         } else {
-            "YOK, X-Forwarded-For güvenilmez"
+            "YOK: Python X-Forwarded-For'a güvenmez; uzak istemci adresi Cf-Connecting-IP ile iletilir"
         }
     );
-    let proxy = match secret {
-        Some(sec) => cops_proxy::Proxy::with_secret(up, &sec),
-        None => cops_proxy::Proxy::new(up),
-    };
+    // Gizli ortamdan geldiyse sabit, dosyadan ise her istekte imza denetimiyle (döndürme/silme/sonradan oluşma anında etkili).
+    let proxy = cops_proxy::Proxy::new(up)
+        .with_front_secret(Arc::new(cops_proxy::front::FrontSecret::from_env_or_file(
+            secret_file(),
+        )))
+        .with_version(GIT_SHA);
     let proxy = match arg("--dist") {
         Some(d) => proxy.with_dist(std::path::PathBuf::from(d)),
         None => proxy,
