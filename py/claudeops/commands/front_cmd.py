@@ -36,7 +36,7 @@ Description=claudeops front (copsd, Rust vekil)
 # Python birimine bağımlı DEĞİL: Python düşükken ön kapı ayakta kalır (vekil uçlar 502 verir).
 
 [Service]
-ExecStart={bin} --listen {listen} --upstream {internal} --dist {dist}
+ExecStart={bin} --listen {listen} --upstream {internal} --dist {dist} --state-dir {state}
 Restart=always
 RestartSec=2
 UMask=0077
@@ -54,6 +54,13 @@ def register(sub):
     p.add_argument("--internal", default=DEFAULT_INTERNAL)
     p.add_argument("--bin", default=str(DEFAULT_BIN))
     p.set_defaults(func=run)
+
+
+def _unit_text(binp: str, listen: str, internal: str) -> str:
+    """Birim metni. copsd'nin durum dizini Python'un gizliyi yazdığı dizinle (`front.secret_path`) aynı olsun; systemd tırnağı."""
+    d = os.path.abspath(front_mod.paths.CLAUDEOPS_DIR)
+    state = '"' + d.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$") + '"'
+    return FRONT_UNIT_TEMPLATE.format(bin=binp, listen=listen, internal=internal, dist=DIST_DIR, state=state)
 
 
 def web_execstart(unit_text: str) -> Optional[str]:
@@ -95,7 +102,8 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     if port_busy(internal) and not DROPIN.exists():      # drop-in varsa zaten açık: yeniden uygulama (birim güncelle) serbest
         blockers.append(f"iç port dolu: {internal}")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
-             f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR})",
+             f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR} "
+             f"--state-dir {front_mod.paths.CLAUDEOPS_DIR})",
              f"yaz: {DROPIN} (Python -> {internal})",
              "systemctl --user daemon-reload", "systemctl --user restart claudeops-web.service (Python iç porta geçer, dış port boşalır)",
              "systemctl --user enable --now claudeops-front.service"]
@@ -127,7 +135,7 @@ def run(args) -> int:
             return 0
         reapply = DROPIN.exists() and port_busy(args.internal)       # zaten açık: Python'a dokunma, yalnız front birimini yenile
         front_mod.ensure_secret()
-        FRONT_UNIT.write_text(FRONT_UNIT_TEMPLATE.format(bin=args.bin, listen=args.listen, internal=args.internal, dist=DIST_DIR))
+        FRONT_UNIT.write_text(_unit_text(args.bin, args.listen, args.internal))
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
         DROPIN.write_text(dropin_text(with_internal_port(web_execstart(text) or "", args.internal) or ""))
         cmds = (("daemon-reload",), ("enable", "--now", "claudeops-front.service"), ("restart", "claudeops-front.service")) if reapply else \
