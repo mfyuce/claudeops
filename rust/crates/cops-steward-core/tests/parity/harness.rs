@@ -115,6 +115,7 @@ fn clip(s: &str) -> String {
 }
 
 /// `parity!(python_adı, test_adı, |c| ifade)`: vektörleri oynatan bir `#[test]` tanımlar; ifade serileştirilebilir döner.
+#[allow(unused_macros)]
 macro_rules! parity {
     ($py:literal, $name:ident, |$c:ident| $body:expr) => {
         #[test]
@@ -123,4 +124,5 @@ macro_rules! parity {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use parity;
