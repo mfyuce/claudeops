@@ -43,7 +43,7 @@ def owner_class(q: "sw.Question", owner_projects: str = "", note: str = "", now:
         return "job_request"
     if q.extra_texts:
         return "combined"
-    if q.deferred_until and q.deferred_until > (now or time.time()):
+    if q.deferred_until and q.deferred_until > (time.time() if now is None else now):
         return "deferred"
     if q.project in {x.strip() for x in str(owner_projects or "").split(",") if x.strip()}:
         return "owner_project"

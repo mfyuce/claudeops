@@ -3055,6 +3055,7 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     skip_seen = skip_seen or {}
     lda = last_directive_at or {}
     rva = reviewed_at or {}
+    en = cfg.lang == "en"
     if world is not None:
         projects = world.own_projects(projects)
     items: List[Dict[str, Any]] = []
@@ -3089,8 +3090,12 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
         sn = marker_next_work(v.last_assistant or "")
         if sn:      # "son yanıt" 700 karakterde kesilir, STEWARD-NEXT satırı sonda kaybolurdu: ayrı alan + çelişki uyarısı
             items[-1]["stated_next"] = sn
-            items[-1]["contradictions"] = [f"oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{sn}». 'Sahipsiz yeni iş yok' diye skip etme: "
-                                           "steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."]
+            items[-1]["contradictions"] = [
+                f"the session reported UNOWNED work with STEWARD-NEXT: «{sn}». Do not skip it as 'no new unowned work': "
+                "if no pending owner answer blocks it, keep the session on it with steward_directive."
+                if en else
+                f"oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{sn}». 'Sahipsiz yeni iş yok' diye skip etme: "
+                "steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."]
         if claim_check is not None:
             contradictions = claim_check(v.project)
             if contradictions:
@@ -3101,24 +3106,32 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     for q in questions:
         if q.status == "open" and q.routine:
             age = max(0, int((now - float(q.created_at or now)) / 60))
+            if en:
+                head = f"Routine question [{q.id}] (answer it with steward_answer id answer)"
+                waiting_note = f" [asked {age} min ago: still waiting, do it first]"
+            else:
+                head = f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
+                waiting_note = f" [{age} dk önce soruldu: beklemede, öncelik ver]"
             items.append({"kind": "routine", "name": q.project or "-", "id": q.id, "age_min": age,
-                          "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
-                                  + (f" [{age} dk önce soruldu: beklemede, öncelik ver]" if age >= 20 else "") + f": {q.text}"})
+                          "text": head + (waiting_note if age >= 20 else "") + f": {q.text}"})
     if cfg.ask_gate != "off":
         from . import steward_ask
         for q in questions:
             if steward_ask.tour_eligible(q, projects, cfg, state or {}, now):
-                opts = f"\nSeçenekler: {_clip(' | '.join(q.options), 120)}" if q.options else ""
+                opts = f"\n{'Options' if en else 'Seçenekler'}: {_clip(' | '.join(q.options), 120)}" if q.options else ""
+                head = (f"Owner question [{q.id}] (steward_answer id answer; your answer passes through the gate, skip it if unsure): "
+                        if en else
+                        f"Sahip sorusu [{q.id}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): ")
                 items.append({"kind": "ask", "name": q.project, "id": q.id,
-                              "text": f"Sahip sorusu [{q.id}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): "
-                                      f"{_clip(q.text, ASK_ITEM_CHARS)}{opts}"})
+                              "text": f"{head}{_clip(q.text, ASK_ITEM_CHARS)}{opts}"})
     stale_ids = {q.id for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running})}
     for q in undelivered_answers(questions):
         if q.id in stale_ids:
             continue
         if not q.project or q.project == cfg.brain_name or q.project not in projects:
             items.append({"kind": "blocked", "name": q.project or "-", "id": q.id,
-                          "text": f"Cevaplanan soru [{q.id}]: {q.text}\nCevap: {q.answer}"})
+                          "text": f"Answered question [{q.id}]: {q.text}\nAnswer: {q.answer}" if en else
+                                  f"Cevaplanan soru [{q.id}]: {q.text}\nCevap: {q.answer}"})
     return items
 
 
@@ -3399,6 +3412,8 @@ def plan_deliveries(entries, mine, taken, state: Dict[str, Any], now: float, lim
     `last_directive_at` damgasını `now` yap. `taken` yerinde güncellenir. Dönüş: (eylemler, yeni state); eylem yoksa ([], state)."""
     out: List[Action] = []
     lda: Optional[Dict[str, float]] = None
+    if limit <= 0:
+        return out, state
     for proj, make in entries:
         v = pick_delivery_view(mine, proj, "")
         if (v is None or v.busy or v.name in taken
@@ -3813,7 +3828,7 @@ def upper_tier_approved(questions: List["Question"], project: str, model: str, e
     tag = upper_tier_tag(project, model, effort)
     for q in questions:
         if q.status == "answered" and q.source == UPPER_MODEL_SOURCE and tag in (q.text or ""):
-            if (q.answer or "").strip().lower().rstrip(".!") in APPROVE_WORDS:
+            if re.sub(r"[\s.!]+\Z", "", (q.answer or "").strip().lower()) in APPROVE_WORDS:      # "evet ." / "onayla !"
                 return True
     return False
 
@@ -4011,7 +4026,7 @@ def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: 
         proj = v.project if v.project in projects else ""
         mk = scan_markers(v.last_assistant)
         actions.extend(marker_record_actions(v.name, proj, mk))
-        note_project_next(st, proj, v.name, mk, time.time())
+        note_project_next(st, proj, v.name, mk, _now())
     st["seen_assistant"] = seen
     return actions, st
 
@@ -4043,7 +4058,9 @@ BRAIN_MCP_RESTART_COOLDOWN = 6 * 3600.0     # araçsızlıktan yeniden açma en 
 BRAIN_NOTOOLS_MIN_AGE = 180.0               # önceki turdan bu kadar süre geçmeden "çağrı yok" hükmü verilmez (beyin yanıt vermiş olmalı)
 _NO_TOOLS_RE = re.compile(
     r"araçlar(?:ım)?\s+(?:yok|mevcut değil|erişilebilir değil|bulunam)|steward_\w+\s+(?:araç\w*\s+)?(?:yok|bulunamad|mevcut değil)|"
-    r"no (?:matching )?(?:deferred )?tools?\b|tools? (?:are )?(?:not available|unavailable|missing)|"
+    r"no (?:matching )?(?:deferred )?tools?\b"
+    r"(?!(?:[\s-]+(?:calls?|use))?\s+(?:(?:is|are|was|were|will\s+be)\s+)?(?:needed|required|necessary)\b)|"     # "no tools needed" olağan cümle
+    r"tools? (?:are )?(?:not available|unavailable|missing)|"
     r"(?:cops-steward|steward)\s+(?:mcp\s+)?(?:server\s+)?(?:is\s+)?not (?:connected|available)|karar\s+veremedim", re.I)
 
 
