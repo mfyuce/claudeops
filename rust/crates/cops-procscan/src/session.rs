@@ -172,6 +172,35 @@ mod tests {
     }
 
     #[test]
+    fn active_above_two_percent() {
+        let at = |cpu| {
+            Session {
+                cpu,
+                ..Default::default()
+            }
+            .active()
+        };
+        assert_eq!([0.0, 2.0, 2.1, 150.0].map(at), [false, false, true, true]);
+    }
+
+    /// Python `IsFreshTests`: bayrak yoksa sid'e bakılır, bayrak varsa sid'i yener.
+    #[test]
+    fn is_fresh_flag_and_sid_combinations() {
+        let fresh = |resumed, sid: Option<&str>| {
+            Session {
+                resumed,
+                sid: sid.map(str::to_owned),
+                ..Default::default()
+            }
+            .is_fresh()
+        };
+        assert!(fresh(None, None));
+        assert!(!fresh(None, Some("x")));
+        assert!(fresh(Some(false), Some("x")));
+        assert!(!fresh(Some(true), None));
+    }
+
+    #[test]
     fn model_short() {
         let mut s = Session {
             cli: "claude".into(),

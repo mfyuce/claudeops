@@ -98,7 +98,8 @@ impl Probe {
         if s.cli != "ucli" {
             return None;
         }
-        let cmd = self.proc.own(s.pid)?.cmdline();
+        // Python gibi: okunamayan/kaybolan süreç "bayrak yok" değil, bilinmiyor
+        let cmd = self.proc.own(s.pid)?.try_cmdline().ok()?;
         let has = |f: &str| cmd.iter().any(|c| c == f);
         Some(UcliFlags {
             write: has("--allow-edit"),

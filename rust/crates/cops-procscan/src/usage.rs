@@ -182,6 +182,69 @@ fn parse(line: &[u8], unique: &mut u64) -> Result<Option<(Key, Turn)>, BadRow> {
     )))
 }
 
+/// Ekleme sırasını koruyan yol tablosu (Python `dict`): var olan anahtarın üzerine yazmak yerini değiştirmez,
+/// silinip yeniden eklenen anahtar sona gider. Tahliye bu sıraya göredir.
+#[derive(Debug)]
+struct Ordered<V> {
+    map: HashMap<PathBuf, (u64, V)>,
+    order: BTreeMap<u64, PathBuf>,
+    next: u64,
+}
+
+impl<V> Default for Ordered<V> {
+    fn default() -> Self {
+        Ordered {
+            map: HashMap::new(),
+            order: BTreeMap::new(),
+            next: 0,
+        }
+    }
+}
+
+impl<V> Ordered<V> {
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    fn get(&self, path: &Path) -> Option<&V> {
+        self.map.get(path).map(|(_, v)| v)
+    }
+
+    fn get_mut(&mut self, path: &Path) -> Option<&mut V> {
+        self.map.get_mut(path).map(|(_, v)| v)
+    }
+
+    fn entry_or_default(&mut self, path: &Path) -> &mut V
+    where
+        V: Default,
+    {
+        let (_, v) = self.map.entry(path.to_path_buf()).or_insert_with(|| {
+            self.next += 1;
+            self.order.insert(self.next, path.to_path_buf());
+            (self.next, V::default())
+        });
+        v
+    }
+
+    fn remove(&mut self, path: &Path) {
+        if let Some((seq, _)) = self.map.remove(path) {
+            self.order.remove(&seq);
+        }
+    }
+
+    /// En eski eklenen anahtarı atar.
+    fn pop_oldest(&mut self) {
+        if let Some((_, path)) = self.order.pop_first() {
+            self.map.remove(&path);
+        }
+    }
+
+    /// En eskiden en yeniye.
+    fn iter(&self) -> impl Iterator<Item = (&Path, &V)> {
+        self.order.values().filter_map(|p| Some((p.as_path(), self.get(p)?)))
+    }
+}
+
 #[derive(Debug, Default)]
 struct FileState {
     offset: u64,
@@ -192,7 +255,7 @@ struct FileState {
 /// Dosya başına artımlı okuma durumu. Uzun yaşayan süreç tek örnek tutar.
 #[derive(Debug, Default)]
 pub struct UsageReader {
-    files: HashMap<PathBuf, FileState>,
+    files: Ordered<FileState>,
     unique: u64,
 }
 
@@ -204,15 +267,18 @@ impl UsageReader {
             return Ok(None);
         };
         let size = meta.len();
-        if !self.files.contains_key(path) && self.files.len() >= MAX_CACHED_FILES {
-            if let Some(old) = self.files.keys().next().cloned() {
-                self.files.remove(&old);
+        // yeni ya da küçülmüş dosya: baştan. Python gibi, kapasite doluyken küçülmede de en eski girdi atılır
+        // (o girdi dosyanın kendisiyse sona eklenir, değilse yeri değişmez).
+        let fresh = self.files.get(path).is_none_or(|st| size < st.offset || size < st.size);
+        if fresh {
+            if self.files.len() >= MAX_CACHED_FILES {
+                self.files.pop_oldest();
             }
+            *self.files.entry_or_default(path) = FileState::default();
         }
-        let st = self.files.entry(path.to_path_buf()).or_default();
-        if size < st.offset || size < st.size {
-            *st = FileState::default();
-        }
+        let Some(st) = self.files.get_mut(path) else {
+            return Ok(None);
+        };
         if size != st.offset {
             let Ok(mut f) = File::open(path) else { return Ok(None) };
             if f.seek(SeekFrom::Start(st.offset)).is_err() {
@@ -301,7 +367,7 @@ struct Summary {
 pub struct UsageCache {
     ttl: Duration,
     reader: Arc<Mutex<UsageReader>>,
-    summaries: Arc<Mutex<HashMap<PathBuf, Summary>>>,
+    summaries: Arc<Mutex<Ordered<Summary>>>,
 }
 
 impl Default for UsageCache {
@@ -321,15 +387,16 @@ impl UsageCache {
 
     pub fn get(&self, main: &Path) -> Option<Usage> {
         let mut map = lock(&self.summaries);
-        let ent = map.entry(main.to_path_buf()).or_default();
+        let ent = map.entry_or_default(main);
         let value = ent.value.clone();
         if !ent.running && ent.at.is_none_or(|t| t.elapsed() >= self.ttl) {
             ent.running = true;
+            // en eski eklenen 200 boştaki girdi
             if map.len() > MAX_CACHED_FILES {
                 let old: Vec<PathBuf> = map
                     .iter()
-                    .filter(|(k, v)| !v.running && k.as_path() != main)
-                    .map(|(k, _)| k.clone())
+                    .filter(|(k, v)| !v.running && *k != main)
+                    .map(|(k, _)| k.to_path_buf())
                     .take(200)
                     .collect();
                 old.iter().for_each(|k| {
@@ -353,7 +420,7 @@ impl UsageCache {
     fn refresh(&self, main: &Path) {
         let value = lock(&self.reader).usage_for_path(main);
         let mut map = lock(&self.summaries);
-        let ent = map.entry(main.to_path_buf()).or_default();
+        let ent = map.entry_or_default(main);
         if value.is_some() || ent.value.is_none() {
             ent.value = value;
         }
@@ -376,6 +443,7 @@ pub fn fmt_tokens(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::Write;
 
     fn row(id: &str, model: &str, out: u64) -> String {
@@ -402,14 +470,15 @@ mod tests {
         let mut r = UsageReader::default();
         assert_eq!(r.usage_for_path(&p), None);
         // Python gibi: offset bozuk satırın ötesinde, önceki tur korunur, sonraki tur okunur
-        let st = &r.files[&p];
+        let st = r.files.get(&p).unwrap();
         assert_eq!(
             (st.offset, st.size, st.turns.len()),
             ((row("m1", "\"x\"", 1).len() + row("m2", "5", 2).len()) as u64, 0, 1)
         );
         let u = r.usage_for_path(&p).unwrap();
         assert_eq!((u.main.turns, u.main.output), (2, 5));
-        assert_eq!(r.files[&p].size, r.files[&p].offset);
+        let st = r.files.get(&p).unwrap();
+        assert_eq!(st.size, st.offset);
     }
 
     #[test]
@@ -451,7 +520,7 @@ mod tests {
 
         // dosya gitti: yenilemeler `None` üretir ama son iyi değer kalır
         std::fs::remove_file(&p).unwrap();
-        let refreshed_after_delete = |c: &UsageCache| lock(&c.summaries)[&p].at;
+        let refreshed_after_delete = |c: &UsageCache| lock(&c.summaries).get(&p).unwrap().at;
         let before = refreshed_after_delete(&cache);
         let t = Instant::now();
         while refreshed_after_delete(&cache) == before && t.elapsed() < Duration::from_secs(5) {
@@ -482,6 +551,111 @@ mod tests {
         append(&p, &row("m2", "\"x\"", 3));
         std::thread::sleep(Duration::from_millis(50));
         assert_eq!(cache.get(&p).map(|u| u.main.turns), Some(1));
+    }
+
+    fn order<V>(t: &Ordered<V>) -> Vec<PathBuf> {
+        t.iter().map(|(p, _)| p.to_path_buf()).collect()
+    }
+
+    /// Python `_files`: taşmada en eski EKLENEN atılır (okunmak yeri değiştirmez); küçülen dosya yerinde kalır ama
+    /// kapasite doluyken yine en eskiyi attırır; kaybolup dönen dosya sona gider.
+    #[test]
+    fn file_cache_evicts_in_insertion_order() {
+        assert_eq!(MAX_CACHED_FILES, 2000);
+        let tmp = tempfile::tempdir().unwrap();
+        let path = |i: usize| tmp.path().join(format!("f{i}.jsonl"));
+        let two = row("a", "\"x\"", 1) + &row("b", "\"x\"", 1);
+        let mut r = UsageReader::default();
+        let read = |r: &mut UsageReader, i: usize| r.usage_for_path(&path(i)).map(|u| u.main.turns);
+        for i in 0..MAX_CACHED_FILES + 2 {
+            append(&path(i), &two);
+        }
+        for i in 0..MAX_CACHED_FILES {
+            assert_eq!(read(&mut r, i), Some(2));
+        }
+        let all: Vec<PathBuf> = (0..MAX_CACHED_FILES).map(path).collect();
+        assert_eq!(order(&r.files), all);
+
+        // yeniden okuma (değişmemiş ya da büyümüş) sırayı değiştirmez
+        append(&path(0), &row("c", "\"x\"", 1));
+        assert_eq!(read(&mut r, 0), Some(3));
+        assert_eq!(order(&r.files), all);
+
+        // yeni dosya: en son okunmuş olsa da ilk eklenen gider
+        assert_eq!(read(&mut r, MAX_CACHED_FILES), Some(2));
+        assert_eq!(order(&r.files), (1..=MAX_CACHED_FILES).map(path).collect::<Vec<_>>());
+
+        // ortadaki dosya küçüldü: en eski (f1) atılır, f5 yerinde kalır, tablo bir eksilir
+        fs::write(path(5), row("z", "\"x\"", 1)).unwrap();
+        assert_eq!(read(&mut r, 5), Some(1));
+        let after: Vec<PathBuf> = (2..=MAX_CACHED_FILES).map(path).collect();
+        assert_eq!(order(&r.files), after);
+
+        // tablo dolu değilken yeni dosya kimseyi atmaz
+        assert_eq!(read(&mut r, MAX_CACHED_FILES + 1), Some(2));
+        assert_eq!(r.files.len(), MAX_CACHED_FILES);
+        assert_eq!(order(&r.files)[0], path(2));
+
+        // dolu ve küçülen dosya en eskinin kendisi: atılıp sona eklenir
+        fs::write(path(2), row("z", "\"x\"", 1)).unwrap();
+        assert_eq!(read(&mut r, 2), Some(1));
+        assert_eq!(r.files.len(), MAX_CACHED_FILES);
+        let o = order(&r.files);
+        assert_eq!((o.first(), o.last()), (Some(&path(3)), Some(&path(2))));
+
+        // kaybolan dosya tablodan çıkar, dönünce sona eklenir
+        fs::remove_file(path(10)).unwrap();
+        assert_eq!(read(&mut r, 10), None);
+        assert_eq!(r.files.len(), MAX_CACHED_FILES - 1);
+        assert!(r.files.get(&path(10)).is_none());
+        append(&path(10), &two);
+        assert_eq!(read(&mut r, 10), Some(2));
+        let o = order(&r.files);
+        assert_eq!((o.first(), o.last()), (Some(&path(3)), Some(&path(10))));
+    }
+
+    /// Python `_summaries`: bayat bir sorgu tablo 2000'i AŞINCA en eski 200 girdiyi atar; yenilenmekte olan ve
+    /// sorulan yol korunur.
+    #[test]
+    fn summary_cache_evicts_oldest_200() {
+        let path = |i: usize| PathBuf::from(format!("/yok/{i}.jsonl"));
+        // `n` girdili tablo; hepsi taze, `busy` yenilenmekte
+        let filled = |n: usize, busy: usize| {
+            let c = UsageCache::new(Duration::from_secs(3600));
+            let mut map = lock(&c.summaries);
+            for i in 0..n {
+                let e = map.entry_or_default(&path(i));
+                e.at = Some(Instant::now());
+                e.running = i == busy;
+            }
+            drop(map);
+            c
+        };
+        let left = |c: &UsageCache| order(&lock(&c.summaries));
+        let n = MAX_CACHED_FILES;
+
+        // sınırda (2000) atma yok
+        let c = filled(n - 1, n);
+        c.get(&path(n - 1));
+        assert_eq!(left(&c).len(), n);
+
+        // taze girdinin sorgusu, tablo büyük olsa da atmaz
+        let c = filled(n + 1, n + 5);
+        c.get(&path(7));
+        assert_eq!(left(&c).len(), n + 1);
+
+        // 2001: en eski 200 (yenilenen 0 atlanır)
+        let c = filled(n, 0);
+        c.get(&path(n));
+        let want: Vec<PathBuf> = std::iter::once(0).chain(201..=n).map(path).collect();
+        assert_eq!(left(&c), want);
+
+        // sorulan yol en eski ve bayatsa da korunur
+        let c = filled(n + 1, n + 5);
+        lock(&c.summaries).entry_or_default(&path(0)).at = None;
+        c.get(&path(0));
+        let want: Vec<PathBuf> = std::iter::once(0).chain(201..=n).map(path).collect();
+        assert_eq!(left(&c), want);
     }
 
     #[test]

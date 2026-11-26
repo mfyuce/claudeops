@@ -379,6 +379,41 @@ mod tests {
         );
     }
 
+    /// Python `test_effort_stays_unknown_when_a_limit_was_changed_by_hand_or_is_missing`: her dört sınır tek tek
+    /// değişince `None`; eksilince de `None` (yalnız `--max-context-kib` isteğe bağlı).
+    #[test]
+    fn ucli_effort_unknown_when_any_limit_changed_or_missing() {
+        let base = v(
+            "ucli chat --repl --session s --max-steps 200 --max-context-kib 16384 --max-tool-calls 256 \
+--max-output-tokens 16000",
+        );
+        let effort = |c: &[String]| ucli_info(c).effort;
+        assert_eq!(effort(&base).as_deref(), Some("high"));
+        for flag in ["--max-steps", "--max-context-kib", "--max-tool-calls", "--max-output-tokens"] {
+            let i = base.iter().position(|a| a == flag).unwrap();
+            let mut changed = base.clone();
+            changed[i + 1] = "7".into();
+            assert_eq!(effort(&changed), None, "{flag} değişti");
+            let mut dropped = base.clone();
+            dropped.drain(i..i + 2);
+            let want = (flag == "--max-context-kib").then_some("high");
+            assert_eq!(effort(&dropped).as_deref(), want, "{flag} yok");
+        }
+    }
+
+    /// Python `test_deriving_binary_gets_no_context_flag_and_effort_round_trips`: bağlam bayrağı olmadan her ön ayar.
+    #[test]
+    fn ucli_every_preset_without_context_flag() {
+        for (name, limits) in [
+            ("medium", "--max-steps 25 --max-tool-calls 64 --max-output-tokens 4096"),
+            ("high", "--max-steps 200 --max-tool-calls 256 --max-output-tokens 16000"),
+        ] {
+            let i = info(&format!("ucli chat --repl --session s {limits}"));
+            assert_eq!(i.effort.as_deref(), Some(name));
+        }
+        assert_eq!(UCLI_EFFORT.len(), 2, "yeni ön ayar bu teste de eklenmeli");
+    }
+
     #[test]
     fn agy_sid_rules() {
         let mut st = AgyState::default();

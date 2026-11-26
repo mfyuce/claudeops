@@ -2,8 +2,8 @@
 
 use cops_procscan::status::{OrphanTracker, Probe};
 use cops_procscan::transcript::jsonl_path_for;
-use cops_procscan::usage::{Totals, UsageReader};
-use cops_procscan::{find_sessions, Config, CpuMode, Session};
+use cops_procscan::usage::{Totals, Usage, UsageCache, UsageReader};
+use cops_procscan::{find_by_name, find_sessions, Config, CpuMode, Session};
 use std::ffi::CString;
 use std::fs;
 use std::io::Write;
@@ -11,7 +11,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 const ME: u32 = 1000;
@@ -714,4 +714,167 @@ fn own_ppid_from_real_proc() {
     let (uid, ppid) = unsafe { (libc::getuid(), libc::getppid()) };
     let me = ProcFs::new(Path::new("/proc"), uid).own(std::process::id()).unwrap();
     assert_eq!(me.stat().unwrap().ppid, u32::try_from(ppid).unwrap());
+}
+
+#[test]
+fn find_by_name_is_exact_and_returns_every_process() {
+    let f = Fake::new();
+    for (pid, name) in [(140, "a"), (141, "a1"), (142, "a"), (143, "ba")] {
+        f.add(P {
+            pid,
+            cmd: Box::leak(format!("claude --remote-control {name}").into_boxed_str()),
+            ..Default::default()
+        });
+    }
+    let find = |n: &str| {
+        let v = find_by_name(&f.cfg, n, CpuMode::Skip).unwrap();
+        v.iter().map(|s| (s.name.clone(), s.pid)).collect::<Vec<_>>()
+    };
+    assert_eq!(find("a"), [("a".to_owned(), 140), ("a".to_owned(), 142)]);
+    assert_eq!(find("a1"), [("a1".to_owned(), 141)]);
+    assert!(find("b").is_empty() && find("A").is_empty() && find("").is_empty());
+    // CPU kipi taramaya aktarılır
+    let stat = f.root.join("proc/141/stat");
+    let mut wait = || {
+        fs::write(&stat, stat_line(141, 1, 30)).unwrap();
+        Duration::from_millis(300)
+    };
+    let v = find_by_name(&f.cfg, "a1", CpuMode::Custom(&mut wait)).unwrap();
+    assert_eq!((v[0].cpu, v[0].active()), (100.0, true));
+}
+
+/// Python `test_discovery_sid`: json kaydı olmayan claude satırı argv'yi izler; claude dışı CLI'de sid argv'den,
+/// `is_fresh` sid'in varlığından.
+#[test]
+fn is_fresh_without_json_entry_for_every_cli() {
+    let f = Fake::new();
+    for (pid, cmd, env) in [
+        (150, "claude --remote-control zz1 --resume sid-a", &[][..]),
+        (151, "claude --remote-control zz2", &[]),
+        (152, "ucli chat --repl --session uc", &[]),
+        (153, "ucli chat --repl", &[]),
+        (154, "codex", &["COPS_NAME=cx"]),
+        (155, "codex resume U", &["COPS_NAME=cr"]),
+    ] {
+        f.add(P {
+            pid,
+            cmd,
+            env,
+            ..Default::default()
+        });
+    }
+    let got: Vec<_> = f.scan().iter().map(|s| (s.pid, s.sid.clone(), s.is_fresh())).collect();
+    let sid = |s: &str| Some(s.to_owned());
+    assert_eq!(
+        got,
+        [
+            (150, sid("sid-a"), false),
+            (151, None, true),
+            (152, sid("uc"), false),
+            (153, None, true),
+            (154, None, true),
+            (155, sid("U"), false),
+        ]
+    );
+}
+
+/// Python `test_status_rows_carry_usage_total_without_blocking`: ilk çağrı beklemeden `None`, sonra ana + alt ajan
+/// toplamı; claude olmayan, sid'siz ya da transkriptsiz satır `None`.
+#[test]
+fn probe_usage_total_claude_exact_sid_without_blocking() {
+    let f = Fake::new();
+    let dir = f.root.join("claude/projects/-w-b");
+    fs::create_dir_all(dir.join("big/subagents")).unwrap();
+    let line = |id: &str, cache_read: u64| {
+        format!(
+            r#"{{"type":"assistant","uuid":"u{id}","requestId":"r{id}","message":{{"id":"{id}","model":"claude-sonnet-5-5","usage":{{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":{cache_read},"output_tokens":5}}}}}}"#
+        ) + "\n"
+    };
+    for k in ["b0", "b1", "b2"] {
+        append(&dir.join("big.jsonl"), &line(k, 1_000_000));
+    }
+    append(&dir.join("big/subagents/agent-1.jsonl"), &line("sub1", 0));
+    append(&dir.join("cx.jsonl"), &line("c0", 1)); // dosya var, satır claude değil
+    let probe = Probe::new(&f.cfg);
+    let cache = UsageCache::default();
+    let row = |cli: &str, sid: Option<&str>| Session {
+        name: "big".into(),
+        pid: 2,
+        cwd: "/w/b".into(),
+        cli: cli.into(),
+        sid: sid.map(str::to_owned),
+        ..Default::default()
+    };
+    let total = |s: &Session| -> Option<Usage> { probe.usage_total(&f.cfg, &cache, s) };
+    let big = row("claude", Some("big"));
+    assert_eq!(total(&big), None, "ilk çağrı beklemez");
+    let t = Instant::now();
+    let got = loop {
+        if let Some(u) = total(&big) {
+            break u;
+        }
+        assert!(t.elapsed() < Duration::from_secs(5), "arka plan yenilemesi gelmedi");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!((got.main.turns, got.main.cache_read, got.subagents.n), (3, 3_000_000, 1));
+    assert!(got.by_family.contains_key("sonnet"));
+    // eleme önbellekten önce: yenileme beklense de değer gelmez
+    let others = [
+        row("codex", Some("cx")),
+        row("claude", None),
+        row("claude", Some("")),
+        row("claude", Some("yok")),
+    ];
+    for _ in 0..20 {
+        for s in &others {
+            assert_eq!(total(s), None, "{} {:?}", s.cli, s.sid);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Python `test_all_flags`.
+#[test]
+fn ucli_flags_all_set() {
+    let f = Fake::new();
+    f.add(P {
+        pid: 160,
+        cmd: "ucli chat --repl --allow-edit --allow-exec-rust --max-cost-usd 1.5 --ask-dir /x --allow-checks restricted",
+        ..Default::default()
+    });
+    let fl = Probe::new(&f.cfg).ucli_flags(&f.scan()[0]).unwrap();
+    assert_eq!(
+        (fl.write, fl.exec, fl.max_cost_usd, fl.ask, fl.checks),
+        (true, true, Some(1.5), true, true)
+    );
+}
+
+/// Python `test_process_error_returns_none_and_not_cached`: kaybolan ya da `cmdline`ı okunamayan süreç `None`
+/// ("bayrak yok" değil) ve sonraki çağrı yeniden okur.
+#[test]
+fn ucli_flags_lost_process_is_none_and_not_cached() {
+    let f = Fake::new();
+    let probe = Probe::new(&f.cfg);
+    let s = Session {
+        pid: 170,
+        cli: "ucli".into(),
+        ..Default::default()
+    };
+    let add = || {
+        f.add(P {
+            pid: 170,
+            cmd: "ucli chat --repl --allow-edit",
+            ..Default::default()
+        })
+    };
+    assert_eq!(probe.ucli_flags(&s), None, "süreç yok");
+    add();
+    assert!(probe.ucli_flags(&s).unwrap().write);
+    // sahiplik okunuyor ama cmdline gitmiş (iki okuma arasında çıkan süreç)
+    let cmdline = f.root.join("proc/170/cmdline");
+    fs::remove_file(&cmdline).unwrap();
+    assert_eq!(probe.ucli_flags(&s), None, "cmdline okunamadı");
+    fs::write(&cmdline, "ucli\0--repl\0--ask-dir\0/x\0").unwrap();
+    let fl = probe.ucli_flags(&s).unwrap();
+    assert_eq!((fl.write, fl.ask), (false, true));
 }

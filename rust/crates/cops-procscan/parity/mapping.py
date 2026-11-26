@@ -54,7 +54,7 @@ T1, T2, T3 = "T1 (durum)", "T2 (terminal)", "T3 (dosya)"
 T4, T5, T6 = "T4 (yaşam döngüsü)", "T5 (federasyon)", "T6 (CLI)"
 T7, T9, T10 = "T7 (periyodik+kullanım)", "T9 (enterprise)", "T10 (değnekçi)"
 T8 = "T8 (reviewer)"
-CHAT = "AÇIK: T1..T10'da sohbet geçmişi için satır yok (en yakın T4 sağlayıcılar)"
+CHAT = "T1 (/api/status ve sohbet okuma; cops onayı bekler)"
 
 
 def ok(names, rust, tests, note=""):
@@ -104,8 +104,8 @@ DEFS["discovery.py"] = [
        "I:fake_proc.rs::json_source_merges_with_proc_scan I:fake_proc.rs::json_sid_merge_rules_like_python "
        "I:fake_proc.rs::cpu_from_two_samples I:fake_proc.rs::discovers_each_cli_and_names P:scan_sessions",
        "CPU yolu yalnız sahte `/proc` ile sınanır (canlı parite `--no-cpu`)"),
-    gap("find_by_name", "test: Rust karşılığı var, hiçbir Rust testi ya da parite adımı çağırmıyor",
-        "discovery.rs::find_by_name"),
+    ok("find_by_name", "discovery.rs::find_by_name",
+       "I:fake_proc.rs::find_by_name_is_exact_and_returns_every_process"),
     ok("duplicates", "session.rs::duplicates",
        "U:session.rs::subshells_fold_only_for_shell U:list.rs::table_matches_python_layout P:scan_duplicates"),
 ]
@@ -132,21 +132,21 @@ DEFS["session.py"] = [
        "P:scan_sessions I:fake_proc.rs::background_session_folds"),
     ok("Session.bg_pid", "session.rs::Session.bg_pid", "P:scan_sessions I:fake_proc.rs::background_session_folds"),
     ok("Session.is_fresh", "session.rs::Session::is_fresh",
-       "P:scan_sessions I:fake_proc.rs::json_source_merges_with_proc_scan",
-       "bayrak/sid birleşimlerinin bir kısmı sınanmıyor (test satırları: test_discovery_sid IsFreshTests)"),
+       "P:scan_sessions I:fake_proc.rs::json_source_merges_with_proc_scan "
+       "U:session.rs::is_fresh_flag_and_sid_combinations I:fake_proc.rs::is_fresh_without_json_entry_for_every_cli"),
     ok("Session.base", "session.rs::Session::base session.rs::base_name",
        "U:session.rs::base_matches_python_regex G:names_paths_and_token_format P:scan_sessions"),
     ok("Session.model_short", "session.rs::Session::model_short", "U:session.rs::model_short P:list_json"),
-    gap("Session.active", "test: Rust karşılığı var, hiçbir Rust testi ya da parite adımı çağırmıyor",
-        "session.rs::Session::active"),
+    ok("Session.active", "session.rs::Session::active",
+       "U:session.rs::active_above_two_percent I:fake_proc.rs::find_by_name_is_exact_and_returns_every_process"),
 ]
 
 DEFS["session_usage.py"] = [
     ok("CACHE_SECONDS", "usage.rs::CACHE_TTL", "U:usage.rs::cache_respects_ttl",
        "test TTL kuralını sınar, 30 sn değerini değil"),
-    gap("_MAX_CACHED_FILES",
-        "davranış+test: taşma tahliyesi sınanmıyor; Python en eski EKLENENİ atar, Rust `HashMap`ten rastgele anahtar "
-        "atar (belgelenmemiş sapma)", "usage.rs::MAX_CACHED_FILES"),
+    ok("_MAX_CACHED_FILES", "usage.rs::MAX_CACHED_FILES usage.rs::Ordered",
+       "U:usage.rs::file_cache_evicts_in_insertion_order U:usage.rs::summary_cache_evicts_oldest_200",
+       "ekleme sırasıyla tahliye (dosya durumu 1, özet 200), Python gibi"),
     ok("_ZERO", "usage.rs::Totals::add", "G:usage_totals_two_calls", "alan sırası sabit dizi"),
     ok("_lock", "usage.rs::lock usage.rs::UsageCache",
        "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
@@ -489,14 +489,15 @@ DEFS["paths.py"] = [
 ]
 
 DEFS["commands/web.py"] = [
-    gap("_usage_total", "test: `Probe::usage_total`ı hiçbir Rust testi çağırmıyor; ikili ve parite "
-        "`UsageReader`ı doğrudan çağırır", "status.rs::Probe::usage_total"),
+    ok("_usage_total", "status.rs::Probe::usage_total",
+       "I:fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking", "sapma 1; durum yükü bağlantısı T1"),
     ok("_process_started_at", "status.rs::Probe::started_at", "I:fake_proc.rs::tmux_terminal_and_orphans",
        "yalnız kendi kullanıcımızın süreci"),
     oos("_UCLI_FLAGS_CACHE", "pid başına önbellek (sapma 9)", T1),
     ok("_ucli_flags", "status.rs::Probe::ucli_flags status.rs::UcliFlags",
-       "I:fake_proc.rs::ucli_flags I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges P:scan_sessions",
-       "`write`/`checks` doğru değeri Rust testinde sınanmıyor (test_web_ucli_flags satırı); `tools` ve önbellek T1"),
+       "I:fake_proc.rs::ucli_flags I:fake_proc.rs::ucli_flags_all_set "
+       "I:fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached "
+       "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges P:scan_sessions", "`tools` ve önbellek T1"),
     oos("_with_ucli_tools", "rozete durum dosyasından araç listesi ekler", T1),
 ]
 
@@ -543,18 +544,12 @@ CASES["test_discovery_sid.py"] = [
          "I:fake_proc.rs::json_sid_merge_rules_like_python"),
     t_ok(cls(k, "test_a_tui_renamed_session_is_listed_once_under_its_spawn_name"),
          "I:fake_proc.rs::json_source_merges_with_proc_scan"),
-    t_gap(cls(k, "test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before"),
-          "test (kısmi): json'suz `--resume`li satır sınanıyor; json'suz ve sid'siz taze satır (`is_fresh`) sınanmıyor",
-          "I:fake_proc.rs::discovers_each_cli_and_names"),
-    t_gap(cls(k, "test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh"),
-          "test (kısmi): ucli (sid = ad, `is_fresh` yanlış) ve sid'siz CLI'nin `is_fresh`i sınanmıyor",
-          G_INFO),
-    t_gap("IsFreshTests.test_flag_unknown_falls_back_to_the_sid",
-          "test (kısmi): bayraksız + sid'li oturumun taze OLMADIĞI sınanmıyor",
-          "I:fake_proc.rs::json_source_merges_with_proc_scan"),
-    t_gap("IsFreshTests.test_flag_known_wins_over_the_sid",
-          "test (kısmi): `resumed=true` + sid'siz oturum sınanmıyor",
-          "I:fake_proc.rs::json_source_merges_with_proc_scan"),
+    t_ok(cls(k, "test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before"),
+         "I:fake_proc.rs::is_fresh_without_json_entry_for_every_cli"),
+    t_ok(cls(k, "test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh"),
+         "I:fake_proc.rs::is_fresh_without_json_entry_for_every_cli", "sahte sağlayıcı yerine ucli ve codex"),
+    t_ok("IsFreshTests.test_flag_unknown_falls_back_to_the_sid "
+         "IsFreshTests.test_flag_known_wins_over_the_sid", "U:session.rs::is_fresh_flag_and_sid_combinations"),
 ]
 
 k = "FoldTests"
@@ -712,9 +707,9 @@ CASES["test_session_usage.py"] = [
 CASES["test_usage_cli.py"] = [
     t_oos(cls("UsageCliTests", "test_table_sorted_by_spend_and_skips_non_claude test_json_and_name_filter "
               "test_command_is_registered"), "`cops usage` komutu (toplam hesabı `usage.rs` satırlarında)", T6),
-    t_gap("StatusUsageTotalTests.test_status_rows_carry_usage_total_without_blocking",
-          "test: crate'in üstlendiği `Probe::usage_total` (yalnız claude, tam sid, beklemeyen önbellek) için Rust testi "
-          "yok; durum yükü bağlantısı T1", "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
+    t_ok("StatusUsageTotalTests.test_status_rows_carry_usage_total_without_blocking",
+         "I:fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking",
+         "`Probe::usage_total` düzeyinde; durum yükü bağlantısı ve ucli `usage` alanı T1"),
 ]
 
 CASES["test_proc07_io_ucli_not_fleet.py"] = [
@@ -728,11 +723,10 @@ k = "UcliFlagsTest"
 CASES["test_web_ucli_flags.py"] = [
     t_ok(cls(k, "test_non_ucli_and_none"), "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges",
          "`None` girdisi Rust tipinde yok"),
-    t_gap(cls(k, "test_all_flags"), "test (kısmi): `--allow-edit` (write) ve `--allow-checks` (checks) için doğru değer "
-          "hiçbir Rust testinde sınanmıyor", "I:fake_proc.rs::ucli_flags"),
+    t_ok(cls(k, "test_all_flags"), "I:fake_proc.rs::ucli_flags_all_set"),
     t_ok(cls(k, "test_no_flags test_bad_cost_value"), "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges"),
-    t_gap(cls(k, "test_process_error_returns_none_and_not_cached"),
-          "test: kaybolan/okunamayan süreçte `ucli_flags` = `None` sınanmıyor (önbellek yarısı T1)"),
+    t_ok(cls(k, "test_process_error_returns_none_and_not_cached"),
+         "I:fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached", "Rust'ta pid önbelleği yok (sapma 9)"),
     t_oos(cls(k, "test_tools_from_status_file_are_read_each_time test_cached_per_pid"),
           "durum dosyasından araç listesi ve pid önbelleği (sapma 9)", T1),
 ]
@@ -768,13 +762,10 @@ CASES["test_ucli_web.py"] = [
     t_ok(f"{u}.test_every_effort_preset_round_trips_through_the_running_command",
          "U:providers.rs::ucli_effort_presets G:provider_detect_and_info",
          f"yalnız ayrıştırma yönü; argv üretimi {SAG}"),
-    t_gap(f"{u}.test_effort_stays_unknown_when_a_limit_was_changed_by_hand_or_is_missing",
-          "test (kısmi): yalnız bağlam sayısının değişmesi sınanıyor; `--max-steps`, `--max-tool-calls`, "
-          "`--max-output-tokens` tek tek değişince/eksilince `None` sınanmıyor",
-          "U:providers.rs::ucli_effort_presets G:provider_detect_and_info"),
-    t_gap("AutoContextTests.test_deriving_binary_gets_no_context_flag_and_effort_round_trips",
-          "test (kısmi): bağlam bayrağısız `medium` ön ayarı sınanmıyor (yalnız `high`)",
-          "U:providers.rs::ucli_effort_presets"),
+    t_ok(f"{u}.test_effort_stays_unknown_when_a_limit_was_changed_by_hand_or_is_missing",
+         "U:providers.rs::ucli_effort_unknown_when_any_limit_changed_or_missing"),
+    t_ok("AutoContextTests.test_deriving_binary_gets_no_context_flag_and_effort_round_trips",
+         "U:providers.rs::ucli_every_preset_without_context_flag", f"yalnız ayrıştırma yönü; argv üretimi {SAG}"),
     t_ok("AutoContextTests.test_legacy_session_with_other_context_value_is_unknown",
          "U:providers.rs::ucli_effort_presets"),
 ]
@@ -1192,6 +1183,8 @@ def render(def_rows, test_rows) -> str:
         out += [f"- `{mod}::{r[0]}`: {r[6]}" for r in rows if r[3] == GAP]
     for rel, rows in test_rows.items():
         out += [f"- `{rel}::{r[0]}`: {r[4]}" for r in rows if r[2] == GAP]
+    if out[-1] == "":
+        out.append("Yok.")
     out += ["", "## Tanımlar", ""]
     for mod, rows in def_rows.items():
         out += [f"### `py/claudeops/{mod}`", "",
