@@ -9,9 +9,12 @@ Güvenlik duruşu:
 """
 from __future__ import annotations
 
+import errno
+import hashlib
 import json
 import os
 import re
+import stat
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,8 +26,8 @@ MAX_EDITED_BYTES = 64 * 1024
 MAX_NOTE_BYTES = 4 * 1024
 DECISIONS = ("approve", "approve_session", "reject", "edit")
 STATES = ("running", "suspended", "resuming", "done", "expired")
-_KEY = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
-_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+_KEY = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")          # `\Z`: `$` sondaki satır sonunu da kabul ediyordu
+_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\Z")
 
 
 def _index_path() -> str:
@@ -39,25 +42,81 @@ def dir_for(run_key: str, create: bool = False) -> str:
         os.makedirs(ROOT, mode=0o700, exist_ok=True)
         for sub in ("", "pending", "suspended", "answers"):
             p = os.path.join(d, sub) if sub else d
+            if os.path.islink(p):       # bağlantının hedefine yazma/chmod yok
+                raise OSError(errno.ELOOP, "onay dizini sembolik bağ", p)
             os.makedirs(p, mode=0o700, exist_ok=True)
             os.chmod(p, 0o700)
     return d
 
 
-def _load_index() -> Dict[str, Dict[str, Any]]:
+def _read_index() -> Optional[bytes]:
+    """Defterin ham baytları; yoksa None. Okunamıyorsa ya da normal dosya değilse (FIFO bloklamaz) `OSError`."""
+    path = _index_path()
     try:
-        with open(_index_path(), encoding="utf-8") as f:
-            d = json.load(f)
-    except (OSError, ValueError):
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(errno.EINVAL, "normal dosya değil", path)
+        with open(fd, "rb", closefd=False) as f:
+            return f.read()
+    finally:
+        os.close(fd)
+
+
+def _parse_index(raw: bytes) -> Optional[Dict[str, Any]]:
+    try:
+        d = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _load_index() -> Dict[str, Dict[str, Any]]:
+    """Okuyucular için: yok/okunamaz/bozuk defter boştur (koşu yok = sürdürme yok)."""
+    try:
+        raw = _read_index()
+    except OSError:
         return {}
-    return d if isinstance(d, dict) else {}
+    return (None if raw is None else _parse_index(raw)) or {}
+
+
+def _load_index_for_overwrite() -> Dict[str, Any]:
+    """Defteri BAŞTAN yazacak olan için: okunamayan defter `OSError` (ezilmez); bozuk defterin önce
+    `index.json.corrupt-<özet>` kopyası (0600) bırakılır, kopya yazılamazsa yine `OSError`."""
+    raw = _read_index()
+    if raw is None:
+        return {}
+    d = _parse_index(raw)
+    if d is not None:
+        return d
+    copy = f"{_index_path()}.corrupt-{hashlib.sha256(raw).hexdigest()[:12]}"
+    try:
+        fd = os.open(copy, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        return {}
+    with os.fdopen(fd, "wb") as f:
+        f.write(raw)
+    return {}
+
+
+def _slot_free(idx: Dict[str, Any], run_key: str) -> bool:
+    """`run_key` yeni koşuya verilebilir mi: kayıt yok ya da bitmiş. Canlı/tanınmayan kayıt EZİLMEZ (bekleyen onay başka
+    argv ile sürdürülmesin)."""
+    if run_key not in idx:
+        return True
+    rec = idx[run_key]
+    return isinstance(rec, dict) and rec.get("state") in ("done", "expired")
 
 
 def register(run_key: str, cwd: str, session: str, argv_resume: List[str], owner: str = "") -> str:
     """Koşuyu kayda alır (`running`) ve dizinini açar. Döner: dizin."""
     d = dir_for(run_key, create=True)
     with file_lock(_index_path()):
-        idx = _load_index()
+        idx = _load_index_for_overwrite()
+        if not _slot_free(idx, run_key):
+            raise FileExistsError(errno.EEXIST, "run_key kullanımda", run_key)
         idx[run_key] = {"cwd": cwd, "session": session, "argv_resume": [str(a) for a in argv_resume],
                         "owner": owner, "created_at": time.time(), "state": "running"}
         atomic_write_json(_index_path(), idx, mode=0o600)
@@ -174,7 +233,7 @@ def parse_suspended(stdout: str) -> Optional[Dict[str, Any]]:
             continue
         try:
             d = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         s = d.get("suspended") if isinstance(d, dict) else None
         if isinstance(s, dict) and isinstance(s.get("id"), str) and _ID.match(s["id"]):

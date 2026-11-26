@@ -243,9 +243,20 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     (ör. web formu) açıkça bir anahtar geçtiğinde devreye girer."""
     if api_key is None:
         return None
-    if not _SAFE_ENV_NAME_RE.match(api_key_env or ""):
+    if not _SAFE_ENV_NAME_RE.fullmatch(api_key_env or ""):
         raise UcliError(f"invalid api_key_env name: {api_key_env!r}")
     return {**os.environ, api_key_env: api_key}
+
+
+def _redact(text: str, secret: Optional[str]) -> str:
+    """Hata metnine / onay kaydına giren çocuk çıktısından API anahtarını siler (8 karakterden kısa değer anahtar sayılmaz)."""
+    secret = (secret or "").strip()
+    return text.replace(secret, "<redacted>") if len(secret) >= 8 else text
+
+
+def _effective_key(api_key_env: str, api_key: Optional[str]) -> Optional[str]:
+    """Çocuğun göreceği anahtar: açıkça verilen, yoksa miras alınan ortam değişkeni."""
+    return api_key if api_key is not None else os.environ.get(api_key_env or "")
 
 
 STATE_ROOT = os.path.expanduser("~/.claude/claudeops/ucli-state")
@@ -496,6 +507,8 @@ def ucli_chat_once(
     printed JSON yazar ama `json.loads` boşluğa bakmaz, framing derdi yok
     (process ömrü boyunca TEK değer). `api_key` verilirse (çağıranın kendi
     ortamına güvenmek yerine, ör. bir web formundan) bkz. `_subprocess_env`."""
+    if len(prompt) > 1 and prompt.startswith("-"):   # prompt konumsal argüman: `-` ile başlarsa ucli bayrak sayar (izin enjeksiyonu)
+        raise UcliError("prompt '-' ile başlayamaz (ucli bayrak sanır)")
     bin_path = resolve_binary(binary)
     extra: list[str] = []
     if session:
@@ -512,9 +525,11 @@ def ucli_chat_once(
         from . import ucli_approval
         if not binary_supports_flag(bin_path, "--approval-dir"):
             raise UcliError("ucli ikilisi --approval-dir bayrağını tanımıyor (onay kanalı yarım uygulanmaz)")
+        if not ucli_approval._slot_free(ucli_approval._load_index(), approval_run_key):
+            raise UcliError(f"run_key kullanımda (bitmemiş onay koşusu var): {approval_run_key!r}")
         try:
             approval_dir = ucli_approval.dir_for(approval_run_key, create=True)
-        except ValueError as e:
+        except (ValueError, OSError) as e:
             raise UcliError(str(e)) from e
         extra = list(extra) + ["--approval-dir", approval_dir]
     argv = build_chat_argv(
@@ -525,10 +540,17 @@ def ucli_chat_once(
     argv_resume = list(argv)             # prompt'tan ÖNCEKİ bayraklar: `--resume-approval ID` bunlarla (gizli değer yok: anahtar ortamdan)
     argv.append(prompt)
     env = _subprocess_env(api_key_env, api_key)
+    secret = _effective_key(api_key_env, api_key)
     try:
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
+        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as e:
         raise UcliError(f"ucli {timeout}s içinde cevap vermedi") from e
+    except UnicodeDecodeError:
+        raise UcliError("ucli çıktısı UTF-8 değildi") from None
+    except OSError as e:
+        raise UcliError(f"ucli çalıştırılamadı: {e}") from e
+    except ValueError:              # argv/env içinde NUL ya da kodlanamayan karakter; metin değeri taşıyabilir, eklenmez
+        raise UcliError("ucli çalıştırılamadı: geçersiz argüman ya da ortam değeri") from None
     if approval_run_key and result.returncode == 75:
         from . import ucli_approval
         susp = ucli_approval.parse_suspended(result.stdout)
@@ -536,18 +558,20 @@ def ucli_chat_once(
             try:
                 ucli_approval.register(approval_run_key, root, session or "", argv_resume, owner=approval_owner)
                 ucli_approval.set_state(approval_run_key, "suspended")
-            except OSError as e:        # kayıt yoksa koşu sürdürülemez: sessizce düşmesin (TBD#383)
+            except (OSError, ValueError) as e:        # kayıt yoksa koşu sürdürülemez: sessizce düşmesin (TBD#383)
                 _diag_approval(approval_run_key, e)
                 raise UcliError(f"ucli koşusu onay bekliyor (onay {susp['id']}) ama kayıt yazılamadı: {e}") from e
             return {"ok": True, "status": "suspended", "run_key": approval_run_key, "approval_id": susp["id"]}
     if result.returncode != 0:
-        raise UcliError(result.stderr.strip() or f"ucli exit={result.returncode}")
+        raise UcliError(_redact(result.stderr.strip(), secret) or f"ucli exit={result.returncode}")
     try:
         value = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        raise UcliError(f"ucli çıktısı JSON değildi: {e}\nstdout={result.stdout!r}") from e
+    except (ValueError, RecursionError) as e:
+        raise UcliError(f"ucli çıktısı JSON değildi: {e}\nstdout={_redact(result.stdout, secret)!r}") from None
+    if not isinstance(value, dict):
+        raise UcliError(f"ucli çıktısı JSON nesnesi değildi: stdout={_redact(result.stdout, secret)!r}")
     if "error" in value:
-        raise UcliError(value["error"])
+        raise UcliError(_redact(str(value["error"]), secret))
     return mark_budget_exhausted(value)
 
 
@@ -720,7 +744,8 @@ def _run_resume(run_key: str, approval_id: str, argv: List[str], timeout: float,
             ucli_approval.set_result(run_key, "suspended", {"status": "suspended", "approval_id": susp["id"]})
             return {"ok": True, "status": "suspended", "approval_id": susp["id"]}
     if result.returncode != 0:
-        ucli_approval.set_result(run_key, "done", {"error": (result.stderr.strip() or f"ucli exit={result.returncode}")})
+        err = _redact(result.stderr.strip(), _effective_key(api_key_env, api_key))
+        ucli_approval.set_result(run_key, "done", {"error": (err or f"ucli exit={result.returncode}")})
         return {"ok": False, "error": "ucli failed"}
     try:
         value = json.loads(result.stdout)
