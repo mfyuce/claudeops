@@ -234,6 +234,15 @@ impl<'a> Roster<'a> {
             .collect())
     }
 
+    /// `roster_by_name`: {ad: girdi} (yinelenen adda SON satır, ilk konumda; Python sözlüğü gibi).
+    pub fn by_name(&self) -> io::Result<IndexMap<String, RosterEntry>> {
+        Ok(self
+            .entries()?
+            .into_iter()
+            .map(|e| (e.name.clone(), e))
+            .collect())
+    }
+
     /// `_fleet_status`: iki dosyanın birleşimi (models sırasıyla; roster'da olmayan ad atlanır).
     pub fn fleet_status(&self) -> io::Result<IndexMap<String, Project>> {
         let models = first_rows(self.raw_rows(Tsv::Models)?);
@@ -411,6 +420,15 @@ impl RosterGuard<'_> {
             }
         })
     }
+}
+
+/// `web._blueprint_cwds`: blueprint adayı satırlar (tarihli/türev adlı eski instance satırları hariç) -> {ad: cwd}.
+pub fn blueprint_cwds(fleet: &IndexMap<String, Project>) -> IndexMap<String, String> {
+    fleet
+        .iter()
+        .filter(|(n, _)| crate::instances::derived_name(n).is_none())
+        .map(|(n, p)| (n.clone(), p.cwd.clone()))
+        .collect()
 }
 
 /// Roster'daki (yorumlu dahil) ve instance kaydındaki tüm adlar (`_all_known_names`in süreç taraması dışındaki kısmı).

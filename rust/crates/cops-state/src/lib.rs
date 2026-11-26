@@ -6,6 +6,7 @@ pub mod instances;
 pub mod json;
 pub mod paths;
 pub mod pycompat;
+pub mod pytime;
 pub mod roster;
 pub mod settings;
 pub mod settings_read;

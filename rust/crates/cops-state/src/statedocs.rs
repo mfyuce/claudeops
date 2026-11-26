@@ -130,6 +130,24 @@ struct State {
     synced: HashMap<String, Sig>,
     ext_prefixes: Vec<String>,
     mirror_n: HashMap<String, u64>,
+    /// Okuyucu önbellekleri (ör. `instances`): ad -> (dosya anahtarı, değer).
+    reader_cache: HashMap<&'static str, (FileKey, Json)>,
+}
+
+/// Python `(st_ino, st_mtime_ns, st_size)`.
+pub(crate) type FileKey = (u64, i128, u64);
+
+/// Dosya anahtarı; dosya yoksa `Ok(None)`.
+pub(crate) fn file_key(path: &Path) -> io::Result<Option<FileKey>> {
+    match std::fs::metadata(path) {
+        Ok(m) => Ok(Some((
+            m.ino(),
+            i128::from(m.mtime()) * 1_000_000_000 + i128::from(m.mtime_nsec()),
+            m.size(),
+        ))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 type Logger = Box<dyn Fn(&str) + Send + Sync>;
@@ -222,6 +240,29 @@ impl StateDocs {
             Backend::Db if !self.db_ready(name) => Backend::Dual,
             m => m,
         }
+    }
+
+    pub(crate) fn cache_get(&self, name: &'static str, key: FileKey) -> Option<Json> {
+        self.lock()
+            .reader_cache
+            .get(name)
+            .filter(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone())
+    }
+    pub(crate) fn cache_put(&self, name: &'static str, key: Option<FileKey>, v: &Json) {
+        let mut st = self.lock();
+        match key {
+            Some(k) => {
+                st.reader_cache.insert(name, (k, v.clone()));
+            }
+            None => {
+                st.reader_cache.remove(name);
+            }
+        }
+    }
+    /// Belgenin bu süreçteki etkin kipi (`db` istenip belge db-hazır değilse `dual`).
+    pub fn effective_backend(&self, name: &str) -> Backend {
+        self.effective(name)
     }
 
     /// Durum dizini altındaki yoldan belge adı (`steward/quota.json` -> `steward/quota`).
