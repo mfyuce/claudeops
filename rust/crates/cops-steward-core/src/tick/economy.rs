@@ -2,7 +2,9 @@
 
 use super::{dict_of, float_of, float_or, Tick};
 use crate::cards::BadValue;
-use crate::closing::{context_answer, context_threshold, handover_defer_decision, is_context_question};
+use crate::closing::{
+    context_answer, context_owner_topic, context_threshold, handover_defer_decision, is_context_question,
+};
 use crate::consts_gen::PAUSE_CLOSE_EXPIRE_SECONDS;
 use crate::idletext::expired_handover_note;
 use crate::markers::rfh_marker_in;
@@ -88,6 +90,11 @@ impl<'a> Tick<'a> {
         }
         for q in self.inp.questions {
             if q.status != "open" || !is_context_question(&q.text) {
+                continue;
+            }
+            // sahibe ait konu seçenekte/detayda/birleşen metinde: cevap soruyu kapatırdı
+            let mut other = q.options.iter().chain([&q.detail]).chain(&q.extra_texts).chain(&q.prev_texts);
+            if other.any(|t| context_owner_topic(t)) {
                 continue;
             }
             let Some(&v) = self.by_name.get(q.source.as_str()) else { continue };

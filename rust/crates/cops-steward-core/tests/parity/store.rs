@@ -98,9 +98,6 @@ parity!("answer_question", answer_question_vectors, |c| on_questions(c, |qs| {
             assert_eq!(review_where, qs[index].source == "reviewer-where");
             json_of(&qs[index])
         }
-        Err(e @ AnswerError::Resolve(cops_steward_core::questions::ResolveError::MultiCharUpper(_))) => {
-            py_error("TypeError", e)
-        }
         Err(e) => py_error("ValueError", e),
     }
 }));
@@ -111,7 +108,8 @@ parity!("set_answered_by", set_answered_by_vectors, |c| on_questions(c, |qs| {
     }
 }));
 parity!("mark_notified", mark_notified_vectors, |c| on_questions(c, |qs| {
-    mark_notified(qs, &c.str("question_id"), c.now);
+    let found = qs.iter().any(|q| q.id == c.str("question_id"));
+    assert_eq!(mark_notified(qs, &c.str("question_id"), c.now), found);
     Value::Null
 }));
 parity!("escalate_routine", escalate_routine_vectors, |c| {
@@ -121,7 +119,8 @@ parity!("escalate_routine", escalate_routine_vectors, |c| {
     })
 });
 parity!("mark_delivered", mark_delivered_vectors, |c| on_questions(c, |qs| {
-    mark_delivered(qs, &c.str("question_id"), c.now);
+    let found = qs.iter().any(|q| q.id == c.str("question_id"));
+    assert_eq!(mark_delivered(qs, &c.str("question_id"), c.now), found);
     Value::Null
 }));
 parity!("mark_undeliverable", mark_undeliverable_vectors, |c| {
@@ -205,7 +204,7 @@ fn upsert(c: &Case) -> Value {
                 UpsertError::Host(_) => "HostChangeRefused",
                 UpsertError::Owned(_) => "OwnedElsewhere",
                 UpsertError::Reserved(_) => "ReservedName",
-                UpsertError::BadType(_) => "BadType",
+                UpsertError::BadType(_) => "_BadFieldType",
             };
             py_error(class, e)
         }
@@ -243,9 +242,9 @@ fn error_messages() {
     assert_eq!(UpsertError::InvalidName("A'".into()).to_string(), "invalid project name: \"A'\"");
 }
 
-/// Python yanlış tipli alanı olduğu gibi saklar; tipli yapı reddeder ve hiçbir şey değişmez.
+/// Yanlış tipli metin alanı iki tarafta da reddedilir ve hiçbir şey değişmez.
 ///
-/// py: upsert_project
+/// py: upsert_project, _BadFieldType, _BadFieldType.__init__
 #[test]
 fn wrong_field_type_is_rejected_without_changes() {
     let mut projects: IndexMap<String, Project> = IndexMap::new();
@@ -263,6 +262,8 @@ fn wrong_field_type_is_rejected_without_changes() {
         now: 1.0,
     };
     let fields = json!({"priority": 1, "goal": 5}).as_object().cloned().expect("nesne");
-    assert_eq!(upsert_project(&mut projects, "pr", &fields, &ctx), Err(UpsertError::BadType("goal".into())));
+    let refused = UpsertError::BadType("goal".into());
+    assert_eq!(refused.to_string(), "bad field type: goal (expected a string)");
+    assert_eq!(upsert_project(&mut projects, "pr", &fields, &ctx), Err(refused));
     assert!(projects.is_empty());
 }

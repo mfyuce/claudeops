@@ -7,7 +7,6 @@ use crate::types::Question;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::fmt;
 use std::sync::LazyLock;
 
 // `_WORD_RE` (`\w+`): Python `\w` birleşen işaretleri saymaz.
@@ -50,64 +49,36 @@ pub fn normalize_options(options: &Value) -> Vec<String> {
     out
 }
 
-/// `resolve_answer`ın Python'da istisna fırlattığı girdiler.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResolveError {
-    /// `isdigit()` doğru ama `int()` kabul etmiyor (ör. "²"): Python `ValueError`
-    NotAnInt(String),
-    /// tek harfin büyük hâli birden çok karakter (ör. "ß"): Python `TypeError`
-    MultiCharUpper(String),
-}
-
-impl fmt::Display for ResolveError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ResolveError::NotAnInt(s) => {
-                write!(f, "invalid literal for int() with base 10: {}", pyc::repr_str(s))
-            }
-            ResolveError::MultiCharUpper(s) => {
-                write!(f, "ord() expected a character, but string of length {} found", pyc::len(s))
-            }
-        }
-    }
-}
-
-impl std::error::Error for ResolveError {}
-
 /// Ham cevap -> kaydedilecek metin: `1`..`n` / `A`.. / seçenek metni (harf duyarsız) kanonik seçenek, gerisi serbest metin.
 ///
 /// py: resolve_answer
-pub fn resolve_answer(q: &Question, raw: &str) -> Result<String, ResolveError> {
+pub fn resolve_answer(q: &Question, raw: &str) -> String {
     let raw = pyc::collapse_ws(raw);
     if q.options.is_empty() || raw.is_empty() {
-        return Ok(raw);
+        return raw;
     }
-    if pyc::str_is_digit(&raw) {
-        if !raw.chars().all(pyc::is_decimal) {
-            return Err(ResolveError::NotAnInt(raw));
-        }
+    if raw.chars().all(pyc::is_decimal) {
         // taşan sayı seçenek sayısından büyüktür: doymalı çarpma yeter
         let n = raw.chars().fold(0i64, |acc, c| acc.saturating_mul(10).saturating_add(pyc::decimal_value(c)));
         if let Some(o) = usize::try_from(n - 1).ok().and_then(|i| q.options.get(i)) {
-            return Ok(o.clone());
+            return o.clone();
         }
     }
     if pyc::len(&raw) == 1 {
         let upper = raw.to_uppercase();
-        if !upper.is_empty() && upper.chars().all(pyc::is_alpha) {
-            let mut chars = upper.chars();
-            let (Some(c), None) = (chars.next(), chars.next()) else {
-                return Err(ResolveError::MultiCharUpper(upper));
-            };
-            let idx = i64::from(u32::from(c)) - 65;
+        let mut chars = upper.chars();
+        // büyük hâli birden çok karakter olan harf ("ß") seçenek harfi sayılmaz
+        if let (Some(c), None) = (chars.next(), chars.next()) {
             // Python negatif indeks: harfler 65'ten küçük olamaz
-            if let Some(o) = usize::try_from(idx).ok().and_then(|i| q.options.get(i)) {
-                return Ok(o.clone());
+            let idx = i64::from(u32::from(c)) - 65;
+            let hit = pyc::is_alpha(c).then(|| usize::try_from(idx).ok()).flatten();
+            if let Some(o) = hit.and_then(|i| q.options.get(i)) {
+                return o.clone();
             }
         }
     }
     let folded = pyc::casefold(&raw);
-    Ok(q.options.iter().find(|o| pyc::casefold(o) == folded).cloned().unwrap_or(raw))
+    q.options.iter().find(|o| pyc::casefold(o) == folded).cloned().unwrap_or(raw)
 }
 
 /// D19: cevap gerçek bir karar değil, erteleme.

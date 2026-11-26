@@ -126,7 +126,7 @@ pub fn upper_tier_approved(questions: &[Question], project: &str, model: &str, e
     questions.iter().any(|q| {
         q.status == "answered" && q.source == UPPER_MODEL_SOURCE && q.text.contains(&tag) && {
             let a = pyc::strip(&q.answer).to_lowercase();
-            APPROVE_WORDS.contains(&a.trim_end_matches(['.', '!']))
+            APPROVE_WORDS.contains(&a.trim_end_matches(|c: char| c == '.' || c == '!' || pyc::is_space(c)))
         }
     })
 }

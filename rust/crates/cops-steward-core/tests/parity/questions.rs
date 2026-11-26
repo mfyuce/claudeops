@@ -1,17 +1,8 @@
 //! Grup 1 (soru okumaları) paritesi. Elle testlerdeki beklenen değerler Python davranışıdır.
-use crate::harness::{as_set, parity, py_error, Case};
+use crate::harness::{as_set, parity, Case};
 use cops_steward_core::questions::*;
 use cops_steward_core::types::Question;
-use serde_json::Value;
 use std::collections::BTreeSet;
-
-fn resolve(c: &Case) -> Value {
-    match resolve_answer(&c.arg::<Question>("q"), &c.str("raw")) {
-        Ok(s) => Value::from(s),
-        Err(e @ ResolveError::NotAnInt(_)) => py_error("ValueError", e),
-        Err(e @ ResolveError::MultiCharUpper(_)) => py_error("TypeError", e),
-    }
-}
 
 fn now_of(c: &Case) -> f64 {
     c.opt("now").unwrap_or(c.now)
@@ -28,7 +19,7 @@ type Finder = for<'a> fn(&'a [Question], &str, &str, f64) -> Option<&'a Question
 parity!("normalize_options", normalize_options_vectors, |c| {
     normalize_options(c.args.get("options").expect("options"))
 });
-parity!("resolve_answer", resolve_answer_vectors, |c| resolve(c));
+parity!("resolve_answer", resolve_answer_vectors, |c| { resolve_answer(&c.arg::<Question>("q"), &c.str("raw")) });
 parity!("is_defer_answer", is_defer_answer_vectors, |c| { is_defer_answer(&c.str("raw")) });
 parity!("_words", p_words, |c| as_set(c, words(&c.str("text"))));
 parity!("_salient", p_salient, |c| as_set(c, salient(&c.str("text"))));

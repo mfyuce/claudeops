@@ -433,6 +433,9 @@ where
 {
     let mut out: Vec<Action> = Vec::new();
     let mut lda: Option<Map<String, Value>> = None;
+    if limit <= 0 {
+        return Ok((out, state.clone()));
+    }
     for (project, make) in entries {
         let Some(v) = pick_delivery_view(mine, project.as_ref(), "") else { continue };
         if v.busy == Some(true) || taken.contains(&v.name) || v.subagent_active || v.subagent_unknown {

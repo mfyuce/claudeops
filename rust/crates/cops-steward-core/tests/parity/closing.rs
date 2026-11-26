@@ -49,6 +49,8 @@ parity!("is_context_question", is_context_question_vectors, |c| is_context_quest
     &c.opt::<String>("text").unwrap_or_default()
 ));
 
+parity!("_context_owner_topic", p_context_owner_topic, |c| context_owner_topic(&c.str("text")));
+
 parity!("context_answer", context_answer_vectors, |c| context_answer(
     c.arg("tokens"),
     c.arg("warn"),

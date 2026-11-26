@@ -112,10 +112,17 @@ fn session_items(
         };
         let next = marker_next_work(&v.last_assistant);
         if !next.is_empty() {
-            let warn = format!(
-                "oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{next}». 'Sahipsiz yeni iş yok' diye skip etme: \
-                 steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."
-            );
+            let warn = if input.cfg.lang == "en" {
+                format!(
+                    "the session reported UNOWNED work with STEWARD-NEXT: «{next}». Do not skip it as 'no new unowned \
+                     work': if no pending owner answer blocks it, keep the session on it with steward_directive."
+                )
+            } else {
+                format!(
+                    "oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{next}». 'Sahipsiz yeni iş yok' diye skip etme: \
+                     steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."
+                )
+            };
             it.insert("stated_next".into(), Value::from(next));
             it.insert("contradictions".into(), json!([warn]));
         }
@@ -139,6 +146,7 @@ pub fn review_items(mut input: TourInput<'_>) -> Result<Vec<Map<String, Value>>,
     let own = input.world.map(|w| w.own_projects(input.projects));
     let projects = own.as_ref().unwrap_or(input.projects);
     let (cfg, now, questions) = (input.cfg, input.now, input.questions);
+    let en = cfg.lang == "en";
     let mut items = Vec::new();
     session_items(&mut input, projects, &mut items)?;
     for i in input.ideas.iter().filter(|i| i.status == "new") {
@@ -148,9 +156,17 @@ pub fn review_items(mut input: TourInput<'_>) -> Result<Vec<Map<String, Value>>,
     for q in questions.iter().filter(|q| q.status == "open" && q.routine) {
         let created = if q.created_at != 0.0 { q.created_at } else { now };
         let age = (((now - created) / 60.0) as i64).max(0);
-        let mut text = format!("Rutin soru [{}] (steward_answer id cevap ile cevapla)", q.id);
+        let mut text = if en {
+            format!("Routine question [{}] (answer it with steward_answer id answer)", q.id)
+        } else {
+            format!("Rutin soru [{}] (steward_answer id cevap ile cevapla)", q.id)
+        };
         if age >= 20 {
-            text.push_str(&format!(" [{age} dk önce soruldu: beklemede, öncelik ver]"));
+            text.push_str(&if en {
+                format!(" [asked {age} min ago: still waiting, do it first]")
+            } else {
+                format!(" [{age} dk önce soruldu: beklemede, öncelik ver]")
+            });
         }
         text.push_str(&format!(": {}", q.text));
         items.push(item(
@@ -165,13 +181,22 @@ pub fn review_items(mut input: TourInput<'_>) -> Result<Vec<Map<String, Value>>,
             let opts = if q.options.is_empty() {
                 String::new()
             } else {
-                format!("\nSeçenekler: {}", clip(&q.options.join(" | "), 120))
+                let label = if en { "Options" } else { "Seçenekler" };
+                format!("\n{label}: {}", clip(&q.options.join(" | "), 120))
             };
-            let text = format!(
-                "Sahip sorusu [{}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): {}{opts}",
-                q.id,
-                clip(&q.text, usize::try_from(ASK_ITEM_CHARS).unwrap_or(0))
-            );
+            let head = if en {
+                format!(
+                    "Owner question [{}] (steward_answer id answer; your answer passes through the gate, skip it if \
+                     unsure): ",
+                    q.id
+                )
+            } else {
+                format!(
+                    "Sahip sorusu [{}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): ",
+                    q.id
+                )
+            };
+            let text = format!("{head}{}{opts}", clip(&q.text, usize::try_from(ASK_ITEM_CHARS).unwrap_or(0)));
             items.push(item(json!({"kind": "ask", "name": q.project, "id": q.id, "text": text})));
         }
     }
@@ -183,7 +208,11 @@ pub fn review_items(mut input: TourInput<'_>) -> Result<Vec<Map<String, Value>>,
             continue;
         }
         if q.project.is_empty() || q.project == cfg.brain_name || !projects.contains_key(&q.project) {
-            let text = format!("Cevaplanan soru [{}]: {}\nCevap: {}", q.id, q.text, q.answer);
+            let text = if en {
+                format!("Answered question [{}]: {}\nAnswer: {}", q.id, q.text, q.answer)
+            } else {
+                format!("Cevaplanan soru [{}]: {}\nCevap: {}", q.id, q.text, q.answer)
+            };
             items.push(item(json!({"kind": "blocked", "name": or_dash(&q.project), "id": q.id, "text": text})));
         }
     }

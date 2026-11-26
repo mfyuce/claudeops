@@ -1221,6 +1221,70 @@ for key, val in [("done_confirm", {"alfa": "x"}), ("blocked_tours", {"q1": None}
            lambda live: sw.plan_tick(views, projects, {key: val}, C(enabled=True), NOW, [], [], **live),
            {"open_work": {"alfa": 1}, "todo_sha": {"alfa": "s"}})
 
+# ── TBD#377 / TBD#382 düzeltmeleri (sabit girdiler: yukarıdaki rastgele üreticilerin dizisini bozmasın diye sonda) ──
+sw._now = lambda: NOW
+TAIL = " Bu oturumda mı sürdüreyim, devir notuyla yeni oturuma mı bırakayım?"
+CTXQ = ["Bağlam 210K token oldu.", "~910K token'lık okuma.", "Bağlam 210K/300K token.", "180 bin token.", "(250.000 token)", "1,5 milyon tokens", "210000+ tokens", "200K'lık token",
+        "Token sayısı yüksek.", "TOKEN SAYISI yüksek.", "Token usage is high.", "token count 5", "Context: tokens: 200K.", "tokens = ~1.5m", "Bağlam token'ı doldu.",
+        "Context is at 200k tokens.", "API token'ı gerek.", "2 token lazım.", "2025 token'ı.", "210Ktoken", "v2.210K token", "x210K token", "210 km token", "210K token; yeni token üret.",
+        "HF_TOKEN yok.", "parola gerek", "PAROLA", "kurulum gerek", "kurulacak", "yetki gerek", "harcama 20 USD", "This will spend money.", "password", "credentials", "sudo apt", "install it",
+        "٢١٠K token", "２１０,０００ tokens", "210K TOKENS", "210K tokenı", "100,00 token", "tokens: 200", "token usageX", ""]
+for a in CTXQ:
+    add("_context_owner_topic", {"text": a})
+    add("is_context_question", {"text": a + TAIL})
+for extra in [{"options": ["paketi kur (sudo)", "bırak"]}, {"options": ["210K token sonra", "şimdi"]}, {"detail": "Durum: API harcaması."}, {"detail": "Bağlam 210K token."},
+              {"extra_texts": ["Parola dosyasını okuyayım mı?"]}, {"prev_texts": ["Yetki vereyim mi?"]}, {"options": ["commit et"]}, {}]:
+    for tokens in (1000, 290000):
+        views = [V("alfa", True, tmux=True, busy=False, context_tokens=tokens, model="claude-sonnet-5-5", started_at=1.0, last_activity=NOW)]
+        projects = {"alfa": P("alfa", phase="planned")}
+        qs = [Q("q1", "alfa", TAIL.strip(), created_at=NOW - 60, source="alfa", **extra)]
+        cfg = C(enabled=True, context_warn_tokens=300000)
+        add("plan_tick", {"views": views, "projects": projects, "state": {}, "cfg": cfg, "now": NOW, "questions": qs, "ideas": [], "world": None})
+for t in ["no tools needed", "No tool is needed.", "no tools are required", "no tools were needed", "No tool calls needed.", "no tool calls are necessary", "no deferred tools needed",
+          "No tool use required.", "no tools will be needed", "no-tool use needed", "no tools\nneeded", "no tools; needed later", "no tools needednt", "no tools, which are needed",
+          "No matching deferred tools found", "no tools available", "I have no tools.", "no tool calls", "NO TOOLS NECESSARY", "no tools needed, tools unavailable"]:
+    add("brain_tools_missing_text", {"text": t})
+tag = sw.upper_tier_tag("p", "opus", "high")
+for ans in ["evet .", "onayla !", "Evet . !", "approve  !!", "yes ...", "evet\n.", "evet .", "evet\u001c!", "hayır .", "evet değil .", ". evet", "onaylamıyorum .", " . ", "!", "evet ?", "evet,"]:
+    add("upper_tier_approved", {"questions": [Q("q", "p", tag + " ?", answer=ans, status="answered", source=sw.UPPER_MODEL_SOURCE)], "project": "p", "model": "opus", "effort": "high"})
+for limit in (-3, -1, 0, 1):
+    mine, taken = [V("a", True, busy=False)], set()
+    add("plan_deliveries", {"entries": [["a", "nudge"]], "mine": mine, "taken": taken, "state": {"x": 1}, "now": NOW, "limit": limit},
+        call=lambda: sw.plan_deliveries([("a", lambda v: sw.Action("nudge", v.name, "a"))], mine, taken, {"x": 1}, NOW, limit))
+for deferred in (0.0, -1.0, 1.0):
+    q = Q("q", "a", "hangi sıra?", deferred_until=deferred)
+    add("owner_class", {"q": q, "owner_projects": "", "note": "", "now": 0.0}, call=lambda: steward_ask.owner_class(q, "", "", 0.0))
+for lang in ("tr", "en"):
+    views = [V("alfa", True, tmux=True, busy=False, blueprint="alfa", started_at=1.0, last_activity=1.0, last_assistant="STEWARD-NEXT: testi yaz")]
+    projects = {"alfa": P("alfa"), "mkt": P("mkt")}
+    qs = [Q("r1", "alfa", "hangi sıra?", created_at=NOW - 3600, routine=True), Q("r2", "alfa", "hangi model?", created_at=NOW - 60, routine=True),
+          Q("o1", "mkt", "Hangi ad olsun?", created_at=NOW - 90000, options=["x", "y"]), Q("d1", "yok", "bitti mi?", status="answered", answer="evet", answered_at=NOW - 30)]
+    add("review_items", {"views": views, "projects": projects, "cfg": C(ask_gate="shadow", lang=lang), "now": NOW, "questions": qs, "ideas": [], "skip": set(),
+                         "last_directive_at": {}, "reviewed_at": {}, "world": None, "skip_seen": {}, "sigs_out": None, "state": {"ask_seen": {"o1": {"n": 2, "at": 0}}}})
+for raw in ["²", "①", "³", "ß", "ﬁ", "ŉ", "ǰ", "²²", "٢", "ª", "b", "C"]:
+    add("resolve_answer", {"q": Q("q", "p", "t", options=["bir", "iki", "üç"]), "raw": raw})
+for raw in ["simdi verecegim", "Simdi verecegim.", "kararlari simdi verecegim", "kararlari sonra verecegim", "SİMDİ VERECEGİM", "sımdı verecegım", "simdi verecegim: b", "verecegim", "sonra verecegim"]:
+    add("is_defer_answer", {"raw": raw})
+sw.save_questions([])
+for t in ["Kapak rengi ne olsun?", "Dergi hangisi seçilsin?", "Sunum tarihi ne zaman?", sw._HELD_ANSWER_PREFIX + " pr projesi done/paused, cevap (q9) oturum açmadı.", "Yazar sırası nasıl olacak?"]:
+    a = {"project": "p", "text": t, "source": "motor", "options": None, "routine": False, "detail": ""}
+    stateful("add_question_ex", a, lambda: sw.add_question_ex(**a))
+for fn, qid in [("mark_notified", "yok"), ("mark_delivered", "yok"), ("mark_notified", sw.load_questions()[0].id)]:
+    stateful(fn, {"question_id": qid}, lambda: getattr(sw, fn)(qid))
+sw.hosts_mod.get_host = lambda h: None
+for field, bad in itertools.product(("goal", "model", "effort", "last_directive"), (5, ["x"])):
+    sw.save_projects({"pr": P("pr", created_at=1.0)})
+    before = enc(sw.load_projects())
+    fields = {"priority": 1, field: bad}
+    try:
+        ret = enc(sw.upsert_project("pr", **fields))
+    except (TypeError, ValueError) as e:
+        ret = {"__error__": type(e).__name__, "msg": str(e)}
+    args = {"name": "pr", "force": False, "fields": fields, "projects": before, "sid": "default", "reviewer": False, "host_known": True,
+            "owner_elsewhere": None, "index": None, "running_given": False, "running": None}
+    OUT.setdefault("upsert_project", []).append(json.dumps({"args": args, "ret": ret, "now": NOW,
+        "after": {"projects": enc(sw.load_projects()), "cleared": False, "auto_label_via": None}}, ensure_ascii=False, separators=(",", ":")))
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

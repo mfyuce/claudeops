@@ -145,7 +145,7 @@ pub fn add_question_ex(
             q.source = source.to_string();
         }
     }
-    if sim.is_none() && !is_job && !routine {
+    if sim.is_none() && !solo && !routine {
         // L7b: proje başına açık soru sınırı; aşılınca en yeni açık soruya "ek" olarak eklenir
         let opened = || {
             questions.iter().enumerate().filter(|(_, q)| {
@@ -245,15 +245,12 @@ pub enum Answered {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnswerError {
     Empty(EmptyText),
-    /// Python'da `resolve_answer` istisnası (hiçbir şey kaydedilmez)
-    Resolve(ResolveError),
 }
 
 impl fmt::Display for AnswerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AnswerError::Empty(e) => e.fmt(f),
-            AnswerError::Resolve(e) => e.fmt(f),
         }
     }
 }
@@ -295,7 +292,7 @@ pub fn answer_question(
             return Ok(Answered::Deferred(index));
         }
     }
-    let resolved = resolve_answer(q, answer).map_err(AnswerError::Resolve)?;
+    let resolved = resolve_answer(q, answer);
     q.deferred_until = 0.0;
     q.answer = cap(&resolved, P_MAX_QUESTION_CHARS);
     if by == "cops" && q.source != REVIEW_ASK_SOURCE && !q.answer.starts_with(ON_BEHALF_PREFIX) {
@@ -359,11 +356,16 @@ pub fn set_answered_by(questions: &mut [Question], ids: &[String], by: &str) -> 
     Ok(done)
 }
 
-/// Telefona bildirildi. Python soru bulunmasa da kaydeder.
+/// Telefona bildirildi. Kayıt bulundu mu (= kaydet).
 ///
 /// py: mark_notified
-pub fn mark_notified(questions: &mut [Question], question_id: &str, now: f64) {
-    questions.iter_mut().filter(|q| q.id == question_id).for_each(|q| q.notified_at = now);
+pub fn mark_notified(questions: &mut [Question], question_id: &str, now: f64) -> bool {
+    let mut hit = false;
+    for q in questions.iter_mut().filter(|q| q.id == question_id) {
+        q.notified_at = now;
+        hit = true;
+    }
+    hit
 }
 
 /// Cevapsız kalan rutin soruyu sahibine açık soruya çevirir; bulunan sorunun indeksi (`Some` = kaydet).
@@ -380,11 +382,16 @@ pub fn escalate_routine(questions: &mut [Question], question_id: &str) -> Option
     hit
 }
 
-/// Python soru bulunmasa da kaydeder.
+/// Cevap teslim edildi. Kayıt bulundu mu (= kaydet).
 ///
 /// py: mark_delivered
-pub fn mark_delivered(questions: &mut [Question], question_id: &str, now: f64) {
-    questions.iter_mut().filter(|q| q.id == question_id).for_each(|q| q.delivered_at = now);
+pub fn mark_delivered(questions: &mut [Question], question_id: &str, now: f64) -> bool {
+    let mut hit = false;
+    for q in questions.iter_mut().filter(|q| q.id == question_id) {
+        q.delivered_at = now;
+        hit = true;
+    }
+    hit
 }
 
 /// Cevap teslim EDİLEMEDİ: yeniden deneme durur, neden kaydedilir. Kayıt bulundu mu (= kaydet).
@@ -534,19 +541,22 @@ pub struct Upserted {
     pub auto_label_via: Option<String>,
 }
 
-/// `upsert_project` hatası (hata durumunda `projects` değişmez).
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// `upsert_project` hatası (hata durumunda `projects` değişmez).
+///
+/// py: _BadFieldType
 pub enum UpsertError {
     InvalidName(String),
     Reviewer(ReviewerRefused),
     Host(HostChangeRefused),
     Owned(OwnedElsewhere),
     Reserved(ReservedName),
-    /// alan tipi uymuyor (Python olduğu gibi saklardı)
+    /// alan tipi uymuyor. Metin alanlarında Python da reddeder (`_BadFieldType`); sayı alanını Python saklar.
     BadType(String),
 }
 
 impl fmt::Display for UpsertError {
+    /// py: _BadFieldType.__init__
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UpsertError::InvalidName(n) => write!(f, "invalid project name: {}", pyc::repr_str(n)),
@@ -554,6 +564,9 @@ impl fmt::Display for UpsertError {
             UpsertError::Host(e) => e.fmt(f),
             UpsertError::Owned(e) => e.fmt(f),
             UpsertError::Reserved(e) => e.fmt(f),
+            UpsertError::BadType(n) if P_PROJECT_TEXT_FIELDS.contains(&n.as_str()) => {
+                write!(f, "bad field type: {n} (expected a string)")
+            }
             UpsertError::BadType(n) => write!(f, "bad field type: {n}"),
         }
     }

@@ -3,6 +3,7 @@
 
 use crate::cards::BadValue;
 use crate::consts_gen::*;
+use crate::gates::owner_only;
 use crate::markers::rfh_marker_in;
 use crate::prompts::{bad, items_of, object_of};
 use crate::pyc;
@@ -17,6 +18,7 @@ type Fancy = LazyLock<Option<fancy_regex::Regex>>;
 static CTX_SESSION_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_CTX_Q_SESSION_RE.as_str()));
 static CTX_HANDOVER_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_CTX_Q_HANDOVER_RE.as_str()));
 static CTX_EXCLUDE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_CTX_Q_EXCLUDE_RE.as_str()));
+static CTX_TOKEN_MEASURE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_CTX_TOKEN_MEASURE_RE.as_str()));
 static DONE_NO_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_DONE_NO_RE.as_str()));
 static DONE_HEDGE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_DONE_HEDGE_RE.as_str()));
 static DONE_YES_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_DONE_YES_RE.as_str()));
@@ -311,7 +313,17 @@ pub fn plan_shutdown(
 
 // ── bağlam sorusu ─────────────────────────────────────────────────────────────
 
-/// "Bu oturumda mı sürdüreyim, devirle mi?" kalıbı (commit/push/silme geçen soru sayılmaz).
+/// Metin sahibe ait bir konu geçiriyor mu (`owner_only` kapsamı); bağlam ölçüsü olarak geçen "token" sayılmaz.
+/// Desen derlenemez ya da aranamazsa KAPALI yöne düşer (`true`).
+///
+/// py: _context_owner_topic
+pub fn context_owner_topic(text: &str) -> bool {
+    let t = pyc::ci_input(text);
+    let Some(measure) = CTX_TOKEN_MEASURE_RE.as_ref() else { return true };
+    measure.try_replacen(&t, 0, " ").map_or(true, |rest| owner_only(&rest))
+}
+
+/// "Bu oturumda mı sürdüreyim, devirle mi?" kalıbı (commit/push/silme ya da sahibe ait konu geçen soru sayılmaz).
 ///
 /// py: is_context_question
 pub fn is_context_question(text: &str) -> bool {
@@ -320,6 +332,7 @@ pub fn is_context_question(text: &str) -> bool {
         && pyc::is_match(&CTX_HANDOVER_RE, &t)
         // desen derlenemez ya da aranamazsa soru otomatik cevaplanmaz
         && CTX_EXCLUDE_RE.as_ref().is_some_and(|r| matches!(r.is_match(&t), Ok(false)))
+        && !context_owner_topic(text)
 }
 
 /// (devir gerekli mi, cevap metni).
