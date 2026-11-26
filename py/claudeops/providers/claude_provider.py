@@ -985,9 +985,10 @@ class ClaudeProvider(CliProvider):
         while time.monotonic() < deadline:
             text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
             if "Switch model?" in text:
-                tmux_send_special_key(tmux_name, "Down")
-                time.sleep(0.2)
-                tmux_send_special_key(tmux_name, "Enter")
+                # `Down` ulaşmadıysa seçili düğme hâlâ "Yes, switch": Enter reddetmek istediğimiz değişikliği onaylardı.
+                if tmux_send_special_key(tmux_name, "Down"):
+                    time.sleep(0.2)
+                    tmux_send_special_key(tmux_name, "Enter")
                 return
             time.sleep(self._STRAY_DIALOG_POLL_SECONDS)
 
