@@ -1,6 +1,7 @@
 //! `settings.json`ın bu crate'i ilgilendiren alanları (`py/claudeops/settings.py` okuma tarafı). Dosyayı okumak
 //! çağıranın işi (cops-state); burada yalnız ayrıştırılmış nesne yorumlanır. Bozuk değer asla hata vermez.
 
+use crate::ojson::OValue;
 use crate::pyfmt::{parse_float, parse_int, str_of, str_or_empty, strip, truthy};
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -8,6 +9,7 @@ use std::sync::LazyLock;
 
 const OFF_WORDS: [&str; 11] =
     ["off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"];
+const AGENTS_OFF_WORDS: [&str; 8] = ["off", "0", "false", "no", "none", "disabled", "kapali", "kapalı"];
 const ON_WORDS: [&str; 9] = ["on", "1", "true", "yes", "y", "evet", "acik", "açık", "enabled"];
 const REASONING_LEVELS: [&str; 4] = ["low", "medium", "high", "max"];
 const MAX_FETCH_DOMAINS: usize = 64;
@@ -19,8 +21,18 @@ pub(crate) fn is_off(word: &str) -> bool {
 }
 
 /// Ayrıştırılmış `settings.json` nesnesi (dosya yok/bozuksa boş).
-#[derive(Debug, Clone, Default)]
-pub struct Settings(Map<String, Value>);
+#[derive(Debug, Clone)]
+pub struct Settings {
+    map: Map<String, Value>,
+    /// Aynı belge, dosyadaki anahtar sırasıyla (Python `dict`); sıranın anlamlı olduğu okuyucular kullanır.
+    ord: OValue,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { map: Map::new(), ord: OValue::Object(Vec::new()) }
+    }
+}
 
 /// Güvenli ortam değişkeni adı (`[A-Z_][A-Z0-9_]*`, tam eşleşme).
 pub fn is_safe_env_name(name: &str) -> bool {
@@ -78,7 +90,8 @@ pub struct UcliWeb {
 
 static SVC_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{1,19}$").unwrap());
 static SVC_ENV: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z][A-Z0-9_]{2,39}$").unwrap());
-static SVC_EP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://[^\s]+$").unwrap());
+// Python `\\s` (str) `\\x1c-\\x1f`i de kapsar.
+static SVC_EP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://[^\s\x1c-\x1f]+$").unwrap());
 static HOST: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$").unwrap()
 });
@@ -87,49 +100,100 @@ fn take_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// `_valid_http_url`: http(s) + host adı, boşluk/denetim karakteri yok, port sayısal ve 0-65535.
+/// `_valid_http_url` (Python 3.10 `urllib.parse.urlsplit` + `.port` + `.hostname`): http(s) + boş olmayan host adı,
+/// boşluk/denetim karakteri yok, köşeli parantezli host geçerli IPv6 (ya da `vX.` IPvFuture), port yalnız ASCII rakam ve
+/// 0-65535 (boş port = yok). Python'un ASCII dışı ağ konumu için NFKC denetimi TAŞINMADI.
 pub fn valid_http_url(url: &str) -> bool {
-    if url.is_empty() || url.chars().any(|c| c.is_whitespace() || (c as u32) < 32 || c as u32 == 127) {
+    if url.is_empty() || url.chars().any(|c| crate::pyfmt::py_isspace(c) || (c as u32) < 32 || c as u32 == 127) {
         return false;
     }
-    let Some((scheme, rest)) = url.split_once("://") else { return false };
-    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
+    let Some(i) = url.find(':') else { return false };
+    let scheme = &url[..i];
+    let scheme_ok = i > 0
+        && scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c));
+    if !scheme_ok || !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
         return false;
     }
+    let Some(rest) = url[i + 1..].strip_prefix("//") else { return false };
     let netloc = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let hostport = netloc.rsplit_once('@').map_or(netloc, |(_, h)| h);
-    let (host, port) = if let Some(r) = hostport.strip_prefix('[') {
-        match r.split_once(']') {
-            Some((h, after)) => (h, after.split_once(':').map_or("", |(_, p)| p)),
-            None => return false,
-        }
-    } else if netloc.contains(['[', ']']) {
+    let (open, close) = (netloc.contains('['), netloc.contains(']'));
+    if open != close {
         return false;
-    } else {
-        hostport.split_once(':').unwrap_or((hostport, ""))
+    }
+    let hostinfo = netloc.rsplit_once('@').map_or(netloc, |(_, h)| h);
+    if open {
+        let host = match hostinfo.split_once('[') {
+            Some((before, bracketed)) => {
+                let (host, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+                if !before.is_empty() || (!after.is_empty() && !after.starts_with(':')) {
+                    return false;
+                }
+                host
+            }
+            None => hostinfo.split_once(':').map_or(hostinfo, |(h, _)| h),
+        };
+        if !bracketed_host_ok(host) {
+            return false;
+        }
+    }
+    let (host, port) = match hostinfo.split_once('[') {
+        Some((_, bracketed)) => {
+            let (h, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+            (h, after.split_once(':').map_or("", |(_, p)| p))
+        }
+        None => hostinfo.split_once(':').unwrap_or((hostinfo, "")),
     };
-    let port_ok = port.is_empty() || (port.bytes().all(|b| b.is_ascii_digit()) && port.parse::<u16>().is_ok());
+    let digits = port.trim_start_matches('0');
+    let port_ok = port.is_empty()
+        || (port.bytes().all(|b| b.is_ascii_digit()) && digits.len() <= 5 && digits.parse::<u32>().unwrap_or(0) <= 65535);
     !host.is_empty() && port_ok
 }
 
+/// `urllib.parse._check_bracketed_host`.
+fn bracketed_host_ok(h: &str) -> bool {
+    if let Some(rest) = h.strip_prefix('v') {
+        // `\Av[a-fA-F0-9]+\..+\Z`
+        return match rest.split_once('.') {
+            Some((hex, tail)) => {
+                !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit()) && !tail.is_empty() && !tail.contains('\n')
+            }
+            None => false,
+        };
+    }
+    // `ipaddress.ip_address`: IPv4 köşeli parantezde reddedilir; IPv6 kapsam kimliği (`%eth0`) kabul edilir.
+    let addr = match h.split_once('%') {
+        Some((_, sc)) if sc.is_empty() || sc.contains('%') => return false,
+        Some((a, _)) => a,
+        None => h,
+    };
+    addr.parse::<std::net::Ipv6Addr>().is_ok()
+}
+
 impl Settings {
+    /// Ayrıştırılmış nesneden (anahtar sırası bilinmiyor: `Map` sırası kullanılır). Sıra önemliyse [`Settings::from_json`].
     pub fn new(map: Map<String, Value>) -> Self {
-        Settings(map)
+        let ord = OValue::from_value(&Value::Object(map.clone()));
+        Settings { map, ord }
     }
 
+    /// `settings.json` metni; nesne değilse ya da bozuksa boş (Python `load_settings` toleransı).
     pub fn from_json(text: &str) -> Self {
-        match serde_json::from_str::<Value>(text) {
-            Ok(Value::Object(m)) => Settings(m),
+        match OValue::parse(text) {
+            Some(ord @ OValue::Object(_)) => match ord.to_value() {
+                Value::Object(map) => Settings { map, ord },
+                _ => Settings::default(),
+            },
             _ => Settings::default(),
         }
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
+        self.map.get(key)
     }
 
     fn block(&self, key: &str) -> Option<&Map<String, Value>> {
-        self.0.get(key).and_then(Value::as_object)
+        self.map.get(key).and_then(Value::as_object)
     }
 
     fn block_word(&self, key: &str, field: &str) -> String {
@@ -159,11 +223,15 @@ impl Settings {
 
     /// `byok[cli]`: boş olmayan değerler, `str()`e zorlanmış.
     pub fn byok_env(&self, cli: &str) -> Vec<(String, String)> {
-        self.block("byok")
-            .and_then(|b| b.get(cli))
-            .and_then(Value::as_object)
-            .map(|m| m.iter().filter(|(_, v)| truthy(v)).map(|(k, v)| (k.clone(), str_of(v))).collect())
-            .unwrap_or_default()
+        let Some(entries) = self.ord.get("byok").and_then(|b| b.get(cli)).and_then(OValue::entries) else {
+            return Vec::new();
+        };
+        entries
+            .iter()
+            .map(|(k, v)| (k, v.to_value()))
+            .filter(|(_, v)| truthy(v))
+            .map(|(k, v)| (k.clone(), str_of(&v)))
+            .collect()
     }
 
     pub fn byok_value(&self, cli: &str, env: &str) -> String {
@@ -177,7 +245,7 @@ impl Settings {
             .into_iter()
             .filter_map(|k| {
                 let v = self.block("ucli_limits")?.get(k)?;
-                parse_int(&str_of(v)).filter(|n| *n > 0).map(|n| (k, n))
+                parse_int(strip(&str_of(v))).filter(|n| *n > 0).map(|n| (k, n))
             })
             .collect()
     }
@@ -247,7 +315,7 @@ impl Settings {
             Some(Value::Array(a)) => a.iter().map(str_of).collect::<Vec<_>>().join(","),
             v => str_or_empty(v),
         };
-        for tok in text.to_lowercase().split(|c: char| c == ',' || c.is_whitespace()) {
+        for tok in text.to_lowercase().split(|c: char| c == ',' || crate::pyfmt::py_isspace(c)) {
             if !tok.is_empty() && tok.len() <= 253 && HOST.is_match(tok) && !out.allow_fetch_domains.iter().any(|d| d == tok)
             {
                 out.allow_fetch_domains.push(tok.to_string());
@@ -261,11 +329,13 @@ impl Settings {
 
     /// `normalize_ucli_services`: geçersiz girdiler atılır, `evren` her zaman vardır.
     pub fn ucli_services(&self) -> Vec<UcliService> {
-        let Some(raw) = self.get("ucli_services").and_then(Value::as_array).filter(|a| !a.is_empty()) else {
+        let Some(raw) = self.ord.get("ucli_services").and_then(OValue::as_array).filter(|a| !a.is_empty()) else {
             return builtin_services();
         };
         let mut out: Vec<UcliService> = Vec::new();
-        for r in raw.iter().filter_map(Value::as_object) {
+        for ro in raw {
+            let Some(entries) = ro.entries() else { continue };
+            let r: Map<String, Value> = entries.iter().map(|(k, v)| (k.clone(), v.to_value())).collect();
             let id = strip(&str_or_empty(r.get("id"))).to_lowercase();
             let env = strip(&str_or_empty(r.get("env"))).to_string();
             let wire = strip(&str_or_empty(r.get("wire"))).to_string();
@@ -280,22 +350,25 @@ impl Settings {
                 continue;
             }
             let mut efforts = Vec::new();
-            if let Some(eff) = r.get("efforts").and_then(Value::as_object) {
+            if let Some(eff) = ro.get("efforts").and_then(OValue::entries) {
                 for (k, v) in eff.iter().take(20) {
                     let key = take_chars(&strip(k).to_lowercase(), 40);
-                    let Some(list) = v.as_array() else { continue };
+                    let Value::Array(list) = v.to_value() else { continue };
                     if key.is_empty() {
                         continue;
                     }
                     let mut levels: Vec<String> = Vec::new();
-                    for item in list {
+                    for item in &list {
                         let s = strip(&str_of(item)).to_string();
                         if REASONING_LEVELS.contains(&s.as_str()) && !levels.contains(&s) {
                             levels.push(s);
                         }
                     }
-                    efforts.retain(|(k2, _)| k2 != &key);
-                    efforts.push((key, levels));
+                    // Python `efforts[ek] = ...`: var olan anahtar YERİNDE güncellenir.
+                    match efforts.iter_mut().find(|(k2, _): &&mut (String, Vec<String>)| *k2 == key) {
+                        Some(slot) => slot.1 = levels,
+                        None => efforts.push((key, levels)),
+                    }
                 }
             }
             out.push(UcliService { id, wire, endpoint: ep, env, efforts });
@@ -304,6 +377,21 @@ impl Settings {
             out.insert(0, builtin_services().remove(0));
         }
         out
+    }
+
+    /// `ucli_session_opts.effort_levels_for`: hizmet + model için geçerli `--effort` seviyeleri; None = kural yok. Kural =
+    /// hizmetin `efforts` tablosunda model kimliğinde (küçük harf) geçen EN UZUN anahtar (eşit uzunlukta tablodaki ilki).
+    pub fn ucli_effort_levels_for(&self, service: &str, model: &str) -> Option<Vec<String>> {
+        let m = model.to_lowercase();
+        let services = self.ucli_services();
+        let svc = services.iter().find(|s| s.id == service)?;
+        let mut best: Option<&(String, Vec<String>)> = None;
+        for e in svc.efforts.iter().filter(|(k, _)| m.contains(k.as_str())) {
+            if best.is_none_or(|b| e.0.chars().count() > b.0.chars().count()) {
+                best = Some(e);
+            }
+        }
+        best.map(|(_, l)| l.clone())
     }
 
     /// `ucli_cost.cache_ttl` (`5m` | `1h`, varsayılan `1h`).
@@ -324,7 +412,7 @@ impl Settings {
         if raw.is_empty() {
             return DEFAULT_MAX_SESSION_USD;
         }
-        match parse_float(&raw.replace(',', ".")) {
+        match parse_float(&strip(&raw).replace(',', ".")) {
             Some(v) if v.is_finite() && v >= 0.0 => v,
             _ => DEFAULT_MAX_SESSION_USD,
         }
@@ -343,7 +431,8 @@ impl Settings {
             None | Some(Value::Null) => String::new(),
             Some(v) => strip(&str_of(v)).to_lowercase(),
         };
-        !is_off(if w.is_empty() { "on" } else { &w })
+        // `ucli_agents._OFF_WORDS`: genel listeden FARKLI (`n`, `hayir`, `hayır` yok).
+        !AGENTS_OFF_WORDS.contains(&if w.is_empty() { "on" } else { w.as_str() })
     }
 
     pub fn routing_guidance_enabled(&self) -> bool {

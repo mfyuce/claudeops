@@ -1,6 +1,7 @@
 //! Dış dünya ile sınır: crate'in okuduğu olgular ([`Probe`]), istediği yan etkiler ([`Effect`]) ve sabit yollar.
 
 use crate::ucli_opts::Toolchain;
+use serde_json::Value;
 use std::fmt;
 
 /// Çağıranın verdiği sabit yollar. `home_state` Python'da `CLAUDEOPS_DIR`den BAĞIMSIZ olan dosyaların tabanıdır
@@ -62,8 +63,12 @@ pub trait Probe {
     /// Normal dosya VE çalıştırılabilir.
     fn is_executable_file(&self, path: &str) -> bool;
     fn file_size(&self, path: &str) -> Option<u64>;
+    /// Python `open(path, encoding="utf-8").read()`: evrensel satır sonu (`\r\n`, `\r` -> `\n`); yoksa ya da UTF-8 değilse
+    /// None (Python'da bozuk UTF-8 bazı yollarda istisnadır, bkz. parite raporu).
     fn read_text(&self, path: &str) -> Option<String>;
-    /// `os.path.realpath` (çözülemezse girdi).
+    /// `os.path.realpath` (strict DEĞİL): göreli yol çağıranın çalışma dizinine göre mutlaklaşır, var olmayan parçalar
+    /// normalleştirilerek korunur (`/a/b/` -> `/a/b`, `..` düşer). "Çözülemezse girdi" DEĞİL: `ucli` durum dizini adı ve
+    /// özeti bu çıktıdan hesaplanır.
     fn realpath(&self, path: &str) -> String;
     fn which(&self, name: &str) -> Option<String>;
     fn env_var(&self, name: &str) -> Option<String>;
@@ -85,8 +90,9 @@ pub trait Probe {
     fn issue_agent_token(&self, session: &str) -> Result<String, String>;
     /// Panelin loopback portu (bilinmiyorsa None).
     fn panel_port(&self) -> Option<u16>;
-    /// ucli MCP kaydı: `config_path` silinir, `argv` `cwd`de çalıştırılır; başarı = true.
-    fn register_mcp(&self, cwd: &str, config_path: &str, argv: &[String]) -> bool;
+    /// ucli MCP kaydı: `config_path` (`os.path.lexists` ise) silinir, `argv` `cwd`de çalıştırılır (20 sn). Günlük olaylarını
+    /// crate yazar (Python `register_mcp` ile aynı alanlar).
+    fn register_mcp(&self, cwd: &str, config_path: &str, argv: &[String]) -> Result<(), McpRegisterError>;
 }
 
 /// Komuttan ÖNCE çağıranın uygulaması gereken dosya işlemleri (verilen sırayla).
@@ -101,6 +107,8 @@ pub enum Effect {
     Remove { path: String },
     /// `makedirs(mode=0700, exist_ok=True)`.
     MkdirPrivate { path: String },
+    /// `chmod(path, 0o700)` (var olan dizinin izni de daraltılır).
+    ChmodPrivate { path: String },
 }
 
 impl fmt::Debug for Effect {
@@ -112,15 +120,28 @@ impl fmt::Debug for Effect {
             Effect::Touch { path } => write!(f, "Touch({path})"),
             Effect::Remove { path } => write!(f, "Remove({path})"),
             Effect::MkdirPrivate { path } => write!(f, "MkdirPrivate({path})"),
+            Effect::ChmodPrivate { path } => write!(f, "ChmodPrivate({path})"),
         }
     }
 }
 
-/// `diag_log(event, ...)` karşılığı; çağıran günlüğe yazar.
+/// [`Probe::register_mcp`] hatası. Metinler Python `repr(e)` biçimindedir (`OSError('...')`), günlüğe aynen gider.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpRegisterError {
+    /// Eski kayıt dosyası silinemedi.
+    Unlink(String),
+    /// Süreç başlatılamadı / zaman aşımı.
+    Spawn(String),
+    /// Sıfır olmayan çıkış.
+    Exit { rc: i32, stdout: String, stderr: String },
+}
+
+/// `diag_log(event, **alanlar)` karşılığı; çağıran günlüğe yazar. Alan sırası ve JSON tipi Python'daki gibidir (bool, sayı,
+/// liste metne çevrilmez).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Diag {
     pub event: &'static str,
-    pub fields: Vec<(&'static str, String)>,
+    pub fields: Vec<(&'static str, Value)>,
 }
 
 /// Komut kurulumunda biriken yan etkiler ve günlük olayları.
@@ -131,8 +152,8 @@ pub struct BuildOutput {
 }
 
 impl BuildOutput {
-    pub(crate) fn diag(&mut self, event: &'static str, fields: &[(&'static str, &str)]) {
-        self.diags.push(Diag { event, fields: fields.iter().map(|(k, v)| (*k, v.to_string())).collect() });
+    pub(crate) fn diag(&mut self, event: &'static str, fields: Vec<(&'static str, Value)>) {
+        self.diags.push(Diag { event, fields });
     }
 }
 

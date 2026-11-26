@@ -1,11 +1,11 @@
 //! ucli sağlayıcısı. Her isteğe bağlı bayrak YALNIZ ikilinin `chat --help`i listeliyorsa eklenir.
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
-use crate::probe::{BuildOutput, Effect, SpawnError};
+use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
-use crate::pyfmt::{basename, fmt_g, join_path, join_quoted, parse_float, quote, str_of, truthy};
+use crate::pyfmt::{basename, fmt_g, join_path, join_quoted, py_float, py_str_repr, quote, str_of, truthy};
 use crate::ucli_opts::{exec_flags, expand_exec_cmds, str_list, BROAD_GLOBS};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use sha1::{Digest, Sha1};
 
 pub const ALLOW_EDIT: &str = "allow-edit";
@@ -80,7 +80,7 @@ fn word_char(c: char) -> bool {
 }
 
 /// Yardım metninde TAM bayrak (`(?<![\w-])flag(?![\w-])`); bulunan ilk konumun sonu.
-pub(crate) fn find_flag(help: &str, flag: &str) -> Option<usize> {
+pub fn find_flag(help: &str, flag: &str) -> Option<usize> {
     let mut from = 0;
     while let Some(i) = help[from..].find(flag) {
         let start = from + i;
@@ -153,8 +153,18 @@ fn safe_name(session: &str) -> String {
     session.chars().map(|c| if c.is_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect()
 }
 
+/// `binary_supports_flag`: yardım metninde TAM bayrak.
+pub fn supports_flag(help: &str, flag: &str) -> bool {
+    find_flag(help, flag).is_some()
+}
+
+/// `binary_derives_context`: ikili bağlam tavanını modelden türetiyor mu.
+pub fn derives_context(help: &str) -> bool {
+    help.contains(DERIVES_CONTEXT_MARK)
+}
+
 /// Oturum kullanım günlüğü yolu (`ucli_cost.log_path`).
-fn usage_log_path(dir: &str, session: &str) -> String {
+pub fn usage_log_path(dir: &str, session: &str) -> String {
     let mut safe: String = safe_name(session).chars().take(100).collect();
     if safe.is_empty() {
         safe = "session".into();
@@ -208,7 +218,7 @@ impl Ctx<'_, '_> {
 
     fn unsupported(&mut self, flag: &str) {
         let (name, binary) = (self.session.to_string(), self.binary.clone());
-        self.out.diag("ucli_flag_unsupported", &[("name", &name), ("flag", flag), ("binary", &binary)]);
+        self.out.diag("ucli_flag_unsupported", vec![("name", json!(&name)), ("flag", json!(flag)), ("binary", json!(&binary))]);
     }
 
     /// İkili tanıyorsa true; tanımıyorsa günlüğe yazar.
@@ -237,7 +247,7 @@ impl Ctx<'_, '_> {
                 let (name, binary) = (self.session.to_string(), self.binary.clone());
                 self.out.diag(
                     "ucli_web_flag_unsupported",
-                    &[("name", &name), ("flag", "--search-url"), ("binary", &binary), ("auto", if auto { "True" } else { "False" })],
+                    vec![("name", json!(&name)), ("flag", json!("--search-url")), ("binary", json!(&binary)), ("auto", json!(auto))],
                 );
             } else {
                 let url = cfg.search_url.clone().or_else(|| self.p.probe.searxng_url(self.session));
@@ -256,7 +266,7 @@ impl Ctx<'_, '_> {
                 let (name, binary) = (self.session.to_string(), self.binary.clone());
                 self.out.diag(
                     "ucli_web_flag_unsupported",
-                    &[("name", &name), ("flag", "--allow-fetch"), ("binary", &binary)],
+                    vec![("name", json!(&name)), ("flag", json!("--allow-fetch")), ("binary", json!(&binary))],
                 );
             }
         }
@@ -283,7 +293,7 @@ impl Ctx<'_, '_> {
                 Some(v) => argv.extend(["--effort".into(), v]),
                 None => {
                     let name = self.session.to_string();
-                    self.out.diag("ucli_effort_skipped", &[("name", &name), ("model", a.model), ("level", level)]);
+                    self.out.diag("ucli_effort_skipped", vec![("name", json!(&name)), ("model", json!(a.model)), ("level", json!(level))]);
                 }
             }
         }
@@ -340,8 +350,10 @@ impl Ctx<'_, '_> {
                 });
             if too_big {
                 let name = self.session.to_string();
-                let limit = INSTRUCTIONS_MAX_BYTES.to_string();
-                self.out.diag("ucli_instructions_skipped", &[("name", &name), ("cwd", cwd), ("limit", &limit)]);
+                self.out.diag(
+                    "ucli_instructions_skipped",
+                    vec![("name", json!(&name)), ("cwd", json!(cwd)), ("limit", json!(INSTRUCTIONS_MAX_BYTES))],
+                );
             } else {
                 push_once(argv, "--instructions-auto");
             }
@@ -385,16 +397,9 @@ impl Ctx<'_, '_> {
             if let Some(i) = argv.iter().position(|x| x == "--effort") {
                 argv.drain(i..(i + 2).min(argv.len()));
             }
-            let model = value_after(argv, "--model").map(str::to_lowercase);
-            if let Some(model) = model {
-                // En uzun eşleşen anahtar; eşit uzunlukta ilki.
-                let mut best: Option<&(String, Vec<String>)> = None;
-                for e in svc.efforts.iter().filter(|(k, _)| model.contains(k.as_str())) {
-                    if best.is_none_or(|b| e.0.chars().count() > b.0.chars().count()) {
-                        best = Some(e);
-                    }
-                }
-                if best.is_some_and(|(_, l)| l.iter().any(|x| x == a.effort)) && self.has("--effort") {
+            if let Some(model) = value_after(argv, "--model").map(str::to_string) {
+                let levels = self.p.settings.ucli_effort_levels_for(&service, &model).unwrap_or_default();
+                if levels.iter().any(|x| x == a.effort) && self.has("--effort") {
                     argv.extend(["--effort".into(), a.effort.into()]);
                 }
             }
@@ -409,8 +414,14 @@ impl Ctx<'_, '_> {
             self.out.effects.push(Effect::MkdirPrivate { path: dir });
             set_flag_value(argv, "--usage-log", &log);
         }
-        let as_usd = |k: &str| opts.get(k).filter(|v| truthy(v)).and_then(|v| parse_float(&str_of(v)));
-        if let Some(usd) = as_usd("max_cost_usd") {
+        // `float(opts[k])`: dönüşmeyen değer Python'da ValueError/TypeError fırlatır (spawn düşer).
+        let as_usd = |k: &str| -> Result<Option<f64>, SpawnError> {
+            match opts.get(k).filter(|v| truthy(v)) {
+                None => Ok(None),
+                Some(v) => py_float(v).map(Some).ok_or_else(|| SpawnError(float_error(v))),
+            }
+        };
+        if let Some(usd) = as_usd("max_cost_usd")? {
             if self.known("--max-cost-usd") {
                 let model = value_after(argv, "--model").unwrap_or("").to_string();
                 if PRICED_MODELS.contains(&model.as_str()) {
@@ -419,13 +430,13 @@ impl Ctx<'_, '_> {
                     let name = self.session.to_string();
                     self.out.diag(
                         "ucli_max_cost_skipped",
-                        &[("name", &name), ("model", &model), ("reason", "no built-in price")],
+                        vec![("name", json!(&name)), ("model", json!(&model)), ("reason", json!("no built-in price"))],
                     );
                 }
             }
         }
         // Evren (ücretsiz) hizmette varsayılan oturum tavanı eklenmez.
-        let session_cap = as_usd("max_session_usd").filter(|v| *v != 0.0).unwrap_or_else(|| {
+        let session_cap = as_usd("max_session_usd")?.filter(|v| *v != 0.0).unwrap_or_else(|| {
             if service.is_empty() || service == "evren" {
                 0.0
             } else {
@@ -470,7 +481,7 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_flag_skipped",
-                    &[("name", &name), ("flag", "--search-token-env"), ("reason", "no --search-url")],
+                    vec![("name", json!(&name)), ("flag", json!("--search-token-env")), ("reason", json!("no --search-url"))],
                 );
             } else if self.known("--search-token-env") {
                 set_flag_value(argv, "--search-token-env", &str_of(ste));
@@ -497,6 +508,7 @@ impl Ctx<'_, '_> {
             let dir = format!("{root}/{}", self.session);
             self.out.effects.push(Effect::MkdirPrivate { path: root });
             self.out.effects.push(Effect::MkdirPrivate { path: dir.clone() });
+            self.out.effects.push(Effect::ChmodPrivate { path: dir.clone() });
             set_flag_value(argv, "--ask-dir", &dir);
         }
         let mut opts = opts.clone();
@@ -509,7 +521,7 @@ impl Ctx<'_, '_> {
         if on_map(&opts, "accept_risk") && globs.iter().any(|g| BROAD_GLOBS.contains(&g.as_str())) {
             let broad: Vec<&str> = globs.iter().map(String::as_str).filter(|g| BROAD_GLOBS.contains(g)).collect();
             let name = self.session.to_string();
-            self.out.diag("ucli_grant", &[("name", &name), ("globs", &broad.join(",")), ("accept_risk", "True")]);
+            self.out.diag("ucli_grant", vec![("name", json!(&name)), ("globs", json!(broad)), ("accept_risk", json!(true))]);
         }
         if !ex.is_empty() {
             let mut need = vec!["--allow-exec", "--allow-exec-cmd"];
@@ -582,7 +594,7 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_grant",
-                    &[("name", &name), ("checks", "full"), ("accept_risk", if risk { "True" } else { "False" })],
+                    vec![("name", json!(&name)), ("checks", json!("full")), ("accept_risk", json!(true))],
                 );
             }
         }
@@ -592,7 +604,7 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_flag_skipped",
-                    &[("name", &name), ("flag", "--ask-edit"), ("reason", "no --allow-edit")],
+                    vec![("name", json!(&name)), ("flag", json!("--ask-edit")), ("reason", json!("no --allow-edit"))],
                 );
             } else {
                 self.require("--ask-edit", "izin yarım uygulanmaz")?;
@@ -622,7 +634,7 @@ impl Ctx<'_, '_> {
             ),
             Err(e) => {
                 let name = self.session.to_string();
-                self.out.diag("ucli_agents_token_failed", &[("name", &name), ("error", &e)]);
+                self.out.diag("ucli_agents_token_failed", vec![("name", json!(&name)), ("error", json!(&e))]);
                 none
             }
         }
@@ -748,7 +760,10 @@ pub fn mcp_add_argv(binary: &str, cwd: &str, spec: &McpSpec) -> Vec<String> {
     argv
 }
 
+/// `_MCP_TOOL_RE` (`^[A-Za-z0-9_.-]{1,64}$`): Python `$` sondaki TEK satır sonunu da kabul eder (`"ok\n"` geçer);
+/// Python ile aynı tutuldu (bkz. parite raporu, Python hatası şüphesi).
 fn valid_tool_name(t: &str) -> bool {
+    let t = t.strip_suffix('\n').unwrap_or(t);
     (1..=64).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 
@@ -756,34 +771,77 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
     let binary = match resolve_binary(p) {
         Ok(b) => b,
         Err(e) => {
-            out.diag("ucli_mcp_skipped", &[("server", &spec.name), ("reason", &e.0)]);
+            // Python `reason=repr(e)`: `UcliError('...')`.
+            out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!(py_repr("UcliError", &e.0)))]);
             return Vec::new();
         }
     };
     let help = p.probe.ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
     if find_flag(&help, "--with-mcp").is_none() {
-        out.diag("ucli_flag_unsupported", &[("flag", "--with-mcp"), ("binary", &binary)]);
+        out.diag("ucli_flag_unsupported", vec![("flag", json!("--with-mcp")), ("binary", json!(&binary))]);
         return Vec::new();
     }
     let tools: Vec<String> = spec.allowed_tools.iter().filter(|t| valid_tool_name(t)).cloned().collect();
     if tools.is_empty() {
-        out.diag("ucli_mcp_skipped", &[("server", &spec.name), ("reason", "no allowed tools")]);
+        out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!("no allowed tools"))]);
         return Vec::new();
     }
     if !cwd.starts_with('/') || !p.probe.is_dir(cwd) {
-        out.diag("ucli_mcp_skipped", &[("server", &spec.name), ("reason", "no workspace"), ("cwd", cwd)]);
+        out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!("no workspace")), ("cwd", json!(cwd))]);
         return Vec::new();
     }
+    // Python `register_mcp(binary, cwd, clean)`: oturum adı geçirilmez, günlükte `name=""`.
     let dir = join_path(cwd, ".ucli");
     if p.probe.is_symlink(&dir) {
-        out.diag("ucli_mcp_register_failed", &[("cwd", cwd), ("error", ".ucli is a symlink")]);
+        out.diag(
+            "ucli_mcp_register_failed",
+            vec![("name", json!("")), ("cwd", json!(cwd)), ("error", json!(".ucli is a symlink"))],
+        );
         return Vec::new();
     }
     let clean = McpSpec { allowed_tools: tools, ..spec.clone() };
-    if p.probe.register_mcp(cwd, &join_path(&dir, "mcp.json"), &mcp_add_argv(&binary, cwd, &clean)) {
-        vec!["--with-mcp".into()]
-    } else {
-        out.diag("ucli_mcp_register_failed", &[("cwd", cwd), ("server", &spec.name)]);
-        Vec::new()
+    match p.probe.register_mcp(cwd, &join_path(&dir, "mcp.json"), &mcp_add_argv(&binary, cwd, &clean)) {
+        Ok(()) => {
+            out.diag(
+                "ucli_mcp_registered",
+                vec![
+                    ("name", json!("")),
+                    ("cwd", json!(cwd)),
+                    ("server", json!(mcp_server_name(&clean.name))),
+                    ("tools", json!(clean.allowed_tools.len())),
+                ],
+            );
+            vec!["--with-mcp".into()]
+        }
+        Err(McpRegisterError::Unlink(e) | McpRegisterError::Spawn(e)) => {
+            out.diag("ucli_mcp_register_failed", vec![("name", json!("")), ("cwd", json!(cwd)), ("error", json!(e))]);
+            Vec::new()
+        }
+        Err(McpRegisterError::Exit { rc, stdout, stderr }) => {
+            // `(r.stderr or r.stdout or "")[-300:]`
+            let text = if !stderr.is_empty() { stderr } else { stdout };
+            let n = text.chars().count();
+            let tail: String = text.chars().skip(n.saturating_sub(300)).collect();
+            out.diag(
+                "ucli_mcp_register_failed",
+                vec![("name", json!("")), ("cwd", json!(cwd)), ("rc", json!(rc)), ("error", json!(tail))],
+            );
+            Vec::new()
+        }
     }
+}
+
+/// `float(v)` hata metni (Python 3.10).
+fn float_error(v: &Value) -> String {
+    match v {
+        Value::String(s) => format!("could not convert string to float: {}", py_str_repr(s)),
+        Value::Array(_) => "float() argument must be a string or a real number, not 'list'".into(),
+        Value::Object(_) => "float() argument must be a string or a real number, not 'dict'".into(),
+        _ => "float() argument must be a string or a real number, not 'NoneType'".into(),
+    }
+}
+
+/// Python `repr(Exc(msg))` (tek argümanlı istisna): `Exc('msg')`.
+fn py_repr(class: &str, msg: &str) -> String {
+    format!("{class}({})", py_str_repr(msg))
 }

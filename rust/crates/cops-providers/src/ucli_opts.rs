@@ -1,7 +1,7 @@
 //! `ucli_session_opts.py`: ucli başlatma seçenekleri (`cli_opts`) doğrulaması ve exec bayrakları.
 //! Güvenlik duruşu: geçersiz değer sessizce atılmaz, HATA döner; yasaklı komutlar desenle de açılmaz.
 
-use crate::pyfmt::{basename, fmt_g, parse_float, parse_int, str_of, str_or_empty, strip, truthy};
+use crate::pyfmt::{basename, fmt_g, parse_float, parse_int, py_int, str_of, str_or_empty, strip, truthy};
 use crate::settings::{is_safe_env_name, Settings};
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -101,7 +101,7 @@ fn present(v: Option<&Value>) -> Option<&Value> {
 
 fn usd_limit(raw: &Map<String, Value>, key: &str, max: f64) -> Result<Option<f64>, String> {
     let Some(v) = present(raw.get(key)) else { return Ok(None) };
-    let usd = parse_float(&str_of(v).replace(',', ".")).ok_or_else(|| format!("{key} sayı olmalı"))?;
+    let usd = parse_float(&strip(&str_of(v)).replace(',', ".")).ok_or_else(|| format!("{key} sayı olmalı"))?;
     if !(0.0..=max).contains(&usd) {
         return Err(format!("{key} 0-{} USD arası", fmt_g(max)));
     }
@@ -136,7 +136,8 @@ pub fn validate_opts(
                 if pat.is_empty() || pat.chars().count() > 60 {
                     return Err(format!("geçersiz regex (1-60 karakter): {c}"));
                 }
-                if let Err(e) = fancy_regex::Regex::new(pat) {
+                // Python `re.compile` kabul/red kararı ve iletisi (lehçe çevirisi: bkz. `py_re`).
+                if let Err(e) = crate::py_re::compile(pat, str::to_string) {
                     return Err(format!("geçersiz regex ({e}): {c}"));
                 }
                 continue;
@@ -221,7 +222,7 @@ pub fn validate_opts(
         out.insert("exec_write".into(), json!(true));
     }
     if let Some(t) = present(raw.get("exec_timeout")) {
-        let n = parse_int(&str_of(t)).ok_or("exec_timeout sayı olmalı")?;
+        let n = parse_int(strip(&str_of(t))).ok_or("exec_timeout sayı olmalı")?;
         if !(TIMEOUT_RANGE.0..=TIMEOUT_RANGE.1).contains(&n) {
             return Err(format!("exec_timeout {}-{} sn arası", TIMEOUT_RANGE.0, TIMEOUT_RANGE.1));
         }
@@ -255,7 +256,7 @@ pub fn validate_opts(
         {
             continue;
         }
-        let n = parse_int(&str_of(v.expect("yukarıda elendi"))).ok_or_else(|| format!("{key} tam sayı olmalı"))?;
+        let n = parse_int(strip(&str_of(v.expect("yukarıda elendi")))).ok_or_else(|| format!("{key} tam sayı olmalı"))?;
         if !(0..=hi).contains(&n) {
             return Err(format!("{key} 0-{hi} arası"));
         }
@@ -404,8 +405,7 @@ pub fn expand_exec_cmds(list: &[String], available: &[String]) -> Result<Vec<Str
     let mut out: Vec<String> = Vec::new();
     for it in list {
         let hit: Vec<&String> = if let Some(pat) = it.strip_prefix("re:") {
-            let rx = fancy_regex::Regex::new(&format!(r"\A(?:{pat})\z"))
-                .map_err(|e| format!("geçersiz regex ({e}): {it}"))?;
+            let rx = crate::py_re::compile(pat, |t| format!(r"\A(?:{t})\z")).map_err(|e| format!("geçersiz regex ({e}): {it}"))?;
             available.iter().filter(|n| rx.is_match(n).unwrap_or(false)).collect()
         } else if is_glob(it) {
             // Geçersiz sınıf (ör. ters aralık) hiçbir şeye uymaz.
@@ -470,7 +470,7 @@ pub fn exec_flags(
         argv.extend(["--exec-bind-ro".into(), b]);
     }
     if let Some(t) = opts.get("exec_timeout").filter(|v| truthy(v)) {
-        let secs = t.as_f64().map(|f| f as i64).or_else(|| parse_int(&str_of(t))).unwrap_or(0);
+        let secs = py_int(t).unwrap_or(0);
         argv.extend(["--exec-timeout-secs".into(), secs.to_string()]);
     }
     argv

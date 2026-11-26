@@ -18,7 +18,11 @@ fn permission_flags(mode: &str) -> &'static [&'static str] {
 
 /// `agy models` çıktısı: yalnız `id<TAB>Etiket` satırları.
 pub fn parse_models(output: &str) -> Vec<String> {
-    output.lines().filter_map(|l| l.split_once('\t')).map(|(id, _)| crate::pyfmt::strip(id).to_string()).collect()
+    crate::pyfmt::splitlines(output)
+        .into_iter()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(id, _)| crate::pyfmt::strip(id).to_string())
+        .collect()
 }
 
 pub fn model_effort_levels(model: &str, models: &[String]) -> Option<Vec<String>> {

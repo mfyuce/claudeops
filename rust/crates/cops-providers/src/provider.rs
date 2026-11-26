@@ -265,6 +265,19 @@ impl Providers<'_> {
         }
     }
 
+    /// `CliProvider.validate_cli_opts`: ham başlat penceresi seçenekleri -> temiz sözlük ya da hata metni. ucli dışındaki
+    /// sağlayıcı dolu girdiyi reddeder.
+    pub fn validate_cli_opts(&self, cli: Cli, raw: &Value) -> Result<Map<String, Value>, String> {
+        if cli.accepts_cli_opts() {
+            return crate::ucli_opts::validate_opts(raw, self.settings, &|| self.probe.rust_toolchain());
+        }
+        if crate::pyfmt::truthy(raw) {
+            Err(format!("{}: başlatma seçeneği desteklenmiyor", cli.name()))
+        } else {
+            Ok(Map::new())
+        }
+    }
+
     /// Kalıcı kayıt ipucu (yalnız agy); çalıştırılmaz.
     pub fn mcp_setup_command(&self, cli: Cli, spec: &McpSpec) -> Option<String> {
         (cli == Cli::Agy).then(|| agy::mcp_setup_command(spec))

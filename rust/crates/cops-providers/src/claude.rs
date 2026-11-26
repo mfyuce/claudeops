@@ -19,7 +19,7 @@ static SONNET_PIN: LazyLock<Regex> =
 fn sonnet_version(id: &str) -> Vec<u32> {
     SONNET_PIN
         .captures(id)
-        .map(|c| c[2].split('-').map(|p| p.parse().unwrap_or(0)).collect())
+        .map(|c| c[2].split('-').map(|p| crate::pyfmt::parse_int(p).unwrap_or(0) as u32).collect())
         .unwrap_or_default()
 }
 
@@ -103,7 +103,7 @@ fn mcp_config_path(p: &Providers<'_>, spec: &McpSpec) -> String {
     let stem = base.strip_suffix(".json").unwrap_or(&base);
     if let Some(i) = spec.args.iter().position(|a| a == "--steward") {
         if let Some(sid) = spec.args.get(i + 1) {
-            if !sid.is_empty() && sid.chars().all(|c| c.is_alphabetic() && c.is_lowercase()) {
+            if !sid.is_empty() && sid.chars().all(char::is_alphabetic) && crate::pyfmt::py_islower(sid) {
                 return format!("{stem}_{sid}.json");
             }
         }

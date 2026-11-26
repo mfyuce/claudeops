@@ -57,7 +57,7 @@ pub fn with_block(existing: &str, body: Option<&str>) -> String {
         }
         return text;
     };
-    let block = format!("{BLOCK_BEGIN}\n{}\n{BLOCK_END}\n", body.trim_end_matches(|c: char| c.is_whitespace()));
+    let block = format!("{BLOCK_BEGIN}\n{}\n{BLOCK_END}\n", body.trim_end_matches(crate::pyfmt::py_isspace));
     if strip(&text).is_empty() {
         block
     } else {
