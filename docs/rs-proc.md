@@ -165,7 +165,7 @@ T = `tests/fake_proc.rs`, R = `tests/real_proc.rs`, C = `tests/child_lifecycle.r
 | 17 | karşılandı | testler yalnız geçici dizin ve kendi açtığı süreçler; parite koşucusu audit hook ile canlı duruma yazamaz (koşu sonunda engellenen yazım 0) |
 | 18 | uygulanmaz | uzak host kodu yok |
 | 19 | uygulanmaz | canlı ikili değil; T1 bağlayınca `copsd` sürümü |
-| 20 | karşılandı | ölçümler yukarıda; `--dry-run` yok; Python'a dokunulmadı |
+| 20 | karşılandı | ölçümler yukarıda; `--dry-run` yok; Python'da yalnız TBD#365 `fix:` commit'leri (yeni özellik yok) |
 
 ### 1. Hata sınıfları (bu crate'e değen önleme satırları)
 | Sınıf | Durum | Karşılık |
