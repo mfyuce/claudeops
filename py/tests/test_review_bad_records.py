@@ -1,5 +1,6 @@
-"""TBD#368 (b): bozuk kayıt atlanıp loglanır, planlayıcı/özet/maliyet düşmez."""
+"""TBD#368 (b): bozuk kayıt atlanıp loglanır, planlayıcı/özet/maliyet düşmez; bozuk depoya yazım reddedilir."""
 import dataclasses
+import glob
 import os
 import sys
 import tempfile
@@ -105,6 +106,63 @@ def _tmp_paths(root):
                                review_pool=os.path.join(root, "review_pool.json"),
                                review_history=os.path.join(root, "review_history.json"),
                                findings=os.path.join(root, "findings.json"), reviews=os.path.join(root, "reviews"))
+
+
+class CorruptStoreTest(_Logged):
+    """Bozuk (okunamayan ya da yanlış biçimli) depo okunurken boş sayılır, üstüne YAZILMAZ."""
+
+    CASES = (("review_pool", b"{bozuk", "pool"), ("review_pool", b'{"projects": []}', "pool"),
+             ("review_history", b"{bozuk", "history"), ("review_history", b"[1]", "history"),
+             ("review_history", b'{"pairs": 3}', "history"), ("review_history", b'{"runs": {}}', "history"),
+             ("review_history", b"\xff\xfe", "history"),
+             ("findings", b"{bozuk", "findings"), ("findings", b"[]", "findings"))
+
+    def test_write_refused_and_file_untouched(self):
+        paths = _tmp_paths(self.dir)
+        save = {"pool": lambda: review.save_pool(paths, {"projects": {}}),
+                "history": lambda: review.save_history(paths, {"pairs": {}, "runs": []}),
+                "findings": lambda: review.save_findings(paths, {})}
+        for attr, raw, kind in self.CASES:
+            with self.subTest(attr=attr, raw=raw):
+                f = getattr(paths, attr)
+                with open(f, "wb") as fh:
+                    fh.write(raw)
+                with self.assertRaises(review.StoreCorrupt):
+                    save[kind]()
+                with open(f, "rb") as fh:
+                    self.assertEqual(fh.read(), raw)
+        self.assertIn("store", self.whats())
+
+    def test_update_pair_refused_on_corrupt_history(self):
+        paths = _tmp_paths(self.dir)
+        with open(paths.review_history, "w") as fh:
+            fh.write("{bozuk")
+        with self.assertRaises(review.StoreCorrupt):
+            review.update_pair(paths, "p", T, status="running", started_at=1.0)
+
+    def test_missing_and_healthy_stores_are_written(self):
+        paths = _tmp_paths(self.dir)
+        for _ in range(2):      # ilk: dosya yok; ikinci: sağlam dosya
+            review.save_pool(paths, {"projects": {}})
+            review.save_history(paths, {"pairs": {}, "runs": []})
+            review.save_findings(paths, {})
+        with open(paths.findings, "w") as fh:
+            fh.write("{}")
+        review.save_findings(paths, {"a": {}})
+        self.assertEqual(review.load_findings(paths), {"a": {}})
+
+    def test_corrupt_backup_not_repeated(self):
+        f = os.path.join(self.dir, "x.json")
+        with open(f, "w") as fh:
+            fh.write("{bozuk")
+        with mock.patch.object(sw.time, "time", side_effect=[1000.0, 2000.0, 3000.0]):
+            for _ in range(3):
+                sw._corrupt_backup(f)
+        self.assertEqual(len(glob.glob(f + ".corrupt-*")), 1)
+        with open(f, "w") as fh:
+            fh.write("{baska bozuk icerik")
+        sw._corrupt_backup(f)
+        self.assertEqual(len(glob.glob(f + ".corrupt-*")), 2)
 
 
 if __name__ == "__main__":

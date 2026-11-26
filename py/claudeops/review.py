@@ -1101,13 +1101,36 @@ def blocked_modes(history: Any, now: float) -> List[str]:
 
 # ── depolar ───────────────────────────────────────────────────────────────────
 
+class StoreCorrupt(RuntimeError):
+    """Depo okunamıyor ya da biçimi yanlış: yazım reddedildi (boş sayılan içerik üstüne yazılmasın). Dosyayı onar ya da kaldır."""
+
+
+def _refuse_corrupt(path: str, shape: Sequence[Tuple[str, type]] = ()) -> None:
+    """Depoya yazmadan ÖNCE mevcut içeriği denetler; yoksa (ilk yazım) ya da sağlamsa sessiz, bozuksa `StoreCorrupt`."""
+    missing = object()
+    try:
+        raw = sw._load_json(path, missing)
+    except ValueError:                          # UTF-8 olmayan dosya
+        bad = True
+    else:
+        if raw is missing:
+            bad = os.path.lexists(path)         # dosya var ama okunamadı/ayrıştırılamadı
+        else:
+            bad = not isinstance(raw, dict) or any(k in raw and not isinstance(raw[k], t) for k, t in shape)
+    if bad:
+        _log_bad("store", path)
+        raise StoreCorrupt(f"bozuk depo, yazım reddedildi: {path}")
+
+
 def load_pool(paths: Any) -> Dict[str, Any]:
     raw = sw._load_json(sw._pp(paths).review_pool, {})
     return raw if isinstance(raw, dict) and isinstance(raw.get("projects"), dict) else {"projects": {}}
 
 
 def save_pool(paths: Any, pool: Dict[str, Any]) -> None:
-    sw._save_json(sw._pp(paths).review_pool, pool)
+    path = sw._pp(paths).review_pool
+    _refuse_corrupt(path, (("projects", dict),))
+    sw._save_json(path, pool)
 
 
 # R10 göçü (17 Kas): `review_claude_auth=subscription` 12:41:25'te (UTC+3) açıldı; ondan sonra başlayan `claude/` koşuları abonelikle
@@ -1160,7 +1183,9 @@ def load_history(paths: Any) -> Dict[str, Any]:
 def save_history(paths: Any, hist: Dict[str, Any]) -> None:
     hist = dict(hist)
     hist["runs"] = list(hist.get("runs") or [])[-HISTORY_RUNS_MAX:]
-    sw._save_json(sw._pp(paths).review_history, hist)
+    path = sw._pp(paths).review_history
+    _refuse_corrupt(path, (("pairs", dict), ("runs", list)))
+    sw._save_json(path, hist)
 
 
 def _run_seconds(rec: Dict[str, Any]) -> Optional[float]:
@@ -1207,7 +1232,9 @@ def load_findings(paths: Any) -> Dict[str, Any]:
 
 
 def save_findings(paths: Any, findings: Dict[str, Any]) -> None:
-    sw._save_json(sw._pp(paths).findings, findings)
+    path = sw._pp(paths).findings
+    _refuse_corrupt(path)
+    sw._save_json(path, findings)
 
 
 def _fold(v: Any) -> str:
