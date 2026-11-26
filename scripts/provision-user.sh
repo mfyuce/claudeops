@@ -72,14 +72,15 @@ fi
 # (canlı doğrulandı, 2026-09-25). Linger etkinse logind bu kullanıcı için
 # --user instance'ını HEMEN başlatıyor, bir login/logout beklemeye gerek yok.
 if command -v loginctl >/dev/null 2>&1; then
-    if $SUDO loginctl enable-linger "$NEW_USER" 2>/tmp/claudeops-provision-linger.err; then
+    LINGER_ERR="$(mktemp)"    # sabit /tmp adı: başkasının önceden koyduğu sembolik bağın üzerine yazılabilirdi
+    if $SUDO loginctl enable-linger "$NEW_USER" 2>"$LINGER_ERR"; then
         echo "✓ loginctl enable-linger $NEW_USER"
     else
-        echo "⚠ loginctl enable-linger başarısız: $(cat /tmp/claudeops-provision-linger.err 2>/dev/null)" >&2
+        echo "⚠ loginctl enable-linger başarısız: $(cat "$LINGER_ERR" 2>/dev/null)" >&2
         echo "  (devam ediliyor -- sonraki adımda 'Failed to connect to bus' görürseniz" >&2
         echo "  bunu elle çalıştırıp tekrar deneyin: sudo loginctl enable-linger $NEW_USER)" >&2
     fi
-    rm -f /tmp/claudeops-provision-linger.err
+    rm -f "$LINGER_ERR"
 fi
 
 echo
