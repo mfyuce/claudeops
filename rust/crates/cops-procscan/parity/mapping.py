@@ -889,6 +889,7 @@ FILES = {
     "chat_compaction_view": (_HIST, CHAT),
     "check_cmd": ("`cops check` komutu", T6),
     "claude_models_store": ("model listesi belgesi", f"{W0A}; {SAG}"),
+    "context_mask_unknown": ("`/context` maske denetimi (TBD#367)", f"{T2}; {W0B}"),
     "copilot_trust": ("klasöre güven kaydı", T4),
     "cpu_hogs": ("CPU yakan süreç uyarısı", T7),
     "diag_log_isolation": (_PATHS, W0A),
@@ -941,6 +942,7 @@ FILES = {
     "stopped_session_chat": ("durmuş oturumun sohbeti", CHAT),
     "store_tsv": (_PATHS, W0A),
     "stuck_kills_parent": ("takılan oturumu kurtarma", T4),
+    "tmux_list_utf8": ("tmux liste sorgularında UTF-8 (TBD#366 P5)", W0B),
     "ucli_agents": ("ucli alt ajan bayrak/env", SAG),
     "ucli_ask_dir": ("ucli `--ask-dir`", SAG),
     "ucli_brain_mcp": ("ucli MCP kaydı ve beyin argv'si", f"{SAG}; {T10}"),
@@ -1374,6 +1376,7 @@ cache_info:12:9f2b8b4e3c
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
+context_mask_unknown:3:9d143dbe0c
 copilot_trust:4:005b70de22
 cpu_hogs:3:887f0c1e4a
 diag_log_isolation:2:5ecbb7a6c7
@@ -1424,6 +1427,7 @@ stop_with_handover:34:841cd91175
 stopped_session_chat:29:b4c521a883
 store_tsv:6:310f8c657f
 stuck_kills_parent:4:f6dcaf3ebf
+tmux_list_utf8:3:1f73edfe38
 ucli_agents:14:5ef9105ef1
 ucli_ask_dir:6:78468c20fd
 ucli_brain_mcp:26:f5509e6d5a
