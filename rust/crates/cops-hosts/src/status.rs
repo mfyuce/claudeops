@@ -144,14 +144,14 @@ fn fwd_brief(v: Option<&Value>, local_now: f64) -> Value {
                 Value::String(s) => s.trim().parse().ok(),
                 _ => None,
             };
-            let Some(n) = n else {
+            // Sonlu olmayan saat (`"nan"`, `"inf"`) tüm `fwd`i düşürür (Python ile aynı, TBD#384).
+            let Some(n) = n.filter(|n: &f64| (n - local_now).is_finite()) else {
                 return Value::Null;
             };
             json!(py_round1(n - local_now))
         }
     };
-    // Python `[str(k) for k in (kids or [])][:4]`. Dizi olmayan DOĞRU değer (metin, nesne, sayı) Python'da karakterlere
-    // / anahtarlara bölünür ya da TypeError: Rust tüm `fwd`i yok sayar (bkz. docs/rs-hosts.md, Python bulgusu).
+    // Dizi olmayan DOĞRU `kids` (metin, nesne, sayı) tüm `fwd`i düşürür (Python ile aynı, TBD#384).
     let kids = match o.get("kids") {
         None => Vec::new(),
         Some(Value::Array(a)) => a.iter().take(4).map(|k| Value::String(py_str(k))).collect(),

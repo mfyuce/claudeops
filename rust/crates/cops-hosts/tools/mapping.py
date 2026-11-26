@@ -420,7 +420,7 @@ DEFS[STEWARD] = [
        "`ambiguous_sessions`, `caps_unknown`, `remote_too_old`, `destructive_budget`, `host_down`)"),
     oos("_name_host _remote_last_assistant _remote_last_assistant.work _remote_view _remote_views _remote_views.probe "
         "_apply_facts _DRYABLE_REMOTE _log_remote_denied _remote_denied _target.remote _remote_running_listing "
-        "_remote_ref _remote_cwd _remote_file_head _remote_last_exchange _remote_read_context _REMOTE_CARD_CHECKED "
+        "_remote_folder_of _remote_ref _remote_cwd _remote_file_head _remote_last_exchange _remote_read_context _REMOTE_CARD_CHECKED "
         "_remote_raw_card _transient_host_error _remote_key _remote_project_rows _remote_session _remote_sleep "
         "_remote_wait_ready _ensure_running_remote _remote_oversized_resume remote_resume_warning "
         "_START_BACKOFF_STEPS _start_backoff_remaining _start_backoff_note _remote_born _name_host_in "
@@ -606,6 +606,15 @@ CASES["test_host_push_race.py"] = [
              "test_test_now_returns_own_result_but_keeps_newer_cache "
              "test_rest_started_after_frame_still_overwrites"), _H3),
 ]
+CASES["test_host_remote_values.py"] = [
+    t_ok(cls("NonFiniteClockTest", "test_non_finite_now_drops_fwd test_result_is_strict_json") + " " +
+         cls("KidsShapeTest", "test_non_list_kids_drop_fwd test_empty_and_list_kids_pass") + " " +
+         cls("ListFieldsTest", "test_non_list_values_become_empty test_lists_pass"),
+         f"{PAR}status_reduction_matches_python"),
+    t_ok(cls("PrivateLanTest", "test_only_rfc1918_and_ula") + " " +
+         cls("CandidateSchemeTest", "test_uppercase_https_base_still_blocks_plain_http "
+             "test_https_base_allows_only_https_or_lan"), f"{PAR}address_filters_match_python"),
+]
 CASES["test_host_liveness.py"] = [
     t_ok(cls("SilentConsumerTest", "test_healthy_consumer_keeps_rest_off test_fed01_dead_consumer_restarted_and_rest_used_this_tick "
              "test_fed01_first_start_uses_rest test_fed01_poll_once_records_failure_when_push_dies "
@@ -706,6 +715,21 @@ CASES["test_remote_duplicate_name.py"] = [
               "test_review_cwd_fallback_refuses_dated_twins"), "uzak review sürücüsü", T8),
     t_oos(cls("TestMirrorWindowTwins", "test_twins_are_refused_whatever_their_folder_or_tmux_state "
               "test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one"), "masaüstü yansı penceresi", T2),
+    t_oos(cls("TestRemoteRefRowChoice", "test_running_row_wins_over_an_earlier_stopped_one "
+              "test_running_row_without_folder_does_not_borrow_a_stopped_one "
+              "test_stopped_twins_with_different_folders_are_refused test_stopped_twins_with_one_folder_resolve "
+              "test_tracked_session_follows_the_same_rule") + " " +
+          cls("TestContextAmbiguity", "test_two_sessions_of_the_project_with_different_names "
+              "test_stopped_twins_with_different_folders") + " " +
+          cls("TestRecheckBeforeWrite", "test_edit_doc_does_not_write test_idea_append_does_not_write"),
+          "uzak dosya hedefi ve çağıranları (TBD#390)", T10),
+    t_oos(cls("TestReviewFolderFallback", "test_prefix_of_another_project_is_not_matched "
+              "test_two_dated_sessions_with_different_names_are_refused test_running_session_wins_over_a_stopped_one "
+              "test_stopped_sessions_need_a_common_folder test_exact_name_prefers_the_running_row") + " " +
+          "TestRecheckBeforeWrite.test_export_file_does_not_write", "uzak review sürücüsü (TBD#390)", T8),
+    t_oos(cls("TestWindowRowTwins", "test_two_running_rows_give_no_row test_running_row_wins "
+              "test_stopped_twins_need_a_common_folder test_action_reports_ambiguity_and_posts_nothing"),
+          "pencere eylemi satır seçimi (TBD#390)", T2),
 ]
 CASES["test_steward_remote_actions.py"] = [
     t_ok(cls("TestRemoteResilience", "test_breaker_stops_after_first_transport_error_in_a_tick "

@@ -1,17 +1,15 @@
 # İz T5 federasyon istemcisi (`rs/hosts`, crate `cops-hosts`)
 
-## Durum (26 Kas 2026 akşam, iş 4-5 sonrası): BİRLEŞTİRMEYE HAZIR DEĞİL (kalan maddeler aşağıda)
+## Durum (26 Kas 2026 gece): BİRLEŞTİRME KAPISINA HAZIR (copsd sonrası e2e cops'ta)
 
-`cargo test -p cops-hosts` 123/123 geçiyor (22 birim + 101 entegrasyon, `tests/parity.rs` 12 dahil);
+`cargo test -p cops-hosts` 125/125 geçiyor (`tests/parity.rs` 12 dahil);
 `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz. Eşleme tablosu `docs/rs-hosts-mapping.md` (üreteç ve
-denetim `rust/crates/cops-hosts/tools/mapping.py`, `--check` temiz): tanım 358 (243 karşılandı, 115 kapsam dışı, 0 AÇIK),
-Python test durumu 873 / 61 dosya (151 karşılandı, 722 kapsam dışı, 0 AÇIK).
+denetim `rust/crates/cops-hosts/tools/mapping.py`, `--check` temiz): tanım 361, Python test durumu 906, 0 AÇIK.
 Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
 
-Kalan (birleştirmeyi tutan) maddeler:
+Kalan:
 - Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
-- Python bulguları (aşağıda "İş 4'te bulunan Python hataları"): sahip kararı gerekir; Rust güvenli davranışta, parity
-  testinde "bilinen fark" olarak kilitli. Karar Rust'ta değişiklik gerektirirse parity listesi düşer, unutulmaz.
+- Açık soru TBD#392 (gRPC köprüsü `require` kipine tabi değil; birleştirmeyi tutmaz, Python'da bugün de öyle).
 - Bilinen fark (belgeli): `orphan_watch` sayıları `i64`e sığmayan sonlu bir sayıysa (`1e300`) Rust `i64::MAX`a kırpar,
   Python büyük tam sayı üretir. Anlamlı bir sayaç değeri değil; `serde_json` keyfi büyüklükte tam sayı taşımaz.
 
@@ -272,17 +270,19 @@ Aynı adlı oturum ve sonsuz sayı (TBD#380, sahip kararı: iki tarafta düzelsi
   sonsuz sayıyı JSON saymaz, o host'un yanıtı "bad response (not JSON)"; iki tarafta da tur sürer
   (`fake_poller::non_finite_orphan_count_fails_only_that_host`). Kalan bu fark "Python'dan bilinçli farklar"da.
 
-İş 4'te bulunan Python hataları (Python'a YAZILMADI; sahip kararı gerekir, Rust güvenli davranışta, parity bilinen fark):
-- `web_hosts._fwd_brief`: `now` `NaN` ise `skew: nan` üretir; `/api/status` JSON'unda geçersiz `NaN` (tarayıcı
-  `JSON.parse` reddeder). Rust: girdi JSON değil sayılır.
-- `web_hosts._fwd_brief`: metin `kids` karakterlere, nesne `kids` anahtarlarına bölünür (TBD#372 `capabilities`
-  hatasıyla aynı sınıf). Rust tüm `fwd`i yok sayar.
-- `web_hosts._finalize_remote_result`: dizi olmayan doğru `cli_list`/`dups` (metin, dolu nesne) olduğu gibi geçer
-  (ön yüz dizi bekler). Rust boş dizi.
-- `web_hosts._is_private_lan_http` Python 3.10 `is_private`i geniş (198.18/15, 192.0.2/24, 2001:db8::/32 "özel ağ"):
-  https tabanlı host'ta bu http adaylar token'ı şifresiz alabilir. Rust yalnız RFC1918 + ULA (bilinçli fark, zaten
-  belgeliydi).
-- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz (`require` kipine etkisi TBD#391).
+İş 4'te bulunan Python hataları: DÜZELDİ (TBD#384 (b), her biri ayrı `fix:` + kırmızı test,
+`py/tests/test_host_remote_values.py`); parity bilinen fark listeleri boşaldı:
+- `_fwd_brief`: sonlu olmayan saat ve dizi olmayan `kids` tüm `fwd`i düşürür (Rust da `"nan"` metninde aynı).
+- `_finalize_remote_result`: dizi olmayan `cli_list`/`dups` boş dizi.
+- `_is_private_lan_http`: yalnız RFC1918 + IPv6 ULA.
+- `_candidate_allowed`: şema harf duyarsız; https tabanda https olmayan aday yalnız yerel ağ / reach loopback.
+
+TBD#390 (b) 1-5 DÜZELDİ (uzak oturum/satır seçimi belirsizse red; `py/tests/test_remote_duplicate_name.py`):
+`_remote_ref`, `_project_cwd_remote`, `_remote_read_context`, `window_actions.find_row`, yazmadan önce yeniden denetim
+(`_remote_edit_doc`, `_remote_append_idea`, `export_file`). Bu kodun Rust karşılığı bu crate'te yok (T10/T8/T2): taşıyan
+iz aynı kuralı uygular. Madde 6 bilinçli fark olarak kalır: uzaktan sonsuz sayı gelirse Python yalnız `orphan_watch`ı
+atar, Rust o host'un tüm yanıtını reddeder.
+- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz (`require` kipine etkisi TBD#392).
 
 Hata yutma taraması (gözden geçirme #5): `src/` içindeki her `.ok()`, `let _`, `unwrap_or_default()`, `Err(_)`,
 `map_err(|_| ...)` okundu. Sonucu değiştiren yutma yok. Bilerek yutulanlar: `net.rs` `set_nodelay` (performans
@@ -335,7 +335,7 @@ Python ile aynı indirgeme). `map_err(|_| ...)` yalnız URL/token taşıyan iç 
 - `finalize`, kahin dışı girdide (JSON'da `NaN`/`Infinity`/`1e999`) Python'dan önce reddeder (serde): Rust o host'u
   hata sayar, Python yanıtı kabul eder (`orphan_watch`ta sonsuz sayı yalnız o alanı düşürür).
 - Python `str()` yalnız skalerlerde birebir; dizi/nesne değer JSON metni olarak kalır (`build.running`, `fwd.kids` öğesi).
-- Bilinen eşit davranış (düzeltilmedi): gRPC çağrıları imzalanmaz.
+- Bilinen eşit davranış (düzeltilmedi, TBD#392): gRPC çağrıları imzalanmaz.
 
 ## Ders listesi 2.11 (federasyon)
 

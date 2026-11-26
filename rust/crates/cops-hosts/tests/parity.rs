@@ -639,7 +639,6 @@ fn address_filters_match_python() {
         json!(["https://a.example", "http://[fd00::1]:80"]),
         json!(["http://a.example", "http://b.example"]),
         json!(["http://a.example", "https://b.example"]),
-        // Python önek denetimi küçük harfe duyarlı: Rust daha sıkı (aşağıda bilinen fark).
         json!(["HTTPS://a.example", "http://b.example"]),
         json!(["https://a.example", "ftp://x"]),
         json!(["https://a.example", "http://100.64.0.1"]),
@@ -730,16 +729,7 @@ fn address_filters_match_python() {
         &pairs,
         &arr("candidate_allowed"),
         &rust,
-        &[
-            (
-                json!(["HTTPS://a.example", "http://b.example"]),
-                "Rust şemayı büyük/küçük harf duyarsız okur: daha sıkı",
-            ),
-            (
-                json!(["https://a.example", "ftp://x"]),
-                "Python http:// olmayan adayı süzmez (bağlantıda düşer); Rust reddeder",
-            ),
-        ],
+        &[],
     );
 
     let rust: Vec<Value> = lan
@@ -751,20 +741,7 @@ fn address_filters_match_python() {
         &lan,
         &arr("is_private_lan_http"),
         &rust,
-        &[
-            (
-                json!("http://198.18.0.1"),
-                "Python `is_private` (kıyaslama ağı); Rust RFC1918",
-            ),
-            (
-                json!("http://192.0.2.1"),
-                "Python `is_private` (belgeleme ağı); Rust RFC1918",
-            ),
-            (
-                json!("http://[2001:db8::1]"),
-                "Python `is_private` (belgeleme); Rust yalnız ULA",
-            ),
-        ],
+        &[],
     );
 
     let rust: Vec<Value> = secret
@@ -1086,6 +1063,9 @@ fn status_reduction_matches_python() {
         json!({"now": 1002.675}),
         json!({"now": 0}),
         json!({"now": " 1e3 "}),
+        json!({"now": "nan"}),
+        json!({"now": "-inf"}),
+        json!({"now": "Infinity"}),
         json!("x"),
         json!([]),
         json!({"kids": "abc"}),
@@ -1118,27 +1098,7 @@ fn status_reduction_matches_python() {
         .zip(&py)
         .map(|(c, p)| like(p, status_json(&status::finalize("h", &c["raw"], now))))
         .collect();
-    let fwd = |v: Value| base(json!({ "fwd": v }));
-    compare(
-        "finalize",
-        &cases,
-        &py,
-        &rust,
-        &[
-            (
-                fwd(json!({"kids": "abc"})),
-                "Python bulgusu: metin `kids` karakterlere bölünür; Rust `fwd`i yok sayar",
-            ),
-            (
-                fwd(json!({"kids": {"a": 1}})),
-                "Python bulgusu: nesne `kids` anahtarlarına bölünür; Rust `fwd`i yok sayar",
-            ),
-            (
-                base(json!({"cli_list": "abc", "dups": {"a": 1}})),
-                "Python bulgusu: dizi olmayan `cli_list`/`dups` olduğu gibi geçer; Rust boş dizi",
-            ),
-        ],
-    );
+    compare("finalize", &cases, &py, &rust, &[]);
 }
 
 #[test]
