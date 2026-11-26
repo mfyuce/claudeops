@@ -367,5 +367,41 @@ class TestContextAmbiguity(_Resolve):
         self.assert_nothing_read()
 
 
+class TestWindowRowTwins(unittest.TestCase):
+    """TBD#390/4: `window_actions.find_row` belirsiz (host, ad) icin satir secmez, eylem gonderilmez."""
+
+    def status(self, *rows):
+        return {"sessions": [dict(r, host=HOST) for r in rows]}
+
+    def test_two_running_rows_give_no_row(self):
+        self.assertIsNone(wa.find_row(self.status(_row("s1", cwd="/a"), _row("s1", cwd="/a")), HOST, "s1"))
+
+    def test_running_row_wins(self):
+        row = wa.find_row(self.status(_row("s1", cwd="/eski", running=False), _row("s1", cwd="/yeni")), HOST, "s1")
+        self.assertEqual(row["cwd"], "/yeni")
+
+    def test_stopped_twins_need_a_common_folder(self):
+        a, b = _row("s1", cwd="/a", running=False), _row("s1", cwd="/b", running=False)
+        self.assertIsNone(wa.find_row(self.status(a, b), HOST, "s1"))
+        self.assertEqual(wa.find_row(self.status(a, dict(b, cwd="/a")), HOST, "s1")["cwd"], "/a")
+
+    def test_action_reports_ambiguity_and_posts_nothing(self):
+        posts = []
+
+        class Client:
+            def get(_s, path, *a, **k):
+                return self.status(_row("s1", cwd="/a"), _row("s1", cwd="/b"))
+
+            def post(_s, *a, **k):
+                posts.append(a)
+                return {"ok": True}
+
+        for action in wa.ACTIONS:
+            res = wa.run_action(Client(), action.id, HOST, "s1", new_name="yenia" if action.id == "reset" else "")
+            self.assertIn("belirsiz", res.message, action.id)
+            self.assertFalse(res.ok, action.id)
+        self.assertEqual(posts, [])
+
+
 if __name__ == "__main__":
     unittest.main()
