@@ -70,6 +70,13 @@ mod fam_chat;
 fn parity_chat() {
     fam_chat::run();
 }
+#[path = "parity/fam_transcript.rs"]
+mod fam_transcript;
+
+#[test]
+fn parity_transcript() {
+    fam_transcript::run();
+}
 #[path = "parity/fam_panel.rs"]
 mod fam_panel;
 

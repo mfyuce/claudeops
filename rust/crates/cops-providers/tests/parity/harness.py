@@ -602,6 +602,35 @@ def op_chat(a):
             c.resolve_resume_id = f
 
 
+def op_transcript(a):
+    """claude transkripti okuyucuları. `session_file_sid` (G1) sahte: vaka olgusu."""
+    os.environ["TZ"] = a.get("tz") or "UTC0"
+    time.tzset()
+    saved = claude_p.session_file_sid
+    claude_p.session_file_sid = lambda pid: (FACTS.get("session_sid") or {}).get(str(pid)) if pid else None
+    try:
+        out = {}
+        out["reads"] = [{
+            "model": _safe(lambda: claude_p.last_assistant_model(claude_p.Path(r["path"]), since=r.get("since"))),
+            "effort": _safe(lambda: claude_p.last_assistant_effort(claude_p.Path(r["path"]), since=r.get("since"))),
+            "request": _safe(lambda: claude_p.last_real_request_epoch(claude_p.Path(r["path"]))),
+        } for r in a.get("reads") or []]
+        out["stamps"] = [_safe(lambda: claude_p._row_epoch(x)) for x in a.get("stamps") or []]
+        out["keeps"] = [[providers.get_provider(c).effort_switch_keeps_cache(m) for c in a.get("clis") or []]
+                        for m in a.get("models") or []]
+        out["ttl"] = [providers.get_provider(c).prompt_cache_ttl_seconds() for c in a.get("clis") or []]
+        out["live"] = [[_safe(lambda: claude_p.live_or_spawn_model(q["cli"], q["cwd"], q.get("sid"), q["fallback"])),
+                        _safe(lambda: claude_p.live_or_spawn_effort(q["cli"], q["cwd"], q.get("sid"), q["fallback"]))]
+                       for q in a.get("live") or []]
+        out["requests"] = [_safe(lambda: providers.get_provider(q["cli"]).last_request_epoch(
+            q["cwd"], q.get("sid"), q.get("pid"))) for q in a.get("requests") or []]
+        out["constants"] = [claude_p._LAST_MODEL_CHUNK_BYTES, claude_p._LAST_MODEL_MAX_BYTES,
+                            claude_p.PROMPT_CACHE_TTL_SECONDS]
+        return _chat_out(out)
+    finally:
+        claude_p.session_file_sid = saved
+
+
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}
 
 

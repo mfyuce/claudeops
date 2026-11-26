@@ -37,6 +37,19 @@ impl LiveProbe for FsProbe<'_> {
         f.take(max).read_to_end(&mut out).ok()?;
         Some(out)
     }
+    fn read_range(&self, path: &str, start: u64, len: u64) -> Option<Vec<u8>> {
+        if !fs::metadata(path).ok()?.is_file() {
+            return None;
+        }
+        let mut f = fs::File::open(path).ok()?;
+        f.seek(SeekFrom::Start(start)).ok()?;
+        let mut out = Vec::new();
+        f.take(len).read_to_end(&mut out).ok()?;
+        Some(out)
+    }
+    fn claude_session_sid(&self, pid: i64) -> Option<String> {
+        self.case.fact("session_sid")?.get(pid.to_string())?.as_str().map(String::from)
+    }
     fn list_dir(&self, path: &str) -> Option<Vec<String>> {
         Some(fs::read_dir(path).ok()?.flatten().filter_map(|e| e.file_name().into_string().ok()).collect())
     }

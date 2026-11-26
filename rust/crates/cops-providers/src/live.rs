@@ -37,6 +37,11 @@ pub trait LiveProbe: Probe {
     fn read_tail(&self, path: &str, max: u64) -> Option<Vec<u8>>;
     /// `os.listdir` (UTF-8 olmayan adlar atlanabilir: hiçbir oturum adıyla eşleşemez).
     fn list_dir(&self, path: &str) -> Option<Vec<String>>;
+    /// Dosyanın `start`tan başlayan en çok `len` baytı (dosya kısaldıysa daha az).
+    fn read_range(&self, path: &str, start: u64, len: u64) -> Option<Vec<u8>>;
+    /// `claude_provider.session_file_sid(pid)` (G1): `sessions/<pid>.json`ın kırpılmış `sessionId`si; yalnız dosyadaki
+    /// `pid` ve `procStart` canlı süreçle tutuyorsa, aksi halde None.
+    fn claude_session_sid(&self, pid: i64) -> Option<String>;
     /// `claude_provider.jsonl_path_for(cwd, sid)` (transkript çözümü G1'in işi).
     fn claude_transcript(&self, cwd: &str, sid: Option<&str>) -> Option<String>;
     /// `CodexProvider._rollout_path(cwd, sid)` (G1).

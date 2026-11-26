@@ -8,6 +8,7 @@ pub mod agy;
 pub mod bg_work;
 pub mod chat;
 pub mod claude;
+pub mod claude_transcript;
 pub mod codex;
 pub mod copilot;
 pub mod effort;

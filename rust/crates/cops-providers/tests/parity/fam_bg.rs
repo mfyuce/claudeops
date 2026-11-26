@@ -335,7 +335,7 @@ fn random_screens() -> Vec<String> {
 }
 
 /// Geçerli bir damganın rastgele bozulmuş biçimleri.
-fn random_stamps() -> Vec<String> {
+pub fn random_stamps() -> Vec<String> {
     const T: &[&str] =
         &["0", "1", "2", "3", "5", "9", "-", "+", ":", ".", "T", " ", "Z", "ğ", "x", "00", "12", "59", "60", "24"];
     let mut r = Rng(2);
