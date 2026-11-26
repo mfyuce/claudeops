@@ -1,15 +1,15 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1, G3, G4, G7-G10 ve ders listesi açık; G2, G5, G6 ve G11 taşındı). `cargo clippy -p cops-providers
---all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 21/21 (birim 10, parite 11).
+Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1, G4, G7-G10 ve ders listesi açık; G2, G3, G5, G6 ve G11 taşındı). `cargo clippy -p cops-providers
+--all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 29/29 (birim 10, transkript sözleşmesi 7, parite 12).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 3704 vaka: chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 4240 vaka: transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 68 "bilinen ayrışma" (29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+- 89 "bilinen ayrışma" (21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
   kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
   (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
@@ -57,7 +57,7 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 - `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G3, G7, G1, G8, G4, G10, G9 (G2, G11, G5 ve G6 taşındı).
+1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G7, G1, G8, G4, G10, G9 (G2, G3, G11, G5 ve G6 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
@@ -88,7 +88,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 |---|---|---|---|---|
 | G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 39 | 35 | zor: Python davranış ayrıntısı çok (stub eleme, cwd/ad eşleme, önbellek); rs/proc ve rs/state'e bağlanır |
 | G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 0 (38 TAŞINDI) | 0 (17 TAŞINDI, 8 kapsam dışı) | bitti: `chat.rs`, parite `parity_chat` |
-| G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 18 | 54 | orta: tek dosya ailesi, kuyruktan okuma |
+| G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 0 (18 TAŞINDI) | 0 (23 TAŞINDI, 31 kapsam dışı) | bitti: `claude_transcript.rs`, parite `parity_transcript` |
 | G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 37 | 17 | orta-zor: rs/tmux'a bağlı, zamanlama ve kör Enter kuralları |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
@@ -107,7 +107,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 - `LiveProbe`un gerçek uygulaması YOK (G8). Sözleşme: yalnız normal dosya (FIFO/aygıt açılışta bloklamasın), `max` aşan dosya
   None, kuyruk okuması en çok `max` bayt, SQLite `mode=ro` + 2 sn meşgul beklemesi, bağlantı her sorguda kapanır.
 - G1 bağımlılığı: `claude_transcript` (`jsonl_path_for`, "cwd'deki en yeni" düşüşü dahil), `codex_rollout` (`_rollout_path`),
-  `copilot_resume_id`. Testteki uygulama yalnız vakaların kullandığı yolları taklit eder; G1 taşınınca bu üç yöntem crate
+  `copilot_resume_id` (G3 ile `claude_session_sid`). Testteki uygulama yalnız vakaların kullandığı yolları taklit eder; G1 taşınınca bu üç yöntem crate
   içi işleve dönmeli ve codex cwd taraması paritede sınanmalı. `rs/proc` `transcript.rs::jsonl_path_for` yalnız tam sid eşler.
 - Birleştirmede tekleştirilecek: `pyjson.rs` ile `rs/state` `cops-state::json::Json`; `bg_work.rs::iso_epoch` ile `rs/state`
   `pytime.rs`. İkisi de bu dalda olmadığı için bağlanmadı.
@@ -212,6 +212,70 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | H7 "en yeni" tahmini | transkript/resume çözümü G1'de |
 | Uygulanmaz | 3.1, 3.2, 3.4, 3.6-3.8 (önbellek, döngü, yazım yok), 3.13, 3.15, 3.16, 3.18, 3.19 |
 
+## G3: transkriptten model/effort ve önbellek sıcaklığı
+
+### Sahiplik
+26 Kas'ta `git fetch` sonrası `origin/rs/*` ve `main` tarandı: bu işlevler hiçbir dalda yoktu. `rs/proc` `parity/mapping.py`
+onları `oos` (T1/T4) diye işaretliyor, `rs/proc` `usage.rs` yalnız kullanım toplamı okuyor. Birleştirmede o `oos` satırları
+bu ize yönlendirilmeli.
+
+### Tasarım ve bağımlılıklar
+- Modül `claude_transcript.rs`: `Cli::{prompt_cache_ttl_seconds, effort_switch_keeps_cache}`, `Live::{last_assistant_model,
+  last_assistant_effort, last_real_request_epoch, live_or_spawn_model, live_or_spawn_effort, last_request_epoch}`.
+  `_row_epoch` = `bg_work::iso_epoch` (ayrı kopya yok).
+- Pencere Python'la aynı: 64 KiB, x4, en çok 4 MiB; boyut bir kez okunur (`Probe::file_size`), her adım `[boyut-pencere, boyut)`.
+- `LiveProbe`a eklenenler (gerçek uygulama G8/G1): `read_range(path, start, len)` (yalnız normal dosya; hata None) ve
+  `claude_session_sid(pid)` (`session_file_sid`, G1: `pid` + `procStart` doğrulaması orada; paritede iki tarafta sahte).
+- `live_or_spawn_*` transkript yolunu `LiveProbe::claude_transcript`ten alır (G1): Python'un "cwd'deki en yeni" düşüşü
+  kararı orada. `last_request_epoch` düşüş kullanmaz, yalnız tam `<sid>.jsonl`.
+- Saat dilimsiz damga `Clock::utc_offset_secs` ile yorumlanır (G6 ile aynı sınır).
+- Taşınmayan: `session_file_sid`, `jsonl_path_for`, `find_latest_jsonl` (G1); `web._live_model_effort` önbelleği ve
+  `_live_model`/`_live_effort` uçları (T1: "yalnız tam `<sid>.jsonl`, yalnız süreç başlangıcından sonrası" kuralını T1
+  uygulamalı); `handover` politikası (T4); `handover_*_downgrade` ve canlı geçiş (G4); `web_steward.context_tokens_for`
+  (T10; `rs/stew` tablosunda EKSİK, henüz kimse taşımadı).
+
+### Bilinen ayrışmalar (21; testte `known(`, Rust sonucu çoğunda `expect*` ile ayrıca doğrulanır)
+- Nesne olmayan satır 4, nesne olmayan `message` 4: Python istisna, Rust satırı atlar.
+- Metin olmayan model 4 (`sayi/liste/nesne/true`) ve istek vakasında sayı model 1: Python değeri döndürür, Rust atlar.
+- `<synthetic>` model 4: Python model diye döndürür, Rust gerçek modeli arar. İstek zamanı iki tarafta aynı.
+- 512'den derin satır, eşlenmemiş vekil, 1. yılın ilk günü dilimsiz damga, dosya adı sınırını aşan sid (1'er).
+- Testsiz fark: i128'e sığmayan birbirini götüren token sayaçları (doygun toplam); yaz saati geçişli dilimsiz damga.
+
+### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı)
+1. `last_assistant_model` `<synthetic>` yer tutucusunu (API hatası/iptal satırı) model sayar. `stuck.recover_stuck`
+   (`live_or_spawn_model`) ve kapanış anlık görüntüsü (`web._live_snapshot_entries`) bu metni yeniden açılışta model
+   olarak taşır; `spawn`da süzen bir yer görülmedi. Takılan oturumun son satırının bu olması olası (? canlı veriyle
+   doğrulanmadı). Panel de model diye gösterir. Rust yer tutucuyu atlar.
+2. `_last_assistant_value`: geçerli JSON ama nesne olmayan tek satır (`5`, `"x"`) ya da nesne olmayan `message`
+   `AttributeError` atar. Devir yolunda `live_or_spawn_model` korumasız (`handover.apply_handover_downgrades`),
+   `stuck.recover_stuck` oturumu öldürdükten SONRA çağırır: oturum yeniden açılmadan kalır. Rust satırı atlar.
+3. Metin olmayan model (ör. `5`) olduğu gibi döner ve komut satırına gidebilir. Rust atlar.
+4. `live_or_spawn_*` sid yoksa ya da dosyası yoksa cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
+   modeli/effort'u devir kararına ve takılan oturumun yeniden açılışına girer (aynı modüldeki `last_request_epoch` bu
+   düşüşü bilerek reddediyor). Rust sağlayıcıya bırakır (G1 kararı).
+5. `last_assistant_model`/`_effort` `isSidechain` (alt ajan) satırlarını süzmez; ana dosyada böyle satır varsa alt ajanın
+   modeli oturumun sayılır (`_real_request_epoch` süzüyor). Rust Python gibi davranır.
+6. Effort ayrı taranır: en son satır effort taşımıyorsa (ör. effort desteklemeyen modele geçiş) eski modelin effort'u
+   döner. Rust aynı (parite `effort-eski-satirda`).
+7. `Path.is_file` aşırı uzun sid'de `OSError` atar. Rust adayı yok sayar.
+
+### Ders listesi (`docs/rust-lessons-from-python.md`), G3 koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| 2.5 sağlayıcı başına tek modül (H4) | claude'a özgü kod `claude_transcript.rs`; sağlayıcı farkı kapsayıcı `match` (`_` kolu yok) |
+| 2.5 canlı model/effort jsonl'den (H3) | `surec-sonrasi`, `onceki-surec`, `canli`; `synthetic_and_unexpected_rows_do_not_hide_the_real_model` |
+| 2.5 kardeş oturum (H4, H7); 3.1 hedef çözümü | `last_request_epoch` yalnız tam ad: `istek-` (`sibling`, `onek`), `cache_candidates_are_exact_files_and_newest_wins`. AÇIK: `live_or_spawn_*` düşüşü G1 |
+| 2.5 kaynak yoksa "bilinmiyor" (H3, H21); 3.3 | okuyucular `Option`; `yollar`, `truncated_file_and_read_errors_mean_unknown` |
+| 3.5 hata yutma, panik | `expect` yalnız sabit desende. Atlanan satır sayılmıyor/loglanmıyor (Python da; H20 açık). Regex motoru hatası "önbellek korunur" sayılır (başa demirli desen, tetikleyen girdi bilinmiyor) |
+| 3.6 bayat önbellek | okuyucularda önbellek yok; `rows_appended_after_the_size_was_read_are_not_seen` |
+| 3.7 sınırlı döngü (H8); 3.9 kaynak sınırı (H1) | en çok 4 okuma, en çok 4 MiB: `window_grows_four_times_and_stops_at_the_limit`, `pencere-`. Dosya kapanışı G8'de |
+| 3.10 girdi sınırları (H5) | `satir-`, `kullanim-`, `damga-`, `bozuk-utf8`, `dev-sayi`, `rastgele-` (400), `truncated_and_mutated_input_never_panics` |
+| 3.12 diferansiyel test (H14) | `parity_transcript` (536; effort kuralı için 4000'den çok rastgele model adı, 6000'den çok rastgele damga) |
+| 3.14 yol girdisi (H17) | AÇIK: sid Python gibi yola eklenir (mutlak ad dizini aşar, `istek-mutlak`); yalnız okuma |
+| 3.17 test yalıtımı (H16) | geçici HOME / bellek içi `Probe`; tüm veri sentetik |
+| 3.20 ölçüm | performans iddiası yok, ölçülmedi |
+| Uygulanmaz | 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: yazım, süreç, ağ, uç, sır yok |
+
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
   yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Sorulacak/izlenecek.
@@ -220,7 +284,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6 ve G2 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. 635 satır: TAŞINDI 383, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 198.
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. 635 satır: TAŞINDI 401, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 180.
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -305,9 +369,9 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `CliProvider.apply_live_model_switch` (py/claudeops/providers/base.py:185) | yok | - | EKSİK(G4) |
 | `CliProvider.handover_effort_downgrade` (py/claudeops/providers/base.py:193) | yok | - | EKSİK(G4) |
 | `CliProvider.apply_live_effort_switch` (py/claudeops/providers/base.py:200) | yok | - | EKSİK(G4) |
-| `CliProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/base.py:206) | yok | - | EKSİK(G3) |
-| `CliProvider.last_request_epoch` (py/claudeops/providers/base.py:218) | yok | - | EKSİK(G3) |
-| `CliProvider.effort_switch_keeps_cache` (py/claudeops/providers/base.py:226) | yok | - | EKSİK(G3) |
+| `CliProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/base.py:206) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` (claude dışı None) | `parity.rs::parity_transcript` `model-listesi` `istek-`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `CliProvider.last_request_epoch` (py/claudeops/providers/base.py:218) | `claude_transcript.rs::Live::last_request_epoch` (claude dışı None) | `parity.rs::parity_transcript` `istek-codex` `istek-ucli` | TAŞINDI |
+| `CliProvider.effort_switch_keeps_cache` (py/claudeops/providers/base.py:226) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` (claude dışı true) | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
 | `CliProvider.dismiss_stray_dialog` (py/claudeops/providers/base.py:233) | yok | - | EKSİK(G4) |
 | `CliProvider.input_settle_delay` (py/claudeops/providers/base.py:252) | yok | - | EKSİK(G4) |
 | `CliProvider.prepare_input` (py/claudeops/providers/base.py:264) | yok | - | EKSİK(G4) |
@@ -371,19 +435,19 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `_safe_mtime` (py/claudeops/providers/claude_provider.py:102) | yok | - | EKSİK(G1) |
 | `jsonl_path_for` (py/claudeops/providers/claude_provider.py:110) | yok: rs/proc `transcript.rs::jsonl_path_for` YALNIZ tam sid eşleşmesi; Python'daki "cwd'deki en yeni dosya" düşüşü bilerek yok | - | EKSİK(G1) |
 | `find_latest_jsonl` (py/claudeops/providers/claude_provider.py:125) | yok | - | EKSİK(G1) |
-| `_LAST_MODEL_CHUNK_BYTES` (py/claudeops/providers/claude_provider.py:143) | yok | - | EKSİK(G3) |
-| `_LAST_MODEL_MAX_BYTES` (py/claudeops/providers/claude_provider.py:144) | yok | - | EKSİK(G3) |
-| `_row_epoch` (py/claudeops/providers/claude_provider.py:147) | yok | - | EKSİK(G3) |
-| `_last_assistant_value` (py/claudeops/providers/claude_provider.py:158) | yok | - | EKSİK(G3) |
-| `last_assistant_model` (py/claudeops/providers/claude_provider.py:208) | yok | - | EKSİK(G3) |
-| `last_assistant_effort` (py/claudeops/providers/claude_provider.py:214) | yok | - | EKSİK(G3) |
-| `PROMPT_CACHE_TTL_SECONDS` (py/claudeops/providers/claude_provider.py:228) | yok | - | EKSİK(G3) |
-| `_real_request_epoch` (py/claudeops/providers/claude_provider.py:231) | yok | - | EKSİK(G3) |
-| `last_real_request_epoch` (py/claudeops/providers/claude_provider.py:254) | yok | - | EKSİK(G3) |
+| `_LAST_MODEL_CHUNK_BYTES` (py/claudeops/providers/claude_provider.py:143) | `claude_transcript.rs::FIRST_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
+| `_LAST_MODEL_MAX_BYTES` (py/claudeops/providers/claude_provider.py:144) | `claude_transcript.rs::MAX_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
+| `_row_epoch` (py/claudeops/providers/claude_provider.py:147) | `bg_work.rs::iso_epoch` | `parity.rs::parity_transcript` `damga-listesi-` `damga-` | TAŞINDI |
+| `_last_assistant_value` (py/claudeops/providers/claude_provider.py:158) | `claude_transcript.rs::Live::last_assistant_value` | `parity.rs::parity_transcript` `pencere-` `satir-` `rastgele-` | TAŞINDI |
+| `last_assistant_model` (py/claudeops/providers/claude_provider.py:208) | `claude_transcript.rs::Live::last_assistant_model` | `parity.rs::parity_transcript` `satir-` `rastgele-` `sapma-model-` | TAŞINDI |
+| `last_assistant_effort` (py/claudeops/providers/claude_provider.py:214) | `claude_transcript.rs::Live::last_assistant_effort` | `parity.rs::parity_transcript` `satir-` `rastgele-` `pencere-effort-` | TAŞINDI |
+| `PROMPT_CACHE_TTL_SECONDS` (py/claudeops/providers/claude_provider.py:228) | `claude_transcript.rs::PROMPT_CACHE_TTL_SECONDS` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
+| `_real_request_epoch` (py/claudeops/providers/claude_provider.py:231) | `claude_transcript.rs::real_request_epoch` | `parity.rs::parity_transcript` `kullanim-` `istek-model-` `damga-` | TAŞINDI |
+| `last_real_request_epoch` (py/claudeops/providers/claude_provider.py:254) | `claude_transcript.rs::Live::last_real_request_epoch` | `parity.rs::parity_transcript` `son-istek` `alt-ajan` `pencere-` `yollar` | TAŞINDI |
 | `session_file_sid` (py/claudeops/providers/claude_provider.py:260) | yok | - | EKSİK(G1) |
-| `_EFFORT_BUSTS_CACHE_RE` (py/claudeops/providers/claude_provider.py:293) | yok | - | EKSİK(G3) |
-| `live_or_spawn_model` (py/claudeops/providers/claude_provider.py:296) | yok | - | EKSİK(G3) |
-| `live_or_spawn_effort` (py/claudeops/providers/claude_provider.py:315) | yok | - | EKSİK(G3) |
+| `_EFFORT_BUSTS_CACHE_RE` (py/claudeops/providers/claude_provider.py:293) | `claude_transcript.rs::EFFORT_BUSTS_CACHE` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
+| `live_or_spawn_model` (py/claudeops/providers/claude_provider.py:296) | `claude_transcript.rs::Live::live_or_spawn_model` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
+| `live_or_spawn_effort` (py/claudeops/providers/claude_provider.py:315) | `claude_transcript.rs::Live::live_or_spawn_effort` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
 | `_META_HEAD_LINES` (py/claudeops/providers/claude_provider.py:331) | yok | - | EKSİK(G1) |
 | `_RESUME_SCAN_LIMIT` (py/claudeops/providers/claude_provider.py:334) | yok | - | EKSİK(G1) |
 | `_jsonl_meta` (py/claudeops/providers/claude_provider.py:337) | yok | - | EKSİK(G1) |
@@ -422,9 +486,9 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:762) | yok | - | EKSİK(G4) |
 | `ClaudeProvider.apply_live_model_switch` (py/claudeops/providers/claude_provider.py:764) | yok | - | EKSİK(G4) |
 | `ClaudeProvider.handover_effort_downgrade` (py/claudeops/providers/claude_provider.py:824) | yok | - | EKSİK(G4) |
-| `ClaudeProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/claude_provider.py:837) | yok | - | EKSİK(G3) |
-| `ClaudeProvider.last_request_epoch` (py/claudeops/providers/claude_provider.py:840) | yok | - | EKSİK(G3) |
-| `ClaudeProvider.effort_switch_keeps_cache` (py/claudeops/providers/claude_provider.py:859) | yok | - | EKSİK(G3) |
+| `ClaudeProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/claude_provider.py:837) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
+| `ClaudeProvider.last_request_epoch` (py/claudeops/providers/claude_provider.py:840) | `claude_transcript.rs::Live::last_request_epoch` | `parity.rs::parity_transcript` `istek-claude` `istek-mutlak` `sapma-uzun-sid` | TAŞINDI |
+| `ClaudeProvider.effort_switch_keeps_cache` (py/claudeops/providers/claude_provider.py:859) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
 | `ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:862) | yok | - | EKSİK(G4) |
 | `ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:863) | yok | - | EKSİK(G4) |
 | `ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` (py/claudeops/providers/claude_provider.py:864) | yok | - | EKSİK(G4) |
@@ -875,7 +939,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 
 ## TEST EŞLEME TABLOSU
 
-1349 satır: TAŞINDI 419, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 706, EKSİK 202.
+1349 satır: TAŞINDI 442, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 737, EKSİK 148.
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -1023,28 +1087,28 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `SessionAttach.test_attach_predicate_and_spec` (py/tests/test_extensions_mcp.py:68) | yok: eklenti cwd koşulu ve `session_mcp_spec` çağrısı yok | EKSİK(G9) |
 | `SessionAttach.test_claude_config_path_per_ext_and_spawn_wiring` (py/tests/test_extensions_mcp.py:82) | `parity.rs::parity_spawn` `-eklenti-mcp` `-mcp` | TAŞINDI |
 | `SessionAttach.test_spawn_attaches_only_matching_cwd_and_claude` (py/tests/test_extensions_mcp.py:89) | yok: eklenti cwd koşulu ve `session_mcp_spec` çağrısı yok | EKSİK(G9) |
-| `LastRealRequestEpochTests.test_returns_the_time_of_the_latest_real_request` (py/tests/test_handover_cache_policy.py:76) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_synthetic_placeholder_after_a_real_request_does_not_refresh_the_cache` (py/tests/test_handover_cache_policy.py:80) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_subagent_rows_are_a_separate_context_and_do_not_count` (py/tests/test_handover_cache_policy.py:86) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_rows_without_any_usage_tokens_do_not_count` (py/tests/test_handover_cache_policy.py:90) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_user_rows_are_ignored_and_no_assistant_means_unknown` (py/tests/test_handover_cache_policy.py:96) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_missing_file_is_unknown` (py/tests/test_handover_cache_policy.py:100) | yok | EKSİK(G3) |
-| `LastRealRequestEpochTests.test_large_file_is_read_from_the_tail` (py/tests/test_handover_cache_policy.py:103) | yok | EKSİK(G3) |
-| `ClaudeProviderCacheHookTests.test_ttl_is_one_hour` (py/tests/test_handover_cache_policy.py:110) | yok | EKSİK(G3) |
-| `ClaudeProviderCacheHookTests.test_last_request_epoch_reads_only_the_exact_sid_file` (py/tests/test_handover_cache_policy.py:113) | yok | EKSİK(G3) |
-| `ClaudeProviderCacheHookTests.test_no_sid_or_no_matching_file_is_unknown_never_the_newest_sibling` (py/tests/test_handover_cache_policy.py:123) | yok | EKSİK(G3) |
-| `ClaudeProviderCacheHookTests.test_effort_switch_keeps_cache_by_model` (py/tests/test_handover_cache_policy.py:135) | yok | EKSİK(G3) |
-| `ClaudeProviderCacheHookTests.test_other_providers_keep_the_old_behaviour` (py/tests/test_handover_cache_policy.py:148) | yok | EKSİK(G3) |
+| `LastRealRequestEpochTests.test_returns_the_time_of_the_latest_real_request` (py/tests/test_handover_cache_policy.py:76) | `parity_transcript` `son-istek` | TAŞINDI |
+| `LastRealRequestEpochTests.test_synthetic_placeholder_after_a_real_request_does_not_refresh_the_cache` (py/tests/test_handover_cache_policy.py:80) | `parity_transcript` `sentetik-sifir-effortlu` `istek-model-sentetik` | TAŞINDI |
+| `LastRealRequestEpochTests.test_subagent_rows_are_a_separate_context_and_do_not_count` (py/tests/test_handover_cache_policy.py:86) | `parity_transcript` `alt-ajan` `kullanim-sidechain-` | TAŞINDI |
+| `LastRealRequestEpochTests.test_rows_without_any_usage_tokens_do_not_count` (py/tests/test_handover_cache_policy.py:90) | `parity_transcript` `kullanimsiz` `kullanim-` | TAŞINDI |
+| `LastRealRequestEpochTests.test_user_rows_are_ignored_and_no_assistant_means_unknown` (py/tests/test_handover_cache_policy.py:96) | `parity_transcript` `yalniz-kullanici` | TAŞINDI |
+| `LastRealRequestEpochTests.test_missing_file_is_unknown` (py/tests/test_handover_cache_policy.py:100) | `parity_transcript` `yollar` | TAŞINDI |
+| `LastRealRequestEpochTests.test_large_file_is_read_from_the_tail` (py/tests/test_handover_cache_policy.py:103) | `parity_transcript` `pencere-` | TAŞINDI |
+| `ClaudeProviderCacheHookTests.test_ttl_is_one_hour` (py/tests/test_handover_cache_policy.py:110) | `parity_transcript` `model-listesi` | TAŞINDI |
+| `ClaudeProviderCacheHookTests.test_last_request_epoch_reads_only_the_exact_sid_file` (py/tests/test_handover_cache_policy.py:113) | `parity_transcript` `istek-claude`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `ClaudeProviderCacheHookTests.test_no_sid_or_no_matching_file_is_unknown_never_the_newest_sibling` (py/tests/test_handover_cache_policy.py:123) | `parity_transcript` `istek-claude`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `ClaudeProviderCacheHookTests.test_effort_switch_keeps_cache_by_model` (py/tests/test_handover_cache_policy.py:135) | `parity_transcript` `model-listesi` | TAŞINDI |
+| `ClaudeProviderCacheHookTests.test_other_providers_keep_the_old_behaviour` (py/tests/test_handover_cache_policy.py:148) | `parity_transcript` `istek-codex` `istek-ucli` `model-listesi`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
 | `SessionFileSidTests.test_verified_file_gives_the_session_id` (py/tests/test_handover_cache_policy.py:177) | yok | EKSİK(G1) |
 | `SessionFileSidTests.test_a_reused_pid_is_rejected_by_proc_start` (py/tests/test_handover_cache_policy.py:182) | yok | EKSİK(G1) |
 | `SessionFileSidTests.test_unverifiable_or_inconsistent_files_are_not_trusted` (py/tests/test_handover_cache_policy.py:186) | yok | EKSİK(G1) |
 | `SessionFileSidTests.test_dead_process_and_missing_file_and_no_pid` (py/tests/test_handover_cache_policy.py:202) | yok | EKSİK(G1) |
-| `LastRequestEpochByPidTests.test_fresh_session_without_cmdline_sid_is_found_through_its_pid` (py/tests/test_handover_cache_policy.py:234) | yok | EKSİK(G3) |
-| `LastRequestEpochByPidTests.test_without_a_pid_the_sidless_session_stays_unknown` (py/tests/test_handover_cache_policy.py:239) | yok | EKSİK(G3) |
-| `LastRequestEpochByPidTests.test_the_newest_request_of_the_two_candidate_files_wins` (py/tests/test_handover_cache_policy.py:245) | yok | EKSİK(G3) |
-| `LastRequestEpochByPidTests.test_a_missing_candidate_file_falls_back_to_the_other_one` (py/tests/test_handover_cache_policy.py:255) | yok | EKSİK(G3) |
-| `LastRequestEpochByPidTests.test_a_sibling_session_in_the_same_directory_is_never_picked_up` (py/tests/test_handover_cache_policy.py:260) | yok | EKSİK(G3) |
-| `LastRequestEpochByPidTests.test_empty_conversation_file_is_unknown` (py/tests/test_handover_cache_policy.py:266) | yok | EKSİK(G3) |
+| `LastRequestEpochByPidTests.test_fresh_session_without_cmdline_sid_is_found_through_its_pid` (py/tests/test_handover_cache_policy.py:234) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_without_a_pid_the_sidless_session_stays_unknown` (py/tests/test_handover_cache_policy.py:239) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_the_newest_request_of_the_two_candidate_files_wins` (py/tests/test_handover_cache_policy.py:245) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_a_missing_candidate_file_falls_back_to_the_other_one` (py/tests/test_handover_cache_policy.py:255) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_a_sibling_session_in_the_same_directory_is_never_picked_up` (py/tests/test_handover_cache_policy.py:260) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_empty_conversation_file_is_unknown` (py/tests/test_handover_cache_policy.py:266) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
 | `PromptCacheIsWarmTests.test_margin_is_five_minutes` (py/tests/test_handover_cache_policy.py:288) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_fresh_request_is_warm` (py/tests/test_handover_cache_policy.py:291) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_boundary_and_older_is_cold` (py/tests/test_handover_cache_policy.py:296) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
@@ -1052,43 +1116,43 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `PromptCacheIsWarmTests.test_unknown_when_provider_has_no_ttl_or_no_transcript` (py/tests/test_handover_cache_policy.py:304) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_now_defaults_to_the_wall_clock` (py/tests/test_handover_cache_policy.py:309) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_the_process_id_reaches_the_provider` (py/tests/test_handover_cache_policy.py:314) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
-| `ModelDowngradeTests.test_warm_opus_keeps_its_model_but_still_lowers_effort` (py/tests/test_handover_cache_policy.py:373) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_cold_opus_goes_down_to_sonnet_then_effort_in_that_order` (py/tests/test_handover_cache_policy.py:385) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_fable_follows_the_same_rule` (py/tests/test_handover_cache_policy.py:395) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_boundary_is_the_ttl_minus_margin` (py/tests/test_handover_cache_policy.py:403) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_models_that_are_not_downgrade_candidates_never_get_a_model_command` (py/tests/test_handover_cache_policy.py:411) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_unknown_warmth_keeps_the_old_always_downgrade_behaviour` (py/tests/test_handover_cache_policy.py:420) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_a_failing_cache_probe_never_blocks_the_wrap_up` (py/tests/test_handover_cache_policy.py:427) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_escape_hatch_restores_the_old_behaviour_and_never_probes` (py/tests/test_handover_cache_policy.py:434) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_missing_setting_defaults_to_cache_aware` (py/tests/test_handover_cache_policy.py:442) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `ModelDowngradeTests.test_provider_without_a_cache_ttl_keeps_the_old_behaviour` (py/tests/test_handover_cache_policy.py:448) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_warm_sonnet_55_gets_the_cache_safe_effort_drop` (py/tests/test_handover_cache_policy.py:459) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_warm_sonnet_5_skips_the_effort_drop_that_would_rewrite_the_cache` (py/tests/test_handover_cache_policy.py:466) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_cold_sonnet_5_gets_the_effort_drop_because_the_cache_is_gone_anyway` (py/tests/test_handover_cache_policy.py:476) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_unknown_warmth_on_sonnet_5_keeps_the_old_behaviour` (py/tests/test_handover_cache_policy.py:482) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_effort_already_at_or_below_the_target_is_left_alone` (py/tests/test_handover_cache_policy.py:487) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_effort_command_failure_is_swallowed` (py/tests/test_handover_cache_policy.py:493) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
-| `EffortDowngradeTests.test_public_wrapper_keeps_its_old_positional_signature` (py/tests/test_handover_cache_policy.py:500) | yok: devir politikası T4; canlı model/effort ve sağlayıcı kancaları yok | EKSİK(G3) |
+| `ModelDowngradeTests.test_warm_opus_keeps_its_model_but_still_lowers_effort` (py/tests/test_handover_cache_policy.py:373) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_cold_opus_goes_down_to_sonnet_then_effort_in_that_order` (py/tests/test_handover_cache_policy.py:385) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_fable_follows_the_same_rule` (py/tests/test_handover_cache_policy.py:395) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_boundary_is_the_ttl_minus_margin` (py/tests/test_handover_cache_policy.py:403) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_models_that_are_not_downgrade_candidates_never_get_a_model_command` (py/tests/test_handover_cache_policy.py:411) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_unknown_warmth_keeps_the_old_always_downgrade_behaviour` (py/tests/test_handover_cache_policy.py:420) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_a_failing_cache_probe_never_blocks_the_wrap_up` (py/tests/test_handover_cache_policy.py:427) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_escape_hatch_restores_the_old_behaviour_and_never_probes` (py/tests/test_handover_cache_policy.py:434) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_missing_setting_defaults_to_cache_aware` (py/tests/test_handover_cache_policy.py:442) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `ModelDowngradeTests.test_provider_without_a_cache_ttl_keeps_the_old_behaviour` (py/tests/test_handover_cache_policy.py:448) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_warm_sonnet_55_gets_the_cache_safe_effort_drop` (py/tests/test_handover_cache_policy.py:459) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_warm_sonnet_5_skips_the_effort_drop_that_would_rewrite_the_cache` (py/tests/test_handover_cache_policy.py:466) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_cold_sonnet_5_gets_the_effort_drop_because_the_cache_is_gone_anyway` (py/tests/test_handover_cache_policy.py:476) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_unknown_warmth_on_sonnet_5_keeps_the_old_behaviour` (py/tests/test_handover_cache_policy.py:482) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_effort_already_at_or_below_the_target_is_left_alone` (py/tests/test_handover_cache_policy.py:487) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_effort_command_failure_is_swallowed` (py/tests/test_handover_cache_policy.py:493) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
+| `EffortDowngradeTests.test_public_wrapper_keeps_its_old_positional_signature` (py/tests/test_handover_cache_policy.py:500) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
 | `CallSiteWiringTests.test_cli_path_calls_the_shared_policy_once_per_target` (py/tests/test_handover_cache_policy.py:520) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
 | `CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` (py/tests/test_handover_cache_policy.py:534) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
 | `CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` (py/tests/test_handover_cache_policy.py:547) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
-| `CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` (py/tests/test_handover_cache_policy.py:564) | yok | EKSİK(G3) |
-| `LastAssistantSinceTests.test_since_returns_only_rows_written_after_the_process_started` (py/tests/test_live_model_effort.py:62) | yok | EKSİK(G3) |
-| `LastAssistantSinceTests.test_only_previous_incarnation_rows_means_unknown` (py/tests/test_live_model_effort.py:68) | yok | EKSİK(G3) |
-| `LastAssistantSinceTests.test_without_since_behaviour_is_unchanged` (py/tests/test_live_model_effort.py:74) | yok | EKSİK(G3) |
-| `LastAssistantSinceTests.test_row_without_timestamp_is_not_treated_as_old` (py/tests/test_live_model_effort.py:79) | yok | EKSİK(G3) |
-| `LastAssistantSinceTests.test_scan_stops_at_the_first_older_row` (py/tests/test_live_model_effort.py:84) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_live_values_written_by_this_process_replace_cmdline_values` (py/tests/test_live_model_effort.py:107) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_fresh_resume_without_a_turn_keeps_cmdline_values` (py/tests/test_live_model_effort.py:111) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_effort_missing_in_live_rows_falls_back_per_field` (py/tests/test_live_model_effort.py:115) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_another_sessions_file_is_ignored` (py/tests/test_live_model_effort.py:119) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_non_claude_and_sidless_sessions_never_touch_the_file` (py/tests/test_live_model_effort.py:123) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_unknown_process_start_falls_back` (py/tests/test_live_model_effort.py:129) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_unchanged_file_is_not_reread_and_changed_file_is_` (py/tests/test_live_model_effort.py:133) | yok | EKSİK(G3) |
-| `LiveModelEffortTests.test_read_error_falls_back_and_does_not_raise` (py/tests/test_live_model_effort.py:151) | yok | EKSİK(G3) |
-| `LiveModelEndpointTests.test_live_model_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:168) | yok | EKSİK(G3) |
-| `LiveModelEndpointTests.test_live_effort_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:175) | yok | EKSİK(G3) |
-| `LiveModelEndpointTests.test_neighbour_transcript_is_not_reported` (py/tests/test_live_model_effort.py:183) | yok | EKSİK(G3) |
+| `CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` (py/tests/test_handover_cache_policy.py:564) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
+| `LastAssistantSinceTests.test_since_returns_only_rows_written_after_the_process_started` (py/tests/test_live_model_effort.py:62) | `parity_transcript` `surec-sonrasi` | TAŞINDI |
+| `LastAssistantSinceTests.test_only_previous_incarnation_rows_means_unknown` (py/tests/test_live_model_effort.py:68) | `parity_transcript` `onceki-surec` | TAŞINDI |
+| `LastAssistantSinceTests.test_without_since_behaviour_is_unchanged` (py/tests/test_live_model_effort.py:74) | `parity_transcript` `onceki-surec` (`since`siz okuma) | TAŞINDI |
+| `LastAssistantSinceTests.test_row_without_timestamp_is_not_treated_as_old` (py/tests/test_live_model_effort.py:79) | `parity_transcript` `damgasiz`; `damga-yok-` | TAŞINDI |
+| `LastAssistantSinceTests.test_scan_stops_at_the_first_older_row` (py/tests/test_live_model_effort.py:84) | `parity_transcript` `ilk-eskide-dur`; `since_stops_the_scan_without_reading_further` | TAŞINDI |
+| `LiveModelEffortTests.test_live_values_written_by_this_process_replace_cmdline_values` (py/tests/test_live_model_effort.py:107) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_fresh_resume_without_a_turn_keeps_cmdline_values` (py/tests/test_live_model_effort.py:111) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_effort_missing_in_live_rows_falls_back_per_field` (py/tests/test_live_model_effort.py:115) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_another_sessions_file_is_ignored` (py/tests/test_live_model_effort.py:119) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_non_claude_and_sidless_sessions_never_touch_the_file` (py/tests/test_live_model_effort.py:123) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_unknown_process_start_falls_back` (py/tests/test_live_model_effort.py:129) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_unchanged_file_is_not_reread_and_changed_file_is_` (py/tests/test_live_model_effort.py:133) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEffortTests.test_read_error_falls_back_and_does_not_raise` (py/tests/test_live_model_effort.py:151) | T1: `web._live_model_effort` (önbellek, tam ad kuralı); `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEndpointTests.test_live_model_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:168) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEndpointTests.test_live_effort_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:175) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
+| `LiveModelEndpointTests.test_neighbour_transcript_is_not_reported` (py/tests/test_live_model_effort.py:183) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
 | `EffortSwitchNoBlindEnter.test_no_dialog_no_enter` (py/tests/test_live_model_effort.py:215) | yok | EKSİK(G4) |
 | `NoteMirrorTests.test_records_the_pid_under_the_spec` (py/tests/test_mirror_marker.py:47) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
 | `NoteMirrorTests.test_same_spec_accumulates_pids` (py/tests/test_mirror_marker.py:52) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
@@ -1390,7 +1454,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `OneLiveSessionPerProjectTest.test_line_count_is_only_a_fallback_and_ignores_young_sessions` (py/tests/test_steward_core_b.py:369) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` (py/tests/test_steward_core_b.py:392) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
 | `OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` (py/tests/test_steward_core_b.py:401) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` (py/tests/test_steward_core_b.py:417) | yok: transkript kuyruğundan bağlam; rs-stew.md EKSİK | EKSİK(G3) |
+| `OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` (py/tests/test_steward_core_b.py:417) | T10: `web_steward.context_tokens_for` (model/effort/sıcaklık değil); `rs-stew.md`de EKSİK | KAPSAM DIŞI |
 | `StuckBrainTest.test_status_sentence_is_not_a_routine_question_and_tour_is_capped` (py/tests/test_steward_core_b.py:436) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `StuckBrainTest.test_two_failed_tours_restart_the_brain` (py/tests/test_steward_core_b.py:449) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `StuckBrainTest.test_undeliverable_adhoc_answer_is_given_up` (py/tests/test_steward_core_b.py:464) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
@@ -1567,7 +1631,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | `RecoverStuckTest.test_uses_parent_aware_kill` (py/tests/test_stuck_kills_parent.py:13) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
 | `RecoverStuckTest.test_unknown_permission_uses_provider_default` (py/tests/test_stuck_kills_parent.py:28) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
 | `RecoverStuckTest.test_dry_run_kills_nothing` (py/tests/test_stuck_kills_parent.py:40) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
-| `RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` (py/tests/test_stuck_kills_parent.py:46) | yok | EKSİK(G3) |
+| `RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` (py/tests/test_stuck_kills_parent.py:46) | T4: `stuck.py` kurtarma akışı; `live_or_spawn_*` taşındı (G3) | KAPSAM DIŞI |
 | `TokenTests.test_concurrent_issue_keeps_file_and_digest_consistent` (py/tests/test_ucli_agents.py:29) | yok | EKSİK(G8) |
 | `TokenTests.test_issue_writes_0600_file_and_only_hash_in_registry` (py/tests/test_ucli_agents.py:48) | yok | EKSİK(G8) |
 | `TokenTests.test_reissue_invalidates_old_token_and_revoke_clears` (py/tests/test_ucli_agents.py:56) | yok | EKSİK(G8) |
