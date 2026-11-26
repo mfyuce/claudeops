@@ -27,6 +27,11 @@ def read_secret() -> str:
     env = os.environ.get("CLAUDEOPS_FRONT_SECRET", "")
     if env:
         return env
+    return _file_secret()
+
+
+def _file_secret() -> str:
+    """Yalnız dosya (0600, UTF-8); kullanılamazsa boş."""
     try:
         st = os.stat(secret_path())
         if st.st_mode & 0o077:          # grup/diğer okuyabiliyorsa güvenme (sızmış sayılır)
@@ -39,16 +44,17 @@ def read_secret() -> str:
 
 def ensure_secret() -> str:
     """Geçerli gizli varsa onu döner; yoksa (dosya yok, boş, bozuk ya da izni gevşemiş = sızmış sayılır) YENİ gizli üretir.
-    Kilit altında, 0600 geçici dosya + `os.replace`: eşzamanlı çağıranlar diskteki tek değeri döner, okuyan yarım dosya görmez."""
+    Kilit altında, 0600 geçici dosya + `os.replace`: eşzamanlı çağıranlar diskteki tek değeri döner, okuyan yarım dosya görmez.
+    `CLAUDEOPS_FRONT_SECRET` dosya üretimini ENGELLEMEZ (yalnız çağıranın kabuğunda olur; copsd ve web birimleri dosyayı okur)."""
     p = secret_path()
-    cur = read_secret()
+    cur = _file_secret()
     if cur:
         return cur
     d = os.path.dirname(p)
     os.makedirs(d, mode=0o700, exist_ok=True)
     with os.fdopen(os.open(p + ".lock", os.O_WRONLY | os.O_CREAT, 0o600), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)          # dosya kapanınca bırakılır
-        cur = read_secret()
+        cur = _file_secret()
         if cur:
             return cur
         val = secrets.token_hex(32)
