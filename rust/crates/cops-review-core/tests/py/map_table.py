@@ -227,6 +227,8 @@ classes("test_review_findings_flow", CORE, "TestScanVerdicts")
 classes("test_review_verdict_state", _flow, "TestDecisionKeepsVerdict TestRemoteKeepsVerdict")
 classes("test_review_literal_path", CORE, "TestChangedAfterReviewLiteralPath")
 classes("test_review_nonfinite", CORE, "NonFiniteNumberTest")
+classes("test_review_state_nonfinite", out(WR, "durum ve bulgu yanıtı geçerli JSON kalır; yanıt koşucuyla taşınır"),
+        "FindingsNonFiniteTest StateNonFiniteTest")
 tests("test_review_nonfinite.NonFiniteNumberTest", out(WR, "koşan işin süreç ağacı (`_pid_tree`)"), "pid_tree_ignores_infinite_pid")
 classes("test_review_findings_flow", out(CLI, "CLI argümanından API'ye eşleme"), "TestCli")
 classes("test_review_findings_flow", out(WR, "rapor ve kullanım dosyalarını depoya kopyalama"), "StoreReportsTest")
@@ -305,7 +307,7 @@ def rust_exists(ref):
 
     def defined(text, name):
         n = re.escape(name)
-        return bool(re.search(rf"\b(fn|const|static|struct|enum|type)\s+{n}\b|\bre!\({n},", text))
+        return bool(re.search(rf"\b(fn|const|static|struct|enum|type)\s+{n}\b|\bre!\(\s*{n},", text))
 
     if "." in item:
         typ, field = item.split(".")
@@ -734,7 +736,9 @@ def main():
         new = doc.rstrip("\n") + "\n\n" + table + "\n"
     if "--check" in sys.argv:
         # çağrı sayıları koşudan koşuya oynayabilir: sayılar dışarıda karşılaştırılır
-        strip = lambda s: re.sub(r"\d+ çağrı|\(\d+\)|: \d+(?=[;|\s])", "N", s)
+        # iş parçacığı yarışı atlaması her koşuda oluşmaz: gerekçe parçası da dışarıda
+        race = r"okuma sırasında başka iş parçacığı yazdı \(dosya karşılaştırılmadı\): \d+(?:; )?"
+        strip = lambda s: re.sub(r"\d+ çağrı|\(\d+\)|: \d+(?=[;|\s])", "N", re.sub(race, "", s))
         sys.exit(0 if strip(new) == strip(doc) else "docs/rs-rev.md eşleme tablosu bayat")
     with open(DOC, "w", encoding="utf-8") as f:
         f.write(new)

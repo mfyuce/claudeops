@@ -139,6 +139,10 @@ Durum: **karşılandı** (test var), **kapsam dışı** (gerekçe + iz), **Pytho
 | 19 | İkili sürümü, canlı=HEAD, geri dönüş | kapsam dışı: crate kütüphane, ikili ve canlıya alma cops birleştirmesinde (sprint planı "Sahip eki") | kapsam dışı (cops birleştirme) |
 | 20 | Ölçümsüz iddia yok, `--dry-run` yan etkisiz, Python'a yeni özellik yok | bu izde `py/`de yalnız hata düzeltmesi (TBD#368, #375); Python'a dair her iddia ölçümle (bu bölümdeki beklenen değerler Python'dan koşturularak alındı); çekirdekte `--dry-run` yok (`lens=dry` yalnız istem/yol: `edges::TestEdges.test_paths`) | karşılandı |
 
+8. DÜZELDİ (`a97415ec`, TBD#398; kalıcı kural TBD#383): `GET review` durum ve bulgu yanıtı depodaki `NaN`/`Infinity` ile
+   geçersiz JSON oluyordu. Sonlu olmayan sayı yanıttan atılır (listede `None`) ve loglanır; depo değişmez. Rust'ta yanıt
+   ucu yok: T8'de koşucu aynı davranışı vermeli (`py/tests/test_review_state_nonfinite.py`).
+
 ## Koşucu arayüzü (bu izde YOK; koşucu taşınırken, T8)
 
 Plan eki (sahip q20261126_140456_8f77, TBD#357): koşucu her koşuda `--usage-log` ve durum çıktısı üretir.
@@ -160,7 +164,7 @@ Durumlar: **karşılandı (parite)** işlevin kendisi Python ile aynı girdide k
 
 ```
 A: 205 satır (kapsam dışı: 1, karşılandı (değer eşit): 49, karşılandı (dolaylı parite): 51, karşılandı (parite): 104)
-B: 537 satır, 44 dosya (kapsam dışı: 367, karşılandı: 157, karşılandı (başka test): 13)
+B: 539 satır, 45 dosya (kapsam dışı: 369, karşılandı: 157, karşılandı (başka test): 13)
 atlanan işlev: 31
 ```
 
@@ -169,8 +173,8 @@ atlanan işlev: 31
 | Python | Rust | Parite / birim testi | Durum |
 |---|---|---|---|
 | `WINDOW_SECONDS` (sabit, review.py:24) | `targets.rs::WINDOW_SECONDS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `next_review` (2613), `project_complete` (2507), `update_pair` (638), `window_seconds` (99) | karşılandı (değer eşit) |
-| `HISTORY_VERSION` (sabit, review.py:25) | `targets.rs::HISTORY_VERSION` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `load_history` (177) | karşılandı (değer eşit) |
-| `HISTORY_RUNS_MAX` (sabit, review.py:26) | `targets.rs::HISTORY_RUNS_MAX` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `save_history` (32) | karşılandı (değer eşit) |
+| `HISTORY_VERSION` (sabit, review.py:25) | `targets.rs::HISTORY_VERSION` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `load_history` (166) | karşılandı (değer eşit) |
+| `HISTORY_RUNS_MAX` (sabit, review.py:26) | `targets.rs::HISTORY_RUNS_MAX` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `save_history` (33) | karşılandı (değer eşit) |
 | `MAX_ATTEMPTS` (sabit, review.py:27) | `targets.rs::MAX_ATTEMPTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `max_attempts` (51) | karşılandı (değer eşit) |
 | `MODE_MAX_ATTEMPTS` (sabit, review.py:28) | `targets.rs::MODE_MAX_ATTEMPTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `max_attempts` (51) | karşılandı (değer eşit) |
 | `CAPACITY_ERROR_PREFIX` (sabit, review.py:31) | `targets.rs::CAPACITY_ERROR_PREFIX` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `counts_as_attempt` (2533), `next_review` (2613) | karşılandı (değer eşit) |
@@ -189,11 +193,11 @@ atlanan işlev: 31
 | `UNCOUNTED_ERRORS` (sabit, review.py:86) | `targets.rs::UNCOUNTED_ERRORS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `counts_as_attempt` (2533) | karşılandı (değer eşit) |
 | `counts_as_attempt` (işlev, review.py:89) | `targets.rs::counts_as_attempt` | `counts_as_attempt`: 2533 çağrı, 8 test (ör. test_review_bad_records.BadRecordTest::test_non_object_pair_record_is_not_an_attempt, parity_edges.TestEdges::test_planner_random) | karşılandı (parite) |
 | `max_attempts` (işlev, review.py:101) | `targets.rs::max_attempts` | `max_attempts`: 51 çağrı, 3 test (ör. test_review.TestPlanner::test_evren_single_attempt_per_window, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
-| `MODES` (sabit, review.py:103) | `targets.rs::MODES` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `parse_slots` (170), `reviewer_slug_of` (102) | karşılandı (değer eşit) |
+| `MODES` (sabit, review.py:103) | `targets.rs::MODES` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `parse_slots` (172), `reviewer_slug_of` (102) | karşılandı (değer eşit) |
 | `UCLI_MODES` (sabit, review.py:104) | `targets.rs::UCLI_MODES` | betik: değer Rust sabitiyle eşit | karşılandı (değer eşit) |
 | `ANTHROPIC_ENDPOINT` (sabit, review.py:105) | `targets.rs::ANTHROPIC_ENDPOINT` | betik: değer Rust sabitiyle eşit | karşılandı (değer eşit) |
 | `ANTHROPIC_PRICES` (sabit, review.py:107) | `targets.rs::ANTHROPIC_PRICES` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `anthropic_price` (99) | karşılandı (değer eşit) |
-| `parse_slots` (işlev, review.py:112) | `targets.rs::parse_slots` | `parse_slots`: 170 çağrı, 90 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
+| `parse_slots` (işlev, review.py:112) | `targets.rs::parse_slots` | `parse_slots`: 172 çağrı, 91 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `PAIR_STATUSES` (sabit, review.py:127) | `targets.rs::PAIR_STATUSES` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `update_pair` (638) | karşılandı (değer eşit) |
 | `SEVERITIES` (sabit, review.py:128) | `targets.rs::SEVERITIES` | betik: değer Rust sabitiyle eşit | karşılandı (değer eşit) |
 | `FINDING_STATES` (sabit, review.py:129) | `targets.rs::FINDING_STATES` | betik: değer Rust sabitiyle eşit | karşılandı (değer eşit) |
@@ -209,13 +213,13 @@ atlanan işlev: 31
 | `ReviewTarget.spec` (yöntem, review.py:157) | `targets.rs::ReviewTarget::spec` | `target_props`: 53 çağrı, 1 test (ör. parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `slug_model` (işlev, review.py:161) | `targets.rs::slug_model` | `slug_model`: 4096 çağrı, 6 test (ör. test_review.TestEffortPairs::test_same_model_two_efforts_are_separate_pairs, parity_edges.TestEdges::test_fuzz_redact_and_findings) | karşılandı (parite) |
 | `split_spec` (işlev, review.py:168) | `targets.rs::split_spec` | `split_spec`: 30 çağrı, 5 test (ör. test_review.TestEffortPairs::test_same_model_two_efforts_are_separate_pairs, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
-| `_split_models` (işlev, review.py:174) | `targets.rs::split_models` | parite, şu çağrılar üzerinden: `claude_specs` (14), `excluded_keys` (8), `targets_from_config` (19), `toggle_excluded` (49) | karşılandı (dolaylı parite) |
+| `_split_models` (işlev, review.py:174) | `targets.rs::split_models` | parite, şu çağrılar üzerinden: `claude_specs` (15), `excluded_keys` (8), `targets_from_config` (19), `toggle_excluded` (49) | karşılandı (dolaylı parite) |
 | `excluded_keys` (işlev, review.py:183) | `targets.rs::excluded_keys` | `excluded_keys`: 8 çağrı, 1 test (ör. parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `toggle_excluded` (işlev, review.py:188) | `targets.rs::toggle_excluded` | `toggle_excluded`: 49 çağrı, 2 test (ör. test_review_model_health.TestExclusion::test_toggle_and_targets_filter, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
-| `SUBSCRIPTION_FABLE_EFFORTS` (sabit, review.py:198) | `targets.rs::SUBSCRIPTION_FABLE_EFFORTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `claude_specs` (14) | karşılandı (değer eşit) |
+| `SUBSCRIPTION_FABLE_EFFORTS` (sabit, review.py:198) | `targets.rs::SUBSCRIPTION_FABLE_EFFORTS` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `claude_specs` (15) | karşılandı (değer eşit) |
 | `claude_catalog` (işlev, review.py:201) | `targets.rs::claude_catalog_from` | `claude_catalog`: 12 çağrı, 2 test (ör. parity_edges.TestEdges::test_claude_catalog_documents); çekirdek payı; `claude_models` belgesini okumak çağıranda (T8) | karşılandı (parite) |
-| `claude_specs` (işlev, review.py:212) | `targets.rs::claude_specs` | `claude_specs`: 14 çağrı, 7 test (ör. test_review_claude_subscription.ClaudeSubscriptionTargets::test_api_empty_is_off, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
-| `claude_is_subscription` (işlev, review.py:225) | `targets.rs::claude_is_subscription` | `claude_is_subscription`: 53 çağrı, 30 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
+| `claude_specs` (işlev, review.py:212) | `targets.rs::claude_specs` | `claude_specs`: 15 çağrı, 8 test (ör. test_review_claude_subscription.ClaudeSubscriptionTargets::test_api_empty_is_off, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
+| `claude_is_subscription` (işlev, review.py:225) | `targets.rs::claude_is_subscription` | `claude_is_subscription`: 54 çağrı, 31 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `targets_from_config` (işlev, review.py:229) | `targets.rs::targets_from_config` | `targets_from_config`: 19 çağrı, 8 test (ör. test_review.TestCopilotMode::test_targets_and_effort_path, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `review_title` (işlev, review.py:260) | `targets.rs::review_title` | `review_title`: 20 çağrı, 4 test (ör. test_review_io_history.TestChatApi::test_chat_conversion_and_runs_row, parity_edges.TestEdges::test_specs_and_targets) | karşılandı (parite) |
 | `_num` (işlev, review.py:275) | `py.rs::num` | parite, şu çağrılar üzerinden: `blocked_modes` (3122), `counts_as_attempt` (2533), `model_health` (20), `next_review` (2613) +3; `helpers::num_tolerates_corrupt_values` | karşılandı (dolaylı parite) |
@@ -235,13 +239,13 @@ atlanan işlev: 31
 | `backlogged_projects` (işlev, review.py:445) | `planner.rs::backlogged_projects` | `backlogged_projects`: 2544 çağrı, 29 test (ör. test_review_backlog.BacklogTest::test_backlogged_projects, parity_edges.TestEdges::test_planner_random) | karşılandı (parite) |
 | `pool_focus` (işlev, review.py:464) | `planner.rs::pool_focus` | `pool_focus`: 2506 çağrı, 3 test (ör. test_pool_focus_action.TestPoolFocusAction::test_focus_then_unfocus, parity_edges.TestEdges::test_planner_random) | karşılandı (parite) |
 | `pool_sync` (işlev, review.py:474) | `planner.rs::pool_sync` | `pool_sync`: 2564 çağrı, 35 test (ör. test_review.TestPoolSync::test_sync, parity_edges.TestEdges::test_planner_random) | karşılandı (parite) |
-| `LENSES` (sabit, review.py:499) | `prompts.rs::BUILTIN_LENS`, `prompts.rs::LensRegistry::lenses` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `lenses` (10), `register_lens` (21) | karşılandı (değer eşit) |
+| `LENSES` (sabit, review.py:499) | `prompts.rs::BUILTIN_LENS`, `prompts.rs::LensRegistry::lenses` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `lenses` (11), `register_lens` (21) | karşılandı (değer eşit) |
 | `_LENS_NAME_RE` (regex, review.py:500) | `prompts.rs::register_lens::NAME` | parite, şu çağrılar üzerinden: `register_lens` (21) | karşılandı (dolaylı parite) |
 | `_LENS_DEFECTS_RE` (regex, review.py:502) | `prompts.rs::build_review_prompt::EN`, `prompts.rs::build_review_prompt::TR` | parite, şu çağrılar üzerinden: `build_review_prompt` (106) | karşılandı (dolaylı parite) |
 | `_LENS_TEXT` (sabit, review.py:506) | `prompts.rs::LENS_TEXT_DRY_EN`, `prompts.rs::LENS_TEXT_DRY_TR`, `prompts.rs::LensRegistry` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `build_review_prompt` (106), `register_lens` (21) | karşılandı (değer eşit) |
 | `_LENS_FORMAT` (sabit, review.py:516) | `prompts.rs::LENS_FORMAT_EN`, `prompts.rs::LENS_FORMAT_TR` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `build_review_prompt` (106) | karşılandı (değer eşit) |
 | `register_lens` (işlev, review.py:524) | `prompts.rs::LensRegistry::register_lens` | `register_lens`: 21 çağrı, 5 test (ör. test_extensions.LoaderTest::test_cannot_override_builtin_from_extension, parity_edges.TestEdges::test_lens_registry) | karşılandı (parite) |
-| `lenses` (işlev, review.py:542) | `prompts.rs::LensRegistry::lenses` | `lenses`: 10 çağrı, 9 test (ör. test_extensions.LoaderTest::test_absent_is_silent_and_behaviour_unchanged, parity_edges.TestEdges::test_lens_registry) | karşılandı (parite) |
+| `lenses` (işlev, review.py:542) | `prompts.rs::LensRegistry::lenses` | `lenses`: 11 çağrı, 10 test (ör. test_extensions.LoaderTest::test_absent_is_silent_and_behaviour_unchanged, parity_edges.TestEdges::test_lens_registry) | karşılandı (parite) |
 | `_LENS_FORMAT_EXTRA` (sabit, review.py:547) | `prompts.rs::LensRegistry` | parite, şu çağrılar üzerinden: `build_review_prompt` (106), `register_lens` (21); modül genel sözlüğü yerine kayıt nesnesinin alanı | karşılandı (dolaylı parite) |
 | `build_review_prompt` (işlev, review.py:550) | `prompts.rs::LensRegistry::build_review_prompt` | `build_review_prompt`: 106 çağrı, 64 test (ör. test_extensions.LoaderTest::test_absent_is_silent_and_behaviour_unchanged, parity_edges.TestEdges::test_lens_registry) | karşılandı (parite) |
 | `_build_general_prompt` (işlev, review.py:565) | `prompts.rs::general_prompt` | parite, şu çağrılar üzerinden: `build_review_prompt` (106) | karşılandı (dolaylı parite) |
@@ -303,14 +307,14 @@ atlanan işlev: 31
 | `_agy_block_cleared` (işlev, review.py:1078) | `limits.rs::agy_block_cleared` | parite, şu çağrılar üzerinden: `blocked_modes` (3122) | karşılandı (dolaylı parite) |
 | `blocked_modes` (işlev, review.py:1102) | `limits.rs::blocked_modes` | `blocked_modes`: 3122 çağrı, 12 test (ör. test_review_bad_records.BadRecordTest::test_blocked_modes_skips_bad_until, parity_edges.TestEdges::test_blocks_agy_copilot) | karşılandı (parite) |
 | `StoreCorrupt` (sınıf, review.py:1120) | `error.rs::Error` | parite, şu çağrılar üzerinden: `targets_from_config` (19), `target_props` (53); `helpers::corrupt_store_refuses_write`; `Error::StoreCorrupt` varyantı | karşılandı (dolaylı parite) |
-| `_refuse_corrupt` (işlev, review.py:1124) | `store.rs::ReviewStore::refuse_corrupt` | parite, şu çağrılar üzerinden: `save_findings` (144), `save_history` (32), `save_pool` (62) | karşılandı (dolaylı parite) |
-| `load_pool` (işlev, review.py:1141) | `store.rs::ReviewStore::load_pool` | `load_pool`: 113 çağrı, 45 test (ör. test_pool_focus_action.TestPoolFocusAction::test_disable_and_remove_clear_focus, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
+| `_refuse_corrupt` (işlev, review.py:1124) | `store.rs::ReviewStore::refuse_corrupt` | parite, şu çağrılar üzerinden: `save_findings` (144), `save_history` (33), `save_pool` (62) | karşılandı (dolaylı parite) |
+| `load_pool` (işlev, review.py:1141) | `store.rs::ReviewStore::load_pool` | `load_pool`: 114 çağrı, 46 test (ör. test_pool_focus_action.TestPoolFocusAction::test_disable_and_remove_clear_focus, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
 | `save_pool` (işlev, review.py:1146) | `store.rs::ReviewStore::save_pool` | `save_pool`: 62 çağrı, 42 test (ör. test_pool_focus_action.TestPoolFocusAction::test_disable_and_remove_clear_focus, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) | karşılandı (parite) |
 | `R10_SUB_SINCE` (sabit, review.py:1154) | `store.rs::R10_SUB_SINCE` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `migrate_r10_sub` (8) | karşılandı (değer eşit) |
 | `R10_MARK` (sabit, review.py:1155) | `store.rs::R10_MARK` | betik: değer Rust sabitiyle eşit; parite, şu çağrılar üzerinden: `migrate_r10_sub` (8) | karşılandı (değer eşit) |
 | `migrate_r10_sub` (işlev, review.py:1158) | `store.rs::migrate_r10_sub` | `migrate_r10_sub`: 8 çağrı, 5 test (ör. test_review.R10SubMigrationTest::test_idempotent, parity_edges.TestEdges::test_history_functions) | karşılandı (parite) |
-| `load_history` (işlev, review.py:1186) | `store.rs::ReviewStore::load_history` | `load_history`: 177 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
-| `save_history` (işlev, review.py:1199) | `store.rs::ReviewStore::save_history` | `save_history`: 32 çağrı, 14 test (ör. test_review_bad_records.BadRecordTest::test_update_pair_replaces_non_object_record, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) | karşılandı (parite) |
+| `load_history` (işlev, review.py:1186) | `store.rs::ReviewStore::load_history` | `load_history`: 166 çağrı, 81 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
+| `save_history` (işlev, review.py:1199) | `store.rs::ReviewStore::save_history` | `save_history`: 33 çağrı, 15 test (ör. test_review_bad_records.BadRecordTest::test_update_pair_replaces_non_object_record, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) | karşılandı (parite) |
 | `_run_seconds` (işlev, review.py:1207) | `store.rs::run_seconds` | parite, şu çağrılar üzerinden: `update_pair` (638); `helpers::run_seconds_cases` | karşılandı (dolaylı parite) |
 | `update_pair` (işlev, review.py:1216) | `store.rs::ReviewStore::update_pair` | `update_pair`: 638 çağrı, 95 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_pair_lifecycle) | karşılandı (parite) |
 | `load_findings` (işlev, review.py:1245) | `store.rs::ReviewStore::load_findings` | `load_findings`: 546 çağrı, 125 test (ör. test_review.TestPathsAndStores::test_dedup_canonical_prefers_live_over_refuted, parity_edges.TestStoreEdges::test_broken_files) | karşılandı (parite) |
@@ -740,6 +744,8 @@ atlanan işlev: 31
 | `test_review_slots.py:330` `AgyUsageBlocksTest.test_unknown_pool_untouched` | `parse_agy_usage`, `reconcile_agy_blocks` | `limits.rs::parse_agy_usage`, `limits.rs::reconcile_agy_blocks`; parite (bu test): `parse_agy_usage`; parite (bu test): `reconcile_agy_blocks` | karşılandı |
 | `test_review_slots.py:335` `AgyUsageBlocksTest.test_fetch_reads_shared_usage_state_not_own_measure` | `parse_agy_entries` | kapsam dışı: `usage_state` ölçümünü okuma/tazeleme; iz T8 koşucu `commands/web_review.py`; bu testte yan çağrı olarak parite altında: `parse_agy_entries` | kapsam dışı |
 | `test_review_slots.py:348` `AgyUsageBlocksTest.test_refresh_skips_without_agy_targets` | `parse_agy_usage` | kapsam dışı: `usage_state` ölçümünü okuma/tazeleme; iz T8 koşucu `commands/web_review.py`; bu testte yan çağrı olarak parite altında: `parse_agy_usage` | kapsam dışı |
+| `test_review_state_nonfinite.py:28` `FindingsNonFiniteTest.test_list_findings_drops_non_finite_values` | yok | kapsam dışı: durum ve bulgu yanıtı geçerli JSON kalır; yanıt koşucuyla taşınır; iz T8 koşucu `commands/web_review.py` | kapsam dışı |
+| `test_review_state_nonfinite.py:40` `StateNonFiniteTest.test_review_state_is_strict_json_with_non_finite_run_records` | `claude_is_subscription`, `claude_specs`, `lenses`, `load_history`, `load_pool`, `parse_slots`, `save_history` | kapsam dışı: durum ve bulgu yanıtı geçerli JSON kalır; yanıt koşucuyla taşınır; iz T8 koşucu `commands/web_review.py`; bu testte yan çağrı olarak parite altında: `claude_is_subscription`, `claude_specs`, `lenses`, `load_history`, `load_pool`, `parse_slots`, `save_history` | kapsam dışı |
 | `test_review_store.py:25` `PureTest.test_parse_remote` | yok | kapsam dışı: git deposu görünürlüğü, sır taraması ve commit kapısı; iz T8 review deposu aktarımı `review_store.py` | kapsam dışı |
 | `test_review_store.py:30` `PureTest.test_dest_guard_fails_closed_on_check_ignore_error` | yok | kapsam dışı: git deposu görünürlüğü, sır taraması ve commit kapısı; iz T8 review deposu aktarımı `review_store.py` | kapsam dışı |
 | `test_review_store.py:41` `PureTest.test_dest_guard_localized_not_a_repo_is_rejected_not_open` | yok | kapsam dışı: git deposu görünürlüğü, sır taraması ve commit kapısı; iz T8 review deposu aktarımı `review_store.py` | kapsam dışı |
@@ -924,8 +930,8 @@ Bu çağrılar karşılaştırılmadı; son sütun aynı işlevin başka çağr�
 |---|---|---|
 | `add_findings` | review işlevi taklit edilmiş: 1 | `add_findings`: 172 çağrı, 136 test (ör. test_review.TestPathsAndStores::test_dedup_canonical_prefers_live_over_refuted, parity_edges.TestStoreEdges::test_findings_lifecycle) |
 | `build_self_verify_prompt` | review işlevi taklit edilmiş: 1 | `build_self_verify_prompt`: 11 çağrı, 8 test (ör. test_review_self_verify.SelfVerifyTest::test_codex_verifier_read_only_argv, parity_edges.TestEdges::test_flow_functions) |
-| `claude_is_subscription` | review işlevi taklit edilmiş: 5 | `claude_is_subscription`: 53 çağrı, 30 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) |
-| `claude_specs` | review işlevi taklit edilmiş: 3 | `claude_specs`: 14 çağrı, 7 test (ör. test_review_claude_subscription.ClaudeSubscriptionTargets::test_api_empty_is_off, parity_edges.TestEdges::test_specs_and_targets) |
+| `claude_is_subscription` | review işlevi taklit edilmiş: 5 | `claude_is_subscription`: 54 çağrı, 31 test (ör. test_review_findings_flow.TestAutoApprove::test_off_and_tick_wiring, parity_edges.TestEdges::test_specs_and_targets) |
+| `claude_specs` | review işlevi taklit edilmiş: 3 | `claude_specs`: 15 çağrı, 8 test (ör. test_review_claude_subscription.ClaudeSubscriptionTargets::test_api_empty_is_off, parity_edges.TestEdges::test_specs_and_targets) |
 | `draft_path` | review işlevi taklit edilmiş: 1 | `draft_path`: 152 çağrı, 57 test (ör. test_recover_draft_precedence.Precedence::test_chatty_stdout_loses_to_draft, parity_edges.TestEdges::test_paths) |
 | `dsn_passwords` | review işlevi taklit edilmiş: 10 | `dsn_passwords`: 5062 çağrı, 69 test (ör. test_review.TestDsnEdgeCases::test_uppercase_scheme_and_special_chars_in_password, parity_edges.TestEdges::test_fuzz_redact_and_findings) |
 | `excluded_keys` | review işlevi taklit edilmiş: 3 | `excluded_keys`: 8 çağrı, 1 test (ör. parity_edges.TestEdges::test_specs_and_targets) |
@@ -933,7 +939,7 @@ Bu çağrılar karşılaştırılmadı; son sütun aynı işlevin başka çağr�
 | `finding_paths` | review işlevi taklit edilmiş: 1 | `finding_paths`: 79 çağrı, 55 test (ör. test_recover_draft_precedence.Precedence::test_chatty_stdout_loses_to_draft, parity_edges.TestEdges::test_paths) |
 | `is_short_banner` | review işlevi taklit edilmiş: 1 | `is_short_banner`: 151 çağrı, 37 test (ör. test_review_findings_flow.TestAutoFindings::test_done_review_records_findings_as_new, parity_edges.TestEdges::test_text_functions) |
 | `load_findings` | review işlevi taklit edilmiş: 5 | `load_findings`: 546 çağrı, 125 test (ör. test_review.TestPathsAndStores::test_dedup_canonical_prefers_live_over_refuted, parity_edges.TestStoreEdges::test_broken_files) |
-| `load_history` | okuma sırasında başka iş parçacığı yazdı (dosya karşılaştırılmadı): 1; review işlevi taklit edilmiş: 2 | `load_history`: 177 çağrı, 80 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) |
+| `load_history` | review işlevi taklit edilmiş: 2 | `load_history`: 166 çağrı, 81 test (ör. test_review.TestPathsAndStores::test_history_and_pool_roundtrip, parity_edges.TestStoreEdges::test_broken_files) |
 | `mark_verify_sent` | review işlevi taklit edilmiş: 1 | `mark_verify_sent`: 28 çağrı, 24 test (ör. test_review_findings_flow.TestAutoVerify::test_sends_once_per_tick_and_marks, parity_edges.TestStoreEdges::test_findings_lifecycle) |
 | `migrate_r10_sub` | review işlevi taklit edilmiş: 2 | `migrate_r10_sub`: 8 çağrı, 5 test (ör. test_review.R10SubMigrationTest::test_idempotent, parity_edges.TestEdges::test_history_functions) |
 | `pair_key` | review işlevi taklit edilmiş: 2 | `pair_key`: 31005 çağrı, 102 test (ör. test_review.TestEffortPairs::test_same_model_two_efforts_are_separate_pairs, parity_edges.TestEdges::test_planner_random) |
@@ -945,7 +951,7 @@ Bu çağrılar karşılaştırılmadı; son sütun aynı işlevin başka çağr�
 | `report_bodyless` | review işlevi taklit edilmiş: 1 | `report_bodyless`: 4162 çağrı, 45 test (ör. test_review_findings_flow.TestAutoFindings::test_done_review_records_findings_as_new, parity_edges.TestEdges::test_fuzz_redact_and_findings) |
 | `report_incomplete` | review işlevi taklit edilmiş: 1 | `report_incomplete`: 159 çağrı, 41 test (ör. test_review.TestReviewSmallFixes::test_report_incomplete_recognizes_parser_heading_forms, parity_edges.TestEdges::test_text_functions) |
 | `save_findings` | review işlevi taklit edilmiş: 3 | `save_findings`: 144 çağrı, 74 test (ör. test_review.TestPathsAndStores::test_dedup_canonical_prefers_live_over_refuted, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) |
-| `save_history` | review işlevi taklit edilmiş: 2 | `save_history`: 32 çağrı, 14 test (ör. test_review_bad_records.BadRecordTest::test_update_pair_replaces_non_object_record, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) |
+| `save_history` | review işlevi taklit edilmiş: 2 | `save_history`: 33 çağrı, 15 test (ör. test_review_bad_records.BadRecordTest::test_update_pair_replaces_non_object_record, parity_edges.TestStoreEdges::test_corrupt_store_write_refused) |
 | `scan_verdicts` | review işlevi taklit edilmiş: 1 | `scan_verdicts`: 4163 çağrı, 16 test (ör. test_review_fence_kinds.FenceKindTest::test_tilde_inside_backtick_fence_does_not_leak_verdict, parity_edges.TestEdges::test_fuzz_redact_and_findings) |
 | `set_block` | review işlevi taklit edilmiş: 1 | `set_block`: 6 çağrı, 4 test (ör. test_review_slots.TestSlotsTick::test_quota_blocked_target_skipped, parity_edges.TestStoreEdges::test_pair_lifecycle) |
 | `slug_model` | review işlevi taklit edilmiş: 16 | `slug_model`: 4096 çağrı, 6 test (ör. test_review.TestEffortPairs::test_same_model_two_efforts_are_separate_pairs, parity_edges.TestEdges::test_fuzz_redact_and_findings) |
