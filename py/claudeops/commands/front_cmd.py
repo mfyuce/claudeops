@@ -659,6 +659,8 @@ def _on(args) -> int:
         cmds = [("daemon-reload",), ("enable", "--now", FRONT_UNIT_NAME), ("restart", FRONT_UNIT_NAME)]
     else:
         cmds = [("daemon-reload",), ("restart", WEB_UNIT_NAME), ("enable", "--now", FRONT_UNIT_NAME)]
+        if prev["active"]:      # `enable --now` çalışan birimi yeniden başlatmaz: yeni birim metni ancak restart ile uygulanır
+            cmds.append(("restart", FRONT_UNIT_NAME))
     ran, failure = 0, None
     for cmd in cmds:
         ran += 1

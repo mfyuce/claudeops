@@ -373,6 +373,47 @@ fn parity_apply_rollback_on_systemctl_failure() {
 }
 
 #[test]
+fn parity_on_restarts_running_front_then_rolls_back_unverified() {
+    // "Python hatası?" 4 düzeltildi: ön kapı çalışıyorsa (`FAKE_SC_STATE=0`) `enable --now`dan sonra `restart` (yeni birim
+    // uygulansın). Sahte ortamda ön kapı dinlemez: iki taraf 15 sn bekler, aynı doğrulama hatası ve aynı geri alma.
+    let sb = Sandbox::new();
+    let (_l, _busy, free) = ports();
+    std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
+    sb.exe(&sb.state().join("bin/copsd"));
+    let args = [
+        "front",
+        "on",
+        "--apply",
+        "--listen",
+        "127.0.0.1:1",
+        "--internal",
+        free.as_str(),
+    ];
+    let run = |prog: &Path| {
+        let _ = std::fs::remove_file(sb.sc_log());
+        let o = sb
+            .cmd(prog)
+            .args(args)
+            .env("FAKE_SC_STATE", "0")
+            .output()
+            .unwrap();
+        (o, std::fs::read_to_string(sb.sc_log()).unwrap())
+    };
+    let (p, plog) = run(&py_cops());
+    let (r, rlog) = run(&bin());
+    same(&p, &r, "çalışan ön kapı");
+    assert_eq!(plog, rlog);
+    assert_eq!(
+        rlog,
+        "--user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
+         --user daemon-reload\n--user restart claudeops-web.service\n--user enable --now claudeops-front.service\n\
+         --user restart claudeops-front.service\n--user daemon-reload\n--user restart claudeops-web.service\n\
+         --user restart claudeops-front.service\n"
+    );
+    assert!(String::from_utf8_lossy(&r.stdout).contains("HATA: ön kapı 127.0.0.1:1 üzerinde dinlemiyor"));
+}
+
+#[test]
 fn parity_delegated_commands_and_argparse_errors() {
     let sb = Sandbox::new();
     for args in [

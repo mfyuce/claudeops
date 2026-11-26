@@ -558,5 +558,28 @@ class P3Rollback(Env):
         self.assertEqual(sorted(x for x in os.listdir(self.root) if x.startswith(".")), [])
 
 
+class P4RestartRunningFront(Env):
+    """4: çalışan ön kapıda yalnız `enable --now` vardı; değişen birim (ör. yeni `--upstream`) uygulanmıyordu."""
+
+    def test_on_restarts_an_already_running_front_so_the_new_unit_applies(self):
+        self.web_outside()
+        self.w.front_active = self.w.front_enabled = True
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.w.calls, ["daemon-reload", "restart claudeops-web.service",
+                                        "enable --now claudeops-front.service", "restart claudeops-front.service"])
+
+    def test_restart_failure_is_rolled_back_with_old_unit(self):
+        self.web_outside()
+        self.front.write_text("eski birim\n")
+        self.w.front_active = self.w.front_enabled = True
+        self.w.fail["restart claudeops-front.service"] = 1
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("HATA: systemctl --user restart claudeops-front.service\n", out)
+        self.assertEqual(self.front.read_text(), "eski birim\n")
+        self.assertEqual(self.w.calls[4:], ["daemon-reload", "restart claudeops-web.service", "restart claudeops-front.service"])
+
+
 if __name__ == "__main__":
     unittest.main()
