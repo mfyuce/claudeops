@@ -687,6 +687,15 @@ def _resume_approval(run_key: str, approval_id: str, timeout: float, api_key: Op
     if argv is None:
         return {"ok": False, "error": "run is not suspended"}
     try:
+        return _run_resume(run_key, approval_id, argv, timeout, api_key)
+    except OSError:         # yalnız sonuç yazımı fırlatır: süreç çalıştı, aynı onay yeniden sürdürülmesin
+        ucli_approval._mark_consumed(run_key)
+        raise
+
+
+def _run_resume(run_key: str, approval_id: str, argv: List[str], timeout: float, api_key: Optional[str]) -> Dict[str, Any]:
+    from . import ucli_approval
+    try:
         api_key_env = argv[argv.index("--api-key-env") + 1] if "--api-key-env" in argv else "UCLI_API_KEY"
         result = subprocess.run(argv + ["--resume-approval", approval_id], capture_output=True, text=True, timeout=timeout,
                                 env=_subprocess_env(api_key_env, api_key))
