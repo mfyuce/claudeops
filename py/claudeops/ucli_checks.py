@@ -25,7 +25,7 @@ _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 
 def registry_path(owner: str = "") -> str:
     owner = owner or "owner"
-    if not _OWNER.match(owner):
+    if not _OWNER.fullmatch(owner):
         raise ValueError("geçersiz kayıt sahibi")
     return os.path.join(ROOT, owner + ".json")
 
@@ -39,7 +39,7 @@ def check_shape(data: Any) -> Tuple[bool, str]:
         return False, f"en çok {MAX_CHECKS} kontrol"
     seen = set()
     for c in items:
-        if not isinstance(c, dict) or not _NAME.match(str(c.get("name") or "")):
+        if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not _NAME.fullmatch(c["name"]):
             return False, "her kontrolün adı [a-z][a-z0-9_-]{0,47} olmalı"
         if c["name"] in seen:
             return False, f"kontrol adı yinelendi: {c['name']}"
@@ -69,9 +69,18 @@ def load_registry(owner: str = "") -> Tuple[Dict[str, Any], str]:
     if st.st_size > MAX_BYTES:
         return {}, "kayıt çok büyük"
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
+        # denetim ile okuma arasında dosya değişebilir: bağlantı izlenmez, tür/izin açılan tanıtıcıdan yeniden denetlenir
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                return {}, "kayıt düz dosya olmalı (symlink/özel dosya reddedilir)"
+            if st.st_mode & 0o077:
+                return {}, "kayıt dosyası 0600 olmalı"
+            raw = f.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            return {}, "kayıt çok büyük"
+        data = json.loads(raw.decode("utf-8"))
+    except (OSError, ValueError, RecursionError):
         return {}, "kayıt geçerli JSON değil"
     ok, why = check_shape(data)
     return (data, "") if ok else ({}, why)
@@ -174,7 +183,7 @@ def delete_check(name: str, owner: str = "", binary: str = "") -> Tuple[bool, st
 
 
 def mode_file(state_dir: str, session: str) -> str:
-    if not _OWNER.match(session or ""):
+    if not _OWNER.fullmatch(session or ""):
         raise ValueError("geçersiz oturum adı")
     return os.path.join(state_dir, session + ".checks.json")
 
