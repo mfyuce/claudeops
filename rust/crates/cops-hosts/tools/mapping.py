@@ -606,6 +606,10 @@ CASES["test_host_push_race.py"] = [
              "test_test_now_returns_own_result_but_keeps_newer_cache "
              "test_rest_started_after_frame_still_overwrites"), _H3),
 ]
+CASES["test_state_corrupt_copy_partial.py"] = [
+    t_oos(cls("PartialBackup", "test_instances test_settings test_hosts test_snapshots"),
+          "bozuk dosya yedeğinin yazımı (Rust `cops-state` `fsutil::write_corrupt_copy`)", W0A),
+]
 CASES["test_host_remote_values.py"] = [
     t_ok(cls("NonFiniteClockTest", "test_non_finite_now_drops_fwd test_result_is_strict_json") + " " +
          cls("KidsShapeTest", "test_non_list_kids_drop_fwd test_empty_and_list_kids_pass") + " " +
