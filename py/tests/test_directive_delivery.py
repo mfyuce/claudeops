@@ -34,6 +34,13 @@ class Pane:
         return True
 
 
+def box(inner):
+    """Claude Code 2.1.332 giriş kutusu (gerçek yakalama): gri çizgi, `❯`, devam satırları girintili, gri çizgi."""
+    rule = "\x1b[38;5;244m" + "─" * 40
+    body = inner.replace("\n", "\n  ")
+    return rule + "\n\x1b[39m❯\xa0" + body + "\n" + rule + "\n\x1b[39m  ⏵⏵ auto mode on"
+
+
 def verify(pane, cli="claude"):
     with mock.patch.object(ws, "tmux_capture", pane.capture), mock.patch.object(ws, "_send", pane.send), \
             mock.patch.object(ws, "tmux_send_raw", pane.raw):
@@ -84,6 +91,59 @@ class SendVerified(unittest.TestCase):
         self.assertEqual(verify(p), "failed")
         self.assertEqual(keys.count("\r"), ws.DELIVERY_MAX_ENTERS)
         self.assertEqual(p.sends, 1)
+
+    def test_text_unsent_in_input_box_is_not_delivered(self):
+        """26 Kas, Claude Code 2.1.332: açılışta yapıştırılan metin kutuda düz yazı olarak kalıyor; Enter gönderir."""
+        class Boxed(Pane):
+            def raw(self, name, data):
+                self.enters += 1
+                self.text = "❯ " + MSG + "\n" + box("")
+                return True
+
+        p = Boxed("", on_send=lambda self, m: box(m))
+        self.assertEqual(verify(p), "delivered")
+        self.assertEqual(p.enters, 1)
+        self.assertEqual(p.sends, 1)
+
+    def test_text_stuck_in_input_box_forever_fails_without_resend(self):
+        class Dead(Pane):
+            def raw(self, name, data):
+                return True
+
+        p = Dead("", on_send=lambda self, m: box(m))
+        self.assertEqual(verify(p), "failed")
+        self.assertEqual(p.sends, 1)
+
+    def test_placeholder_text_in_transcript_does_not_trigger_enter(self):
+        sent = "❯ " + MSG + " [Pasted text #1 +3 lines]\n" + box("")
+        p = Pane("", on_send=lambda self, m: sent)
+        self.assertEqual(verify(p), "delivered")
+        self.assertEqual(p.enters, 0)
+
+    def test_pasted_placeholder_in_input_box_gets_enter(self):
+        class Boxed(Pane):
+            def raw(self, name, data):
+                self.enters += 1
+                self.text = "❯ " + MSG + "\n" + box("")
+                return True
+
+        p = Boxed("", on_send=lambda self, m: box("[Pasted text #1 +3 lines]"))
+        self.assertEqual(verify(p), "delivered")
+        self.assertEqual(p.enters, 1)
+
+    def test_grey_suggestion_in_box_is_not_unsent_text(self):
+        """Boş kutudaki gri öneri başlığı taşısa da gönderilmemiş metin sayılmaz."""
+        for grey in ("\x1b[38;5;246m", "\x1b[2m", "\x1b[38;2;128;128;128m"):
+            sent = "❯ " + MSG + "\n" + box(grey + MSG + "\x1b[0m")
+            p = Pane("", on_send=lambda self, m: sent)
+            self.assertEqual(verify(p), "delivered", repr(grey))
+            self.assertEqual(p.enters, 0, repr(grey))
+
+    def test_colored_typed_text_in_box_counts_as_unsent(self):
+        for colour in ("\x1b[38;2;215;119;87m", "\x1b[48;2;40;40;40m", "\x1b[48;5;2m"):
+            p = Pane("", on_send=lambda self, m, c=colour: box(c + m + "\x1b[0m"))
+            p.raw = lambda name, data: True
+            self.assertEqual(verify(p), "failed", repr(colour))
 
     def test_resend_when_nothing_arrived(self):
         n = {"k": 0}

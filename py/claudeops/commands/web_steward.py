@@ -52,7 +52,7 @@ from ..providers.base import McpServerSpec, OneshotError
 from ..settings import default_effort_for, default_model_for, load_settings, steward_config, steward_ids
 from ..spawn import spawn_session, detect_display
 from ..atomic_json import atomic_write_json
-from ..tmux_backend import is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw, tmux_send_special_key
+from ..tmux_backend import input_box, is_tmux_backed, strip_ansi, tmux_capture, tmux_has_session, tmux_send_keys, tmux_send_raw, tmux_send_special_key
 from ..turns import is_busy_now
 from . import web_review, web_ws
 
@@ -7137,12 +7137,14 @@ def _pane_norm(text: str) -> str:
 
 def _send_verified(name: str, cli: str, message: str, sid: str = "default",
                    sleep: Callable[[float], None] = time.sleep) -> str:
-    """Gönder, sonra pane'i oku: giriş kutusunda `[Pasted text]` kaldıysa Enter (en çok `DELIVERY_MAX_ENTERS`; ikinciden
-    itibaren önce bir boşluk yazılır); mesaj panede
+    """Gönder, sonra pane'i oku: giriş kutusunda `[Pasted text]` ya da mesajın kendisi (gönderilmemiş düz metin) kaldıysa
+    Enter (en çok `DELIVERY_MAX_ENTERS`; ikinciden itibaren önce bir boşluk yazılır); mesaj kutu DIŞINDA
     HİÇ görünmüyorsa yeniden gönder (en çok `DELIVERY_MAX_RESENDS`, gönderim öncesi sayımla: eski aynı başlık yanıltmaz).
     Dönen: `delivered` | `failed` | `unverified` (ucli: kendi kutu denetimi var; gönderim ok)."""
     head = _pane_norm(message)[:40]
-    before = _pane_norm(tmux_capture(name) or "").count(head) if head else 0
+    first = tmux_capture(name) or ""
+    first_box = input_box(first)
+    before = _pane_norm(first_box[2] if first_box else first).count(head) if head else 0
     if not _send(name, cli, message, sid=sid):
         return "failed"
     if cli == "ucli" or not head:
@@ -7151,8 +7153,14 @@ def _send_verified(name: str, cli: str, message: str, sid: str = "default",
     for i in range(DELIVERY_VERIFY_POLLS):
         sleep(DELIVERY_VERIFY_DELAY)
         raw = tmux_capture(name) or ""
-        tail = _pane_norm("\n".join(strip_ansi(raw).splitlines()[-12:]))
-        if "[Pastedtext" in tail:
+        box = input_box(raw)
+        if box:
+            outside = box[2]
+            unsent = "[Pastedtext" in _pane_norm(box[0]) or head in _pane_norm(box[1])
+        else:       # kutu tanınmadı (başka CLI ya da diyalog): son satırlardaki yer tutucuya bak
+            outside = raw
+            unsent = "[Pastedtext" in _pane_norm("\n".join(strip_ansi(raw).splitlines()[-12:]))
+        if unsent:
             if enters >= DELIVERY_MAX_ENTERS:
                 return "failed"
             if enters:      # yalın Enter yetmedi: boşluk yazıp (ayrı yazım) yeniden Enter (sahip gözlemi, 16 Kas)
@@ -7161,7 +7169,7 @@ def _send_verified(name: str, cli: str, message: str, sid: str = "default",
             tmux_send_raw(name, "\r")
             enters += 1
             continue
-        if _pane_norm(raw).count(head) > before:
+        if _pane_norm(outside).count(head) > before:
             return "delivered"
         if i >= 3 and resends < DELIVERY_MAX_RESENDS:
             resends += 1

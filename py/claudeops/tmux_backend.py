@@ -522,9 +522,15 @@ def _is_dim_fg(params: List[int], cur_dim: bool) -> Optional[bool]:
             state = False
         elif p in (2, 90):
             state = True
-        elif p == 38 and i + 2 < len(params) and params[i + 1] == 5:
-            state = 232 <= params[i + 2] <= 252 or params[i + 2] in (8, 59, 102, 145)     # gri tonlar (öneri/yer tutucu)
+        elif p in (38, 48) and i + 2 < len(params) and params[i + 1] == 5:
+            if p == 38:
+                state = 232 <= params[i + 2] <= 252 or params[i + 2] in (8, 59, 102, 145)     # gri tonlar (öneri/yer tutucu)
             i += 2
+        elif p in (38, 48) and i + 4 < len(params) and params[i + 1] == 2:     # truecolor: içindeki `2` "soluk" değildir
+            if p == 38:
+                r, g, b = params[i + 2:i + 5]
+                state = max(r, g, b) - min(r, g, b) <= 8 and 60 <= r <= 200
+            i += 4
         elif 30 <= p <= 37 or 91 <= p <= 97:
             state = False
         i += 1
@@ -556,6 +562,32 @@ def typed_input_in_box(ansi_text: str) -> Optional[bool]:
         seg = _SGR_RE.sub("", raw[pos:])
         typed |= _seg_typed(seg, dim, seen_prompt)
         return typed
+    return None
+
+
+def input_box(ansi_text: str) -> Optional[tuple]:
+    """Claude TUI giriş kutusunu ayır: `(kutu_düz, kutu_yazılı, kutu_dışı)`, kutu bulunamazsa None. Girdi: `capture-pane -e`.
+    Kutu = hemen üstünde `────` çizgisi olan SON `❯` satırından alttaki son çizgiye kadar (çok satırlı metin dahil); döküm
+    satırındaki `❯` üstünde çizgi olmadığı için kutu sayılmaz. `kutu_yazılı`: gri/soluk (öneri) parçalar atılmış metin."""
+    lines = (ansi_text or "").split("\n")
+    plain = [_ANSI_ANY_RE.sub("", ln) for ln in lines]
+    rules = [i for i, ln in enumerate(plain) if _BOX_RULE_CHARS * 4 in ln]
+    for i in range(len(lines) - 1, 0, -1):
+        if not (plain[i].lstrip().startswith(_PROMPT_CHAR) and i - 1 in rules and rules[-1] > i):
+            continue
+        body = "\n".join(lines[i:rules[-1]])
+        typed: List[str] = []
+        dim, pos = False, 0
+        for m in _SGR_RE.finditer(body):
+            if not dim:
+                typed.append(body[pos:m.start()])
+            st = _is_dim_fg([int(x) for x in m.group(1).split(";") if x.isdigit()], dim)
+            dim = dim if st is None else st
+            pos = m.end()
+        if not dim:
+            typed.append(body[pos:])
+        return ("\n".join(plain[i:rules[-1]]), _ANSI_ANY_RE.sub("", "".join(typed)),
+                "\n".join(lines[:i] + lines[rules[-1]:]))
     return None
 
 
