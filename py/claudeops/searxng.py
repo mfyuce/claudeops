@@ -33,6 +33,7 @@ import contextlib
 import fcntl
 import getpass
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -136,7 +137,7 @@ def _tail(text: Optional[str], n: int = 240) -> str:
 def _int(v: Any) -> Optional[int]:
     try:
         n = int(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return n if 0 < n < 65536 else None
 
@@ -217,15 +218,22 @@ def inspect_box() -> Box:
 
 # ── HTTP yoklamaları (docker'sız) ────────────────────────────────────────────────────────────────────
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Yoklama yönlendirme İZLEMEZ: kayıtlı portu başkası tutuyorsa istek dışarı taşınmasın, "sağlıklı" da sayılmasın."""
+
+    def redirect_request(self, *a: Any, **kw: Any) -> None:
+        return None
+
+
 def _http_get(url: str, timeout: float) -> Tuple[int, bytes]:
     # ortam proxy'si (http_proxy) loopback'e girmesin: urllib 127.0.0.1'i kendiliğinden proxy dışı SAYMAZ
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     try:
         with opener.open(url, timeout=timeout) as r:
             return r.status, r.read(2_000_000)
     except urllib.error.HTTPError as e:
         return e.code, b""
-    except (urllib.error.URLError, OSError, ValueError):
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError):     # portta HTTP olmayan dinleyici
         return 0, b""
 
 
