@@ -98,7 +98,12 @@ pub fn resources_from(
     }
     let host = pick("host")?;
     let mut out = Vec::new();
-    session(&mut out, &host, &pick("name")?);
+    if path == "/api/new-chat" {
+        // handler gövdedeki `base`ten türetir, `name`i okumaz: kaynak `base`
+        session(&mut out, &host, text(src.get("base"))?.unwrap_or(""));
+    } else {
+        session(&mut out, &host, &pick("name")?);
+    }
     if path.starts_with("/v1/") {
         session(&mut out, "", text(src.get("model"))?.unwrap_or(""));
     }
