@@ -1,23 +1,22 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1, G4, G7-G10 ve ders listesi açık; G2, G3, G5, G6 ve G11 taşındı). `cargo clippy -p cops-providers
---all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 29/29 (birim 10, transkript sözleşmesi 7, parite 12).
+Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1, G4, G8-G10 ve ders listesi açık; G2, G3, G5, G6, G7 ve G11 taşındı). `cargo clippy -p cops-providers
+--all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 44/44 (birim 10, transkript sözleşmesi 7, model kaynakları 14, parite 13).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 4240 vaka: transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 4940 vaka: model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 89 "bilinen ayrışma" (21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+- 96 "bilinen ayrışma" (7si G7, 21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
   kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
   (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
 - Kapsanmayan: süreç başlatma, tmux parçası, resume taraması, hayalet oturum temizliği; gerçek `Effect` uygulayıcısı; eşzamanlı yazım ve
-  zaman aşımı; `--help` önbellek tazelemesi.
+  zaman aşımı; `--help` önbellek tazelemesi; gerçek `ModelIo` uygulayıcısı (G8).
 - Rust'ta henüz yok: `rust_toolchain`, `_rustup_default_toolchain`, `path_executables` (`_CMD_RE`); `_sync_one` dosya adımları;
-  `service_models` (G7); diag `ucli_web_searxng_error`,
-  `ucli_usage_log_dir_failed`; model listesi TTL önbellekleri.
+  diag `ucli_web_searxng_error`, `ucli_usage_log_dir_failed`.
 - TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
   `settings.json`) rs/state'in işi. Kalan fark: var olan ama izin yüzünden okunamayan yönerge override dosyasında Python üzerine
   yazar, Rust dokunmaz (`Probe::read_text` iki durumu ayırmıyor); `trustedFolders`ta eşi olmayan vekil kod (`\ud800`) içeren
@@ -53,11 +52,11 @@ Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 
 ## Tasarım (yazılan)
 - `Probe` (dış olgular) + `Effect` listesi (dosya yazma/silme isteği, sırayla uygulanır) + `Diag` (diag_log olayları). Sır içeren `Effect`
   Debug'da maskeli. Durum değiştiren üç `Probe` yöntemi: `claude_cost_gate`, `issue_agent_token`, `register_mcp`.
-- Modüller: `provider` (Cli enum, model/effort, build), `claude|agy|codex|copilot|shell|ucli`, `ucli_opts`, `routing`, `spawn`, `settings`, `effort`, `pyfmt`.
+- Modüller: `provider` (Cli enum, model/effort, build), `claude|agy|codex|copilot|shell|ucli`, `ucli_opts`, `routing`, `spawn`, `settings`, `effort`, `pyfmt`, `model_sources` (G7).
 - `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G7, G1, G8, G4, G10, G9 (G2, G3, G11, G5 ve G6 taşındı).
+1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G1, G8, G4, G10, G9 (G2, G3, G11, G5, G6 ve G7 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
@@ -92,8 +91,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 37 | 17 | orta-zor: rs/tmux'a bağlı, zamanlama ve kör Enter kuralları |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
-| G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 17 | 11 | orta: G/Ç ve önbellek tazeleme |
-| G8 `Probe` ve `Effect` gerçek uygulayıcısı | atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü | 53 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
+| G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo` G8'de |
+| G8 `Probe` ve `Effect` gerçek uygulayıcısı | atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü; ayrıca gerçek `ModelIo` (süreç, HTTP, saat, belge; G7 sözleşmesi) | 53 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
 | G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 13 | zor: rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` kullanılan kısım), bütçe notu | 19 | 19 | orta: alt süreç, zaman aşımı, sır ortamda |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
@@ -276,6 +275,88 @@ bu ize yönlendirilmeli.
 | 3.20 ölçüm | performans iddiası yok, ölçülmedi |
 | Uygulanmaz | 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: yazım, süreç, ağ, uç, sır yok |
 
+## G7: model kaynakları
+
+### Sahiplik
+26 Kas'ta `git fetch` sonrası `origin/rs/*` ve `main` bu işlev adlarıyla (`rust/**/*.rs`) tarandı: bu dal dışında kod yok.
+`claude_models` belgesini DB'den okuma rs/state'in `statedocs`unda (bu dalda yok).
+
+### Tasarım ve bağımlılıklar
+- `model_sources.rs`: `ModelIo` (G/Ç sınırı: `monotonic_secs`, `wall_secs`, `claude_models_doc`, `read_file`, `run_stdout`,
+  `http_get`, `spawn_background`), `RunRequest`, `HttpRequest`, `SecretValue`, `ModelSources` (dört önbelleğin sahibi,
+  `catalog(cli, ..)` ile `ModelCatalog` doldurur). Süreç başına TEK `ModelSources` kurulmalı (Python önbellekleri modül/sağlayıcı
+  tekilidir).
+- Sağlayıcıya özgü kural kendi modülünde: `agy::ModelsCache` (TTL 300 sn; soğukta bloklayan, bayat ama doluysa eskiyi döndürüp
+  `agy-models-refresh` arka plan işi), `codex::ModelsCache` (TTL 300 sn, eşzamanlı okuma, boş/bozuk belge eski listeyi bırakır),
+  `ucli::{fetch_live_models, LiveCache}` (TTL 300 sn; liste yoksa süre beklemeden çeker; başarısızlık eski listeyi ve yetenekleri
+  bırakır), `ucli_opts::ServiceModelsCache` (dolu 86400 sn, boş 60 sn, `wall_secs`; başarısızlık eski listeyi EZER, Python gibi).
+- Kilit hiçbir G/Ç sırasında tutulmaz; deneme anı çekimden ÖNCE damgalanır (Python gibi).
+- `ModelCatalog`a `codex_choices` eklendi: Python'da codex listesi önbellekli, `model_effort_levels` ise her çağrıda dosyayı okur.
+- Anahtar yalnız `HttpRequest.headers`ta (`SecretValue`, `Debug` maskeli; URL'deki `kullanıcı:parola@` de maskelenir); hata metni
+  yok (her hata `None`); argv, `Effect`, `Diag` yoluna girmez. Anahtarsız ya da başlık olamayan anahtarla istek yapılmaz.
+- Zaman aşımı ve okuma üst sınırı istekte taşınır: agy 5 sn / 1 MiB, ucli 5 sn / 8 MiB, hizmet 8 sn / 8 MiB, codex belgesi 8 MiB.
+  Boyutu aşan yanıtı crate ayrıca yok sayar.
+- Yeni bağımlılık yok (HTTP kütüphanesi eklenmedi): gerçek `ModelIo` YOK, G8'de yazılacak. G8 sözleşmesi: süre TOPLAM süre;
+  zaman aşımında süreç öldürülür ve beklenir, boru okuması sınırlı; stdin boş; çıkış kodu yok sayılır; yalnız 2xx gövdesi;
+  başlık değeri latin-1 baytı olarak yazılır; Python `urllib`in `*_proxy` ortamını okuması; `monotonic_secs` `CLOCK_MONOTONIC`
+  olmalı; normal dosya şartı.
+- AÇIK KARAR (G8): HTTP yönlendirmesi. Python izler ve anahtar başlığını yeni adrese taşır (şüphe 5); crate karar vermez.
+
+### Bilinen ayrışmalar (7; testte `diverges(`, Rust dönüşü `expect` ile ayrıca doğrulanır)
+- codex: UTF-8 olmayan belge (Python istisna, Rust eski liste).
+- ucli: sayı id (Python int, Rust metin), liste id + `capabilities` (Python `TypeError`), çok derin gövde (`RecursionError`),
+  UTF-16 gövde (Rust yalnız UTF-8, BOM kabul).
+- hizmet: eşlenmemiş vekil (U+FFFD), 512'den derin gövde (Rust boş liste).
+- Testsiz ya da yalnız birim testli farklar: okuma üst sınırları (Python sınırsız); süre toplam (Python soket işlemi başına);
+  `catalog` effort'u kimliğinde taşıyan agy modeli ve ucli `reasoning_effort=off` için de listeyi ister; katlanmış başlık
+  (`\r\n `) reddedilir; agy stderr'i UTF-8 değilse Python listeyi atar, Rust stderr'e bakmaz; arka plan işi başlatılamazsa Python
+  `RuntimeError`, Rust eski liste; arka plan yenilemesi çok hızlı biterse Python aynı çağrıda yeni listeyi döndürebilir, Rust hep
+  eskiyi; `/models` ve codex belgesinde `NaN`/`Infinity` değer `null` olur (NaN `priority` codex belgesini kullanılmaz kılabilir,
+  NaN `id` atlanır), 64 bite sığmayan sayı yaklaşık float.
+
+### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı; Rust aksi yazılmadıkça Python gibi)
+1. agy ve codex `_cache_ts = 0.0` + `time.monotonic()`: açılıştan sonraki ilk 300 sn soğuk önbellek hiç çekilmez (agy boş liste,
+   codex sabit yedek). Sahte saatle yeniden üretildi (`src-agy-acilis`, `src-codex-acilis`).
+2. codex `model_choices` `UnicodeDecodeError` yakalamaz. Yeniden üretildi (`src-codex-sapma-utf8`); aynı kalıp
+   `model_effort_levels`te kod okumasıyla (orada Rust None).
+3. ucli `/models` id'si liste/nesne ve `capabilities` sözlükse `TypeError` `model_choices`tan çıkar. Yeniden üretildi
+   (`src-ucli-sapma-liste-id`).
+4. ucli `/models` çok derin gövdede `RecursionError` yakalanmaz ("asla fırlatmaz" sözüne aykırı). Yeniden üretildi
+   (`src-ucli-sapma-derin`).
+5. `urllib` yönlendirmesi `X-API-Key` / `Authorization` başlığını başka alan adına ve `http`ye de taşır (iki `/models` ucu).
+   Ağsız, `HTTPRedirectHandler.redirect_request` doğrudan çağrılarak yeniden üretildi; gerçek istek yapılmadı.
+6. `service_models`: süre dolunca tek başarısız çekim iyi listeyi `[]` ile ezer (öteki üç önbellek korur). Yeniden üretildi
+   (`src-svc-ttl`).
+7. `service_models` önbelleği yalnız hizmet kimliğine bağlı: anahtar ya da uç nokta değişse de 24 saat eski liste. Anahtar kısmı
+   yeniden üretildi (`src-svc-ttl`), uç nokta kod okuması.
+8. agy `_fetch_models` çıkış koduna bakmaz: başarısız komutun sekmeli satırları model listesi olur. Davranış sahte süreçle görüldü
+   (`src-agy-cikis-kodu`); gerçek `agy`nin böyle çıktı verip vermediği bilinmiyor.
+9. agy soğuk çekim sürerken ikinci çağıran boş liste alır (varsayılan model ""). Yalnız kod okuması.
+10. ucli sayı id listeye `int` olarak girer. Yeniden üretildi (`src-ucli-sapma-sayi-id`).
+
+### Ders listesi (`docs/rust-lessons-from-python.md`), G7 koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| H1, 3.9 süreç/bağlantı sahibi ve zaman aşımı | süre ve üst sınır istekte (`agy_catalog_runs_the_resolved_binary_without_a_shell`, `oversized_answers_are_ignored_even_if_the_implementation_returns_them`). Öldür+bekle, boru boşaltma, fd sızıntı testi G8'de (AÇIK) |
+| H3, 3.6 bayat önbellek, hata `last_good`u ezmez | `repeated_errors_never_replace_the_last_good_list` (6 ardışık hata), `src-ucli-akis`, `src-codex-akis`, `src-agy-akis`; `service_models` BİLEREK ezer (şüphe 6). Ayar/anahtar her çekimde yeniden okunur (hizmet önbelleği hariç, şüphe 7). Tek denemede kalıcılaşma yok (D:1506): `src-ucli-akis` |
+| H3 arka plan akışı sağlığı | yenileme takılırsa deneme damgası sonraki TTL'de yeni iş başlatır; iş parçacığı birikimi G8 zaman aşımıyla sınırlı |
+| H4, 2.5 sağlayıcı başına tek modül | her önbellek kendi sağlayıcı modülünde; dağıtım yalnız `ModelSources::catalog` (`_` kolu yok) |
+| 2.5 `--help` yoklaması, gerçek model kanıtı | uygulanmaz (liste okuma; bayrak eklenmiyor) |
+| 2.5 effort/model tek geçit | `resolve_effort` değişmedi; liste ve yetenek aynı çekimden (`model_list_and_effort_gate_share_one_fetch`); `codex_choices_are_cached_but_effort_levels_read_the_current_file` |
+| 2.5 kaynak yoksa "bilinmiyor" (H21) | boş agy listesi / boş `caps` = bilgi yok (`--effort` eklenmez) |
+| H5, 3.10 girdi sınırları, panik yok | `broken_and_mutated_model_answers_never_panic`, `src-svc-govde-*`, rastgele diziler (agy 150, codex 150, ucli 150, hizmet 200); boş/boşluk anahtar `no_request_without_a_key`. `unwrap`/`expect` yok; zehirli kilit geri alınır |
+| H5 boş token | `no_request_without_a_key`, `src-ucli-anahtarsiz`, `src-svc-istek-yok` |
+| H7 hedef çözümü | uygulanmaz (oturum hedefi yok); ikili `resolved_binary` ile yalnız çekim gerekince (`binary_is_resolved_only_when_a_fetch_is_due`) |
+| H8, 3.7 sınırsız tekrar | döngü yok; başarısız çekim TTL (hizmette 60 sn) dolmadan yinelenmez. İstisna Python gibi: ucli'de ilk liste oluşana dek eşzamanlı çağıranlar ayrı istek yapar |
+| H9, 3.3, 3.5 hata yutma | her G/Ç hatası `None`, eski değer kalır; neden sayılmıyor/loglanmıyor (Python da; H20 AÇIK) |
+| H12, 3.13 sır | `the_key_stays_out_of_urls_argv_and_debug_output`, `a_key_that_cannot_be_a_header_value_sends_nothing`; yönlendirme AÇIK (şüphe 5) |
+| H13 kapalı yön | uygulanmaz (yetki kararı yok) |
+| H17, 3.14 adres girdisi | uç nokta mevcut doğrulayıcılardan (`ucli_endpoint`, `ucli_services`); iç ağ adresine istek engeli yok (Python gibi, AÇIK) |
+| H14, 3.12 diferansiyel test | `parity_model_sources` (700 vaka; istek URL'i, başlık, zaman aşımı, argv, arka plan başlatma da karşılaştırılır) |
+| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR; süreç, HTTP, saat sahte; birim testlerde dosya sistemi de sahte |
+| H1/H21 performans | `/api/status` yolunda bayat agy beklemez (`agy_stale_list_is_returned_at_once_while_a_real_thread_refreshes`); ölçüm yapılmadı |
+| Uygulanmaz | H2/3.2 (yazım yok), H6, H10, H11, H15, H18, H19 |
+
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
   yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Sorulacak/izlenecek.
@@ -311,13 +392,13 @@ bu ize yönlendirilmeli.
 | `EFFORT_LEVELS` (py/claudeops/providers/agy_provider.py:188) | `agy.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:195) | `agy.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/agy_provider.py:197) | `agy.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:203) | yok: `ModelCatalog::agy_models` girdisi; TTL/arka plan tazeleme yok | - | EKSİK(G7) |
+| `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:203) | `agy.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-agy-akis`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
 | `_load_agy_sids` (py/claudeops/providers/agy_provider.py:206) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur | KAPSAM DIŞI |
 | `_remember_agy_sid` (py/claudeops/providers/agy_provider.py:215) | yok: rs/proc yalnız `AgyState::learned` döndürür, yazmaz (rs-proc.md sapma 3) | - | EKSİK(G1) |
 | `_sid_claimed_by_other` (py/claudeops/providers/agy_provider.py:230) | yok | - | EKSİK(G1) |
 | `AgyProvider` (py/claudeops/providers/agy_provider.py:237) | `agy.rs` + `Cli::Agy` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `AgyProvider.name` (py/claudeops/providers/agy_provider.py:238) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `AgyProvider.__init__` (py/claudeops/providers/agy_provider.py:240) | yok: `ModelCatalog::agy_models` girdisi; TTL/arka plan tazeleme yok | - | EKSİK(G7) |
+| `AgyProvider.__init__` (py/claudeops/providers/agy_provider.py:240) | `agy.rs::ModelsCache` (`model_sources.rs::ModelSources::new`) | `parity.rs::parity_model_sources` `src-agy-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
 | `AgyProvider.resolve_resume_id` (py/claudeops/providers/agy_provider.py:244) | yok | - | EKSİK(G1) |
 | `AgyProvider.build_inner_command` (py/claudeops/providers/agy_provider.py:271) | `agy.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra`; ve `parity_spawn` `agy-effort-ayar agy-effort-kardes` | TAŞINDI |
 | `AgyProvider.env_overrides` (py/claudeops/providers/agy_provider.py:320) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -325,8 +406,8 @@ bu ize yönlendirilmeli.
 | `AgyProvider.matches_proc` (py/claudeops/providers/agy_provider.py:333) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `AgyProvider.extract_name` (py/claudeops/providers/agy_provider.py:336) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
 | `AgyProvider.extract_info` (py/claudeops/providers/agy_provider.py:343) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `AgyProvider._fetch_models` (py/claudeops/providers/agy_provider.py:380) | yok: yalnız çıktı ayrıştırma `agy.rs::parse_models` (parite `parity_misc` `agy*`); `agy models` çalıştırma yok | - | EKSİK(G7) |
-| `AgyProvider.model_choices` (py/claudeops/providers/agy_provider.py:394) | `provider.rs::Providers::model_choices` (`ModelCatalog::agy_models`) | `parity.rs::parity_model_effort` `agy-models`; canlı liste çağırandan (G7) | TAŞINDI |
+| `AgyProvider._fetch_models` (py/claudeops/providers/agy_provider.py:380) | `agy.rs::{refresh, parse_models}` (`ModelIo::run_stdout`; gerçek süreç G8) | `parity.rs::parity_model_sources` `src-agy-bicim` `src-agy-cikis-kodu` `src-agy-rastgele-` (Python hatası? G7 şüphe 8) | TAŞINDI |
+| `AgyProvider.model_choices` (py/claudeops/providers/agy_provider.py:394) | `provider.rs::Providers::model_choices` (`ModelCatalog::agy_models`) | `parity.rs::parity_model_effort` `agy-models`; canlı liste `parity_model_sources` `src-agy-` | TAŞINDI |
 | `AgyProvider.permission_modes` (py/claudeops/providers/agy_provider.py:411) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.effort_levels` (py/claudeops/providers/agy_provider.py:414) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.model_effort_levels` (py/claudeops/providers/agy_provider.py:417) | `agy.rs::model_effort_levels` | `parity.rs::parity_model_effort` `agy-models` | TAŞINDI |
@@ -501,7 +582,7 @@ bu ize yönlendirilmeli.
 | `ClaudeProvider.extract_info` (py/claudeops/providers/claude_provider.py:978) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
 | `ClaudeProvider.preferred_default_model` (py/claudeops/providers/claude_provider.py:986) | `claude.rs::newest_sonnet` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
 | `ClaudeProvider.default_effort` (py/claudeops/providers/claude_provider.py:992) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.model_choices` (py/claudeops/providers/claude_provider.py:995) | `claude.rs::model_choices` | `parity.rs::parity_model_effort` `claude-state` `claude-state-bozuk`; `claude_models` belgesini okumak çağıranda (G7) | TAŞINDI |
+| `ClaudeProvider.model_choices` (py/claudeops/providers/claude_provider.py:995) | `claude.rs::model_choices` | `parity.rs::parity_model_effort` `claude-state` `claude-state-bozuk`; belge `ModelIo::claude_models_doc` (G7) | TAŞINDI |
 | `ClaudeProvider.refresh_stored_model` (py/claudeops/providers/claude_provider.py:1010) | `claude.rs::refresh_stored_model` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
 | `ClaudeProvider.permission_modes` (py/claudeops/providers/claude_provider.py:1029) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ClaudeProvider.effort_levels` (py/claudeops/providers/claude_provider.py:1032) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -514,16 +595,16 @@ bu ize yönlendirilmeli.
 | `ClaudeProvider.extra_file_roots` (py/claudeops/providers/claude_provider.py:1110) | `chat.rs::Live::extra_file_roots` (dizin: `LiveProbe::claude_project_dir`, rs/proc) | `parity.rs::parity_chat` `chat-kok-claude-` | TAŞINDI |
 | `ClaudeProvider.full_history` (py/claudeops/providers/claude_provider.py:1115) | `chat.rs::claude_history` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
 | `ClaudeProvider.sid_for_stopped_session` (py/claudeops/providers/claude_provider.py:1144) | yok | - | EKSİK(G1) |
-| `CODEX_HOME` (py/claudeops/providers/codex_provider.py:42) | yok: `ModelCatalog::codex_cache` girdisi; yol, okuma ve TTL yok | - | EKSİK(G7) |
+| `CODEX_HOME` (py/claudeops/providers/codex_provider.py:42) | `probe.rs::Paths::codex_home` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
 | `SESSIONS_DIR` (py/claudeops/providers/codex_provider.py:43) | `probe.rs::Paths::codex_sessions_dir` (rollout taraması G1) | `parity.rs::parity_chat` `chat-codex-` (`roots`) | TAŞINDI |
-| `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:44) | yok: `ModelCatalog::codex_cache` girdisi; yol, okuma ve TTL yok | - | EKSİK(G7) |
+| `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:44) | `probe.rs::Paths::codex_models_cache`, `codex.rs::read_models_cache` | `parity.rs::parity_model_sources` `src-codex-akis` `src-codex-nan` (Python hatası? G7 şüphe 2) | TAŞINDI |
 | `PERMISSION_MODES` (py/claudeops/providers/codex_provider.py:46) | `codex.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/codex_provider.py:47) | `codex.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `BUSY_STATUS_PATTERN` (py/claudeops/providers/codex_provider.py:58) | `codex.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `FALLBACK_MODELS` (py/claudeops/providers/codex_provider.py:62) | `codex.rs::FALLBACK_MODELS` | `parity.rs::parity_model_effort` `codex-cache-bozuk` `bos-*` | TAŞINDI |
 | `_NON_SESSION_SUBCOMMANDS` (py/claudeops/providers/codex_provider.py:77) | `rs/proc` `providers.rs::CODEX_NON_SESSION` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/codex_provider.py:84) | `codex.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/codex_provider.py:91) | yok: `ModelCatalog::codex_cache` girdisi; yol, okuma ve TTL yok | - | EKSİK(G7) |
+| `_MODELS_TTL` (py/claudeops/providers/codex_provider.py:91) | `codex.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
 | `_ROLLOUT_UUID_RE` (py/claudeops/providers/codex_provider.py:92) | yok | - | EKSİK(G1) |
 | `_MAX_ROLLOUT_SCAN` (py/claudeops/providers/codex_provider.py:93) | yok | - | EKSİK(G1) |
 | `_config_value` (py/claudeops/providers/codex_provider.py:96) | `rs/proc` `providers.rs::codex_config` | rs/proc: `providers.rs::codex_info` | KAPSAM DIŞI |
@@ -533,7 +614,7 @@ bu ize yönlendirilmeli.
 | `_is_real_codex_user_text` (py/claudeops/providers/codex_provider.py:139) | `chat.rs::codex_real_user` | `parity.rs::parity_chat` `codex-metin-` | TAŞINDI |
 | `CodexProvider` (py/claudeops/providers/codex_provider.py:148) | `codex.rs` + `Cli::Codex` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CodexProvider.name` (py/claudeops/providers/codex_provider.py:149) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CodexProvider.__init__` (py/claudeops/providers/codex_provider.py:151) | yok: `ModelCatalog::codex_cache` girdisi; yol, okuma ve TTL yok | - | EKSİK(G7) |
+| `CodexProvider.__init__` (py/claudeops/providers/codex_provider.py:151) | `codex.rs::ModelsCache` | `parity.rs::parity_model_sources` `src-codex-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
 | `CodexProvider.resolve_resume_id` (py/claudeops/providers/codex_provider.py:155) | yok | - | EKSİK(G1) |
 | `CodexProvider.build_inner_command` (py/claudeops/providers/codex_provider.py:178) | `codex.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
 | `CodexProvider.mcp_launch_args` (py/claudeops/providers/codex_provider.py:196) | `codex.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
@@ -541,7 +622,7 @@ bu ize yönlendirilmeli.
 | `CodexProvider.matches_proc` (py/claudeops/providers/codex_provider.py:210) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `CodexProvider.extract_name` (py/claudeops/providers/codex_provider.py:218) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
 | `CodexProvider.extract_info` (py/claudeops/providers/codex_provider.py:225) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `CodexProvider.model_choices` (py/claudeops/providers/codex_provider.py:246) | `codex.rs::model_choices` | `parity.rs::parity_model_effort` `codex-cache`; TTL önbelleği yok (G7) | TAŞINDI |
+| `CodexProvider.model_choices` (py/claudeops/providers/codex_provider.py:246) | `codex.rs::model_choices` | `parity.rs::parity_model_effort` `codex-cache`; TTL önbelleği `parity_model_sources` `src-codex-` | TAŞINDI |
 | `CodexProvider.permission_modes` (py/claudeops/providers/codex_provider.py:265) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CodexProvider.effort_levels` (py/claudeops/providers/codex_provider.py:268) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CodexProvider.model_effort_levels` (py/claudeops/providers/codex_provider.py:271) | `codex.rs::model_effort_levels` | `parity.rs::parity_model_effort` `codex-cache`; ve `parity_spawn` `codex-effort` | TAŞINDI |
@@ -618,12 +699,12 @@ bu ize yönlendirilmeli.
 | `DEFAULT_ENDPOINT` (py/claudeops/providers/ucli_provider.py:202) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
 | `_ENDPOINT` (py/claudeops/providers/ucli_provider.py:203) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
 | `endpoint` (py/claudeops/providers/ucli_provider.py:206) | `ucli.rs::build_inner_command` (`Settings::ucli_endpoint` yoksa varsayılan) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz`; ayrı public işlev yok | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/ucli_provider.py:221) | yok | - | EKSİK(G7) |
-| `_LIVE_MODEL_CACHE` (py/claudeops/providers/ucli_provider.py:222) | yok | - | EKSİK(G7) |
-| `_LIVE_MODEL_CACHE_TS` (py/claudeops/providers/ucli_provider.py:223) | yok | - | EKSİK(G7) |
-| `_LIVE_CAPS` (py/claudeops/providers/ucli_provider.py:226) | yok: `LiveModels::caps` girdisi var; doldurma/saklama yok | - | EKSİK(G7) |
-| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:229) | yok: yalnız yanıt ayrıştırma `ucli.rs::parse_live_models` (parite `parity_misc` `live*`); HTTP, anahtar, zaman aşımı yok. | - | EKSİK(G7) |
-| `_live_models` (py/claudeops/providers/ucli_provider.py:266) | yok | - | EKSİK(G7) |
+| `_MODELS_TTL` (py/claudeops/providers/ucli_provider.py:221) | `ucli.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
+| `_LIVE_MODEL_CACHE` (py/claudeops/providers/ucli_provider.py:222) | `ucli.rs::LiveCache` (`live.ids`) | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
+| `_LIVE_MODEL_CACHE_TS` (py/claudeops/providers/ucli_provider.py:223) | `ucli.rs::LiveCache` (`ts`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
+| `_LIVE_CAPS` (py/claudeops/providers/ucli_provider.py:226) | `ucli.rs::LiveCache` (`live.caps`) | `parity.rs::parity_model_sources` `src-ucli-yetenek` (ret + caps) | TAŞINDI |
+| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:229) | `ucli.rs::{fetch_live_models, parse_live_models}` (`ModelIo::http_get`; gerçek HTTP G8) | `parity.rs::parity_model_sources` `src-ucli-*` (Python hatası? G7 şüphe 3-5, 10) | TAŞINDI |
+| `_live_models` (py/claudeops/providers/ucli_provider.py:266) | `ucli.rs::LiveCache::get` (`ModelSources::ucli_live`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
 | `reasoning_effort_for` (py/claudeops/providers/ucli_provider.py:283) | `ucli.rs::reasoning_effort_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `temel-` | TAŞINDI |
 | `_API_KEY_FILE` (py/claudeops/providers/ucli_provider.py:307) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
 | `_API_KEY_MANAGED_MARKER` (py/claudeops/providers/ucli_provider.py:313) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
@@ -672,7 +753,7 @@ bu ize yönlendirilmeli.
 | `UcliProvider._parse_session` (py/claudeops/providers/ucli_provider.py:1027) | `rs/proc` `providers.rs::arg` (`Cli::extract_name`, `ucli_info`) | rs/proc: `providers.rs::ucli_effort_presets`, altın `detect_info` | KAPSAM DIŞI |
 | `UcliProvider.extract_name` (py/claudeops/providers/ucli_provider.py:1033) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
 | `UcliProvider.extract_info` (py/claudeops/providers/ucli_provider.py:1036) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `UcliProvider.model_choices` (py/claudeops/providers/ucli_provider.py:1072) | `ucli.rs::LiveModels::choices` | `parity.rs::parity_model_effort` `ucli-live`; canlı liste çağırandan (G7) | TAŞINDI |
+| `UcliProvider.model_choices` (py/claudeops/providers/ucli_provider.py:1072) | `ucli.rs::LiveModels::choices` | `parity.rs::parity_model_effort` `ucli-live`; canlı liste `parity_model_sources` `src-ucli-` | TAŞINDI |
 | `UcliProvider.default_permission_mode` (py/claudeops/providers/ucli_provider.py:1075) | `provider.rs::Cli::default_permission_mode` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.permission_modes` (py/claudeops/providers/ucli_provider.py:1080) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.effort_levels` (py/claudeops/providers/ucli_provider.py:1083) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -754,9 +835,9 @@ bu ize yönlendirilmeli.
 | `_rustup_default_toolchain` (py/claudeops/ucli_session_opts.py:368) | yok: yalnız `Probe::rust_toolchain` arayüzü ve `Toolchain` türü | - | EKSİK(G8) |
 | `rust_toolchain` (py/claudeops/ucli_session_opts.py:381) | yok: yalnız `Probe::rust_toolchain` arayüzü ve `Toolchain` türü | - | EKSİK(G8) |
 | `exec_flags` (py/claudeops/ucli_session_opts.py:410) | `ucli_opts.rs::exec_flags` | `parity.rs::parity_misc` `exec` | TAŞINDI |
-| `_MODELS_CACHE` (py/claudeops/ucli_session_opts.py:446) | yok | - | EKSİK(G7) |
-| `_MODELS_TTL` (py/claudeops/ucli_session_opts.py:447) | yok | - | EKSİK(G7) |
-| `service_models` (py/claudeops/ucli_session_opts.py:450) | yok | - | EKSİK(G7) |
+| `_MODELS_CACHE` (py/claudeops/ucli_session_opts.py:446) | `ucli_opts.rs::ServiceModelsCache` | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` (Python hatası? G7 şüphe 7) | TAŞINDI |
+| `_MODELS_TTL` (py/claudeops/ucli_session_opts.py:447) | `ucli_opts.rs::{SERVICE_MODELS_TTL, SERVICE_MODELS_RETRY}` | `parity.rs::parity_model_sources` `src-svc-ttl`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
+| `service_models` (py/claudeops/ucli_session_opts.py:450) | `ucli_opts.rs::{ServiceModelsCache::get, parse_service_models}` (`ModelSources::service_models`) | `parity.rs::parity_model_sources` `src-svc-*` (Python hatası? G7 şüphe 6) | TAŞINDI |
 
 ### Kapsam dosyalarının çağırdığı dış adlar (`ucli_session_opts` dışındaki ayar/ucli/paths/steward modülleri; yalnız kullanılanlar ve onların bağımlılıkları)
 
@@ -766,7 +847,7 @@ bu ize yönlendirilmeli.
 | `CLAUDE_DIR` (py/claudeops/paths.py:6) | `rs/proc` `Config::claude_dir` | rs/proc | KAPSAM DIŞI |
 | `CLAUDEOPS_DIR` (py/claudeops/paths.py:45) | `rs/state` `paths.rs::StateDir::resolve` | rs/state; crate `Paths::claudeops_dir` girdisi alır | KAPSAM DIŞI |
 | `REPO_DIR` (py/claudeops/paths.py:50) | yok: `Paths::repo_dir` girdisi var; değeri çözen kod yok | - | EKSİK(G9) |
-| `CLAUDE_MODELS_JSON` (py/claudeops/paths.py:54) | yok: `ModelCatalog::claude_state` girdisi; okuma yok (rs/state `statedocs` DB_READY `claude_models` hazır) | - | EKSİK(G7) |
+| `CLAUDE_MODELS_JSON` (py/claudeops/paths.py:54) | `probe.rs::Paths::claude_models_json`; okuma `ModelIo::claude_models_doc` sözleşmesi (DB/dosya kipi rs/state `statedocs`, gerçek uygulama G8) | `tests/model_sources.rs::catalog_touches_only_its_own_source` | TAŞINDI |
 | `SESSIONS_DIR` (py/claudeops/paths.py:56) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
 | `PROJECTS_DIR` (py/claudeops/paths.py:57) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
 | `parse_proc_stat` (py/claudeops/paths.py:60) | `rs/proc` `procfs.rs::parse_stat` | rs/proc: `procfs::tests::stat_with_parens_in_comm` | KAPSAM DIŞI |
@@ -946,13 +1027,13 @@ bu ize yönlendirilmeli.
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
 |---|---|---|
 | `AgyBinaryTest.test_inner_command_quotes_a_path_with_spaces` (py/tests/test_agy_binary_resolution.py:14) | `parity.rs::parity_build` `-override-bosluklu` | TAŞINDI |
-| `AgyBinaryTest.test_model_choices_uses_the_resolved_binary` (py/tests/test_agy_binary_resolution.py:19) | yok: `agy models` çalıştırma yok | EKSİK(G7) |
+| `AgyBinaryTest.test_model_choices_uses_the_resolved_binary` (py/tests/test_agy_binary_resolution.py:19) | `tests/model_sources.rs::agy_catalog_runs_the_resolved_binary_without_a_shell` | TAŞINDI |
 | `AgyCompactionViewTests.test_checkpoint_becomes_boundary_and_plain_type23_is_ignored` (py/tests/test_agy_compaction_view.py:21) | `parity.rs::parity_chat` `agy-sikistirma` | TAŞINDI |
 | `AgyLastExchange.test_last_pair_skips_empty_assistant_steps` (py/tests/test_agy_last_exchange.py:33) | `parity.rs::parity_chat` `agy-son-cift` | TAŞINDI |
 | `AgyLastExchange.test_empty_conversation_and_no_assistant` (py/tests/test_agy_last_exchange.py:37) | `parity.rs::parity_chat` `agy-bos` `agy-yalniz-kullanici` | TAŞINDI |
 | `AgyLastExchange.test_checkpoint_between_does_not_break_pairing` (py/tests/test_agy_last_exchange.py:41) | `parity.rs::parity_chat` `agy-arada-sinir` | TAŞINDI |
 | `AgyLastExchange.test_missing_db_is_empty` (py/tests/test_agy_last_exchange.py:45) | `parity.rs::parity_chat` `agy-sid-yok-dosya` `agy-resume-dosyasiz` | TAŞINDI |
-| `AgyModelsSwr.test_cold_blocks_then_stale_returns_old_immediately_and_refreshes_in_background` (py/tests/test_agy_models_swr.py:19) | yok | EKSİK(G7) |
+| `AgyModelsSwr.test_cold_blocks_then_stale_returns_old_immediately_and_refreshes_in_background` (py/tests/test_agy_models_swr.py:19) | `tests/model_sources.rs::agy_stale_list_is_returned_at_once_while_a_real_thread_refreshes`; `parity.rs::parity_model_sources` `src-agy-akis` | TAŞINDI |
 | `AgySidsStoreTest.test_db_ready` (py/tests/test_agy_sids_store.py:31) | rs/state: `statedocs.rs::DB_READY` `agy_sids` | KAPSAM DIŞI |
 | `AgySidsStoreTest.test_remember_writes_db_and_mirror` (py/tests/test_agy_sids_store.py:34) | yok: agy sid yazımı | EKSİK(G1) |
 | `AgySidsStoreTest.test_unchanged_value_does_not_rewrite` (py/tests/test_agy_sids_store.py:42) | yok: agy sid yazımı | EKSİK(G1) |
@@ -1026,7 +1107,7 @@ bu ize yönlendirilmeli.
 | `CompactionViewTests.test_sidechain_summary_ignored` (py/tests/test_chat_compaction_view.py:38) | `parity.rs::parity_chat` `claude-bayrak-isSidechain-` | TAŞINDI |
 | `ClaudeModelsStoreTest.test_is_db_ready` (py/tests/test_claude_models_store.py:32) | rs/state: `statedocs.rs::DB_READY` `claude_models`; liste kuralı `parity_model_effort` `claude-state` | KAPSAM DIŞI |
 | `ClaudeModelsStoreTest.test_write_goes_to_db_and_mirror_and_reads_from_db` (py/tests/test_claude_models_store.py:35) | rs/state: `statedocs.rs::DB_READY` `claude_models`; liste kuralı `parity_model_effort` `claude-state` | KAPSAM DIŞI |
-| `ClaudeModelsStoreTest.test_db_wins_over_corrupt_or_missing_file` (py/tests/test_claude_models_store.py:42) | yok: katalog belgesini DB'den doldurma yok | EKSİK(G7) |
+| `ClaudeModelsStoreTest.test_db_wins_over_corrupt_or_missing_file` (py/tests/test_claude_models_store.py:42) | `tests/model_sources.rs::catalog_touches_only_its_own_source` (crate dosyayı okumaz, belge `ModelIo`dan); DB önceliği rs/state `statedocs` | TAŞINDI |
 | `ClaudeModelsStoreTest.test_fallback_to_hardcoded_when_empty` (py/tests/test_claude_models_store.py:50) | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
 | `TrustFolder.test_adds_and_keeps_comments` (py/tests/test_copilot_trust.py:14) | `parity.rs::parity_build` `trust-dolu` | TAŞINDI |
 | `TrustFolder.test_empty_list` (py/tests/test_copilot_trust.py:21) | `parity.rs::parity_build` `trust-bos` | TAŞINDI |
@@ -1256,9 +1337,9 @@ bu ize yönlendirilmeli.
 | `RustToolchainDefaultTest.test_default_toolchain_picks_one` (py/tests/test_rust_toolchain_pick.py:64) | yok | EKSİK(G8) |
 | `RustToolchainDefaultTest.test_short_default_name` (py/tests/test_rust_toolchain_pick.py:70) | yok | EKSİK(G8) |
 | `RustToolchainDefaultTest.test_env_still_wins` (py/tests/test_rust_toolchain_pick.py:76) | yok | EKSİK(G8) |
-| `ServiceModelsCache.test_ttl_is_24h` (py/tests/test_service_models_cache.py:28) | yok | EKSİK(G7) |
-| `ServiceModelsCache.test_success_cached_for_a_day` (py/tests/test_service_models_cache.py:31) | yok | EKSİK(G7) |
-| `ServiceModelsCache.test_failure_returns_empty_and_retries_after_60s` (py/tests/test_service_models_cache.py:48) | yok | EKSİK(G7) |
+| `ServiceModelsCache.test_ttl_is_24h` (py/tests/test_service_models_cache.py:28) | `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
+| `ServiceModelsCache.test_success_cached_for_a_day` (py/tests/test_service_models_cache.py:31) | `parity.rs::parity_model_sources` `src-svc-ttl` | TAŞINDI |
+| `ServiceModelsCache.test_failure_returns_empty_and_retries_after_60s` (py/tests/test_service_models_cache.py:48) | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-bos-sonuc` | TAŞINDI |
 | `DetectDisplayTest.test_socket_only_x0` (py/tests/test_spawn_detect_display_socket.py:25) | `spawn.rs::detect_display`; sınanmayan senaryo: denetimli soket/kilit dosyası düzeni (parite gerçek /tmp okur) | TAŞINDI-TESTSİZ |
 | `DetectDisplayTest.test_lock_still_works` (py/tests/test_spawn_detect_display_socket.py:28) | `spawn.rs::detect_display`; sınanmayan senaryo: denetimli soket/kilit dosyası düzeni (parite gerçek /tmp okur) | TAŞINDI-TESTSİZ |
 | `DetectDisplayTest.test_prefers_1_over_0` (py/tests/test_spawn_detect_display_socket.py:31) | `spawn.rs::detect_display`; sınanmayan senaryo: denetimli soket/kilit dosyası düzeni (parite gerçek /tmp okur) | TAŞINDI-TESTSİZ |
@@ -1738,9 +1819,9 @@ bu ize yönlendirilmeli.
 | `ReasoningModeTests.test_a_non_dict_ucli_limits_is_tolerated` (py/tests/test_ucli_effort.py:121) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `ReasoningModeTests.test_it_does_not_leak_into_the_numeric_overrides` (py/tests/test_ucli_effort.py:125) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `CatalogTests.test_only_chat_models_are_listed_and_their_capabilities_kept` (py/tests/test_ucli_effort.py:147) | `parity.rs::parity_misc` `live` | TAŞINDI |
-| `CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` (py/tests/test_ucli_effort.py:155) | yok | EKSİK(G7) |
-| `CatalogTests.test_without_a_key_nothing_is_fetched` (py/tests/test_ucli_effort.py:164) | yok | EKSİK(G7) |
-| `CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` (py/tests/test_ucli_effort.py:170) | yok | EKSİK(G7) |
+| `CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` (py/tests/test_ucli_effort.py:155) | `parity.rs::parity_model_sources` `src-ucli-akis`; `tests/model_sources.rs::repeated_errors_never_replace_the_last_good_list` | TAŞINDI |
+| `CatalogTests.test_without_a_key_nothing_is_fetched` (py/tests/test_ucli_effort.py:164) | `parity.rs::parity_model_sources` `src-ucli-anahtarsiz`; `tests/model_sources.rs::no_request_without_a_key` | TAŞINDI |
+| `CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` (py/tests/test_ucli_effort.py:170) | `tests/model_sources.rs::model_list_and_effort_gate_share_one_fetch` | TAŞINDI |
 | `ReasoningEffortForTests.test_a_model_that_declares_support_gets_the_level` (py/tests/test_ucli_effort.py:186) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
 | `ReasoningEffortForTests.test_gemma_which_rejects_the_field_gets_nothing` (py/tests/test_ucli_effort.py:190) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
 | `ReasoningEffortForTests.test_an_unknown_model_or_an_empty_catalog_gets_nothing` (py/tests/test_ucli_effort.py:195) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
@@ -1764,7 +1845,7 @@ bu ize yönlendirilmeli.
 | `UcliEndpointTest.test_default_is_evren` (py/tests/test_ucli_endpoint.py:23) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `UcliEndpointTest.test_custom_valid_endpoint_wins_and_trailing_slash_dropped` (py/tests/test_ucli_endpoint.py:27) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz` ; `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
 | `UcliEndpointTest.test_invalid_endpoint_falls_back_and_empty_clears` (py/tests/test_ucli_endpoint.py:31) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz` ; `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
-| `UcliEndpointTest.test_model_list_fetch_uses_configured_endpoint` (py/tests/test_ucli_endpoint.py:40) | yok | EKSİK(G7) |
+| `UcliEndpointTest.test_model_list_fetch_uses_configured_endpoint` (py/tests/test_ucli_endpoint.py:40) | `parity.rs::parity_model_sources` `src-ucli-uc-nokta` | TAŞINDI |
 | `EvrenNoDefaultCapTest.test_evren_has_no_default_cap` (py/tests/test_ucli_evren_no_default_cap.py:18) | `parity.rs::parity_ucli` `hizmet-evren` | TAŞINDI |
 | `EvrenNoDefaultCapTest.test_explicit_cap_on_evren_still_passes` (py/tests/test_ucli_evren_no_default_cap.py:22) | `parity.rs::parity_ucli` `ham-service-evren` | TAŞINDI |
 | `ExecToolchainTests.test_only_rust_is_accepted` (py/tests/test_ucli_exec_toolchain.py:17) | `parity.rs::parity_ucli` `toolchain-baska` `toolchain` | TAŞINDI |
@@ -1931,7 +2012,7 @@ bu ize yönlendirilmeli.
 | `BuildTests.test_claude_service_swaps_endpoint_once_and_key_stays_out_of_argv` (py/tests/test_ucli_start_opts.py:98) | `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
 | `BuildTests.test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap` (py/tests/test_ucli_start_opts.py:116) | yok: gerçek günlük tavan yok; bayraklar `parity_ucli` `hizmet-claude` | EKSİK(G8) |
 | `BuildTests.test_groq_service_uses_groq_endpoint_and_key_env` (py/tests/test_ucli_start_opts.py:145) | `parity.rs::parity_ucli` `hizmet-grok`; aynı hizmet yolu | TAŞINDI |
-| `BuildTests.test_service_models_fetches_live_list_with_correct_auth` (py/tests/test_ucli_start_opts.py:153) | yok | EKSİK(G7) |
+| `BuildTests.test_service_models_fetches_live_list_with_correct_auth` (py/tests/test_ucli_start_opts.py:153) | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` `src-svc-istek-yok` (URL ve başlık karşılaştırılır) | TAŞINDI |
 | `BuildTests.test_claude_service_skips_instructions_auto_when_file_over_16kib` (py/tests/test_ucli_start_opts.py:177) | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` | TAŞINDI |
 | `BuildTests.test_missing_service_key_refuses_spawn` (py/tests/test_ucli_start_opts.py:202) | `parity.rs::parity_ucli` `hizmet-claude-anahtarsiz` | TAŞINDI |
 | `BuildTests.test_evren_service_changes_nothing` (py/tests/test_ucli_start_opts.py:206) | `parity.rs::parity_ucli` `hizmet-evren` | TAŞINDI |
