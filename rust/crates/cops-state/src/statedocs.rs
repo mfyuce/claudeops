@@ -9,12 +9,12 @@
 //! (Python tarafı DB'yi okuyacağı için yalnız dosyaya yazmak sessiz kayıp olurdu).
 use crate::fsutil::atomic_write_json;
 use crate::json::Json;
-use crate::paths::StateDir;
+use crate::paths::{realpath, StateDir};
 use crate::store::{sqlite_path_from_url, Store, StoreError};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -29,6 +29,10 @@ pub const DB_READY: [&str; 6] = [
 ];
 /// Python `DB_READY_PREFIXES`.
 pub const DB_READY_PREFIXES: [&str; 2] = ["steward/", "orchestration/"];
+/// Python `_MIRROR_KEEP`.
+pub const MIRROR_KEEP: i64 = 200_000;
+/// Python `_MIRROR_EVERY`.
+pub const MIRROR_EVERY: u64 = 2000;
 const BACKEND_TTL: Duration = Duration::from_secs(5);
 const TSV_FILES: [&str; 2] = ["roster.tsv", "models.tsv"];
 
@@ -40,8 +44,9 @@ pub enum Backend {
 }
 
 impl Backend {
+    /// `s.strip().lower()` `files|dual|db` ise.
     pub fn parse(s: &str) -> Option<Backend> {
-        match s.trim().to_lowercase().as_str() {
+        match crate::pycompat::lower(crate::pycompat::strip(s)).as_str() {
             "files" => Some(Backend::Files),
             "dual" => Some(Backend::Dual),
             "db" => Some(Backend::Db),
@@ -54,6 +59,9 @@ impl Backend {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Read {
     Value(Json),
+    /// Dosyada eşlenmemiş vekil kaçışı vardı (U+FFFD ile okundu, [`Json::parse_lossy`]): okunabilir ama GERİ YAZILAMAZ
+    /// (Python da yazamaz). DB'ye aktarılmaz.
+    Lossy(Json),
     Missing,
     /// Dosya var ama JSON/UTF-8 değil.
     Corrupt,
@@ -62,7 +70,7 @@ pub enum Read {
 impl Read {
     pub fn into_option(self) -> Option<Json> {
         match self {
-            Read::Value(v) => Some(v),
+            Read::Value(v) | Read::Lossy(v) => Some(v),
             _ => None,
         }
     }
@@ -104,47 +112,28 @@ fn sig(path: &Path) -> Sig {
         .map(|m| (m.mtime(), m.mtime_nsec(), m.size()))
 }
 
-/// Dosya okuma (UTF-8 + JSON).
+/// Dosya okuma (UTF-8 + JSON; Python `json.load` gibi eşlenmemiş vekil kabul, bkz. [`Read::Lossy`]).
 pub fn read_file(path: &Path) -> Read {
     match std::fs::read(path) {
         Err(_) => Read::Missing,
         Ok(b) => match std::str::from_utf8(&b)
             .ok()
-            .and_then(|t| Json::parse(t).ok())
+            .and_then(|t| Json::parse_lossy(t).ok())
         {
-            Some(v) => Read::Value(v),
+            Some((v, false)) => Read::Value(v),
+            Some((v, true)) => Read::Lossy(v),
             None => Read::Corrupt,
         },
     }
 }
 
-/// `os.path.realpath`: var olmayan kuyruk olduğu gibi kalır.
-fn realpath(p: &Path) -> PathBuf {
-    let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-    let mut out = PathBuf::from("/");
-    for c in abs.components() {
-        match c {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::Normal(n) => {
-                out.push(n);
-                // sembolik bağ (hedefi olmayan dahil) izlenir
-                for _ in 0..40 {
-                    let Ok(t) = std::fs::read_link(&out) else {
-                        break;
-                    };
-                    out.pop();
-                    out = if t.is_absolute() { t } else { out.join(t) };
-                    if let Ok(c) = out.canonicalize() {
-                        out = c;
-                    }
-                }
-            }
-            _ => {}
-        }
+/// DB'ye aktarılacak dosya değeri: `Lossy` Python'daki `set_doc` kodlama istisnası gibi hata (üst kat dosyaya düşer).
+fn for_db(r: &Read, name: &str) -> Result<Option<Json>, StoreError> {
+    match r {
+        Read::Value(v) => Ok(Some(v.clone())),
+        Read::Lossy(_) => Err(StoreError::BadDoc(format!("{name}: eşlenmemiş vekil"))),
+        _ => Ok(None),
     }
-    out
 }
 
 #[derive(Default)]
@@ -154,6 +143,25 @@ struct State {
     dirty: HashSet<String>,
     synced: HashMap<String, Sig>,
     ext_prefixes: Vec<String>,
+    mirror_n: HashMap<String, u64>,
+    /// Okuyucu önbellekleri (ör. `instances`): ad -> (dosya anahtarı, değer).
+    reader_cache: HashMap<&'static str, (FileKey, Json)>,
+}
+
+/// Python `(st_ino, st_mtime_ns, st_size)`.
+pub(crate) type FileKey = (u64, i128, u64);
+
+/// Dosya anahtarı; dosya yoksa `Ok(None)`.
+pub(crate) fn file_key(path: &Path) -> io::Result<Option<FileKey>> {
+    match std::fs::metadata(path) {
+        Ok(m) => Ok(Some((
+            m.ino(),
+            i128::from(m.mtime()) * 1_000_000_000 + i128::from(m.mtime_nsec()),
+            m.size(),
+        ))),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 type Logger = Box<dyn Fn(&str) + Send + Sync>;
@@ -161,6 +169,8 @@ type Logger = Box<dyn Fn(&str) + Send + Sync>;
 pub struct StateDocs {
     dir: StateDir,
     forced: Option<Backend>,
+    /// `CLAUDEOPS_STORE_BACKEND` her çağrıda okunur (Python `backend()` gibi); `isolated` kapatır.
+    read_env: bool,
     db_url: String,
     state: Mutex<State>,
     logger: Logger,
@@ -169,13 +179,11 @@ pub struct StateDocs {
 impl StateDocs {
     /// Ortam: `CLAUDEOPS_STORE_BACKEND` (kip), `CLAUDEOPS_DB_URL`.
     pub fn new(dir: StateDir) -> StateDocs {
-        let forced = std::env::var("CLAUDEOPS_STORE_BACKEND")
-            .ok()
-            .and_then(|v| Backend::parse(&v));
         let db_url = std::env::var("CLAUDEOPS_DB_URL").unwrap_or_default();
         StateDocs {
             dir,
-            forced,
+            forced: None,
+            read_env: true,
             db_url,
             state: Mutex::new(State::default()),
             logger: Box::new(|m| eprintln!("statedocs {m}")),
@@ -185,6 +193,7 @@ impl StateDocs {
     pub fn isolated(dir: StateDir, backend: Option<Backend>, db_url: &str) -> StateDocs {
         let mut s = StateDocs::new(dir);
         s.forced = backend;
+        s.read_env = false;
         s.db_url = db_url.to_string();
         s
     }
@@ -203,10 +212,17 @@ impl StateDocs {
         (self.logger)(msg)
     }
 
-    /// Ortam > settings.json `store_backend` (5 sn önbellek) > files.
+    /// Ortam (her çağrıda) > settings.json `store_backend` (5 sn önbellek) > files.
     pub fn backend(&self) -> Backend {
         if let Some(b) = self.forced {
             return b;
+        }
+        if self.read_env {
+            if let Some(b) = std::env::var_os("CLAUDEOPS_STORE_BACKEND")
+                .and_then(|v| Backend::parse(&v.to_string_lossy()))
+            {
+                return b;
+            }
         }
         let mut st = self.lock();
         if let Some((at, b)) = st.backend {
@@ -248,6 +264,29 @@ impl StateDocs {
         }
     }
 
+    pub(crate) fn cache_get(&self, name: &'static str, key: FileKey) -> Option<Json> {
+        self.lock()
+            .reader_cache
+            .get(name)
+            .filter(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone())
+    }
+    pub(crate) fn cache_put(&self, name: &'static str, key: Option<FileKey>, v: &Json) {
+        let mut st = self.lock();
+        match key {
+            Some(k) => {
+                st.reader_cache.insert(name, (k, v.clone()));
+            }
+            None => {
+                st.reader_cache.remove(name);
+            }
+        }
+    }
+    /// Belgenin bu süreçteki etkin kipi (`db` istenip belge db-hazır değilse `dual`).
+    pub fn effective_backend(&self, name: &str) -> Backend {
+        self.effective(name)
+    }
+
     /// Durum dizini altındaki yoldan belge adı (`steward/quota.json` -> `steward/quota`).
     pub fn name_for(&self, path: &Path) -> String {
         let root = realpath(self.dir.root());
@@ -276,37 +315,69 @@ impl StateDocs {
         self.read_opts(name, path, true)
     }
 
-    /// `file_truth=false`: dual kipte de DB önce. `Corrupt` dönüşünde kanıt yedeği çağıranın işi.
+    /// `file_truth=false`: dual kipte de DB önce.
     pub fn read_opts(&self, name: &str, path: &Path, file_truth: bool) -> Read {
+        self.read_with(name, path, file_truth, None)
+    }
+
+    /// `read_json(..., on_corrupt=f)`: dosya her bozuk okunduğunda `f(path)` çağrılır (Python `_file_read` gibi: bir okuma
+    /// içinde dosya birden çok kez okunursa birden çok kez). Kanıt yedeği çağıranın işi (ör. [`crate::fsutil::write_corrupt_copy`]).
+    pub fn read_with(
+        &self,
+        name: &str,
+        path: &Path,
+        file_truth: bool,
+        on_corrupt: Option<&dyn Fn(&Path)>,
+    ) -> Read {
+        let rf = |p: &Path| {
+            let r = read_file(p);
+            if let (Read::Corrupt, Some(f)) = (&r, on_corrupt) {
+                f(p);
+            }
+            r
+        };
         let mode = self.effective(name);
         if mode == Backend::Files || !self.db_ok(path) {
-            return read_file(path);
+            return rf(path);
         }
-        match self.read_db(name, path, mode == Backend::Dual && file_truth) {
+        match self.read_db(name, path, mode == Backend::Dual && file_truth, &rf) {
             Ok(r) => r,
             Err(e) => {
                 self.log(&format!("read {name}: {e} -> dosya"));
-                read_file(path)
+                rf(path)
             }
         }
     }
 
-    fn read_db(&self, name: &str, path: &Path, file_first: bool) -> Result<Read, StoreError> {
+    fn read_db(
+        &self,
+        name: &str,
+        path: &Path,
+        file_first: bool,
+        read_file: &dyn Fn(&Path) -> Read,
+    ) -> Result<Read, StoreError> {
         if file_first {
             // DB açılamasa da dosya (doğruluk kaynağı) döner: hata üst katta dosyaya düşer
             let st = self.store()?;
             let r = read_file(path);
-            if let Read::Value(v) = &r {
+            if matches!(r, Read::Value(_) | Read::Lossy(_)) {
                 let sg = sig(path);
                 if self.lock().synced.get(name) != Some(&sg) {
                     let have = st.get_doc(name)?;
-                    if !have.as_ref().is_some_and(|h| h.py_eq(v)) {
+                    let same = match (&have, &r) {
+                        (Some(h), Read::Value(v)) => h.py_eq(v),
+                        _ => false,
+                    };
+                    if !same {
+                        let Some(v) = for_db(&r, name)? else {
+                            return Ok(r); // erişilmez: r Value ya da Lossy (Lossy for_db'de hata)
+                        };
                         self.log(&if have.is_none() {
                             format!("import {name}: DB'de yoktu, dosyadan alındı")
                         } else {
                             format!("drift {name}: DB dosyaya uyduruldu")
                         });
-                        st.set_doc(name, v)?;
+                        st.set_doc(name, &v)?;
                     }
                     self.lock().synced.insert(name.to_string(), sg);
                 }
@@ -320,7 +391,8 @@ impl StateDocs {
         let st = self.store()?;
         if self.lock().dirty.contains(name) {
             // son DB yazımı başarısızdı: dosya daha yeni
-            if let Read::Value(v) = read_file(path) {
+            let r = read_file(path);
+            if let Some(v) = for_db(&r, name)? {
                 st.set_doc(name, &v)?;
                 self.lock().dirty.remove(name);
                 self.log(&format!("recover {name}: DB dosyadan yeniden yazıldı"));
@@ -331,8 +403,8 @@ impl StateDocs {
             return Ok(Read::Value(v));
         }
         let r = read_file(path); // tembel içe aktarma
-        if let Read::Value(v) = &r {
-            st.set_doc(name, v)?;
+        if let Some(v) = for_db(&r, name)? {
+            st.set_doc(name, &v)?;
         }
         Ok(r)
     }
@@ -387,6 +459,32 @@ impl StateDocs {
             }
         }
         Ok(WriteOutcome::Written)
+    }
+
+    /// `mirror_log`: dosya günlüğüne yazılan satırı DB `log` akışına da ekle (dual/db). SESSİZ (Python gibi: günlük
+    /// best-effort; hata yalnız sayılır, loglanmaz: günlük -> mirror -> log döngüsü olmasın). Akış her
+    /// [`MIRROR_EVERY`] eklemede [`MIRROR_KEEP`] satıra kırpılır. Dönüş: eklendi mi.
+    pub fn mirror_log(&self, stream: &str, path: &Path, entry: &Json) -> bool {
+        if self.backend() == Backend::Files || !self.db_ok(path) {
+            return false;
+        }
+        let Ok(st) = self.store() else {
+            return false;
+        };
+        if st.append_log(stream, entry).is_err() {
+            return false;
+        }
+        let n = {
+            let mut g = self.lock();
+            let c = g.mirror_n.entry(stream.to_string()).or_insert(0);
+            *c += 1;
+            *c
+        };
+        if n % MIRROR_EVERY == 0 {
+            // kırpma hatası bir sonraki eşikte yeniden denenir (Python ile aynı)
+            let _ = st.trim_log(stream, MIRROR_KEEP);
+        }
+        true
     }
 
     /// `shadow_tsv`: roster/models dosyasının güncel içeriğini `tsv_rows`a eşitle. Sessiz (hata yalnız loglanır).

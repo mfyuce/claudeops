@@ -5,13 +5,18 @@ pub mod fsutil;
 pub mod instances;
 pub mod json;
 pub mod paths;
+pub mod pycompat;
+pub mod pytime;
 pub mod roster;
 pub mod settings;
+pub mod settings_read;
+mod sha256;
 pub mod statedocs;
 pub mod store;
+mod unicode_tables;
 
 pub use json::{Json, Map};
-pub use paths::StateDir;
+pub use paths::{StateDir, TestEnv};
 pub use statedocs::{Backend, StateDocs, WriteOutcome};
 pub use store::{Store, StoreError};
 

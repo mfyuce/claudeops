@@ -2,6 +2,7 @@
 //! (Python `DEFAULT_SETTINGS`in aynısı; parite testi farkı yakalar). Dosya `store_backend` kipinden bağımsız okunur.
 use crate::json::{Json, Map};
 use crate::paths::StateDir;
+use crate::pycompat;
 use std::os::unix::fs::MetadataExt;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -24,7 +25,7 @@ const DICT_KEYS: [&str; 12] = [
 ];
 
 /// Python `settings._OFF_WORDS`.
-const OFF_WORDS: [&str; 11] = [
+pub const OFF_WORDS: [&str; 11] = [
     "off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none",
 ];
 
@@ -51,7 +52,8 @@ impl Settings {
     /// Dosya içeriğinden (`None` / bozuk / nesne değil = varsayılanlar).
     pub fn from_text(text: Option<&str>) -> Settings {
         let mut out = defaults().clone();
-        if let Some(Ok(Json::Object(stored))) = text.map(Json::parse) {
+        // Python `json.load` eşlenmemiş vekili kabul eder: okuma için U+FFFD (ayarlar Rust'ta yazılmaz)
+        if let Some(Ok((Json::Object(stored), _))) = text.map(Json::parse_lossy) {
             for (k, v) in stored {
                 if let Some(slot) = out.get_mut(&k) {
                     *slot = v;
@@ -84,15 +86,22 @@ impl Settings {
             .and_then(Json::as_str)
             .unwrap_or("")
     }
-    /// Varsayılanı AÇIK bayrak (`tunnel_watch`, `routing_guidance`): yalnız kapatma sözcükleri kapatır.
+    /// Varsayılanı AÇIK bayrak (`tunnel_watch`, `routing_guidance`): `("on" if v is None else str(v)).strip().lower()`
+    /// kapatma sözcüğü değilse açık.
     pub fn flag_default_on(&self, key: &str) -> bool {
         let text = match self.get(key) {
-            None | Some(Json::Null) => return true,
-            Some(Json::Str(s)) => s.clone(),
-            Some(Json::Bool(b)) => (if *b { "True" } else { "False" }).to_string(),
-            Some(v) => v.to_compact(),
+            None | Some(Json::Null) => "on".to_string(),
+            Some(v) => pycompat::str_of(v),
         };
-        !OFF_WORDS.contains(&text.trim().to_lowercase().as_str())
+        !OFF_WORDS.contains(&pycompat::lower(pycompat::strip(&text)).as_str())
+    }
+    /// `routing_guidance_enabled`.
+    pub fn routing_guidance_enabled(&self) -> bool {
+        self.flag_default_on("routing_guidance")
+    }
+    /// `tunnel_watch_enabled`.
+    pub fn tunnel_watch_enabled(&self) -> bool {
+        self.flag_default_on("tunnel_watch")
     }
 }
 
@@ -112,6 +121,10 @@ impl SettingsReader {
             cache: Mutex::new(None),
         }
     }
+    /// İmza aynıysa önbellek; değilse okunur. OKUNAMAYAN dosya (yok dışındaki G/Ç hatası: EACCES, EMFILE, EIO...)
+    /// varsayılanları döndürür (Python gibi) ama önbelleğe ALINMAZ: son iyi değer önbellekte kalır, hata geçince yeni
+    /// içerik okunur (Python `_LOAD_CACHE` bu durumda varsayılanları imzaya bağlayıp dosya değişene dek döndürür;
+    /// belge "okunamazsa önbellek yok" diyor; sahibe soruldu, `docs/rs-state.md`).
     pub fn load(&self) -> Arc<Settings> {
         let path = self.dir.settings_json();
         let sig = || {
@@ -126,20 +139,57 @@ impl SettingsReader {
                 return v.clone();
             }
         }
-        let val = Arc::new(load(&self.dir));
-        if let Some(b) = before {
+        let (val, cacheable) = read(&self.dir);
+        let val = Arc::new(val);
+        if let (Some(b), true) = (before, cacheable) {
             if sig() == Some(b) {
                 *cache = Some((b, val.clone()));
             }
         }
         val
     }
+
+    /// Önbellekteki son iyi değer (tanı/test).
+    pub fn last_good(&self) -> Option<Arc<Settings>> {
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|(_, v)| v.clone())
+    }
+}
+
+/// (ayarlar, önbelleğe alınabilir mi): içerik okunduysa (bozuk/UTF-8 değil dahil: içerikten belirlenir) evet; G/Ç
+/// hatasıysa hayır.
+fn read(dir: &StateDir) -> (Settings, bool) {
+    match std::fs::read_to_string(dir.settings_json()) {
+        Ok(t) => (Settings::from_text(Some(&t)), true),
+        // UTF-8 değil: Python istisna fırlatır; Rust varsayılanlar (sahibe soruldu)
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => (Settings::from_text(None), true),
+        Err(_) => (Settings::from_text(None), false),
+    }
+}
+
+/// `settings._backup_if_corrupt`: `settings.json` VAR, boş değil ve JSON nesnesi değilse ham içerik
+/// `settings.json.corrupt-<sha8>` olarak (0600, bir kez) yedeklenir. Dönüş: `None` = bozuk değil/yok; `Some(Ok(yol))`;
+/// `Some(Err)` = yedeklenemedi (Python "(yedeklenemedi)" yazar). Settings yazan Rust kodu yazımdan ÖNCE çağırmalı.
+pub fn backup_if_corrupt(dir: &StateDir) -> Option<std::io::Result<std::path::PathBuf>> {
+    let path = dir.settings_json();
+    let raw = std::fs::read(&path).ok()?;
+    if raw.trim_ascii().is_empty() {
+        return None;
+    }
+    if let Ok(t) = std::str::from_utf8(&raw) {
+        if matches!(Json::parse_lossy(t), Ok((Json::Object(_), _))) {
+            return None;
+        }
+    }
+    Some(crate::fsutil::write_corrupt_copy(&path, &raw))
 }
 
 /// Önbelleksiz tek okuma.
 pub fn load(dir: &StateDir) -> Settings {
-    let text = std::fs::read_to_string(dir.settings_json()).ok();
-    Settings::from_text(text.as_deref())
+    read(dir).0
 }
 
 #[cfg(test)]
@@ -164,5 +214,15 @@ mod tests {
         assert!(!s.flag_default_on("tunnel_watch"));
         assert!(s.flag_default_on("routing_guidance"));
         assert_eq!(Settings::from_text(Some("[1]")), Settings::from_text(None));
+    }
+
+    /// H12: sır taşıyan ayar nesnesi `Debug`ta içerik göstermez.
+    #[test]
+    fn debug_hides_secrets() {
+        let s = Settings::from_text(Some(
+            r#"{"byok": {"claude": {"ANTHROPIC_API_KEY": "sk-gizli"}}}"#,
+        ));
+        let d = format!("{s:?} {:?}", std::sync::Arc::new(s.clone()));
+        assert!(!d.contains("sk-gizli"), "{d}");
     }
 }

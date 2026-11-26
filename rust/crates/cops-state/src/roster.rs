@@ -152,35 +152,7 @@ fn first_rows(rows: Vec<RawRow>) -> IndexMap<String, RawRow> {
     m
 }
 
-/// `os.path.normpath` (posix).
-pub fn normpath(p: &str) -> String {
-    if p.is_empty() {
-        return ".".into();
-    }
-    let slashes = p.len() - p.trim_start_matches('/').len();
-    let lead = match slashes {
-        0 => "",
-        2 => "//",
-        _ => "/",
-    };
-    let mut parts: Vec<&str> = Vec::new();
-    for c in p.split('/') {
-        match c {
-            "" | "." => {}
-            ".." if parts.last().is_some_and(|l| *l != "..") => {
-                parts.pop();
-            }
-            ".." if !lead.is_empty() && parts.is_empty() => {}
-            _ => parts.push(c),
-        }
-    }
-    let out = format!("{lead}{}", parts.join("/"));
-    if out.is_empty() {
-        ".".into()
-    } else {
-        out
-    }
-}
+pub use crate::paths::normpath;
 
 /// `^[a-z][a-z0-9_]*$`.
 pub fn valid_project_name(name: &str) -> bool {
@@ -188,20 +160,6 @@ pub fn valid_project_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-}
-
-fn expand_user(p: &str) -> String {
-    match (p.strip_prefix('~'), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => {
-            let joined = format!("{}{rest}", home.trim_end_matches('/'));
-            if joined.is_empty() {
-                "/".into()
-            } else {
-                joined
-            }
-        }
-        _ => p.to_string(), // `~kullanici` desteklenmez
-    }
 }
 
 /// `(satır indeksi, yorumlu mu, '#'siz satır)`: ilk alanı `name` olan ilk satır.
@@ -276,6 +234,15 @@ impl<'a> Roster<'a> {
             .collect())
     }
 
+    /// `roster_by_name`: {ad: girdi} (yinelenen adda SON satır, ilk konumda; Python sözlüğü gibi).
+    pub fn by_name(&self) -> io::Result<IndexMap<String, RosterEntry>> {
+        Ok(self
+            .entries()?
+            .into_iter()
+            .map(|e| (e.name.clone(), e))
+            .collect())
+    }
+
     /// `_fleet_status`: iki dosyanın birleşimi (models sırasıyla; roster'da olmayan ad atlanır).
     pub fn fleet_status(&self) -> io::Result<IndexMap<String, Project>> {
         let models = first_rows(self.raw_rows(Tsv::Models)?);
@@ -317,7 +284,7 @@ impl<'a> Roster<'a> {
 
     /// İki TSV için TEK kilit (`<dizin>/roster.lock`; Python panel/CLI ile aynı). İç içe alma.
     pub fn lock(&self) -> io::Result<RosterGuard<'a>> {
-        let lock = FileLock::acquire(&self.docs.dir().join("roster"))?;
+        let lock = FileLock::roster(&self.path(Tsv::Roster))?;
         Ok(RosterGuard {
             roster: *self,
             _lock: lock,
@@ -354,7 +321,7 @@ impl<'a> Roster<'a> {
                 other: other.clone(),
             });
         }
-        let cwd = expand_user(py_strip(cwd));
+        let cwd = crate::paths::expanduser(py_strip(cwd));
         if cwd.is_empty() || !Path::new(&cwd).is_dir() {
             return Err(RegisterError::DirNotFound { cwd });
         }
@@ -453,6 +420,15 @@ impl RosterGuard<'_> {
             }
         })
     }
+}
+
+/// `web._blueprint_cwds`: blueprint adayı satırlar (tarihli/türev adlı eski instance satırları hariç) -> {ad: cwd}.
+pub fn blueprint_cwds(fleet: &IndexMap<String, Project>) -> IndexMap<String, String> {
+    fleet
+        .iter()
+        .filter(|(n, _)| crate::instances::derived_name(n).is_none())
+        .map(|(n, p)| (n.clone(), p.cwd.clone()))
+        .collect()
 }
 
 /// Roster'daki (yorumlu dahil) ve instance kaydındaki tüm adlar (`_all_known_names`in süreç taraması dışındaki kısmı).
