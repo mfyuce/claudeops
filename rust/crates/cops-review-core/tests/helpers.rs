@@ -21,14 +21,26 @@ fn num_tolerates_corrupt_values() {
 /// `test_review_duration_summary.DurationTest.test_run_seconds`
 #[test]
 fn run_seconds_cases() {
-    assert_eq!(store::run_seconds(&obj(r#"{"started_at": 100.0, "finished_at": 142.04}"#)), Some(42.0));
+    assert_eq!(
+        store::run_seconds(&obj(r#"{"started_at": 100.0, "finished_at": 142.04}"#)),
+        Some(42.0)
+    );
     assert_eq!(store::run_seconds(&obj(r#"{"finished_at": 5.0}"#)), None);
-    assert_eq!(store::run_seconds(&obj(r#"{"started_at": 10.0, "finished_at": 5.0}"#)), None);
-    assert_eq!(store::run_seconds(&obj(r#"{"started_at": "x", "finished_at": 5.0}"#)), None);
+    assert_eq!(
+        store::run_seconds(&obj(r#"{"started_at": 10.0, "finished_at": 5.0}"#)),
+        None
+    );
+    assert_eq!(
+        store::run_seconds(&obj(r#"{"started_at": "x", "finished_at": 5.0}"#)),
+        None
+    );
 }
 
 fn refs(md: &str) -> Vec<String> {
-    parse::parse_findings(md).into_iter().map(|f| f.r#ref).collect()
+    parse::parse_findings(md)
+        .into_iter()
+        .map(|f| f.r#ref)
+        .collect()
 }
 
 /// `test_review_fence_kinds.FenceKindTest.test_fence_step`: aç, başka türle kapanmaz, kendi türüyle kapanır, düz satır.
@@ -45,16 +57,28 @@ fn fence_closes_only_with_own_kind() {
 /// Aynı anahtarlı kayıtlar `records` (fid, state, created_at JSON'u) iken yeni bulgunun `dup_of`u.
 fn canonical_of(records: &[(&str, &str, Option<&str>)]) -> String {
     let d = tempfile::tempdir().unwrap();
-    let docs = Arc::new(StateDocs::isolated(StateDir::at(d.path()), Some(Backend::Files), ""));
+    let docs = Arc::new(StateDocs::isolated(
+        StateDir::at(d.path()),
+        Some(Backend::Files),
+        "",
+    ));
     let st = ReviewStore::new(docs, ReviewPaths::at(d.path()));
     let mut all = Map::new();
     for (fid, state, at) in records {
         let at = at.map_or(String::new(), |a| format!(r#", "created_at": {a}"#));
-        let rec = format!(r#"{{"project": "p", "where": "a:1", "title": "t", "review_file": "old", "state": "{state}"{at}}}"#);
+        let rec = format!(
+            r#"{{"project": "p", "where": "a:1", "title": "t", "review_file": "old", "state": "{state}"{at}}}"#
+        );
         all.insert((*fid).into(), Json::parse(&rec).unwrap());
     }
     st.save_findings(all).unwrap();
-    let new = Finding { r#ref: "R-1".into(), severity: "P3".into(), r#where: "a:2".into(), title: "t".into(), body: String::new() };
+    let new = Finding {
+        r#ref: "R-1".into(),
+        severity: "P3".into(),
+        r#where: "a:2".into(),
+        title: "t".into(),
+        body: String::new(),
+    };
     assert!(st.add_findings("p", "new", &[new]).unwrap().is_empty());
     let data = st.load_findings().unwrap();
     data.iter()
@@ -98,7 +122,10 @@ fn review_paths_layout_per_identity() {
     assert_eq!(p.review_pool, r.join("review_pool.json"));
     assert_eq!(p.review_history, r.join("review_history.json"));
     assert_eq!(p.findings, r.join("findings.json"));
-    assert_eq!(ReviewPaths::for_sid(d, "default").unwrap().findings, d.join("steward/findings.json"));
+    assert_eq!(
+        ReviewPaths::for_sid(d, "default").unwrap().findings,
+        d.join("steward/findings.json")
+    );
     for bad in ["", "..", "a/b", "A", "a1"] {
         assert!(ReviewPaths::for_sid(d, bad).is_err(), "{bad:?}");
     }
@@ -107,7 +134,11 @@ fn review_paths_layout_per_identity() {
 #[test]
 fn corrupt_store_refuses_write() {
     let d = tempfile::tempdir().unwrap();
-    let docs = Arc::new(StateDocs::isolated(StateDir::at(d.path()), Some(Backend::Files), ""));
+    let docs = Arc::new(StateDocs::isolated(
+        StateDir::at(d.path()),
+        Some(Backend::Files),
+        "",
+    ));
     let st = ReviewStore::new(docs, ReviewPaths::at(d.path()));
     std::fs::write(&st.paths.findings, b"{bozuk").unwrap();
     assert!(matches!(

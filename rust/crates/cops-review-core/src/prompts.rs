@@ -49,9 +49,17 @@ fn newline_terminated(s: &str) -> String {
 }
 
 impl LensRegistry {
-    pub fn register_lens(&mut self, name: &str, tr: &str, en: &str, format_tr: &str, format_en: &str) -> Result<()> {
+    pub fn register_lens(
+        &mut self,
+        name: &str,
+        tr: &str,
+        en: &str,
+        format_tr: &str,
+        format_en: &str,
+    ) -> Result<()> {
         // Python `$` sondaki tek satır sonunu da kabul eder.
-        static NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,23}\n?$").unwrap());
+        static NAME: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,23}\n?$").unwrap());
         if !NAME.is_match(name) {
             return Err(Error::Value(format!("invalid lens name: {name:?}")));
         }
@@ -76,9 +84,16 @@ impl LensRegistry {
     }
 
     /// Salt-okunur inceleme istemi; `lens` boşsa genel inceleme.
-    pub fn build_review_prompt(&self, proj: &str, cwd: &str, lang: &str, lens: &str) -> Result<String> {
-        static EN: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r"(?s)Find real defects:.*?before reporting it\.\n").unwrap());
+    pub fn build_review_prompt(
+        &self,
+        proj: &str,
+        cwd: &str,
+        lang: &str,
+        lens: &str,
+    ) -> Result<String> {
+        static EN: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(r"(?s)Find real defects:.*?before reporting it\.\n").unwrap()
+        });
         static TR: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"(?s)Gerçek kusurları bul:.*?raporlamadan önce kodda doğrula\.\n").unwrap()
         });

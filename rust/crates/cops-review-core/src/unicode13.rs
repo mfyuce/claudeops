@@ -155,7 +155,14 @@ mod tests {
     #[test]
     fn edges() {
         assert!(!unassigned('a') && !unassigned('\u{0}') && !unassigned('\u{10fffd}'));
-        for c in ['\u{378}', '\u{5c8}', '\u{897}', '\u{8ca}', '\u{a7f2}', '\u{10ffff}'] {
+        for c in [
+            '\u{378}',
+            '\u{5c8}',
+            '\u{897}',
+            '\u{8ca}',
+            '\u{a7f2}',
+            '\u{10ffff}',
+        ] {
             assert!(unassigned(c), "{c:?}");
         }
     }

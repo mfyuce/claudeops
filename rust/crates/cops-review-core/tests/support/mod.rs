@@ -1,6 +1,8 @@
 //! Parite sunucusu: Python kancasından gelen `{fn, ...argümanlar}` isteğini Rust karşılığına çevirir.
 use cops_review_core::prompts::LensRegistry;
-use cops_review_core::{agy, error, export, flow, limits, parse, paths, planner, py, redact, report, store, targets};
+use cops_review_core::{
+    agy, error, export, flow, limits, parse, paths, planner, py, redact, report, store, targets,
+};
 use cops_review_core::{Finding, ReviewConfig, ReviewPaths, ReviewStore, ReviewTarget, Verdict};
 use cops_state::{Backend, Json, Map, StateDir, StateDocs};
 use std::sync::Arc;
@@ -23,16 +25,23 @@ impl<'a> A<'a> {
         py::str_or_empty(self.0.get(k))
     }
     fn f(&self, k: &str) -> Result<f64, String> {
-        self.raw(k).as_f64().ok_or_else(|| format!("sayı değil: {k}"))
+        self.raw(k)
+            .as_f64()
+            .ok_or_else(|| format!("sayı değil: {k}"))
     }
     fn i(&self, k: &str) -> Result<i64, String> {
-        self.raw(k).as_i64().ok_or_else(|| format!("tam sayı değil: {k}"))
+        self.raw(k)
+            .as_i64()
+            .ok_or_else(|| format!("tam sayı değil: {k}"))
     }
     fn b(&self, k: &str) -> bool {
         self.raw(k).truthy()
     }
     fn map(&self, k: &str) -> Result<Map, String> {
-        self.raw(k).as_object().cloned().ok_or_else(|| format!("nesne değil: {k}"))
+        self.raw(k)
+            .as_object()
+            .cloned()
+            .ok_or_else(|| format!("nesne değil: {k}"))
     }
     fn list(&self, k: &str) -> &'a [Json] {
         self.raw(k).as_array().unwrap_or(&[])
@@ -41,10 +50,20 @@ impl<'a> A<'a> {
         self.list(k).iter().map(py::to_str).collect()
     }
     fn texts(&self) -> Vec<String> {
-        self.list("texts").iter().map(|t| py::str_or_empty(Some(t))).collect()
+        self.list("texts")
+            .iter()
+            .map(|t| py::str_or_empty(Some(t)))
+            .collect()
     }
     fn maps(&self, k: &str) -> Result<Vec<Map>, String> {
-        self.list(k).iter().map(|v| v.as_object().cloned().ok_or_else(|| "satır nesne değil".into())).collect()
+        self.list(k)
+            .iter()
+            .map(|v| {
+                v.as_object()
+                    .cloned()
+                    .ok_or_else(|| "satır nesne değil".into())
+            })
+            .collect()
     }
 }
 
@@ -55,14 +74,24 @@ fn refs(v: &[String]) -> Vec<&str> {
 fn target(v: &Json) -> Result<ReviewTarget, String> {
     let a = v.get("__t").and_then(Json::as_array).ok_or("hedef değil")?;
     let s = |i: usize| a.get(i).map(py::to_str).unwrap_or_default();
-    Ok(ReviewTarget { mode: s(0), model: s(1), slug: s(2), effort: s(3), lens: s(4) })
+    Ok(ReviewTarget {
+        mode: s(0),
+        model: s(1),
+        slug: s(2),
+        effort: s(3),
+        lens: s(4),
+    })
 }
 
 fn tj(t: &ReviewTarget) -> Json {
     let mut m = Map::new();
     m.insert(
         "__t".into(),
-        Json::Array([&t.mode, &t.model, &t.slug, &t.effort, &t.lens].map(|s| Json::Str(s.clone())).to_vec()),
+        Json::Array(
+            [&t.mode, &t.model, &t.slug, &t.effort, &t.lens]
+                .map(|s| Json::Str(s.clone()))
+                .to_vec(),
+        ),
     );
     Json::Object(m)
 }
@@ -118,7 +147,10 @@ fn usage_json(u: &limits::AgyUsage) -> Json {
     Json::Object(
         u.iter()
             .map(|(p, kinds)| {
-                let m: Map = kinds.iter().map(|(k, (a, t))| (k.clone(), arr([f(*a), f(*t)]))).collect();
+                let m: Map = kinds
+                    .iter()
+                    .map(|(k, (a, t))| (k.clone(), arr([f(*a), f(*t)])))
+                    .collect();
                 (p.clone(), Json::Object(m))
             })
             .collect(),
@@ -135,7 +167,11 @@ fn usage_from(v: &Json) -> limits::AgyUsage {
                         .map(|k| {
                             k.iter()
                                 .map(|(n, pair)| {
-                                    let at = |i: usize| pair.as_array().and_then(|a| a.get(i)).and_then(Json::as_f64);
+                                    let at = |i: usize| {
+                                        pair.as_array()
+                                            .and_then(|a| a.get(i))
+                                            .and_then(Json::as_f64)
+                                    };
                                     (n.clone(), (at(0).unwrap_or(0.0), at(1).unwrap_or(0.0)))
                                 })
                                 .collect()
@@ -152,7 +188,11 @@ fn findings_arg(a: &A) -> Result<Vec<Finding>, String> {
     a.maps("parsed")?
         .iter()
         .map(|m| {
-            let g = |k: &str| m.get(k).map(py::to_str).ok_or_else(|| format!("KeyError {k}"));
+            let g = |k: &str| {
+                m.get(k)
+                    .map(py::to_str)
+                    .ok_or_else(|| format!("KeyError {k}"))
+            };
             Ok(Finding {
                 r#ref: g("ref")?,
                 severity: g("severity")?,
@@ -167,7 +207,11 @@ fn findings_arg(a: &A) -> Result<Vec<Finding>, String> {
 /// Depo işlevleri: `root` Python tarafının dosyaları kopyaladığı dizin.
 fn store_for(a: &A) -> ReviewStore {
     let root = a.s("root");
-    let docs = Arc::new(StateDocs::isolated(StateDir::at(&root), Some(Backend::Files), ""));
+    let docs = Arc::new(StateDocs::isolated(
+        StateDir::at(&root),
+        Some(Backend::Files),
+        "",
+    ));
     let mut p = ReviewPaths::at(&root);
     p.reviews = a.s("reviews").into();
     ReviewStore::new(docs, p)
@@ -185,7 +229,10 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         "counts_as_attempt" => b(targets::counts_as_attempt(Some(a.raw("rec")))),
         "max_attempts" => i(targets::max_attempts(&a.s("mode"))),
         "parse_slots" => Json::Object(
-            targets::parse_slots(&a.s("spec")).into_iter().map(|(m, n)| (m.to_string(), i(n as i64))).collect(),
+            targets::parse_slots(&a.s("spec"))
+                .into_iter()
+                .map(|(m, n)| (m.to_string(), i(n as i64)))
+                .collect(),
         ),
         "slug_model" => s(targets::slug_model(&a.s("model"))),
         "split_spec" => {
@@ -193,13 +240,22 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
             arr([s(m), s(e)])
         }
         "excluded_keys" => {
-            let mut k: Vec<String> = targets::excluded_keys(&config(a.raw("cfg"))).into_iter().collect();
+            let mut k: Vec<String> = targets::excluded_keys(&config(a.raw("cfg")))
+                .into_iter()
+                .collect();
             k.sort();
             strs(k)
         }
-        "toggle_excluded" => s(targets::toggle_excluded(&a.s("text"), &a.s("key"), a.b("exclude"))),
+        "toggle_excluded" => s(targets::toggle_excluded(
+            &a.s("text"),
+            &a.s("key"),
+            a.b("exclude"),
+        )),
         "claude_catalog" => Json::Object(targets::claude_catalog_from(Some(a.raw("state")))),
-        "claude_specs" => strs(targets::claude_specs(&config(a.raw("cfg")), &a.map("catalog")?)),
+        "claude_specs" => strs(targets::claude_specs(
+            &config(a.raw("cfg")),
+            &a.map("catalog")?,
+        )),
         "claude_is_subscription" => b(targets::claude_is_subscription(&config(a.raw("cfg")))),
         "targets_from_config" => arr(targets::targets_from_config(
             &config(a.raw("cfg")),
@@ -240,11 +296,19 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
             let opts = planner::PlanOpts {
                 busy_projects: &busy,
                 window: a.f("window")?,
-                head_of: heads.is_some().then_some(&head_of as &dyn Fn(&str) -> String),
+                head_of: heads
+                    .is_some()
+                    .then_some(&head_of as &dyn Fn(&str) -> String),
                 skip_pairs: &skip,
             };
-            match planner::next_review(a.raw("pool"), a.raw("history"), &targets_arg(&a, "targets")?, a.f("now")?, &opts)
-                .map_err(e)?
+            match planner::next_review(
+                a.raw("pool"),
+                a.raw("history"),
+                &targets_arg(&a, "targets")?,
+                a.f("now")?,
+                &opts,
+            )
+            .map_err(e)?
             {
                 Some((p, t)) => arr([s(p), tj(&t)]),
                 None => Json::Null,
@@ -253,7 +317,11 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         "open_review_lines" => i(planner::open_review_lines(&a.s("text")) as i64),
         "backlogged_projects" => {
             let counts = a.map("counts")?;
-            strs(planner::backlogged_projects(a.raw("pool"), |p| counts.get(p).and_then(Json::as_i64), a.i("limit")?))
+            strs(planner::backlogged_projects(
+                a.raw("pool"),
+                |p| counts.get(p).and_then(Json::as_i64),
+                a.i("limit")?,
+            ))
         }
         "pool_sync" => {
             let (p, c) = planner::pool_sync(a.raw("pool"), &a.strs("owner_names"), a.f("now")?);
@@ -261,7 +329,13 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         }
         "register_lens" => {
             lenses
-                .register_lens(&a.s("name"), &a.s("tr"), &a.s("en"), &a.s("format_tr"), &a.s("format_en"))
+                .register_lens(
+                    &a.s("name"),
+                    &a.s("tr"),
+                    &a.s("en"),
+                    &a.s("format_tr"),
+                    &a.s("format_en"),
+                )
                 .map_err(e)?;
             Json::Null
         }
@@ -275,10 +349,16 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
             .map_err(e)?),
         "parse_findings" => arr(parse::parse_findings(&a.s("md")).into_iter().map(|x| {
             Json::Object(
-                [("ref", x.r#ref), ("severity", x.severity), ("where", x.r#where), ("title", x.title), ("body", x.body)]
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), s(v)))
-                    .collect(),
+                [
+                    ("ref", x.r#ref),
+                    ("severity", x.severity),
+                    ("where", x.r#where),
+                    ("title", x.title),
+                    ("body", x.body),
+                ]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), s(v)))
+                .collect(),
             )
         })),
         "dsn_passwords" => strs(redact::dsn_passwords(&a.s("text"))),
@@ -294,7 +374,11 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
                 Json::Null => None,
                 v => Some(target(v)?),
             };
-            s(paths::effort_for(&config(a.raw("cfg")), &a.s("mode"), tg.as_ref()))
+            s(paths::effort_for(
+                &config(a.raw("cfg")),
+                &a.s("mode"),
+                tg.as_ref(),
+            ))
         }
         "review_path" => s(paths::review_path(
             &a.s("root"),
@@ -313,9 +397,16 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         "draft_prompt_suffix" => s(paths::draft_prompt_suffix(&a.s("draft"), &a.s("lang"))),
         "is_daily_limit" => b(limits::is_daily_limit(&tx)),
         "next_utc_midnight" => f(limits::next_utc_midnight(a.f("now")?)),
-        "next_utc_month_start" => f(limits::next_utc_month_start(a.f("now")?).ok_or("aralık dışı")?),
+        "next_utc_month_start" => {
+            f(limits::next_utc_month_start(a.f("now")?).ok_or("aralık dışı")?)
+        }
         "block_until_for_limit" => f(limits::block_until_for_limit(a.f("now")?, &tx)),
-        "limit_scan_texts" => strs(limits::limit_scan_texts(&a.s("out"), &a.s("err"), &a.s("jerr"), a.b("err_has_model_text"))),
+        "limit_scan_texts" => strs(limits::limit_scan_texts(
+            &a.s("out"),
+            &a.s("err"),
+            &a.s("jerr"),
+            a.b("err_has_model_text"),
+        )),
         "is_short_banner" => b(limits::is_short_banner(&a.s("text"))),
         "is_quota_exhausted" => b(limits::is_quota_exhausted(&tx)),
         "is_usage_limit" => b(limits::is_usage_limit(&tx)),
@@ -323,7 +414,11 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         "reset_seconds" => opt(limits::reset_seconds(&tx)),
         "quota_block_until" => f(limits::quota_block_until(a.f("now")?, &tx)),
         "parse_copilot_entries" => {
-            match limits::parse_copilot_entries(a.raw("entries"), a.f("now")?, a.raw("base").as_f64()) {
+            match limits::parse_copilot_entries(
+                a.raw("entries"),
+                a.f("now")?,
+                a.raw("base").as_f64(),
+            ) {
                 Some((p, r, d)) => arr([f(p), f(r), s(d)]),
                 None => Json::Null,
             }
@@ -331,23 +426,42 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         "reconcile_copilot_blocks" => {
             let mut hist = a.map("hist")?;
             let info = a.raw("info").as_array().filter(|x| x.len() == 3).map(|x| {
-                (x[0].as_f64().unwrap_or(0.0), x[1].as_f64().unwrap_or(0.0), py::to_str(&x[2]))
+                (
+                    x[0].as_f64().unwrap_or(0.0),
+                    x[1].as_f64().unwrap_or(0.0),
+                    py::to_str(&x[2]),
+                )
             });
-            let c = limits::reconcile_copilot_blocks(&mut hist, info.as_ref(), a.f("stop_pct")?, a.f("now")?).map_err(e)?;
+            let c = limits::reconcile_copilot_blocks(
+                &mut hist,
+                info.as_ref(),
+                a.f("stop_pct")?,
+                a.f("now")?,
+            )
+            .map_err(e)?;
             arr([strs(c), Json::Object(hist)])
         }
         "parse_agy_usage" => usage_json(&limits::parse_agy_usage(&a.s("text"))),
         "parse_agy_entries" => usage_json(&limits::parse_agy_entries(a.raw("entries"))),
         "agy_pool_blocked_until" => {
-            match limits::agy_pool_blocked_until(&usage_from(a.raw("usage")), &a.s("pool"), a.f("now")?) {
+            match limits::agy_pool_blocked_until(
+                &usage_from(a.raw("usage")),
+                &a.s("pool"),
+                a.f("now")?,
+            ) {
                 None => f(-1.0),
                 Some(u) => opt(u),
             }
         }
         "reconcile_agy_blocks" => {
             let mut hist = a.map("hist")?;
-            let c = limits::reconcile_agy_blocks(&mut hist, &usage_from(a.raw("usage")), &a.strs("target_keys"), a.f("now")?)
-                .map_err(e)?;
+            let c = limits::reconcile_agy_blocks(
+                &mut hist,
+                &usage_from(a.raw("usage")),
+                &a.strs("target_keys"),
+                a.f("now")?,
+            )
+            .map_err(e)?;
             arr([strs(c), Json::Object(hist)])
         }
         "blocked_modes" => strs(limits::blocked_modes(a.raw("history"), a.f("now")?).map_err(e)?),
@@ -356,8 +470,14 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
             let n = store::migrate_r10_sub(&mut hist).map_err(e)?;
             arr([i(n as i64), Json::Object(hist)])
         }
-        "finding_key" => s(store::finding_key(&py::to_str(a.raw("proj")), &a.s("where"), &a.s("title"))),
-        "scan_verdicts" => arr(parse::scan_verdicts(&a.s("text")).into_iter().map(|v| strs([v.fid, v.verdict, v.reason]))),
+        "finding_key" => s(store::finding_key(
+            &py::to_str(a.raw("proj")),
+            &a.s("where"),
+            &a.s("title"),
+        )),
+        "scan_verdicts" => arr(parse::scan_verdicts(&a.s("text"))
+            .into_iter()
+            .map(|v| strs([v.fid, v.verdict, v.reason]))),
         "text_hash" => s(flow::text_hash(&a.s("text"))),
         "reviewer_slug_of" => s(flow::reviewer_slug_of(&a.s("review_file"))),
         "apply_verdicts" => {
@@ -366,8 +486,17 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
                 .list("verdicts")
                 .iter()
                 .map(|v| {
-                    let at = |i: usize| v.as_array().and_then(|x| x.get(i)).map(py::to_str).unwrap_or_default();
-                    Verdict { fid: at(0), verdict: at(1), reason: at(2) }
+                    let at = |i: usize| {
+                        v.as_array()
+                            .and_then(|x| x.get(i))
+                            .map(py::to_str)
+                            .unwrap_or_default()
+                    };
+                    Verdict {
+                        fid: at(0),
+                        verdict: at(1),
+                        reason: at(2),
+                    }
                 })
                 .collect();
             let r = flow::apply_verdicts(
@@ -412,13 +541,22 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
                     candidate: py::truthy(m.get("candidate")),
                 })
                 .collect();
-            s(report::health_digest(&rows, &a.strs("excluded"), a.f("days")?, &a.s("lang")))
+            s(report::health_digest(
+                &rows,
+                &a.strs("excluded"),
+                a.f("days")?,
+                &a.s("lang"),
+            ))
         }
         "duration_summary" => arr(report::duration_summary(a.raw("history"), &a.s("project"))
             .iter()
             .map(report::DurationRow::to_json)),
-        "build_verify_message" => s(flow::build_verify_message(&a.maps("rows")?, &a.s("lang")).map_err(e)?),
-        "build_self_verify_prompt" => s(flow::build_self_verify_prompt(&a.maps("rows")?, &a.s("lang")).map_err(e)?),
+        "build_verify_message" => {
+            s(flow::build_verify_message(&a.maps("rows")?, &a.s("lang")).map_err(e)?)
+        }
+        "build_self_verify_prompt" => {
+            s(flow::build_self_verify_prompt(&a.maps("rows")?, &a.s("lang")).map_err(e)?)
+        }
         "is_decision" => b(export::is_decision(&a.map("row")?)),
         "where_text" => s(export::where_text(&a.map("row")?)),
         "where_relpath" => s(export::where_relpath(&a.map("row")?)),
@@ -439,20 +577,36 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         }
         "export_root" => {
             let res = a.map("resolved")?;
-            s(export::export_root(&a.map("row")?, &a.s("project"), &a.s("cwd"), |p| py::str_or_empty(res.get(p)))
-                .map_err(e)?)
+            s(
+                export::export_root(&a.map("row")?, &a.s("project"), &a.s("cwd"), |p| {
+                    py::str_or_empty(res.get(p))
+                })
+                .map_err(e)?,
+            )
         }
-        "export_lines" => strs(export::export_lines(&a.maps("rows")?, &a.s("reviews_root")).map_err(e)?),
+        "export_lines" => {
+            strs(export::export_lines(&a.maps("rows")?, &a.s("reviews_root")).map_err(e)?)
+        }
         "appended_export" => {
-            let (new, ids) = export::appended_export(&a.s("text"), &a.maps("rows")?, &a.s("reviews_root"), &a.s("stamp"))
-                .map_err(e)?;
+            let (new, ids) = export::appended_export(
+                &a.s("text"),
+                &a.maps("rows")?,
+                &a.s("reviews_root"),
+                &a.s("stamp"),
+            )
+            .map_err(e)?;
             arr([new.map_or(Json::Null, s), strs(ids)])
         }
         "report_incomplete" => b(report::report_incomplete(&a.s("text"))),
         "report_bodyless" => b(report::report_bodyless(&a.s("text"))),
         "anthropic_price" => arr(report::anthropic_price(&a.s("model")).map(f)),
-        "usage_cost_usd" => f(report::usage_cost_usd(&a.s("path"), &a.s("model"), a.f("since_ms")?, a.f("write_mult")?)
-            .map_err(e)?),
+        "usage_cost_usd" => f(report::usage_cost_usd(
+            &a.s("path"),
+            &a.s("model"),
+            a.f("since_ms")?,
+            a.f("write_mult")?,
+        )
+        .map_err(e)?),
         "anthropic_spent_usd" => f(report::anthropic_spent_usd(&a.s("reviews_root")).map_err(e)?),
         "collapse_ws" => s(py::collapse_ws(&a.s("text"))),
         // ── depolar ──
@@ -467,11 +621,15 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
             Json::Null
         }
         "set_block" => {
-            store_for(&a).set_block(&a.s("key"), a.f("until")?, &a.s("reason")).map_err(e)?;
+            store_for(&a)
+                .set_block(&a.s("key"), a.f("until")?, &a.s("reason"))
+                .map_err(e)?;
             Json::Null
         }
         "update_pair" => Json::Object(
-            store_for(&a).update_pair(&a.s("proj"), &t("t")?, a.map("fields")?).map_err(e)?,
+            store_for(&a)
+                .update_pair(&a.s("proj"), &t("t")?, a.map("fields")?)
+                .map_err(e)?,
         ),
         "load_findings" => Json::Object(store_for(&a).load_findings().map_err(e)?),
         "save_findings" => {
@@ -485,7 +643,12 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
         ),
         "mark_verify_sent" => strs(
             store_for(&a)
-                .mark_verify_sent(&a.strs("fids"), &a.s("session"), &a.s("baseline"), a.f("now")?)
+                .mark_verify_sent(
+                    &a.strs("fids"),
+                    &a.s("session"),
+                    &a.s("baseline"),
+                    a.f("now")?,
+                )
                 .map_err(e)?,
         ),
         "decide_finding" => store_for(&a)

@@ -59,7 +59,11 @@ impl ReviewPaths {
             return Err(Error::Value(format!("invalid steward id: {sid:?}")));
         }
         let base = state_dir.join("steward");
-        Ok(ReviewPaths::at(if sid == "default" { base } else { base.join("stewards").join(sid) }))
+        Ok(ReviewPaths::at(if sid == "default" {
+            base
+        } else {
+            base.join("stewards").join(sid)
+        }))
     }
 }
 
@@ -74,7 +78,13 @@ pub fn steward_lock(path: &Path, timeout: Duration) -> Result<StewardLock> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }
-    let f = OpenOptions::new().read(true).write(true).create(true).truncate(false).mode(0o600).open(path)?;
+    let f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(path)?;
     let deadline = Instant::now() + timeout;
     loop {
         // SAFETY: açık ve bu işlev boyunca yaşayan bir tanıtıcı.
@@ -85,7 +95,11 @@ pub fn steward_lock(path: &Path, timeout: Duration) -> Result<StewardLock> {
         match e.kind() {
             std::io::ErrorKind::WouldBlock => {
                 if Instant::now() >= deadline {
-                    return Err(Error::LockTimeout(format!("{} within {}s", path.display(), timeout.as_secs_f64())));
+                    return Err(Error::LockTimeout(format!(
+                        "{} within {}s",
+                        path.display(),
+                        timeout.as_secs_f64()
+                    )));
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
@@ -114,11 +128,15 @@ fn corrupt_backup(path: &Path) {
 
 /// `<yol>.corrupt-*` içinde aynı boyut ve değiştirilme zamanlı kopya var mı.
 fn backed_up(path: &Path) -> bool {
-    let (Ok(st), Some(dir), Some(name)) = (std::fs::metadata(path), path.parent(), path.file_name()) else {
+    let (Ok(st), Some(dir), Some(name)) =
+        (std::fs::metadata(path), path.parent(), path.file_name())
+    else {
         return false;
     };
     let prefix = format!("{}.corrupt-", name.to_string_lossy());
-    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return false;
+    };
     rd.flatten()
         .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
         .filter_map(|e| e.metadata().ok())
@@ -128,7 +146,10 @@ fn backed_up(path: &Path) -> bool {
 /// Depo biçimi denetimi: anahtar varsa bu türde olmalı.
 type Shape = &'static [(&'static str, fn(&Json) -> bool)];
 const POOL_SHAPE: Shape = &[("projects", |v| v.as_object().is_some())];
-const HISTORY_SHAPE: Shape = &[("pairs", |v| v.as_object().is_some()), ("runs", |v| v.as_array().is_some())];
+const HISTORY_SHAPE: Shape = &[
+    ("pairs", |v| v.as_object().is_some()),
+    ("runs", |v| v.as_array().is_some()),
+];
 
 pub struct ReviewStore {
     docs: Arc<StateDocs>,
@@ -140,7 +161,12 @@ pub struct ReviewStore {
 
 impl ReviewStore {
     pub fn new(docs: Arc<StateDocs>, paths: ReviewPaths) -> ReviewStore {
-        ReviewStore { docs, paths, lock_timeout: LOCK_TIMEOUT, lossy: Mutex::default() }
+        ReviewStore {
+            docs,
+            paths,
+            lock_timeout: LOCK_TIMEOUT,
+            lossy: Mutex::default(),
+        }
     }
 
     pub fn lock(&self) -> Result<StewardLock> {
@@ -192,15 +218,26 @@ impl ReviewStore {
 
     /// `sw._save_json` (0600).
     fn save_json(&self, path: &Path, obj: &Json, shape: Shape) -> Result<()> {
-        if self.lossy.lock().unwrap_or_else(PoisonError::into_inner).contains(path) {
-            return Err(Error::Value(format!("{}: eşlenmemiş vekil, geri yazılmaz", path.display())));
+        if self
+            .lossy
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(path)
+        {
+            return Err(Error::Value(format!(
+                "{}: eşlenmemiş vekil, geri yazılmaz",
+                path.display()
+            )));
         }
         self.refuse_corrupt(path, shape)?;
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
         let name = self.docs.name_for(path);
-        self.docs.write(&name, path, obj, Some(0o600)).map(|_| ()).map_err(|e| Error::State(e.to_string()))
+        self.docs
+            .write(&name, path, obj, Some(0o600))
+            .map(|_| ())
+            .map_err(|e| Error::State(e.to_string()))
     }
 
     /// `_refuse_corrupt`: yazmadan ÖNCE mevcut içerik; yoksa ya da sağlamsa sessiz, bozuksa [`Error::StoreCorrupt`].
@@ -209,7 +246,11 @@ impl ReviewStore {
             Err(Error::Value(_)) => true, // UTF-8 olmayan dosya
             Err(e) => return Err(e),
             Ok(None) => std::fs::symlink_metadata(path).is_ok(),
-            Ok(Some(v)) => v.as_object().is_none_or(|m| shape.iter().any(|(k, ok)| m.get(*k).is_some_and(|x| !ok(x)))),
+            Ok(Some(v)) => v.as_object().is_none_or(|m| {
+                shape
+                    .iter()
+                    .any(|(k, ok)| m.get(*k).is_some_and(|x| !ok(x)))
+            }),
         };
         if bad {
             let p = path.display().to_string();
@@ -249,7 +290,9 @@ impl ReviewStore {
         let mut h = hist.clone();
         let runs = match h.get("runs") {
             Some(Json::Array(a)) => a[a.len().saturating_sub(HISTORY_RUNS_MAX)..].to_vec(),
-            Some(v) if v.truthy() => return Err(Error::Value("history[\"runs\"] liste değil".into())),
+            Some(v) if v.truthy() => {
+                return Err(Error::Value("history[\"runs\"] liste değil".into()))
+            }
             _ => Vec::new(),
         };
         h.insert("runs".into(), Json::Array(runs));
@@ -273,7 +316,10 @@ impl ReviewStore {
         let status = fields.get("status").filter(|v| **v != Json::Null);
         if let Some(s) = status {
             if !py::str_in(Some(s), &PAIR_STATUSES) {
-                return Err(Error::Value(format!("invalid pair status: {}", py::repr(s))));
+                return Err(Error::Value(format!(
+                    "invalid pair status: {}",
+                    py::repr(s)
+                )));
             }
         }
         let _g = self.lock()?;
@@ -293,10 +339,18 @@ impl ReviewStore {
         };
         if py::is_str(fields.get("status"), "running") && !fields.contains_key("attempts") {
             let started = py::num(fields.get("started_at"));
-            let started = if started != 0.0 { started } else { clock::now() };
+            let started = if started != 0.0 {
+                started
+            } else {
+                clock::now()
+            };
             let stale = py::is_str(rec.get("status"), "done")
                 || started - py::num(rec.get("started_at")) >= WINDOW_SECONDS as f64;
-            let prev = if stale { 0 } else { py::num(rec.get("attempts")).trunc() as i64 };
+            let prev = if stale {
+                0
+            } else {
+                py::num(rec.get("attempts")).trunc() as i64
+            };
             fields.insert("attempts".into(), Json::Int(prev.saturating_add(1)));
         }
         let finished = py::str_in(fields.get("status"), &FINISHED);
@@ -312,7 +366,10 @@ impl ReviewStore {
             run.insert("at".into(), get("finished_at"));
             run.insert("file".into(), get("file"));
             run.insert("io_file".into(), get("io_file"));
-            run.insert("seconds".into(), run_seconds(&rec).map_or(Json::Null, Json::Float));
+            run.insert(
+                "seconds".into(),
+                run_seconds(&rec).map_or(Json::Null, Json::Float),
+            );
             match hist.get_mut("runs") {
                 Some(Json::Array(a)) => a.push(Json::Object(run)),
                 _ => return Err(Error::Value("history[\"runs\"] liste değil".into())),
@@ -334,7 +391,12 @@ impl ReviewStore {
     }
 
     /// Ayrıştırılmış bulguları `state=new` (ya da yinelenense `dup`) ekler; eklenen yeni fid'ler döner.
-    pub fn add_findings(&self, proj: &str, review_file: &str, parsed: &[Finding]) -> Result<Vec<String>> {
+    pub fn add_findings(
+        &self,
+        proj: &str,
+        review_file: &str,
+        parsed: &[Finding],
+    ) -> Result<Vec<String>> {
         self.add_findings_at(proj, review_file, parsed, clock::now)
     }
 
@@ -374,7 +436,11 @@ impl ReviewStore {
                     &py::str_or_empty(o.get("title")),
                 ),
             };
-            let better = match by_key.get(&okey).and_then(|f| data.get(f)).and_then(Json::as_object) {
+            let better = match by_key
+                .get(&okey)
+                .and_then(|f| data.get(f))
+                .and_then(Json::as_object)
+            {
                 Some(cur) => canon_rank(o) < canon_rank(cur),
                 None => true,
             };
@@ -386,7 +452,9 @@ impl ReviewStore {
         for f in parsed {
             let mut fid = format!("{}:{base}:{}", slug_model(proj), f.r#ref);
             if let Some(old) = data.get(&fid) {
-                let old = old.as_object().ok_or_else(|| Error::Value(format!("bulgu kaydı nesne değil: {fid}")))?;
+                let old = old
+                    .as_object()
+                    .ok_or_else(|| Error::Value(format!("bulgu kaydı nesne değil: {fid}")))?;
                 if py::is_str(old.get("review_file"), review_file) {
                     continue;
                 }
@@ -418,8 +486,16 @@ impl ReviewStore {
                 rec.insert("dup_of".into(), canon_id.as_str().into());
                 if let Some(canon) = data.get_mut(canon_id).and_then(Json::as_object_mut) {
                     let cur = canon.get("severity");
-                    let cur = if py::truthy(cur) { py::str_or_empty(cur) } else { "P9".into() };
-                    if py::str_in(canon.get("state"), &["new", "verify_sent", "unclear", "verified"]) && f.severity < cur {
+                    let cur = if py::truthy(cur) {
+                        py::str_or_empty(cur)
+                    } else {
+                        "P9".into()
+                    };
+                    if py::str_in(
+                        canon.get("state"),
+                        &["new", "verify_sent", "unclear", "verified"],
+                    ) && f.severity < cur
+                    {
                         canon.insert("severity".into(), f.severity.as_str().into());
                     }
                 }
@@ -436,12 +512,20 @@ impl ReviewStore {
     }
 
     /// Doğrulama direktifi gittikten sonra bulguları `verify_sent` yapar.
-    pub fn mark_verify_sent(&self, fids: &[String], session: &str, baseline: &str, now: f64) -> Result<Vec<String>> {
+    pub fn mark_verify_sent(
+        &self,
+        fids: &[String],
+        session: &str,
+        baseline: &str,
+        now: f64,
+    ) -> Result<Vec<String>> {
         let mut done = Vec::new();
         let _g = self.lock()?;
         let mut data = self.load_findings()?;
         for fid in fids {
-            let Some(rec) = data.get_mut(fid).and_then(Json::as_object_mut) else { continue };
+            let Some(rec) = data.get_mut(fid).and_then(Json::as_object_mut) else {
+                continue;
+            };
             if py::str_in(rec.get("state"), &VERIFIABLE_STATES) {
                 rec.insert("state".into(), "verify_sent".into());
                 rec.insert("verify_sent_at".into(), Json::Float(now));
@@ -486,7 +570,10 @@ impl ReviewStore {
         let target = if action == "undup" {
             if !py::is_str(Some(&st), "dup") {
                 return fail(
-                    format!("cannot undup a finding in state {} (allowed: dup)", py::repr(&st)),
+                    format!(
+                        "cannot undup a finding in state {} (allowed: dup)",
+                        py::repr(&st)
+                    ),
                     Some(st),
                 );
             }
@@ -544,12 +631,18 @@ pub fn migrate_r10_sub(hist: &mut Map) -> Result<usize> {
     let mut moved = 0;
     let keys: Vec<String> = pairs.keys().cloned().collect();
     for k in keys {
-        let Some((proj, rest)) = k.split_once('|') else { continue };
+        let Some((proj, rest)) = k.split_once('|') else {
+            continue;
+        };
         if !rest.starts_with("claude/") {
             continue;
         }
-        let Some(rec) = pairs.get(&k).and_then(Json::as_object) else { continue };
-        let Some(started) = badrec::field(rec, "started_at", "pairs", &k) else { continue };
+        let Some(rec) = pairs.get(&k).and_then(Json::as_object) else {
+            continue;
+        };
+        let Some(started) = badrec::field(rec, "started_at", "pairs", &k) else {
+            continue;
+        };
         if started < R10_SUB_SINCE {
             continue;
         }
@@ -575,7 +668,10 @@ pub fn migrate_r10_sub(hist: &mut Map) -> Result<usize> {
 
 /// Koşunun duvar süresi (sn, 1 basamak); tutarsızsa `None`.
 pub fn run_seconds(rec: &Map) -> Option<f64> {
-    let (a, b) = (py::num(rec.get("started_at")), py::num(rec.get("finished_at")));
+    let (a, b) = (
+        py::num(rec.get("started_at")),
+        py::num(rec.get("finished_at")),
+    );
     (a > 0.0 && b >= a).then(|| round_to(b - a, 1))
 }
 
@@ -614,7 +710,10 @@ pub fn finding_key(proj: &str, r#where: &str, title: &str) -> String {
     let trimmed = w.trim_matches('`');
     let cut = trimmed.split([':', '#']).next().unwrap_or("");
     let fil = py::strip(cut).trim_matches('`');
-    let fil = fil.strip_prefix("./").or_else(|| fil.strip_prefix("file://")).unwrap_or(fil);
+    let fil = fil
+        .strip_prefix("./")
+        .or_else(|| fil.strip_prefix("file://"))
+        .unwrap_or(fil);
     let folded = fold(title);
     let ttl = NON.replace_all(&folded, " ");
     let ttl = py::strip(&ttl);

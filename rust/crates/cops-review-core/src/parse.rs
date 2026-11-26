@@ -49,7 +49,8 @@ pub fn parse_findings(md: &str) -> Vec<Finding> {
         ))
         .unwrap()
     });
-    static UPPER: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"^#{{1,2}}[{S}]")).unwrap());
+    static UPPER: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(&format!(r"^#{{1,2}}[{S}]")).unwrap());
     let mut out: Vec<(Finding, Vec<&str>)> = Vec::new();
     let mut open = false; // `cur is not None` (her zaman son eleman)
     let mut fmark = "";

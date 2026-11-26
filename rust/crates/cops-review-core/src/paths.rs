@@ -31,7 +31,14 @@ fn is_stamp(s: &str) -> bool {
 }
 
 /// `ts`: epoch (yerel saat) ya da hazır 14 haneli dize.
-pub fn review_path(root: &str, proj: &str, t: &ReviewTarget, ts: &Json, effort: &str, lens: &str) -> Result<String> {
+pub fn review_path(
+    root: &str,
+    proj: &str,
+    t: &ReviewTarget,
+    ts: &Json,
+    effort: &str,
+    lens: &str,
+) -> Result<String> {
     let stamp = match ts {
         Json::Str(s) if is_stamp(s) => s.clone(),
         v => py::float(v)
@@ -79,7 +86,9 @@ static FINDING_FILE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.f(\d{2})\
 pub fn finding_paths(md: &str) -> Vec<String> {
     let stem = format!("{}.", py::basename(stem(md)));
     let d = py::dirname(md);
-    let Ok(rd) = std::fs::read_dir(d) else { return Vec::new() };
+    let Ok(rd) = std::fs::read_dir(d) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for e in rd {
         let Ok(e) = e else { return Vec::new() };

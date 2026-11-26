@@ -17,7 +17,9 @@ pub const HEALTH_MAX_RATE: f64 = 0.25;
 pub(crate) fn walk(root: &str, visit: &mut dyn FnMut(&str, &[String]) -> Result<()>) -> Result<()> {
     let mut stack = vec![root.to_string()];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         let (mut files, mut dirs) = (Vec::new(), Vec::new());
         for e in rd {
             let Ok(e) = e else { break };
@@ -39,7 +41,8 @@ pub(crate) fn walk(root: &str, visit: &mut dyn FnMut(&str, &[String]) -> Result<
 
 /// Metin kipi satırları (`\n`, `\r\n`, `\r`).
 fn text_lines(s: &str) -> impl Iterator<Item = &str> {
-    s.split('\n').flat_map(|l| l.strip_suffix('\r').unwrap_or(l).split('\r'))
+    s.split('\n')
+        .flat_map(|l| l.strip_suffix('\r').unwrap_or(l).split('\r'))
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -98,19 +101,29 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
                 continue;
             }
             let i = *index.entry((proj.clone(), tgt.clone())).or_insert_with(|| {
-                rows.push(UsageRow { project: proj, target: tgt, ..Default::default() });
+                rows.push(UsageRow {
+                    project: proj,
+                    target: tgt,
+                    ..Default::default()
+                });
                 rows.len() - 1
             });
             let a = &mut rows[i];
-            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
             a.runs += 1;
             for line in text_lines(&String::from_utf8_lossy(&bytes)) {
-                let Ok(Json::Object(e)) = Json::parse(line) else { continue };
+                let Ok(Json::Object(e)) = Json::parse(line) else {
+                    continue;
+                };
                 if !py::is_str(e.get("event"), "request") {
                     continue;
                 }
                 let usage = e.get("usage").and_then(Json::as_object);
-                let Some(sec) = badrec::field(&e, "seconds", "usage.record", &path) else { continue };
+                let Some(sec) = badrec::field(&e, "seconds", "usage.record", &path) else {
+                    continue;
+                };
                 let non_finite = |v: &Json| matches!(v, Json::Float(f) if !f.is_finite());
                 if usage.is_some_and(|u| u.values().any(non_finite)) {
                     badrec::log_bad("usage.record", &path);
@@ -140,9 +153,18 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
         }
         Ok(())
     })?;
-    let weight = |r: &UsageRow| if r.prompt_tokens != 0 { r.prompt_tokens } else { r.total_tokens };
+    let weight = |r: &UsageRow| {
+        if r.prompt_tokens != 0 {
+            r.prompt_tokens
+        } else {
+            r.total_tokens
+        }
+    };
     rows.sort_by(|a, b| {
-        weight(b).cmp(&weight(a)).then_with(|| a.project.cmp(&b.project)).then_with(|| a.target.cmp(&b.target))
+        weight(b)
+            .cmp(&weight(a))
+            .then_with(|| a.project.cmp(&b.project))
+            .then_with(|| a.target.cmp(&b.target))
     });
     Ok(rows)
 }
@@ -172,27 +194,47 @@ impl HealthRow {
 
 /// `runs` kayıtlarından `|` içeren çift anahtarı olanlar: (kayıt, proje, hedef).
 fn run_records(history: &Json) -> impl Iterator<Item = (&Map, String, String)> {
-    history.get("runs").and_then(Json::as_array).unwrap_or(&[]).iter().filter_map(|r| {
-        let r = r.as_object()?;
-        let pair = py::str_or_empty(r.get("pair"));
-        let (p, t) = pair.split_once('|')?;
-        Some((r, p.to_string(), t.to_string()))
-    })
+    history
+        .get("runs")
+        .and_then(Json::as_array)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|r| {
+            let r = r.as_object()?;
+            let pair = py::str_or_empty(r.get("pair"));
+            let (p, t) = pair.split_once('|')?;
+            Some((r, p.to_string(), t.to_string()))
+        })
 }
 
 /// Son `days` günde (mod/model) başına başarı oranı; en kötü oran önce.
-pub fn model_health(history: &Json, now: f64, days: f64, min_runs: i64, max_rate: f64) -> Vec<HealthRow> {
+pub fn model_health(
+    history: &Json,
+    now: f64,
+    days: f64,
+    min_runs: i64,
+    max_rate: f64,
+) -> Vec<HealthRow> {
     let cutoff = now - days * 86400.0;
     let mut agg: Vec<HealthRow> = Vec::new();
     for (r, _, target) in run_records(history) {
-        let status = r.get("status").map_or_else(|| "None".to_string(), py::to_str);
+        let status = r
+            .get("status")
+            .map_or_else(|| "None".to_string(), py::to_str);
         if py::num(r.get("at")) < cutoff || status == "limit" {
             continue;
         }
         let i = match agg.iter().position(|a| a.target == target) {
             Some(i) => i,
             None => {
-                agg.push(HealthRow { target, runs: 0, ok: 0, error: 0, rate: 0.0, candidate: false });
+                agg.push(HealthRow {
+                    target,
+                    runs: 0,
+                    ok: 0,
+                    error: 0,
+                    rate: 0.0,
+                    candidate: false,
+                });
                 agg.len() - 1
             }
         };
@@ -205,7 +247,11 @@ pub fn model_health(history: &Json, now: f64, days: f64, min_runs: i64, max_rate
         }
     }
     for a in &mut agg {
-        a.rate = if a.runs != 0 { round_to(a.ok as f64 / a.runs as f64, 3) } else { 0.0 };
+        a.rate = if a.runs != 0 {
+            round_to(a.ok as f64 / a.runs as f64, 3)
+        } else {
+            0.0
+        };
         a.candidate = a.runs >= min_runs && a.rate <= max_rate;
     }
     agg.sort_by(|a, b| {
@@ -221,7 +267,10 @@ pub fn model_health(history: &Json, now: f64, days: f64, min_runs: i64, max_rate
 /// Haftalık özet metni; aday yoksa "".
 pub fn health_digest(rows: &[HealthRow], excluded: &[String], days: f64, lang: &str) -> String {
     let skip: HashSet<&str> = excluded.iter().map(String::as_str).collect();
-    let cands: Vec<&HealthRow> = rows.iter().filter(|r| r.candidate && !skip.contains(r.target.as_str())).collect();
+    let cands: Vec<&HealthRow> = rows
+        .iter()
+        .filter(|r| r.candidate && !skip.contains(r.target.as_str()))
+        .collect();
     if cands.is_empty() {
         return String::new();
     }
@@ -234,7 +283,10 @@ pub fn health_digest(rows: &[HealthRow], excluded: &[String], days: f64, lang: &
     }];
     for r in cands {
         let pct = (100.0 * r.rate).round_ties_even() as i64;
-        lines.push(format!("- {}: {}/{} başarılı (%{pct})", r.target, r.ok, r.runs));
+        lines.push(format!(
+            "- {}: {}/{} başarılı (%{pct})",
+            r.target, r.ok, r.runs
+        ));
     }
     lines.push(
         if tr {
@@ -277,14 +329,16 @@ pub fn duration_summary(history: &Json, project: &str) -> Vec<DurationRow> {
         if !project.is_empty() && proj != project {
             continue;
         }
-        let a = agg.entry((proj.clone(), tgt.clone())).or_insert_with(|| DurationRow {
-            project: proj,
-            target: tgt,
-            runs: 0,
-            timed: 0,
-            unknown: 0,
-            seconds: 0.0,
-        });
+        let a = agg
+            .entry((proj.clone(), tgt.clone()))
+            .or_insert_with(|| DurationRow {
+                project: proj,
+                target: tgt,
+                runs: 0,
+                timed: 0,
+                unknown: 0,
+                seconds: 0.0,
+            });
         a.runs += 1;
         let seconds = match r.get("seconds") {
             Some(Json::Int(_) | Json::Float(_) | Json::BigInt(_)) => {
@@ -330,8 +384,14 @@ pub fn report_bodyless(text: &str) -> bool {
     if !HAS_FINDING.is_match(text) {
         return false;
     }
-    let body: String = py::splitlines(text).into_iter().filter(|l| !py::lstrip(l).starts_with('#')).collect();
-    let chars: Vec<char> = py::casefold(&body).chars().filter(|c| c.is_alphanumeric()).collect();
+    let body: String = py::splitlines(text)
+        .into_iter()
+        .filter(|l| !py::lstrip(l).starts_with('#'))
+        .collect();
+    let chars: Vec<char> = py::casefold(&body)
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
     chars.is_empty() || (chars.len() >= 3 && chars.iter().all(|c| *c == chars[0]))
 }
 
@@ -345,17 +405,25 @@ pub fn anthropic_price(model: &str) -> [f64; 4] {
 
 /// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası.
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
-    let [mut pi, mut po, mut pr, mut pw] = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
+    let [mut pi, mut po, mut pr, mut pw] =
+        anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
-    let Ok(bytes) = std::fs::read(path) else { return Ok(0.0) };
+    let Ok(bytes) = std::fs::read(path) else {
+        return Ok(0.0);
+    };
     for raw in bytes.split(|b| *b == b'\n') {
         let Ok(line) = std::str::from_utf8(raw) else {
             badrec::log_bad("usage.line", path); // yalnız bozuk satır atlanır; kalan istekler maliyete girer
             continue;
         };
         let line = line.trim_end_matches('\r');
-        let Ok(Json::Object(rec)) = Json::parse(line) else { continue };
-        if model.is_empty() && py::is_str(rec.get("event"), "task_start") && py::truthy(rec.get("model")) {
+        let Ok(Json::Object(rec)) = Json::parse(line) else {
+            continue;
+        };
+        if model.is_empty()
+            && py::is_str(rec.get("event"), "task_start")
+            && py::truthy(rec.get("model"))
+        {
             [pi, po, pr, pw] = anthropic_price(&py::str_or_empty(rec.get("model")));
             continue;
         }
@@ -372,9 +440,12 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
         if since_ms != 0.0 && t < since_ms {
             continue;
         }
-        let Some(u) = rec.get("usage").and_then(Json::as_object) else { continue };
+        let Some(u) = rec.get("usage").and_then(Json::as_object) else {
+            continue;
+        };
         let broken = |v: &Json| {
-            matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_)) && !py::float(v).is_some_and(f64::is_finite)
+            matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_))
+                && !py::float(v).is_some_and(f64::is_finite)
         };
         if u.values().any(broken) {
             badrec::log_bad("usage.record", path);
@@ -386,22 +457,38 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             Some(v) => py::float(v),
         };
         let g = |names: &[&str]| names.iter().find_map(|n| numeric(n)).unwrap_or(0.0);
-        let cr = g(&["cache_read_input_tokens", "cached_tokens", "cache_read_tokens"]);
+        let cr = g(&[
+            "cache_read_input_tokens",
+            "cached_tokens",
+            "cache_read_tokens",
+        ]);
         let cw = g(&["cache_creation_input_tokens", "cache_write_tokens"]);
         let inp = match numeric("input_tokens") {
             Some(i) => f64::max(
                 0.0,
-                i - (if u.contains_key("cache_read_input_tokens") { 0.0 } else { cr })
-                    - (if u.contains_key("cache_creation_input_tokens") { 0.0 } else { cw }),
+                i - (if u.contains_key("cache_read_input_tokens") {
+                    0.0
+                } else {
+                    cr
+                }) - (if u.contains_key("cache_creation_input_tokens") {
+                    0.0
+                } else {
+                    cw
+                }),
             ),
             None => f64::max(0.0, g(&["prompt_tokens"]) - cr - cw),
         };
-        let inp_price = if u.contains_key("cached_tokens") && !u.contains_key("cache_creation_input_tokens") {
-            pw
-        } else {
-            pi
-        };
-        total += (inp * inp_price + g(&["output_tokens", "completion_tokens"]) * po + cr * pr + cw * pw * write_mult) / 1e6;
+        let inp_price =
+            if u.contains_key("cached_tokens") && !u.contains_key("cache_creation_input_tokens") {
+                pw
+            } else {
+                pi
+            };
+        total += (inp * inp_price
+            + g(&["output_tokens", "completion_tokens"]) * po
+            + cr * pr
+            + cw * pw * write_mult)
+            / 1e6;
     }
     Ok(total)
 }
@@ -409,7 +496,11 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
 /// Tüm `anthropic` koşularının toplam $.
 pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
     let mut total = 0.0;
-    let Ok(rd) = std::fs::read_dir(if reviews_root.is_empty() { "." } else { reviews_root }) else {
+    let Ok(rd) = std::fs::read_dir(if reviews_root.is_empty() {
+        "."
+    } else {
+        reviews_root
+    }) else {
         return Ok(0.0);
     };
     for e in rd.flatten() {

@@ -30,7 +30,9 @@ fn dsn_matches(text: &str) -> Vec<Dsn> {
     let mut out = Vec::new();
     let mut pos = 0;
     while pos <= text.len() {
-        let Some(m) = DSN_PREFIX.find_at(text, pos) else { break };
+        let Some(m) = DSN_PREFIX.find_at(text, pos) else {
+            break;
+        };
         let rest = &text[m.end()..];
         let run_len = rest.find(stops_password).unwrap_or(rest.len());
         let run = &rest[..run_len];
@@ -40,13 +42,20 @@ fn dsn_matches(text: &str) -> Vec<Dsn> {
             .filter(|(n, (i, c))| {
                 *n >= 3
                     && *c == '@'
-                    && run[i + 1..].chars().next().is_some_and(|d| d != '@' && d != '/')
+                    && run[i + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(|d| d != '@' && d != '/')
             })
             .map(|(_, (i, _))| i)
             .last();
         match at {
             Some(at) => {
-                out.push(Dsn { start: m.start(), prefix_end: m.end(), at: m.end() + at });
+                out.push(Dsn {
+                    start: m.start(),
+                    prefix_end: m.end(),
+                    at: m.end() + at,
+                });
                 pos = m.end() + at + 1;
             }
             None => pos = m.start() + text[m.start()..].chars().next().map_or(1, char::len_utf8),
@@ -137,7 +146,11 @@ static SECRETS: LazyLock<Vec<(Regex, bool)>> = LazyLock::new(|| {
 /// Bilinen gizli değer biçimlerini `[REDACTED]` yapar; `learned`: daha önce görülmüş sırlar.
 pub fn redact_secrets(text: &str, learned: &[String]) -> String {
     let mut all: Vec<String> = learned.to_vec();
-    all.extend(dsn_passwords(text).into_iter().filter(|p| !learned.contains(p)));
+    all.extend(
+        dsn_passwords(text)
+            .into_iter()
+            .filter(|p| !learned.contains(p)),
+    );
     let mut out = mask_dsn(text);
     all.sort_by_key(|s| std::cmp::Reverse(s.chars().count()));
     for s in &all {
@@ -153,7 +166,8 @@ pub fn redact_secrets(text: &str, learned: &[String]) -> String {
             continue;
         }
         out = if *keep_first {
-            re.replace_all(&out, |c: &regex::Captures<'_>| format!("{}{MASK}", &c[1])).into_owned()
+            re.replace_all(&out, |c: &regex::Captures<'_>| format!("{}{MASK}", &c[1]))
+                .into_owned()
         } else {
             re.replace_all(&out, regex::NoExpand(MASK)).into_owned()
         };

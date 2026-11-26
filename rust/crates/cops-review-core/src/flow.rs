@@ -18,7 +18,10 @@ pub const VERIFY_REQUEUE_SECONDS: f64 = 6.0 * 3600.0;
 pub const VERIFY_MAX_TRIES: i64 = 3;
 
 pub fn sha1_hex(bytes: &[u8]) -> String {
-    Sha1::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    Sha1::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 pub fn text_hash(text: &str) -> String {
@@ -31,7 +34,10 @@ pub fn reviewer_slug_of(review_file: &str) -> String {
     let parts: Vec<&str> = norm.split('/').collect();
     for i in 0..parts.len().saturating_sub(1) {
         if MODES.contains(&parts[i]) && i + 1 < parts.len() - 1 {
-            return parts[i + 1].strip_suffix("-sub").unwrap_or(parts[i + 1]).to_string();
+            return parts[i + 1]
+                .strip_suffix("-sub")
+                .unwrap_or(parts[i + 1])
+                .to_string();
         }
     }
     String::new()
@@ -49,8 +55,11 @@ pub fn apply_verdicts(
 ) -> Vec<String> {
     let mut applied = Vec::new();
     for v in verdicts {
-        let Some(rec) = findings.get_mut(&v.fid).and_then(Json::as_object_mut) else { continue };
-        if !py::is_str(rec.get("project"), project) || !py::is_str(rec.get("state"), "verify_sent") {
+        let Some(rec) = findings.get_mut(&v.fid).and_then(Json::as_object_mut) else {
+            continue;
+        };
+        if !py::is_str(rec.get("project"), project) || !py::is_str(rec.get("state"), "verify_sent")
+        {
             continue;
         }
         if !VERDICTS.contains(&v.verdict.as_str())
@@ -69,7 +78,10 @@ pub fn apply_verdicts(
         {
             rec.insert("same_model".into(), Json::Bool(true));
             let text = format!("{} [aynı model doğruladı]", v.reason);
-            rec.insert("verdict".into(), py::head(&text, VERDICT_REASON_MAX + 24).into());
+            rec.insert(
+                "verdict".into(),
+                py::head(&text, VERDICT_REASON_MAX + 24).into(),
+            );
         }
         applied.push(v.fid.clone());
     }
@@ -90,21 +102,30 @@ pub fn keep_verdict_state(rec: &mut Map) {
 pub fn requeue_stale_verify(findings: &mut Map, now: f64, stale: f64) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for (fid, rec) in findings.iter_mut() {
-        let Some(rec) = rec.as_object_mut() else { continue };
-        if !py::is_str(rec.get("state"), "verify_sent") || py::is_str(rec.get("verify_session"), "self") {
+        let Some(rec) = rec.as_object_mut() else {
+            continue;
+        };
+        if !py::is_str(rec.get("state"), "verify_sent")
+            || py::is_str(rec.get("verify_session"), "self")
+        {
             continue;
         }
-        let Some(sent) = badrec::field(rec, "verify_sent_at", "findings", fid) else { continue };
+        let Some(sent) = badrec::field(rec, "verify_sent_at", "findings", fid) else {
+            continue;
+        };
         if now - sent < stale {
             continue;
         }
-        let Some(done) = badrec::field(rec, "verify_tries", "findings", fid) else { continue };
+        let Some(done) = badrec::field(rec, "verify_tries", "findings", fid) else {
+            continue;
+        };
         let tries = (done.trunc() as i64).saturating_add(1);
         if tries >= VERIFY_MAX_TRIES {
             rec.insert("state".into(), "unclear".into());
             rec.insert("verify_tries".into(), Json::Int(tries));
             rec.insert("verdict_at".into(), Json::Float(now));
-            let text = format!("doğrulama {tries} gönderimde sonuç vermedi (karar son mesajda görülmedi)");
+            let text =
+                format!("doğrulama {tries} gönderimde sonuç vermedi (karar son mesajda görülmedi)");
             rec.insert("verdict".into(), py::head(&text, VERDICT_REASON_MAX).into());
         } else {
             rec.insert("state".into(), "new".into());
@@ -128,7 +149,12 @@ fn verify_items(rows: &[Map]) -> Result<String> {
             }
         };
         let title = py::collapse_ws(&py::str_or_empty(r.get("title")));
-        items.push(format!("- {id} | {} | {} | {}", or_q("severity"), or_q("where"), py::head(&title, 200)));
+        items.push(format!(
+            "- {id} | {} | {} | {}",
+            or_q("severity"),
+            or_q("where"),
+            py::head(&title, 200)
+        ));
     }
     Ok(items.join("\n"))
 }

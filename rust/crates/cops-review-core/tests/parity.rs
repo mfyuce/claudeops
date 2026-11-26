@@ -15,7 +15,9 @@ fn serve(listener: UnixListener) {
         let Ok(conn) = conn else { return };
         std::thread::spawn(move || {
             let mut lenses = LensRegistry::default();
-            let Ok(mut out) = conn.try_clone() else { return };
+            let Ok(mut out) = conn.try_clone() else {
+                return;
+            };
             for line in BufReader::new(conn).lines() {
                 let Ok(line) = line else { return };
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -74,5 +76,9 @@ fn python_suite_and_edges_match() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     println!("{stdout}");
-    assert!(out.status.success(), "parite başarısız:\n{stdout}\n{}", &stderr[stderr.len().saturating_sub(6000)..]);
+    assert!(
+        out.status.success(),
+        "parite başarısız:\n{stdout}\n{}",
+        &stderr[stderr.len().saturating_sub(6000)..]
+    );
 }

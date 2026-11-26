@@ -26,11 +26,18 @@ pub fn window_seconds(hours: Option<&Json>) -> f64 {
 }
 
 fn fresh(rec: Option<&Json>, now: f64, window: f64) -> bool {
-    rec.and_then(Json::as_object)
-        .is_some_and(|r| py::is_str(r.get("status"), "done") && now - py::num(r.get("finished_at")) < window)
+    rec.and_then(Json::as_object).is_some_and(|r| {
+        py::is_str(r.get("status"), "done") && now - py::num(r.get("finished_at")) < window
+    })
 }
 
-pub fn project_complete(history: &Json, proj: &str, targets: &[ReviewTarget], now: f64, window: f64) -> bool {
+pub fn project_complete(
+    history: &Json,
+    proj: &str,
+    targets: &[ReviewTarget],
+    now: f64,
+    window: f64,
+) -> bool {
     let p = pairs(history);
     !targets.is_empty()
         && targets
@@ -39,7 +46,9 @@ pub fn project_complete(history: &Json, proj: &str, targets: &[ReviewTarget], no
 }
 
 fn pool_names(pool: &Json, keep: impl Fn(&Map) -> bool) -> Vec<String> {
-    let Some(pr) = pool.get("projects").and_then(Json::as_object) else { return Vec::new() };
+    let Some(pr) = pool.get("projects").and_then(Json::as_object) else {
+        return Vec::new();
+    };
     let set: BTreeSet<&String> = pr
         .iter()
         .filter(|(_, e)| e.as_object().is_some_and(&keep))
@@ -82,7 +91,11 @@ pub fn model_family(t: &ReviewTarget) -> String {
     let lower = t.model.to_lowercase();
     let name = lower.rsplit('/').next().unwrap_or("");
     let alpha: String = name.chars().take_while(char::is_ascii_lowercase).collect();
-    format!("{}:{}", t.mode, if alpha.is_empty() { name } else { &alpha })
+    format!(
+        "{}:{}",
+        t.mode,
+        if alpha.is_empty() { name } else { &alpha }
+    )
 }
 
 /// `mode/model[@effort][~lens]` anahtarındaki model.
@@ -94,7 +107,11 @@ pub(crate) fn key_model(key: &str) -> &str {
 
 fn blocked_targets<'a>(targets: &'a [ReviewTarget], skip: &[String]) -> Vec<&'a ReviewTarget> {
     let skip: HashSet<&str> = skip.iter().map(String::as_str).collect();
-    let pools: HashSet<String> = skip.iter().filter(|k| k.starts_with("agy/")).map(|k| agy_pool(key_model(k))).collect();
+    let pools: HashSet<String> = skip
+        .iter()
+        .filter(|k| k.starts_with("agy/"))
+        .map(|k| agy_pool(key_model(k)))
+        .collect();
     targets
         .iter()
         .filter(|t| {
@@ -116,7 +133,12 @@ pub struct PlanOpts<'a> {
 
 impl Default for PlanOpts<'_> {
     fn default() -> Self {
-        PlanOpts { busy_projects: &[], window: WINDOW_SECONDS as f64, head_of: None, skip_pairs: &[] }
+        PlanOpts {
+            busy_projects: &[],
+            window: WINDOW_SECONDS as f64,
+            head_of: None,
+            skip_pairs: &[],
+        }
     }
 }
 
@@ -140,18 +162,31 @@ pub fn next_review(
         if busy.contains(proj.as_str()) {
             continue;
         }
-        let tgs: Vec<&ReviewTarget> =
-            targets.iter().copied().filter(|t| !sp.contains(pair_key(&proj, t).as_str())).collect();
+        let tgs: Vec<&ReviewTarget> = targets
+            .iter()
+            .copied()
+            .filter(|t| !sp.contains(pair_key(&proj, t).as_str()))
+            .collect();
         if tgs.is_empty() {
             continue;
         }
         let recs: Vec<Option<&Map>> = tgs
             .iter()
-            .map(|t| all_pairs.and_then(|p| p.get(&pair_key(&proj, t))).and_then(Json::as_object))
+            .map(|t| {
+                all_pairs
+                    .and_then(|p| p.get(&pair_key(&proj, t)))
+                    .and_then(Json::as_object)
+            })
             .collect();
-        let raw: Vec<Option<&Json>> =
-            tgs.iter().map(|t| all_pairs.and_then(|p| p.get(&pair_key(&proj, t)))).collect();
-        if recs.iter().flatten().any(|r| py::is_str(r.get("status"), "running")) {
+        let raw: Vec<Option<&Json>> = tgs
+            .iter()
+            .map(|t| all_pairs.and_then(|p| p.get(&pair_key(&proj, t))))
+            .collect();
+        if recs
+            .iter()
+            .flatten()
+            .any(|r| py::is_str(r.get("status"), "running"))
+        {
             continue;
         }
         let mut head_cache: HashMap<(), String> = HashMap::new();
@@ -159,7 +194,9 @@ pub fn next_review(
             if fresh(raw[i], now, opts.window) {
                 return true;
             }
-            let Some(head_of) = opts.head_of else { return false };
+            let Some(head_of) = opts.head_of else {
+                return false;
+            };
             let Some(r) = recs[i] else { return false };
             if !py::is_str(r.get("status"), "done") || !py::truthy(r.get("head")) {
                 return false;
@@ -168,8 +205,12 @@ pub fn next_review(
             !hd.is_empty() && py::is_str(r.get("head"), hd)
         };
         let flags: Vec<bool> = (0..tgs.len()).map(&mut fresh_or_same).collect();
-        let covered: HashSet<String> =
-            tgs.iter().zip(&flags).filter(|(_, f)| **f).map(|(t, _)| model_family(t)).collect();
+        let covered: HashSet<String> = tgs
+            .iter()
+            .zip(&flags)
+            .filter(|(_, f)| **f)
+            .map(|(t, _)| model_family(t))
+            .collect();
         let mut pick: Option<&ReviewTarget> = None;
         for (i, t) in tgs.iter().enumerate() {
             if flags[i] {
@@ -205,7 +246,11 @@ pub fn next_review(
             .flatten()
             .map(|r| {
                 let f = r.get("finished_at");
-                py::num(if py::truthy(f) { f } else { r.get("started_at") })
+                py::num(if py::truthy(f) {
+                    f
+                } else {
+                    r.get("started_at")
+                })
             })
             .collect();
         if nfresh > 0 {
@@ -214,7 +259,9 @@ pub fn next_review(
             cands.push((1, 0.0, proj, pick.clone()));
         } else {
             // Python `max`: ilk en büyük (NaN karşılaştırmaları False).
-            let mx = known[1..].iter().fold(known[0], |a, &b| if b > a { b } else { a });
+            let mx = known[1..]
+                .iter()
+                .fold(known[0], |a, &b| if b > a { b } else { a });
             cands.push((2, mx, proj, pick.clone()));
         }
     }
@@ -240,7 +287,11 @@ pub fn open_review_lines(text: &str) -> usize {
 }
 
 /// Açık review satırı `limit`e ulaşmış etkin projeler (`count_of` `None` = sayılamadı, atlanır).
-pub fn backlogged_projects(pool: &Json, count_of: impl Fn(&str) -> Option<i64>, limit: i64) -> Vec<String> {
+pub fn backlogged_projects(
+    pool: &Json,
+    count_of: impl Fn(&str) -> Option<i64>,
+    limit: i64,
+) -> Vec<String> {
     if limit <= 0 {
         return Vec::new();
     }
@@ -256,9 +307,18 @@ pub fn pool_sync(pool: &Json, owner_names: &[String], now: f64) -> (Json, bool) 
     let mut projects: Map = pool
         .get("projects")
         .and_then(Json::as_object)
-        .map(|src| src.iter().filter(|(_, v)| v.as_object().is_some()).map(|(k, v)| (k.clone(), v.clone())).collect())
+        .map(|src| {
+            src.iter()
+                .filter(|(_, v)| v.as_object().is_some())
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
         .unwrap_or_default();
-    let owners: BTreeSet<&str> = owner_names.iter().map(String::as_str).filter(|n| !n.is_empty()).collect();
+    let owners: BTreeSet<&str> = owner_names
+        .iter()
+        .map(String::as_str)
+        .filter(|n| !n.is_empty())
+        .collect();
     let mut changed = false;
     for n in &owners {
         match projects.get_mut(*n).and_then(Json::as_object_mut) {
@@ -282,7 +342,10 @@ pub fn pool_sync(pool: &Json, owner_names: &[String], now: f64) -> (Json, bool) 
     }
     for (n, e) in projects.iter_mut() {
         let Some(e) = e.as_object_mut() else { continue };
-        if !owners.contains(n.as_str()) && py::is_str(e.get("source"), "auto") && !py::truthy(e.get("removed_at")) {
+        if !owners.contains(n.as_str())
+            && py::is_str(e.get("source"), "auto")
+            && !py::truthy(e.get("removed_at"))
+        {
             e.insert("enabled".into(), Json::Bool(false));
             e.insert("removed_at".into(), Json::Float(now));
             changed = true;

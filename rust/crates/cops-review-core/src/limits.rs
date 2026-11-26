@@ -17,12 +17,24 @@ macro_rules! re {
     };
 }
 
-re!(LIMIT_RE, r"(?i)daily_token_limit_exceeded|daily token limit|exceeded your monthly quota");
+re!(
+    LIMIT_RE,
+    r"(?i)daily_token_limit_exceeded|daily token limit|exceeded your monthly quota"
+);
 re!(MONTHLY_RE, r"(?i)monthly");
-re!(QUOTA_RE, r"(?i)RESOURCE_EXHAUSTED|Individual quota reached|quota reached|hit your usage limit");
+re!(
+    QUOTA_RE,
+    r"(?i)RESOURCE_EXHAUSTED|Individual quota reached|quota reached|hit your usage limit"
+);
 re!(USAGE_LIMIT_RE, r"(?i)hit your usage limit");
-re!(TRY_AT_RE, r"(?i)try again at[\s\x1c-\x1f]+([A-Za-z]{3})[a-z]*[\s\x1c-\x1f]+(\d{1,2})(?:st|nd|rd|th)?,?[\s\x1c-\x1f]+(\d{4})[\s\x1c-\x1f]+(\d{1,2}):(\d{2})[\s\x1c-\x1f]*([AP]M)");
-re!(RESET_RE, r"(?i)resets?[\s\x1c-\x1f]+in[\s\x1c-\x1f]+((?:\d+[\s\x1c-\x1f]*[dhms][\s\x1c-\x1f]*)+)");
+re!(
+    TRY_AT_RE,
+    r"(?i)try again at[\s\x1c-\x1f]+([A-Za-z]{3})[a-z]*[\s\x1c-\x1f]+(\d{1,2})(?:st|nd|rd|th)?,?[\s\x1c-\x1f]+(\d{4})[\s\x1c-\x1f]+(\d{1,2}):(\d{2})[\s\x1c-\x1f]*([AP]M)"
+);
+re!(
+    RESET_RE,
+    r"(?i)resets?[\s\x1c-\x1f]+in[\s\x1c-\x1f]+((?:\d+[\s\x1c-\x1f]*[dhms][\s\x1c-\x1f]*)+)"
+);
 re!(UNIT_RE, r"(\d+)[\s\x1c-\x1f]*([dhmsDHMS])");
 
 pub const BANNER_MAX_CHARS: usize = 600;
@@ -51,8 +63,17 @@ pub fn next_utc_month_start(now: f64) -> Option<f64> {
         return None;
     }
     let t = Utc.timestamp_opt(now.floor() as i64, 0).single()?;
-    let (y, m) = if t.month() == 12 { (t.year() + 1, 1) } else { (t.year(), t.month() + 1) };
-    Some(NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?.and_utc().timestamp() as f64)
+    let (y, m) = if t.month() == 12 {
+        (t.year() + 1, 1)
+    } else {
+        (t.year(), t.month() + 1)
+    };
+    Some(
+        NaiveDate::from_ymd_opt(y, m, 1)?
+            .and_hms_opt(0, 0, 0)?
+            .and_utc()
+            .timestamp() as f64,
+    )
 }
 
 pub fn block_until_for_limit(now: f64, texts: &[&str]) -> f64 {
@@ -72,11 +93,18 @@ pub fn is_short_banner(text: &str) -> bool {
 
 /// Kota taramasına girecek metinler: sağlayıcı kanalları; modelin kendi metni hariç.
 pub fn limit_scan_texts(out: &str, err: &str, jerr: &str, err_has_model_text: bool) -> Vec<String> {
-    let e = if !err_has_model_text || is_short_banner(err) { err } else { "" };
+    let e = if !err_has_model_text || is_short_banner(err) {
+        err
+    } else {
+        ""
+    };
     let mut parts = vec![e.to_string(), jerr.to_string()];
     match Json::parse(out) {
         Ok(Json::Object(m)) => {
-            let kept: Map = m.into_iter().filter(|(k, _)| !MODEL_TEXT_KEYS.contains(&k.as_str())).collect();
+            let kept: Map = m
+                .into_iter()
+                .filter(|(k, _)| !MODEL_TEXT_KEYS.contains(&k.as_str()))
+                .collect();
             parts.push(Json::Object(kept).to_compact());
         }
         _ => {
@@ -96,13 +124,17 @@ pub fn is_usage_limit(texts: &[&str]) -> bool {
     any(&USAGE_LIMIT_RE, texts)
 }
 
-const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTHS: [&str; 12] = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
 
 /// "try again at Nov 20th, 2026 6:37 PM" -> yerel epoch.
 pub fn reset_at(texts: &[&str]) -> Option<f64> {
     for t in texts {
         let folded = ci(t);
-        let Some(m) = TRY_AT_RE.captures(&folded) else { continue };
+        let Some(m) = TRY_AT_RE.captures(&folded) else {
+            continue;
+        };
         let parsed = (|| {
             let month = MONTHS.iter().position(|x| *x == m[1].to_lowercase())? as u32 + 1;
             // `int()` sonrası `%d` 1-31, yıl `%Y` (4 rakam), saat `%I` 1-12, dakika 00-59.
@@ -113,7 +145,12 @@ pub fn reset_at(texts: &[&str]) -> Option<f64> {
             if !(1..=12).contains(&hour) || year < 1 || !m[5].is_ascii() || !m[3].is_ascii() {
                 return None;
             }
-            let h24 = hour % 12 + if m[6].eq_ignore_ascii_case("pm") { 12 } else { 0 };
+            let h24 = hour % 12
+                + if m[6].eq_ignore_ascii_case("pm") {
+                    12
+                } else {
+                    0
+                };
             clock::mktime(NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(h24, minute, 0)?)
         })();
         if parsed.is_some() {
@@ -136,8 +173,13 @@ fn unit_seconds(u: &str) -> f64 {
 pub fn reset_seconds(texts: &[&str]) -> Option<f64> {
     for t in texts {
         let folded = ci(t);
-        let Some(m) = RESET_RE.captures(&folded) else { continue };
-        let total: f64 = UNIT_RE.captures_iter(&m[1]).map(|c| decimal(&c[1]) * unit_seconds(&c[2])).sum();
+        let Some(m) = RESET_RE.captures(&folded) else {
+            continue;
+        };
+        let total: f64 = UNIT_RE
+            .captures_iter(&m[1])
+            .map(|c| decimal(&c[1]) * unit_seconds(&c[2]))
+            .sum();
         if total > 0.0 {
             return Some(total.min(QUOTA_MAX_SECONDS));
         }
@@ -155,17 +197,31 @@ pub fn quota_block_until(now: f64, texts: &[&str]) -> f64 {
 }
 
 /// `usage_state` copilot girdileri -> (kullanılan %, reset epoch, detay).
-pub fn parse_copilot_entries(entries: &Json, now: f64, base: Option<f64>) -> Option<(f64, f64, String)> {
-    re!(RESETS_IN, r"(?i)resets?[\s\x1c-\x1f]+[iİı]n[\s\x1c-\x1f]+(.+)\n?$");
-    re!(SPAN, r"(?i)(\d+)[\s\x1c-\x1f]*(day|d|hour|hr|h|m[iİı]nute|m[iİı]n|m)\w*");
+pub fn parse_copilot_entries(
+    entries: &Json,
+    now: f64,
+    base: Option<f64>,
+) -> Option<(f64, f64, String)> {
+    re!(
+        RESETS_IN,
+        r"(?i)resets?[\s\x1c-\x1f]+[iİı]n[\s\x1c-\x1f]+(.+)\n?$"
+    );
+    re!(
+        SPAN,
+        r"(?i)(\d+)[\s\x1c-\x1f]*(day|d|hour|hr|h|m[iİı]nute|m[iİı]n|m)\w*"
+    );
     for e in entries.as_array().unwrap_or(&[]) {
         let Some(e) = e.as_object() else { continue };
         let label = py::str_or_empty(e.get("label")).to_lowercase();
         if !label.contains("credit") && !label.contains("plan") {
             continue;
         }
-        let pct_text = e.get("percent").map_or_else(|| "None".to_string(), py::to_str);
-        let Some(pct) = py::float_str(pct_text.trim_end_matches('%')) else { continue };
+        let pct_text = e
+            .get("percent")
+            .map_or_else(|| "None".to_string(), py::to_str);
+        let Some(pct) = py::float_str(pct_text.trim_end_matches('%')) else {
+            continue;
+        };
         let detail = py::str_or_empty(e.get("detail"));
         let mut secs = 0.0;
         if let Some(m) = RESETS_IN.captures(&detail) {
@@ -180,7 +236,11 @@ pub fn parse_copilot_entries(entries: &Json, now: f64, base: Option<f64>) -> Opt
             }
         }
         let start = base.filter(|b| *b != 0.0).unwrap_or(now);
-        let reset = if secs != 0.0 { start + secs } else { now + COPILOT_FALLBACK_SECONDS };
+        let reset = if secs != 0.0 {
+            start + secs
+        } else {
+            now + COPILOT_FALLBACK_SECONDS
+        };
         return Some((pct, reset, detail));
     }
     None
@@ -229,7 +289,12 @@ pub fn fmt_g(x: f64) -> String {
         }
     };
     if !(-4..6).contains(&exp) {
-        format!("{}e{}{:02}", trim(mant.to_string()), if exp < 0 { '-' } else { '+' }, exp.unsigned_abs())
+        format!(
+            "{}e{}{:02}",
+            trim(mant.to_string()),
+            if exp < 0 { '-' } else { '+' },
+            exp.unsigned_abs()
+        )
     } else {
         trim(format!("{:.*}", (5 - exp) as usize, x))
     }
@@ -242,7 +307,9 @@ pub fn reconcile_copilot_blocks(
     stop_pct: f64,
     now: f64,
 ) -> Result<Vec<String>> {
-    let Some((pct, reset, detail)) = info else { return Ok(Vec::new()) };
+    let Some((pct, reset, detail)) = info else {
+        return Ok(Vec::new());
+    };
     if stop_pct <= 0.0 {
         return Ok(Vec::new());
     }
@@ -290,7 +357,10 @@ fn usage_set(out: &mut AgyUsage, pool: &str, kind: &str, v: (f64, f64)) {
 }
 
 pub fn parse_agy_usage(text: &str) -> AgyUsage {
-    re!(ISO, r"(?i)^(\d{4})-(1[0-2]|0[1-9]|[1-9])-(3[01]|[12]\d|0[1-9]|[1-9]| [1-9])T(2[0-3]|[01]\d|\d):([0-5]\d|\d):(6[01]|[0-5]\d|\d)Z$");
+    re!(
+        ISO,
+        r"(?i)^(\d{4})-(1[0-2]|0[1-9]|[1-9])-(3[01]|[12]\d|0[1-9]|[1-9]| [1-9])T(2[0-3]|[01]\d|\d):([0-5]\d|\d):(6[01]|[0-5]\d|\d)Z$"
+    );
     let mut out = AgyUsage::new();
     for line in py::splitlines(text) {
         let parts: Vec<&str> = line.split('\t').map(py::strip).collect();
@@ -321,15 +391,19 @@ pub fn parse_agy_usage(text: &str) -> AgyUsage {
         if pool.is_empty() || kind.is_empty() {
             continue;
         }
-        let ts = (|| {
-            let c = ISO.captures(parts[3])?;
-            let n = |i: usize| decimal(py::strip(&c[i])) as u32;
-            let sec = n(6);
-            // `timegm` 60/61 saniyeyi sonraki dakikaya taşır.
-            let base = NaiveDate::from_ymd_opt(decimal(&c[1]) as i32, n(2), n(3))?.and_hms_opt(n(4), n(5), 0)?;
-            Some(base.and_utc().timestamp() as f64 + f64::from(sec))
-        })();
-        let (Some(ts), Some(pct)) = (ts, py::float_str(pct_digits)) else { continue };
+        let ts =
+            (|| {
+                let c = ISO.captures(parts[3])?;
+                let n = |i: usize| decimal(py::strip(&c[i])) as u32;
+                let sec = n(6);
+                // `timegm` 60/61 saniyeyi sonraki dakikaya taşır.
+                let base = NaiveDate::from_ymd_opt(decimal(&c[1]) as i32, n(2), n(3))?
+                    .and_hms_opt(n(4), n(5), 0)?;
+                Some(base.and_utc().timestamp() as f64 + f64::from(sec))
+            })();
+        let (Some(ts), Some(pct)) = (ts, py::float_str(pct_digits)) else {
+            continue;
+        };
         usage_set(&mut out, pool, kind, (pct, ts));
     }
     out
@@ -343,15 +417,29 @@ pub fn parse_agy_entries(entries: &Json) -> AgyUsage {
         let label = py::str_or_empty(e.get("label"));
         let (group, metric) = label.split_once(" — ").unwrap_or((&label, ""));
         let reset = py::str_or_empty(e.get("detail")).replacen("Resets ", "", 1);
-        let pct = e.get("percent").map_or_else(|| "None".to_string(), py::to_str);
-        lines.push([group.to_string(), metric.to_string(), format!("{pct}%"), reset].join("\t"));
+        let pct = e
+            .get("percent")
+            .map_or_else(|| "None".to_string(), py::to_str);
+        lines.push(
+            [
+                group.to_string(),
+                metric.to_string(),
+                format!("{pct}%"),
+                reset,
+            ]
+            .join("\t"),
+        );
     }
     parse_agy_usage(&lines.join("\n"))
 }
 
 /// Havuz kapalıysa açılış zamanı (`Some(Some)`), açıksa `Some(None)`, havuz bilinmiyorsa `None` (Python `-1`).
 pub fn agy_pool_blocked_until(usage: &AgyUsage, pool: &str, now: f64) -> Option<Option<f64>> {
-    let u = usage.iter().find(|(p, _)| p == pool).map(|(_, u)| u).filter(|u| !u.is_empty())?;
+    let u = usage
+        .iter()
+        .find(|(p, _)| p == pool)
+        .map(|(_, u)| u)
+        .filter(|u| !u.is_empty())?;
     let mut until = 0.0;
     for kind in ["weekly", "five"] {
         if let Some((_, (left, reset))) = u.iter().find(|(k, _)| k == kind) {
@@ -381,7 +469,9 @@ pub fn reconcile_agy_blocks(
             continue;
         }
         let pool = agy_pool(key_model(&key));
-        let Some(until) = agy_pool_blocked_until(usage, &pool, now) else { continue };
+        let Some(until) = agy_pool_blocked_until(usage, &pool, now) else {
+            continue;
+        };
         let cur = blocks.get(&key).and_then(Json::as_object);
         if let Some(until) = until {
             let stale = match cur.filter(|c| !c.is_empty()) {
@@ -447,11 +537,15 @@ fn agy_block_cleared(history: &Json, key: &str, entry: &Map) -> bool {
 
 /// Süresi dolmamış engellerin anahtarları (sıralı).
 pub fn blocked_modes(history: &Json, now: f64) -> Result<Vec<String>> {
-    let Some(b) = history.get("blocks").and_then(Json::as_object) else { return Ok(Vec::new()) };
+    let Some(b) = history.get("blocks").and_then(Json::as_object) else {
+        return Ok(Vec::new());
+    };
     let mut set = BTreeSet::new();
     for (m, e) in b {
         let Some(e) = e.as_object() else { continue };
-        let Some(until) = until_of(e, m) else { continue };
+        let Some(until) = until_of(e, m) else {
+            continue;
+        };
         if until > now && !(m.starts_with("agy/") && agy_block_cleared(history, m, e)) {
             set.insert(m.clone());
         }

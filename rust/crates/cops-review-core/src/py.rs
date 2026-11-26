@@ -31,7 +31,15 @@ pub fn collapse_ws(s: &str) -> String {
 fn is_line_break(c: char) -> bool {
     matches!(
         c,
-        '\n' | '\r' | '\u{0b}' | '\u{0c}' | '\u{1c}' | '\u{1d}' | '\u{1e}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        '\n' | '\r'
+            | '\u{0b}'
+            | '\u{0c}'
+            | '\u{1c}'
+            | '\u{1d}'
+            | '\u{1e}'
+            | '\u{85}'
+            | '\u{2028}'
+            | '\u{2029}'
     )
 }
 
@@ -75,7 +83,11 @@ pub fn tail(s: &str, n: usize) -> &str {
 }
 
 fn repr_str(s: &str) -> String {
-    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let q = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
     let mut o = String::new();
     o.push(q);
     for c in s.chars() {
@@ -88,7 +100,9 @@ fn repr_str(s: &str) -> String {
                 o.push('\\');
                 o.push(c);
             }
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => o.push_str(&format!("\\x{:02x}", c as u32)),
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                o.push_str(&format!("\\x{:02x}", c as u32))
+            }
             c => o.push(c),
         }
     }
@@ -146,7 +160,9 @@ pub fn float_str(s: &str) -> Option<f64> {
         let b = t.as_bytes();
         let ok = b.iter().enumerate().all(|(i, c)| {
             *c != b'_'
-                || (i > 0 && b[i - 1].is_ascii_digit() && b.get(i + 1).is_some_and(u8::is_ascii_digit))
+                || (i > 0
+                    && b[i - 1].is_ascii_digit()
+                    && b.get(i + 1).is_some_and(u8::is_ascii_digit))
         });
         if !ok {
             return None;
@@ -170,7 +186,9 @@ pub fn float(v: &Json) -> Option<f64> {
 
 /// `review._num`: `float(v or 0)`, olmazsa ya da sonlu değilse 0 (sonlu olmayan loglanır).
 pub fn num(v: Option<&Json>) -> f64 {
-    let Some(v) = v.filter(|v| v.truthy()) else { return 0.0 };
+    let Some(v) = v.filter(|v| v.truthy()) else {
+        return 0.0;
+    };
     match float(v) {
         Some(f) if f.is_finite() => f,
         None if !matches!(v, Json::BigInt(_)) => 0.0,
@@ -184,23 +202,31 @@ pub fn num(v: Option<&Json>) -> f64 {
 /// `float(v or 0)`; dönüştürülemezse Python gibi hata.
 pub fn float_or_zero(v: Option<&Json>) -> Result<f64> {
     match v {
-        Some(v) if v.truthy() => float(v).ok_or_else(|| Error::Value(format!("float({})", repr(v)))),
+        Some(v) if v.truthy() => {
+            float(v).ok_or_else(|| Error::Value(format!("float({})", repr(v))))
+        }
         _ => Ok(0.0),
     }
 }
 
 /// `int(v or 0)`; dönüştürülemezse Python gibi hata.
 pub fn int_or_zero(v: Option<&Json>) -> Result<i64> {
-    let Some(v) = v.filter(|v| v.truthy()) else { return Ok(0) };
+    let Some(v) = v.filter(|v| v.truthy()) else {
+        return Ok(0);
+    };
     let r = match v {
         Json::Str(s) => {
             let t = strip(s);
             let body = t.strip_prefix(['+', '-']).unwrap_or(t);
             let ok = !body.is_empty()
-                && body.split('_').all(|g| !g.is_empty() && g.bytes().all(|b| b.is_ascii_digit()));
+                && body
+                    .split('_')
+                    .all(|g| !g.is_empty() && g.bytes().all(|b| b.is_ascii_digit()));
             ok.then(|| t.replace('_', "").parse::<i64>().ok()).flatten()
         }
-        _ => float(v).filter(|f| f.is_finite() && f.abs() < 9.2e18).map(|f| f.trunc() as i64),
+        _ => float(v)
+            .filter(|f| f.is_finite() && f.abs() < 9.2e18)
+            .map(|f| f.trunc() as i64),
     };
     r.ok_or_else(|| Error::Value(format!("int({})", repr(v))))
 }
@@ -262,7 +288,11 @@ pub fn normpath(p: &str) -> String {
     if p.is_empty() {
         return ".".into();
     }
-    let slashes = if p.starts_with("//") && !p.starts_with("///") { 2 } else { usize::from(p.starts_with('/')) };
+    let slashes = if p.starts_with("//") && !p.starts_with("///") {
+        2
+    } else {
+        usize::from(p.starts_with('/'))
+    };
     let mut out: Vec<&str> = Vec::new();
     for c in p.split('/') {
         if c.is_empty() || c == "." {
@@ -287,7 +317,9 @@ pub fn abspath(p: &str) -> String {
     if p.starts_with('/') {
         return normpath(p);
     }
-    let cwd = std::env::current_dir().map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
+    let cwd = std::env::current_dir()
+        .map(|c| c.to_string_lossy().into_owned())
+        .unwrap_or_default();
     normpath(&path_join(&cwd, &[p]))
 }
 
@@ -320,7 +352,11 @@ pub fn realpath(p: &str) -> String {
                     match std::fs::read_link(&next) {
                         Ok(t) if depth < 40 => {
                             let t = t.to_string_lossy().into_owned();
-                            let start = if t.starts_with('/') { "/".to_string() } else { out.clone() };
+                            let start = if t.starts_with('/') {
+                                "/".to_string()
+                            } else {
+                                out.clone()
+                            };
                             out = walk(start, &t, depth + 1);
                         }
                         _ => out = next,
@@ -333,7 +369,9 @@ pub fn realpath(p: &str) -> String {
     let abs = if p.starts_with('/') {
         p.to_string()
     } else {
-        let cwd = std::env::current_dir().map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
+        let cwd = std::env::current_dir()
+            .map(|c| c.to_string_lossy().into_owned())
+            .unwrap_or_default();
         path_join(&cwd, &[p])
     };
     walk("/".to_string(), &abs, 0)

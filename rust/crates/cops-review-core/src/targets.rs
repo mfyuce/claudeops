@@ -14,7 +14,12 @@ pub const CAPACITY_ERROR_PREFIX: &str = "capacity:";
 pub const CAPACITY_RETRY_MIN: f64 = 300.0;
 pub const CAPACITY_RETRY_MAX: f64 = 1800.0;
 pub const CAPACITY_MAX_TRIES: i64 = 6;
-pub const UNCOUNTED_ERRORS: [&str; 4] = ["cancelled", "spawn:", "yeniden başlatma", CAPACITY_ERROR_PREFIX];
+pub const UNCOUNTED_ERRORS: [&str; 4] = [
+    "cancelled",
+    "spawn:",
+    "yeniden başlatma",
+    CAPACITY_ERROR_PREFIX,
+];
 pub const MODES: [&str; 6] = ["agy", "evren", "claude", "codex", "copilot", "anthropic"];
 pub const UCLI_MODES: [&str; 2] = ["evren", "anthropic"];
 pub const ANTHROPIC_ENDPOINT: &str = "https://api.anthropic.com/v1";
@@ -25,20 +30,46 @@ pub const ANTHROPIC_PRICES: [(&str, [f64; 4]); 4] = [
     ("opus-5-5", [4.0, 20.0, 0.20, 5.0]),
     ("fable-5-1", [10.0, 50.0, 0.25, 12.5]),
 ];
-pub const PAIR_STATUSES: [&str; 6] = ["running", "done", "partial", "error", "model_fallback", "limit"];
+pub const PAIR_STATUSES: [&str; 6] = [
+    "running",
+    "done",
+    "partial",
+    "error",
+    "model_fallback",
+    "limit",
+];
 pub const SEVERITIES: [&str; 3] = ["P1", "P2", "P3"];
-pub const FINDING_STATES: [&str; 9] =
-    ["new", "verify_sent", "verified", "refuted", "unclear", "approved", "rejected", "exported", "dup"];
-pub const FORBIDDEN_PATHS: [&str; 6] = ["CLAUDE.md", ".env*", "*token*", "*credential*", "*.pem", "settings*.json"];
+pub const FINDING_STATES: [&str; 9] = [
+    "new",
+    "verify_sent",
+    "verified",
+    "refuted",
+    "unclear",
+    "approved",
+    "rejected",
+    "exported",
+    "dup",
+];
+pub const FORBIDDEN_PATHS: [&str; 6] = [
+    "CLAUDE.md",
+    ".env*",
+    "*token*",
+    "*credential*",
+    "*.pem",
+    "settings*.json",
+];
 pub const SUBSCRIPTION_FABLE_EFFORTS: [&str; 3] = ["low", "medium", "high"];
 
 static CAPACITY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)model_capacity_exhausted|\b429\b|\b503\b|rate.?limit|too many requests|serv[iİı]ce unava[iİı]lable").unwrap()
 });
-static RETRY_AFTER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)retry[- ]?after\W{0,3}(\d+)").unwrap());
+static RETRY_AFTER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)retry[- ]?after\W{0,3}(\d+)").unwrap());
 
 pub fn is_capacity_error(texts: &[&str]) -> bool {
-    texts.iter().any(|t| CAPACITY_RE.is_match(&ci(py::tail(t, 20000))))
+    texts
+        .iter()
+        .any(|t| CAPACITY_RE.is_match(&ci(py::tail(t, 20000))))
 }
 
 /// Python `re.I` İ/ı/i/I'yı eşit sayar, Rust saymaz: büyük/küçük harf duyarsız aramadan önce İ ve ı `i`ye indirilir
@@ -63,7 +94,8 @@ pub fn capacity_retry_seconds(texts: &[&str]) -> f64 {
 
 /// `\d+` yakalamasının sayısı; Python `\d` ASCII dışı rakamları da kabul eder.
 pub(crate) fn decimal(s: &str) -> f64 {
-    s.chars().fold(0.0, |acc, c| acc * 10.0 + f64::from(digit_value(c)))
+    s.chars()
+        .fold(0.0, |acc, c| acc * 10.0 + f64::from(digit_value(c)))
 }
 
 pub(crate) fn digit_value(c: char) -> u32 {
@@ -114,7 +146,10 @@ pub fn counts_as_attempt(rec: Option<&Json>) -> bool {
 }
 
 pub fn max_attempts(mode: &str) -> i64 {
-    MODE_MAX_ATTEMPTS.iter().find(|(m, _)| *m == mode).map_or(MAX_ATTEMPTS, |(_, n)| *n)
+    MODE_MAX_ATTEMPTS
+        .iter()
+        .find(|(m, _)| *m == mode)
+        .map_or(MAX_ATTEMPTS, |(_, n)| *n)
 }
 
 /// `review_slots` ayarı -> [(mod, yuva)] (`MODES` sırasında); ""/`off`/hiç geçerli parça yok = boş.
@@ -126,7 +161,9 @@ pub fn parse_slots(spec: &str) -> Vec<(&'static str, u64)> {
     let mut out: Vec<(&'static str, u64)> = MODES.iter().map(|m| (*m, 1)).collect();
     let mut seen = false;
     for part in t.split(',') {
-        let Some((k, v)) = part.split_once('=') else { continue };
+        let Some((k, v)) = part.split_once('=') else {
+            continue;
+        };
         let (k, v) = (py::strip(k), py::strip(v));
         // Python `isdigit()`: ASCII dışı rakamlar da (`int()` kabul ettikleri) sayılır; u64 taşarsa en büyük değer.
         let digits = !v.is_empty() && v.chars().all(is_decimal_digit);
@@ -134,9 +171,10 @@ pub fn parse_slots(spec: &str) -> Vec<(&'static str, u64)> {
             continue;
         }
         if let Some(slot) = out.iter_mut().find(|(m, _)| *m == k) {
-            slot.1 = v
-                .chars()
-                .fold(0u64, |a, c| a.saturating_mul(10).saturating_add(u64::from(digit_value(c))));
+            slot.1 = v.chars().fold(0u64, |a, c| {
+                a.saturating_mul(10)
+                    .saturating_add(u64::from(digit_value(c)))
+            });
             seen = true;
         }
     }
@@ -158,7 +196,12 @@ pub struct ReviewTarget {
 
 impl ReviewTarget {
     pub fn new(mode: &str, model: &str, slug: &str) -> Self {
-        ReviewTarget { mode: mode.into(), model: model.into(), slug: slug.into(), ..Default::default() }
+        ReviewTarget {
+            mode: mode.into(),
+            model: model.into(),
+            slug: slug.into(),
+            ..Default::default()
+        }
     }
     pub fn pslug(&self) -> String {
         let base = if self.effort.is_empty() {
@@ -189,7 +232,9 @@ pub fn slug_model(model: &str) -> String {
     static UNSAFE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^A-Za-z0-9._-]+").unwrap());
     static DASHES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-{2,}").unwrap());
     let s = UNSAFE.replace_all(py::strip(model), "-");
-    let s = DASHES.replace_all(s.trim_matches(['-', '.']), "-").into_owned();
+    let s = DASHES
+        .replace_all(s.trim_matches(['-', '.']), "-")
+        .into_owned();
     if s.is_empty() {
         "model".into()
     } else {
@@ -266,10 +311,15 @@ pub fn toggle_excluded(text: &str, key: &str, exclude: bool) -> String {
 /// `claude_models.json` içeriği (`statedocs` belgesi `claude_models`) -> model -> durum. Bozuk biçim -> boş.
 pub fn claude_catalog_from(state: Option<&Json>) -> Map {
     let empty = Map::new();
-    let Some(state) = state.and_then(Json::as_object) else { return empty };
+    let Some(state) = state.and_then(Json::as_object) else {
+        return empty;
+    };
     match state.get("models") {
         Some(v) if v.truthy() => match v.as_object() {
-            Some(m) => m.iter().map(|(k, v)| (k.clone(), Json::Str(py::to_str(v)))).collect(),
+            Some(m) => m
+                .iter()
+                .map(|(k, v)| (k.clone(), Json::Str(py::to_str(v))))
+                .collect(),
             None => empty,
         },
         _ => empty,
@@ -281,21 +331,32 @@ fn catalog_is(cat: &Map, model: &str, state: &str) -> bool {
 }
 
 pub fn claude_is_subscription(cfg: &ReviewConfig) -> bool {
-    let v = if cfg.review_claude_auth.is_empty() { "api" } else { &cfg.review_claude_auth };
+    let v = if cfg.review_claude_auth.is_empty() {
+        "api"
+    } else {
+        &cfg.review_claude_auth
+    };
     py::strip(v).to_lowercase() == "subscription"
 }
 
 pub fn claude_specs(cfg: &ReviewConfig, catalog: &Map) -> Vec<String> {
     let specs = split_models(&cfg.review_claude_models);
     if !specs.is_empty() {
-        return specs.into_iter().filter(|s| !catalog_is(catalog, &split_spec(s).0, "disabled")).collect();
+        return specs
+            .into_iter()
+            .filter(|s| !catalog_is(catalog, &split_spec(s).0, "disabled"))
+            .collect();
     }
     if claude_is_subscription(cfg) {
         let sorted: BTreeSet<&String> = catalog.keys().collect();
         return sorted
             .into_iter()
             .filter(|m| m.contains("fable") && catalog_is(catalog, m, "enabled"))
-            .flat_map(|m| SUBSCRIPTION_FABLE_EFFORTS.iter().map(move |e| format!("{m}@{e}")))
+            .flat_map(|m| {
+                SUBSCRIPTION_FABLE_EFFORTS
+                    .iter()
+                    .map(move |e| format!("{m}@{e}"))
+            })
             .collect();
     }
     Vec::new()
@@ -320,7 +381,11 @@ pub fn targets_from_config(
         ("evren", evren_models, &cfg.review_evren_models),
     ] {
         let wanted = split_models(want);
-        let list = if wanted.is_empty() { avail } else { &wanted[..] };
+        let list = if wanted.is_empty() {
+            avail
+        } else {
+            &wanted[..]
+        };
         for m in list {
             if !wanted.is_empty() && !avail.contains(m) {
                 continue;
@@ -334,7 +399,11 @@ pub fn targets_from_config(
         ("copilot", &cfg.review_copilot_models),
         ("anthropic", &cfg.review_anthropic_models),
     ] {
-        let specs = if mode == "claude" { claude_specs(cfg, catalog) } else { split_models(attr) };
+        let specs = if mode == "claude" {
+            claude_specs(cfg, catalog)
+        } else {
+            split_models(attr)
+        };
         for spec in specs {
             let (m, effort) = split_spec(&spec);
             if m.is_empty() {
@@ -342,7 +411,13 @@ pub fn targets_from_config(
             }
             let sub = mode == "claude" && claude_is_subscription(cfg);
             let slug = format!("{}{}", slug_model(&m), if sub { "-sub" } else { "" });
-            push(ReviewTarget { effort, ..ReviewTarget::new(mode, &m, &slug) }, &mut out);
+            push(
+                ReviewTarget {
+                    effort,
+                    ..ReviewTarget::new(mode, &m, &slug)
+                },
+                &mut out,
+            );
         }
     }
     let skip = excluded_keys(cfg);
@@ -359,7 +434,14 @@ pub fn review_title(project: &str, mode: &str, model: &str, ts: Option<&Json>) -
         Some(Json::Str(s)) if STAMP.is_match(s) => {
             let c: Vec<char> = s.chars().collect();
             let cut = |a: usize, b: usize| c[a..b].iter().collect::<String>();
-            format!("{}-{}-{} {}:{}", cut(0, 4), cut(4, 6), cut(6, 8), cut(8, 10), cut(10, 12))
+            format!(
+                "{}-{}-{} {}:{}",
+                cut(0, 4),
+                cut(4, 6),
+                cut(6, 8),
+                cut(8, 10),
+                cut(10, 12)
+            )
         }
         None | Some(Json::Null) => String::new(),
         Some(Json::Str(s)) if s.is_empty() => String::new(),
@@ -367,7 +449,11 @@ pub fn review_title(project: &str, mode: &str, model: &str, ts: Option<&Json>) -
             .and_then(|f| crate::clock::format_local(f, "%Y-%m-%d %H:%M"))
             .unwrap_or_default(),
     };
-    let mut parts = vec!["review".to_string(), project.to_string(), format!("{mode}/{model}")];
+    let mut parts = vec![
+        "review".to_string(),
+        project.to_string(),
+        format!("{mode}/{model}"),
+    ];
     if !when.is_empty() {
         parts.push(when);
     }

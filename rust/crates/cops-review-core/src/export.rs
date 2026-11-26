@@ -15,7 +15,9 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// `r['id']`: yoksa Python gibi hata.
 pub(crate) fn row_id(r: &Map) -> Result<String> {
-    r.get("id").map(py::to_str).ok_or_else(|| Error::Value("KeyError: 'id'".into()))
+    r.get("id")
+        .map(py::to_str)
+        .ok_or_else(|| Error::Value("KeyError: 'id'".into()))
 }
 
 /// Karar gerektiren bulgu mu (RTBD'ye gider).
@@ -27,7 +29,11 @@ pub fn is_decision(row: &Map) -> bool {
         .unwrap()
     });
     let body = py::str_or_empty(row.get("body"));
-    let text = format!("{} {}", py::str_or_empty(row.get("title")), py::head(&body, 600));
+    let text = format!(
+        "{} {}",
+        py::str_or_empty(row.get("title")),
+        py::head(&body, 600)
+    );
     DECISION.is_match(&ci(&text))
 }
 
@@ -45,7 +51,8 @@ pub fn where_text(row: &Map) -> String {
 fn where_path(row: &Map) -> String {
     static FILE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(&format!(r"^[{S}]*`?([^{S}:`]+\.[A-Za-z0-9]+)")).unwrap());
-    FILE.captures(&where_text(row)).map_or_else(String::new, |m| m[1].to_string())
+    FILE.captures(&where_text(row))
+        .map_or_else(String::new, |m| m[1].to_string())
 }
 
 fn exists(p: &str) -> bool {
@@ -62,7 +69,8 @@ fn where_file(row: &Map, cwd: &str) -> String {
     }
     let path = py::realpath(&py::path_join(cwd, &[&rel]));
     let root = py::realpath(cwd);
-    if path.starts_with(&format!("{root}/")) && std::fs::metadata(&path).is_ok_and(|m| m.is_file()) {
+    if path.starts_with(&format!("{root}/")) && std::fs::metadata(&path).is_ok_and(|m| m.is_file())
+    {
         path
     } else {
         String::new()
@@ -79,7 +87,8 @@ pub fn where_relpath(row: &Map) -> String {
     }
 }
 
-static BACKTICK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([A-Za-z_][A-Za-z0-9_.]*)`").unwrap());
+static BACKTICK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"`([A-Za-z_][A-Za-z0-9_.]*)`").unwrap());
 
 pub fn has_quoted_names(row: &Map) -> bool {
     BACKTICK.is_match(&py::str_or_empty(row.get("title")))
@@ -97,7 +106,10 @@ pub fn stale_reason_text(row: &Map, src: Option<&str>) -> Option<String> {
     if names.is_empty() || names.iter().any(|n| src.contains(n)) {
         return None;
     }
-    Some(format!("tanımlayıcılar dosyada yok: {}", names.into_iter().collect::<Vec<_>>().join(", ")))
+    Some(format!(
+        "tanımlayıcılar dosyada yok: {}",
+        names.into_iter().collect::<Vec<_>>().join(", ")
+    ))
 }
 
 pub fn stale_reason(row: &Map, cwd: &str) -> Option<String> {
@@ -107,7 +119,9 @@ pub fn stale_reason(row: &Map, cwd: &str) -> Option<String> {
     }
     let bytes = std::fs::read(path).ok()?;
     // metin kipi: satır sonları `\n`ye çevrilir
-    let src = String::from_utf8_lossy(&bytes).replace("\r\n", "\n").replace('\r', "\n");
+    let src = String::from_utf8_lossy(&bytes)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     stale_reason_text(row, Some(&src))
 }
 
@@ -122,7 +136,16 @@ fn mtime(p: &str) -> Option<f64> {
 /// `git log -1 --format=%ct`; hata ya da 10 sn zaman aşımında `Err`.
 fn git_commit_time(cwd: &str, path: &str) -> std::io::Result<String> {
     let mut child = Command::new("git")
-        .args(["-C", cwd, "--literal-pathspecs", "log", "-1", "--format=%ct", "--", path])
+        .args([
+            "-C",
+            cwd,
+            "--literal-pathspecs",
+            "log",
+            "-1",
+            "--format=%ct",
+            "--",
+            path,
+        ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -151,9 +174,13 @@ pub fn changed_after_review(row: &Map, cwd: &str) -> bool {
     if path.is_empty() || report.is_empty() || !exists(&report) {
         return false;
     }
-    let Some(mut t) = mtime(&path) else { return false };
+    let Some(mut t) = mtime(&path) else {
+        return false;
+    };
     if exists(&py::path_join(cwd, &[".git"])) {
-        let Ok(out) = git_commit_time(cwd, &path) else { return false };
+        let Ok(out) = git_commit_time(cwd, &path) else {
+            return false;
+        };
         if !out.is_empty() && out.chars().all(|c| c.is_ascii_digit()) {
             t = out.parse().unwrap_or(t);
         }
@@ -166,9 +193,14 @@ pub fn worktree_main(path: &str) -> Result<String> {
     static GITDIR: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(&format!(r"^gitdir:[{S}]*(.+)/\.git/worktrees/[^/]+\n?$")).unwrap()
     });
-    let Ok(bytes) = std::fs::read(py::path_join(path, &[".git"])) else { return Ok(String::new()) };
-    let text = String::from_utf8(bytes).map_err(|_| Error::Value(format!("{path}/.git: utf-8 değil")))?;
-    let line = py::head(&text, 4096).replace("\r\n", "\n").replace('\r', "\n");
+    let Ok(bytes) = std::fs::read(py::path_join(path, &[".git"])) else {
+        return Ok(String::new());
+    };
+    let text =
+        String::from_utf8(bytes).map_err(|_| Error::Value(format!("{path}/.git: utf-8 değil")))?;
+    let line = py::head(&text, 4096)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     Ok(match GITDIR.captures(py::strip(&line)) {
         Some(m) if is_dir(&py::path_join(&m[1], &[".git"])) => m[1].to_string(),
         _ => String::new(),
@@ -189,7 +221,12 @@ pub fn row_in_repo(row: &Map, root: &str, cwd: &str) -> (Map, String) {
 }
 
 /// Bulgunun TODO dosyasının yazılacağı depo kökü; "" = çözülemedi (YAZMA).
-pub fn export_root(row: &Map, project: &str, cwd: &str, resolve: impl Fn(&str) -> String) -> Result<String> {
+pub fn export_root(
+    row: &Map,
+    project: &str,
+    cwd: &str,
+    resolve: impl Fn(&str) -> String,
+) -> Result<String> {
     let rel = where_relpath(row);
     let prefix = rel.split_once('/').map_or("", |(p, _)| p);
     if !prefix.is_empty() && prefix != project {
@@ -215,7 +252,9 @@ pub fn export_lines(rows: &[Map], reviews_root: &str) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for r in rows {
         let mut src = py::str_or_empty(r.get("review_file"));
-        if !reviews_root.is_empty() && src.starts_with(&format!("{}/", reviews_root.trim_end_matches('/'))) {
+        if !reviews_root.is_empty()
+            && src.starts_with(&format!("{}/", reviews_root.trim_end_matches('/')))
+        {
             src = py::relpath(&src, reviews_root);
         }
         if src.starts_with('/') {
@@ -265,12 +304,20 @@ pub fn appended_export(
         return Ok((None, Vec::new()));
     }
     let lines = export_lines(&fresh, reviews_root)?.join("\n");
-    let last_head = py::splitlines(text).into_iter().rev().find(|l| l.starts_with("## ")).unwrap_or("");
+    let last_head = py::splitlines(text)
+        .into_iter()
+        .rev()
+        .find(|l| l.starts_with("## "))
+        .unwrap_or("");
     let body = text.trim_end_matches('\n');
     let new = if last_head.starts_with(EXPORT_HEADING) {
         format!("{body}\n{lines}\n")
     } else {
-        let sep = if body.is_empty() { String::new() } else { format!("{body}\n\n") };
+        let sep = if body.is_empty() {
+            String::new()
+        } else {
+            format!("{body}\n\n")
+        };
         format!("{sep}{EXPORT_HEADING} ({stamp})\n{lines}\n")
     };
     Ok((Some(new), ids))
