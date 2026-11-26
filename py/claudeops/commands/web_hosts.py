@@ -29,6 +29,7 @@ disiplin, iki farklı stdlib HTTP arayüzü.
 from __future__ import annotations
 import http.client
 import json
+import math
 import select
 import threading
 import time
@@ -545,6 +546,8 @@ def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
         return None
     try:
         skew = round(float(v["now"]) - local_now, 1) if v.get("now") is not None else None
+        if skew is not None and not math.isfinite(skew):      # NaN/Infinity JSON degil: tarayici tum yaniti reddeder
+            return None
         kids = [str(k) for k in (v.get("kids") or [])][:4]
         return {"mode": str(v.get("mode") or ""), "kids": kids, "skew": skew}
     except (TypeError, ValueError):
