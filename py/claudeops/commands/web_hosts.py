@@ -551,12 +551,15 @@ def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _tag_rows(rows: Optional[list], host_name: str) -> list:
+def _tag_rows(rows: Any, host_name: str) -> list:
     """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
     hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
-    capability-tier bölümü) kullanıyor, tek yerden."""
+    capability-tier bölümü) kullanıyor, tek yerden. Uzak veri güvenilmez: dizi
+    olmayan liste boş sayılır, nesne olmayan satır atlanır."""
     tagged = []
-    for r in (rows or []):
+    for r in (rows if isinstance(rows, list) else []):
+        if not isinstance(r, dict):
+            continue
         r2 = dict(r)
         r2["host"] = host_name
         tagged.append(r2)
@@ -593,7 +596,7 @@ def _fetch_status_from(base_url: str, token: str, timeout: float, dedup: bool = 
     status, parsed, err = _http_json("GET", url, None, timeout, dedup=dedup)
     if err is not None or parsed is None:
         return None, err or f"http {status}"
-    if "sessions" not in parsed:
+    if not isinstance(parsed.get("sessions"), list):
         return None, "unexpected response shape"
     # Uzak `/api/status` yanıtında üst-düzey `ok` YOK (WS/gRPC çerçevelerinin
     # parse'ı `ok:True`'yu kendisi koyuyor, bkz. `_parse_ws_status_frame`), oysa
@@ -1473,8 +1476,9 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
     """`/ws`'in `{"type":"status","data":{...}}` zarfını (`web_ws._encode()`)
     `_finalize_remote_result()`'un beklediği ham şekle indirger — tag/
     normalize BURADA YAPILMIYOR, `_finalize_remote_result` (tüm tier'ler için
-    ortak) yapıyor. `type != "status"` ya da bozuk JSON → sessizce `None`
-    (bu frame atlanır, `_PushConsumer` devam eder)."""
+    ortak) yapıyor. `type != "status"`, bozuk JSON ya da `sessions` dizi değil →
+    sessizce `None` (bu frame atlanır, `_PushConsumer` devam eder; boş oturum
+    listesi gibi kaydedilmez)."""
     try:
         parsed = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -1482,6 +1486,8 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
     if parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
         return None
     data = parsed["data"]
+    if not isinstance(data.get("sessions"), list):
+        return None
     return {
         "ok": True,
         "sessions": data.get("sessions"), "closed": data.get("closed"), "retired": data.get("retired"),
