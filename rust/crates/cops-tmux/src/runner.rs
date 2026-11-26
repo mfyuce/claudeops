@@ -362,18 +362,38 @@ fn read_some<R: Read>(
     }
 }
 
+/// [`kill`]in süreçten istediği üç işlem; testler toplanamayan (D durumundaki) süreci sahtesiyle kurar.
+trait Reapable {
+    fn kill(&mut self) -> std::io::Result<()>;
+    /// `true` = süreç toplandı.
+    fn try_reap(&mut self) -> std::io::Result<bool>;
+    fn reap(&mut self) -> std::io::Result<()>;
+}
+
+impl Reapable for Child {
+    fn kill(&mut self) -> std::io::Result<()> {
+        Child::kill(self)
+    }
+    fn try_reap(&mut self) -> std::io::Result<bool> {
+        Ok(self.try_wait()?.is_some())
+    }
+    fn reap(&mut self) -> std::io::Result<()> {
+        self.wait().map(drop)
+    }
+}
+
 /// Yalnız KENDİ başlattığımız tmux istemci süreci (sunucu ya da pane süreci değil): SIGKILL + toplama. Toplama
 /// [`REAP_GRACE`]i aşarsa arka plan iş parçacığı bekler; çağıran bloklanmaz, zombi kalmaz.
-fn kill(mut child: Child) {
+fn kill<C: Reapable + Send + 'static>(mut child: C) {
     if let Err(e) = child.kill() {
         swallow(Swallowed::KillChild, &e);
     }
     let until = Instant::now() + REAP_GRACE;
     loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return,
-            Ok(None) if Instant::now() < until => thread::sleep(Duration::from_millis(1)),
-            Ok(None) => break,
+        match child.try_reap() {
+            Ok(true) => return,
+            Ok(false) if Instant::now() < until => thread::sleep(Duration::from_millis(1)),
+            Ok(false) => break,
             Err(e) => {
                 swallow(Swallowed::ReapChild, &e);
                 return;
@@ -384,7 +404,7 @@ fn kill(mut child: Child) {
     let reaper = thread::Builder::new()
         .name("cops-tmux-reap".into())
         .spawn(move || {
-            if let Err(e) = child.wait() {
+            if let Err(e) = child.reap() {
                 swallow(Swallowed::ReapChild, &e);
             }
         });
@@ -471,5 +491,56 @@ mod tests {
     fn missing_program_is_io_error() {
         let t = Tmux::with_socket("x").program("/nonexistent/tmux");
         assert!(matches!(t.run(&["ls"]), Err(TmuxError::Io(_))));
+    }
+
+    /// Asla toplanmayan süreç: kill ve (isteğe göre) try_reap hata verir, bekleyen `reap` kanala haber verir.
+    struct Stuck {
+        try_fails: bool,
+        reaped: std::sync::mpsc::Sender<String>,
+    }
+
+    impl Reapable for Stuck {
+        fn kill(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::other("sahte kill"))
+        }
+        fn try_reap(&mut self) -> std::io::Result<bool> {
+            if self.try_fails {
+                return Err(std::io::Error::other("sahte try_wait"));
+            }
+            Ok(false)
+        }
+        fn reap(&mut self) -> std::io::Result<()> {
+            let name = thread::current().name().unwrap_or("").to_string();
+            self.reaped.send(name).map_err(std::io::Error::other)
+        }
+    }
+
+    #[test]
+    fn unreapable_child_is_counted_and_waited_in_background() {
+        use crate::swallowed_count;
+        let kills = swallowed_count(Swallowed::KillChild);
+        let reaps = swallowed_count(Swallowed::ReapChild);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let start = Instant::now();
+        kill(Stuck {
+            try_fails: false,
+            reaped: tx,
+        });
+        assert!(start.elapsed() >= REAP_GRACE);
+        assert!(start.elapsed() < REAP_GRACE + Duration::from_secs(5));
+        let waiter = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(waiter, "cops-tmux-reap");
+        assert!(swallowed_count(Swallowed::KillChild) > kills);
+        assert!(swallowed_count(Swallowed::ReapChild) > reaps);
+
+        // try_wait hatası: sayılır, arka plan toplayıcısı açılmaz.
+        let reaps = swallowed_count(Swallowed::ReapChild);
+        let (tx, rx) = std::sync::mpsc::channel();
+        kill(Stuck {
+            try_fails: true,
+            reaped: tx,
+        });
+        assert!(rx.recv_timeout(Duration::from_secs(5)).is_err());
+        assert!(swallowed_count(Swallowed::ReapChild) > reaps);
     }
 }
