@@ -208,15 +208,17 @@ def _last_assistant_value(jsonl_path: Path, extract, since: Optional[float] = No
 
 
 def last_assistant_model(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
-    """En son `type:"assistant"` satırının `message.model`'i, yoksa None.
+    """En son gerçek model taşıyan `type:"assistant"` satırının `message.model`'i, yoksa None.
     `since`: bkz. `_last_assistant_value`."""
     return _last_assistant_value(jsonl_path, _row_model, since)
 
 
 def _row_model(obj: Dict[str, Any]) -> Optional[str]:
-    """Satırın `message.model`'i; `message` nesne değilse None."""
+    """Satırın `message.model`'i; `message` nesne değilse ya da model `<synthetic>` yer tutucusuysa (hata/iptal satırı,
+    gerçek bir model değil: yeniden açılışa `--model` diye taşınmasın) None."""
     msg = obj.get("message")
-    return msg.get("model") if isinstance(msg, dict) else None
+    model = msg.get("model") if isinstance(msg, dict) else None
+    return None if model == "<synthetic>" else model
 
 
 def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:

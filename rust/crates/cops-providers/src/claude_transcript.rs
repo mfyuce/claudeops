@@ -5,8 +5,8 @@
 //! [`MAX_WINDOW_BYTES`]); daha geride kalan satır "bilinmiyor"dur. Boyut BİR kez okunur: tarama sırasında eklenen satır
 //! görülmez (Python gibi).
 //!
-//! Python'dan bilerek ayrılan yerler (güvenli yön; parite testinde `known` kaydı): tipi beklenmedik satır yalnız o satırı
-//! atlatır (Python istisna atar) ve `<synthetic>` yer tutucusu model sayılmaz.
+//! İki tarafta da nesne olmayan satır/`message` yalnız o satırı atlatır ve `<synthetic>` yer tutucusu model sayılmaz.
+//! Python'dan bilerek ayrılan yer (güvenli yön; parite testinde `known` kaydı): metin olmayan model atlanır.
 
 use crate::bg_work::iso_epoch;
 use crate::live::Live;

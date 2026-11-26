@@ -147,16 +147,6 @@ fn rows(b: &mut Build<'_>) {
         ("sentetik-sifir-effortlu", vec![real(-4000, m), synthetic_zero]),
     ];
     for (id, r) in &scenarios {
-        // model okuyan yer tutucu satırları ayrışır (aşağıda): bu senaryo yalnız istek zamanı için sapma
-        if *id == "sentetik-sifir-effortlu" {
-            b.diverge(
-                id,
-                lines(r),
-                json!([both(Some(m), None, Some(at(-4000))), both(None, None, Some(at(-4000)))]),
-                "`<synthetic>` yer tutucusu: Python canlı model diye döndürür, Rust gerçek modeli arar",
-            );
-            continue;
-        }
         b.read(id, lines(r));
     }
     // satır alanlarının tip/değer sınırları
@@ -221,17 +211,15 @@ fn rows(b: &mut Build<'_>) {
             r#"{{"type":"assistant","timestamp":"{}","message":{{"model":{model},"usage":{{"input_tokens":1}}}}}}"#,
             stamp(-5)
         );
-        // yalnız istek zamanı karşılaştırılır: sayı/yer tutucu model okuyucuda ayrışır
+        // metin olmayan model okuyucuda hâlâ ayrışır
         let path = b.abs("work/t.jsonl");
         let data = lines(&[real(-30, m), line]);
-        if matches!(id, "sayi" | "sentetik") {
-            let model_after = Some(m);
+        if id == "sayi" {
             b.diverge(
                 &format!("istek-model-{id}"),
                 data,
-                json!([both(model_after, None, Some(if id == "sayi" { at(-5) } else { at(-30) })),
-                       both(None, None, Some(if id == "sayi" { at(-5) } else { at(-30) }))]),
-                "metin olmayan ya da yer tutucu model: Python model diye döndürür, Rust gerçek modeli arar",
+                json!([both(Some(m), None, Some(at(-5))), both(None, None, Some(at(-5)))]),
+                "metin olmayan model: Python model diye döndürür, Rust gerçek modeli arar",
             );
         } else {
             let c = b.case(&format!("istek-model-{id}"), json!({"reads": [{"path": path}]}))
@@ -287,11 +275,10 @@ fn divergences(b: &mut Build<'_>) {
             "metin olmayan model: Python değeri olduğu gibi döndürür, Rust satırı atlar",
         );
     }
-    b.diverge(
+    b.agree(
         "sentetik-yalniz-yeni",
         lines(&[base.clone(), turn(7, "<synthetic>", None)]),
         json!([both(Some(m), Some("low"), Some(at(-30))), both(None, None, Some(at(-30)))]),
-        "süreç sonrası yalnız `<synthetic>`: Python onu canlı model sayar, Rust bilinmiyor der",
     );
     let deep = format!(
         r#"{{"type":"assistant","effort":"max","message":{{"model":"derin"}},"d":{}{}}}"#,
@@ -569,13 +556,12 @@ fn live(b: &mut Build<'_>) {
         .file(Fx::File(format!("{dir}/turu-yok.jsonl"), lines(&[r#"{"type":"user"}"#.into()]), 0o644));
     b.cases.push(c);
     let mut c = b
-        .case("sapma-canli-sentetik", json!({"live": [q("claude", &cwd, Some("s1"))]}))
+        .case("canli-sentetik", json!({"live": [q("claude", &cwd, Some("s1"))]}))
         .file(Fx::File(
             format!("{dir}/s1.jsonl"),
             lines(&[turn(1, "claude-opus-5-5", Some("high")), turn(2, "<synthetic>", None)]),
             0o644,
-        ))
-        .known("`<synthetic>` yer tutucusu: Python canlı model diye döndürür, Rust son gerçek modeli verir");
+        ));
     c.args["expect_live"] = json!([["claude-opus-5-5", "high"]]);
     b.cases.push(c);
 }
