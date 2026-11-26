@@ -2,7 +2,9 @@
 
 Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 iki tarafta işlendi, "Birleştirme kapısı"). Açık: "Açık işler" 1-3 (birleştirme sonrası / canlıya alma). TBD 385 YAPILDI ("Ham tuş yolu").
 
-Son doğrulama (27 Kas 02:07, `9d701b8d`; `origin/main` `a5c11054` dalın içinde, geride 0): Python tam paket 5918 test OK (23 atlanan, 552 sn), `cargo test --workspace` 659/659, `clippy --workspace --all-targets -D warnings` temiz. İlk `cargo` turunda `copsd` `state_dir.rs::other_default_paths_follow_the_state_dir` yük altında bir kez düştü ("copsd açılmadı", 10 sn sınırı); tek başına 5/5 ve ikinci tam tur geçti. Başka izlerin eşleme tabloları bu dalın yeni testlerini içermiyor: "Açık işler" notu TODO'da.
+Son doğrulama (27 Kas, `b68ea16a`; `origin/main` `7e7d8b72`, rs/rev dahil, dalın içinde, geride 0): Python tam paket 5949 test OK (23 atlanan, 522 sn), `cargo test --workspace` 680 geçti, 0 kaldı, 1 atlandı, `clippy --workspace --all-targets -D warnings` temiz, üç eşleme denetimi (hosts, rs-proc `--check --strict`, review) temiz. Birleştirmede tek çakışma `rust/Cargo.toml` `members` (iki listenin birleşimi); rs-proc tablosuna bu dalın iki test dosyası eklendi.
+
+Önceki doğrulama (27 Kas 02:07, `9d701b8d`; `origin/main` `a5c11054` dalın içinde, geride 0): Python tam paket 5918 test OK (23 atlanan, 552 sn), `cargo test --workspace` 659/659, `clippy --workspace --all-targets -D warnings` temiz. İlk `cargo` turunda `copsd` `state_dir.rs::other_default_paths_follow_the_state_dir` yük altında bir kez düştü ("copsd açılmadı", 10 sn sınırı); tek başına 5/5 ve ikinci tam tur geçti. Başka izlerin eşleme tabloları bu dalın yeni testlerini içermiyor: "Açık işler" notu TODO'da.
 
 Önceki doğrulama (27 Kas 00:41, `09893dfe`; `origin/main` `feae0764`): Python 5829 OK, cargo 534/534, clippy temiz, eşleme tablosu denetimi farksız.
 
