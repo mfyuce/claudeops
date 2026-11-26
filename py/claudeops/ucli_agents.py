@@ -10,6 +10,7 @@ Güvenlik duruşu:
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -17,9 +18,9 @@ import re
 import secrets
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from .atomic_json import atomic_write_json, atomic_write_text
+from .atomic_json import atomic_write_json, atomic_write_text, file_lock
 from .paths import CLAUDEOPS_DIR
 from . import preview
 from .preview import preview_only  # noqa: F401  (eski yol: `ucli_agents.preview_only`)
@@ -139,6 +140,13 @@ def _save(data: Dict[str, Any]) -> None:
     atomic_write_json(STATE_FILE, data, mode=0o600)      # benzersiz tmp + O_EXCL|O_NOFOLLOW + fsync + replace (review cliops R-8)
 
 
+@contextlib.contextmanager
+def _writing() -> Iterator[None]:
+    """Oku-değiştir-yaz kilidi: süreç içi + süreçler arası (CLI ve panel aynı defteri yazar; kayıt kaybolmasın)."""
+    with _LOCK, file_lock(STATE_FILE):
+        yield
+
+
 def _digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -167,7 +175,7 @@ def issue_token(session_name: str) -> str:
             raise ValueError("unsafe session name")      # gerçek koşuyla aynı red
         return token_file(session_name)
     token = secrets.token_hex(32)
-    with _LOCK:     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
+    with _writing():     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
         path = _write_token_file(session_name, token)
         data = _load()
         rec = data["parents"].setdefault(session_name, {})
@@ -194,7 +202,7 @@ def parent_for_token(token: str) -> Optional[str]:
 
 def revoke_parent(session_name: str) -> None:
     """Üst oturum kapandı: token dosyası silinir, özet düşer (çocuk kayıtları KALIR: status/result okunabilsin)."""
-    with _LOCK:
+    with _writing():
         if _SAFE_NAME_RE.match(session_name or ""):     # güvensiz ad (`../x`) dosya silmeye dönüşmesin
             try:
                 os.remove(token_file(session_name))
@@ -245,7 +253,7 @@ def reserve_child(parent: str, running: "set[str]", exists, fields: Dict[str, An
     `exists(name) -> bool`: ad başka yerde (instance kaydı vb.) kullanılıyorsa N atlanır. (ad, "") ya da (None, hata)."""
     if is_child_name(parent):
         return None, "an agent cannot start agents (depth limit 1)"
-    with _LOCK:
+    with _writing():
         data = _load()
         mine = {n: r for n, r in data["children"].items() if isinstance(r, dict) and r.get("parent") == parent}
         live = [n for n, r in mine.items() if is_live(r, running, n)]
@@ -275,7 +283,7 @@ def _prune(data: Dict[str, Any], parent: str) -> None:
 
 
 def update_child(name: str, **fields: Any) -> None:
-    with _LOCK:
+    with _writing():
         data = _load()
         rec = data["children"].get(name)
         if isinstance(rec, dict):
