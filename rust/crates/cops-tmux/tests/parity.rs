@@ -14,7 +14,7 @@ use cops_tmux::{
     ctx_label, dim_fg, input_box, patterns, pid_childless, segment_typed, shell_quote, strip_ansi,
     tmux_available, tmux_conf_path, tty_is_masked, typed_input_in_box, CtxPusher, MaskGuard,
     PaneSize, Tmux, TmuxError, ALLOWED_SPECIAL_KEYS, ANCESTOR_WALK_LIMIT, BOX_RULE_CHAR,
-    DEFAULT_TIMEOUT, GHOST_MIN_AGE_SECONDS, GHOST_SHELLS, HISTORY_LIMIT, PROMPT, RAW_CHUNK_CHARS,
+    DEFAULT_TIMEOUT, GHOST_MIN_AGE_SECONDS, GHOST_SHELLS, HISTORY_LIMIT, PROMPT, RAW_PROBE_TTL,
     RESIZE_COLS, RESIZE_ROWS, SNAPSHOT_FORMAT, TMUX_SOCKET,
 };
 use serde_json::{json, Value};
@@ -404,7 +404,7 @@ fn constants_patterns_and_shell_fragments_match_python() {
         }),
         ("RESIZE_COLS", json!([RESIZE_COLS.0, RESIZE_COLS.1])),
         ("RESIZE_ROWS", json!([RESIZE_ROWS.0, RESIZE_ROWS.1])),
-        ("_RAW_CHUNK_CHARS", json!(RAW_CHUNK_CHARS)),
+        ("_RAW_PROBE_TTL", json!(RAW_PROBE_TTL.as_secs_f64())),
         ("HISTORY_LIMIT", json!(HISTORY_LIMIT)),
         ("_SNAPSHOT_FORMAT", json!(SNAPSHOT_FORMAT)),
         ("_BOX_RULE_CHARS", json!(BOX_RULE_CHAR.to_string())),
@@ -574,6 +574,8 @@ impl Fake {
 
     /// Önceki çağrıların izini ve sayaçlarını siler, verilen çıktı/çıkış kodu dosyalarını yazar.
     fn reset(&self, files: &[(&str, &str)]) {
+        // Python her çağrıda yeni süreçtir: Rust tarafının sürüm yoklaması da boş başlar.
+        self.tmux.reset_raw_paste_probe();
         for entry in std::fs::read_dir(self.dir.path()).unwrap() {
             let path = entry.unwrap().path();
             let name = path.file_name().unwrap().to_string_lossy().into_owned();
@@ -876,18 +878,30 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         );
     }
     let long = format!("{};{}", "ş".repeat(1999), "q".repeat(2600));
-    for (files, data) in [
-        (&[][..], "foo;"),
-        (&[][..], r"bar\;"),
-        (&[][..], "a\0b"),
-        (&[][..], ""),
-        (&[][..], "\0"),
-        (&[][..], "-"),
-        (&[][..], ";"),
-        (&[][..], long.as_str()),
-        (&[("send-keys.rc", "0\n1")][..], long.as_str()),
+    let old = "paste-buffer (pasteb) [-dpr] [-s separator]\n";
+    let new = "paste-buffer (pasteb) [-dprS] [-s separator]\n";
+    for (usage, extra, data) in [
+        (old, &[][..], "foo;"),
+        (old, &[][..], r"bar\;"),
+        (old, &[][..], "a\0b"),
+        (old, &[][..], ""),
+        (old, &[][..], "\0"),
+        (old, &[][..], "-"),
+        (old, &[][..], ";"),
+        (old, &[][..], long.as_str()),
+        (new, &[][..], "\u{1b}[A\u{3}\u{7f}"),
+        ("send-keys (send) [-l]\n", &[][..], "x"),
+        (old, &[("list-commands.rc", "1")][..], "x"),
+        (old, &[("load-buffer.rc", "1")][..], "x"),
+        (
+            old,
+            &[("load-buffer.rc", "1"), ("delete-buffer.rc", "1")][..],
+            "x",
+        ),
     ] {
-        t(files, json!(["tmux_send_raw", "a", data]), &|x| {
+        let mut files = vec![("list-commands.out", usage)];
+        files.extend_from_slice(extra);
+        t(&files, json!(["tmux_send_raw", "a", data]), &|x| {
             ok(x.send_raw("a", data, MaskGuard::UserTyped))
         });
     }

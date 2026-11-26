@@ -24,7 +24,12 @@ impl Fake {
         )
         .unwrap();
         let tmux = Tmux::with_socket("cxrs-fake").program(program);
-        Self { dir, tmux }
+        let fake = Self { dir, tmux };
+        fake.set(
+            "list-commands.out",
+            "paste-buffer (pasteb) [-dpr] [-s separator]\n",
+        );
+        fake
     }
 
     fn set(&self, file: &str, content: &str) -> &Self {
@@ -66,29 +71,82 @@ fn single_line_goes_through_stdin_never_argv() {
 }
 
 #[test]
-fn raw_escapes_only_a_trailing_semicolon() {
+fn raw_goes_through_stdin_in_one_process_never_argv() {
     let f = Fake::new();
-    for data in ["foo;", r"bar\;", "a;b", ";"] {
+    for data in ["gizli-parola;", "a\0b", "\u{1b}[A"] {
         f.tmux.send_raw("x", data, USER).unwrap();
+        assert_eq!(
+            std::fs::read(f.dir.path().join("stdin")).unwrap(),
+            data.as_bytes()
+        );
     }
     f.tmux.send_raw("x", "", USER).unwrap();
-    f.tmux.send_raw("x", "\0\0", USER).unwrap();
-    let sent: Vec<String> = f
-        .calls()
-        .iter()
-        .map(|c| c.last().unwrap().clone())
-        .collect();
-    assert_eq!(sent, [r"foo\;", r"bar\\;", "a;b", r"\;"]);
+    // Yoklama bir kez, her gönderim tek süreç.
+    assert_eq!(
+        f.subcommands(),
+        ["list-commands", "load-buffer", "load-buffer", "load-buffer"]
+    );
+    assert!(f.calls().iter().flatten().all(|a| !a.contains("gizli")));
+    let c = &f.calls()[1];
+    let buf = c[2].as_str();
+    assert_eq!(
+        c[..],
+        [
+            "load-buffer",
+            "-b",
+            buf,
+            "-",
+            ";",
+            "paste-buffer",
+            "-r",
+            "-d",
+            "-b",
+            buf,
+            "-t",
+            "=x:"
+        ]
+    );
 }
 
 #[test]
-fn raw_is_split_into_chunks_and_stops_at_the_first_failure() {
+fn raw_disables_sanitizing_only_where_the_server_knows_the_flag() {
     let f = Fake::new();
-    f.set("send-keys.rc", "0\n1\n");
-    assert!(f.tmux.send_raw("x", &"ş".repeat(6000), USER).is_err());
+    f.set(
+        "list-commands.out",
+        "paste-buffer (pasteb) [-dprS] [-s separator]\n",
+    );
+    f.tmux.send_raw("x", "\u{3}", USER).unwrap();
+    assert_eq!(f.calls()[1][5..9], ["paste-buffer", "-r", "-S", "-d"]);
+}
+
+#[test]
+fn raw_sends_nothing_when_the_probe_fails() {
+    for (out, rc) in [("", "0"), ("send-keys (send)\n", "0"), ("", "1")] {
+        let f = Fake::new();
+        f.set("list-commands.out", out).set("list-commands.rc", rc);
+        assert!(f.tmux.send_raw("x", "a", USER).is_err(), "{out:?} {rc}");
+        assert_eq!(f.subcommands(), ["list-commands"]);
+    }
+}
+
+#[test]
+fn raw_failure_deletes_the_buffer_and_probes_again() {
+    let f = Fake::new();
+    f.set("load-buffer.rc", "1\n0");
+    assert!(f.tmux.send_raw("x", "gizli", USER).is_err());
     let calls = f.calls();
-    assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].last().unwrap().chars().count(), 2000);
+    assert_eq!(calls[2], ["delete-buffer", "-b", calls[1][2].as_str()]);
+    f.tmux.send_raw("x", "y", USER).unwrap();
+    assert_eq!(
+        f.subcommands(),
+        [
+            "list-commands",
+            "load-buffer",
+            "delete-buffer",
+            "list-commands",
+            "load-buffer"
+        ]
+    );
 }
 
 #[test]
@@ -232,7 +290,7 @@ fn unknown_mask_state_blocks_every_automatic_send_but_not_user_typing() {
         );
         // Kullanıcının kendi yazdığı girdi maske yoklamasına hiç uğramaz.
         f.tmux.send_raw("x", "a", USER).unwrap();
-        assert_eq!(f.subcommands().last().unwrap(), "send-keys");
+        assert_eq!(f.subcommands().last().unwrap(), "load-buffer");
     }
 }
 

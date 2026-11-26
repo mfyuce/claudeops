@@ -3,6 +3,7 @@ use std::io::{ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -72,6 +73,8 @@ pub struct Tmux {
     program: OsString,
     tmpdir: Option<PathBuf>,
     pub(crate) timeout: Duration,
+    /// Ham yapıştırma sürüm yoklaması (an, `-S` gerekli mi); klonlar paylaşır.
+    pub(crate) raw_probe: Arc<Mutex<Option<(Instant, bool)>>>,
 }
 
 /// Bir süreç çevresi (tamamı: miras alınan çevrenin yerine geçer).
@@ -123,6 +126,7 @@ impl Tmux {
             program: "tmux".into(),
             tmpdir: None,
             timeout: DEFAULT_TIMEOUT,
+            raw_probe: Arc::default(),
         }
     }
 

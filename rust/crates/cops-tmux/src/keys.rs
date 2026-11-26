@@ -1,11 +1,12 @@
 //! Pane'e yazan işlemler: metin, ham tuş, özel tuş, boyut, mesaj.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::PoisonError;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::diag::{swallow, Swallowed};
-use crate::runner::{escape_arg, exact_target, Call, Tmux, DEFAULT_TIMEOUT};
+use crate::runner::{exact_target, Call, Tmux, DEFAULT_TIMEOUT};
 use crate::text::py_isspace;
 use crate::TmuxError;
 
@@ -17,11 +18,21 @@ pub const ALLOWED_SPECIAL_KEYS: [&str; 10] = [
 pub const RESIZE_COLS: (u32, u32) = (20, 500);
 pub const RESIZE_ROWS: (u32, u32) = (5, 200);
 
-/// Tek `send-keys -l` çağrısındaki en çok karakter.
-pub const RAW_CHUNK_CHARS: usize = 2000;
+/// Ham yapıştırma sürüm yoklamasının ömrü (Python `_RAW_PROBE_TTL`): sunucu yenilenirse yanlış bayrakla en çok bu
+/// kadar gönderilir.
+pub const RAW_PROBE_TTL: Duration = Duration::from_secs(60);
 
 /// Yapıştırma sonrası TUI'nin metni işlemesi için en az bekleme.
 const PASTE_SETTLE: Duration = Duration::from_millis(150);
+
+fn next_buffer() -> String {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    format!(
+        "cops-rs-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )
+}
 
 /// Parola istemine karşı tutum. Her gönderimde AÇIKÇA seçilir.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,24 +96,30 @@ impl Tmux {
     }
 
     fn paste_text(&self, target: &str, text: &str, timeout: Duration) -> Result<(), TmuxError> {
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let buf = format!(
-            "cops-rs-{}-{}",
-            std::process::id(),
-            SEQ.fetch_add(1, Ordering::Relaxed)
-        );
+        let buf = next_buffer();
         let load = ["load-buffer", "-b", &buf, "-"];
         let paste = ["paste-buffer", "-p", "-d", "-b", &buf, "-t", target];
-        let call = Call {
-            input: Some(text.as_bytes()),
-            ..Call::new(&load)
-        };
-        let result = self
-            .exec(call, timeout)
-            .and_then(|_| self.exec(Call::new(&paste), timeout));
+        self.paste_buffered(&buf, &[&load, &paste], text.as_bytes(), timeout)
+    }
+
+    /// tmux komutlarını sırayla koşar; `payload` İLKİNİN stdin'ine verilir. Yapıştırma olmazsa tampon silinir.
+    fn paste_buffered(
+        &self,
+        buf: &str,
+        commands: &[&[&str]],
+        payload: &[u8],
+        timeout: Duration,
+    ) -> Result<(), TmuxError> {
+        let result = commands.iter().enumerate().try_for_each(|(i, args)| {
+            let call = Call {
+                input: (i == 0).then_some(payload),
+                ..Call::new(args)
+            };
+            self.exec(call, timeout).map(drop)
+        });
         if let Err(e) = result {
             // Zaman aşımında da sil: metin (parola olabilir) sunucuda okunabilir kalmasın (TBD#369 P9).
-            if let Err(del) = self.run(&["delete-buffer", "-b", &buf]) {
+            if let Err(del) = self.run(&["delete-buffer", "-b", buf]) {
                 swallow(Swallowed::DeleteBuffer, &del);
             }
             return Err(e);
@@ -110,19 +127,66 @@ impl Tmux {
         Ok(())
     }
 
-    /// Ham tuş verisi (xterm.js `onData`): Enter EKLEMEZ. NUL argv'den geçemez, atılır.
+    /// Ham yapıştırma için `-S` gerekli mi (Python `_raw_paste_flags`). tmux 3.7+ `paste-buffer`, `-S` verilmezse
+    /// kontrol karakterlerini görünür metne çevirir; eski sürümler `-S`i tanımaz. Sunucunun `list-commands` çıktısından
+    /// okunur; `paste-buffer` satırı yoksa [`TmuxError::BadOutput`] (hiçbir şey gönderilmez).
+    fn raw_needs_no_vis(&self) -> Result<bool, TmuxError> {
+        let cached = *self
+            .raw_probe
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some((at, flag)) = cached {
+            if at.elapsed() < RAW_PROBE_TTL {
+                return Ok(flag);
+            }
+        }
+        let now = Instant::now();
+        let out = self.run(&["list-commands"])?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text
+            .split('\n')
+            .find(|l| l.starts_with("paste-buffer "))
+            .ok_or(TmuxError::BadOutput)?;
+        let flags = line.split_once("[-").map_or("", |(_, rest)| rest);
+        let flag = flags.split(']').next().is_some_and(|f| f.contains('S'));
+        self.set_raw_probe(Some((now, flag)));
+        Ok(flag)
+    }
+
+    fn set_raw_probe(&self, value: Option<(Instant, bool)>) {
+        *self
+            .raw_probe
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = value;
+    }
+
+    /// Sürüm yoklaması önbelleğini boşaltır (Python `_reset_raw_paste_probe`).
+    pub fn reset_raw_paste_probe(&self) {
+        self.set_raw_probe(None);
+    }
+
+    /// Ham tuş verisi (xterm.js `onData`): Enter EKLEMEZ. Veri (parola olabilir) ASLA argv'ye girmez (TBD#385): stdin'den
+    /// tampona yüklenir ve AYNI tmux sürecinde `paste-buffer -r` ile olduğu gibi yazılır (`-p` YOK; `-d` tamponu siler).
+    /// NUL dahil her bayt geçer. `send-keys`ten farkı: pane copy-mode'dayken de veri uygulamaya gider.
     pub fn send_raw(&self, name: &str, data: &str, guard: MaskGuard) -> Result<(), TmuxError> {
-        let data: Vec<char> = data.chars().filter(|&c| c != '\0').collect();
         if data.is_empty() {
             return Ok(());
         }
         let target = exact_target(name)?;
         self.guard(name, guard)?;
-        for chunk in data.chunks(RAW_CHUNK_CHARS) {
-            let arg = escape_arg(&chunk.iter().collect::<String>());
-            self.run(&["send-keys", "-t", &target, "-l", "--", &arg])?;
+        let keep = self.raw_needs_no_vis()?;
+        let buf = next_buffer();
+        let mut args = vec!["load-buffer", "-b", &buf, "-", ";", "paste-buffer", "-r"];
+        if keep {
+            args.push("-S");
         }
-        Ok(())
+        args.extend(["-d", "-b", &buf, "-t", &target]);
+        let timeout = self.timeout.max(send_text_timeout(data.chars().count()));
+        let result = self.paste_buffered(&buf, &[&args], data.as_bytes(), timeout);
+        if result.is_err() {
+            self.reset_raw_paste_probe();
+        }
+        result
     }
 
     /// [`ALLOWED_SPECIAL_KEYS`] içindeki tek tuş.

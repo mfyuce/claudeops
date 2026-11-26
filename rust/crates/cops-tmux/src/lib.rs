@@ -27,7 +27,7 @@ mod text;
 pub use diag::{set_swallow_hook, swallowed_count, SwallowHook, Swallowed};
 pub use error::TmuxError;
 pub use keys::{
-    send_text_timeout, MaskGuard, ALLOWED_SPECIAL_KEYS, RAW_CHUNK_CHARS, RESIZE_COLS, RESIZE_ROWS,
+    send_text_timeout, MaskGuard, ALLOWED_SPECIAL_KEYS, RAW_PROBE_TTL, RESIZE_COLS, RESIZE_ROWS,
 };
 pub use mask::tty_is_masked;
 pub use proc::{pid_childless, CtxPusher, OuterBash, ANCESTOR_WALK_LIMIT};

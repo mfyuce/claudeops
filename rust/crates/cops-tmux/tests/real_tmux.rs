@@ -80,7 +80,7 @@ fn literal_text_raw_and_special_keys_arrive_unchanged() {
     }
     for data in ["foo;", r"bar\;", ";", "-", "\u{3}\u{1b}[A", "a\0b"] {
         t.send_raw("k", data, MaskGuard::UserTyped).unwrap();
-        want.extend(data.bytes().filter(|&b| b != 0));
+        want.extend(data.bytes()); // NUL dahil: veri stdin'den gider
     }
     // Parça sınırında `;` (2000. karakter) ve çok baytlı harfler.
     let long = format!("{};{}", "ş".repeat(1999), "z;".repeat(1500));
