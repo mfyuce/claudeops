@@ -112,7 +112,7 @@ fn json_resp(code: StatusCode, v: serde_json::Value) -> Response<Body> {
 /// İstemci https mi: copsd TLS sonlandırmaz; https yalnız AYNI makinedeki ön uçtan (tünel, ters vekil: loopback eş) gelen
 /// `X-Forwarded-Proto: https` ile kabul edilir. Uzak eşin gönderdiği başlığa güvenilmez (X-Forwarded-For ezme kuralıyla aynı ilke).
 pub fn client_https(h: &hyper::HeaderMap, peer: SocketAddr) -> bool {
-    peer.ip().is_loopback()
+    peer.ip().to_canonical().is_loopback()
         && h.get("x-forwarded-proto")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.split(',').next())
@@ -696,7 +696,7 @@ impl Proxy {
             gate::LocalVerdict::Default => {
                 m.token.authorized(&query, auth.as_deref())
                     || (post
-                        && peer.ip().is_loopback()
+                        && peer.ip().to_canonical().is_loopback()
                         && m.front_secret.authorized("", front.as_deref()))
             }
             gate::LocalVerdict::Allow => true,
@@ -959,7 +959,7 @@ impl Proxy {
             req.headers_mut()
                 .insert(HeaderName::from_static("x-cops-front"), sec.clone());
         }
-        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_string()) {
+        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_canonical().to_string()) {
             req.headers_mut()
                 .insert(HeaderName::from_static("x-forwarded-for"), v);
         }
@@ -1176,7 +1176,7 @@ impl Proxy {
         ] {
             h.remove(n);
         }
-        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_string()) {
+        if let Ok(v) = HeaderValue::from_str(&peer.ip().to_canonical().to_string()) {
             h.insert(HeaderName::from_static("x-forwarded-for"), v);
         }
         h.insert(
@@ -1519,6 +1519,21 @@ pub async fn serve_on(ln: tokio::net::TcpListener, proxy: Arc<Proxy>) -> std::io
 #[cfg(test)]
 mod client_ip_tests {
     use super::*;
+
+    #[test]
+    fn mapped_ipv4_loopback_peer_may_report_https() {
+        let mut h = hyper::HeaderMap::new();
+        h.insert("x-forwarded-proto", HeaderValue::from_static("https"));
+        for (peer, https) in [
+            ("127.0.0.1:5", true),
+            ("[::1]:5", true),
+            ("[::ffff:127.0.0.1]:5", true),
+            ("10.0.0.5:5", false),
+            ("[::ffff:10.0.0.5]:5", false),
+        ] {
+            assert_eq!(client_https(&h, peer.parse().unwrap()), https, "{peer}");
+        }
+    }
 
     #[test]
     fn cf_connecting_ip_survives_only_from_loopback_peer() {
