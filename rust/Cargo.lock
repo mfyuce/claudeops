@@ -66,6 +66,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-parity"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "cops-progress"
 version = "0.1.0"
 dependencies = [
@@ -100,6 +112,7 @@ dependencies = [
  "cops-metrics",
  "cops-progress",
  "cops-proxy",
+ "serde_json",
  "tokio",
 ]
 

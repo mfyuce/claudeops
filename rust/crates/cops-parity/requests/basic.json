@@ -1,0 +1,14 @@
+{
+  "defaults": {"ignore": ["server_started_at"]},
+  "requests": [
+    {"name": "durum", "path": "/api/status",
+     "dynamic": ["**.cpu", "**.cpu_percent", "**.mem_mb", "**.age", "**.updated_at", "**.ts"],
+     "unordered": ["sessions"]},
+    {"name": "hostlar", "path": "/api/hosts"},
+    {"name": "arayüz eklentileri", "path": "/api/ui/extensions"},
+    {"name": "oturum kayıtları", "path": "/api/instances"},
+    {"name": "periyodik işler", "path": "/api/periodic"},
+    {"name": "değnekçi soruları (Python sözleşmesi)", "path": "/api/steward/questions"},
+    {"name": "kimliksiz durum", "path": "/api/status?token=yanlis", "request_headers": {"authorization": "Bearer yanlis"}}
+  ]
+}

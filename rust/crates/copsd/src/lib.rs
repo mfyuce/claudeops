@@ -6,11 +6,16 @@
 //! `web.token` açılışta yalnız uçları açmak için denetlenir; değeri her istekte dosyadan okunur (silme/döndürme anında geçerli).
 //! `--token-file` verilmezse `web.token` durum dizininden okunur ([`state_dir`]: `--state-dir`, `CLAUDEOPS_DIR`, `~/.claude/claudeops`).
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
+//! `--force-proxy-file` (varsayılan [`state_dir`]`/front_force_proxy`): listedeki yol önekleri Rust'ta karşılığı olsa bile
+//! Python'a aktarılır ([`cops_proxy::force`]); açılışta ve SIGHUP'ta okunur. `GET /api/front/stats`: uç başına yerel/aktarım
+//! sayaçları. Çekirdek yerel uçları [`routes::register`]de kaydedilir.
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
 //! kimlik/yetki kancası ([`cops_proxy::gate::LocalAuth`]), [`run_with_hooks`] ile ek olarak vekillenen istek ön süzgeci
 //! ([`cops_proxy::gate::ForwardFilter`]) ve Rust'ın kendisinin cevapladığı uçlar ([`cops_proxy::gate::RouteHook`], ör. enterprise
 //! `/api/auth/*`) takabilir; kanca yoksa davranış `copsd` ile aynıdır.
+pub mod routes;
+
 use std::future::Future;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -83,6 +88,39 @@ fn read_secret() -> Result<Option<String>, String> {
             Ok(Some(s.trim().to_string()).filter(|s| !s.is_empty()))
         }
     }
+}
+
+fn log_force(f: &cops_proxy::force::ForceProxy) {
+    let list = f.list();
+    if !list.is_empty() {
+        eprintln!(
+            "copsd: force_proxy ({}): {} önek Python'a: {}",
+            f.path().display(),
+            list.len(),
+            list.join(" ")
+        );
+    }
+}
+
+/// SIGHUP -> `force_proxy` dosyası yeniden okunur. İşleyici bu işlev döndüğünde KURULUDUR.
+fn watch_sighup(f: Arc<cops_proxy::force::ForceProxy>) -> std::io::Result<()> {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut hup = signal(SignalKind::hangup())?;
+    tokio::spawn(async move {
+        while hup.recv().await.is_some() {
+            match f.reload() {
+                Ok(n) => {
+                    eprintln!("copsd: SIGHUP: force_proxy yeniden okundu ({n} önek)");
+                    log_force(&f);
+                }
+                Err(e) => eprintln!(
+                    "copsd: SIGHUP: force_proxy okunamadı, eski liste geçerli: {}: {e}",
+                    f.path().display()
+                ),
+            }
+        }
+    });
+    Ok(())
 }
 
 /// Takılabilir kancalar (hepsi isteğe bağlı; `Default` = hiçbiri: davranış `copsd` ile aynı).
@@ -158,6 +196,19 @@ where
         Some(d) => proxy.with_dist(std::path::PathBuf::from(d)),
         None => proxy,
     };
+    // SIGHUP işleyicisi HEMEN kurulur (varsayılan davranış süreci öldürür; kancaların kurulumu saniyeler sürebilir).
+    let force = Arc::new(cops_proxy::force::ForceProxy::load(state_path(
+        "--force-proxy-file",
+        "front_force_proxy",
+    )));
+    log_force(&force);
+    watch_sighup(force.clone())?;
+    let proxy = proxy
+        .with_force_proxy(force)
+        .with_stats(cops_proxy::StatsCfg {
+            token: cops_auth::Token::from_file(&token_file()),
+            front_secret: cops_auth::Token::new(&front_secret),
+        });
     // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
     let tok_path = token_file();
     let db_path = state_path("--db", "claudeops.db");
@@ -267,6 +318,32 @@ where
         }
         _ => {
             eprintln!("copsd: mount kapalı: web.token yok ya da 0600 değil");
+            proxy
+        }
+    };
+    // Çoklu rota tablosu: panel kimlikli kayıtlar web.token ister; yoksa tablo AÇILMAZ (istek Python'a gider).
+    let mut table = cops_proxy::routes::RouteTable::new();
+    routes::register(
+        &mut table,
+        &routes::RouteCtx {
+            state_dir: state_dir(),
+            db: db_path.clone(),
+            instances: instances.clone(),
+        },
+    );
+    let proxy = match std::fs::metadata(&tok_path) {
+        _ if table.is_empty() => proxy,
+        Ok(m)
+            if m.permissions().mode() & 0o077 == 0
+                && !cops_auth::Token::from_file(&tok_path).is_empty() =>
+        {
+            for (method, pattern) in table.routes() {
+                eprintln!("copsd: yerel uç açık: {method} {pattern}");
+            }
+            proxy.with_route_table(table, cops_auth::Token::from_file(&tok_path))
+        }
+        _ => {
+            eprintln!("copsd: rota tablosu kapalı: web.token yok ya da 0600 değil");
             proxy
         }
     };

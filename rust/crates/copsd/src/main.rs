@@ -11,4 +11,5 @@ async fn main() -> std::io::Result<()> {
 const USAGE: &str = "copsd: claudeops ön sunucusu
   --listen ADRES (127.0.0.1:8765)   --upstream ADRES (127.0.0.1:18765)
   --secret-file --token-file --state-dir --mounts-file --db --metrics-db --instances YOL
+  --force-proxy-file YOL (SIGHUP ile yeniden okunur)
   --dist DİZİN (statik dosyalar)    --once    -h, --help";

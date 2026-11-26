@@ -2,11 +2,16 @@
 //! Python'a aktarılan isteklerde kimlik, yetki ve yönlendirme KARARI vermez; yalnız başlık temizler ve `X-Forwarded-For` ekler.
 //! İstisnalar: Rust yerel uçları ve uygulama mount'ları (`mount.rs`, `/<id>/` -> derbent): bunlarda kimliği copsd kendisi denetler.
 //! Takılabilir ön süzgeç ([`gate::ForwardFilter`], enterprise) aktarılan istekteki GEÇERSİZ kimlik bilgisini siler (karar yine Python'da).
+//! Yerel uçlar tabloyla kaydedilir ([`routes::RouteTable`]), [`force::ForceProxy`] listesi onları Python'a geri verir,
+//! `GET /api/front/stats` ([`stats`]) uç başına yerel/aktarım sayar.
 
 mod base_href;
+pub mod force;
 pub mod gate;
 pub mod mount;
 pub mod resources;
+pub mod routes;
+pub mod stats;
 
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt};
@@ -55,7 +60,35 @@ pub struct MountCfg {
     pub token: cops_auth::Token,
 }
 
+/// `/api/front/stats` kimliği: web.token YA DA loopback + ön kapı gizlisi `X-Cops-Front`. Çok kullanıcı kipinde de yalnız
+/// bunlar (kullanıcı oturumu kabul edilmez).
+pub struct StatsCfg {
+    pub token: cops_auth::Token,
+    pub front_secret: cops_auth::Token,
+}
+
+/// İstek bu başlığı taşırsa yanıta [`SERVED_HEADER`] eklenir (parite koşucusu "Rust mı cevapladı, Python mu" ayırır).
+pub const PARITY_HEADER: &str = "x-cops-parity";
+/// Değeri `local` (Rust cevapladı) ya da `python` (aktarıldı).
+pub const SERVED_HEADER: &str = "x-cops-served";
+
+fn mark_served(mut r: Response<Body>, asked: bool, who: &'static str) -> Response<Body> {
+    // Üst sunucudan gelen aynı adlı başlık güvenilmez: her zaman silinir.
+    r.headers_mut().remove(SERVED_HEADER);
+    if asked {
+        r.headers_mut().insert(
+            HeaderName::from_static(SERVED_HEADER),
+            HeaderValue::from_static(who),
+        );
+    }
+    r
+}
+
 pub struct Proxy {
+    table: Option<(routes::RouteTable, cops_auth::Token)>,
+    force: Option<Arc<force::ForceProxy>>,
+    stats: stats::Stats,
+    stats_cfg: Option<StatsCfg>,
     local_auth: Option<Arc<dyn gate::LocalAuth>>,
     routes: Option<Arc<dyn gate::RouteHook>>,
     forward_filter: Option<Arc<dyn gate::ForwardFilter>>,
@@ -499,6 +532,10 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            table: None,
+            force: None,
+            stats: stats::Stats::default(),
+            stats_cfg: None,
             local_auth: None,
             routes: None,
             forward_filter: None,
@@ -594,40 +631,212 @@ impl Proxy {
         let Some(limit) = hook.route(&view) else {
             return Err(req);
         };
-        let https = client_https(req.headers(), peer);
-        let read = http_body_util::Limited::new(req.into_body(), limit).collect();
-        let body = match tokio::time::timeout(hook.body_timeout(), read).await {
-            Ok(Ok(c)) => Ok(c.to_bytes()),
-            Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => {
-                Err(gate::BodyError::TooLarge)
-            }
-            Ok(Err(_)) => Err(gate::BodyError::Read),
-            // Gövde tamamlanmadı: kalan baytlar sonraki isteğin başı sanılmasın, bağlantı kapanır.
-            Err(_) => {
-                let mut r = err(StatusCode::REQUEST_TIMEOUT, "request body timeout");
-                r.headers_mut()
-                    .insert(hyper::header::CONNECTION, HeaderValue::from_static("close"));
-                return Ok(r);
-            }
-        };
-        let r = gate::route_call(hook.clone(), gate::RouteRequest { view, body, https }).await;
-        let mut b = Response::builder()
-            .status(StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
-        for (k, v) in &r.headers {
-            if let (Ok(k), Ok(v)) = (
-                HeaderName::from_bytes(k.as_bytes()),
-                HeaderValue::from_str(v),
-            ) {
-                b = b.header(k, v);
-            }
-        }
-        let body = http_body_util::Full::new(Bytes::from(r.body))
-            .map_err(|never| match never {})
-            .boxed();
-        Ok(b.body(body)
-            .unwrap_or_else(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")))
+        Ok(run_hook(hook.clone(), view, limit, req, peer).await)
     }
 
+    /// Rota tablosu: eşleşen ilk üstlenen kanca. `Ok` ikinci alan sayaç anahtarı (kayıt deseni).
+    #[allow(clippy::result_large_err)]
+    async fn try_table(
+        &self,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Result<(Response<Body>, &'static str), Request<Incoming>> {
+        let Some((table, token)) = &self.table else {
+            return Err(req);
+        };
+        let view = request_view(&req, peer);
+        let (method, path) = (view.method.clone(), view.path.clone());
+        let claimed = table
+            .candidates(&method, &path)
+            .find_map(|e| e.hook.route(&view).map(|limit| (e, limit)));
+        let Some((entry, limit)) = claimed else {
+            return Err(req);
+        };
+        if entry.auth == routes::Auth::Panel {
+            let auth = req
+                .headers()
+                .get(AUTHORIZATION)
+                .and_then(|v| v.to_str().ok());
+            let ok = match self.local_verdict(&req, peer).await {
+                gate::LocalVerdict::Default => token.authorized(&view.raw_query, auth),
+                gate::LocalVerdict::Allow => true,
+                gate::LocalVerdict::Unauthorized => false,
+                gate::LocalVerdict::Forbidden => return Ok((forbidden(), entry.pattern)),
+            };
+            if !ok {
+                return Ok((
+                    json_resp(
+                        StatusCode::UNAUTHORIZED,
+                        serde_json::json!({"ok": false, "error": "unauthorized"}),
+                    ),
+                    entry.pattern,
+                ));
+            }
+        }
+        let r = run_hook(entry.hook.clone(), view, limit, req, peer).await;
+        Ok((r, entry.pattern))
+    }
+
+    /// Çoklu rota tablosunu tak; `token` panel kimlikli kayıtlar içindir. Proxy paylaşılmışsa değişmeden döner.
+    pub fn with_route_table(
+        self: Arc<Self>,
+        table: routes::RouteTable,
+        token: cops_auth::Token,
+    ) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => {
+                for (m, p) in table.routes() {
+                    me.stats.seed(m, p);
+                }
+                Arc::new(Proxy {
+                    table: Some((table, token)),
+                    ..me
+                })
+            }
+            Err(me) => {
+                eprintln!("copsd: with_route_table: vekil paylaşılmış, tablo takılmadı");
+                me
+            }
+        }
+    }
+
+    /// `force_proxy` listesini tak (yeniden okuma çağıranın elindeki `Arc` üzerinden).
+    pub fn with_force_proxy(self: Arc<Self>, f: Arc<force::ForceProxy>) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                force: Some(f),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_force_proxy: vekil paylaşılmış, liste takılmadı");
+                me
+            }
+        }
+    }
+
+    /// `GET /api/front/stats` ucunu aç. Takılmazsa istek Python'a gider.
+    pub fn with_stats(self: Arc<Self>, cfg: StatsCfg) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                stats_cfg: Some(cfg),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_stats: vekil paylaşılmış, uç açılmadı");
+                me
+            }
+        }
+    }
+
+    fn try_stats(&self, req: &Request<Incoming>, peer: SocketAddr) -> Option<Response<Body>> {
+        let cfg = self.stats_cfg.as_ref()?;
+        if req.method() != hyper::Method::GET || req.uri().path() != "/api/front/stats" {
+            return None;
+        }
+        let header = |n: &str| req.headers().get(n).and_then(|v| v.to_str().ok());
+        let front = header("x-cops-front").map(|s| format!("Bearer {s}"));
+        let ok = cfg
+            .token
+            .authorized(req.uri().query().unwrap_or(""), header("authorization"))
+            || (peer.ip().to_canonical().is_loopback()
+                && cfg.front_secret.authorized("", front.as_deref()));
+        if !ok {
+            return Some(json_resp(
+                StatusCode::UNAUTHORIZED,
+                serde_json::json!({"ok": false, "error": "unauthorized"}),
+            ));
+        }
+        let routes = self.table.iter().flat_map(|(t, _)| t.routes()).collect();
+        let force = self.force.as_ref().map(|f| f.list()).unwrap_or_default();
+        Some(json_resp(
+            StatusCode::OK,
+            self.stats.snapshot(routes, force),
+        ))
+    }
+
+    /// Rust'ın cevaplayabileceği istek: statik, metrik, rota tablosu, tek kanca, yerel uç (bu sırayla). `Ok` ikinci alan sayaç
+    /// anahtarı.
+    #[allow(clippy::result_large_err)]
+    async fn answer_locally(
+        self: &Arc<Self>,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Result<(Response<Body>, String), Request<Incoming>> {
+        let key = stats::normalize(req.uri().path());
+        if let Some(r) = self.try_static(&req) {
+            return Ok((r, key));
+        }
+        let req = match self.try_metrics(req, peer).await {
+            Ok(r) => return Ok((r, key)),
+            Err(r) => r,
+        };
+        let req = match self.try_table(req, peer).await {
+            Ok((r, pattern)) => return Ok((r, pattern.to_string())),
+            Err(r) => r,
+        };
+        let req = match self.try_routes(req, peer).await {
+            Ok(r) => return Ok((r, key)),
+            Err(r) => r,
+        };
+        match self.try_local(&req, peer).await {
+            Some(r) => Ok((r, key)),
+            None => Err(req),
+        }
+    }
+
+    /// Sayaç anahtarı aktarılan istekte: kayıtlı desene uyuyorsa o (yerel ve aktarım aynı satırda toplansın), yoksa yolun
+    /// indirgenmiş hali.
+    fn stats_key(&self, method: &str, path: &str) -> String {
+        self.table
+            .iter()
+            .flat_map(|(t, _)| t.candidates(method, path))
+            .next()
+            .map(|e| e.pattern.to_string())
+            .unwrap_or_else(|| stats::normalize(path))
+    }
+}
+
+/// Kancanın üstlendiği isteği çalıştırır: gövde sınırlı ve süreli okunur.
+async fn run_hook(
+    hook: Arc<dyn gate::RouteHook>,
+    view: cops_auth::authz::RequestView,
+    limit: usize,
+    req: Request<Incoming>,
+    peer: SocketAddr,
+) -> Response<Body> {
+    let https = client_https(req.headers(), peer);
+    let read = http_body_util::Limited::new(req.into_body(), limit).collect();
+    let body = match tokio::time::timeout(hook.body_timeout(), read).await {
+        Ok(Ok(c)) => Ok(c.to_bytes()),
+        Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => Err(gate::BodyError::TooLarge),
+        Ok(Err(_)) => Err(gate::BodyError::Read),
+        // Gövde tamamlanmadı: kalan baytlar sonraki isteğin başı sanılmasın, bağlantı kapanır.
+        Err(_) => {
+            let mut r = err(StatusCode::REQUEST_TIMEOUT, "request body timeout");
+            r.headers_mut()
+                .insert(hyper::header::CONNECTION, HeaderValue::from_static("close"));
+            return r;
+        }
+    };
+    let r = gate::route_call(hook, gate::RouteRequest { view, body, https }).await;
+    let mut b = Response::builder()
+        .status(StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
+    for (k, v) in &r.headers {
+        if let (Ok(k), Ok(v)) = (
+            HeaderName::from_bytes(k.as_bytes()),
+            HeaderValue::from_str(v),
+        ) {
+            b = b.header(k, v);
+        }
+    }
+    let body = http_body_util::Full::new(Bytes::from(r.body))
+        .map_err(|never| match never {})
+        .boxed();
+    b.body(body)
+        .unwrap_or_else(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "internal error"))
+}
+
+impl Proxy {
     /// Kanca takılı değilse `Default` (bugünkü yol).
     async fn local_verdict<B>(&self, req: &Request<B>, peer: SocketAddr) -> gate::LocalVerdict {
         match &self.local_auth {
@@ -798,6 +1007,10 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            table: None,
+            force: None,
+            stats: stats::Stats::default(),
+            stats_cfg: None,
             local_auth: None,
             routes: None,
             forward_filter: None,
@@ -934,21 +1147,25 @@ impl Proxy {
                 }
             }
         }
-        if let Some(r) = self.try_static(&req) {
-            return Ok(r);
+        let asked = req.headers_mut().remove(PARITY_HEADER).is_some();
+        if let Some(r) = self.try_stats(&req, peer) {
+            return Ok(mark_served(r, asked, "local"));
         }
-        let req = match self.try_metrics(req, peer).await {
-            Ok(r) => return Ok(r),
-            Err(r) => r,
+        let method = req.method().as_str().to_string();
+        let path = req.uri().path().to_string();
+        let forced = self.force.as_ref().is_some_and(|f| f.matches(&path));
+        let mut req = if forced {
+            req
+        } else {
+            match self.answer_locally(req, peer).await {
+                Ok((r, key)) => {
+                    self.stats
+                        .record(&method, key, r.status().as_u16(), stats::Outcome::Local);
+                    return Ok(mark_served(r, asked, "local"));
+                }
+                Err(r) => r,
+            }
         };
-        let req = match self.try_routes(req, peer).await {
-            Ok(r) => return Ok(r),
-            Err(r) => r,
-        };
-        let mut req = req;
-        if let Some(r) = self.try_local(&req, peer).await {
-            return Ok(r);
-        }
         if let Some(f) = &self.forward_filter {
             let strip = gate::forward_check(f.clone(), request_view(&req, peer)).await;
             strip_credentials(req.headers_mut(), &strip);
@@ -968,7 +1185,15 @@ impl Proxy {
             .path_and_query()
             .map(|p| p.as_str().to_string())
             .unwrap_or_else(|| "/".into());
-        Ok(self.forward(req, self.upstream, &pq).await)
+        let r = self.forward(req, self.upstream, &pq).await;
+        let outcome = stats::Outcome::Python {
+            forced,
+            upstream_error: r.extensions().get::<UpstreamError>().is_some(),
+        };
+        let key = self.stats_key(&method, &path);
+        self.stats
+            .record(&method, key, r.status().as_u16(), outcome);
+        Ok(mark_served(r, asked, "python"))
     }
 
     /// Ortak aktarım (Python iç portu ya da mount upstream'i): hop-by-hop süzme, WS yükseltme tüneli, gövde AKIŞLI (tamponlama yok).
