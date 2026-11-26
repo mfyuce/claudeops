@@ -99,10 +99,6 @@ pub fn requeue_stale_verify(findings: &mut Map, now: f64, stale: f64) -> Result<
             continue;
         }
         let Some(done) = badrec::field(rec, "verify_tries", "findings", fid) else { continue };
-        if !done.is_finite() {
-            badrec::log_bad("findings.verify_tries", fid);
-            continue;
-        }
         let tries = (done.trunc() as i64).saturating_add(1);
         if tries >= VERIFY_MAX_TRIES {
             rec.insert("state".into(), "unclear".into());

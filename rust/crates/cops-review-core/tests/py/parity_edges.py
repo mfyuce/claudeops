@@ -610,6 +610,37 @@ class TestStoreEdges(unittest.TestCase):
             rv.decide_finding(self.p, "o", "undup", NOW)
 
 
+T = rv.ReviewTarget("evren", "m1", "m1")
+
+
+class TestNonFinite(unittest.TestCase):
+    """Sonlu olmayan sayılar (TBD#368 b): iki tarafta aynı sonuç."""
+
+    def test_non_finite_numbers(self):
+        d = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        bad = (float("inf"), float("-inf"), float("nan"), 10 ** 400, 10 ** 30, "inf", "nan", "1e999", "x", True)
+        path = d + "/u.usage.jsonl"
+        with open(path, "w") as f:
+            for b in bad:
+                for rec in ({"t": b, "usage": {"input_tokens": 100}}, {"t": 9, "usage": {"input_tokens": b}},
+                            {"t": 9, "usage": {"output_tokens": 7, "other": b}}):
+                    f.write(json.dumps(rec) + "\n")
+        for since in (0.0, 5.0):
+            rv.usage_cost_usd(path, "sonnet-5-5", since_ms=since)
+        rv.duration_summary({"runs": [{"pair": "p|a/m", "seconds": b} for b in bad]})
+        for b in bad:
+            rv.counts_as_attempt({"error": rv.CAPACITY_ERROR_PREFIX, "attempts": b})
+            rv._run_seconds({"started_at": 5.0, "finished_at": b})
+            rv.blocked_modes({"blocks": {"evren": {"until": b}}}, 1.0)
+            if b != 10 ** 30:     # i64 dışı sonlu sayaç: Rust sınıra kırpar (docs/rs-rev.md "Bilinen küçük sapmalar")
+                rv.requeue_stale_verify({"f": {"state": "verify_sent", "verify_session": "s", "verify_sent_at": 1,
+                                               "verify_tries": b}}, 10.0 ** 9)
+            rv.next_review({"projects": {"p": {"enabled": True}}},
+                           {"pairs": {rv.pair_key("p", T): {"status": "error", "attempts": b, "started_at": b,
+                                                            "finished_at": b, "retry_at": b}}}, [T], 200.0)
+
+
 class TestRealData(unittest.TestCase):
     """Canlı deponun KOPYASI üzerinde okuma-yazma ve türetme; veri yoksa atlanır."""
 

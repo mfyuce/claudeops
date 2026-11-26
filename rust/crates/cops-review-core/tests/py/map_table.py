@@ -90,6 +90,7 @@ MAP = {
         changed_after_review _worktree_main row_in_repo export_root export_lines appended_export _where_file"""),
     **_same("badrec", "_BAD_SEEN _BAD_SEEN_MAX _field"),
     "_log_bad": _m("badrec", "log_bad"),
+    "_finite": _m("report", "usage_cost_usd"),
     "StoreCorrupt": _m("error", "Error"),
     "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
     "_keep_verdict_state": _m("flow", "keep_verdict_state"),
@@ -106,6 +107,7 @@ STATEMENTS = {"_ext.load()": "kapsam dışı: Python eklenti yükleyicisi (`exte
 NOTES = {
     "StoreCorrupt": "`Error::StoreCorrupt` varyantı",
     "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
+    "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
     "_LENS_FORMAT_EXTRA": "modül genel sözlüğü yerine kayıt nesnesinin alanı",
     "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"; `file://` öneki silinmiyor: bilinen Python davranışı, "
@@ -224,6 +226,8 @@ tests("test_review_findings_flow.TestExportStaleCheck", CORE, "stale_reason_pure
 classes("test_review_findings_flow", CORE, "TestScanVerdicts")
 classes("test_review_verdict_state", _flow, "TestDecisionKeepsVerdict TestRemoteKeepsVerdict")
 classes("test_review_literal_path", CORE, "TestChangedAfterReviewLiteralPath")
+classes("test_review_nonfinite", CORE, "NonFiniteNumberTest")
+tests("test_review_nonfinite.NonFiniteNumberTest", out(WR, "koşan işin süreç ağacı (`_pid_tree`)"), "pid_tree_ignores_infinite_pid")
 classes("test_review_findings_flow", out(CLI, "CLI argümanından API'ye eşleme"), "TestCli")
 classes("test_review_findings_flow", out(WR, "rapor ve kullanım dosyalarını depoya kopyalama"), "StoreReportsTest")
 classes("test_review_io_history", out(WR, "`IoLog`, canlı akış, bayraklar ve kurtarma"), "TestIoLog TestRunWritesIo")

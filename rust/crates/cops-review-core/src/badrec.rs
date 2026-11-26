@@ -36,7 +36,7 @@ pub fn log_bad(what: &str, key: &str) {
 /// Kayıttaki sayı alanı; yok/boş = 0, sayıya çevrilemiyorsa `None` (loglanır, çağıran kaydı atlar).
 pub fn field(rec: &Map, name: &str, what: &str, key: &str) -> Option<f64> {
     let v: Option<&Json> = rec.get(name);
-    let r = py::float_or_zero(v).ok();
+    let r = py::float_or_zero(v).ok().filter(|f| f.is_finite());
     if r.is_none() {
         log_bad(&format!("{what}.{name}"), key);
     }

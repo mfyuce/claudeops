@@ -168,11 +168,16 @@ pub fn float(v: &Json) -> Option<f64> {
     }
 }
 
-/// `review._num`: `float(v or 0)`, olmazsa 0.
+/// `review._num`: `float(v or 0)`, olmazsa ya da sonlu değilse 0 (sonlu olmayan loglanır).
 pub fn num(v: Option<&Json>) -> f64 {
-    match v {
-        Some(v) if v.truthy() => float(v).unwrap_or(0.0),
-        _ => 0.0,
+    let Some(v) = v.filter(|v| v.truthy()) else { return 0.0 };
+    match float(v) {
+        Some(f) if f.is_finite() => f,
+        None if !matches!(v, Json::BigInt(_)) => 0.0,
+        _ => {
+            crate::badrec::log_bad("number.nonfinite", "");
+            0.0
+        }
     }
 }
 

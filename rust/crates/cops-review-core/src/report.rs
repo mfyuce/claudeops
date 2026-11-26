@@ -286,10 +286,16 @@ pub fn duration_summary(history: &Json, project: &str) -> Vec<DurationRow> {
             seconds: 0.0,
         });
         a.runs += 1;
-        match r.get("seconds") {
-            Some(v @ (Json::Int(_) | Json::Float(_) | Json::BigInt(_))) if v.as_f64().is_some_and(|f| f >= 0.0) => {
+        let seconds = match r.get("seconds") {
+            Some(Json::Int(_) | Json::Float(_) | Json::BigInt(_)) => {
+                badrec::field(r, "seconds", "runs", &py::str_or_empty(r.get("pair")))
+            }
+            _ => None,
+        };
+        match seconds {
+            Some(s) if s >= 0.0 => {
                 a.timed += 1;
-                a.seconds += v.as_f64().unwrap_or(0.0);
+                a.seconds += s;
             }
             _ => a.unknown += 1,
         }
@@ -353,11 +359,27 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             [pi, po, pr, pw] = anthropic_price(&py::str_or_empty(rec.get("model")));
             continue;
         }
-        let t = py::num(rec.get("t"));
+        // `float(t or 0)`: sayı olmayan 0; sonlu olmayan ya da sığmayan satır bozuktur.
+        let t = match rec.get("t").filter(|v| v.truthy()) {
+            Some(v @ Json::BigInt(_)) => py::float(v).unwrap_or(f64::INFINITY),
+            Some(v) => py::float(v).unwrap_or(0.0),
+            None => 0.0,
+        };
+        if !t.is_finite() {
+            badrec::log_bad("usage.record", path);
+            continue;
+        }
         if since_ms != 0.0 && t < since_ms {
             continue;
         }
         let Some(u) = rec.get("usage").and_then(Json::as_object) else { continue };
+        let broken = |v: &Json| {
+            matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_)) && !py::float(v).is_some_and(f64::is_finite)
+        };
+        if u.values().any(broken) {
+            badrec::log_bad("usage.record", path);
+            continue;
+        }
         // `isinstance(x, (int, float))`: bool de sayılır.
         let numeric = |k: &str| match u.get(k) {
             Some(Json::Str(_)) | None => None,
