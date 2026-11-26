@@ -42,12 +42,12 @@ fn git_signals_and_baseline() {
     assert!(!repo_dirty(cwd) && repo_untracked_count(cwd) == 0 && !ho.repo_committed_since(cwd));
     ho.repo_baseline_set(cwd).unwrap();
     assert!(!state.exists());
-    assert_eq!(ho.needs_ho(cwd, None), Ok(false));
+    assert!(!ho.needs_ho(cwd, None).value);
 
     git(&repo, &["init", "-q", "-b", "main"]);
     std::fs::write(repo.join("a"), "1").unwrap();
     assert_eq!((repo_dirty(cwd), repo_untracked_count(cwd)), (false, 1));
-    assert_eq!(ho.needs_ho(cwd, None), Ok(true));
+    assert!(ho.needs_ho(cwd, None).value);
     git(&repo, &["add", "a"]);
     assert!(repo_dirty(cwd));
     git(&repo, &["commit", "-qm", "1"]);
@@ -86,12 +86,12 @@ fn git_signals_and_baseline() {
     std::fs::write(repo.join("b"), "").unwrap();
     let t = tmp.path().join("t.jsonl");
     std::fs::write(&t, "{\"type\":\"system\"}\n").unwrap();
-    assert_eq!(ho.needs_ho(cwd, Some(&t)), Ok(false));
+    assert!(!ho.needs_ho(cwd, Some(&t)).value);
     std::fs::write(&t, "{\"type\":\"user\",\"message\":{\"content\":\"x\"}}\n").unwrap();
-    assert_eq!(ho.needs_ho(cwd, Some(&t)), Ok(true));
+    assert!(ho.needs_ho(cwd, Some(&t)).value);
     std::fs::remove_file(repo.join("b")).unwrap();
     ho.repo_baseline_set(cwd).unwrap();
-    assert_eq!(ho.needs_ho(cwd, Some(&t)), Ok(true), "temiz depo, RFH yok");
+    assert!(ho.needs_ho(cwd, Some(&t)).value, "temiz depo, RFH yok");
     std::fs::write(&t, "{\"type\":\"user\",\"message\":{\"content\":\"x\"}}\n{\"type\":\"assistant\",\"message\":{\"content\":\"READY FOR HANDOVER\"}}\n").unwrap();
-    assert_eq!(ho.needs_ho(cwd, Some(&t)), Ok(false));
+    assert!(!ho.needs_ho(cwd, Some(&t)).value);
 }

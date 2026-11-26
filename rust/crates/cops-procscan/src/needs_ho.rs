@@ -1,11 +1,12 @@
 //! Oturum devir (ho) gerektiriyor mu (`needs_ho.py`): git sinyalleri ve transkript.
 
 use crate::{proc_cmd, py};
+use serde::Serialize;
 use serde_json::{Map, Value};
 use sha1::{Digest, Sha1};
 use std::fmt::Write;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write as _};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,17 +15,13 @@ use std::time::Duration;
 const RFH: &str = "READY FOR HANDOVER";
 const GIT_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Python'un istisna fırlattığı transkript satırı (nesne olmayan satır, dizgi olmayan `text` vb.).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BadTranscript;
-
-impl std::fmt::Display for BadTranscript {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("transkript satırı beklenen biçimde değil")
-    }
+/// Transkript kararı ve atlanan beklenmeyen tipte kayıt sayısı (nesne olmayan satır, nesne olmayan `message`,
+/// dizgi olmayan `text` bloğu). TBD#365: Python da artık bunları atlayıp sayar (`needs_ho._skipped`), karar düşmez.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Checked {
+    pub value: bool,
+    pub skipped: u32,
 }
-
-impl std::error::Error for BadTranscript {}
 
 /// Başarısız/zaman aşımlı git = boş dizgi.
 fn git(cwd: &str, args: &[&str]) -> String {
@@ -210,14 +207,14 @@ impl NeedsHo {
             .unwrap_or_default()
     }
 
-    /// Ho sonrası HEAD'i baseline yap. Depo değilse hiçbir şey yazmaz.
+    /// Ho sonrası HEAD'i baseline yap. Depo değilse hiçbir şey yazmaz. Atomik (Python `atomic_write_text`).
     pub fn repo_baseline_set(&self, cwd: &str) -> std::io::Result<()> {
         let key = repo_key(cwd);
         let head = git(cwd, &["rev-parse", "HEAD"]);
         if let (Some(k), false) = (key, head.is_empty()) {
             let dir = self.state_dir.join("baselines");
             std::fs::create_dir_all(&dir)?;
-            std::fs::write(dir.join(k), head)?;
+            write_atomic(&dir.join(k), head.as_bytes())?;
         }
         Ok(())
     }
@@ -239,20 +236,56 @@ impl NeedsHo {
     }
 
     /// `true` = ho gerek. Hiç gerçek kullanıcı turu olmayan transkript git durumuna bakmadan `false`.
-    pub fn needs_ho(&self, cwd: &str, jsonl: Option<&Path>) -> Result<bool, BadTranscript> {
+    pub fn needs_ho(&self, cwd: &str, jsonl: Option<&Path>) -> Checked {
+        let mut skipped = 0;
         if let Some(p) = jsonl {
-            if !has_real_user_turn(p)? {
-                return Ok(false);
+            let real = has_real_user_turn(p);
+            skipped += real.skipped;
+            if !real.value {
+                return Checked { value: false, skipped };
             }
         }
         if repo_dirty(cwd) || repo_untracked_count(cwd) > 0 || self.repo_committed_since(cwd) {
-            return Ok(true);
+            return Checked { value: true, skipped };
         }
-        match jsonl {
-            Some(p) => Ok(!handover_done(p)?),
-            None => Ok(false),
-        }
+        let value = match jsonl {
+            Some(p) => {
+                let done = handover_done(p);
+                skipped += done.skipped;
+                !done.value
+            }
+            None => false,
+        };
+        Checked { value, skipped }
     }
+}
+
+/// Aynı dizinde süreç+iş parçacığına özel geçici dosya (`O_EXCL|O_NOFOLLOW`), `fsync`, `rename`; hata olursa geçici
+/// dosya silinir. Eşzamanlı okuyan yarım dosya görmez.
+fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{}-{:?}.tmp", std::process::id(), std::thread::current().id()));
+    let tmp = path.with_file_name(name);
+    let _ = std::fs::remove_file(&tmp); // önceki çöküşten kalan aynı adlı geçici dosya
+    let res = (|| {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&tmp)?;
+        f.write_all(data)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        if let Some(dir) = path.parent() {
+            let _ = File::open(dir).and_then(|d| d.sync_all());
+        }
+        Ok(())
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res
 }
 
 /// Zaman damgası dalı (`repo_committed_since`, baseline yokken): çözülemeyen commit zamanı = yeni değil,
@@ -279,20 +312,18 @@ pub fn rfh_marker_in(text: &str) -> bool {
     false
 }
 
-/// Transkriptin ayrıştırılabilen satırları. Okuma hatası `Ok(None)`.
-fn each_row(
-    path: &Path,
-    mut f: impl FnMut(&Map<String, Value>) -> Result<ControlFlow<()>, BadTranscript>,
-) -> Result<Option<()>, BadTranscript> {
-    let Ok(file) = File::open(path) else { return Ok(None) };
+/// Transkriptin ayrıştırılabilen nesne satırları; nesne olmayan satır atlanır ve `skipped`a eklenir.
+/// Okuma hatası `None`.
+fn each_row(path: &Path, skipped: &mut u32, mut f: impl FnMut(&Map<String, Value>, &mut u32) -> ControlFlow<()>) -> Option<()> {
+    let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
     loop {
         buf.clear();
         match reader.read_until(b'\n', &mut buf) {
-            Ok(0) => return Ok(Some(())),
+            Ok(0) => return Some(()),
             Ok(_) => {}
-            Err(_) => return Ok(None),
+            Err(_) => return None,
         }
         // metin kipi: `\r` de satır sonu; geçersiz utf-8 yerine U+FFFD
         for part in buf.split(|&c| c == b'\r') {
@@ -302,9 +333,12 @@ fn each_row(
                 continue;
             }
             let Some(v) = py::json(line.as_bytes()) else { continue };
-            let Value::Object(o) = v else { return Err(BadTranscript) };
-            if f(&o)?.is_break() {
-                return Ok(Some(()));
+            let Value::Object(o) = v else {
+                *skipped += 1;
+                continue;
+            };
+            if f(&o, skipped).is_break() {
+                return Some(());
             }
         }
     }
@@ -314,30 +348,30 @@ fn is_type(block: &Value, kind: &str) -> bool {
     block.get("type").and_then(Value::as_str) == Some(kind)
 }
 
-fn block_text(block: &Value) -> Result<&str, BadTranscript> {
-    match block.get("text") {
-        None => Ok(""),
-        Some(Value::String(s)) => Ok(s),
-        Some(_) => Err(BadTranscript),
+/// `type: text` blokların dizgi metinleri; dizgi olmayan `text` yok sayılır ve sayılır.
+fn text_blocks<'a>(blocks: &'a [Value], skipped: &mut u32) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    for b in blocks.iter().filter(|b| is_type(b, "text")) {
+        match b.get("text") {
+            None => out.push(""),
+            Some(Value::String(s)) => out.push(s),
+            Some(_) => *skipped += 1,
+        }
     }
+    out
 }
 
 /// Asistan cevabında devir işareti var ve sonrasında yeni kullanıcı isteği yok.
-pub fn handover_done(path: &Path) -> Result<bool, BadTranscript> {
+pub fn handover_done(path: &Path) -> Checked {
     let (mut last_rfh, mut last_user, mut i) = (None::<u64>, None::<u64>, 0u64);
-    let read = each_row(path, |o| {
+    let mut skipped = 0;
+    let read = each_row(path, &mut skipped, |o, skipped| {
         i += 1;
         let kind = o.get("type").and_then(Value::as_str);
         let content = o.get("message").and_then(Value::as_object).and_then(|m| m.get("content"));
         let text = match content {
             Some(Value::String(s)) => s.clone(),
-            Some(Value::Array(blocks)) => {
-                let mut parts = Vec::new();
-                for b in blocks.iter().filter(|b| is_type(b, "text")) {
-                    parts.push(block_text(b)?);
-                }
-                parts.join(" ")
-            }
+            Some(Value::Array(blocks)) => text_blocks(blocks, skipped).join(" "),
             _ => String::new(),
         };
         if kind == Some("assistant") && rfh_marker_in(&text) {
@@ -353,46 +387,46 @@ pub fn handover_done(path: &Path) -> Result<bool, BadTranscript> {
                 last_user = Some(i);
             }
         }
-        Ok(ControlFlow::Continue(()))
-    })?;
-    Ok(read.is_some() && last_rfh.is_some() && last_rfh >= last_user)
+        ControlFlow::Continue(())
+    });
+    Checked {
+        value: read.is_some() && last_rfh.is_some() && last_rfh >= last_user,
+        skipped,
+    }
 }
 
 /// En az bir gerçek kullanıcı mesajı (tool_result, sidechain, isMeta, boş metin sayılmaz).
-pub fn has_real_user_turn(path: &Path) -> Result<bool, BadTranscript> {
-    let mut found = false;
-    each_row(path, |o| {
+pub fn has_real_user_turn(path: &Path) -> Checked {
+    let (mut found, mut skipped) = (false, 0);
+    each_row(path, &mut skipped, |o, skipped| {
         let flag = |k: &str| o.get(k).is_some_and(py::truthy);
         if o.get("type").and_then(Value::as_str) != Some("user") || flag("isSidechain") || flag("isMeta") {
-            return Ok(ControlFlow::Continue(()));
+            return ControlFlow::Continue(());
         }
         let content = match o.get("message") {
             None => None,
             Some(Value::Object(m)) => m.get("content"),
-            Some(_) => return Err(BadTranscript),
+            Some(_) => {
+                *skipped += 1;
+                return ControlFlow::Continue(());
+            }
         };
         match content {
             Some(Value::String(s)) => found = !py::strip(s).is_empty(),
             Some(Value::Array(blocks)) => {
                 let tool = blocks.iter().any(|b| is_type(b, "tool_result"));
-                let mut has_text = false;
-                for b in blocks.iter().filter(|b| is_type(b, "text")) {
-                    if !py::strip(block_text(b)?).is_empty() {
-                        has_text = true;
-                        break;
-                    }
-                }
+                let has_text = text_blocks(blocks, skipped).iter().any(|t| !py::strip(t).is_empty());
                 found = !tool && has_text;
             }
             _ => {}
         }
-        Ok(if found {
+        if found {
             ControlFlow::Break(())
         } else {
             ControlFlow::Continue(())
-        })
-    })?;
-    Ok(found)
+        }
+    });
+    Checked { value: found, skipped }
 }
 
 #[cfg(test)]
@@ -434,53 +468,129 @@ mod tests {
     #[test]
     fn only_assistant_rows_carry_the_marker() {
         let m = "## READY FOR HANDOVER";
-        assert!(!handover_done(transcript(&[row("user", m)]).path()).unwrap());
-        assert!(handover_done(transcript(&[row("user", "iş"), row("assistant", m)]).path()).unwrap());
+        assert!(!handover_done(transcript(&[row("user", m)]).path()).value);
+        assert!(handover_done(transcript(&[row("user", "iş"), row("assistant", m)]).path()).value);
         for kind in ["api-request-blob", "attachment", "system"] {
             let t = transcript(&[row(kind, m)]);
-            assert!(!handover_done(t.path()).unwrap(), "{kind}");
-            assert!(!has_real_user_turn(t.path()).unwrap(), "{kind}");
+            assert!(!handover_done(t.path()).value, "{kind}");
+            assert!(!has_real_user_turn(t.path()).value, "{kind}");
         }
-        assert!(handover_done(transcript(&[row("system", m), row("assistant", m)]).path()).unwrap());
+        assert!(handover_done(transcript(&[row("system", m), row("assistant", m)]).path()).value);
         // işaretten sonra yeni istek; tool_result istek sayılmaz
-        assert!(!handover_done(transcript(&[row("assistant", m), row("user", "bir iş daha")]).path()).unwrap());
+        assert!(!handover_done(transcript(&[row("assistant", m), row("user", "bir iş daha")]).path()).value);
         let tool = json!({"type": "user", "message": {"content": [{"type": "tool_result"}, {"type": "text", "text": "x"}]}});
-        assert!(handover_done(transcript(&[row("assistant", m), tool.clone()]).path()).unwrap());
-        assert!(!has_real_user_turn(transcript(&[tool]).path()).unwrap());
+        assert!(handover_done(transcript(&[row("assistant", m), tool.clone()]).path()).value);
+        assert!(!has_real_user_turn(transcript(&[tool]).path()).value);
     }
 
     #[test]
     fn real_user_turn_filters() {
         let with = |k: &str| json!({"type": "user", k: true, "message": {"content": "x"}});
-        assert!(!has_real_user_turn(transcript(&[with("isMeta"), with("isSidechain"), row("user", "  ")]).path()).unwrap());
-        assert!(has_real_user_turn(transcript(&[json!({"type": "user", "message": {"content": "x"}})]).path()).unwrap());
-        assert!(!has_real_user_turn(transcript(&[json!({"type": "user"})]).path()).unwrap());
+        assert!(!has_real_user_turn(transcript(&[with("isMeta"), with("isSidechain"), row("user", "  ")]).path()).value);
+        assert!(has_real_user_turn(transcript(&[json!({"type": "user", "message": {"content": "x"}})]).path()).value);
+        assert!(!has_real_user_turn(transcript(&[json!({"type": "user"})]).path()).value);
     }
 
     #[test]
-    fn broken_input_like_python() {
+    fn broken_input_is_skipped_and_counted() {
         let f = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(
             f.path(),
             b"\n{bozuk\n\xff\xfe\r{\"type\":\"assistant\",\"message\":{\"content\":\"READY FOR HANDOVER \\ud800\"}}",
         )
         .unwrap();
-        assert!(handover_done(f.path()).unwrap());
-        for bad in ["123", "[]"] {
-            std::fs::write(f.path(), bad).unwrap();
-            assert_eq!(handover_done(f.path()), Err(BadTranscript));
-            assert_eq!(has_real_user_turn(f.path()), Err(BadTranscript));
+        assert_eq!(handover_done(f.path()), Checked { value: true, skipped: 0 });
+        // TBD#365: Python da artık istisna fırlatmaz; satır atlanır ve sayılır
+        let user = r#"{"type":"user","message":{"content":"iş"}}"#;
+        for bad in ["123", "[]", "\"s\"", "null"] {
+            std::fs::write(f.path(), format!("{bad}\n{user}\n")).unwrap();
+            assert_eq!(
+                handover_done(f.path()),
+                Checked {
+                    value: false,
+                    skipped: 1
+                },
+                "{bad}"
+            );
+            assert_eq!(has_real_user_turn(f.path()), Checked { value: true, skipped: 1 }, "{bad}");
         }
-        std::fs::write(f.path(), r#"{"type":"user","message":null}"#).unwrap();
-        assert_eq!(has_real_user_turn(f.path()), Err(BadTranscript));
+        for msg in ["null", "\"x\"", "[1]", "5"] {
+            std::fs::write(f.path(), format!(r#"{{"type":"user","message":{msg}}}"#)).unwrap();
+            assert_eq!(
+                has_real_user_turn(f.path()),
+                Checked {
+                    value: false,
+                    skipped: 1
+                },
+                "{msg}"
+            );
+            assert_eq!(
+                handover_done(f.path()),
+                Checked {
+                    value: false,
+                    skipped: 0
+                },
+                "{msg}"
+            );
+        }
+        // dizgi olmayan metin bloğu yok sayılır, aynı satırın dizgi bloğu sayılır
         std::fs::write(
             f.path(),
-            r#"{"type":"user","message":{"content":[{"type":"text","text":1}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"text","text":"y"},{"type":"text","text":1}]}}"#,
         )
         .unwrap();
-        assert_eq!(handover_done(f.path()), Err(BadTranscript));
+        assert_eq!(has_real_user_turn(f.path()), Checked { value: true, skipped: 1 });
+        assert_eq!(
+            handover_done(f.path()),
+            Checked {
+                value: false,
+                skipped: 1
+            }
+        );
+        std::fs::write(
+            f.path(),
+            format!("{user}\n") + r#"{"type":"assistant","message":{"content":[{"type":"text","text":null},{"type":"text","text":"\nREADY FOR HANDOVER"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(handover_done(f.path()), Checked { value: true, skipped: 1 });
         let missing = Path::new("/nonexistent/x.jsonl");
-        assert!(!handover_done(missing).unwrap() && !has_real_user_turn(missing).unwrap());
+        assert!(!handover_done(missing).value && !has_real_user_turn(missing).value);
+    }
+
+    /// Bozuk satır kararı düşürmez: git dışı dizinde transkript dalı karar verir, atlanan satır sayılır.
+    #[test]
+    fn needs_ho_decides_with_bad_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path().join("t.jsonl");
+        std::fs::write(&t, "[]\n{\"type\":\"user\",\"message\":{\"content\":\"iş\"}}\n").unwrap();
+        let cwd = tmp.path().to_str().unwrap();
+        let got = NeedsHo::new(tmp.path()).needs_ho(cwd, Some(&t));
+        assert_eq!(got, Checked { value: true, skipped: 2 });
+    }
+
+    #[test]
+    fn baseline_is_written_atomically() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("k");
+        std::fs::write(&target, "eski").unwrap();
+        write_atomic(&target, b"yeni").unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "yeni");
+        let names: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["k"], "geçici dosya kalmadı");
+        // hedef dizin yoksa yazım düşer, geçici dosya kalmaz, eski içerik bozulmaz
+        assert!(write_atomic(&tmp.path().join("yok/k"), b"x").is_err());
+        // geçici dosya adında sembolik bağ: izlenmez (O_NOFOLLOW + önce silme), hedef dışına yazılmaz
+        let outside = tmp.path().join("dis");
+        std::fs::write(&outside, "dokunma").unwrap();
+        let mut name = std::ffi::OsString::from("k");
+        name.push(format!(".{}-{:?}.tmp", std::process::id(), std::thread::current().id()));
+        std::os::unix::fs::symlink(&outside, tmp.path().join(&name)).unwrap();
+        write_atomic(&target, b"son").unwrap();
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "dokunma");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "son");
     }
 
     #[test]

@@ -261,10 +261,17 @@ def fixture_repos():
     git(d, "fetch", "-q", "origin")
     d = repo("detached")
     git(d, "checkout", "-q", "--detach")
+    # Baseline'ı Python'un ad/içerik kuralıyla (`_repo_key`, `rev-parse HEAD`) yazar, Rust okur. `repo_baseline_set`
+    # artık `atomic_write_text` (os.open + os.fdopen) kullanıyor; pyenv koruması fd sarmayı da yazma sayıp engellediği
+    # için koruma gevşetilmedi, aynı dosya burada düz yazılır (yine geçici dizinde). Atomiklik py/tests'te sınanır.
+    def baseline(d):
+        k, h = needs_ho._repo_key(str(d)), needs_ho._git(str(d), "rev-parse", "HEAD")
+        needs_ho._BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+        (needs_ho._BASELINE_DIR / k).write_text(h)
     d = repo("baseline_head")
-    needs_ho.repo_baseline_set(str(d))             # Python yazar (geçici dizine); Rust okur
+    baseline(d)
     d = repo("baseline_old")
-    needs_ho.repo_baseline_set(str(d))
+    baseline(d)
     git(d, "commit", "-q", "--allow-empty", "-m", "yeni")
     return made
 

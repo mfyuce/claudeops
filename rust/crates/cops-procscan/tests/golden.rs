@@ -2,7 +2,7 @@
 
 use cops_procscan::discovery::fallback_name;
 use cops_procscan::mirrors::spec_from_cmdline;
-use cops_procscan::needs_ho::{committed_after, handover_done, has_real_user_turn, rfh_marker_in, BadTranscript};
+use cops_procscan::needs_ho::{committed_after, handover_done, has_real_user_turn, rfh_marker_in};
 use cops_procscan::providers::{AgyState, Cli};
 use cops_procscan::session::base_name;
 use cops_procscan::transcript::encode_cwd;
@@ -127,16 +127,12 @@ fn transcripts_needs_ho() {
     let cases = GOLDEN["transcripts"].as_object().unwrap();
     for (name, want) in cases {
         let p = dir().join("transcripts").join(format!("{name}.jsonl"));
-        let as_json = |r: Result<bool, BadTranscript>| match r {
-            Ok(b) => json!(b),
-            Err(_) => json!("error"),
-        };
-        let norm = |v: &Value| if v.is_object() { json!("error") } else { v.clone() };
+        // TBD#365: Python artık istisna fırlatmaz; altında `{"error": ...}` kalırsa uyuşmazlık sayılır
         for (fname, got) in [
-            ("has_real_user_turn", as_json(has_real_user_turn(&p))),
-            ("handover_done", as_json(handover_done(&p))),
+            ("has_real_user_turn", json!(has_real_user_turn(&p).value)),
+            ("handover_done", json!(handover_done(&p).value)),
         ] {
-            if got != norm(&want[fname]) {
+            if got != want[fname] {
                 bad.push(format!("{name}.{fname} python={} rust={got}", want[fname]));
             }
         }

@@ -94,7 +94,6 @@ fn real_background_subshell_is_one_session() {
             .any(|p| p.stat().is_some_and(|s| s.ppid == pid) && p.cmdline().first().is_some_and(|c| c == "claudeops-shell"))
     });
     let found: Vec<u32> = find_sessions(&cfg, CpuMode::Skip)
-        .unwrap()
         .sessions
         .iter()
         .filter(|s| s.name == name)
@@ -117,7 +116,7 @@ fn real_viewer_process_is_seen() {
     let child = Own::spawn(Command::new("sh").args(["-c", "cat >/dev/null; true", "claudeops", "watch", &spec]));
     let pid = child.pid();
     wait_until("cmdline", || running_mirrors(&cfg).contains_key(&spec));
-    let scan = find_sessions(&cfg, CpuMode::Skip).unwrap();
+    let scan = find_sessions(&cfg, CpuMode::Skip);
     assert_eq!(scan.mirrors.get(&spec), Some(&vec![pid]));
     assert_eq!(running_mirrors(&cfg).get(&spec), Some(&vec![pid]));
     assert!(!scan.sessions.iter().any(|s| s.pid == pid), "görüntüleyici oturum değil");

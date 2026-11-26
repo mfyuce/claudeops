@@ -91,7 +91,7 @@ impl Fake {
     }
 
     fn scan(&self) -> Vec<Session> {
-        find_sessions(&self.cfg, CpuMode::Skip).unwrap().sessions
+        find_sessions(&self.cfg, CpuMode::Skip).sessions
     }
 }
 
@@ -145,7 +145,7 @@ fn discovers_each_cli_and_names() {
         cmd: "python3 -m claudeops watch yuhem:a",
         ..Default::default()
     });
-    let scan = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let scan = find_sessions(&f.cfg, CpuMode::Skip);
     let names: Vec<_> = scan.sessions.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, ["cl", "cx", "agy-13", "ucli@koder#14", "sh"]);
     let cl = by_name(&scan.sessions, "cl");
@@ -186,7 +186,7 @@ fn other_users_processes_are_never_read() {
     let cfg = f.cfg.clone();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let sessions = find_sessions(&cfg, CpuMode::Skip).unwrap().sessions;
+        let sessions = find_sessions(&cfg, CpuMode::Skip).sessions;
         let probe = Probe::new(&cfg);
         let flags = (
             probe.is_tmux_backed(21),
@@ -241,6 +241,37 @@ fn json_source_merges_with_proc_scan() {
     assert_eq!((t.cwd.as_str(), t.resumed, t.is_fresh()), ("/work/tui", None, true));
 }
 
+/// TBD#365: nesne olmayan kök ya da dizgi olmayan `name` taramayı düşürmez (Python da düşürmüyor artık); atlanır ve
+/// `session_files_bad`a girer. Sıfır/negatif pid atlanır (sayılmaz: Python'da da sessiz).
+#[test]
+fn bad_session_files_are_skipped_and_counted() {
+    let f = Fake::new();
+    f.add(P {
+        pid: 50,
+        cmd: "claude",
+        cwd: "/work/ok",
+        ..Default::default()
+    });
+    f.session_json("50.json", r#"{"pid":50,"name":"iyi","sessionId":"s1"}"#);
+    f.session_json("a.json", "[1,2]");
+    f.session_json("b.json", r#""metin""#);
+    f.session_json("c.json", r#"{"pid":50,"name":5}"#);
+    f.session_json("d.json", r#"{"pid":50,"name":["x"]}"#);
+    f.session_json("e.json", r#"{"name":{"a":1}}"#);
+    for (i, pid) in ["-1", "0", "\"-50\"", "-50.0"].iter().enumerate() {
+        f.session_json(
+            &format!("n{i}.json"),
+            &format!(r#"{{"pid":{pid},"name":"neg{i}","cwd":"/tmp"}}"#),
+        );
+    }
+    let scan = find_sessions(&f.cfg, CpuMode::Skip);
+    let names: Vec<&str> = scan.sessions.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["iyi"]);
+    assert_eq!(scan.sessions[0].sid.as_deref(), Some("s1"));
+    assert_eq!(scan.diag.session_files_bad, 5);
+    assert_eq!(scan.diag.session_files_invalid, 0);
+}
+
 #[test]
 fn background_session_folds() {
     let f = Fake::new();
@@ -277,7 +308,7 @@ fn cpu_from_two_samples() {
         fs::write(&stat, stat_line(50, 1, 45)).unwrap();
         Duration::from_millis(300)
     };
-    let v = find_sessions(&f.cfg, CpuMode::Custom(&mut wait)).unwrap().sessions;
+    let v = find_sessions(&f.cfg, CpuMode::Custom(&mut wait)).sessions;
     assert_eq!(v[0].cpu, 150.0);
 }
 
@@ -363,6 +394,13 @@ fn transcript_requires_exact_sid() {
     assert_eq!(jsonl_path_for(&f.cfg, "/work/proj", Some("a")), Some(dir.join("a.jsonl")));
     for sid in [None, Some(""), Some("b")] {
         assert_eq!(jsonl_path_for(&f.cfg, "/work/proj", sid), None);
+    }
+    // TBD#365: sid yol parçası olarak süzülür (dizin dışı ve alt dizin dosyası var olsa da)
+    fs::write(dir.join("../x.jsonl"), "").unwrap();
+    fs::create_dir_all(dir.join("sub")).unwrap();
+    fs::write(dir.join("sub/y.jsonl"), "").unwrap();
+    for sid in ["../x", "sub/y", "/abs", "a\0b"] {
+        assert_eq!(jsonl_path_for(&f.cfg, "/work/proj", Some(sid)), None, "{sid:?}");
     }
 }
 
@@ -559,7 +597,7 @@ fn broken_proc_fields() {
         ..Default::default()
     });
     fs::write(d(105).join("environ"), b"\xff\0=x\0NOEQ\0COPS_NAME=\0").unwrap();
-    let scan = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let scan = find_sessions(&f.cfg, CpuMode::Skip);
     let names: Vec<_> = scan.sessions.iter().map(|s| s.name.as_str()).collect();
     // stat bozuk: procStart denetimi atlanır (Python `except: pass`), kimlik yok
     assert!(names.contains(&"badstat"));
@@ -584,23 +622,23 @@ fn unreadable_roots_are_not_absence() {
         cmd: "claude --remote-control a",
         ..Default::default()
     });
-    let clean = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let clean = find_sessions(&f.cfg, CpuMode::Skip);
     assert!(clean.diag.is_clean(), "{:?}", clean.diag);
 
     let sessions = f.root.join("claude/sessions");
     fs::remove_dir(&sessions).unwrap();
     assert!(
-        find_sessions(&f.cfg, CpuMode::Skip).unwrap().diag.is_clean(),
+        find_sessions(&f.cfg, CpuMode::Skip).diag.is_clean(),
         "sessions/ yokluğu hata değil"
     );
     fs::write(&sessions, "dosya").unwrap();
-    let s = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let s = find_sessions(&f.cfg, CpuMode::Skip);
     assert!(s.diag.sessions_dir_error.is_some());
     assert_eq!(s.sessions.len(), 1);
 
     let mut cfg = f.cfg.clone();
     cfg.proc_root = f.root.join("yok");
-    let s = find_sessions(&cfg, CpuMode::Skip).unwrap();
+    let s = find_sessions(&cfg, CpuMode::Skip);
     assert!(s.sessions.is_empty());
     assert!(s.diag.proc_root_error.is_some(), "süreç listesi bilinmiyor, 'yok' değil");
 }
@@ -616,7 +654,7 @@ fn broken_agy_files() {
         ..Default::default()
     });
     let sid_of = |f: &Fake| {
-        let s = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+        let s = find_sessions(&f.cfg, CpuMode::Skip);
         (
             by_name(&s.sessions, "ag").sid.clone(),
             s.diag.agy_files_unreadable,
@@ -674,7 +712,7 @@ fn mirrors_terminal_and_ucli_flag_edges() {
         running_mirrors(&f.cfg),
         std::collections::BTreeMap::from([("yuhem:a".to_owned(), vec![130])])
     );
-    let scan = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let scan = find_sessions(&f.cfg, CpuMode::Skip);
     assert_eq!(scan.diag.cmdline_unreadable, 1);
 
     f.add(P {
@@ -727,7 +765,7 @@ fn find_by_name_is_exact_and_returns_every_process() {
         });
     }
     let find = |n: &str| {
-        let v = find_by_name(&f.cfg, n, CpuMode::Skip).unwrap();
+        let v = find_by_name(&f.cfg, n, CpuMode::Skip);
         v.iter().map(|s| (s.name.clone(), s.pid)).collect::<Vec<_>>()
     };
     assert_eq!(find("a"), [("a".to_owned(), 140), ("a".to_owned(), 142)]);
@@ -739,7 +777,7 @@ fn find_by_name_is_exact_and_returns_every_process() {
         fs::write(&stat, stat_line(141, 1, 30)).unwrap();
         Duration::from_millis(300)
     };
-    let v = find_by_name(&f.cfg, "a1", CpuMode::Custom(&mut wait)).unwrap();
+    let v = find_by_name(&f.cfg, "a1", CpuMode::Custom(&mut wait));
     assert_eq!((v[0].cpu, v[0].active()), (100.0, true));
 }
 

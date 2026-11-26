@@ -55,6 +55,9 @@ pub struct ScanDiag {
     pub session_files_unreadable: u32,
     /// `sessions/*.json` geçerli JSON değil.
     pub session_files_invalid: u32,
+    /// `sessions/*.json` geçerli JSON ama kökü nesne değil ya da `name`i dizgi olmayan doğru bir değer (atlandı).
+    /// TBD#365: Python da artık atlar (`discovery._skipped["session_file"]`); önceden tüm tarama düşüyordu.
+    pub session_files_bad: u32,
     /// agy önbelleği ya da `agy_sids` aynası var ama okunamadı ya da nesne değil (boş sayıldı).
     pub agy_files_unreadable: u32,
 }
@@ -64,22 +67,6 @@ impl ScanDiag {
         *self == ScanDiag::default()
     }
 }
-
-/// Python'un taramayı istisnayla bitirdiği girdi (bozuk ama ayrıştırılabilir oturum dosyası).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScanError {
-    /// Kök nesne değil, ya da `name` dizgi olmayan doğru bir değer.
-    BadSessionFile(std::path::PathBuf),
-}
-
-impl std::fmt::Display for ScanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ScanError::BadSessionFile(p) = self;
-        write!(f, "bozuk oturum dosyası: {}", p.display())
-    }
-}
-
-impl std::error::Error for ScanError {}
 
 fn json_pid(v: Option<&Value>) -> Option<u32> {
     let n = match v? {
@@ -91,14 +78,14 @@ fn json_pid(v: Option<&Value>) -> Option<u32> {
     u32::try_from(n).ok().filter(|p| *p > 0)
 }
 
-/// `~/.claude/sessions/*.json`: canlı (ve bize ait), `procStart`ı tutan kayıtlar.
-fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Result<Vec<Session>, ScanError> {
+/// `~/.claude/sessions/*.json`: canlı (ve bize ait), `procStart`ı tutan kayıtlar. Pid sıfır/negatif olan atlanır.
+fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Vec<Session> {
     let rd = match std::fs::read_dir(cfg.claude_dir.join("sessions")) {
         Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => {
             diag.sessions_dir_error = Some(e.to_string());
-            return Ok(Vec::new());
+            return Vec::new();
         }
     };
     let mut out = Vec::new();
@@ -120,12 +107,22 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Resul
             continue;
         };
         let Value::Object(d) = value else {
-            return Err(ScanError::BadSessionFile(entry.path()));
+            diag.session_files_bad += 1;
+            continue;
         };
-        let Some(pid) = json_pid(d.get("pid")) else { continue };
+        // Python sırası: önce ad tipi (sayılır), sonra pid/ad boşluğu
         let name = match d.get("name") {
-            Some(v) if py::truthy(v) => v.as_str().ok_or_else(|| ScanError::BadSessionFile(entry.path()))?,
-            _ => continue,
+            Some(v) if py::truthy(v) => match v.as_str() {
+                Some(n) => Some(n),
+                None => {
+                    diag.session_files_bad += 1;
+                    continue;
+                }
+            },
+            _ => None,
+        };
+        let (Some(pid), Some(name)) = (json_pid(d.get("pid")), name) else {
+            continue;
         };
         // Python `os.kill(pid, 0)`: ölü ya da başkasının süreci atlanır.
         let Some(own) = proc.own(pid) else { continue };
@@ -161,7 +158,7 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Resul
             ..Default::default()
         });
     }
-    Ok(out)
+    out
 }
 
 /// Adsız (claude dışı) süreç için yedek ad: `<cli>@<cwd dizin adı>#<pid>`.
@@ -231,11 +228,11 @@ fn cpu_percent(before: Stat, after: Stat, wall: Duration, clk_tck: u64) -> f64 {
 }
 
 /// Tüm çalışan oturumlar. Aynı adda birden çok canlı süreç varsa hepsi döner.
-pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Result<Scan, ScanError> {
+pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Scan {
     let proc = ProcFs::new(&cfg.proc_root, cfg.uid);
     let mut scan = Scan::default();
     let mut table = Table::default();
-    let from_json = sessions_from_json(cfg, &proc, &mut scan.diag)?;
+    let from_json = sessions_from_json(cfg, &proc, &mut scan.diag);
     let json_by_pid: HashMap<u32, Session> = from_json.iter().map(|s| (s.pid, s.clone())).collect();
     from_json.into_iter().for_each(|s| table.put(s));
 
@@ -335,14 +332,14 @@ pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Result<Scan, ScanError> 
         s.cpu = measured.get(&s.pid).copied().unwrap_or(0.0);
     }
     scan.sessions = fold_subshells(fold_background(sessions), |pid| ancestors(&proc, pid));
-    Ok(scan)
+    scan
 }
 
 /// Belirli addaki oturumlar (çoklu süreç tespiti için liste).
-pub fn find_by_name(cfg: &Config, name: &str, cpu: CpuMode<'_>) -> Result<Vec<Session>, ScanError> {
-    let mut v = find_sessions(cfg, cpu)?.sessions;
+pub fn find_by_name(cfg: &Config, name: &str, cpu: CpuMode<'_>) -> Vec<Session> {
+    let mut v = find_sessions(cfg, cpu).sessions;
     v.retain(|s| s.name == name);
-    Ok(v)
+    v
 }
 
 #[cfg(test)]

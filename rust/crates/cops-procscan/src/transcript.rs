@@ -9,9 +9,10 @@ pub fn encode_cwd(cwd: &str) -> String {
 }
 
 /// `<projects>/<cwd>/<sid>.jsonl`, yalnız TAM eşleşme. Python'un "sid yok/dosya yok -> cwd'deki en yeni dosya"
-/// düşüşü BİLEREK yok: ortak cwd'de başka oturumun transkriptini verir.
+/// düşüşü BİLEREK yok: ortak cwd'de başka oturumun transkriptini verir. `sid` tek yol parçası olmalı: `/` ya da NUL
+/// içeren sid yok sayılır (TBD#365; Python `jsonl_path_for` da süzer).
 pub fn jsonl_path_for(cfg: &Config, cwd: &str, sid: Option<&str>) -> Option<PathBuf> {
-    let sid = sid.filter(|s| !s.is_empty())?;
+    let sid = sid.filter(|s| !s.is_empty() && !s.contains(['/', '\0']))?;
     let path = cfg
         .claude_dir
         .join("projects")

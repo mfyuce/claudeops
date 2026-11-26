@@ -27,7 +27,7 @@ pub mod usage;
 
 use std::path::PathBuf;
 
-pub use discovery::{find_by_name, find_sessions, CpuMode, Scan, ScanDiag, ScanError};
+pub use discovery::{find_by_name, find_sessions, CpuMode, Scan, ScanDiag};
 pub use procfs::{Liveness, ProcId};
 pub use session::{duplicates, Session};
 

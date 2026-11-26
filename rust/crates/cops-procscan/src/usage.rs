@@ -53,6 +53,10 @@ pub struct Usage {
     pub subagents: Subagents,
     /// Ana + alt ajanlar, model ailesine göre.
     pub by_family: BTreeMap<&'static str, Totals>,
+    /// Bu dosyalarda atlanan bozuk satırlar (dizgi olmayan `model`, hashlenemeyen tur anahtarı). JSON'a yazılmaz
+    /// (Python çıktısıyla aynı kalsın); Python karşılığı süreç geneli `session_usage._skipped["usage_row"]`.
+    #[serde(skip)]
+    pub skipped_rows: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -104,8 +108,8 @@ fn count(v: Option<&Value>) -> u64 {
     }
 }
 
-/// Python'un `usage_for_path`i `None`a düşüren satır: doğru ama dizgi olmayan `model`, ya da tur anahtarında
-/// hashlenemeyen (dizi/nesne) değer.
+/// Bozuk satır: doğru ama dizgi olmayan `model`, ya da tur anahtarında hashlenemeyen (dizi/nesne) değer.
+/// Atlanır ve sayılır (TBD#365; Python önceden tüm toplamı `None` yapıyordu).
 #[derive(Debug, PartialEq, Eq)]
 struct BadRow;
 
@@ -250,6 +254,8 @@ struct FileState {
     offset: u64,
     size: u64,
     turns: HashMap<Key, Turn>,
+    /// Atlanan bozuk satırlar (dosya baştan okununca sıfırlanır).
+    bad: u64,
 }
 
 /// Dosya başına artımlı okuma durumu. Uzun yaşayan süreç tek örnek tutar.
@@ -260,42 +266,42 @@ pub struct UsageReader {
 }
 
 impl UsageReader {
-    /// Dosya yok/okunamıyor `Ok(None)`; Python'un istisna fırlattığı satır `Err` (offset satırın ötesinde kalır).
-    fn update(&mut self, path: &Path) -> Result<Option<&FileState>, BadRow> {
+    /// Dosya yok/okunamıyor `None`. Bozuk satır atlanır ve `bad`e eklenir.
+    fn update(&mut self, path: &Path) -> Option<&FileState> {
         let Ok(meta) = std::fs::metadata(path) else {
             self.files.remove(path);
-            return Ok(None);
+            return None;
         };
         let size = meta.len();
-        // yeni ya da küçülmüş dosya: baştan. Python gibi, kapasite doluyken küçülmede de en eski girdi atılır
-        // (o girdi dosyanın kendisiyse sona eklenir, değilse yeri değişmez).
-        let fresh = self.files.get(path).is_none_or(|st| size < st.offset || size < st.size);
-        if fresh {
-            if self.files.len() >= MAX_CACHED_FILES {
+        // yeni ya da küçülmüş dosya: baştan. Yalnız YENİ girdi yer açtırır; küçülen dosya yerinde sıfırlanır
+        // (TBD#365: Python dolu tabloda en eski başka girdiyi boşuna attırıyordu, ikisi de düzeltildi).
+        let known = self.files.get(path).map(|st| size < st.offset || size < st.size);
+        if known != Some(false) {
+            if known.is_none() && self.files.len() >= MAX_CACHED_FILES {
                 self.files.pop_oldest();
             }
             *self.files.entry_or_default(path) = FileState::default();
         }
-        let Some(st) = self.files.get_mut(path) else {
-            return Ok(None);
-        };
+        let st = self.files.get_mut(path)?;
         if size != st.offset {
-            let Ok(mut f) = File::open(path) else { return Ok(None) };
-            if f.seek(SeekFrom::Start(st.offset)).is_err() {
-                return Ok(None);
-            }
+            let mut f = File::open(path).ok()?;
+            f.seek(SeekFrom::Start(st.offset)).ok()?;
             let mut r = BufReader::new(f);
             let mut line = Vec::new();
             loop {
                 line.clear();
                 match r.read_until(b'\n', &mut line) {
-                    Err(_) => return Ok(None),
+                    Err(_) => return None,
                     Ok(0) => break,
                     Ok(_) if line.last() != Some(&b'\n') => break,
                     Ok(_) => {}
                 }
                 st.offset += line.len() as u64;
-                if let Some((key, turn)) = parse(&line, &mut self.unique)? {
+                let Ok(parsed) = parse(&line, &mut self.unique) else {
+                    st.bad += 1;
+                    continue;
+                };
+                if let Some((key, turn)) = parsed {
                     st.turns
                         .entry(key)
                         .and_modify(|old| {
@@ -309,20 +315,23 @@ impl UsageReader {
             }
         }
         st.size = size;
-        Ok(Some(st))
+        Some(st)
     }
 
-    /// Ana transkript okunamazsa ya da (ana ya da alt ajan) dosyada Python'un istisna fırlattığı satır varsa `None`
-    /// (o satır bir sonraki çağrıda atlanmış olur, Python gibi).
+    /// Ana transkript okunamazsa `None`. Bozuk satırlar (ana ya da alt ajan dosyasında) toplamı düşürmez,
+    /// atlanır ve `skipped_rows`a girer.
     pub fn usage_for_path(&mut self, main: &Path) -> Option<Usage> {
-        fn sum(st: &FileState, into: &mut Totals, fams: &mut BTreeMap<&'static str, Totals>) {
+        fn sum(st: &FileState, into: &mut Totals, out: &mut Usage) {
             for t in st.turns.values() {
                 into.add(&t.counts);
-                fams.entry(t.family).or_default().add(&t.counts);
+                out.by_family.entry(t.family).or_default().add(&t.counts);
             }
+            out.skipped_rows += st.bad;
         }
         let mut out = Usage::default();
-        sum(self.update(main).ok()??, &mut out.main, &mut out.by_family);
+        let mut main_totals = Totals::default();
+        sum(self.update(main)?, &mut main_totals, &mut out);
+        out.main = main_totals;
         let stem = match main.extension() {
             Some(e) if e == "jsonl" => main.with_extension(""),
             _ => main.to_path_buf(),
@@ -339,13 +348,14 @@ impl UsageReader {
             .map(|e| e.path())
             .collect();
         subs.sort();
+        let mut sub_totals = Totals::default();
         for p in subs {
-            // Python: alt ajan dosyasındaki istisna da tüm toplamı `None` yapar
-            if let Some(st) = self.update(&p).ok()? {
+            if let Some(st) = self.update(&p) {
                 out.subagents.n += 1;
-                sum(st, &mut out.subagents.totals, &mut out.by_family);
+                sum(st, &mut sub_totals, &mut out);
             }
         }
+        out.subagents.totals = sub_totals;
         Some(out)
     }
 }
@@ -368,6 +378,9 @@ pub struct UsageCache {
     ttl: Duration,
     reader: Arc<Mutex<UsageReader>>,
     summaries: Arc<Mutex<Ordered<Summary>>>,
+    /// Test: iş parçacığı başlatma hatasını taklit eder.
+    #[cfg(test)]
+    fail_spawn: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for UsageCache {
@@ -382,7 +395,21 @@ impl UsageCache {
             ttl,
             reader: Arc::default(),
             summaries: Arc::default(),
+            #[cfg(test)]
+            fail_spawn: Arc::default(),
         }
+    }
+
+    fn spawn_refresh(&self, main: &Path) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self.fail_spawn.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(std::io::Error::other("taklit: iş parçacığı başlatılamadı"));
+        }
+        let (this, path) = (self.clone(), main.to_path_buf());
+        std::thread::Builder::new()
+            .name("session-usage".into())
+            .spawn(move || this.refresh(&path))
+            .map(drop)
     }
 
     pub fn get(&self, main: &Path) -> Option<Usage> {
@@ -403,11 +430,8 @@ impl UsageCache {
                     map.remove(k);
                 });
             }
-            let (this, path) = (self.clone(), main.to_path_buf());
-            let spawned = std::thread::Builder::new()
-                .name("session-usage".into())
-                .spawn(move || this.refresh(&path));
-            if spawned.is_err() {
+            // başlatılamazsa bayrak geri alınır: açık kalsa yol bir daha yenilenmezdi (TBD#365, Python da düzeltildi)
+            if self.spawn_refresh(main).is_err() {
                 if let Some(e) = map.get_mut(main) {
                     e.running = false;
                 }
@@ -462,23 +486,36 @@ mod tests {
             .unwrap();
     }
 
+    /// TBD#365: bozuk satır toplamı düşürmez; atlanır, sayılır, bir daha okunmaz.
     #[test]
-    fn bad_row_returns_none_once_and_offset_moves_past_it() {
+    fn bad_row_is_skipped_and_counted() {
         let tmp = tempfile::tempdir().unwrap();
         let p = tmp.path().join("s.jsonl");
         append(&p, &(row("m1", "\"x\"", 1) + &row("m2", "5", 2) + &row("m3", "\"x\"", 4)));
         let mut r = UsageReader::default();
-        assert_eq!(r.usage_for_path(&p), None);
-        // Python gibi: offset bozuk satırın ötesinde, önceki tur korunur, sonraki tur okunur
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.main.output, u.skipped_rows), (2, 5, 1));
         let st = r.files.get(&p).unwrap();
-        assert_eq!(
-            (st.offset, st.size, st.turns.len()),
-            ((row("m1", "\"x\"", 1).len() + row("m2", "5", 2).len()) as u64, 0, 1)
+        assert_eq!((st.size, st.bad), (st.offset, 1));
+        append(&p, &row("[1]", "\"x\"", 1).replace("\"[1]\"", "[1]"));
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.skipped_rows), (2, 2));
+        // alt ajan dosyasındaki bozuk satır da yalnız kendini düşürür
+        let sub = tmp.path().join("s/subagents");
+        fs::create_dir_all(&sub).unwrap();
+        append(
+            &sub.join("agent-1.jsonl"),
+            &(row("q", r#"{"a":1}"#, 1) + &row("q", "[1]", 1) + &row("q2", "\"x\"", 7)),
         );
         let u = r.usage_for_path(&p).unwrap();
-        assert_eq!((u.main.turns, u.main.output), (2, 5));
-        let st = r.files.get(&p).unwrap();
-        assert_eq!(st.size, st.offset);
+        assert_eq!(
+            (u.subagents.n, u.subagents.totals.turns, u.subagents.totals.output),
+            (1, 1, 7)
+        );
+        assert_eq!(u.skipped_rows, 4);
+        // baştan okunan dosyada sayaç sıfırlanır (kalan 2 alt ajan dosyasının)
+        fs::write(&p, row("m1", "\"x\"", 1)).unwrap();
+        assert_eq!(r.usage_for_path(&p).unwrap().skipped_rows, 2);
     }
 
     #[test]
@@ -536,6 +573,26 @@ mod tests {
         assert_eq!(v.main.turns, 2);
     }
 
+    /// İş parçacığı başlatılamazsa `None` döner ve yol kilitli kalmaz: sonraki çağrı yeniden dener.
+    #[test]
+    fn spawn_failure_does_not_lock_the_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        append(&p, &row("m1", "\"x\"", 3));
+        let cache = UsageCache::new(Duration::ZERO);
+        cache.fail_spawn.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(cache.get(&p), None);
+        assert!(!lock(&cache.summaries).get(&p).unwrap().running);
+        cache.fail_spawn.store(false, std::sync::atomic::Ordering::Relaxed);
+        let t = Instant::now();
+        let mut got = None;
+        while got.is_none() && t.elapsed() < Duration::from_secs(5) {
+            got = cache.get(&p);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(got.map(|u| u.main.turns), Some(1));
+    }
+
     /// TTL içinde ikinci yenileme başlatılmaz.
     #[test]
     fn cache_respects_ttl() {
@@ -557,8 +614,8 @@ mod tests {
         t.iter().map(|(p, _)| p.to_path_buf()).collect()
     }
 
-    /// Python `_files`: taşmada en eski EKLENEN atılır (okunmak yeri değiştirmez); küçülen dosya yerinde kalır ama
-    /// kapasite doluyken yine en eskiyi attırır; kaybolup dönen dosya sona gider.
+    /// Python `_files`: taşmada en eski EKLENEN atılır (okunmak yeri değiştirmez); küçülen dosya yerinde sıfırlanır ve
+    /// kimseyi attırmaz (TBD#365, Python da düzeltildi); kaybolup dönen dosya sona gider.
     #[test]
     fn file_cache_evicts_in_insertion_order() {
         assert_eq!(MAX_CACHED_FILES, 2000);
@@ -585,33 +642,31 @@ mod tests {
         assert_eq!(read(&mut r, MAX_CACHED_FILES), Some(2));
         assert_eq!(order(&r.files), (1..=MAX_CACHED_FILES).map(path).collect::<Vec<_>>());
 
-        // ortadaki dosya küçüldü: en eski (f1) atılır, f5 yerinde kalır, tablo bir eksilir
+        // dolu tabloda ortadaki dosya küçüldü: kimse atılmaz, f5 yerinde kalır
+        let full: Vec<PathBuf> = (1..=MAX_CACHED_FILES).map(path).collect();
         fs::write(path(5), row("z", "\"x\"", 1)).unwrap();
         assert_eq!(read(&mut r, 5), Some(1));
-        let after: Vec<PathBuf> = (2..=MAX_CACHED_FILES).map(path).collect();
-        assert_eq!(order(&r.files), after);
+        assert_eq!(order(&r.files), full);
 
-        // tablo dolu değilken yeni dosya kimseyi atmaz
-        assert_eq!(read(&mut r, MAX_CACHED_FILES + 1), Some(2));
-        assert_eq!(r.files.len(), MAX_CACHED_FILES);
-        assert_eq!(order(&r.files)[0], path(2));
+        // dolu ve küçülen dosya en eskinin kendisi: yine yerinde
+        fs::write(path(1), row("z", "\"x\"", 1)).unwrap();
+        assert_eq!(read(&mut r, 1), Some(1));
+        assert_eq!(order(&r.files), full);
 
-        // dolu ve küçülen dosya en eskinin kendisi: atılıp sona eklenir
-        fs::write(path(2), row("z", "\"x\"", 1)).unwrap();
-        assert_eq!(read(&mut r, 2), Some(1));
-        assert_eq!(r.files.len(), MAX_CACHED_FILES);
-        let o = order(&r.files);
-        assert_eq!((o.first(), o.last()), (Some(&path(3)), Some(&path(2))));
-
-        // kaybolan dosya tablodan çıkar, dönünce sona eklenir
+        // kaybolan dosya tablodan çıkar; boş yere yeni dosya kimseyi atmaz
         fs::remove_file(path(10)).unwrap();
         assert_eq!(read(&mut r, 10), None);
         assert_eq!(r.files.len(), MAX_CACHED_FILES - 1);
         assert!(r.files.get(&path(10)).is_none());
+        assert_eq!(read(&mut r, MAX_CACHED_FILES + 1), Some(2));
+        assert_eq!(r.files.len(), MAX_CACHED_FILES);
+        assert_eq!(order(&r.files)[0], path(1));
+
+        // dönen dosya sona eklenir, en eski (f1) atılır
         append(&path(10), &two);
         assert_eq!(read(&mut r, 10), Some(2));
         let o = order(&r.files);
-        assert_eq!((o.first(), o.last()), (Some(&path(3)), Some(&path(10))));
+        assert_eq!((o.first(), o.last()), (Some(&path(2)), Some(&path(10))));
     }
 
     /// Python `_summaries`: bayat bir sorgu tablo 2000'i AŞINCA en eski 200 girdiyi atar; yenilenmekte olan ve
