@@ -445,7 +445,8 @@ def resolved_binary(cli_name: str) -> str:
     (normal PATH araması) → bare isim (eski davranış, `spawn_session`'ın kendisi
     zaten `Popen`'ı PATH üzerinden çözecek). Her provider'ın kendi `shutil.which(NAME)
     or NAME` satırının yerine geçer — DRY + üçünde de aynı override mantığı."""
-    override = (load_settings().get("provider_bin") or {}).get(cli_name, "").strip()
+    raw = (load_settings().get("provider_bin") or {}).get(cli_name)
+    override = raw.strip() if isinstance(raw, str) else ""      # elle düzenlenmiş metin olmayan değer yok sayılır
     if override:
         # `~` genişletilir; var olmayan/çalıştırılamayan override spawn'ı bozmasın diye atlanıp PATH araması denenir.
         path = os.path.expanduser(override)
