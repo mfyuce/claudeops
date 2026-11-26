@@ -1209,7 +1209,7 @@ class UcliProvider(CliProvider):
                 err = err.get("message") or err.get("error") or json.dumps(err, ensure_ascii=False)
             if err:
                 out["last_error"] = " ".join(str(err).split())[:160]
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError, RecursionError):
             pass
         return out
 

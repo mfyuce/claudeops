@@ -370,7 +370,7 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, ValueError, RecursionError):     # bozuk JSON/UTF-8, dev sayı, aşırı derin yapı
         return None
     return data if isinstance(data, dict) else None
 

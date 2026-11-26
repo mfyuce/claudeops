@@ -68,6 +68,25 @@ class FailedRecordNameTest(UcliBase):
         self.assertEqual([u for u, _p in ucli_client.failed_turn_records(self.cwd, "s")], [5])
         self.assertEqual(up.UcliProvider().live_failed_turns(self.cwd, "s"), {"count": 1, "last_unix": 5, "last_error": "x"})
 
+class StatusFileTest(UcliBase):
+    BODIES = ('{"activity":"x","n":' + "9" * 5000 + "}", '{"d":' + "[" * 100000 + "]" * 100000 + "}")
+
+    def test_huge_number_or_deep_document_means_unreadable(self):
+        p = up.UcliProvider()
+        for body in self.BODIES:
+            with self.subTest(body=body[:30]):
+                (self.chat / "s.status.json").write_text(body, encoding="utf-8")
+                self.assertIsNone(ucli_client.read_status_file(self.cwd, "s"))
+                self.assertIsNone(p.live_busy(self.cwd, "s"))
+                self.assertIsNone(p.live_usage(self.cwd, "s"))
+                self.assertIsNone(p.live_phase(self.cwd, "s"))
+
+    def test_deep_or_huge_failed_record_keeps_the_count(self):
+        for body in self.BODIES:
+            with self.subTest(body=body[:30]):
+                (self.chat / "failed" / "s-5-1.json").write_text(body, encoding="utf-8")
+                self.assertEqual(up.UcliProvider().live_failed_turns(self.cwd, "s"), {"count": 1, "last_unix": 5})
+
 
 if __name__ == "__main__":
     unittest.main()

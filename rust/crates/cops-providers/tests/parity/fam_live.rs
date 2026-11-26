@@ -243,9 +243,8 @@ fn status_bodies(b: &mut Build<'_>) {
     }
     let c = b.status("cok-derin", nested(600)).known("512'den derin belge: Python okur, Rust 'okunamadı' sayar (yığın sınırı)");
     b.push(c);
-    let c = b
-        .status("dev-sayi", format!(r#"{{{full},"x":{}}}"#, "9".repeat(5000)))
-        .known("4300 basamaktan uzun sayı: Python `ValueError` yakalanmadan yükselir, Rust 'okunamadı' sayar");
+    // 4300 basamaktan uzun sayı iki tarafta da "okunamadı"
+    let c = b.status("dev-sayi", format!(r#"{{{full},"x":{}}}"#, "9".repeat(5000)));
     b.push(c);
     let c = b
         .status("tasan-sayac", r#"{"usage":{"requests":123456789012345678901234567890},"phase":{"name":"w","attempt":18446744073709551616}}"#)
