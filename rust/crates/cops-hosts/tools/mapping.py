@@ -178,6 +178,7 @@ _DNS_REST = f"{FX}secret_body_never_goes_to_plain_http_and_dns_loopback_is_block
 _DNS_WS = f"{FW}dns_name_resolving_to_loopback_is_refused_for_ws_before_connecting"
 _DEDUP = f"{FX}concurrent_same_url_sends_one_request_and_reuses_last_good"
 _TOL = f"{FP}consecutive_failures_are_tolerated_then_rows_are_kept_stale"
+_H3 = f"{FW}push_frame_that_arrives_during_rest_is_not_overwritten"
 _MAL = f"{FP}malformed_remote_status_is_an_error_or_reduced_to_empty_fields"
 _PUSH = f"{FW}poller_skips_rest_only_while_a_live_push_stream_has_delivered_data"
 _SIL = f"{FW}status_silence_watchdog_boundary"
@@ -262,6 +263,8 @@ DEFS["commands/web_hosts.py"] = [
     ok("STATUS_PUSH_SILENCE_SECONDS", "consts.rs::STATUS_PUSH_SILENCE", f"{P_CONST} {_SIL}"),
     ok("_last_try_at", "status.rs::StatusBook::last_try_at", f"{_TOL} {P_STEW}"),
     ok("_fail_streak", "status.rs::StatusBook::fail_streak", f"{_TOL} {P_POLL}"),
+    ok("_push_seq _push_mark", "status.rs::StatusBook::record_pulled status.rs::StatusBook::push_mark "
+       "status.rs::StatusBook::record_push", _H3),
     ok("_last_ok_at", "status.rs::StatusBook::last_ok_at", _TOL),
     ok("_poll_once", "federation.rs::Federation::poll_once federation.rs::Federation::poll_host",
        f"{_TOL} {FP}extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure {_PUSH}",
@@ -595,6 +598,13 @@ CASES["test_web_grpc_ucli_flags.py"] = [
     t_ok(cls("GrpcUcliFlagsTest", "test_roundtrip_never_raises_and_keeps_core_fields test_no_flags_means_none "
              "test_flags_roundtrip test_non_ucli_row_has_no_flags"), P_WIRE,
          "istemci yarısı (proto -> dict) Python pb2 ile kodlanıp Rust'ta çözülür; dict -> proto sunucu tarafı"),
+]
+CASES["test_host_push_race.py"] = [
+    t_ok(cls("PushDuringRestTest", "test_poll_once_keeps_frame_that_arrived_during_rest "
+             "test_late_rest_failure_does_not_count_against_live_push "
+             "test_probe_host_keeps_frame_that_arrived_during_rest "
+             "test_test_now_returns_own_result_but_keeps_newer_cache "
+             "test_rest_started_after_frame_still_overwrites"), _H3),
 ]
 CASES["test_host_liveness.py"] = [
     t_ok(cls("SilentConsumerTest", "test_healthy_consumer_keeps_rest_off test_fed01_dead_consumer_restarted_and_rest_used_this_tick "

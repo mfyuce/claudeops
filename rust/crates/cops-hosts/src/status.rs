@@ -212,6 +212,8 @@ struct Entry {
     last_ok_at: f64,
     last_try_at: f64,
     streak: u32,
+    /// İşlenen push karesi sayısı (REST sonucunun bayat olup olmadığı buna bakar, H3).
+    push_seq: u64,
 }
 
 /// Poller önbelleği.
@@ -229,7 +231,34 @@ impl StatusBook {
     /// `ok`/`error` güncellenir. Hiç başarı yoksa ilk hata anında görünür.
     pub fn record(&self, name: &str, result: HostStatus, now: f64) {
         let mut m = self.lock();
+        Self::apply(m.entry(name.to_string()).or_default(), result, now);
+    }
+
+    /// REST isteğinden ÖNCE alınır, sonuç [`StatusBook::record_pulled`]e verilir.
+    pub fn push_mark(&self, name: &str) -> u64 {
+        self.lock().get(name).map_or(0, |e| e.push_seq)
+    }
+
+    /// Push akışından gelen kare.
+    pub fn record_push(&self, name: &str, result: HostStatus, now: f64) {
+        let mut m = self.lock();
         let e = m.entry(name.to_string()).or_default();
+        e.push_seq = e.push_seq.wrapping_add(1);
+        Self::apply(e, result, now);
+    }
+
+    /// REST sonucu: istek sürerken push karesi geldiyse (başarı ya da hata) ondan eskidir, yalnız deneme zamanı yazılır.
+    pub fn record_pulled(&self, name: &str, mark: u64, result: HostStatus, now: f64) {
+        let mut m = self.lock();
+        let e = m.entry(name.to_string()).or_default();
+        if e.push_seq != mark {
+            e.last_try_at = now;
+            return;
+        }
+        Self::apply(e, result, now);
+    }
+
+    fn apply(e: &mut Entry, result: HostStatus, now: f64) {
         e.last_try_at = now;
         if result.ok {
             e.streak = 0;

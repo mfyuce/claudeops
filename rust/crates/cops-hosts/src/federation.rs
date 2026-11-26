@@ -254,7 +254,7 @@ impl Federation {
             open,
             move |v| {
                 let now = epoch_now();
-                book.record(&name, status::finalize(&name, &v, now), now);
+                book.record_push(&name, status::finalize(&name, &v, now), now);
             },
             self.client.events.clone(),
             self.deaths.clone(),
@@ -292,6 +292,7 @@ impl Federation {
         if self.ensure_status_consumer(&host) {
             return;
         }
+        let mark = self.book.push_mark(&host.name);
         let mut result = self.fetch_status(&host).await;
         if !result.ok && !host.extra_urls.is_empty() {
             // İlk "gerçek" arıza turunda, sonra ~20 turda bir.
@@ -302,7 +303,8 @@ impl Federation {
                 }
             }
         }
-        self.book.record(&host.name, result, epoch_now());
+        self.book
+            .record_pulled(&host.name, mark, result, epoch_now());
     }
 
     /// Bir tur: host'lar EŞZAMANLI (yavaş host diğerlerini bekletmez), sonra silinenlerin temizliği.
@@ -339,9 +341,10 @@ impl Federation {
             }
             at.insert(name.to_string(), Instant::now());
         }
+        let mark = self.book.push_mark(name);
         let result = self.fetch_status(host).await;
         let ok = result.ok;
-        self.book.record(name, result, epoch_now());
+        self.book.record_pulled(name, mark, result, epoch_now());
         Some(ok)
     }
 
@@ -349,8 +352,10 @@ impl Federation {
     pub async fn test_now(&self, name: &str) -> Option<(HostStatus, Tier)> {
         let hosts = self.source.load();
         let host = record::find(&hosts, name)?;
+        let mark = self.book.push_mark(name);
         let result = self.fetch_status(host).await;
-        self.book.record(name, result.clone(), epoch_now());
+        self.book
+            .record_pulled(name, mark, result.clone(), epoch_now());
         let tier = self.probe_tier(host).await;
         self.tiers.update(name, tier);
         Some((result, tier))

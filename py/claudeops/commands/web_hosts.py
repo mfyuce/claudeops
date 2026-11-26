@@ -757,12 +757,20 @@ CONSECUTIVE_FAILURES_BEFORE_ERROR = 5
 STATUS_PUSH_SILENCE_SECONDS = 45.0
 _last_try_at: Dict[str, float] = {}      # host adı -> son yoklama denemesi (başarılı ya da değil; `steward status` gösterir)
 _fail_streak: Dict[str, int] = {}  # host adı -> ardışık başarısız poll sayısı
+# host adı -> işlenen push karesi sayısı. REST yoklaması istek ÖNCESİ değeri saklar; arada kare geldiyse sonucu eskidir (H3).
+_push_seq: Dict[str, int] = {}
 # host adı -> son GERÇEKTEN başarılı sonucun zamanı (epoch). Değnekçinin "host kapalı" tazelik kuralı buna bakar
 # (`last_ok_at`): `_apply_stale_while_error`'ın koruduğu bayat satırlarla karar vermesin (TODO 2026-10-20 (14)).
 _last_ok_at: Dict[str, float] = {}
 
 
-def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
+def _push_mark(name: str) -> int:
+    with _cache_lock:
+        return _push_seq.get(name, 0)
+
+
+def _record_poll_result(name: str, result: Dict[str, Any], *, pushed: bool = False,
+                        since: Optional[int] = None) -> None:
     """`_apply_stale_while_error`'ın ÜSTÜNE, ardışık-hata toleransı ekler:
     eşiğin ALTINDA bir başarısızlık (önceki cache zaten `ok:true` olduğu
     sürece) `_cache`'e HİÇ yazılmaz — o tick sanki hiç olmamış gibi, önceki
@@ -776,6 +784,10 @@ def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
     arkasına gizlenmemeli, sadece PAYLAŞILAN arka-plan sayacını besler."""
     with _cache_lock:
         _last_try_at[name] = time.time()
+        if pushed:
+            _push_seq[name] = _push_seq.get(name, 0) + 1
+        elif since is not None and _push_seq.get(name, 0) != since:
+            return      # istek sürerken push karesi geldi: bu REST sonucu (başarı ya da hata) ondan eski
         if result["ok"]:
             _fail_streak[name] = 0
             _cache[name] = result
@@ -803,6 +815,7 @@ def _poll_once() -> None:
         # görünmez (bkz. _ensure_status_consumer'ın kendi docstring'i).
         if _ensure_status_consumer(h):
             continue
+        mark = _push_mark(h["name"])
         result = fetch_remote_status(h)
         if not result["ok"] and h.get("extra_urls"):
             # Sağlıklı host bu bloğa hiç girmiyor (result["ok"] zaten True) --
@@ -815,7 +828,7 @@ def _poll_once() -> None:
                 fallback = _try_fallback_urls(h)
                 if fallback is not None:
                     result = fallback
-        _record_poll_result(h["name"], result)
+        _record_poll_result(h["name"], result, since=mark)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
     # göre iterate ediyor, bu sadece belleğin büyümemesi için).
     with _cache_lock:
@@ -826,6 +839,7 @@ def _poll_once() -> None:
                 _last_good.pop(stale, None)
                 _last_ok_at.pop(stale, None)
                 _last_try_at.pop(stale, None)
+                _push_seq.pop(stale, None)
     _reap_status_consumers(current_names)
 
 
@@ -925,8 +939,9 @@ def probe_host(name: str, now: Optional[float] = None) -> Optional[bool]:
         rec = next((h for h in hosts_mod.load_hosts() if h["name"] == name), None)
         if rec is None:
             return None
+        mark = _push_mark(name)
         result = fetch_remote_status(rec)
-        _record_poll_result(name, result)
+        _record_poll_result(name, result, since=mark)
         return bool(result.get("ok"))
     except Exception:
         return False
@@ -969,8 +984,9 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
     host_record = hosts_mod.get_host(name)
     if host_record is None:
         return None
+    mark = _push_mark(name)
     result = fetch_remote_status(host_record)
-    _record_poll_result(name, result)
+    _record_poll_result(name, result, since=mark)
     # Hysteresis'i BYPASS eden taze bir probe — paylaşılan tier state'i
     # besler (arka plan prober'ıyla AYNI ilke `ok`/`error` için zaten
     # uygulanıyordu) ama dönüş değeri HER ZAMAN bu çağrının kendi taze
@@ -1527,7 +1543,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
-        _record_poll_result(name, _finalize_remote_result(name, parsed))
+        _record_poll_result(name, _finalize_remote_result(name, parsed), pushed=True)
 
     return _PushConsumer(tier, make_call, parse_item, on_item, label=f"status:{name}")
 

@@ -164,8 +164,6 @@ async fn poller_skips_rest_only_while_a_live_push_stream_has_delivered_data() {
         assert_eq!(f.count_path("/api/status"), 2);
         f.wait_upgrades(1).await;
         let book = fed.book.clone();
-        // Not: yeni akışın ilk karesi aynı turun REST sonucundan ÖNCE gelirse REST onu ezer (Python ile aynı yarış,
-        // ders H3 "taze olan kazanır" açık); bu yüzden tur bittikten sonra itilen kare beklenir.
         f.wait_ws_live(1).await;
         f.send_last(Cmd::Send(status_frame("p1")));
         wait_until("ws status frame recorded", Duration::from_secs(5), || {
@@ -222,6 +220,48 @@ async fn poller_skips_rest_only_while_a_live_push_stream_has_delivered_data() {
         f.wait_ws_live(0).await;
         assert_eq!(f.count_path("/api/status"), 4);
         assert_eq!(f.upgrades(), 2);
+    })
+    .await
+}
+
+/// H3: REST yanıtı sürerken gelen push karesi, aynı turun (daha eski) REST sonucuyla ezilmez (poller turu ve "şimdi test et").
+#[tokio::test]
+async fn push_frame_that_arrives_during_rest_is_not_overwritten() {
+    deadline(async {
+        let rest = handler(|_r| async {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            json(
+                200,
+                json!({"sessions": [{"name": "rest1", "cwd": "/w", "running": true}]}),
+            )
+        });
+        let f = WsFake::start(rest, default_opener(), None).await;
+        let src = MemSource::new(vec![host("a", &f.url())]);
+        let (fed, _) = fed(&src);
+        ws_tier(&fed, "a");
+        let first = |name: &str| {
+            fed.book.cached(name).and_then(|c| {
+                c.sessions
+                    .first()
+                    .map(|s| s["name"].as_str().unwrap_or_default().to_string())
+            })
+        };
+
+        // Akış bu turda kurulur; ilk karesi yavaş REST yanıtından önce işlenir.
+        fed.clone().poll_once().await;
+        assert_eq!(f.count_path("/api/status"), 1);
+        assert_eq!(first("a").as_deref(), Some("s1"));
+
+        // "Şimdi test et": dönüş kendi REST sonucu, önbellek daha yeni karede kalır.
+        let (own, ()) = tokio::join!(fed.test_now("a"), async {
+            wait_until("rest in flight", Duration::from_secs(5), || {
+                f.count_path("/api/status") == 2
+            })
+            .await;
+            f.send_last(Cmd::Send(status_frame("p2")));
+        });
+        assert_eq!(own.unwrap().0.sessions[0]["name"], "rest1");
+        assert_eq!(first("a").as_deref(), Some("p2"));
     })
     .await
 }
