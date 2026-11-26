@@ -14,6 +14,15 @@ pub const PERMISSION_MODES: [&str; 6] = ["auto", "acceptEdits", "bypassPermissio
 pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// Tur işlenirken durum çubuğunda görünen metin.
 pub const BUSY_STATUS_PATTERN: &str = "esc to interrupt";
+/// Durum çubuğunda aktif izin modunu veren metinler (Python dict sırası).
+pub const MODE_STATUS_PATTERNS: [(&str, &str); 4] = [
+    ("plan", "plan mode on"),
+    ("acceptEdits", "accept edits on"),
+    ("auto", "auto mode on"),
+    ("manual", "manual mode on"),
+];
+/// Shift+Tab ile hedeflenebilen modlar (döngü sırası varsayılmaz).
+pub const CYCLABLE_MODES: [&str; 4] = ["manual", "acceptEdits", "plan", "auto"];
 
 static SONNET_PIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(claude-sonnet-)(\d{1,2}(?:-\d{1,2})?)(\[[^\]]*\])?\n?$").unwrap());

@@ -133,3 +133,12 @@ mod fam_searxng;
 fn parity_searxng() {
     fam_searxng::run();
 }
+#[path = "parity/fake_pane.rs"]
+mod fake_pane;
+#[path = "parity/fam_tui.rs"]
+mod fam_tui;
+
+#[test]
+fn parity_tui() {
+    fam_tui::run();
+}

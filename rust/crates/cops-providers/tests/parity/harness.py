@@ -9,8 +9,10 @@ anlık görüntüyü Rust tarafı kurar/alır; bu süreç yalnız çağrıyı ya
 """
 import json
 import os
+import re
 import shutil
 import socket
+import struct
 import sys
 import time
 import types
@@ -86,6 +88,7 @@ import claudeops.effort as effort  # noqa: E402
 import claudeops.routing as routing  # noqa: E402
 import claudeops.spawn as spawn  # noqa: E402
 import claudeops.steward as steward  # noqa: E402
+import claudeops.tmux_backend as tmux_backend  # noqa: E402
 import claudeops.extensions as extensions  # noqa: E402
 import claudeops.authz as authz  # noqa: E402
 import claudeops.searxng as searxng  # noqa: E402
@@ -814,6 +817,90 @@ def op_resume(a):
             if os.path.exists(p):
                 os.remove(p)
     return out
+
+
+# ---------------------------------------------------------------------------------------------- G4: TUI girdisi, canlı geçiş
+
+def _bits(x):
+    """Float bit düzeyinde karşılaştırılır (JSON metni iki dilde farklı yuvarlanabilir)."""
+    return struct.unpack("<q", struct.pack("<d", float(x)))[0]
+
+
+def op_g4_static(a):
+    p = _prov(a)
+    return {
+        "has_conversation": p.has_conversation(),
+        "wants_handover_wrapup": p.wants_handover_wrapup(),
+        "wants_stuck_recovery": p.wants_stuck_recovery(),
+        "input_settle_delay": _bits(p.input_settle_delay()),
+        "compact_command": p.compact_command(),
+        "mode_status_patterns": [[k, v] for k, v in p.mode_status_patterns().items()],
+        "cyclable_modes": list(p.cyclable_modes()),
+        "prepare_input": [p.prepare_input(t) for t in a["texts"]],
+        "model_downgrade": [p.handover_model_downgrade(m) for m in a["models"]],
+        "effort_downgrade": [p.handover_effort_downgrade(c, t) for c, t in a["efforts"]],
+    }
+
+
+def op_g4_strip(a):
+    return [tmux_backend.strip_ansi(t) for t in a["texts"]]
+
+
+def op_g4_modes(a):
+    """`web._detect_mode_in_text`in desen kullanımı: IGNORECASE, sözlük sırasında ilk eşleşen."""
+    p = _prov(a)
+    pats = [(m, re.compile(v, re.IGNORECASE)) for m, v in p.mode_status_patterns().items()]
+    return [next((m for m, r in pats if r.search(t)), None) for t in a["texts"]]
+
+
+def op_g4_pane(a):
+    """Sahte pane + sahte saat: her tmux çağrısı, uyku ve okunan an sırayla kaydedilir."""
+    log, now = [], [float(a["t0"])]
+    screens = list(a["screens"])
+    keys = list(a.get("keys") or [])
+    seen = [0, 0]      # capture, tuş sayacı
+
+    def send_keys(name, text, settle_delay=0.0):
+        log.append(["send_text", name, text, _bits(settle_delay)])
+        now[0] += a.get("send_cost", 0.0)
+        return a.get("send_ok", True)
+
+    def send_key(name, key):
+        log.append(["key", name, key])
+        i = seen[1]
+        seen[1] += 1
+        return keys[i] if i < len(keys) else True
+
+    def capture(name, lines=2000):
+        log.append(["capture", name, lines, _bits(now[0])])
+        i = seen[0]
+        seen[0] += 1
+        assert i < 5000, "bitmeyen bekleme"
+        now[0] += a.get("capture_cost", 0.0)
+        return screens[min(i, len(screens) - 1)] if screens else None
+
+    def sleep(secs):
+        log.append(["sleep", _bits(secs)])
+        now[0] += secs
+
+    saved = (tmux_backend.tmux_send_keys, tmux_backend.tmux_send_special_key, tmux_backend.tmux_capture, claude_p.time)
+    tmux_backend.tmux_send_keys, tmux_backend.tmux_send_special_key = send_keys, send_key
+    tmux_backend.tmux_capture = capture
+    claude_p.time = types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep, time=time.time)
+    try:
+        p = _prov(a)
+        which = a["which"]
+        if which == "model":
+            ret = p.apply_live_model_switch(a["name"], a["target"])
+        elif which == "effort":
+            ret = p.apply_live_effort_switch(a["name"], a["target"])
+        else:
+            ret = p.dismiss_stray_dialog(a["name"])
+        assert ret is None
+    finally:
+        (tmux_backend.tmux_send_keys, tmux_backend.tmux_send_special_key, tmux_backend.tmux_capture,
+         claude_p.time) = saved
+    return {"log": log, "end": _bits(now[0])}
 
 
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}

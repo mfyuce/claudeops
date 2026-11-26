@@ -32,6 +32,9 @@ pub const PERMISSION_MODES: [&str; 4] = ["auto", "manual", "plan", "autopilot"];
 pub const EFFORT_LEVELS: [&str; 4] = ["low", "medium", "high", "xhigh"];
 /// Tur işlenirken durum çubuğunda görünen metin.
 pub const BUSY_STATUS_PATTERN: &str = "Esc to cancel";
+/// Durum çubuğunda `· plan ·` / `· autopilot ·` (ayraçlar üretilen metindeki sözcüklerle karışmayı önler).
+pub const MODE_STATUS_PATTERNS: [(&str, &str); 2] =
+    [("plan", r"·\s*plan\s*·"), ("autopilot", r"·\s*autopilot\s*·")];
 
 fn permission_flags(mode: &str) -> &'static [&'static str] {
     match if mode.is_empty() { "auto" } else { mode } {
