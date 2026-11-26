@@ -474,7 +474,7 @@ def cls(name, methods):
 CASES: dict = {}
 
 CASES["test_hosts.py"] = [
-    t_oos(cls("ConcurrentWriteTest", "test_parallel_saves_all_survive test_flock_failure_falls_back_to_thread_lock"),
+    t_oos(cls("ConcurrentWriteTest", "test_parallel_saves_all_survive test_flock_failure_writes_nothing"),
           "hosts.json kilitli yazım", W0A),
     t_ok(cls("ReachLoopbackTest", "test_reach_port_loopback_ok_in_extra_urls test_everything_else_still_blocked"),
          f"U:record.rs::validation_order {P_SAVE}"),

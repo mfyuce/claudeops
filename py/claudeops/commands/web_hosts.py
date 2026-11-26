@@ -40,6 +40,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Tuple
 from websockets.sync.client import connect as ws_connect
 
 from . import web_grpc
+from ..atomic_json import LockError
 from .. import hosts as hosts_mod
 from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
@@ -713,7 +714,10 @@ def _try_fallback_urls(host_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             continue
         parsed, err = _fetch_status_from(candidate, token, FALLBACK_TIMEOUT_SECONDS)
         if err is None:
-            hosts_mod.promote_base_url(name, candidate)
+            try:
+                hosts_mod.promote_base_url(name, candidate)
+            except LockError as e:      # yoklama turu düşmesin: sonuç kullanılır, kalıcı geçiş sonraki turda
+                diag_log("host_promote_lock_busy", name=name, error=str(e)[:200])
             return _finalize_remote_result(name, parsed)
     return None
 
