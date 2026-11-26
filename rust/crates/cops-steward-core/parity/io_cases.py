@@ -339,7 +339,7 @@ SUM_LOG = (tick(f"{D}T00:00:01", trigger="timer", mode="act")
 for state in [{}, {"pending_items": 3}, {"pending_items": "4"}, {"pending_items": 2.7}, {"pending_items": None},
               {"pending_items": "x"}, {"pending_items": [1]}]:
     for orph in [None, {"servers": 2, "procs": 0}, {"servers": 0, "procs": 0}, {"servers": "x"}, "metin", {"procs": "3"}, "__raise__"]:
-        for date, lang, text in [(D, "tr", SUM_LOG), (D, "en", SUM_LOG), ("2026-11-22", "tr", SUM_LOG), (D, "tr", '["' + '\\"ts\\": \\"' + D + '"]\n')]:
+        for date, lang, text in [(D, "tr", SUM_LOG), (D, "en", SUM_LOG), ("2026-11-22", "tr", SUM_LOG), (D, "tr", '[{"ts": "' + D + 'T00:00:00", "event": "tick"}]\n')]:
             sw.save_state(state)
             sw.save_questions(SQ)
             sw.save_ideas(SI)
