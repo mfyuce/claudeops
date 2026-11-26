@@ -1,6 +1,6 @@
 # rs/state (W0-a): `cops-state` crate'i
 
-**DİKKAT (26 Kas 23:00): kapı 1. tur DÜZELTİLSİN; Python tarafı düzeldi (`7dd610c6` S4 damgalı önbellek, sonraki commit çift sürdürme), Rust `Instances::load` HENÜZ EŞİT DEĞİL ve tam test koşulmadı: BİRLEŞTİRMEYE HAZIR DEĞİL** (TODO "rs/state devri"). Aşağıdaki durum satırı eskidir.
+**Kapı 1. tur bulguları kapandı (26 Kas gece): BİRLEŞTİRMEYE HAZIR.** S4 damgalı önbellek iki dilde (Python `7dd610c6`, Rust `6df11106`), çift sürdürme `44f05d12`, GET `LockError` 503 `3043aeca`; `origin/main` dala alındı (`f54bdbdb`). Birleşik ağaçta `cargo test --workspace` 350/0, clippy temiz; `3043aeca` üzerinde Python 5744 OK (23 atlandı).
 
 Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK. **BİRLEŞTİRMEYE HAZIR.** TBD#374 (a) UYGULANDI: S1-S9
 iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. TBD#379 (a) UYGULANDI:
