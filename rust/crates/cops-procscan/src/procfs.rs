@@ -2,8 +2,11 @@
 
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fs;
-use std::io;
+use std::ffi::{CStr, CString, OsString};
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 /// Süreç kimliği: pid yeniden kullanılabildiği için `starttime` (açılıştan beri saat tıkı) ile birlikte.
@@ -87,6 +90,74 @@ pub fn split_cmdline(raw: &[u8]) -> Vec<String> {
     parts
 }
 
+/// `/proc/<pid>` dizinini fd olarak açar: bu fd üzerinden yapılan okumalar hep AYNI sürece aittir (gerçek `/proc`ta
+/// süreç çıkarsa ya da pid yeniden kullanılırsa eski fd yeni süreci göstermez, `ESRCH`/`ENOENT` döner).
+fn open_dir(path: &Path) -> io::Result<OwnedFd> {
+    let c = CString::new(path.as_os_str().as_bytes()).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+    // SAFETY: geçerli NUL sonlu yol; dönen fd yalnız burada sahiplenilir.
+    let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` az önce açıldı ve başka sahibi yok.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Dizin fd'sine göreli dosyayı okur (sembolik bağ izlenmez).
+fn read_at(dir: &OwnedFd, name: &CStr) -> io::Result<Vec<u8>> {
+    // SAFETY: geçerli dizin fd'si ve NUL sonlu ad.
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` az önce açıldı ve başka sahibi yok.
+    let mut f = File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// Dizin fd'sine göreli sembolik bağın hedefi.
+fn readlink_at(dir: &OwnedFd, name: &CStr) -> io::Result<PathBuf> {
+    let mut buf = vec![0u8; 4096];
+    loop {
+        // SAFETY: tampon uzunluğu doğru verildi; readlinkat NUL eklemez.
+        let n = unsafe { libc::readlinkat(dir.as_raw_fd(), name.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
+        let n = usize::try_from(n).map_err(|_| io::Error::last_os_error())?;
+        if n < buf.len() {
+            buf.truncate(n);
+            return Ok(PathBuf::from(OsString::from_vec(buf)));
+        }
+        if buf.len() >= 1 << 20 {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+        buf.resize(buf.len() * 2, 0);
+    }
+}
+
+/// `status`taki gerçek uid; satır yoksa ya da ayrıştırılamazsa `None`.
+fn real_uid(status: &[u8]) -> Option<u32> {
+    String::from_utf8_lossy(status)
+        .lines()
+        .find_map(|l| l.strip_prefix("Uid:"))
+        .and_then(|l| l.split_whitespace().next()?.parse::<u32>().ok())
+}
+
+fn stat_at(dir: &OwnedFd) -> io::Result<Option<Stat>> {
+    Ok(parse_stat(&String::from_utf8_lossy(&read_at(dir, c"stat")?)))
+}
+
+/// Değiştirilmiş ya da başkasına geçmiş süreç: `ESRCH` ("yok" sayılır, içerik dönmez).
+fn replaced() -> io::Error {
+    io::Error::from_raw_os_error(libc::ESRCH)
+}
+
 #[derive(Debug, Clone)]
 pub struct ProcFs {
     root: PathBuf,
@@ -101,21 +172,25 @@ impl ProcFs {
         }
     }
 
-    /// Sahiplik sınıflaması; yalnız `status` okunur.
+    /// Sahiplik sınıflaması; dizin fd üzerinden yalnız `status` (ve kendi sürecimizde kimlik için `stat`) okunur.
     pub fn access(&self, pid: u32) -> Access {
         let dir = self.root.join(pid.to_string());
-        let status = match fs::read(dir.join("status")) {
-            Ok(s) => s,
-            Err(e) if is_gone(&e) => return Access::Gone,
-            Err(_) => return Access::Unreadable,
+        let classify = |e: io::Error| if is_gone(&e) { Access::Gone } else { Access::Unreadable };
+        let fd = match open_dir(&dir) {
+            Ok(fd) => fd,
+            Err(e) => return classify(e),
         };
-        let status = String::from_utf8_lossy(&status);
-        let real = status
-            .lines()
-            .find_map(|l| l.strip_prefix("Uid:"))
-            .and_then(|l| l.split_whitespace().next()?.parse::<u32>().ok());
-        match real {
-            Some(r) if r == self.uid => Access::Own(OwnProc { pid, dir }),
+        let status = match read_at(&fd, c"status") {
+            Ok(s) => s,
+            Err(e) => return classify(e),
+        };
+        match real_uid(&status) {
+            Some(r) if r == self.uid => Access::Own(OwnProc {
+                pid,
+                dir,
+                uid: self.uid,
+                start_time: stat_at(&fd).ok().flatten().map(|s| s.starttime),
+            }),
             Some(_) => Access::NotOwn,
             None => Access::Unreadable,
         }
@@ -178,15 +253,45 @@ impl ProcFs {
 }
 
 /// Sahipliği doğrulanmış süreç.
+///
+/// TOCTOU (birleştirme kapısı): sahiplik oluşturulduğu an doğrulanır, ama pid sonra yeniden kullanılabilir ya da sürecin
+/// uid'i değişebilir. Bu yüzden HER içerik okuması `/proc/<pid>` dizinini yeniden fd olarak açar, AYNI fd üzerinden
+/// gerçek uid'i ve (biliniyorsa) `starttime`ı okumadan ÖNCE ve SONRA doğrular, içeriği `openat`/`readlinkat` ile okur.
+/// Doğrulama tutmazsa içerik atılır ve `ESRCH` (değişmiş süreç) döner: başka kullanıcının içeriği hiçbir durumda dönmez.
 #[derive(Debug, Clone)]
 pub struct OwnProc {
     pid: u32,
     dir: PathBuf,
+    uid: u32,
+    /// Oluşturulduğu andaki `starttime` (okunamadıysa `None`: yalnız uid denetlenir).
+    start_time: Option<u64>,
 }
 
 impl OwnProc {
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// Fd hâlâ bu sürece mi ait: gerçek uid bizim ve `starttime` aynı.
+    fn check(&self, fd: &OwnedFd) -> io::Result<Option<Stat>> {
+        if real_uid(&read_at(fd, c"status")?) != Some(self.uid) {
+            return Err(replaced());
+        }
+        let st = stat_at(fd)?;
+        match (self.start_time, st) {
+            (Some(want), Some(s)) if s.starttime != want => Err(replaced()),
+            (Some(_), None) => Err(io::Error::from(io::ErrorKind::InvalidData)),
+            _ => Ok(st),
+        }
+    }
+
+    /// İçeriği doğrulanmış dizin fd'si üzerinden okur; okumadan sonra da doğrular.
+    fn read<T>(&self, f: impl FnOnce(&OwnedFd) -> io::Result<T>) -> io::Result<T> {
+        let fd = open_dir(&self.dir)?;
+        self.check(&fd)?;
+        let out = f(&fd)?;
+        self.check(&fd)?;
+        Ok(out)
     }
 
     /// Okunamazsa boş (psutil `process_iter` `cmdline` özniteliği gibi); ayrım için [`OwnProc::try_cmdline`].
@@ -195,7 +300,7 @@ impl OwnProc {
     }
 
     pub fn try_cmdline(&self) -> io::Result<Vec<String>> {
-        fs::read(self.dir.join("cmdline")).map(|r| split_cmdline(&r))
+        self.read(|fd| read_at(fd, c"cmdline")).map(|r| split_cmdline(&r))
     }
 
     /// Okunamaz ya da ayrıştırılamazsa `None`; ayrım için [`OwnProc::try_stat`].
@@ -205,15 +310,14 @@ impl OwnProc {
 
     /// Okuma hatası `Err`, okunan ama ayrıştırılamayan içerik `Ok(None)`.
     pub fn try_stat(&self) -> io::Result<Option<Stat>> {
-        let raw = fs::read(self.dir.join("stat"))?;
-        Ok(parse_stat(&String::from_utf8_lossy(&raw)))
+        self.read(stat_at)
     }
 
-    /// Kimlik (`starttime` okunabiliyorsa).
+    /// Kimlik (`starttime` okunabildiyse; oluşturulduğu anki değer).
     pub fn id(&self) -> Option<ProcId> {
-        self.stat().map(|s| ProcId {
+        self.start_time.map(|start_time| ProcId {
             pid: self.pid,
-            start_time: s.starttime,
+            start_time,
         })
     }
 
@@ -222,7 +326,7 @@ impl OwnProc {
     }
 
     pub fn try_environ(&self) -> io::Result<HashMap<String, String>> {
-        let raw = fs::read(self.dir.join("environ"))?;
+        let raw = self.read(|fd| read_at(fd, c"environ"))?;
         Ok(raw
             .split(|b| *b == 0)
             .filter_map(|kv| {
@@ -239,7 +343,8 @@ impl OwnProc {
     }
 
     pub fn try_cwd_raw(&self) -> io::Result<String> {
-        fs::read_link(self.dir.join("cwd")).map(|p| p.to_string_lossy().into_owned())
+        self.read(|fd| readlink_at(fd, c"cwd"))
+            .map(|p| p.to_string_lossy().into_owned())
     }
 
     /// psutil `cwd()`: silinmiş dizinin ` (deleted)` eki atılır.
@@ -257,7 +362,7 @@ impl OwnProc {
 
     /// Terminal gitmiş mi: `fd/0` ` (deleted)` ya da pts/tty'ye bakmıyor. Okunamazsa `false`.
     pub fn terminal_lost(&self) -> bool {
-        let Ok(t) = fs::read_link(self.dir.join("fd/0")) else {
+        let Ok(t) = self.read(|fd| readlink_at(fd, c"fd/0")) else {
             return false;
         };
         let t = t.to_string_lossy();

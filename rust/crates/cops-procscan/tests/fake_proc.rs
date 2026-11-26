@@ -613,6 +613,73 @@ fn sessions_carry_proc_id_and_verify_detects_reuse() {
     assert_eq!(pf.verify(&id), Liveness::Unknown, "Uid satırı yok: okunamadı, 'yok' değil");
 }
 
+/// Birleştirme kapısı (TOCTOU): sahiplik `status`tan alındıktan SONRA pid yeniden kullanılırsa ya da sürecin uid'i
+/// değişirse `OwnProc` yeni sürecin içeriğini döndürmemeli. Her okuma `/proc/<pid>` dizinini fd olarak açar, aynı fd
+/// üzerinden uid ve `starttime`ı (okumadan önce ve sonra) doğrular, içeriği `openat`/`readlinkat` ile okur.
+#[test]
+fn own_proc_never_returns_content_of_a_replaced_or_foreign_process() {
+    use cops_procscan::procfs::ProcFs;
+    let assert_nothing = |p: &cops_procscan::procfs::OwnProc, why: &str| {
+        assert!(p.try_cmdline().is_err(), "cmdline: {why}");
+        assert!(p.try_environ().is_err(), "environ: {why}");
+        assert!(p.try_cwd_raw().is_err(), "cwd: {why}");
+        assert!(p.try_stat().is_err(), "stat: {why}");
+        assert!(!p.terminal_lost(), "fd/0: {why}");
+    };
+    let f = Fake::new();
+    let pf = ProcFs::new(&f.cfg.proc_root, ME);
+    let own = |pid: u32| {
+        f.add(P {
+            pid,
+            cmd: "claude benim",
+            cwd: "/work/benim",
+            env: &["COPS_NAME=benim"],
+            ..Default::default()
+        });
+        let p = pf.own(pid).unwrap();
+        assert_eq!(p.cmdline(), ["claude", "benim"]);
+        p
+    };
+    let foreign = |pid: u32, uid: u32, ticks: &str| {
+        let d = f.root.join("proc").join(pid.to_string());
+        fs::rename(&d, f.root.join(format!("eski-{pid}"))).unwrap();
+        f.add(P {
+            pid,
+            uid,
+            cmd: "gizli komut",
+            cwd: "/gizli",
+            env: &["SIR=1"],
+            tty: "/gizli-tty",
+            ..Default::default()
+        });
+        if !ticks.is_empty() {
+            fs::write(
+                d.join("stat"),
+                format!("{pid} (x) S 1 0 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {ticks} 0 0\n"),
+            )
+            .unwrap();
+        }
+    };
+    // 1) pid başka kullanıcının yeni sürecine geçti
+    let p = own(70);
+    foreign(70, OTHER, "");
+    assert_nothing(&p, "başka kullanıcıya geçen pid");
+    // 2) pid kendi kullanıcımızın BAŞKA sürecine geçti (starttime farklı)
+    let p = own(71);
+    foreign(71, ME, "4242");
+    assert_nothing(&p, "aynı kullanıcı, yeni süreç");
+    // 3) aynı sürecin gerçek uid'i değişti (dizin aynı)
+    let p = own(72);
+    let st = f.root.join("proc/72/status");
+    fs::write(&st, format!("Name:\tx\nUid:\t{OTHER}\t{OTHER}\t{OTHER}\t{OTHER}\n")).unwrap();
+    assert_nothing(&p, "uid değişti");
+    // aynı süreç: okumalar sürer
+    let p = own(73);
+    assert_eq!(p.environ().unwrap().get("COPS_NAME").map(String::as_str), Some("benim"));
+    assert_eq!(p.cwd().as_deref(), Some("/work/benim"));
+    assert_eq!(p.id().map(|i| i.start_time), Some(730));
+}
+
 /// Bozuk `/proc` alanları paniğe ya da yanlış satıra yol açmaz; Python gibi davranılır, sayaçlar ayrımı taşır.
 #[test]
 fn broken_proc_fields() {
