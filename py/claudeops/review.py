@@ -1746,20 +1746,20 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
     pi, po, pr, pw = anthropic_price(model or "opus-5-5")
     tot = 0.0
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:     # tek bozuk bayt tüm sayacı (ve /api/status'ı) düşürmesin
             for line in f:
                 try:
                     rec = json.loads(line)
                     if not isinstance(rec, dict):
                         continue
-                except ValueError:
+                except (ValueError, RecursionError):
                     continue
                 if not model and rec.get("event") == "task_start" and rec.get("model"):
                     pi, po, pr, pw = anthropic_price(str(rec["model"]))
                     continue
                 try:
                     t_rec = float(rec.get("t") or 0)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     t_rec = 0.0
                 if since_ms and t_rec < since_ms:
                     continue
@@ -1769,7 +1769,10 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                 def g(*names: str) -> float:
                     for n in names:
                         if isinstance(u.get(n), (int, float)):
-                            return float(u[n])
+                            try:
+                                return float(u[n])
+                            except OverflowError:
+                                continue
                     return 0.0
                 cr = g("cache_read_input_tokens", "cached_tokens", "cache_read_tokens")
                 cw = g("cache_creation_input_tokens", "cache_write_tokens")
@@ -1777,7 +1780,7 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                 # İÇERİR (21534 = 21530 yazma + 4): bu yüzden o alandan çıkarılır, yoksa önbellekli token'lar bir de tam girdi fiyatından
                 # sayılırdı (2 Kas 2026: günlük sayaç Console'dan ~5 kat şişkindi).
                 if isinstance(u.get("input_tokens"), (int, float)):
-                    inp = max(0.0, float(u["input_tokens"]) - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
+                    inp = max(0.0, g("input_tokens") - (0 if "cache_read_input_tokens" in u else cr) - (0 if "cache_creation_input_tokens" in u else cw))
                 else:
                     inp = max(0.0, g("prompt_tokens") - cr - cw)
                 if "cached_tokens" in u and "cache_creation_input_tokens" not in u:
