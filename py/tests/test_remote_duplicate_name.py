@@ -110,3 +110,29 @@ class TestReviewDriver(_Resolve):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTwinAppearsDuringHandover(_Resolve):
+    """Devir beklemesi uzundur: ikinci adaş sonradan çıkarsa yeniden isteme de `/api/stop` da GİTMEZ."""
+
+    def run_stop(self, replies):
+        self.rows(DUP)
+        calls = []
+
+        def wait(*a, **k):
+            self.rows(DUP, DUP)
+            return replies.pop(0)
+
+        with mock.patch.object(web.web_hosts, "proxy_action",
+                               lambda path, *a, **k: (calls.append(path) or ({"ok": True}, 200))), \
+                mock.patch.object(web.web_orch, "_fetch_exchange", lambda *a, **k: {"user": "u", "assistant": "a"}), \
+                mock.patch.object(web.web_orch, "_wait_for_reply_remote", wait):
+            res = web._remote_stop_with_handover(HOST, DUP)
+        self.assertEqual((res["ok"], res["code"]), (False, "handover_unreadable"), res)
+        return calls
+
+    def test_no_second_handover_request(self):
+        self.assertEqual(self.run_stop([None, None]), ["/api/handover"])
+
+    def test_no_stop_after_reply(self):
+        self.assertEqual(self.run_stop([{"assistant": "READY FOR HANDOVER"}]), ["/api/handover"])

@@ -2289,7 +2289,11 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
                                             push_check=None)
+    # Bekleme uzundur: sonradan ikinci adaş çıktıysa ya da host okunamıyorsa istek de `/api/stop` da GİTMEZ (TBD#372).
     if reply is None:
+        if not web_steward._remote_running_row(host, name)[0]:
+            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask")
+            return _ho_stop_fail(lang, "", "handover_unreadable")
         diag_log("ho_stop_reask", name=name, host=host)
         res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
         if res2.get("ok"):
@@ -2299,6 +2303,9 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
+    if not web_steward._remote_running_row(host, name)[0]:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop")
+        return _ho_stop_fail(lang, "", "handover_unreadable")
     out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
     return dict(out, handover=True) if isinstance(out, dict) else out
 
