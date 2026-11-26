@@ -87,7 +87,7 @@ printf 'ikinci satir \033[2msoluk\033[22m\n'
 printf '────────────────────\n'
 printf '  \033[1m\033[38;5;220mplan\033[0m mode on\n'
 echo READY
-exec sleep 60
+exec sleep 900
 "##;
 
 #[test]
@@ -97,10 +97,10 @@ fn reads_match_python() {
     std::fs::write(&script, PAINT).unwrap();
     s.spawn("a", &format!("exec sh '{}'", script.display()));
     s.wait_screen("a", "READY");
-    s.spawn("alt", r"printf '\033[?1049h'; echo READY; exec sleep 60");
+    s.spawn("alt", r"printf '\033[?1049h'; echo READY; exec sleep 900");
     s.wait_screen("alt", "READY");
-    s.spawn_ready("pw", "stty icanon -echo", "exec sleep 60");
-    s.spawn("pre_1", "exec sleep 60");
+    s.spawn_ready("pw", "stty icanon -echo", "exec sleep 900");
+    s.spawn("pre_1", "exec sleep 900");
 
     let t = &s.tmux;
     let ranges: [(i64, i64); 6] = [
@@ -364,8 +364,8 @@ fn writes_match_python() {
     }
 
     // Boyut: sınırlar ve sonuç aynı.
-    s.spawn("pys", "exec sleep 60");
-    s.spawn("rss", "exec sleep 60");
+    s.spawn("pys", "exec sleep 900");
+    s.spawn("rss", "exec sleep 900");
     for (cols, rows) in [(20, 5), (500, 200), (19, 30), (80, 201), (111, 33)] {
         let py = python(
             &s,
@@ -1167,8 +1167,8 @@ fn lifecycle_matches_python_on_a_real_server() {
     for (side, name, inner) in [
         ("rs", "rs_g", "true"),
         ("py", "py_g", "true"),
-        ("rs", "rs_b", "sleep 60"),
-        ("py", "py_b", "sleep 60"),
+        ("rs", "rs_b", "sleep 900"),
+        ("py", "py_b", "sleep 900"),
     ] {
         if side == "rs" {
             assert!(s
@@ -1258,8 +1258,8 @@ fn lifecycle_matches_python_on_a_real_server() {
     assert!(s.tmux.is_tmux_backed(pane_pid(&s, "py_b")));
 
     // Kapatma: tam adlı oturum gider, ön ek eşleşmesi yok, ikinci kapatma etkisiz.
-    s.spawn("rs_b_1", "exec sleep 60");
-    s.spawn("py_b_1", "exec sleep 60");
+    s.spawn("rs_b_1", "exec sleep 900");
+    s.spawn("py_b_1", "exec sleep 900");
     assert_eq!(
         python(
             &s,
@@ -1278,7 +1278,7 @@ fn lifecycle_matches_python_on_a_real_server() {
 /// İkinci yalıtılmış sunucunun pane'inde `bash -c` ile bağlı bir istemci (Python'un aradığı dış pencere biçimi).
 fn attach_client(s: &Server, outer: &Server, session: &str) -> String {
     let attach = format!(
-        "exec bash -c \"env -u TMUX TMUX_TMPDIR='{}' tmux -u -L {} attach-session -t '={session}:'; sleep 60\"",
+        "exec bash -c \"env -u TMUX TMUX_TMPDIR='{}' tmux -u -L {} attach-session -t '={session}:'; sleep 900\"",
         s.path().display(),
         s.tmux.socket()
     );
@@ -1294,12 +1294,12 @@ fn clients_messages_ctx_and_sizes_match_python_on_a_real_server() {
     let s = Server::new();
     let outer = Server::new();
     for n in ["m", "cpy", "crs", "zpy", "zrs"] {
-        s.spawn(n, "exec sleep 60");
+        s.spawn(n, "exec sleep 900");
     }
     // Maske: parola istemi (icanon -echo), ham kip (-icanon -echo, kabuk/readline gibi), normal.
-    s.spawn_ready("pw", "stty icanon -echo", "exec sleep 60");
-    s.spawn_ready("raw", "stty -icanon -echo", "exec sleep 60");
-    s.spawn_ready("norm", "stty icanon echo", "exec sleep 60");
+    s.spawn_ready("pw", "stty icanon -echo", "exec sleep 900");
+    s.spawn_ready("raw", "stty -icanon -echo", "exec sleep 900");
+    s.spawn_ready("norm", "stty icanon echo", "exec sleep 900");
     let client = attach_client(&s, &outer, "m");
     let mut calls = Vec::new();
     let mut rust = Vec::new();
@@ -1449,8 +1449,8 @@ fn clients_messages_ctx_and_sizes_match_python_on_a_real_server() {
 fn twins(names: &[&str]) -> (Server, Server) {
     let (a, b) = (Server::new(), Server::new());
     for n in names {
-        a.spawn(n, "exec sleep 60");
-        b.spawn(n, "exec sleep 60");
+        a.spawn(n, "exec sleep 900");
+        b.spawn(n, "exec sleep 900");
     }
     (a, b)
 }
@@ -1586,13 +1586,13 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
                 "tmux_spawn_direct",
                 name,
                 cwd,
-                "sleep 60",
+                "sleep 900",
                 env_json(&spawn_env(&a))
             ])],
         );
         let rs = ok(b
             .tmux
-            .spawn_direct(&conf, name, cwd, "sleep 60", spawn_env(&b)));
+            .spawn_direct(&conf, name, cwd, "sleep 900", spawn_env(&b)));
         assert_eq!(py, std::slice::from_ref(&rs), "{name:?} {cwd:?}");
         assert_eq!(rs, json!(true), "{name:?} {cwd:?}");
         assert_eq!(sessions(&a), sessions(&b));
@@ -1618,7 +1618,7 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
     s.tmux
         .spawn_direct(&conf, "g", &cwd, "true", env.clone())
         .unwrap();
-    s.spawn("m", "exec sleep 60");
+    s.spawn("m", "exec sleep 900");
     let client = attach_client(&s, &outer, "m");
     let later = unix_now() + 100.0;
     wait_until(|| s.tmux.ghost_session("g", Some(later)), "hayalet");
