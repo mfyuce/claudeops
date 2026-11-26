@@ -10,9 +10,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// `_CMD_RE` (Python `$`: sondaki tek satır sonu kabul edilir).
+/// `_CMD_RE` (tam eşleşme).
 static CMD_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\n?$").expect("sabit desen"));
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$").expect("sabit desen"));
 
 fn access(path: &str, mode: libc::c_int) -> bool {
     let Ok(c) = CString::new(path) else { return false };

@@ -1,8 +1,9 @@
 //! Gerçek [`Probe`] + [`LiveProbe`].
 //!
-//! Dışarıdan verilenler ([`RealDeps`]) bu parçada taşınmamış ya da başka ize ait sınırlardır; hiçbiri için sessiz
-//! "izin ver" varsayılanı yoktur ([`FailClosedCostGate`]).
+//! Dışarıdan verilenler ([`RealDeps`]) süreç başına tek örnek olması gereken ya da başka ize ait sınırlardır; hiçbiri
+//! için sessiz "izin ver" varsayılanı yoktur.
 
+use crate::cost::CostRefusal;
 use crate::live::{FileStat, LiveProbe, SqlCell};
 use crate::probe::{Effect, McpRegisterError, Paths, Probe};
 use crate::pyjson::Py;
@@ -12,7 +13,6 @@ use crate::real::effects::EffectError;
 use crate::real::help::HelpCache;
 use crate::real::process::{self, Capture, RunError, Spec};
 use crate::real::{checks, effects, fsio, oserr, pathexec, sqlite, Env};
-use crate::settings::Settings;
 use crate::ucli_opts::Toolchain;
 use std::fs;
 use std::path::Path;
@@ -26,46 +26,17 @@ const MCP_OUTPUT_TAIL: usize = 64 * 1024;
 /// `/proc/<pid>/stat` okuma sınırı.
 const PROC_STAT_MAX_BYTES: u64 = 64 * 1024;
 
-/// Claude (API) hizmetinin günlük USD tavanı + başlatma payı (`ucli_cost.cap_exceeded` + `reserve`).
+/// Claude (API) hizmetinin günlük USD tavanı + başlatma payı (`ucli_cost.cap_exceeded` + `reserve`). Gerçek
+/// uygulama [`crate::real::ledger::CostLedger`].
 pub trait CostGate: Send + Sync {
-    fn check_and_reserve(&self, session: &str) -> Result<(), String>;
+    fn check_and_reserve(&self, session: &str) -> Result<(), CostRefusal>;
+    /// Başlatma başarısız oldu: payı hemen geri ver.
+    fn release(&self, session: &str);
 }
 
-/// Maliyet defteri henüz Rust'ta yokken: tavan KAPALIYSA geçirir, tavan AÇIKSA reddeder (denetlenemeyen tavan "izin"
-/// sayılmaz).
-#[derive(Debug, Clone, Copy)]
-pub struct FailClosedCostGate {
-    pub daily_cap_usd: f64,
-}
-
-impl FailClosedCostGate {
-    pub fn new(settings: &Settings) -> FailClosedCostGate {
-        FailClosedCostGate { daily_cap_usd: settings.ucli_cost_config().daily_cap_usd }
-    }
-}
-
-impl CostGate for FailClosedCostGate {
-    fn check_and_reserve(&self, _session: &str) -> Result<(), String> {
-        if self.daily_cap_usd > 0.0 {
-            return Err("claude: günlük USD tavanı denetlenemiyor (maliyet defteri bu sürümde yok); başlatma reddedildi".into());
-        }
-        Ok(())
-    }
-}
-
-/// Yönetilen SearXNG adresi (`searxng.ensure_search_url`).
+/// Yönetilen SearXNG adresi (`searxng.ensure_search_url`). Gerçek uygulama [`crate::real::searxng::ManagedSearch`].
 pub trait SearchUrl: Send + Sync {
     fn search_url(&self, session: &str, preview: bool) -> Option<String>;
-}
-
-/// SearXNG yöneticisi bağlı değil: adres "hazır değil" (oturum aramasız açılır).
-#[derive(Debug, Clone, Copy)]
-pub struct NoSearch;
-
-impl SearchUrl for NoSearch {
-    fn search_url(&self, _session: &str, _preview: bool) -> Option<String> {
-        None
-    }
 }
 
 /// `claude_provider._encode_cwd` -> `~/.claude/projects/<..>` (rs/proc `transcript.rs::encode_cwd`).
@@ -178,7 +149,7 @@ impl Probe for RealProbe {
     fn checks_registry(&self, path: &str) -> Result<(), String> {
         checks::load_registry(path).map(drop)
     }
-    fn claude_cost_gate(&self, session: &str) -> Result<(), String> {
+    fn claude_cost_gate(&self, session: &str) -> Result<(), CostRefusal> {
         self.deps.cost.check_and_reserve(session)
     }
     fn issue_agent_token(&self, session: &str) -> Result<String, String> {

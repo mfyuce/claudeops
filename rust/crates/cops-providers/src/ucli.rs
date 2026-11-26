@@ -399,7 +399,11 @@ impl Ctx<'_, '_> {
 
     /// Claude (Anthropic API) hizmeti: günlük tavan + takım bayrakları.
     fn claude_service_flags(&mut self, argv: &mut Vec<String>, cwd: &str) -> Result<(), SpawnError> {
-        self.p.probe.claude_cost_gate(self.session).map_err(SpawnError)?;
+        if let Err(refused) = self.p.probe.claude_cost_gate(self.session) {
+            let message = refused.to_string();
+            self.out.cost_refusal = Some(refused);
+            return Err(SpawnError(message));
+        }
         set_flag_value(argv, "--max-output-tokens", "16000");
         if self.known("--cache-ttl") {
             set_flag_value(argv, "--cache-ttl", self.p.settings.ucli_cache_ttl());
@@ -689,9 +693,10 @@ impl Ctx<'_, '_> {
         Ok(env_prefix)
     }
 
-    /// Alt ajan desteği: (ek argv, ek ortam atamaları). Token dosyada kalır, argv'ye girmez.
-    fn agent_setup(&mut self) -> (Vec<String>, Vec<String>) {
-        let none = (Vec::new(), Vec::new());
+    /// Alt ajan desteği: (ek argv, ek ortam atamaları). Token dosyada kalır, argv'ye girmez. Token yazılamazsa oturum
+    /// ajansız açılır; defterdeki üst kayıt bozuksa (`TypeError`) spawn düşer.
+    fn agent_setup(&mut self) -> Result<(Vec<String>, Vec<String>), SpawnError> {
+        let none = Ok((Vec::new(), Vec::new()));
         if self.session.is_empty() || !self.p.settings.ucli_agents_enabled() || is_child_name(self.session) {
             return none;
         }
@@ -708,13 +713,14 @@ impl Ctx<'_, '_> {
             Err("ValueError".into())
         };
         match issued {
-            Ok(path) => (
+            Ok(path) => Ok((
                 vec!["--allow-agents".into()],
                 vec![
                     format!("UCLI_AGENT_URL={}", quote(&format!("http://127.0.0.1:{port}"))),
                     format!("UCLI_AGENT_TOKEN=\"$(cat {})\"", quote(&path)),
                 ],
-            ),
+            )),
+            Err(e) if e == "TypeError" => Err(SpawnError(crate::real::agents::BAD_PARENT_RECORD.into())),
             Err(e) => {
                 let name = self.session.to_string();
                 self.out.diag("ucli_agents_token_failed", vec![("name", json!(&name)), ("error", json!(&e))]);
@@ -801,7 +807,7 @@ pub(crate) fn build_inner_command(
     if let Some(opts) = opts {
         service_env = cx.apply_cli_opts(&mut argv, opts, a)?;
     }
-    let (agent_args, agent_env) = cx.agent_setup();
+    let (agent_args, agent_env) = cx.agent_setup()?;
     argv.extend(agent_args);
     let inner = join_quoted(&argv);
     let agent_prefix = if agent_env.is_empty() { String::new() } else { agent_env.join(" ") + " " };

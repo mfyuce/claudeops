@@ -117,6 +117,7 @@ fn toolchain_cases() -> Vec<Case> {
         }
         v.push(c);
     };
+    add("ayar-utf8-degil", [tc(&two), vec![settings(b"\xff\ndefault_toolchain = \"stable\"\n")]].concat(), None);
     add("dizin-yok", vec![], None);
     add("bos", vec![Fx::Dir("home/.rustup/toolchains".into(), 0o755)], None);
     add("dizin-dosya", vec![file("home/.rustup/toolchains", "x", 0o600)], None);
@@ -195,6 +196,7 @@ fn checks_cases() -> Vec<Case> {
     for mode in [0o644, 0o640, 0o604, 0o700, 0o400, 0o000, 0o610] {
         add(format!("izin{mode:o}"), reg(br#"{"check": []}"#, mode));
     }
+    add("derin".into(), reg(&vec![b'['; 100_000], 0o600));
     add("dizin".into(), vec![Fx::Dir("state/ucli_checks/owner.json".into(), 0o700)]);
     add(
         "symlink".into(),
@@ -232,6 +234,9 @@ fn agent_cases() -> Vec<Case> {
     {
         v.push(state(&format!("belge{i}"), body, &basic));
     }
+    v.push(state("utf8-degil", "", &basic).file(Fx::File("state/ucli_agents.json".into(), b"{\xff}".to_vec(), 0o600)));
+    v.push(state("okunamaz", "", &basic).file(file("state/ucli_agents.json", r#"{"parents": {}}"#, 0o000)));
+    v.push(state("kilit-baglanti-degil", "{}", &basic).file(file("state/ucli_agents.json.lock", "", 0o600)));
     v.push(Case::new("ajan-token-dizini-dosya", "g8_agents", json!({"now": NOW, "steps": [["issue", "p1"]]}))
         .file(file("state/ucli_agent_tokens", "x", 0o600)));
     v.push(Case::new("ajan-token-dizini-genis", "g8_agents", json!({"now": NOW, "steps": [["issue", "p1"]]}))
@@ -437,8 +442,6 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
                     }
                 })
                 .collect();
-            // Rust'ın EK kilidi (Python bu defteri süreçler arası kilitlemez; varlığı `real_fs`te sınanır)
-            let _ = std::fs::remove_file(format!("{}.lock", paths.ucli_agents_json()));
             RsOut::ret(Value::from(out))
         }
         "g8_diag" => {

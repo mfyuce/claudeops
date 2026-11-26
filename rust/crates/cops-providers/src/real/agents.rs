@@ -2,8 +2,8 @@
 //!
 //! Token hiçbir dönüşe, hata metnine, `Debug`a ya da günlüğe girmez; yalnız dosyaya yazılır.
 //!
-//! Python'dan fark: kayıt defteri oku-değiştir-yazı Python'da yalnız süreç İÇİ kilitlidir; burada ek olarak
-//! `ucli_agents.json.lock` (`flock`) tutulur (Rust süreçleri arasında kayıp yok; Python bu kilidi ALMAZ).
+//! Kayıt defteri oku-değiştir-yazı iki dilde de `ucli_agents.json.lock` (`flock`) altındadır. Fark: kilit alınamazsa
+//! Python süreç içi kilitle sürer, burada hata döner. Bozuk defter ezilmeden önce `.corrupt-<özet>` kopyası bırakılır.
 
 use crate::probe::Paths;
 use crate::pyjson::Py;
@@ -12,15 +12,18 @@ use crate::real::{docs::DOC_MAX_BYTES, effects, fsio, oserr};
 use crate::ucli::is_child_name;
 use regex::Regex;
 use sha2::{Digest, Sha256};
-use std::fs::{self, Permissions};
-use std::io::{self, Read};
-use std::os::unix::fs::PermissionsExt;
+use std::fs::{self, OpenOptions, Permissions};
+use std::io::{self, Read, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// `_SAFE_NAME_RE` (Python `$`: sondaki tek satır sonu kabul edilir).
 static SAFE_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\n?$").expect("sabit desen"));
+
+/// Nesne olmayan üst kayıt: spawn düşer (Python `TypeError`).
+pub const BAD_PARENT_RECORD: &str = "ucli_agents: üst oturum kaydı nesne değil; defteri düzelt";
 
 /// Token baytı sayısı (`secrets.token_hex(32)`).
 const TOKEN_BYTES: usize = 32;
@@ -126,8 +129,42 @@ impl AgentRegistry {
         data
     }
 
+    /// `_keep_corrupt_copy`: defter bozuksa üzerine yazmadan ÖNCE 0600 kopya. Okunamayan (ya da sınırı aşan) defter
+    /// ya da yazılamayan kopya hata: üzerine yazılmaz.
+    fn keep_corrupt_copy(&self) -> io::Result<()> {
+        let (file, size) = match fsio::open_regular(&self.state_file) {
+            Ok(opened) => opened,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        if size > DOC_MAX_BYTES {
+            return Err(io::Error::other("defter çok büyük"));
+        }
+        let mut raw = Vec::new();
+        file.take(DOC_MAX_BYTES).read_to_end(&mut raw)?;
+        let healthy = std::str::from_utf8(&raw).ok().and_then(Py::parse).is_some_and(|data| {
+            data.is_object() && ["parents", "children"].iter().all(|k| data.get(k).is_none_or(Py::is_object))
+        });
+        if healthy {
+            return Ok(());
+        }
+        let copy = format!("{}.corrupt-{}", self.state_file, &hex(&Sha256::digest(&raw))[..12]);
+        let opened = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(copy);
+        match opened {
+            Ok(mut out) => out.write_all(&raw),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
     /// `_save`: dizin 0700 (yoksa), dosya 0600 atomik.
     fn save(&self, data: Vec<(String, Py)>) -> io::Result<()> {
+        self.keep_corrupt_copy()?;
         if let Some((dir, _)) = self.state_file.rsplit_once('/') {
             effects::makedirs(dir, 0o700).map_err(|(_, e)| e)?;
         }
@@ -158,12 +195,18 @@ impl AgentRegistry {
         }
         // dosya + özet TEK kilitte: eşzamanlı çağrılarda ayrışmasın
         let _lock = self.lock().map_err(os)?;
-        let path = self.write_token_file(session, &token).map_err(os)?;
+        // defter kopyalanamıyorsa token dosyasına da dokunma
+        self.keep_corrupt_copy().map_err(os)?;
         let mut data = self.load();
+        // nesne olmayan eski üst kayıt: token yazılmadan ÖNCE ret
+        let bad = data.iter().find(|(k, _)| k == "parents").and_then(|(_, p)| p.get(session));
+        if bad.is_some_and(|r| !r.is_object()) {
+            return Err("TypeError".into());
+        }
+        let path = self.write_token_file(session, &token).map_err(os)?;
         let parents = object_mut(entry(&mut data, "parents", Py::Object(Vec::new())));
         let record = parents.map(|p| entry(p, session, Py::Object(Vec::new())));
-        // nesne olmayan eski kayıt: Python `AttributeError` (token dosyası yazılmış kalır)
-        let Some(record) = record.and_then(object_mut) else { return Err("AttributeError".into()) };
+        let Some(record) = record.and_then(object_mut) else { return Err("TypeError".into()) };
         *entry(record, "sha256", Py::Null) = Py::Str(digest(&token));
         *entry(record, "issued", Py::Null) = Py::Float((self.sources.now)());
         entry(record, "seq", Py::Int(0));

@@ -445,7 +445,7 @@ fn toolchain_dir(t: &Tmp, name: &str) {
 #[test]
 fn rust_toolchain_never_silently_picks_another_one() {
     let t = Tmp::new();
-    let pick = |env: &[(&str, &str)]| t.probe_with(t.env(env), Default::default(), 0.0).rust_toolchain();
+    let pick = |env: &[(&str, &str)]| t.probe_with(t.env(env), Default::default()).rust_toolchain();
     assert!(pick(&[]).unwrap_err().contains("bulunamadı"));
     toolchain_dir(&t, "stable-x86_64-unknown-linux-gnu");
     assert!(pick(&[]).unwrap().root.ends_with("stable-x86_64-unknown-linux-gnu"));
@@ -484,14 +484,6 @@ fn exec_flags_use_the_discovered_binaries_and_only_allowed_env() {
 }
 
 #[test]
-fn the_default_cost_gate_fails_closed_when_a_cap_is_set() {
-    let t = Tmp::new();
-    assert_eq!(t.probe().claude_cost_gate("s"), Ok(()));
-    let capped = t.probe_with(t.env(&[]), Default::default(), 1.0);
-    assert!(capped.claude_cost_gate("s").unwrap_err().contains("reddedildi"));
-}
-
-#[test]
 fn sqlite_reads_a_wal_database_while_the_writer_is_open_and_after_it_closes() {
     let t = Tmp::new();
     let db = t.path("work/wal.db");
@@ -515,4 +507,41 @@ fn failed_turn_records_over_the_read_limit_are_ignored_by_the_real_reader() {
     fs::OpenOptions::new().write(true).open(&path).unwrap().set_len((64 << 20) + 1).unwrap();
     assert_eq!(t.probe().read_bytes(&path, 64 << 20), None);
     assert_eq!(t.probe().read_tail(&path, 16).map(|d| d.len()), Some(16));
+}
+
+#[test]
+fn a_corrupt_agent_registry_is_copied_aside_and_an_unreadable_one_is_not_overwritten() {
+    let t = Tmp::new();
+    let r = registry(&t);
+    let state = t.write("state/ucli_agents.json", "{bozuk", 0o600);
+    r.issue_token("p1").unwrap();
+    let copies: Vec<String> = fs::read_dir(t.path("state"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("ucli_agents.json.corrupt-"))
+        .collect();
+    assert_eq!(copies.len(), 1);
+    let copy = t.path(&format!("state/{}", copies[0]));
+    assert_eq!((fs::read_to_string(&copy).unwrap(), mode(&copy)), ("{bozuk".to_string(), 0o600));
+    fs::set_permissions(&state, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
+    // SAFETY: `getuid` her zaman başarılı.
+    if unsafe { libc::getuid() } != 0 {
+        assert_eq!(r.issue_token("p2"), Err("PermissionError".to_string()));
+        assert!(!std::path::Path::new(&r.token_file("p2")).exists());
+    }
+}
+
+#[test]
+fn a_non_object_parent_record_fails_the_spawn_before_any_token_is_written() {
+    let t = Tmp::new();
+    let _g = support::spawn_guard();
+    t.script("bin/ucli", "echo '--allow-agents <V>'");
+    let body = r#"{"parents": {"sess1": 5}, "children": {}}"#;
+    let state = t.write("state/ucli_agents.json", body, 0o600);
+    let p = t.probe();
+    assert_eq!(p.agents().issue_token("sess1"), Err("TypeError".to_string()));
+    let (cmd, _) = build(&p, &t, false);
+    assert!(cmd.unwrap_err().contains("nesne değil"));
+    assert!(!std::path::Path::new(&p.agents().token_file("sess1")).exists());
+    assert_eq!(fs::read_to_string(state).unwrap(), body);
 }

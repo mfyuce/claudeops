@@ -113,7 +113,7 @@ fn runs(t: &Tmp) -> usize {
 
 fn cached(t: &Tmp) -> (Arc<HelpCache>, cops_providers::real::RealProbe) {
     let help = Arc::new(HelpCache::with_timeout(Duration::from_millis(800)));
-    (help.clone(), t.probe_with(t.env(&[]), help, 0.0))
+    (help.clone(), t.probe_with(t.env(&[]), help))
 }
 
 #[test]

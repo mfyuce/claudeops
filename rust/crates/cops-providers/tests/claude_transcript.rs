@@ -69,7 +69,7 @@ impl Probe for Mem {
     fn checks_registry(&self, _: &str) -> Result<(), String> {
         unreachable!()
     }
-    fn claude_cost_gate(&self, _: &str) -> Result<(), String> {
+    fn claude_cost_gate(&self, _: &str) -> Result<(), cops_providers::cost::CostRefusal> {
         unreachable!()
     }
     fn issue_agent_token(&self, _: &str) -> Result<String, String> {

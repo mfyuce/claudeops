@@ -38,7 +38,7 @@ fn a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child() {
     mkfifo(&fifo);
     let file = t.write("work/f", "x", 0o600);
     let env = t.env(&[]);
-    let probe = t.probe_with(env.clone(), Arc::new(HelpCache::with_timeout(Duration::from_millis(20))), 0.0);
+    let probe = t.probe_with(env.clone(), Arc::new(HelpCache::with_timeout(Duration::from_millis(20))));
     let round = || {
         for (bin, ms) in [(&slow, 15), (&loud, 2000), (&ok, 2000), (&file, 50)] {
             let argv = vec![bin.clone()];

@@ -4,7 +4,8 @@
 
 use cops_providers::real::docs::FileDocs;
 use cops_providers::real::help::HelpCache;
-use cops_providers::real::probe::{FailClosedCostGate, NoSearch, ProjectDirs};
+use cops_providers::cost::CostRefusal;
+use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
 use cops_providers::real::{Env, RealDeps, RealProbe};
 use cops_providers::Paths;
 use std::fs;
@@ -67,12 +68,12 @@ impl Tmp {
         Env::fixed(vars)
     }
 
-    pub fn probe_with(&self, env: Env, help: Arc<HelpCache>, daily_cap_usd: f64) -> RealProbe {
+    pub fn probe_with(&self, env: Env, help: Arc<HelpCache>) -> RealProbe {
         let paths = self.paths();
         let deps = RealDeps {
             docs: Arc::new(FileDocs::new(&paths, env.clone())),
             projects: Arc::new(Projects(paths.home.clone())),
-            cost: Arc::new(FailClosedCostGate { daily_cap_usd }),
+            cost: Arc::new(OpenGate),
             search: Arc::new(NoSearch),
             help,
             panel_port: Some(8765),
@@ -81,7 +82,25 @@ impl Tmp {
     }
 
     pub fn probe(&self) -> RealProbe {
-        self.probe_with(self.env(&[]), Arc::new(HelpCache::with_timeout(Duration::from_secs(5))), 0.0)
+        self.probe_with(self.env(&[]), Arc::new(HelpCache::with_timeout(Duration::from_secs(5))))
+    }
+}
+
+/// Maliyet kapısı ve arama yöneticisi kendi testlerinde (`real_ledger`, `real_searxng`) sınanır.
+pub struct OpenGate;
+
+impl CostGate for OpenGate {
+    fn check_and_reserve(&self, _session: &str) -> Result<(), CostRefusal> {
+        Ok(())
+    }
+    fn release(&self, _session: &str) {}
+}
+
+pub struct NoSearch;
+
+impl SearchUrl for NoSearch {
+    fn search_url(&self, _session: &str, _preview: bool) -> Option<String> {
+        None
     }
 }
 

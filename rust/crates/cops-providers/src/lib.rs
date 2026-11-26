@@ -14,6 +14,7 @@ pub mod claude_transcript;
 pub mod codex;
 pub mod codex_resume;
 pub mod copilot;
+pub mod cost;
 pub mod effort;
 pub mod live;
 pub mod model_sources;

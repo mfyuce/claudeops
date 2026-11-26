@@ -12,11 +12,11 @@ use std::sync::LazyLock;
 pub const MAX_BYTES: u64 = 256 * 1024;
 pub const MAX_CHECKS: usize = 200;
 
-/// `_OWNER` (Python `$`: sondaki tek satır sonu kabul edilir).
+/// `_OWNER` (tam eşleşme).
 static OWNER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\n?$").expect("sabit desen"));
-/// `_NAME`.
-static NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,47}\n?$").expect("sabit desen"));
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$").expect("sabit desen"));
+/// `_NAME` (tam eşleşme).
+static NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,47}$").expect("sabit desen"));
 
 /// `registry_path(owner)`; `root` = [`crate::Paths::ucli_checks_root`].
 pub fn registry_path(root: &str, owner: &str) -> Result<String, String> {
@@ -35,14 +35,10 @@ pub fn check_shape(data: &Py) -> Result<(), String> {
     }
     let mut seen = HashSet::new();
     for item in items {
-        // `str(c.get("name") or "")`
-        let name = item.get("name").filter(|n| n.truthy());
-        let text = name.map(Py::py_str).unwrap_or_default();
-        let Some(name) = name.filter(|_| NAME.is_match(&text)) else {
+        let Some(text) = item.get("name").and_then(Py::as_str).filter(|n| NAME.is_match(n)) else {
             return Err("her kontrolün adı [a-z][a-z0-9_-]{0,47} olmalı".into());
         };
-        // değer eşitliği: dize "inf" ile `Infinity` sayısı ayrı
-        if !seen.insert((matches!(name, Py::Str(_)), text.clone())) {
+        if !seen.insert(text) {
             return Err(format!("kontrol adı yinelendi: {text}"));
         }
         let argv_ok = matches!(item.get("argv"), Some(Py::Array(a))
@@ -55,7 +51,7 @@ pub fn check_shape(data: &Py) -> Result<(), String> {
 }
 
 /// Kayıt (ayrıştırılmış, biçim denetimli) ya da hata metni. Dosya: düz, symlink değil, grup/diğer izni yok, boyut
-/// sınırlı. Python'dan sıkı: açılış `O_NOFOLLOW` (denetimle okuma arasında bağlantıya çevrilemez), okuma da sınırlı.
+/// sınırlı; açılış `O_NOFOLLOW` (denetimle okuma arasında bağlantıya çevrilemez).
 pub fn load_registry(path: &str) -> Result<Py, String> {
     let meta = match fs::symlink_metadata(path) {
         Ok(m) => m,
@@ -79,8 +75,13 @@ pub fn load_registry(path: &str) -> Result<Py, String> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY)
         .open(path)
         .map_err(|_| invalid())?;
-    if !file.metadata().is_ok_and(|m| m.is_file()) {
-        return Err(invalid());
+    // tür ve izin açılan tanıtıcıdan yeniden denetlenir (denetimden sonra değişmiş olabilir)
+    let opened = file.metadata().map_err(|_| invalid())?;
+    if !opened.is_file() {
+        return Err("kayıt düz dosya olmalı (symlink/özel dosya reddedilir)".into());
+    }
+    if opened.permissions().mode() & 0o077 != 0 {
+        return Err("kayıt dosyası 0600 olmalı".into());
     }
     let mut data = Vec::new();
     file.take(MAX_BYTES + 1).read_to_end(&mut data).map_err(|_| invalid())?;

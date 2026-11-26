@@ -119,3 +119,17 @@ mod fam_g8;
 fn parity_real() {
     fam_g8::run();
 }
+#[path = "parity/fam_ledger.rs"]
+mod fam_ledger;
+
+#[test]
+fn parity_ledger() {
+    fam_ledger::run();
+}
+#[path = "parity/fam_searxng.rs"]
+mod fam_searxng;
+
+#[test]
+fn parity_searxng() {
+    fam_searxng::run();
+}

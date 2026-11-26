@@ -10,7 +10,8 @@
 use cops_providers::real::docs::FileDocs;
 use cops_providers::real::effects::{self, EffectError};
 use cops_providers::real::help::HelpCache;
-use cops_providers::real::probe::{FailClosedCostGate, NoSearch, ProjectDirs};
+use cops_providers::cost::CostRefusal;
+use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
 use cops_providers::real::{Env as OsEnv, RealDeps, RealProbe};
 use cops_providers::ucli::LiveModels;
 use cops_providers::ucli_opts::Toolchain;
@@ -26,8 +27,23 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Arc;
 use tempfile::TempDir;
 
-pub const COST_CAP_MSG: &str =
-    "claude: günlük USD tavanı aşıldı (1.50 / 1.00); Ayarlar'dan ucli_cost.daily_cap_usd yükselt ya da yarın dene";
+/// Maliyet defteri `ledger` ailesinde gerçek uygulamayla sınanır; öteki ailelerde kapı vaka olgusudur.
+struct OpenGate;
+
+impl CostGate for OpenGate {
+    fn check_and_reserve(&self, _session: &str) -> Result<(), CostRefusal> {
+        Ok(())
+    }
+    fn release(&self, _session: &str) {}
+}
+
+struct NoSearch;
+
+impl SearchUrl for NoSearch {
+    fn search_url(&self, _session: &str, _preview: bool) -> Option<String> {
+        None
+    }
+}
 
 pub fn repo_dir() -> String {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -365,7 +381,7 @@ pub fn real_probe(e: &Env, case: &Case) -> RealProbe {
     let deps = RealDeps {
         docs: Arc::new(FileDocs::new(&paths, env.clone())),
         projects: Arc::new(TestProjects(e.home.clone())),
-        cost: Arc::new(FailClosedCostGate { daily_cap_usd: 0.0 }),
+        cost: Arc::new(OpenGate),
         search: Arc::new(NoSearch),
         help: Arc::new(HelpCache::default()),
         panel_port: None,
@@ -461,9 +477,9 @@ impl Probe for FsProbe<'_> {
             _ => Ok(()),
         }
     }
-    fn claude_cost_gate(&self, _session: &str) -> Result<(), String> {
+    fn claude_cost_gate(&self, _session: &str) -> Result<(), CostRefusal> {
         if self.case.fact("cost_exceeded").is_some_and(|v| v.as_bool() == Some(true)) {
-            Err(COST_CAP_MSG.into())
+            Err(CostRefusal::CapExceeded { today_usd: 1.5, cap_usd: 1.0 })
         } else {
             Ok(())
         }

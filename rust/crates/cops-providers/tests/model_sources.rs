@@ -166,7 +166,7 @@ impl Probe for Which {
     fn checks_registry(&self, _: &str) -> Result<(), String> {
         Ok(())
     }
-    fn claude_cost_gate(&self, _: &str) -> Result<(), String> {
+    fn claude_cost_gate(&self, _: &str) -> Result<(), cops_providers::cost::CostRefusal> {
         Ok(())
     }
     fn issue_agent_token(&self, _: &str) -> Result<String, String> {

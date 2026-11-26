@@ -1,5 +1,6 @@
 //! Dış dünya ile sınır: crate'in okuduğu olgular ([`Probe`]), istediği yan etkiler ([`Effect`]) ve sabit yollar.
 
+use crate::cost::CostRefusal;
 use crate::real::effects::EffectError;
 use crate::ucli_opts::Toolchain;
 use serde_json::Value;
@@ -134,8 +135,8 @@ pub trait Probe {
     fn searxng_url(&self, session: &str, preview: bool) -> Option<String>;
     /// `ucli_checks` kayıt dosyasını yükle/denetle (hata metni).
     fn checks_registry(&self, path: &str) -> Result<(), String>;
-    /// Günlük USD tavanı + başlatma payı ayırma; aşıldıysa hata metni.
-    fn claude_cost_gate(&self, session: &str) -> Result<(), String>;
+    /// Günlük USD tavanı + başlatma payı ayırma; aşıldıysa ya da harcama sayılamıyorsa ret.
+    fn claude_cost_gate(&self, session: &str) -> Result<(), CostRefusal>;
     /// Alt ajan token'ı üret (0600 dosya); dönen DOSYA YOLU. Token'ın kendisi hiçbir zaman dönmez.
     fn issue_agent_token(&self, session: &str) -> Result<String, String>;
     /// Panelin loopback portu (bilinmiyorsa None).
@@ -206,6 +207,8 @@ pub struct BuildOutput {
     pub dry_run: bool,
     pub effects: Vec<Effect>,
     pub diags: Vec<Diag>,
+    /// Maliyet kapısı reddettiyse nedeni (`code` ve tutarlar: [`crate::cost::refusal`]).
+    pub cost_refusal: Option<CostRefusal>,
 }
 
 impl BuildOutput {

@@ -3,9 +3,9 @@
 //! [`crate::AgySidStore`] ([`docs::DocAgySidStore`]). Çekirdek modüller saf kalır; dosya, süreç, ağ ve saat yalnız
 //! buradadır.
 //!
-//! Henüz burada OLMAYAN (ikinci parça / başka iz) bağımlılıklar kurucuya dışarıdan verilir:
-//! [`probe::CostGate`] (maliyet defteri), [`probe::SearchUrl`] (SearXNG), [`probe::ProjectDirs`] (rs/proc
-//! `encode_cwd`), [`docs::DocStore`]un `db` kipi (rs/state `statedocs`).
+//! [`probe::CostGate`] (gerçek: [`ledger::CostLedger`]) ve [`probe::SearchUrl`] (gerçek:
+//! [`searxng::ManagedSearch`]) kurucuya dışarıdan verilir (süreç başına tek örnek). Başka ize ait bağımlılıklar:
+//! [`probe::ProjectDirs`] (rs/proc `encode_cwd`), [`docs::DocStore`]un `db` kipi (rs/state `statedocs`).
 
 pub mod agents;
 pub mod checks;
@@ -16,6 +16,7 @@ pub mod env;
 pub mod fsio;
 pub mod help;
 pub mod http;
+pub mod ledger;
 pub mod lock;
 pub mod modelio;
 pub mod oserr;
@@ -23,6 +24,7 @@ pub mod pathexec;
 pub mod probe;
 pub mod process;
 pub mod proxy;
+pub mod searxng;
 pub mod sqlite;
 
 pub use env::Env;

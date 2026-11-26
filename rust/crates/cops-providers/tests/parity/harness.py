@@ -171,11 +171,14 @@ def _fake_ext_mcp(cwd):
 
 
 _ORIG_PATH_EXEC, _ORIG_TOOLCHAIN, _ORIG_REGISTRY = uso.path_executables, uso.rust_toolchain, ucli_checks.load_registry
+_ORIG_ENSURE = searxng.ensure_search_url
 searxng.ensure_search_url = _fake_ensure_search_url
 ucli_agents.issue_token = _fake_issue_token
 uso.rust_toolchain = _fake_toolchain
 uso.path_executables = _fake_path_exec
 ucli_p.path_executables = _fake_path_exec
+# gerçekleri `ledger` ve `searxng` aileleri çağırır (`op_g8x_*`)
+_ORIG_COST = (ucli_cost.cap_exceeded, ucli_cost.state, ucli_cost.reserve)
 ucli_cost.cap_exceeded = _fake_cap_exceeded
 ucli_cost.state = _fake_cost_state
 ucli_cost.reserve = lambda *a, **k: None
@@ -940,7 +943,128 @@ def op_g8_proxy(a):
     return out
 
 
-OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith("op_g8_")})
+def op_g8x_ledger(a):
+    base = os.path.expanduser("~/.claude/claudeops/ucli_usage")
+    assert base == ucli_cost.USAGE_DIR and base.startswith(_ROOT + "/")
+    for rel, at in a.get("mtimes") or []:
+        os.utime(os.path.join(_ROOT, rel), (at, at))
+    fakes = (ucli_cost.cap_exceeded, ucli_cost.state, ucli_cost.reserve)
+    ucli_cost.cap_exceeded, ucli_cost.state, ucli_cost.reserve = _ORIG_COST
+    ucli_cost.invalidate()
+    ucli_cost._RESERVED.clear()
+    mult = lambda: ucli_cost.write_mult()
+    out = []
+    try:
+        for step in a["steps"]:
+            op, args = step[0], step[1:]
+            try:
+                if op == "state":
+                    r = ucli_cost.state(args[0], base=base, use_cache=args[1])
+                elif op == "per":
+                    r = sorted([k, repr(v)] for k, v in ucli_cost.per_session_usd(args[0], base, mult()).items())
+                elif op == "today":
+                    r = repr(float(ucli_cost.today_usd(args[0], base, mult())))
+                elif op == "rate":
+                    r = [sorted([k, repr(v)] for k, v in ucli_cost.rate_by_session(args[0], args[1], base, mult()).items()),
+                         repr(float(ucli_cost.rate_usd_per_hour(args[0], args[1], base, mult())))]
+                elif op == "total":
+                    r = repr(float(ucli_cost.total_usd(base, mult(), args[0])))
+                elif op == "scan":
+                    usd, why = ucli_cost.rv._scan_usage(os.path.join(base, args[0]), args[1], args[2], args[3])
+                    r = [repr(float(usd)), why]
+                elif op == "problem":
+                    r = ucli_cost._ledger_problem(args[0], base, mult())
+                elif op == "gate":       # `_claude_service_flags`in kapısı
+                    if ucli_cost.cap_exceeded(args[1], base):
+                        st = ucli_cost.state(args[1], base=base, use_cache=False)
+                        raise ucli_cost.DailyCapExceeded(st["today_usd"], st["cap_usd"])
+                    r = ucli_cost.reserve(args[0], args[1], base)
+                elif op == "cap":
+                    r = ucli_cost.cap_exceeded(args[0], base)
+                elif op == "reserve":
+                    r = ucli_cost.reserve(args[0], args[1], base)
+                elif op == "release":
+                    r = ucli_cost.release(args[0])
+                elif op == "held":
+                    r = list(ucli_cost._RESERVED)
+                elif op == "invalidate":
+                    r = ucli_cost.invalidate()
+                elif op == "write":      # dosya ekle (önbellek davranışı)
+                    with open(os.path.join(base, args[0]), "a", encoding="utf-8") as f:
+                        f.write(args[1])
+                    r = None
+                elif op == "days":
+                    r = [repr(ucli_cost._day_start_ms(args[0])), [repr(ucli_cost._date_ms(d, end=e)) for d, e in args[1]]]
+                elif op == "window":
+                    r = ucli_cost.credit_window(args[0], args[1], args[2])
+                else:
+                    raise AssertionError(op)
+                out.append(["ok", r])
+            except ValueError as e:
+                out.append(["err", ucli_cost.refusal(e)])
+    finally:
+        ucli_cost.cap_exceeded, ucli_cost.state, ucli_cost.reserve = fakes
+        ucli_cost.invalidate()
+        ucli_cost._RESERVED.clear()
+    return out
+
+
+def op_g8x_searxng(a):
+    exe = shutil.which("docker")
+    assert exe is None or exe.startswith(_ROOT + "/"), "gerçek docker PATH'te"
+    health = list(a.get("health") or [])
+    spawned = []
+
+    def spawn_child():
+        os.makedirs(searxng.STATE_DIR, exist_ok=True)
+        open(searxng._log_path(), "ab").close()
+        spawned.append(1)
+        return True
+
+    saved = (searxng.healthy, searxng._spawn_provision_child, searxng._wall, searxng.READY_WAIT_S, searxng._down_until)
+    searxng.healthy = lambda port, timeout=1.5: health.pop(0) if health else False
+    searxng._spawn_provision_child = spawn_child
+    searxng._wall = lambda: a["now"]
+    searxng.READY_WAIT_S = 0.0
+    searxng._down_until = 0.0
+    out = []
+    try:
+        with _RealProcesses():
+            for session, dry in a["calls"]:
+                if dry:
+                    with preview.preview_only():
+                        out.append(_ORIG_ENSURE(session))
+                else:
+                    out.append(_ORIG_ENSURE(session))
+    finally:
+        searxng.healthy, searxng._spawn_provision_child, searxng._wall, searxng.READY_WAIT_S, searxng._down_until = saved
+    diags = [[ev, [[k, _jsonable(v)] for k, v in kw.items()]] for ev, kw in DIAGS]
+    DIAGS.clear()
+    return {"urls": out, "diags": diags, "name": searxng.container_name()}
+
+
+def op_g8x_netguard(a):
+    """Ağ engeli HÂLÂ tutuyor mu: sahtesi olmayan her çıkış yolu görünür hata vermeli."""
+    import urllib.request as ur
+    tries = {
+        "searxng": lambda: searxng._http_get("http://127.0.0.1:9/healthz", 0.2),
+        "servis": lambda: uso._open_no_redirect(ur.Request("http://127.0.0.1:9/"), timeout=0.2),
+        "saglayici": lambda: ucli_p._open_no_redirect(ur.Request("http://127.0.0.1:9/"), timeout=0.2),
+        "urlopen": lambda: ur.urlopen("http://example.invalid/", timeout=0.2),
+        "soket": lambda: socket.socket().connect(("127.0.0.1", 9)),
+        "ad": lambda: socket.getaddrinfo("example.invalid", 80),
+    }
+    out = []
+    for name, call in tries.items():
+        try:
+            call()
+            out.append([name, "AÇIK"])
+        except AssertionError:
+            out.append([name, "engelli"])
+    return out
+
+
+OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith(("op_g8_", "op_g8x_"))})
 
 
 def main():
