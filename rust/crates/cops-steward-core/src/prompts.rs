@@ -162,18 +162,18 @@ pub fn build_directive(
 
 // ── tur prompt'u ──────────────────────────────────────────────────────────────
 
-/// `text[:n-1].rstrip() + "…"` (kırpılmış metin `n` kod noktasını aşıyorsa).
+/// `text[:n-1].rstrip() + "…"` (kırpılmış metin `n` kod noktasını aşıyorsa); `n == 0` boş döner.
 ///
 /// py: _clip
 pub fn clip(text: &str, n: usize) -> String {
     let text = pyc::strip(text);
-    let l = pyc::len(text);
-    if l <= n {
+    if pyc::len(text) <= n {
         return text.to_string();
     }
-    // Python n=0'da `text[:-1]`
-    let cut = pyc::head(text, n.checked_sub(1).unwrap_or(l - 1));
-    format!("{}…", pyc::rstrip(cut))
+    let Some(keep) = n.checked_sub(1) else {
+        return String::new();
+    };
+    format!("{}…", pyc::rstrip(pyc::head(text, keep)))
 }
 
 fn bad(v: &Value) -> BadValue {
@@ -280,8 +280,8 @@ fn is_kind(it: &Map<String, Value>, kind: &str) -> bool {
     it.get("kind").and_then(Value::as_str) == Some(kind)
 }
 
-/// Beyne gönderilen tur prompt'u. `stamp` = Python'un `now` argümanı (başlık saati; verilmezse `now`);
-/// `now` = saat (`_now()`; kart yaşı Python'da HER ZAMAN buradan hesaplanır).
+/// Beyne gönderilen tur prompt'u. `stamp` = Python'un `now` argümanı (başlık saati ve kart yaşı; verilmezse ya da
+/// 0 ise `now`); `now` = saat (`_now()`).
 ///
 /// py: build_tour_prompt
 pub fn build_tour_prompt(
@@ -292,7 +292,8 @@ pub fn build_tour_prompt(
     now: f64,
 ) -> Result<String, BadValue> {
     let tr = lang != "en";
-    let ts = pyc::localtime(stamp.filter(|s| *s != 0.0).unwrap_or(now)).format("%Y-%m-%d %H:%M");
+    let at = stamp.filter(|s| *s != 0.0).unwrap_or(now);
+    let ts = pyc::localtime(at).format("%Y-%m-%d %H:%M");
     let mut lines: Vec<String> = Vec::new();
     lines.push(if tr {
         format!("[claudeops değnekçi turu — {ts}]")
@@ -355,7 +356,7 @@ pub fn build_tour_prompt(
         }
     }
     for (n, it) in items.iter().enumerate() {
-        tour_item(&mut lines, n + 1, it, tr, now)?;
+        tour_item(&mut lines, n + 1, it, tr, at)?;
     }
     lines.push(String::new());
     lines.push(if tr {
@@ -386,7 +387,9 @@ fn tour_item(lines: &mut Vec<String>, n: usize, it: &Map<String, Value>, tr: boo
         return Ok(());
     }
     if let Some(phase) = truthy("phase") {
-        let tail = truthy("kindp").map(|k| format!("  tür: {}", pyc::str_of(k))).unwrap_or_default();
+        let tail = truthy("kindp")
+            .map(|k| format!("{}{}", tr_en(tr, "  tür: ", "  kind: "), pyc::str_of(k)))
+            .unwrap_or_default();
         lines.push(format!("{}{}{tail}", tr_en(tr, "faz: ", "phase: "), pyc::str_of(phase)));
     }
     let labelled = |lines: &mut Vec<String>, v: Option<&Value>, t, e, max| -> Result<(), BadValue> {

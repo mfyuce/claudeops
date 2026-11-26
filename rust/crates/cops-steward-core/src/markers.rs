@@ -180,6 +180,25 @@ fn odd_ticks(s: &str) -> bool {
     s.matches('`').count() % 2 == 1
 }
 
+/// `STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda anma mı? `:` varsa teyit; yoksa işaret satır başında (ya da `…:`
+/// ardında) olmalı ve ardından commit hash'i gelmeli ya da hiçbir şey gelmemeli.
+///
+/// py: _is_confirm_line
+pub fn is_confirm_line(prefix: &str, tail: &str) -> bool {
+    // U+001F: Python `\s` boşluk sayar, `regex` saymaz.
+    let spaced = tail.replace('\u{1f}', " ");
+    // Python `match`: yalnız baştaki eşleşme
+    let leads = |re: &Regex| re.find(&spaced).is_some_and(|m| m.start() == 0);
+    if leads(&P_CONFIRM_COLON_RE) {
+        return true;
+    }
+    let head = pyc::strip_chars(prefix, "`*_#.) 0123456789✅✔");
+    if !head.is_empty() && !head.ends_with(':') {
+        return false;
+    }
+    leads(&P_CONFIRM_LEAD_HASH_RE) || pyc::strip_chars(tail, "`*_ .!").is_empty()
+}
+
 /// Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar.
 ///
 /// py: scan_markers
@@ -260,7 +279,7 @@ fn scan_state_marks(line: &str, out: &mut Markers) {
         out.plan_ready = true;
     } else if let Some((prefix, rest)) = line.split_once(MARK_DONE_CONFIRMED) {
         let body = unwrap_ticks(prefix, pyc::strip(rest.trim_start_matches(':')));
-        if !is_placeholder(body) && !body.contains('<') && !odd_ticks(prefix) {
+        if is_confirm_line(prefix, rest) && !is_placeholder(body) && !body.contains('<') && !odd_ticks(prefix) {
             out.confirmed = Some(body.to_string()); // boş gövde de bir teyit denemesi
         }
     } else if bare_marker(line, MARK_DONE) && !line.contains(MARK_END) {

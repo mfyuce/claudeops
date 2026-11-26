@@ -83,20 +83,20 @@ fn name_rules_edges() {
         ("".into(), false, false, false),
         ("a".into(), true, false, false),
         ("ab".into(), true, true, true),
-        ("ab\n".into(), true, true, true),
+        ("ab\n".into(), false, false, false),
         ("ab\n\n".into(), false, false, false),
         ("default".into(), true, false, true),
-        ("default\n".into(), true, true, true),
-        ("degnekci\n".into(), true, false, false),
+        ("default\n".into(), false, false, false),
+        ("degnekci\n".into(), false, false, false),
         ("a-b".into(), true, false, false),
         ("a--b".into(), false, false, false),
         ("a_b-c1".into(), true, false, false),
         ("-a".into(), false, false, false),
         (a48.clone(), true, false, false),
-        (format!("{}\n", &a48[1..]), true, false, false),
+        (format!("{}\n", &a48[1..]), false, false, false),
         (format!("{a48}\n"), false, false, false),
         ("a".repeat(17), true, false, false),
-        (format!("{}\n", "a".repeat(16)), true, true, true),
+        (format!("{}\n", "a".repeat(16)), false, false, false),
         ("çay".into(), false, false, false),
     ];
     for (s, name, custom, steward) in table {
@@ -135,7 +135,7 @@ fn reviewers_from_settings() {
         "bad1": {"role": "reviewer"}, "x": {"role": "reviewer"}, "nodict": "reviewer", "lst": {"role": ["reviewer"]},
         "degnekcix": {"role": "reviewer"}, "nl\n": {"role": "reviewer"}, "none": {"role": null}});
     let rv = reviewer_ids(Some(&st));
-    assert_eq!(rv.iter().map(String::as_str).collect::<Vec<_>>(), ["nl\n", "rev"]);
+    assert_eq!(rv.iter().map(String::as_str).collect::<Vec<_>>(), ["rev"]);
     for (sid, want) in
         [(None, false), (Some("default"), false), (Some("rev"), true), (Some("iso"), false), (Some(""), false)]
     {

@@ -136,7 +136,7 @@ pub fn normalize_host(host: &Value) -> String {
 ///
 /// py: valid_custom_id
 pub fn valid_custom_id(sid: &str) -> bool {
-    pyc::match_dollar(&STEWARD_ID_RE, sid) && !RESERVED_IDS.contains(&sid) && !sid.starts_with(BRAIN_PREFIX)
+    STEWARD_ID_RE.is_match(sid) && !RESERVED_IDS.contains(&sid) && !sid.starts_with(BRAIN_PREFIX)
 }
 
 /// `default` (özel kimlik) ya da geçerli özel kimlik.
@@ -148,7 +148,7 @@ pub fn valid_steward_id(sid: &str) -> bool {
 
 /// py: valid_name
 pub fn valid_name(name: &str) -> bool {
-    !name.is_empty() && pyc::match_dollar(&P_NAME_RE, name) && pyc::len(name) <= 48
+    !name.is_empty() && P_NAME_RE.is_match(name) && pyc::len(name) <= 48
 }
 
 /// Ayarda `stewards.<sid>.role == "reviewer"` olan kimlikler. `stewards` = ayarın `stewards` değeri

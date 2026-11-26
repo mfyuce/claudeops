@@ -52,7 +52,10 @@ parity!("build_directive", build_directive_vectors, |c| {
         &store(c, &project),
     )
 });
-parity!("_clip", p_clip, |c| clip(&c.opt::<String>("text").unwrap_or_default(), c.arg("n")));
+// Python negatif `n`de de boş döner; Rust `usize` alır, 0 aynı sonucu verir.
+parity!("_clip", p_clip, |c| {
+    clip(&c.opt::<String>("text").unwrap_or_default(), usize::try_from(c.arg::<i64>("n")).unwrap_or(0))
+});
 parity!("card_lines", card_lines_vectors, |c| card_lines(
     &c.arg("card"),
     c.or("tr", true),

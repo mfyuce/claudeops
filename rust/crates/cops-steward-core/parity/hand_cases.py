@@ -100,6 +100,18 @@ CARDS = [{}, {"updated_at": 0}, {"updated_at": NOW - 7300, "stale": True}, {"upd
 for card, tr in itertools.product(CARDS, [True, False]):
     add("card_lines", {"card": card, "tr": tr, "now": NOW})
 
+# ── TBD#370: satır sonlu adlar ve DONE-CONFIRMED anması ──
+for s in ("ab", "ab\n", "ab\r\n", "ab\n\n", "default", "default\n", "all\n", "degnekci\n", "a-b\n", "a" * 16 + "\n", "a" * 47 + "\n"):
+    add("valid_name", {"name": s})
+    add("valid_custom_id", {"sid": s})
+    add("valid_steward_id", {"sid": s})
+for pre, mid, post in itertools.product(
+        ["", "- ", "## ", "**", "`", "1. ", "2) ", "✅ ", "Teyit: ", "Bitti. ", "kalan 0 değil, ", "zlkrn: "],
+        ["", ":", " :", "：", "**:", ":**", "**", "`", "."],
+        ["", " abc1234 kalan açık iş 0", " — abc1234 0", " (abc1234) 0", " `abc1234` 0", "\u001f abc1234 0", " \u001fyazmıyorum", " yazmıyorum, iş kaldı", " geldi (\"abc1234 0\")",
+         " sonrası e80e77e iş 0", " abc12 0", " abc1234x 0", " ABC1234 0", " - yok", " <hash> 0", " bitti", " *_ .!"]):
+    add("scan_markers", {"text": pre + "STEWARD-DONE-CONFIRMED" + mid + post})
+
 # ── direktif ──
 STORE = [Q(f"q{i}", "p", f"  soru {i} " + ("uzun😀" * 60 if i == 7 else ""), status="answered", answer=f" cevap {i} " + ("ç" * 300 if i == 6 else ""),
            answered_at=float(100 - i if i < 3 else i)) for i in range(9)]
