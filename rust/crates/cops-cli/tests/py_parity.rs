@@ -253,3 +253,64 @@ fn parity_self_with_bash_claudeops() {
         "ata zinciri"
     );
 }
+
+#[test]
+fn secret_lock_contract_with_python() {
+    // Ortak sözleşme (ders H2: iki dilli yazar): aynı kilit dosyası, aynı dosya, biri ötekinin ürettiğini okur.
+    use cops_cli::front::secret::{ensure_secret_file, read_secret};
+    use std::io::{BufRead, BufReader};
+    use std::time::Duration;
+    let sb = Sandbox::new();
+    let state = sb.state();
+    let sds = state.to_str().unwrap();
+    let sec = state.join("front.secret");
+    let py = |code: &str| {
+        let o = sb
+            .cmd(std::path::Path::new("/usr/bin/python3"))
+            .arg("-c")
+            .arg(format!(
+                "import sys; sys.path.insert(0, {:?}); from claudeops import front\n{code}",
+                repo().join("py").display()
+            ))
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8(o.stdout).unwrap().trim().to_string()
+    };
+    // 1) Python kilidi tutarken Rust bekler, süre dolunca hata verir ve dosya yazmaz.
+    let mut holder = sb
+        .cmd(std::path::Path::new("/usr/bin/python3"))
+        .arg("-c")
+        .arg(format!(
+            "import fcntl, os, sys, time\nfd = os.open({:?}, os.O_WRONLY | os.O_CREAT, 0o600)\nfcntl.flock(fd, fcntl.LOCK_EX)\nprint('kilitli', flush=True)\nsys.stdin.read()",
+            format!("{}.lock", sec.display())
+        ))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(holder.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line.trim(), "kilitli");
+    let e = ensure_secret_file(sds, Duration::from_millis(300)).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+    assert!(!sec.exists());
+    drop(holder.stdin.take());
+    holder.wait().unwrap();
+    // 2) Rust üretir, Python aynı değeri okur ve yeniden üretmez.
+    let v = ensure_secret_file(sds, Duration::from_secs(5)).unwrap();
+    assert_eq!(py("print(front.read_secret())"), v);
+    assert_eq!(py("print(front.ensure_secret())"), v);
+    // 3) İzin gevşemiş (sızmış): Python yeniden üretir, Rust onu okur ve korur.
+    std::fs::set_permissions(&sec, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let pv = py("print(front.ensure_secret())");
+    assert_ne!(pv, v);
+    assert_eq!(read_secret(None, &sec), pv);
+    assert_eq!(ensure_secret_file(sds, Duration::from_secs(5)).unwrap(), pv);
+    assert_eq!(
+        std::fs::metadata(&sec).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}

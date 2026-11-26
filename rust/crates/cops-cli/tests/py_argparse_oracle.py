@@ -1,6 +1,8 @@
 """cops-cli testi için argparse kâhini: Python CLI'ın GERÇEK ayrıştırıcısıyla (`claudeops.cli.build_parser`) her argv'yi ayrıştırır.
 
-Kullanım: python3 -I py_argparse_oracle.py <py dizini> <json argv listesi dosyası>
+Kullanım: python3 py_argparse_oracle.py <py dizini> <json argv listesi dosyası>
+(`-I` YOK: `claudeops.cli` kullanıcı site paketlerini (`websockets`) ister; test yalıtık HOME/CLAUDEOPS_DIR ve
+`PYTHONUSERBASE` ile çağırır, bkz. `argparse_parity.rs`.)
 Çıktı: satır başına JSON: {"ok": true, "action":..., "apply":..., "listen":..., "internal":..., "bin":...} ya da {"ok": false, "exit": kod}.
 Yalnız ayrıştırır; komut işlevi (`args.func`) ÇAĞRILMAZ.
 """
