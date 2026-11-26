@@ -1,8 +1,10 @@
 # İz T5 federasyon istemcisi (`rs/hosts`, crate `cops-hosts`)
 
-## Durum (27 Kas 2026 00:42): BİRLEŞTİRMEYE HAZIR `ce8c1b2f` + bu belge commit'i (copsd sonrası e2e cops'ta)
+## Durum (27 Kas 2026 01:20): `main`de (`e1c57b40`, kapı notu düzeltmesi `796e5812`); copsd sonrası e2e açık
 
-`origin/main` (`feae0764`; `rs/proc`, `rs/cli`, `rs/state` dahil) dalda. Birleşik ağaçta (`ce8c1b2f`):
+`796e5812` (devirli uzak durdurmada `ambiguous_sessions` + bayat durumda yeniden yoklama; Rust kodu değişmedi): tam
+Python 5861 test OK (23 atlanan), eşleme tablosu `--check` temiz (test durumu 910). Birleştirme öncesi ağaçta
+(`ce8c1b2f`):
 - tam Python paketi 5857 test OK (23 atlanan);
 - `cargo test -p cops-hosts -p cops-auth -p cops-proxy -p cops-parity -p cops-procscan -p cops-cli -p cops-state`
   533/533;
