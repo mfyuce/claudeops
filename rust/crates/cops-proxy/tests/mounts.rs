@@ -142,8 +142,7 @@ async fn start(app: SocketAddr, mounts: Option<(&str, u32)>) -> (SocketAddr, tem
     });
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     (addr, d)
 }
@@ -538,8 +537,7 @@ async fn mount_table_hot_reload_through_proxy() {
     });
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let p = l.local_addr().unwrap();
-    drop(l);
-    tokio::spawn(cops_proxy::serve(p, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     let req = get("/grafana/", &format!("Cookie: cops_ext={COOKIE}\r\n"));
     assert!(raw(p, &req).await.contains("PYTHON"));

@@ -79,7 +79,6 @@ async fn start(hook: Option<Arc<Hook>>) -> (SocketAddr, tempfile::TempDir) {
     let up = fake_upstream().await;
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = Proxy::with_secret(up, "onkapi")
         .with_local(LocalCfg {
             token: cops_auth::Token::new("sekret"),
@@ -94,7 +93,7 @@ async fn start(hook: Option<Arc<Hook>>) -> (SocketAddr, tempfile::TempDir) {
         Some(h) => px.with_local_auth(h),
         None => px,
     };
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     (addr, d)
 }

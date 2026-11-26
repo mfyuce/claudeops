@@ -24,13 +24,12 @@ async fn points_series_names_with_auth() {
     let up: SocketAddr = "127.0.0.1:9".parse().unwrap();
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = Proxy::new(up).with_metrics(MetricsCfg {
         store,
         token: cops_auth::Token::new("tok"),
         front_secret: cops_auth::Token::new("fs"),
     });
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     let body = r#"[{"name":"project.todo_open","key":"p1","ts":100,"value":4,"unit":"adet"},{"name":"project.todo_open","key":"p1","ts":200,"value":3}]"#;

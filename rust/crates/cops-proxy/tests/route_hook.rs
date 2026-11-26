@@ -96,13 +96,12 @@ async fn start(h: Option<Arc<Hook>>) -> SocketAddr {
     let up = echo_upstream().await;
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = Proxy::with_secret(up, "onkapi");
     let px = match h {
         Some(h) => px.with_routes(h),
         None => px,
     };
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(Duration::from_millis(150)).await;
     addr
 }

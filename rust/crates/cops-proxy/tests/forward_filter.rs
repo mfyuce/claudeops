@@ -171,7 +171,6 @@ async fn start(f: Option<Arc<Filter>>) -> (SocketAddr, tempfile::TempDir) {
     let up = echo_upstream().await;
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = Proxy::with_secret(up, "onkapi").with_local(LocalCfg {
         token: cops_auth::Token::new("sekret"),
         db,
@@ -180,7 +179,7 @@ async fn start(f: Option<Arc<Filter>>) -> (SocketAddr, tempfile::TempDir) {
         Some(f) => px.with_forward_filter(f),
         None => px,
     };
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     (addr, d)
 }

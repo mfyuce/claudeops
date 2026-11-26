@@ -988,7 +988,11 @@ impl Proxy {
         strip_hop(req.headers_mut(), upgrade);
         let mut resp = match self.client.request(req).await {
             Ok(r) => r,
-            Err(e) => return err(StatusCode::BAD_GATEWAY, &format!("upstream: {e}")),
+            Err(e) => {
+                let mut r = err(StatusCode::BAD_GATEWAY, &format!("upstream: {e}"));
+                r.extensions_mut().insert(UpstreamError(root_cause(&e)));
+                return r;
+            }
         };
         if upgrade && resp.status() == StatusCode::SWITCHING_PROTOCOLS {
             let up_up = hyper::upgrade::on(&mut resp);
@@ -1027,8 +1031,12 @@ impl Proxy {
         let resp = self
             .mount_response(cfg, hit, req, peer, learn_any_type, prefixed)
             .await;
-        if let Some(line) = mount_error_line(method.as_str(), &path, resp.status()) {
-            eprintln!("{line}");
+        let reason = resp
+            .extensions()
+            .get::<UpstreamError>()
+            .map(|e| e.0.as_str());
+        if let Some(line) = mount_error_line(method.as_str(), &path, resp.status(), reason) {
+            log_limited(resp.status(), &line);
         }
         resp
     }
@@ -1231,9 +1239,83 @@ impl Proxy {
     }
 }
 
+/// 502'nin kök nedeni (yalnız günlük için yanıt uzantısında taşınır).
+#[derive(Clone)]
+struct UpstreamError(String);
+
+fn root_cause(e: &dyn std::error::Error) -> String {
+    let mut cur = e;
+    while let Some(next) = cur.source() {
+        cur = next;
+    }
+    cur.to_string()
+}
+
+/// Dakikada en çok `LOG_PER_WINDOW` satır; atlananların sayısı sonraki pencerenin ilk satırıyla bildirilir.
+const LOG_PER_WINDOW: u32 = 30;
+const LOG_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
+struct LogLimiter {
+    start: Option<std::time::Instant>,
+    written: u32,
+    skipped: u64,
+}
+
+impl LogLimiter {
+    const fn new() -> Self {
+        Self {
+            start: None,
+            written: 0,
+            skipped: 0,
+        }
+    }
+
+    /// `None` = yazma; `Some(n)` = yaz, önceden `n` satır atlandı.
+    fn admit(&mut self, now: std::time::Instant) -> Option<u64> {
+        if self
+            .start
+            .is_none_or(|s| now.duration_since(s) >= LOG_WINDOW)
+        {
+            self.start = Some(now);
+            self.written = 0;
+        }
+        if self.written >= LOG_PER_WINDOW {
+            self.skipped += 1;
+            return None;
+        }
+        self.written += 1;
+        Some(std::mem::take(&mut self.skipped))
+    }
+}
+
+/// 401 (kimliksiz istekler) ayrı kovada: sel halinde gelseler de diğer hata satırlarını bastırmaz.
+fn log_limited(status: StatusCode, line: &str) {
+    static AUTH: std::sync::Mutex<LogLimiter> = std::sync::Mutex::new(LogLimiter::new());
+    static OTHER: std::sync::Mutex<LogLimiter> = std::sync::Mutex::new(LogLimiter::new());
+    let bucket = if status == StatusCode::UNAUTHORIZED {
+        &AUTH
+    } else {
+        &OTHER
+    };
+    let admitted = bucket
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .admit(std::time::Instant::now());
+    match admitted {
+        Some(0) => eprintln!("{line}"),
+        Some(n) => eprintln!("{line} (önceki {n} satır atlandı)"),
+        None => {}
+    }
+}
+
 /// Mount yanıtı >=400 ise günlük satırı: yöntem, mount kimliği, mount altındaki İLK yol parçası, durum. Yolun gerisi, sorgu, başlık
 /// ve çerez YAZILMAZ (token/oturum sızmasın); parçalar istemci denetiminde olduğu için kırpılır.
-fn mount_error_line(method: &str, path: &str, status: StatusCode) -> Option<String> {
+fn mount_error_line(
+    method: &str,
+    path: &str,
+    status: StatusCode,
+    reason: Option<&str>,
+) -> Option<String> {
     if status.as_u16() < 400 {
         return None;
     }
@@ -1249,8 +1331,12 @@ fn mount_error_line(method: &str, path: &str, status: StatusCode) -> Option<Stri
     let mut parts = path.trim_start_matches('/').splitn(3, '/');
     let id = clip(parts.next().unwrap_or(""));
     let seg = clip(parts.next().unwrap_or(""));
+    let reason = reason.map_or_else(String::new, |r| {
+        let r: String = r.chars().filter(|c| !c.is_control()).take(80).collect();
+        format!(" ({r})")
+    });
     Some(format!(
-        "copsd: mount hata: {} /{id}/{seg} -> {}",
+        "copsd: mount hata: {} /{id}/{seg} -> {}{reason}",
         clip(method),
         status.as_u16()
     ))
@@ -1264,7 +1350,7 @@ mod mount_log_tests {
     fn only_errors_are_logged() {
         for ok in [101, 200, 302, 308, 399] {
             let st = StatusCode::from_u16(ok).unwrap();
-            assert_eq!(mount_error_line("GET", "/gw/x", st), None, "{ok}");
+            assert_eq!(mount_error_line("GET", "/gw/x", st, None), None, "{ok}");
         }
     }
 
@@ -1274,17 +1360,40 @@ mod mount_log_tests {
             "POST",
             "/gw/grafana/api/sekret-yol?token=sekret",
             StatusCode::BAD_GATEWAY,
+            None,
         )
         .unwrap();
         assert_eq!(l, "copsd: mount hata: POST /gw/grafana -> 502");
-        let l = mount_error_line("GET", "/gw", StatusCode::UNAUTHORIZED).unwrap();
+        let l = mount_error_line("GET", "/gw", StatusCode::UNAUTHORIZED, None).unwrap();
         assert_eq!(l, "copsd: mount hata: GET /gw/ -> 401");
+    }
+
+    #[test]
+    fn upstream_reason_is_appended_clipped_and_single_line() {
+        let why = format!("Connection refused\n{}", "x".repeat(200));
+        let l = mount_error_line("GET", "/gw/x", StatusCode::BAD_GATEWAY, Some(&why)).unwrap();
+        assert!(l.contains("-> 502 (Connection refused"), "{l}");
+        assert!(!l.contains('\n') && l.len() < 140, "{l}");
+    }
+
+    #[test]
+    fn limiter_caps_a_window_and_reports_skipped_lines_in_the_next() {
+        let mut lim = LogLimiter::new();
+        let t0 = std::time::Instant::now();
+        for _ in 0..LOG_PER_WINDOW {
+            assert_eq!(lim.admit(t0), Some(0));
+        }
+        for _ in 0..3 {
+            assert_eq!(lim.admit(t0), None);
+        }
+        assert_eq!(lim.admit(t0 + LOG_WINDOW), Some(3));
+        assert_eq!(lim.admit(t0 + LOG_WINDOW), Some(0));
     }
 
     #[test]
     fn matrix_params_are_cut_and_long_segments_clipped() {
         let long = format!("/gw/{};jsessionid=sekret/x", "a".repeat(100));
-        let l = mount_error_line("GET", &long, StatusCode::NOT_FOUND).unwrap();
+        let l = mount_error_line("GET", &long, StatusCode::NOT_FOUND, None).unwrap();
         assert!(!l.contains("sekret"), "{l}");
         assert!(l.contains(&format!("/gw/{} ->", "a".repeat(40))), "{l}");
     }
@@ -1292,7 +1401,11 @@ mod mount_log_tests {
 
 /// Dinleyici döngüsü: her bağlantıyı `Proxy::handle`a verir (HTTP/1, yükseltme açık).
 pub async fn serve(listen: SocketAddr, proxy: Arc<Proxy>) -> std::io::Result<()> {
-    let ln = tokio::net::TcpListener::bind(listen).await?;
+    serve_on(tokio::net::TcpListener::bind(listen).await?, proxy).await
+}
+
+/// `serve`, hazır bağlanmış dinleyiciyle (port seçimiyle dinleme arasında başkası portu alamaz).
+pub async fn serve_on(ln: tokio::net::TcpListener, proxy: Arc<Proxy>) -> std::io::Result<()> {
     loop {
         let (sock, peer) = ln.accept().await?;
         let p = proxy.clone();

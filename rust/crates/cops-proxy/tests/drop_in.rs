@@ -53,12 +53,11 @@ async fn start_proxy(up: SocketAddr) -> SocketAddr {
 async fn start_proxy_with(up: SocketAddr, secret: Option<&str>) -> SocketAddr {
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = match secret {
         Some(x) => cops_proxy::Proxy::with_secret(up, x),
         None => cops_proxy::Proxy::new(up),
     };
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     addr
 }
@@ -203,9 +202,8 @@ async fn static_assets_served_from_dist_with_headers_and_no_escape() {
     .unwrap();
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
-    drop(l);
     let px = cops_proxy::Proxy::new(fake_upstream().await).with_dist(d.clone());
-    tokio::spawn(cops_proxy::serve(addr, px));
+    tokio::spawn(cops_proxy::serve_on(l, px));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     let r = raw(
         addr,
