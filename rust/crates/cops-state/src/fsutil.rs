@@ -158,7 +158,7 @@ thread_local! {
 #[derive(Debug)]
 pub struct FileLock {
     file: Rc<File>,
-    /// Yeniden girilebilir kilidin anahtarı (normalize yol); `blocking` kilitte yok.
+    /// Yeniden girilebilir kilidin anahtarı (normalize yol); `exclusive` kilitte yok.
     key: Option<PathBuf>,
 }
 
@@ -191,11 +191,27 @@ fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
     }
 }
 
+/// `atomic_json.flock_bounded`: `LOCK_EX`, en çok `timeout` beklenir; dolarsa `TimedOut`.
+fn flock_within(f: &File, timeout: Duration) -> io::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match flock(f, libc::LOCK_EX | libc::LOCK_NB) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(io::ErrorKind::TimedOut, "flock zaman aşımı"));
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 impl FileLock {
     /// Python `file_lock(path)`: yol `normpath(abspath)`, kilit `<yol>.lock` (`O_NOFOLLOW`, 0600, bize ait normal dosya),
     /// 30 sn beklenir. Aynı iş parçacığında iç içe alınabilir.
-    /// Sapmalar (sahibe soruldu, `docs/rs-state.md`): zaman aşımında ve kilit dosyası bize ait değilse HATA (Python
-    /// uyarıp yalnız iş parçacığı kilidiyle, süreçler arası korumasız sürer).
+    /// Zaman aşımında ve kilit dosyası bize ait değilse HATA (Python `LockError`, TBD#374 S1/S5): korumasız yazım yok.
     pub fn acquire(path: &Path) -> io::Result<FileLock> {
         Self::acquire_within(path, LOCK_TIMEOUT)
     }
@@ -228,19 +244,7 @@ impl FileLock {
                 "kilit dosyası bize ait değil",
             ));
         }
-        let deadline = Instant::now() + timeout;
-        loop {
-            match flock(&f, libc::LOCK_EX | libc::LOCK_NB) {
-                Ok(()) => break,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= deadline {
-                        return Err(io::Error::new(io::ErrorKind::TimedOut, "flock zaman aşımı"));
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        flock_within(&f, timeout)?;
         let file = Rc::new(f);
         HELD.with(|h| h.borrow_mut().insert(key.clone(), Rc::downgrade(&file)));
         Ok(FileLock {
@@ -256,8 +260,13 @@ impl FileLock {
         Self::acquire(&dir.join("roster"))
     }
 
-    /// Python `instances._locked`: verilen kilit dosyasında süresiz bekleyen `LOCK_EX` (yeniden girilemez; Python'da da).
-    pub fn blocking(lock_file: &Path) -> io::Result<FileLock> {
+    /// Python `instances._locked`: verilen kilit dosyasında `LOCK_EX`, en çok [`LOCK_TIMEOUT`] (yeniden girilemez;
+    /// Python'da da).
+    pub fn exclusive(lock_file: &Path) -> io::Result<FileLock> {
+        Self::exclusive_within(lock_file, LOCK_TIMEOUT)
+    }
+
+    pub fn exclusive_within(lock_file: &Path, timeout: Duration) -> io::Result<FileLock> {
         crate::paths::guard_write(lock_file);
         fs::create_dir_all(parent_of(lock_file))?;
         let f = OpenOptions::new()
@@ -265,7 +274,7 @@ impl FileLock {
             .create(true)
             .truncate(true)
             .open(lock_file)?;
-        flock(&f, libc::LOCK_EX)?;
+        flock_within(&f, timeout)?;
         Ok(FileLock {
             file: Rc::new(f),
             key: None,
@@ -331,5 +340,15 @@ mod tests {
         std::os::unix::fs::symlink(&target, env.dir().join("b.lock")).unwrap();
         assert!(FileLock::acquire(&env.dir().join("b")).is_err());
         assert!(!target.exists(), "bağın hedefi oluşturulmadı");
+    }
+
+    /// TBD#374 S6: oturum kaydı kilidi süresiz beklemez.
+    #[test]
+    fn exclusive_lock_is_bounded() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let p = env.dir().join("instances.json.lock");
+        let _held = FileLock::exclusive(&p).unwrap();
+        let e = FileLock::exclusive_within(&p, Duration::from_millis(80)).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::TimedOut);
     }
 }

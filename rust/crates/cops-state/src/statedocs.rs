@@ -140,6 +140,8 @@ fn for_db(r: &Read, name: &str) -> Result<Option<Json>, StoreError> {
 #[derive(Default)]
 struct State {
     backend: Option<(Instant, Backend)>,
+    /// Son başarılı okumadaki kip (ayar dosyası bozulursa korunur).
+    good_backend: Option<Backend>,
     store: Option<Arc<Store>>,
     dirty: HashSet<String>,
     synced: HashMap<String, Sig>,
@@ -261,14 +263,30 @@ impl StateDocs {
                 return b;
             }
         }
-        let b = read_file(&self.dir.settings_json())
-            .into_option()
-            .and_then(|v| {
-                v.get("store_backend")
-                    .and_then(Json::as_str)
-                    .and_then(Backend::parse)
-            })
-            .unwrap_or(Backend::Files);
+        let path = self.dir.settings_json();
+        let parsed = |v: &Json| {
+            v.get("store_backend")
+                .and_then(Json::as_str)
+                .and_then(Backend::parse)
+                .unwrap_or(Backend::Files)
+        };
+        // bozuk/okunamayan ayar dosyası canlı `db` kipini sessizce `files`a çevirmesin (Python ile aynı)
+        let read = match read_file(&path) {
+            Read::Missing if matches!(path.try_exists(), Ok(false)) => None,
+            r => Some(r.into_option().and_then(|v| match &v {
+                Json::Object(_) => Some(parsed(&v)),
+                other if !other.truthy() => Some(Backend::Files),
+                _ => None,
+            })),
+        };
+        let b = match read {
+            None => Backend::Files,
+            Some(Some(b)) => {
+                st.good_backend = Some(b);
+                b
+            }
+            Some(None) => st.good_backend.unwrap_or(Backend::Files),
+        };
         st.backend = Some((Instant::now(), b));
         b
     }
@@ -556,5 +574,33 @@ impl StateDocs {
         }
         self.lock().synced.insert(key, sg);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+
+    /// TBD#374 S2/S7: bozuk ayar dosyası son iyi kipi korur; silinen dosya `files`.
+    #[test]
+    fn corrupt_settings_keeps_last_good_backend() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let mut docs = StateDocs::new(env.dir().clone());
+        docs.read_env = false;
+        let path = env.dir().settings_json();
+        let backend = |raw: Option<&[u8]>| {
+            match raw {
+                Some(r) => std::fs::write(&path, r).unwrap(),
+                None => std::fs::remove_file(&path).unwrap(),
+            }
+            docs.lock().backend = None; // 5 sn önbelleği
+            docs.backend()
+        };
+        assert_eq!(backend(Some(b"{yarim")), Backend::Files);
+        assert_eq!(backend(Some(br#"{"store_backend": "db"}"#)), Backend::Db);
+        for bad in [&b"\xff"[..], b"{yarim", b"[1]"] {
+            assert_eq!(backend(Some(bad)), Backend::Db);
+        }
+        assert_eq!(backend(None), Backend::Files);
     }
 }

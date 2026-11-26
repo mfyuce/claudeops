@@ -77,6 +77,8 @@ const CASES: &str = r#"[
  ]},
  {"ucli_services": [{"id": "evren", "env": "UCLI_API_KEY"}, {"id": "zz", "env": "Z_KEY", "endpoint": "https://z", "models": 5}]},
  {"ucli_services": [{"id": "evren", "env": "UCLI_API_KEY", "models": true}]},
+ {"ucli_services": [{"id": "evren", "env": "UCLI_API_KEY", "models": {"a": 1}}]},
+ {"provider_bin": {"tool": 5, "claude": null}},
  {"uzakgoz": {"dir": "~/work/projects/tmp/uzakgoz", "bin": "~/bin2/tool", "port": " 8080 "}, "derbent": {"dir": "~nosuchuserxyz/a", "port": 80}},
  {"uzakgoz": {"dir": "", "port": "65536", "bin": "~/bin1/noexec"}, "derbent": "x"},
  {"uzakgoz": {"dir": 5, "port": "1_024"}, "derbent": {"dir": "~/der", "port": 1024.0}},
@@ -128,7 +130,6 @@ fn obj(v: Vec<(&str, Json)>) -> Json {
 }
 
 fn rust_read(s: &Settings, env: &SysEnv, root: &str) -> Json {
-    let err = |e: settings_read::SettingsTypeError| obj(vec![("error", e.python.into())]);
     let bin: Vec<Json> = [
         "tool",
         "claude",
@@ -137,7 +138,7 @@ fn rust_read(s: &Settings, env: &SysEnv, root: &str) -> Json {
         &format!("{root}/home/bin2/tool"),
     ]
     .iter()
-    .map(|x| s.resolved_binary(x, env).map_or_else(err, Json::from))
+    .map(|x| Json::from(s.resolved_binary(x, env)))
     .collect();
     let byok: Vec<Json> = ["claude", "codex", "yok"]
         .iter()
@@ -171,7 +172,7 @@ fn rust_read(s: &Settings, env: &SysEnv, root: &str) -> Json {
         ("warn", Json::Array(vec![a.to_json(), r.to_json()])),
         ("reason", s.ucli_reasoning_mode().into()),
         ("flags", Json::Array(flags)),
-        ("services", s.ucli_services().map_or_else(err, Json::Array)),
+        ("services", Json::Array(s.ucli_services())),
         ("cost", s.ucli_cost_config().to_json()),
         ("script", s.ucli_script_mode().into()),
         ("endpoint", s.ucli_endpoint().into()),
@@ -435,7 +436,6 @@ fn settings_boundary_values() {
             r#"{{"ucli_services": [{{"id": "{id}", "env": "{env}", "endpoint": "https://a"}}]}}"#
         ))
         .ucli_services()
-        .unwrap()
         .len()
             - 1 // evren
     };
@@ -457,8 +457,7 @@ fn settings_boundary_values() {
         models.join(","),
         efforts.join(",")
     ))
-    .ucli_services()
-    .unwrap();
+    .ucli_services();
     let svc = &out[1];
     assert_eq!(
         svc.get("models")
@@ -889,7 +888,7 @@ print(json.dumps([res, [ps_(r) for r in stats]], ensure_ascii=False))
 }
 
 /// H3: okunamayan (G/Ç hatası) settings.json varsayılanları döndürür (Python gibi) ama önbelleği EZMEZ: son iyi değer
-/// korunur, N+1. hatada da varsayılan döner, hata geçince yeni içerik okunur (Python bu imzada varsayılanda kalır).
+/// korunur, N+1. hatada da varsayılan döner, hata geçince yeni içerik okunur (Python ile aynı, TBD#374 S7).
 #[test]
 fn settings_io_error_keeps_last_good() {
     let e = Env::new();
@@ -918,11 +917,7 @@ fn settings_io_error_keeps_last_good() {
         "files",
         "from claudeops import settings as s\na = s.load_settings()['theme']\nos.chmod(s.SETTINGS_JSON, 0o644)\nprint(a, s.load_settings()['theme'])",
     );
-    assert_eq!(
-        py.trim(),
-        "system system",
-        "Python: hata imzası önbellekte kalır"
-    );
+    assert_eq!(py.trim(), "system light", "Python: hata önbelleğe girmez");
     assert_eq!(
         r.load().str_of("theme"),
         "light",
@@ -930,18 +925,30 @@ fn settings_io_error_keeps_last_good() {
     );
 }
 
-/// Sahibe soruldu S2: UTF-8 olmayan settings.json. Python `load_settings` istisna fırlatır; Rust varsayılanlara düşer.
+/// TBD#374 S2: bozuk/UTF-8 olmayan settings.json iki dilde de varsayılanlara düşer; `store_backend` son iyi değeri korur.
 #[test]
-fn settings_non_utf8_documented_divergence() {
-    let e = Env::new();
-    std::fs::write(e.dir().settings_json(), b"{\"theme\": \"dark\xff\"}").unwrap();
-    let py = e.py(
-        "files",
-        "from claudeops.settings import load_settings\ntry:\n    load_settings(); print('ok')\nexcept Exception as ex:\n    print(type(ex).__name__)",
-    );
-    assert_eq!(py.trim(), "UnicodeDecodeError");
-    assert_eq!(
-        cops_state::settings::load(&e.dir()).str_of("theme"),
-        "system"
-    );
+fn settings_corrupt_keeps_store_backend_like_python() {
+    for bad in [&b"{\"theme\": \"dark\xff\"}"[..], b"{yarim", b"[1]"] {
+        let e = Env::new();
+        let p = e.dir().settings_json();
+        std::fs::write(&p, r#"{"store_backend": "db", "theme": "dark"}"#).unwrap();
+        let r = cops_state::settings::SettingsReader::new(e.dir());
+        assert_eq!(r.load().str_of("store_backend"), "db");
+        std::fs::write(e.root.join("bad"), bad).unwrap();
+        let py = e.py(
+            "files",
+            &format!(
+                "from claudeops import settings as s\na = s.load_settings()\nos.replace('{}', s.SETTINGS_JSON)\nb = s.load_settings()\nprint(a['store_backend'], b['store_backend'], b['theme'])",
+                e.root.join("bad").display()
+            ),
+        );
+        assert_eq!(py.trim(), "db db system");
+        std::fs::write(&p, bad).unwrap();
+        let got = r.load();
+        assert_eq!(got.str_of("store_backend"), "db");
+        assert_eq!(got.str_of("theme"), "system");
+        // silinen dosya düz varsayılandır
+        std::fs::remove_file(&p).unwrap();
+        assert_eq!(r.load().str_of("store_backend"), "files");
+    }
 }

@@ -4,7 +4,7 @@
 //! `tests/parity_settings.rs::settings_readers_match_python`. Model/effort varsayılanları (`default_model_for` ...)
 //! sağlayıcı bilgisini PARAMETRE alır (bu crate sağlayıcılara bağlı değil); parite: `tests/parity_steward.rs`.
 //!
-//! Python'un İSTİSNA fırlattığı iki tip hatası (bkz. `docs/rs-state.md` "Sahibe soruldu") burada [`SettingsTypeError`]
+//! Python'un İSTİSNA fırlattığı tip hatası (`history_warn_at` sonsuz; `docs/rs-state.md` S12) [`SettingsTypeError`]
 //! döner: sessizce yutulmaz, sessizce düzeltilmez.
 use crate::json::{Json, Map};
 use crate::paths::{expanduser_with, home_env, is_executable_file, realpath};
@@ -68,10 +68,10 @@ pub fn default_ucli_services() -> &'static [Json] {
     )
 }
 
-/// Python'un `TypeError`/`AttributeError` fırlattığı elle bozulmuş değer.
+/// Python'un istisna fırlattığı elle bozulmuş değer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsTypeError {
-    /// Hangi alan (ör. `ucli_services[2].models`).
+    /// Hangi alan (ör. `history_warn_at`).
     pub field: String,
     /// Python istisna türü.
     pub python: &'static str,
@@ -356,17 +356,17 @@ impl DaemonConfig {
     }
 }
 
-/// `normalize_ucli_services(raw)`: doğrulanmış hizmet listesi; `evren` her zaman var. Python'un `TypeError` verdiği
-/// `models` değeri (sıfır olmayan sayı / `true`) hata döner.
-pub fn normalize_ucli_services(raw: Option<&Json>) -> Result<Vec<Json>, SettingsTypeError> {
+/// `normalize_ucli_services(raw)`: doğrulanmış hizmet listesi; `evren` her zaman var. Dize/liste olmayan `models`
+/// yok sayılır.
+pub fn normalize_ucli_services(raw: Option<&Json>) -> Vec<Json> {
     let defaults = default_ucli_services();
     let rows = match raw {
         Some(Json::Array(a)) if !a.is_empty() => a,
-        _ => return Ok(defaults.to_vec()),
+        _ => return defaults.to_vec(),
     };
     let mut out: Vec<Json> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
-    for (idx, r) in rows.iter().enumerate() {
+    for r in rows.iter() {
         let Some(m) = r.as_object() else { continue };
         let field = |k: &str| py::str_or_empty(m.get(k));
         let sid = py::lower(py::strip(&field("id")));
@@ -413,13 +413,6 @@ pub fn normalize_ucli_services(raw: Option<&Json>) -> Result<Vec<Json>, Settings
         let items: Vec<String> = match m.get("models") {
             Some(Json::Str(s)) => s.replace('\n', ",").split(',').map(String::from).collect(),
             Some(Json::Array(a)) => a.iter().map(py::str_of).collect(),
-            Some(Json::Object(o)) => o.keys().cloned().collect(),
-            Some(v) if v.truthy() => {
-                return Err(SettingsTypeError {
-                    field: format!("ucli_services[{idx}].models"),
-                    python: "TypeError",
-                })
-            }
             _ => Vec::new(),
         };
         let mut models: Vec<String> = Vec::new();
@@ -476,7 +469,7 @@ pub fn normalize_ucli_services(raw: Option<&Json>) -> Result<Vec<Json>, Settings
     if !seen.iter().any(|s| s == "evren") {
         out.insert(0, defaults[0].clone());
     }
-    Ok(out)
+    out
 }
 
 impl Settings {
@@ -542,34 +535,28 @@ impl Settings {
     }
 
     /// `resolved_binary(cli)`: `provider_bin[cli]` (çalıştırılabilirse) > `shutil.which` > bilinen konumlar > çıplak ad.
-    /// `provider_bin[cli]` dize değilse Python `AttributeError` fırlatır: burada hata.
-    pub fn resolved_binary(&self, cli: &str, env: &SysEnv) -> Result<String, SettingsTypeError> {
+    /// Dize olmayan `provider_bin[cli]` yok sayılır.
+    pub fn resolved_binary(&self, cli: &str, env: &SysEnv) -> String {
         let over = match self.block("provider_bin").and_then(|b| b.get(cli)) {
-            None => String::new(),
             Some(Json::Str(s)) => py::strip(s).to_string(),
-            Some(_) => {
-                return Err(SettingsTypeError {
-                    field: format!("provider_bin.{cli}"),
-                    python: "AttributeError",
-                })
-            }
+            _ => String::new(),
         };
         if !over.is_empty() {
             let p = env.expand(&over);
             if is_executable_file(&p) {
-                return Ok(p);
+                return p;
             }
         }
         if let Some(found) = which(cli, env.path.as_ref()) {
-            return Ok(found);
+            return found;
         }
         for cand in known_binary_paths(cli) {
             let p = env.expand(cand);
             if is_executable_file(&p) {
-                return Ok(p);
+                return p;
             }
         }
-        Ok(cli.to_string())
+        cli.to_string()
     }
 
     /// `byok_env_for(cli)`: `{str(k): str(v)}` (yalnız doğru değerli `v`). SIR taşır: loglama.
@@ -657,7 +644,7 @@ impl Settings {
     }
 
     /// `ucli_services`.
-    pub fn ucli_services(&self) -> Result<Vec<Json>, SettingsTypeError> {
+    pub fn ucli_services(&self) -> Vec<Json> {
         normalize_ucli_services(self.get("ucli_services"))
     }
 

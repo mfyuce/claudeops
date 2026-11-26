@@ -58,7 +58,7 @@ fn writers_panic_in_live_dir_and_write_nothing() {
         ))));
         assert!(panics(|| drop(atomic_write_tsv(&d.roster_tsv(), "a\tb\n"))));
         assert!(panics(|| drop(FileLock::acquire(&d.join("k")))));
-        assert!(panics(|| drop(FileLock::blocking(&d.join("k.lock")))));
+        assert!(panics(|| drop(FileLock::exclusive(&d.join("k.lock")))));
         assert!(panics(|| drop(create_unique(d.root(), "a", ".tmp"))));
         assert!(panics(|| drop(write_corrupt_copy(&d.join("s.json"), b"x"))));
         assert!(panics(|| drop(

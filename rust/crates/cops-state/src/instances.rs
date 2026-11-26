@@ -271,7 +271,7 @@ impl<'a> Instances<'a> {
         f: impl FnOnce(&mut Map) -> Result<T, InstancesError>,
     ) -> Result<(T, WriteOutcome), InstancesError> {
         let path = self.docs.dir().instances_json();
-        let _lock = FileLock::blocking(&self.docs.dir().join("instances.json.lock"))
+        let _lock = FileLock::exclusive(&self.docs.dir().join("instances.json.lock"))
             .map_err(InstancesError::Lock)?;
         let (mut data, lossy) = self.read_checked()?;
         if lossy {

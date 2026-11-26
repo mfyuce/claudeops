@@ -230,7 +230,7 @@ fn load_cache_semantics() {
     assert_eq!(i.load().len(), 1, "önbellekten");
     e.py("files", "from claudeops import instances as i\ni.record_instance('b', blueprint=None, cwd='/c', cli='claude', model='m', origin='t')");
     assert_eq!(i.load().len(), 2);
-    // db: ayna dosyaya dokunmadan DB değişirse Rust yeni değeri görür (önbellek yok; sahibe soruldu)
+    // db: ayna dosyaya dokunmadan DB değişirse iki dil de yeni değeri görür (önbellek yok, TBD#374 S4)
     let e = Env::new();
     e.py("db", "from claudeops import instances as i\ni.record_instance('a', blueprint=None, cwd='/c', cli='claude', model='m', origin='t')");
     let docs = e.docs(Backend::Db);
@@ -453,32 +453,30 @@ fn mode_transitions_match_python() {
     }
 }
 
-/// Sahibe soruldu S3: `model` içinde satır sonu. Python kabul eder ve roster'a FAZLA satır yazar; Rust reddeder.
+/// TBD#374 S3: sekme/satır sonu içeren model iki dilde de reddedilir, dosyalar yazılmaz.
 #[test]
-fn register_model_newline_documented_divergence() {
-    let (a, b) = (Env::new(), Env::new());
-    let cwd = a.root.display().to_string();
-    let py = a.py(
-        "files",
-        &format!("from claudeops.commands import web as w\nprint(w._register_project('zza', '{cwd}', 'm\\nsahte\\t/etc')['ok'])"),
-    );
-    assert_eq!(py.trim(), "True");
-    assert_eq!(
-        a.read("models.tsv"),
-        "zza\tm\nsahte\t/etc\n",
-        "Python: satır enjeksiyonu"
-    );
-    let docs = b.docs(Backend::Files);
-    let r = Roster::new(&docs)
-        .register_project(
-            "zza",
-            &b.root.display().to_string(),
-            "m\nsahte\t/etc",
-            "",
-            &[],
-            |_| String::new(),
-        )
-        .map_err(|e| e.code());
-    assert_eq!(r, Err("io"));
-    assert!(!b.state.join("roster.tsv").exists() && !b.state.join("models.tsv").exists());
+fn register_model_bad_chars_like_python() {
+    for (py_model, model) in [
+        ("m\\nsahte\\t/etc", "m\nsahte\t/etc"),
+        ("a\\tb", "a\tb"),
+        ("a\\rb", "a\rb"),
+    ] {
+        let (a, b) = (Env::new(), Env::new());
+        let cwd = a.root.display().to_string();
+        let py = a.py(
+            "files",
+            &format!("from claudeops.commands import web as w\nprint(w._register_project('zza', '{cwd}', '{py_model}', lang='en')['error'])"),
+        );
+        assert_eq!(py.trim(), "model contains invalid characters");
+        let docs = b.docs(Backend::Files);
+        let r = Roster::new(&docs)
+            .register_project("zza", &b.root.display().to_string(), model, "", &[], |_| {
+                String::new()
+            })
+            .map_err(|e| e.code());
+        assert_eq!(r, Err("model_bad_chars"));
+        for e in [&a, &b] {
+            assert!(!e.state.join("roster.tsv").exists() && !e.state.join("models.tsv").exists());
+        }
+    }
 }

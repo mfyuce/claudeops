@@ -72,6 +72,7 @@ pub enum RegisterError {
     ConflictsRunning { other: String },
     DirNotFound { cwd: String },
     CwdBadChars,
+    ModelBadChars,
     Io(io::Error),
 }
 
@@ -84,6 +85,7 @@ impl RegisterError {
             RegisterError::ConflictsRunning { .. } => "conflicts_running",
             RegisterError::DirNotFound { .. } => "dir_not_found",
             RegisterError::CwdBadChars => "cwd_bad_chars",
+            RegisterError::ModelBadChars => "model_bad_chars",
             RegisterError::Io(_) => "io",
         }
     }
@@ -172,8 +174,13 @@ fn find_line<'a>(lines: &[&'a str], name: &str) -> Option<(usize, bool, &'a str)
     })
 }
 
+/// `web._tsv_unsafe`: TSV alanında sekme ya da satır sonu.
+fn tsv_unsafe(value: &str) -> bool {
+    value.contains(['\t', '\n', '\r'])
+}
+
 fn check_fields(fields: &[&str]) -> io::Result<()> {
-    if fields.iter().any(|f| f.contains(['\t', '\n', '\r'])) {
+    if fields.iter().any(|f| tsv_unsafe(f)) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "TSV alanında sekme/satır sonu",
@@ -325,7 +332,7 @@ impl<'a> Roster<'a> {
         if cwd.is_empty() || !Path::new(&cwd).is_dir() {
             return Err(RegisterError::DirNotFound { cwd });
         }
-        if cwd.contains(['\t', '\n']) {
+        if tsv_unsafe(&cwd) {
             return Err(RegisterError::CwdBadChars);
         }
         let cli = Some(py_strip(cli))
@@ -335,8 +342,9 @@ impl<'a> Roster<'a> {
             "" => default_model(cli),
             m => m.to_string(),
         };
-        // iki alan da yazılmadan önce denetlenir: roster eklenip models reddedilirse yarım kayıt kalırdı
-        check_fields(&[&cwd, &model])?;
+        if tsv_unsafe(&model) {
+            return Err(RegisterError::ModelBadChars);
+        }
         let guard = self.lock()?;
         if taken()? {
             return Err(RegisterError::AlreadyRegistered);
