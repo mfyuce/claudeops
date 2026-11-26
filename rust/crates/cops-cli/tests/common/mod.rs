@@ -1,5 +1,5 @@
 //! Ortak test ortamı: yalıtık HOME + CLAUDEOPS_DIR, eklenti kapalı, `PATH` başında sahte `systemctl` (çağrıları günlüğe
-//! yazar, `FAKE_SC_FAIL` içindeki komutta 1 döner). Gerçek `systemctl`e ulaşılamaz: sahte olan PATH'te ilk sıradadır ve
+//! yazar, `FAKE_SC_FAIL` içindeki komutta 1 döner; `is-active`/`is-enabled` `FAKE_SC_STATE`, varsayılan 3 = durmuş). Gerçek `systemctl`e ulaşılamaz: sahte olan PATH'te ilk sıradadır ve
 //! testler yalnız salt okuma yollarında Python'u koşar.
 #![allow(dead_code)]
 
@@ -49,7 +49,7 @@ impl Sandbox {
         let sc = t.path().join("fakebin/systemctl");
         std::fs::write(
             &sc,
-            "#!/bin/sh\necho \"$*\" >> \"$FAKE_SC_LOG\"\ncase \" $FAKE_SC_FAIL \" in *\" $2 \"*) exit 1;; esac\nexit 0\n",
+            "#!/bin/sh\necho \"$*\" >> \"$FAKE_SC_LOG\"\ncase \"$2\" in is-active|is-enabled) exit \"${FAKE_SC_STATE:-3}\";; esac\ncase \" $FAKE_SC_FAIL \" in *\" $2 \"*) exit 1;; esac\nexit 0\n",
         )
         .unwrap();
         std::fs::set_permissions(&sc, std::fs::Permissions::from_mode(0o755)).unwrap();

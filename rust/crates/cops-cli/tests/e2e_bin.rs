@@ -42,7 +42,8 @@ fn on_apply_with_failing_systemctl_rolls_back_files() {
     let log = std::fs::read_to_string(sb.sc_log()).unwrap();
     assert_eq!(
         log,
-        "--user daemon-reload\n--user restart claudeops-web.service\n--user daemon-reload\n--user restart claudeops-web.service\n"
+        "--user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
+         --user daemon-reload\n--user restart claudeops-web.service\n--user daemon-reload\n--user restart claudeops-web.service\n"
     );
     assert!(!sb.unit_dir().join("claudeops-front.service").exists());
     assert!(!sb
@@ -205,4 +206,32 @@ fn exit_code_and_signal_pass_through() {
 
 fn libc_sigterm() -> i32 {
     15
+}
+
+#[test]
+fn leaked_depth_from_other_lineage_is_ignored() {
+    // `COPS_RS_DEPTH` Python'un başlattığı uzun ömürlü süreçlere sızar; başka soydan gelen değer sayılmaz, kendi soyumuzdan
+    // gelen (burada test süreci, cops-rs'nin atası) sayılır.
+    let sb = Sandbox::new();
+    let s = sb.t.path().join("py.sh");
+    std::fs::write(&s, "#!/bin/sh\nexit 7\n").unwrap();
+    std::fs::set_permissions(&s, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut other = std::process::Command::new("sleep")
+        .arg("5")
+        .spawn()
+        .unwrap();
+    let run = |v: String| {
+        sb.cmd(&bin())
+            .env("COPS_PY", &s)
+            .env("COPS_RS_DEPTH", v)
+            .arg("list")
+            .output()
+            .unwrap()
+    };
+    assert_eq!(run(format!("9:{}", other.id())).status.code(), Some(7));
+    let out = run(format!("9:{}", std::process::id()));
+    assert_eq!(out.status.code(), Some(125));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("özyineleme"));
+    other.kill().unwrap();
+    other.wait().unwrap();
 }

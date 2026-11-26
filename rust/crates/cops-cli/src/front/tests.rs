@@ -22,6 +22,11 @@ struct World {
     fail_always: HashMap<String, i32>,
     /// systemctl komutu -> (adres, yeni sahip) etkileri
     effects: Vec<(String, SocketAddr, PortOwner)>,
+    /// `is-active` / `is-enabled` cevapları (sorgular `calls`a yazılmaz)
+    front_active: bool,
+    front_enabled: bool,
+    /// durum sorgusu çalıştırılamasın
+    query_err: bool,
 }
 
 #[derive(Clone, Default)]
@@ -48,6 +53,17 @@ impl Systemctl for Fake {
     fn run(&mut self, args: &[&str]) -> Result<i32, String> {
         let cmd = args.join(" ");
         let mut w = self.0.borrow_mut();
+        if let [q @ ("is-active" | "is-enabled"), "--quiet", FRONT_UNIT_NAME] = args {
+            if w.query_err {
+                return Err("systemctl başlatılamadı".into());
+            }
+            let yes = if *q == "is-active" {
+                w.front_active
+            } else {
+                w.front_enabled
+            };
+            return Ok(if yes { 0 } else { 3 });
+        }
         w.calls.push(cmd.clone());
         if let Some(rc) = w
             .fail
@@ -190,6 +206,8 @@ impl Env {
         )
         .unwrap();
         let mut w = self.w.0.borrow_mut();
+        w.front_active = true;
+        w.front_enabled = true;
         w.owners.insert(la(), unit(FRONT_UNIT_NAME));
         w.owners.insert(ia(), unit(WEB_UNIT_NAME));
         w.effects = vec![
@@ -721,4 +739,213 @@ fn dist_dir_resolves_from_python_repo() {
             std::fs::canonicalize(&repo).unwrap().display()
         )
     );
+}
+
+// ---- gözden geçirme düzeltmeleri (rs/cli 2. tur) ----
+
+#[test]
+fn fix_c_on_listen_change_failure_restarts_old_front_instead_of_stopping_it() {
+    // Ön kapı 8765'te çalışıyor; `--listen` 9000'e değişiyor ve yeni birim dinlemiyor. Eski kod "9000'de ön kapı yoktu"
+    // deyip çalışan ön kapıyı `disable --now` ile kapatıyordu.
+    let e = env();
+    e.front_on();
+    e.w.0.borrow_mut().effects.clear();
+    let (rc, out) = e.run(Action::On, true, "127.0.0.1:9000", I);
+    assert_eq!(rc, 1, "{out}");
+    assert!(
+        out.contains("ön kapı 127.0.0.1:9000 üzerinde dinlemiyor"),
+        "{out}"
+    );
+    assert!(out.contains("geri alındı"), "{out}");
+    assert_eq!(
+        e.calls(),
+        [
+            "daemon-reload",
+            "enable --now claudeops-front.service",
+            "restart claudeops-front.service",
+            "daemon-reload",
+            "restart claudeops-front.service"
+        ]
+    );
+    assert!(std::fs::read_to_string(&e.paths.front_unit)
+        .unwrap()
+        .starts_with("eski birim"));
+}
+
+#[test]
+fn fix_c_on_rollback_keeps_previous_enablement() {
+    // Önceden çalışan ama etkin olmayan ön kapı: geri almada yeniden başlar, `enable --now`un etkinleştirmesi geri alınır.
+    let e = env();
+    e.front_on();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.front_enabled = false;
+        w.fail.insert("restart claudeops-front.service".into(), 1);
+    }
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert_eq!(
+        e.calls()[3..],
+        [
+            "daemon-reload",
+            "restart claudeops-front.service",
+            "disable claudeops-front.service"
+        ]
+    );
+    // Önceden durmuş ama etkin ön kapı: `disable --now` değil `stop` (etkinlik korunur).
+    let e = env();
+    e.web_outside();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.front_enabled = true;
+        w.fail
+            .insert("enable --now claudeops-front.service".into(), 1);
+    }
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert_eq!(
+        e.calls()[3..],
+        [
+            "stop claudeops-front.service",
+            "daemon-reload",
+            "restart claudeops-web.service"
+        ]
+    );
+}
+
+#[test]
+fn on_restarts_an_already_running_front_so_the_new_unit_applies() {
+    // drop-in yok (ya da web iç portta değil) ama ön kapı çalışıyor: `enable --now` çalışan birimi yeniden başlatmaz.
+    let e = env();
+    e.web_outside();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.front_active = true;
+        w.front_enabled = true;
+    }
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    assert_eq!(
+        e.calls(),
+        [
+            "daemon-reload",
+            "restart claudeops-web.service",
+            "enable --now claudeops-front.service",
+            "restart claudeops-front.service"
+        ]
+    );
+}
+
+#[test]
+fn fix_c_on_web_not_on_internal_is_rolled_back() {
+    let e = env();
+    e.web_outside();
+    e.w.0
+        .borrow_mut()
+        .effects
+        .retain(|(c, a, _)| !(c == "restart claudeops-web.service" && *a == ia()));
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert!(
+        out.contains("HATA: web iç adreste 127.0.0.1:28765 doğrulanamadı"),
+        "{out}"
+    );
+    assert!(out.contains("geri alındı"), "{out}");
+    assert!(!Path::new(&e.paths.dropin).exists());
+}
+
+#[test]
+fn unknown_front_state_changes_nothing() {
+    for action in [Action::On, Action::Off] {
+        let e = env();
+        e.front_on();
+        e.w.0.borrow_mut().query_err = true;
+        let (rc, out) = e.run(action, true, L, I);
+        assert_eq!(rc, 1, "{out}");
+        assert!(out.contains("durumu okunamadı"), "{out}");
+        assert!(e.calls().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(&e.paths.dropin).unwrap(),
+            "eski drop-in\n"
+        );
+        assert!(!Path::new(&e.paths.secret_path).exists());
+    }
+}
+
+#[test]
+fn fix_c_off_disable_failure_keeps_stopped_front_stopped() {
+    // Birim var ama durmuş ve etkin değil; `disable --now` başarısız: geri alma onu AÇMAZ (eski kod `enable --now` yapardı).
+    let e = env();
+    e.front_on();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.front_active = false;
+        w.front_enabled = false;
+        w.fail
+            .insert("disable --now claudeops-front.service".into(), 1);
+    }
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert_eq!(e.calls(), ["disable --now claudeops-front.service"]);
+    assert!(out.contains("geri alındı"), "{out}");
+}
+
+#[test]
+fn off_verifies_web_on_its_own_port_when_front_listen_differs() {
+    // Ön kapı 9000'de; web drop-in'siz birimiyle 8765'e döner. Doğrulama 9000'de web beklerse hep geri alırdı.
+    let e = env();
+    e.front_on();
+    let alt: SocketAddr = "127.0.0.1:9000".parse().unwrap();
+    std::fs::write(
+        &e.paths.front_unit,
+        "ExecStart=/x/copsd --listen 127.0.0.1:9000 --upstream y\n",
+    )
+    .unwrap();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.owners.remove(&la());
+        w.owners.insert(alt, unit(FRONT_UNIT_NAME));
+        w.effects = vec![
+            (
+                "disable --now claudeops-front.service".into(),
+                alt,
+                PortOwner::NoListener,
+            ),
+            (
+                "restart claudeops-web.service".into(),
+                la(),
+                unit(WEB_UNIT_NAME),
+            ),
+        ];
+    }
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    assert!(out.ends_with("kapandı\n"), "{out}");
+}
+
+#[test]
+fn web_addr_follows_web_unit_flags() {
+    let a = |t: &str| web_addr(t).map(|a| a.to_string());
+    assert_eq!(a(LIVE).as_deref(), Some("127.0.0.1:8765"));
+    assert_eq!(
+        a("ExecStart=/x -m claudeops web --port 9001 --host 0.0.0.0").as_deref(),
+        Some("127.0.0.1:9001")
+    );
+    assert_eq!(
+        a("ExecStart=/bin/bash -ic 'python3 -m claudeops web --host=127.0.0.2 --port=9002'")
+            .as_deref(),
+        Some("127.0.0.2:9002")
+    );
+    assert_eq!(a("ExecStart=/x web --port abc"), None);
+    assert_eq!(a("[Service]\n"), None);
+}
+
+#[test]
+fn relative_bin_is_a_blocker() {
+    let mut e = env();
+    std::fs::write(e.root.join("rel-copsd"), "").unwrap();
+    e.bin = "rel-copsd".into();
+    let (rc, out) = e.run(Action::On, false, L, I);
+    assert_eq!(rc, 1);
+    assert!(out.contains("ikili yolu mutlak değil: rel-copsd"), "{out}");
 }

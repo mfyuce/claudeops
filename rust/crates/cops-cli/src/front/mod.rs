@@ -6,6 +6,11 @@
 //!   `claudeops-web.service` olmalı); Python bunu "yeniden uygulama" sayıp ön kapıyı yabancı porta vekil yapar;
 //! - (c) `on`/`off` yarıda kalırsa (dosya yazımı, systemctl hatası, ön kapının dinlemeye başlamaması, web'in dış porta
 //!   dönmemesi) önceki dosya ve birim durumuna dönülür; dönüş adımlarının her biri yazılır, başarısız olan açıkça söylenir.
+//!   Ön kapının önceki durumu `systemctl is-active/is-enabled` ile okunur (port sahibi değil: `--listen` değişebilir);
+//!   okunamazsa hiçbir şey değişmez. `on` web'in iç adreste olduğunu da doğrular; `off` web'i kendi adresinde
+//!   ([`web_addr`], ön kapının `--listen`i değil) bekler.
+//! - `on`: zaten çalışan ön kapı (yeniden uygulama dışı yol) `restart` edilir; Python yalnız `enable --now` der, yeni birim
+//!   metni uygulanmaz ("Python hatası?" P6). Göreli `--bin` engeldir (P5).
 
 pub mod fsx;
 pub mod net;
@@ -257,6 +262,8 @@ pub struct Plan {
     pub new_execstart: Option<String>,
     /// dış adres (geçerliyse)
     pub listen: Option<SocketAddr>,
+    /// iç adres (geçerliyse)
+    pub internal: Option<SocketAddr>,
 }
 
 /// Python `plan_on` (+ düzeltmeler a, b). `web_unit_text`: `WEB_UNIT` içeriği; yoksa `Ok("")`, okunamadıysa `Err`.
@@ -275,6 +282,13 @@ pub fn plan_on(
         ));
     } else if !is_exec_file(binp) {
         blockers.push(format!("ikili çalıştırılabilir dosya değil: {binp}"));
+    }
+    // systemd `ExecStart=` göreli yolu reddeder (birim hiç başlamaz). Python göreli `--bin`i `py/` dizinine göre denetler ve
+    // birime göreli yazar ("Python hatası?" P5).
+    if !binp.starts_with('/') {
+        blockers.push(format!(
+            "ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)"
+        ));
     }
     let (text, read_err) = match web_unit_text {
         Ok(t) => (t, None),
@@ -357,6 +371,7 @@ pub fn plan_on(
         reapply,
         new_execstart: new,
         listen: la,
+        internal: ia,
     }
 }
 
@@ -391,8 +406,8 @@ pub fn run(ctx: &mut Ctx<'_>, a: &FrontArgs) -> i32 {
         Action::On => on(ctx, a.apply, &listen, &internal, &bin),
         Action::Off => off(ctx, a.apply, &listen),
     };
-    let _ = ctx.out.flush();
-    match r {
+    // Yazılamayan çıktı (kapalı boru) yutulmaz (ders H9).
+    match r.and_then(|c| ctx.out.flush().map(|_| c)) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("cops-rs: çıktı yazılamadı: {e}");
@@ -525,6 +540,43 @@ fn run_sc(sc: &mut dyn Systemctl, args: &[&str]) -> Result<(), String> {
     }
 }
 
+/// Ön kapı biriminin değişiklikten önceki durumu. Geri alma bunu geri kurar: dış portun sahibine bakmak `--listen`
+/// değişince yanılır (eski adreste çalışan ön kapı "çalışmıyordu" sanılıp kapatılırdı).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UnitState {
+    active: bool,
+    enabled: bool,
+}
+
+/// `systemctl --user is-active|is-enabled --quiet claudeops-front.service` (0 = evet). Çalıştırılamazsa hata: durum
+/// bilinmeden hiçbir şey değiştirilmez.
+fn front_state(sc: &mut dyn Systemctl) -> Result<UnitState, String> {
+    let active = sc.run(&["is-active", "--quiet", FRONT_UNIT_NAME])? == 0;
+    let enabled = sc.run(&["is-enabled", "--quiet", FRONT_UNIT_NAME])? == 0;
+    Ok(UnitState { active, enabled })
+}
+
+impl Undo {
+    /// Önceden çalışmayan ön kapıyı durdurur; etkinlik durumu önceki gibi kalır.
+    fn front_stop(&mut self, sc: &mut dyn Systemctl, prev: UnitState) {
+        if prev.enabled {
+            self.sc(sc, &["stop", FRONT_UNIT_NAME]);
+        } else {
+            self.sc(sc, &["disable", "--now", FRONT_UNIT_NAME]);
+        }
+    }
+
+    /// Durdurulmuş ön kapının önceki etkin/çalışır durumunu geri kurar.
+    fn front_back(&mut self, sc: &mut dyn Systemctl, prev: UnitState) {
+        match (prev.enabled, prev.active) {
+            (true, true) => self.sc(sc, &["enable", "--now", FRONT_UNIT_NAME]),
+            (false, true) => self.sc(sc, &["start", FRONT_UNIT_NAME]),
+            (true, false) => self.sc(sc, &["enable", FRONT_UNIT_NAME]),
+            (false, false) => {}
+        }
+    }
+}
+
 fn on(
     ctx: &mut Ctx<'_>,
     apply: bool,
@@ -543,11 +595,22 @@ fn on(
         writeln!(ctx.out, "(plan; uygulamak için --apply)")?;
         return Ok(0);
     }
-    let (Some(new_es), Some(la)) = (plan.new_execstart.clone(), plan.listen) else {
+    let (Some(new_es), Some(la), Some(ia)) =
+        (plan.new_execstart.clone(), plan.listen, plan.internal)
+    else {
         writeln!(ctx.out, "HATA: plan eksik (iç hata)")?;
         return Ok(1);
     };
-    let front_was_active = ctx.net.owner(la).is_unit(FRONT_UNIT_NAME);
+    let prev = match front_state(ctx.sc) {
+        Ok(s) => s,
+        Err(e) => {
+            writeln!(
+                ctx.out,
+                "HATA: {FRONT_UNIT_NAME} durumu okunamadı: {e} (hiçbir şey değişmedi)"
+            )?;
+            return Ok(1);
+        }
+    };
     if let Err(e) = secret::ensure_secret_file(&p.claudeops_dir, ctx.timing.lock) {
         writeln!(ctx.out, "HATA: gizli üretilemedi: {}: {e}", p.secret_path)?;
         return Ok(1);
@@ -595,22 +658,27 @@ fn on(
             return Ok(1);
         }
     }
-    let cmds: &[&[&str]] = if plan.reapply {
-        &[
+    let mut cmds: Vec<&[&str]> = if plan.reapply {
+        vec![
             &["daemon-reload"],
             &["enable", "--now", "claudeops-front.service"],
             &["restart", "claudeops-front.service"],
         ]
     } else {
-        &[
+        vec![
             &["daemon-reload"],
             &["restart", "claudeops-web.service"],
             &["enable", "--now", "claudeops-front.service"],
         ]
     };
+    // Zaten çalışan ön kapıda `enable --now` yeni birim metnini (ör. yeni `--upstream`) uygulamaz: Python eski ayarla
+    // "açıldı" der ("Python hatası?" P6).
+    if !plan.reapply && prev.active {
+        cmds.push(&["restart", "claudeops-front.service"]);
+    }
     let mut ran = 0;
     let mut failure: Option<String> = None;
-    for cmd in cmds {
+    for cmd in &cmds {
         ran += 1;
         if let Err(e) = run_sc(ctx.sc, cmd) {
             // Python metni aynı ("HATA: systemctl --user ..."); neden ayrı satırda.
@@ -620,17 +688,29 @@ fn on(
         }
     }
     if failure.is_none() {
+        // Doğrulama: ön kapı dış adreste, web (yeniden başlatıldıysa) iç adreste.
         let net = ctx.net;
-        let up = wait_for(ctx.timing.front_up, ctx.timing.poll, || {
-            net.owner(la).is_unit(FRONT_UNIT_NAME)
-        });
-        if !up {
-            writeln!(
-                ctx.out,
-                "HATA: ön kapı {listen} üzerinde dinlemiyor ({} sn içinde {FRONT_UNIT_NAME} görülmedi: {})",
-                ctx.timing.front_up.as_secs(),
-                ctx.net.owner(la).describe()
-            )?;
+        let web_needed = !plan.reapply;
+        let ok = |n: &dyn Net| {
+            n.owner(la).is_unit(FRONT_UNIT_NAME)
+                && (!web_needed || n.owner(ia).is_unit(WEB_UNIT_NAME))
+        };
+        if !wait_for(ctx.timing.front_up, ctx.timing.poll, || ok(net)) {
+            if !net.owner(la).is_unit(FRONT_UNIT_NAME) {
+                writeln!(
+                    ctx.out,
+                    "HATA: ön kapı {listen} üzerinde dinlemiyor ({} sn içinde {FRONT_UNIT_NAME} görülmedi: {})",
+                    ctx.timing.front_up.as_secs(),
+                    net.owner(la).describe()
+                )?;
+            } else {
+                writeln!(
+                    ctx.out,
+                    "HATA: web iç adreste {internal} doğrulanamadı ({} sn içinde {WEB_UNIT_NAME} görülmedi: {})",
+                    ctx.timing.front_up.as_secs(),
+                    net.owner(ia).describe()
+                )?;
+            }
             failure = Some("doğrulama".into());
         }
     } else if let Some(e) = &failure {
@@ -640,16 +720,17 @@ fn on(
         writeln!(ctx.out, "açıldı: dış {listen} -> iç {internal}")?;
         return Ok(0);
     }
-    // Geri alma: başlatılan ön kapıyı durdur, dosyaları geri koy, yeniden yükle, web'i eski portuna, önceki ön kapıyı geri aç.
+    // Geri alma: önceden çalışmayan ön kapıyı durdur, dosyaları geri koy, yeniden yükle, web'i eski portuna, önceden çalışan
+    // ön kapıyı eski birimiyle yeniden başlat; etkinlik durumu önceki gibi.
     let mut u = Undo::new();
-    let front_started = cmds[..ran]
+    let front_touched = cmds[..ran]
         .iter()
         .any(|c| c.last() == Some(&"claudeops-front.service"));
     let web_restarted = cmds[..ran]
         .iter()
-        .any(|c| c == &["restart", "claudeops-web.service"]);
-    if front_started && !front_was_active {
-        u.sc(ctx.sc, &["disable", "--now", "claudeops-front.service"]);
+        .any(|c| *c == ["restart", "claudeops-web.service"]);
+    if front_touched && !prev.active {
+        u.front_stop(ctx.sc, prev);
     }
     u.file(&p.front_unit, &prev_front);
     u.file(&p.dropin, &prev_drop);
@@ -657,8 +738,11 @@ fn on(
     if web_restarted {
         u.sc(ctx.sc, &["restart", "claudeops-web.service"]);
     }
-    if front_started && front_was_active {
+    if front_touched && prev.active {
         u.sc(ctx.sc, &["restart", "claudeops-front.service"]);
+        if !prev.enabled {
+            u.sc(ctx.sc, &["disable", "claudeops-front.service"]);
+        }
     }
     u.report(ctx.out)?;
     Ok(1)
@@ -680,6 +764,36 @@ fn front_listen(front_unit: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.into())
 }
 
+/// `off` sonrası web'in döneceği adres: web biriminin (drop-in'siz) ExecStart'ındaki `--host`/`--port` (ya da `=`li biçim),
+/// yoksa web varsayılanı `127.0.0.1:8765` (`web.DEFAULT_HOST/DEFAULT_PORT`). Joker ya da ad olan host loopback'ten yoklanır.
+/// Biçim tanınmazsa `None` (çağıran ön kapının dış adresine düşer).
+pub fn web_addr(web_unit_text: &str) -> Option<SocketAddr> {
+    let es = web_execstart(web_unit_text)?;
+    let es = es.strip_suffix('\'').unwrap_or(&es);
+    let toks: Vec<&str> = es.split_whitespace().collect();
+    let (mut host, mut port) = ("127.0.0.1".to_string(), "8765".to_string());
+    let mut i = 0;
+    while i < toks.len() {
+        let t = toks[i];
+        if t == "--host" || t == "--port" {
+            if let Some(v) = toks.get(i + 1) {
+                *(if t == "--host" { &mut host } else { &mut port }) = v.to_string();
+                i += 1;
+            }
+        } else if let Some(v) = t.strip_prefix("--host=") {
+            host = v.to_string();
+        } else if let Some(v) = t.strip_prefix("--port=") {
+            port = v.to_string();
+        }
+        i += 1;
+    }
+    let ip = match host.parse::<std::net::Ipv4Addr>() {
+        Ok(ip) if !ip.is_unspecified() => ip,
+        _ => std::net::Ipv4Addr::LOCALHOST,
+    };
+    net::parse_listen(&format!("{ip}:{port}")).ok()
+}
+
 fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32> {
     let p = ctx.paths.clone();
     let steps = [
@@ -693,13 +807,26 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         writeln!(ctx.out, "(plan; uygulamak için --apply)")?;
         return Ok(0);
     }
-    let listen = front_listen(&p.front_unit, listen_arg);
-    let la = match net::parse_listen(&listen) {
-        Ok(a) => a,
+    // Doğrulanacak adres: web'in kendi adresi (ön kapının `--listen`i farklı olabilir; web oraya değil kendi portuna döner).
+    let wa = match read_web_unit(&p.web_unit).ok().and_then(|t| web_addr(&t)) {
+        Some(a) => a,
+        None => match net::parse_listen(&front_listen(&p.front_unit, listen_arg)) {
+            Ok(a) => a,
+            Err(e) => {
+                writeln!(
+                    ctx.out,
+                    "HATA: geçersiz dış adres: {e} (hiçbir şey değişmedi)"
+                )?;
+                return Ok(1);
+            }
+        },
+    };
+    let prev = match front_state(ctx.sc) {
+        Ok(s) => s,
         Err(e) => {
             writeln!(
                 ctx.out,
-                "HATA: geçersiz dış adres: {e} (hiçbir şey değişmedi)"
+                "HATA: {FRONT_UNIT_NAME} durumu okunamadı: {e} (hiçbir şey değişmedi)"
             )?;
             return Ok(1);
         }
@@ -721,7 +848,7 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         if unit_exists {
             writeln!(ctx.out, "HATA: {}\n  neden: {e}", show(&disable))?;
             let mut u = Undo::new();
-            u.sc(ctx.sc, &["enable", "--now", "claudeops-front.service"]);
+            u.front_back(ctx.sc, prev);
             u.report(ctx.out)?;
             return Ok(1);
         }
@@ -732,19 +859,17 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
     }
     let net = ctx.net;
     let freed = wait_for(ctx.timing.port_free, ctx.timing.poll, || {
-        let o = net.owner(la);
-        !o.is_unit(FRONT_UNIT_NAME) && (o.is_unit(WEB_UNIT_NAME) || !net.busy(la))
+        let o = net.owner(wa);
+        !o.is_unit(FRONT_UNIT_NAME) && (o.is_unit(WEB_UNIT_NAME) || !net.busy(wa))
     });
     if !freed {
         writeln!(
             ctx.out,
-            "HATA: dış port {listen} boşalmadı ({}); web oraya dönemez",
-            ctx.net.owner(la).describe()
+            "HATA: dış port {wa} boşalmadı ({}); web oraya dönemez",
+            ctx.net.owner(wa).describe()
         )?;
         let mut u = Undo::new();
-        if unit_exists {
-            u.sc(ctx.sc, &["enable", "--now", "claudeops-front.service"]);
-        }
+        u.front_back(ctx.sc, prev);
         u.report(ctx.out)?;
         return Ok(1);
     }
@@ -755,9 +880,7 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         if web {
             u.sc(ctx.sc, &["restart", "claudeops-web.service"]);
         }
-        if unit_exists {
-            u.sc(ctx.sc, &["enable", "--now", "claudeops-front.service"]);
-        }
+        u.front_back(ctx.sc, prev);
         u.report(ctx.out)
     };
     if let Err(e) = fsx::restore(Path::new(&p.dropin), &Prev::Absent) {
@@ -787,14 +910,14 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         return Ok(rc);
     }
     let up = wait_for(ctx.timing.web_up, ctx.timing.poll, || {
-        net.owner(la).is_unit(WEB_UNIT_NAME)
+        net.owner(wa).is_unit(WEB_UNIT_NAME)
     });
     if !up {
         writeln!(
             ctx.out,
-            "HATA: web {listen} üzerinde doğrulanamadı ({} sn: {})",
+            "HATA: web {wa} üzerinde doğrulanamadı ({} sn: {})",
             ctx.timing.web_up.as_secs(),
-            ctx.net.owner(la).describe()
+            ctx.net.owner(wa).describe()
         )?;
         full_undo(ctx, true)?;
         return Ok(1);
