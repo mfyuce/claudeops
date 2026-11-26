@@ -193,7 +193,7 @@ impl<'a> Instances<'a> {
                 ".corrupt-{}",
                 &crate::sha256::sha256_hex(&raw)[..8]
             ));
-            if !std::path::Path::new(&known).exists() {
+            if !crate::fsutil::has_content(std::path::Path::new(&known), &raw) {
                 match crate::fsutil::write_corrupt_copy(path, &raw) {
                     Ok(dest) => self
                         .docs

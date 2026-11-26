@@ -17,7 +17,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
-from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file
+from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file, _write_corrupt_copy
 from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
 
@@ -73,9 +73,8 @@ def _keep_corrupt_mirror() -> None:
         with open(INSTANCES_JSON, "rb") as f:
             raw = f.read()
         dest = f"{INSTANCES_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
-        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as out:
-            out.write(raw)
+        if not _write_corrupt_copy(dest, raw):
+            return
     except OSError:
         return
     diag_log("instances_mirror_corrupt", backup=dest)
