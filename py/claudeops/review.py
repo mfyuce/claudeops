@@ -7,12 +7,14 @@ Havuz `projects.json`'a YAZILMAZ (aynı adın iki kimlikte olması `ownership_in
 from __future__ import annotations
 import hashlib
 import json
+import math
 import os
 import calendar
 import re
 import subprocess
 import time
 import unicodedata
+from .diaglog import diag_log
 from .textutil import collapse_ws
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
@@ -47,12 +49,39 @@ def capacity_retry_seconds(*texts: Any) -> float:
     return CAPACITY_RETRY_MIN
 
 
+_BAD_SEEN: Set[Tuple[str, str]] = set()      # aynı bozuk kayıt süreç başına bir kez loglanır (her turda tekrar yok)
+_BAD_SEEN_MAX = 1000
+
+
+def _log_bad(what: str, key: Any) -> None:
+    """Atlanan bozuk kaydı diag.log'a yazar. Yalnız tür ve anahtar: bozuk DEĞER yazılmaz (sır taşıyabilir)."""
+    mark = (what, str(key)[:200])
+    if mark in _BAD_SEEN:
+        return
+    if len(_BAD_SEEN) >= _BAD_SEEN_MAX:
+        _BAD_SEEN.clear()
+    _BAD_SEEN.add(mark)
+    diag_log("review_bad_record", what=what, key=mark[1])
+
+
+def _field(rec: Any, name: str, what: str, key: Any) -> Optional[float]:
+    """Kayıttaki sayı alanı; yok/boş = 0, sayıya çevrilemiyorsa None (loglanır, çağıran kaydı atlar)."""
+    try:
+        return float(rec.get(name) or 0)
+    except (TypeError, ValueError, OverflowError):
+        _log_bad(f"{what}.{name}", key)
+        return None
+
+
 UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma", CAPACITY_ERROR_PREFIX)     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
 
 
 def counts_as_attempt(rec: Any) -> bool:
     """Bu çift kaydının hatası deneme hakkını TÜKETİR mi: restart/iptal/spawn hatası tüketmez (aynı çift 30 gün kilitlenmesin);
     gerçek zaman aşımı/`partial`/rc≠0 tüketir."""
+    if rec and not isinstance(rec, dict):
+        _log_bad("pairs.record", type(rec).__name__)
+        return False
     err = str((rec or {}).get("error") or "")
     if err.startswith(CAPACITY_ERROR_PREFIX) and int(_num((rec or {}).get("attempts"))) > CAPACITY_MAX_TRIES:
         return True                       # sağlayıcı kalıcı sıkışıksa sonsuz yeniden deneme yok: sınırdan sonra normal deneme sayılır
@@ -940,7 +969,7 @@ def reconcile_copilot_blocks(hist: Dict[str, Any], info: Optional[Tuple[float, f
     blocks = hist.setdefault("blocks", {})
     cur = blocks.get("copilot") if isinstance(blocks.get("copilot"), dict) else None
     if pct >= stop_pct:
-        if cur and float(cur.get("until") or 0) >= reset - 60:
+        if cur and (_field(cur, "until", "blocks", "copilot") or 0.0) >= reset - 60:
             return []
         blocks["copilot"] = {"until": float(reset), "set_at": now,
                              "reason": f"{COPILOT_BLOCK_REASON}: %{pct:g} kullanıldı (eşik %{stop_pct:g}), {detail}; yenilenme {time.strftime('%Y-%m-%d %H:%M', time.localtime(reset))}"}
@@ -1021,7 +1050,7 @@ def reconcile_agy_blocks(hist: Dict[str, Any], usage: Dict[str, Dict[str, Tuple[
             continue
         cur = blocks.get(key) if isinstance(blocks.get(key), dict) else None
         if until:
-            if not cur or abs(float(cur.get("until") or 0) - until) > 60:
+            if not cur or abs((_field(cur, "until", "blocks", key) or 0.0) - until) > 60:
                 blocks[key] = {"until": until, "set_at": now, "reason": f"agy /usage: havuz kapalı ({agy_pool(model)}), yenilenme {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))}"}
                 changed.append(key)
         elif cur is not None and now - _num(cur.get("set_at")) > AGY_BLOCK_GRACE:
@@ -1060,8 +1089,14 @@ def blocked_modes(history: Any, now: float) -> List[str]:
     b = history.get("blocks") if isinstance(history, dict) else None
     if not isinstance(b, dict):
         return []
-    return sorted(m for m, e in b.items() if isinstance(e, dict) and float(e.get("until") or 0) > now
-                  and not (m.startswith("agy/") and _agy_block_cleared(history, m, e)))
+    out: List[str] = []
+    for m, e in b.items():
+        if not isinstance(e, dict):
+            continue
+        until = _field(e, "until", "blocks", m)
+        if until is not None and until > now and not (m.startswith("agy/") and _agy_block_cleared(history, m, e)):
+            out.append(m)
+    return sorted(out)
 
 
 # ── depolar ───────────────────────────────────────────────────────────────────
@@ -1092,7 +1127,10 @@ def migrate_r10_sub(hist: Dict[str, Any]) -> int:
         if not bar or not rest.startswith("claude/"):
             continue
         rec = pairs[k]
-        if not isinstance(rec, dict) or float(rec.get("started_at") or 0) < R10_SUB_SINCE:
+        if not isinstance(rec, dict):
+            continue
+        started = _field(rec, "started_at", "pairs", k)
+        if started is None or started < R10_SUB_SINCE:
             continue
         model, at, eff = rest.partition("@")
         if model.endswith("-sub"):
@@ -1144,7 +1182,11 @@ def update_pair(paths: Any, proj: str, t: ReviewTarget, **fields: Any) -> Dict[s
     with sw.steward_lock(p):
         hist = load_history(p)
         key = pair_key(proj, t)
-        rec = dict(hist["pairs"].get(key) or {})
+        old = hist["pairs"].get(key)
+        if old and not isinstance(old, dict):
+            _log_bad("pairs.record", key)       # bozuk tek kayıt: yok sayılır, bu yazımla yenilenir
+            old = None
+        rec = dict(old or {})
         if fields.get("status") == "running" and "attempts" not in fields:
             # önceki pencerenin sonucu (done ya da pencere dışı) sayaca taşınmaz: yeni pencere 1. denemeyle başlar
             stale = rec.get("status") == "done" or (
@@ -1342,9 +1384,16 @@ def requeue_stale_verify(findings: Dict[str, Any], now: float, stale: float = VE
     for fid, rec in findings.items():
         if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") == "self":
             continue
-        if now - float(rec.get("verify_sent_at") or 0) < stale:
+        sent = _field(rec, "verify_sent_at", "findings", fid)
+        if sent is None or now - sent < stale:
             continue
-        tries = int(rec.get("verify_tries") or 0) + 1
+        done = _field(rec, "verify_tries", "findings", fid)
+        if done is None:
+            continue
+        if not math.isfinite(done):
+            _log_bad("findings.verify_tries", fid)
+            continue
+        tries = int(done) + 1
         if tries >= VERIFY_MAX_TRIES:
             rec.update(state="unclear", verify_tries=tries, verdict_at=now,
                        verdict=f"doğrulama {tries} gönderimde sonuç vermedi (karar son mesajda görülmedi)"[:VERDICT_REASON_MAX])
@@ -1384,8 +1433,14 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
                         if not isinstance(e, dict) or e.get("event") != "request":
                             continue
                         u = e.get("usage") if isinstance(e.get("usage"), dict) else {}
+                        sec = _field(e, "seconds", "usage.record", os.path.join(dp, fn))
+                        if sec is None:
+                            continue
+                        if any(isinstance(v, float) and not math.isfinite(v) for v in u.values()):
+                            _log_bad("usage.record", os.path.join(dp, fn))
+                            continue
                         a["requests"] += 1
-                        a["seconds"] += float(e.get("seconds") or 0)
+                        a["seconds"] += sec
                         for src, dst in (("prompt_tokens", "prompt_tokens"), ("completion_tokens", "completion_tokens"),
                                          ("reasoning_tokens", "reasoning_tokens"), ("cached_tokens", "cached_tokens"),
                                          ("total_tokens", "total_tokens")):     # total: yalnız toplam bildiren sağlayıcı (codex)
@@ -1746,8 +1801,13 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
     pi, po, pr, pw = anthropic_price(model or "opus-5-5")
     tot = 0.0
     try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
+        with open(path, "rb") as f:
+            for raw in f:
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    _log_bad("usage.line", path)      # yalnız bozuk satır atlanır; kalan istekler maliyete girer
+                    continue
                 try:
                     rec = json.loads(line)
                     if not isinstance(rec, dict):

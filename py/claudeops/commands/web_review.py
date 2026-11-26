@@ -783,7 +783,7 @@ def read_chat(cfg: Any, rel: str) -> Dict[str, Any]:
     running = False
     status = ""
     for key, rec in hist["pairs"].items():
-        io = str((rec or {}).get("io_file") or "")
+        io = str(rec.get("io_file") or "") if isinstance(rec, dict) else ""
         if io and os.path.realpath(io) == os.path.realpath(os.path.join(p.reviews, r["path"])):
             status = str(rec.get("status") or "")
             running = key in running_keys(cfg.sid)
@@ -845,7 +845,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
         ts = started if started else (stamp if re.fullmatch(r"\d{14}", stamp) else None)
         rows[rel] = {"sid": cfg.sid, "project": proj, "mode": mode, "model": slug, "status": status, "io": rel,
                      "file": md, "started_at": started, "finished_at": finished, "running": is_run,
-                     "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
+                     "error": error, "duration": (rv._num(finished) - rv._num(started)) if rv._num(started) and rv._num(finished) else None,
                      "title": rv.review_title(proj, mode, slug, ts),
                      "pids": _pid_tree(pid) if is_run else []}
     for r in hist.get("runs") or []:
@@ -877,7 +877,8 @@ def read_live(cfg: Any, project: str, target_key: str, offset: Any = 0) -> Dict[
     if not match or not proj:
         return {"ok": False, "error": "unknown target"}
     tg = match[0]
-    rec = rv.load_history(p)["pairs"].get(rv.pair_key(proj, tg)) or {}
+    rec = rv.load_history(p)["pairs"].get(rv.pair_key(proj, tg))
+    rec = rec if isinstance(rec, dict) else {}
     running = rv.pair_key(proj, tg) in running_keys(cfg.sid)
     io = str(rec.get("io_file") or "")
     if not io:
@@ -1718,7 +1719,7 @@ def _adopt(p: Any, cfg: Any, key: str, rec: Dict[str, Any], target: rv.ReviewTar
     with _SLOT_LOCK:      # yuva sınırı aşılsa bile kaydedilir: süreç zaten çalışıyor
         used = {i for m, i in _ACTIVE.values() if m == target.mode}
         _ACTIVE[key] = (target.mode, min(set(range(len(used) + 1)) - used))
-    started = float(rec.get("started_at") or time.time())
+    started = rv._num(rec.get("started_at")) or time.time()
     th = threading.Thread(target=_execute, daemon=True, name=f"review-adopt-{key}",
                           args=(job, p, cfg, key.split("|", 1)[0], target, [], {}, "", path, started, _default_popen,
                                 str(rec.get("agy_log_dir") or AGY_LOG_DIR), time.time),
@@ -2202,7 +2203,7 @@ def copilot_quota_info(t: float) -> Optional[Tuple[float, float, str]]:
     rec = usage_state.provider("copilot", now=t)
     if not rec or not rec.get("available") or rec.get("stale"):
         return None
-    return rv.parse_copilot_entries(rec.get("entries") or [], t, base=float(rec.get("at") or 0) or None)
+    return rv.parse_copilot_entries(rec.get("entries") or [], t, base=rv._num(rec.get("at")) or None)
 
 
 def _copilot_quota_view(cfg: Any, hist: Any, t: float) -> Dict[str, Any]:
@@ -2210,7 +2211,7 @@ def _copilot_quota_view(cfg: Any, hist: Any, t: float) -> Dict[str, Any]:
     try:
         info = copilot_quota_info(t)
         blk = (hist.get("blocks") or {}).get("copilot") if isinstance(hist, dict) else None
-        until = float(blk.get("until") or 0) if isinstance(blk, dict) else 0.0
+        until = rv._num(blk.get("until")) if isinstance(blk, dict) else 0.0
         out: Dict[str, Any] = {"stop_pct": int(getattr(cfg, "review_copilot_stop_pct", 95) or 0)}
         if info:
             out.update(used_pct=info[0], resets_at=info[1], detail=info[2])
@@ -2307,7 +2308,7 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if getattr(cfg, "drain", False):      # "bitir, yeni başlatma": koşan iş sürdü (iptal edilmez), yenisi açılmaz; restart öncesi boşalt
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "draining": True}
     hist = rv.load_history(p)
-    last = max([float(r.get("started_at") or 0) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
+    last = max([rv._num(r.get("started_at")) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
     gap = max(0, int(getattr(cfg, "review_min_gap_minutes", 0))) * 60
     if last and t - last < gap:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
@@ -2819,7 +2820,7 @@ def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float, sess
             rec = data.get(fid)
             if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") != session:
                 continue
-            tries = int(rec.get("verify_tries") or 0) + 1
+            tries = int(rv._num(rec.get("verify_tries"))) + 1
             if tries >= SELF_VERIFY_MAX_TRIES:
                 rec.update(state="unclear", verdict=f"otomatik doğrulama {tries} denemede sonuç vermedi: {reason}"[:rv.VERDICT_REASON_MAX],
                            verdict_at=now, verify_tries=tries)
