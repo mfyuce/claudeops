@@ -761,6 +761,15 @@ def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = N
     return gone
 
 
+_PROJECT_TEXT_FIELDS = ("goal", "model", "effort", "last_directive")   # diğer metin alanları listeyle ya da str() ile zaten korunur
+
+
+class _BadFieldType(ValueError):
+    """`upsert_project`: metin alanına metin olmayan değer. `ValueError`: HTTP ucu ve CLI hata yanıtı verir."""
+    def __init__(self, field_name: str):
+        super().__init__(f"bad field type: {field_name} (expected a string)")
+
+
 def upsert_project(name: str, *, paths: Any = None, force: bool = False,
                    running: Optional[Any] = None, **fields: Any) -> Project:
     """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır.
@@ -816,6 +825,8 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
                 v = str(v)[:_MAX_NOTE_CHARS]
             if k == "review_where" and v not in review_remote.WHERE_VALUES:
                 continue
+            if k in _PROJECT_TEXT_FIELDS and not isinstance(v, str):      # kayıt yazılmadan reddedilir (`goal=5` kalıcı olmasın)
+                raise _BadFieldType(k)
             if k == "local_path":
                 v = os.path.expanduser(str(v).strip())
                 if v and not os.path.isabs(v):
@@ -1005,9 +1016,10 @@ def resolve_answer(q: Question, raw: str) -> str:
     (büyük/küçük harf duyarsız) tam eşleşen de kanonik metin; diğer her şey serbest metin olarak kalır."""
     raw = " ".join(str(raw).split())
     if q.options and raw:
-        if raw.isdigit() and 1 <= int(raw) <= len(q.options):
+        if raw.isdecimal() and 1 <= int(raw) <= len(q.options):      # `isdigit` "²"/"①"i de sayar, `int` kabul etmez
             return q.options[int(raw) - 1]
-        if len(raw) == 1 and raw.upper().isalpha() and ord(raw.upper()) - 65 < len(q.options):
+        if (len(raw) == 1 and len(raw.upper()) == 1 and raw.upper().isalpha()       # "ß".upper() iki karakter
+                and ord(raw.upper()) - 65 < len(q.options)):
             return q.options[ord(raw.upper()) - 65]
         for o in q.options:
             if o.casefold() == raw.casefold():
@@ -1018,7 +1030,8 @@ def resolve_answer(q: Question, raw: str) -> str:
 DEFER_SECONDS = 24 * 3600          # D19: ertelenen sorunun sessiz kalma süresi
 _DEFER_ANSWER_RE = re.compile(
     r"^\W*(?:sonra|şimdi değil|simdi degil|daha sonra|sonra bakarım|sonra veririm|bekle|tbd|later|not now|"
-    r"kararları şimdi vereceğim|kararlari simdi vereceğim|kararları sonra vereceğim|şimdi vereceğim|simdi vereceğim)\W*$", re.I)
+    r"kararları şimdi vereceğim|kararlari simdi vereceğim|kararları sonra vereceğim|şimdi vereceğim|simdi vereceğim|"
+    r"kararlari (?:simdi|sonra) verecegim|simdi verecegim)\W*$", re.I)
 
 
 def is_defer_answer(raw: str) -> bool:
@@ -1363,7 +1376,7 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
             sim.text = text
             if source:
                 sim.source = source
-        if sim is None and not is_job and not routine:
+        if sim is None and not solo and not routine:
             # L7b: proje başına açık soru sınırı. Sahibe giden (rutin olmayan, iş isteği olmayan) açık soru sayısı sınıra ulaştıysa yeni soru
             # AÇILMAZ: en yeni açık soruya "ek" olarak eklenir (sahip tek yerde okur, tek cevapla kapatır; konu benzerliği düşük olsa da).
             opened = [q for q in questions if q.status == "open" and q.project == project and not q.routine
@@ -1505,10 +1518,11 @@ def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
 def mark_notified(question_id: str, paths: Any = None) -> None:
     with steward_lock(paths):
         questions = load_questions(paths)
-        for q in questions:
-            if q.id == question_id:
-                q.notified_at = _now()
-        save_questions(questions, paths)
+        hits = [q for q in questions if q.id == question_id]
+        for q in hits:
+            q.notified_at = _now()
+        if hits:
+            save_questions(questions, paths)
 
 
 def question_link(q: Question, base: str, sid: str = "default") -> str:
@@ -1663,10 +1677,11 @@ def escalate_routine(question_id: str, paths: Any = None) -> Optional[Question]:
 def mark_delivered(question_id: str, paths: Any = None) -> None:
     with steward_lock(paths):
         questions = load_questions(paths)
-        for q in questions:
-            if q.id == question_id:
-                q.delivered_at = _now()
-        save_questions(questions, paths)
+        hits = [q for q in questions if q.id == question_id]
+        for q in hits:
+            q.delivered_at = _now()
+        if hits:
+            save_questions(questions, paths)
 
 
 _TBD_ID_RE = re.compile(r"TBD\s*#?\s*(\d+)", re.I)
