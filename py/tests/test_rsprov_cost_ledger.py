@@ -137,5 +137,20 @@ class UnreadableLedgerClosesTheGate(_Ledger):
             ucli_cost.reserve("s", base=os.path.join(self.base, "yok"))
 
 
+class InvalidateRace(_Ledger):
+    def test_invalidate_between_scan_and_read_does_not_zero_the_spend(self):
+        zero = {"at": 0.0, "usd": 0.0, "total": 0.0, "by": {}, "day": "", "rate_1h": {}, "rate_15m": {}}
+
+        class Racing(dict):
+            def update(self, *a, **kw):
+                super().update(*a, **kw)
+                if kw.get("by"):
+                    super().update(zero)       # tam bu anda başka iş parçacığı `invalidate()` çağırdı
+
+        self.put("a.jsonl", _line())
+        with mock.patch.object(ucli_cost, "_CACHE", Racing(zero)), self.cap(0.5):
+            self.assertTrue(ucli_cost.cap_exceeded(base=self.base))
+
+
 if __name__ == "__main__":
     unittest.main()
