@@ -16,6 +16,7 @@ mod markers;
 mod notify;
 mod observe;
 mod prompts;
+mod pytests;
 mod questions;
 mod recovery;
 mod report;

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """EK 2 eşleme tablosu: `steward.py`nin HER işlev/metot/sınıf/modül ataması ve ilgili HER `test_*` metodu bir satır.
 Rust eşi kaynakta `/// py: <ad>` doc satırından, parite testi `parity!("<ad>", <test>` çağrısından bulunur; kapsam dışı
-nedenleri `parity/out_of_scope.json`. Çıktı `docs/rs-stew.md` içindeki işaretli bloğa yazılır.
+nedenleri `parity/out_of_scope.json`. Test satırı: kayıtlı saf çağrılarının parite testleri; çağrısı yoksa `/// py: <dosya.Sınıf.test>`
+taşıyan Rust testi ve/ya `parity/test_reasons.json` gerekçesi (`AÇIK: ` ile başlayan gerekçe tabloda ve özet sayıda açık kalır;
+EKSİK sayılmaz). Çıktı `docs/rs-stew.md` içindeki işaretli bloğa yazılır.
 Kullanım: `python3 parity/map.py [--check]` (--check: EKSİK satır varsa ya da blok güncel değilse çıkış 1)."""
 import ast, glob, json, os, re, sys
 
@@ -15,6 +17,11 @@ DOC = os.path.join(REPO, "docs", "rs-stew.md")
 BEGIN, END = "<!-- MAP:BEGIN (parity/map.py üretir) -->", "<!-- MAP:END -->"
 # steward.py'nin dışarıdan kullandığı saf yardımcılar (modüllerinin geri kalanı başka izlerde)
 DEPS = {"needs_ho.py": ["rfh_marker_in"], "textutil.py": ["collapse_ws"], "steward_ask.py": ["owner_class", "blocked_reason", "tour_eligible"]}
+
+
+# değnekçi ailesinin hiçbir dalda Rust karşılığı olmayan modülleri: parite ile bağlı bir test bunları da çağırıyorsa satır açık kalır
+UNPORTED = ("steward_keepwarm", "steward_nowork", "steward_advance", "steward_lessons", "steward_quota", "steward_jobs",
+            "trust_dialog", "question_detail", "labels")
 
 
 def load(name):
@@ -100,12 +107,44 @@ def test_methods():
     return out
 
 
+def outside_calls():
+    """{test kimliği: testin (ve çağırdığı sınıf/modül yardımcılarının) bu crate DIŞINDAN çağırdığı claudeops işlevleri}."""
+    out = {}
+    for p in sorted(glob.glob(os.path.join(PY, "tests", "test_*.py"))):
+        tree = ast.parse(open(p, encoding="utf-8").read())
+        alias = {}
+        for n in ast.walk(tree):
+            if isinstance(n, ast.ImportFrom) and n.module in ("claudeops", "claudeops.commands", "claudeops.providers"):
+                for a in n.names:
+                    alias[a.asname or a.name] = a.name
+        helpers = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for c in ast.walk(tree):
+            if not isinstance(c, ast.ClassDef): continue
+            methods = {n.name: n for n in c.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+            for name, m in methods.items():
+                if not name.startswith("test"): continue
+                todo, seen, found = [m], set(), set()
+                while todo:
+                    for x in ast.walk(todo.pop()):
+                        if not isinstance(x, ast.Call): continue
+                        f = x.func
+                        if isinstance(f, ast.Name) and f.id in helpers and f.id not in seen:
+                            seen.add(f.id); todo.append(helpers[f.id])
+                        if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)): continue
+                        if f.value.id == "self" and f.attr in methods and "self." + f.attr not in seen:
+                            seen.add("self." + f.attr); todo.append(methods[f.attr])
+                        elif f.value.id in alias:
+                            found.add((alias[f.value.id], f.attr))
+                out[f"{os.path.basename(p)[:-3]}.{c.name}.{name}"] = found
+    return out
+
+
 def build():
     targets, tests = rust_index()
     oos = load("out_of_scope.json")         # {"gerekçe": [ad, ...]}
     why = {n: reason for reason, names in oos.items() for n in names}
     const_test = "generated::generated_files_are_current"
-    rows, missing = [], []
+    rows, missing, partial, indirect = [], [], [], []
     items = [("steward.py", i) for i in py_items(os.path.join(PY, "claudeops", "steward.py"))]
     for mod, names in DEPS.items():
         items += [(mod, i) for i in py_items(os.path.join(PY, "claudeops", mod), only=set(names))]
@@ -136,36 +175,66 @@ def build():
                     f"{', '.join(sorted(set(ptest))[:3]) or '-'} | {status} |")
     calls = json.load(open(os.path.join(CRATE, "fixtures", "test_calls.json"), encoding="utf-8"))
     manual = load("test_reasons.json")      # {"dosya" | "dosya.Sınıf.test": gerekçe}
-    trows = []
+    trows, opened, used = [], [], set()
+    outside = outside_calls()
+    io_names = set(load("io_functions.json"))
     for f, c, t, line in test_methods():
         key = f"{f}.{c}.{t}"
         called = calls.get(key, [])
         covered = sorted({x for fn in called for x in tests.get(fn, [])})
         uncovered = sorted(fn for fn in called if fn not in tests)
-        reason = manual.get(key) or manual.get(f"{f}.{c}") or manual.get(f)
+        direct = sorted(set(tests.get(key, [])))
+        # doğrudan Rust testi olan satıra yalnız kendi adına yazılmış gerekçe eklenir (sınıf/dosya gerekçesi sızmaz)
+        rkey = next((k for k in ((key,) if direct else (key, f"{f}.{c}", f)) if k in manual), None)
+        reason = manual.get(rkey) if rkey and (direct or not called) else None
+        if reason: used.add(rkey)
+        is_open = bool(reason) and reason.startswith("AÇIK: ")
         if called and not uncovered:
             res = ", ".join(covered[:4]) + (f" (+{len(covered) - 4})" if len(covered) > 4 else "")
+            other = sorted({f"{m}.{a}" for m, a in outside.get(key, ())
+                            if (m != "steward" and a not in targets) or (m == "steward" and a in io_names)})
+            if other:
+                res += ("; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): " + ", ".join(other[:5])
+                        + (f" (+{len(other) - 5})" if len(other) > 5 else ""))
+                partial.append(key)
+            lost = sorted(f"{m}.{a}" for m, a in outside.get(key, ()) if m in UNPORTED)
+            if lost:
+                res += "; AÇIK (Rust'ta yok): " + ", ".join(lost)
+                indirect.append(key)
         elif called:
             res = "EKSİK: parite testi olmayan " + ", ".join(uncovered[:4])
-        elif reason:
-            res = f"gereksiz: {reason}"
+        elif direct or reason:
+            parts_ = [f"Rust testi: {', '.join(direct)}"] if direct else []
+            if is_open:
+                parts_.append("AÇIK (taşınmadı ya da kısmen): " + reason[len("AÇIK: "):])
+                opened.append(key)
+            elif reason:
+                parts_.append(reason if direct else f"gereksiz (bu crate'te sınanacak saf çağrı yok): {reason}")
+            res = "; ".join(parts_)
         else:
             res = "EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı"
         if res.startswith("EKSİK"): missing.append(key)
         trows.append(f"| `{key}` | {res} |")
+    for k in sorted(set(manual) - used):
+        missing.append(f"test_reasons.json: kullanılmayan anahtar {k}")
+    count = (f"Test satırı özeti: {len(trows)} satır; doğrudan açık (aşağıda `AÇIK`) {len(opened)}; parite ile bağlı olup "
+             f"crate dışı çağrısı da olan {len(partial)}, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) "
+             f"{len(indirect)}.")
     block = "\n".join([BEGIN, "", f"### Python öğeleri ({len(rows)} satır)", "", "| Python adı (dosya:satır) | Rust karşılığı | parite testi | durum |",
                        "|---|---|---|---|", *rows, "", f"### Python testleri ({len(trows)} satır)", "",
                        "| Python testi | Rust karşılığı / gerekçe |", "|---|---|", *trows, "", END])
-    return block, missing
+    block = block.replace(f"### Python testleri ({len(trows)} satır)\n", f"### Python testleri ({len(trows)} satır)\n\n{count}\n")
+    return block, missing, count
 
 
 def main():
-    block, missing = build()
+    block, missing, count = build()
     doc = open(DOC, encoding="utf-8").read() if os.path.exists(DOC) else f"# İz: rs/stew\n\n{BEGIN}\n{END}\n"
     new = doc[:doc.index(BEGIN)] + block + doc[doc.index(END) + len(END):]
     if "--check" not in sys.argv:
         open(DOC, "w", encoding="utf-8").write(new)
     print(f"EKSİK satır: {len(missing)}")
+    print(count)
     for m in missing[:int(os.environ.get("MAP_SHOW", "20"))]:
         print("  ", m)
     if "--check" in sys.argv and (missing or new != doc):
