@@ -51,7 +51,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 import psutil
 
-from ..atomic_json import file_lock
+from ..atomic_json import LockError, file_lock
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..envnames import is_safe_env_name
@@ -5979,6 +5979,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:      # kilit alınamadı: hiçbir şey yazılmadı, yeniden denenebilir
+            diag_log("post_lock_busy", path=urlparse(self.path).path, error=str(e)[:200])
+            self.close_connection = True
+            try:
+                self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
+            except Exception:
+                pass
         except (TypeError, ValueError, AttributeError, KeyError) as e:
             # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
             diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])
