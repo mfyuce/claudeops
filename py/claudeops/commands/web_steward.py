@@ -1782,13 +1782,22 @@ def _remote_rows(host: str, rt: Optional[_RemoteTick] = None) -> Optional[List[D
 
 
 def _remote_running_row(host: str, name: str, rt: Optional[_RemoteTick] = None) -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """(host taze mi, adı TAM `name` olan ÇALIŞAN satır ya da None). Ön ek/base eşleşmesi YOK: uzak tarafın
-    unique_base çözümüne güvenilmez (yanlış adaş oturum). Yalnız gerçek adı BİLİNEN oturumun kapanma beklemesi
-    (`_remote_wait_closed`) bunu kullanır; proje → oturum çözümü `_remote_session`da."""
+    """(durum biliniyor mu, adı TAM `name` olan ÇALIŞAN satır ya da None). Ön ek/base eşleşmesi YOK: uzak tarafın
+    unique_base çözümüne güvenilmez (yanlış adaş oturum). Gerçek adı BİLİNEN oturum için (kapanma/hazır bekleme, devirli
+    durdurma, review oturumu); proje → oturum çözümü `_remote_session`da. Host taze değilse YA DA aynı adlı iki çalışan
+    satır varsa (False, None): bilinmiyor (kapalı yön; "satır yok" = kapanmış sayılmaz)."""
     rows = _remote_rows(host, rt)
     if rows is None:
         return False, None
-    return True, next((r for r in rows if r.get("name") == name and r.get("running")), None)
+    hits = _remote_named_rows(rows, name)
+    if len(hits) > 1:
+        return False, None
+    return True, hits[0] if hits else None
+
+
+def _remote_named_rows(rows: List[Dict[str, Any]], name: str) -> List[Dict[str, Any]]:
+    """Adı TAM `name` olan ÇALIŞAN satırlar (birden çoksa hedef belirsiz)."""
+    return [r for r in rows if r.get("name") == name and r.get("running")]
 
 
 def _remote_key(name: str, host: str, world: sw.World) -> str:
@@ -1821,7 +1830,8 @@ def _remote_session(host: str, name: str, rt: Optional[_RemoteTick] = None, worl
     - tek oturum → o satır (gerçek tam adıyla); `name` tam oturum adıysa o satır OLMALI, değilse
       `other_session_running` reddi (kapanmış eski ada yazılmaz, yanına ikinci oturum da açılmaz);
     - iki ya da daha çok → `ambiguous_sessions` reddi (tekrarsız log): hiçbir eylem, ASLA başlatma.
-    Ad bu host'taki bir projeye çözülmüyorsa (uzak beyin/servis/kayıtsız) eski kural: yalnız TAM adlı çalışan satır."""
+    Ad bu host'taki bir projeye çözülmüyorsa (uzak beyin/servis/kayıtsız) yalnız TAM adlı çalışan satır; aynı adlı iki
+    çalışan satır da `ambiguous_sessions` reddidir."""
     rows = _remote_rows(host, rt)
     if rows is None:
         return False, None, None
@@ -1829,7 +1839,15 @@ def _remote_session(host: str, name: str, rt: Optional[_RemoteTick] = None, worl
     world = dataclasses.replace(world, owned=_owned_of(sid)) if world is not None and world.owned else (world or _world(sid))
     key = _remote_key(name, host, world)
     if not key:
-        return True, next((r for r in rows if r.get("name") == name and r.get("running")), None), None
+        hits = _remote_named_rows(rows, name)
+        if len(hits) > 1:
+            names = [name] * len(hits)
+            _log_remote_denied(sid, actor, kind, name, host, "ambiguous_sessions", event="remote_ambiguous",
+                               sessions=names)
+            return True, None, {"ok": False, "code": "ambiguous_sessions", "host": host, "sessions": names,
+                                "error": (f"target denied: {len(hits)} running sessions named {name!r} on {host}; "
+                                          "refusing to guess")}
+        return True, hits[0] if hits else None, None
     mine = _remote_project_rows(rows, host, key, world)
     manual = [str(r.get("name") or "") for r in mine
               if world.session_class(str(r.get("name") or ""), r.get("blueprint") if r.get("instance") else None) == "manual"]
@@ -8574,6 +8592,12 @@ class RemoteReviewDriver:
                 return str(r["cwd"])
         return ""
 
+    def _ambiguous(self, rows: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Review oturumu adıyla iki çalışan satır varsa red metni (hiçbir eylem gitmez), yoksa ""."""
+        rows = self._rows() if rows is None else rows
+        n = len(_remote_named_rows(rows or [], self.session))
+        return f"ambiguous_sessions: {n} running sessions named {self.session!r} on {self.host}" if n > 1 else ""
+
     def ready(self) -> Tuple[bool, str]:
         denied = _remote_denied(self.project, "review", "review", self._owner(), self.host, self.host, None)
         if denied is not None:
@@ -8601,6 +8625,9 @@ class RemoteReviewDriver:
         if not ok:
             return {"ok": False, "error": msg}
         rows = self._rows() or []
+        why = self._ambiguous(rows)
+        if why:
+            return {"ok": False, "error": why}
         if any(r.get("name") == self.session and r.get("running") for r in rows):     # tek canlı review oturumu: artığı kapat
             self.stop()
             if not self._wait_closed():
@@ -8636,6 +8663,9 @@ class RemoteReviewDriver:
         # Canlı deneme (2026-10-24): `term/input` satır satır girer, ucli REPL her satırı AYRI tur sayıp istemi böler (model
         # yalnız bir parçayı görür). Tek satıra indirilir; başlık biçimi için ayrıca uyarı eklenir.
         text = " ".join(str(text).split()) + " (Her bulgu başlığı cevapta AYRI bir satırda olmalı.)"
+        why = self._ambiguous()
+        if why:
+            return {"ok": False, "error": why}
         res = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": text, "exact": True},
                            REMOTE_INPUT_TIMEOUT_SECONDS)
         return {"ok": bool(res.get("ok")), "error": str(res.get("error") or res.get("code") or "")}
@@ -8725,6 +8755,10 @@ class RemoteReviewDriver:
 
     def stop(self) -> None:
         try:
+            if self._ambiguous():
+                _log_remote_denied(self._owner(), "engine", "review", self.session, self.host, "ambiguous_sessions",
+                                   event="remote_ambiguous")
+                return
             _remote_post(self.host, "/api/stop", {"name": self.session, "exact": True}, REMOTE_START_TIMEOUT_SECONDS)
         except Exception:
             pass
