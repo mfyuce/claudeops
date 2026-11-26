@@ -6,18 +6,26 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 1761 vaka: model/effort 105, settings/pyfmt 89, build 315, ucli 324, spawn 392, misc 426, usage 16 (G5; 6 sağlayıcı x 94 metin
-  x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36, `instructions_check` 19).
-- 28 "bilinen ayrışma" testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
-  kayıtlarındadır: Python hatası şüphesi, Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi.
+- 1826 vaka: model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+  x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
+  `instructions_check` 19).
+- 20 "bilinen ayrışma" testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+  kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
+  (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
 - Kapsanmayan: süreç başlatma, tmux parçası, resume taraması, hayalet oturum temizliği; gerçek `Effect` uygulayıcısı; eşzamanlı yazım ve
   zaman aşımı; `--help` önbellek tazelemesi.
 - Rust'ta henüz yok: `rust_toolchain`, `_rustup_default_toolchain`, `path_executables` (`_CMD_RE`); `_sync_one` dosya adımları;
   `service_models` (G7); diag `ucli_web_searxng_error`,
   `ucli_usage_log_dir_failed`; model listesi TTL önbellekleri.
-- Python hatası şüpheleri: TBD#373 (Rust şimdilik Python gibi ya da kayıtlı ayrışma).
+- TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
+  `settings.json`) rs/state'in işi. Kalan fark: var olan ama izin yüzünden okunamayan yönerge override dosyasında Python üzerine
+  yazar, Rust dokunmaz (`Probe::read_text` iki durumu ayırmıyor); `trustedFolders`ta eşi olmayan vekil kod (`\ud800`) içeren
+  girişte Rust yazmaz, Python yazar.
 - API değişikliği: `plan_spawn(p, req, &mut BuildOutput)` (hata durumunda da biriken Effect/diag korunur).
+- Kuru çalıştırma: `SpawnRequest.dry_run` / `BuildOutput.dry_run` (Effect ve diag eklenmez; `register_mcp` ve `issue_agent_token`
+  çağrılmaz; `Probe::searxng_url(session, preview)`; `claude_cost_gate` yine çağrılır). `sync_plan` ham bayt alır
+  (`SyncAction::SkippedBadUtf8`).
 
 ## Kapsam (ilk görev metni)
 - Yazılabilir yollar: `rust/crates/cops-providers/**`, `rust/Cargo.toml` members satırı, `docs/rs-prov.md` (`rust/Cargo.lock` yeni bağımlılıklarla değişti).
@@ -49,9 +57,6 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 - `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
 
 ## Sıradaki
-0. İlk iş: TBD#373 sahip cevabı (b): 1-7 maddeleri Python (ayrı `fix:` commit'i + kırmızı-sonra-yeşil test; `py/claudeops` ilgili dosyalar ve
-   `py/tests` bu iş için yazılabilir) VE Rust'ta düzelt, ilgili `known(` kayıtlarını kaldır. Bozuk UTF-8 settings maddesinde rs/state'in
-   düzeltmesini kullan. 8. madde (copilot `]`) cevap bekliyor.
 1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G6, G2, G3, G7, G1, G8, G4, G10, G9 (G11 ve G5 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
@@ -63,8 +68,6 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 Parite testinde kayıtlı ayrışmalar yukarıdaki "Parite" bölümünde. Açık kalanlar:
 - Mutasyonlar `Effect` olduğundan Python'da yazım hatasının komutu değiştirdiği dallar (anahtar dosyası yazılamazsa istisna, metrics mkdir hatası = bayrak yok, usage-log dizini hatası, yönerge override yazılamazsa bayraksız açılış) çağıran sözleşmesine kalıyor; gerçek uygulayıcıyla (G8) sınanmalı.
 - `register_mcp`: günlük olayları crate'te; silme, 20 sn zaman aşımı ve `OSError` metin biçimi gerçek `Probe` uygulamasında sınanacak (G8).
-- `_MCP_TOOL_RE`: Rust (`valid_tool_name`) Python gibi sondaki tek satır sonunu kabul ediyor; TBD#373 cevabına göre iki tarafta birlikte düzeltilecek.
-- `copilot.rs::trust_folder_edit` ve Python `trust_folder`: dizinin sonu ilk `]` ile aranıyor; kayıtlı bir yol ya da `cwd` `]` içeriyorsa aynı giriş her açılışta yeniden eklenir (yeni Python hatası şüphesi, henüz sorulmadı).
 - G5/G11 Python hatası şüpheleri (Rust Python gibi davranır; yalnız ilki kayıtlı ayrışma, sahibe sorulmadı):
   - `normalize_ucli_services`: `models` sıfır olmayan sayı ya da `true` ise `TypeError` ile `ucli_services()` düşer (başlat penceresi,
     spawn). Rust boş liste sayar (parite `servis-models-sayi`, kayıtlı ayrışma).
@@ -98,12 +101,12 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
   yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Sorulacak/izlenecek.
-- ucli anahtarı argv'de değil (`$(cat dosya)`); ancak `UCLI_API_KEY="$(cat {_API_KEY_FILE})"` yolunda tırnaklama yok (boşluklu HOME'da kırılır): Python hatası?
+- ucli anahtarı argv'de değil (`$(cat dosya)`); dosya yolu iki tarafta tırnaklı (TBD#373/7).
 - copilot BYOK: dosya source edilir, argv temiz.
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5 ve G11 satırları taşımadan sonra güncellendi. 630 satır: TAŞINDI 300, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 276.
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5 ve G11 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. 635 satır: TAŞINDI 306, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 275.
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -386,7 +389,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_USAGE_PLAN_RE` (py/claudeops/providers/copilot_provider.py:205) | `usage.rs::PLAN` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `_USAGE_FRACTION_RE` (py/claudeops/providers/copilot_provider.py:206) | `usage.rs::FRACTION` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `_USAGE_RESET_RE` (py/claudeops/providers/copilot_provider.py:207) | `usage.rs::RESET_IN` (`$` -> `\z`, gerekçe kodda) | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `trust_folder` (py/claudeops/providers/copilot_provider.py:210) | `copilot.rs::{trust_folder, trust_folder_edit}` + `Effect` | `parity.rs::parity_build` `trust-`; Python hatası? (yeni) dizi sonu ilk `]` ile aranıyor: `]` içeren yol varsa/`cwd` `]` içeriyorsa her açılışta yinelenen giriş; Rust aynen. `config_path` parametresi yok | TAŞINDI |
+| `trust_folder` (py/claudeops/providers/copilot_provider.py:210) | `copilot.rs::{trust_folder, trust_folder_edit}` + `Effect` | `parity.rs::parity_build` `trust-` (`trust-ayrac`); `config_path` parametresi yok | TAŞINDI |
+| `_TRUST_TOKEN_RE` (py/claudeops/providers/copilot_provider.py) | `copilot.rs::TRUST_TOKEN` | `parity.rs::parity_build` `trust-ayrac` | TAŞINDI |
 | `_connect_ro` (py/claudeops/providers/copilot_provider.py:232) | yok | - | EKSİK(G2) |
 | `CopilotProvider` (py/claudeops/providers/copilot_provider.py:239) | `copilot.rs` + `Cli::Copilot` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CopilotProvider.name` (py/claudeops/providers/copilot_provider.py:240) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -440,7 +444,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_LIVE_MODEL_CACHE` (py/claudeops/providers/ucli_provider.py:222) | yok | - | EKSİK(G7) |
 | `_LIVE_MODEL_CACHE_TS` (py/claudeops/providers/ucli_provider.py:223) | yok | - | EKSİK(G7) |
 | `_LIVE_CAPS` (py/claudeops/providers/ucli_provider.py:226) | yok: `LiveModels::caps` girdisi var; doldurma/saklama yok | - | EKSİK(G7) |
-| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:229) | yok: yalnız yanıt ayrıştırma `ucli.rs::parse_live_models` (parite `parity_misc` `live*`); HTTP, anahtar, zaman aşımı yok. Python hatası? `/models` nesne değil (TBD#373) | - | EKSİK(G7) |
+| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:229) | yok: yalnız yanıt ayrıştırma `ucli.rs::parse_live_models` (parite `parity_misc` `live*`); HTTP, anahtar, zaman aşımı yok. | - | EKSİK(G7) |
 | `_live_models` (py/claudeops/providers/ucli_provider.py:266) | yok | - | EKSİK(G7) |
 | `reasoning_effort_for` (py/claudeops/providers/ucli_provider.py:283) | `ucli.rs::reasoning_effort_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `temel-` | TAŞINDI |
 | `_API_KEY_FILE` (py/claudeops/providers/ucli_provider.py:307) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
@@ -466,14 +470,14 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_default_session_cap` (py/claudeops/providers/ucli_provider.py:600) | `ucli.rs::Ctx::apply_cli_opts` + `Settings::default_max_session_usd` | `parity.rs::parity_ucli` `hizmet-grok-tavan-ayar` `ham-service-evren` | TAŞINDI |
 | `_max_cost_args` (py/claudeops/providers/ucli_provider.py:609) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
 | `_MCP_NAME_BAD` (py/claudeops/providers/ucli_provider.py:624) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `ucli-mcp-ad` | TAŞINDI |
-| `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:625) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-aracsiz`; Python hatası? `$` sondaki satır sonunu kabul eder (TBD#373); Rust aynen. Satır sonlu araç adı vakası yok | TAŞINDI |
+| `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:625) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-` (satır sonlu ad: `spec` içindeki `ok\n`) | TAŞINDI |
 | `_MCP_ADD_TIMEOUT` (py/claudeops/providers/ucli_provider.py:626) | yok: 20 sn zaman aşımı yalnız `Probe::register_mcp` belge notunda | - | EKSİK(G8) |
 | `mcp_server_name` (py/claudeops/providers/ucli_provider.py:629) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
 | `mcp_add_argv` (py/claudeops/providers/ucli_provider.py:633) | `ucli.rs::mcp_add_argv` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
 | `register_mcp` (py/claudeops/providers/ucli_provider.py:642) | yok: symlink reddi ve diag olayları `ucli.rs::mcp_launch_args` içinde TAŞINDI (parite `ucli-mcp-*`); silme ve `mcp add` çalıştırma `Probe::register_mcp` gerçek uygulaması yok | - | EKSİK(G8) |
 | `_apply_cli_opts` (py/claudeops/providers/ucli_provider.py:672) | `ucli.rs::Ctx::apply_cli_opts` | `parity.rs::parity_ucli` `opts-` `ham-` | TAŞINDI |
 | `_agent_setup` (py/claudeops/providers/ucli_provider.py:845) | `ucli.rs::Ctx::agent_setup` | `parity.rs::parity_ucli` `ajan-`; token üretimi `Probe` sahte (G8) | TAŞINDI |
-| `UcliProvider` (py/claudeops/providers/ucli_provider.py:867) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-`; Python hatası? `$(cat {_API_KEY_FILE})` tırnaksız (TBD#373); Rust aynen | TAŞINDI |
+| `UcliProvider` (py/claudeops/providers/ucli_provider.py:867) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
 | `UcliProvider.name` (py/claudeops/providers/ucli_provider.py:868) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.prepare_input` (py/claudeops/providers/ucli_provider.py:870) | yok | - | EKSİK(G4) |
 | `UcliProvider.has_conversation` (py/claudeops/providers/ucli_provider.py:878) | yok | - | EKSİK(G4) |
@@ -483,7 +487,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `UcliProvider.mcp_needs_cwd` (py/claudeops/providers/ucli_provider.py:889) | `provider.rs::Cli::mcp_needs_cwd` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.validate_cli_opts` (py/claudeops/providers/ucli_provider.py:891) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-` | TAŞINDI |
 | `UcliProvider.mcp_launch_args` (py/claudeops/providers/ucli_provider.py:894) | `ucli.rs::mcp_launch_args` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
-| `UcliProvider.build_inner_command` (py/claudeops/providers/ucli_provider.py:917) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-`; Python hatası? `$(cat {_API_KEY_FILE})` tırnaksız (TBD#373); Rust aynen | TAŞINDI |
+| `UcliProvider.build_inner_command` (py/claudeops/providers/ucli_provider.py:917) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
 | `UcliProvider.oneshot` (py/claudeops/providers/ucli_provider.py:997) | yok | - | EKSİK(G10) |
 | `UcliProvider.env_overrides` (py/claudeops/providers/ucli_provider.py:1017) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.matches_proc` (py/claudeops/providers/ucli_provider.py:1022) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
@@ -511,9 +515,9 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `CODEX_AGENTS` (py/claudeops/routing.py:25) | yok | - | EKSİK(G9) |
 | `AGY_GEMINI` (py/claudeops/routing.py:26) | yok | - | EKSİK(G9) |
 | `routing_text` (py/claudeops/routing.py:29) | `routing.rs::routing_text` | `parity.rs::parity_misc` `sync`; ve `parity_build` `claude-routing-` | TAŞINDI |
-| `claude_guidance_path` (py/claudeops/routing.py:41) | `routing.rs::claude_guidance_path` | `parity.rs::parity_build` `claude-routing-`; Python hatası? bozuk UTF-8 override (TBD#373) | TAŞINDI |
+| `claude_guidance_path` (py/claudeops/routing.py:41) | `routing.rs::claude_guidance_path` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `_with_block` (py/claudeops/routing.py:66) | `routing.rs::with_block` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `_sync_one` (py/claudeops/routing.py:81) | yok: karar `routing.rs::sync_plan` TAŞINDI (parite `sync*`); yedek, silme, atomik yazım, OSError dönüşü yalnız test koşucusunda. Python hatası? bozuk UTF-8 (TBD#373) | - | EKSİK(G9) |
+| `_sync_one` (py/claudeops/routing.py:81) | yok: karar `routing.rs::sync_plan` TAŞINDI (parite `sync*`); yedek, silme, atomik yazım, OSError dönüşü yalnız test koşucusunda. | - | EKSİK(G9) |
 | `sync_global_files` (py/claudeops/routing.py:109) | yok | - | EKSİK(G9) |
 | `_DANGEROUS_ENV_NAMES` (py/claudeops/spawn.py:36) | `spawn.rs::DANGEROUS_ENV` | `parity.rs::parity_spawn` `filter` | TAŞINDI |
 | `FALLBACK_ATTEMPT_WAIT_SECONDS` (py/claudeops/spawn.py:50) | yok | - | EKSİK(G9) |
@@ -595,7 +599,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_LOAD_CACHE` (py/claudeops/settings.py:239) | `rs/state` `settings.rs::SettingsReader` | rs/state (önbellek) | KAPSAM DIŞI |
 | `load_settings` (py/claudeops/settings.py:242) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
 | `_load_settings_uncached` (py/claudeops/settings.py:268) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
-| `resolved_binary` (py/claudeops/settings.py:442) | `provider.rs::Providers::resolved_binary` | `parity.rs::parity_build` `-override` `-path-` `rb-`; Python hatası? `provider_bin` dize değil (TBD#373) | TAŞINDI |
+| `resolved_binary` (py/claudeops/settings.py:442) | `provider.rs::Providers::resolved_binary` | `parity.rs::parity_build` `-override` `-path-` `rb-` | TAŞINDI |
 | `_KNOWN_BINARY_PATHS` (py/claudeops/settings.py:466) | `provider.rs::CLAUDE_KNOWN_PATHS` | `parity.rs::parity_build` `claude-bilinen` | TAŞINDI |
 | `default_model_for` (py/claudeops/settings.py:478) | `provider.rs::Providers::default_model_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `default_effort_for` (py/claudeops/settings.py:504) | `provider.rs::Providers::default_effort_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -632,7 +636,11 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_CHILD_RE` (py/claudeops/ucli_agents.py:35) | `ucli.rs::is_child_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
 | `_SAFE_NAME_RE` (py/claudeops/ucli_agents.py:36) | yok: `Probe::{issue_agent_token, panel_port}` arayüzü; gerçek uygulama yok | - | EKSİK(G8) |
 | `_LOCK` (py/claudeops/ucli_agents.py:38) | yok: `Probe::{issue_agent_token, panel_port}` arayüzü; gerçek uygulama yok | - | EKSİK(G8) |
-| `_PREVIEW` (py/claudeops/ucli_agents.py:39) | yok: `Probe::{issue_agent_token, panel_port}` arayüzü; gerçek uygulama yok | - | EKSİK(G8) |
+| `_STATE` (py/claudeops/preview.py) | `probe.rs::BuildOutput::dry_run` (iş parçacığı durumu yerine açık alan) | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
+| `preview_only` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` (`SpawnRequest::dry_run`) | `parity.rs::parity_spawn` `yan-` `-dry` | TAŞINDI |
+| `preview_only.__enter__` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
+| `preview_only.__exit__` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` (önceki değeri geri koyar) | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
+| `active` (py/claudeops/preview.py) | `probe.rs::BuildOutput::dry_run` | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
 | `_PANEL_PORT` (py/claudeops/ucli_agents.py:49) | yok: `Probe::{issue_agent_token, panel_port}` arayüzü; gerçek uygulama yok | - | EKSİK(G8) |
 | `_OFF_WORDS` (py/claudeops/ucli_agents.py:54) | `settings.rs::AGENTS_OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
 | `enabled` (py/claudeops/ucli_agents.py:57) | `settings.rs::Settings::ucli_agents_enabled` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
@@ -669,7 +677,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `OWN_UCLI` (py/claudeops/ucli_client.py:57) | `ucli.rs::resolve_binary` (`<repo>/bin/ucli`) | `parity.rs::parity_build` `ru-`; depo içi kopya senaryosu denetimli değil | TAŞINDI |
 | `_SAFE_ENV_NAME_RE` (py/claudeops/ucli_client.py:72) | yok | - | EKSİK(G10) |
 | `UcliError` (py/claudeops/ucli_client.py:75) | `probe.rs::SpawnError` | `parity.rs::parity_build` `ru-hic` | TAŞINDI |
-| `resolve_binary` (py/claudeops/ucli_client.py:79) | `ucli.rs::resolve_binary` | `parity.rs::parity_build` `ru-`; `binary` parametresi yok; Python hatası? `provider_bin.ucli` null (TBD#373) | TAŞINDI |
+| `resolve_binary` (py/claudeops/ucli_client.py:79) | `ucli.rs::resolve_binary` | `parity.rs::parity_build` `ru-`; `binary` parametresi yok | TAŞINDI |
 | `_HELP_CACHE` (py/claudeops/ucli_client.py:149) | yok: yalnız `Probe::ucli_chat_help` arayüzü | - | EKSİK(G8) |
 | `_HELP_TIMEOUT_SECONDS` (py/claudeops/ucli_client.py:150) | yok: yalnız `Probe::ucli_chat_help` arayüzü | - | EKSİK(G8) |
 | `chat_help_text` (py/claudeops/ucli_client.py:153) | yok: yalnız `Probe::ucli_chat_help` arayüzü | - | EKSİK(G8) |
@@ -753,7 +761,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 
 ## TEST EŞLEME TABLOSU
 
-1327 satır: TAŞINDI 333, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 696, EKSİK 276.
+1349 satır: TAŞINDI 354, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 696, EKSİK 277.
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -2091,3 +2099,25 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `CallerTests.test_agent_token_is_not_a_panel_token` (py/tests/test_web_agents_glue.py:41) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `CallerTests.test_agents_paths_are_local_only` (py/tests/test_web_agents_glue.py:46) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `StopHookTests.test_stop_notifies_agents_for_each_killed_session` (py/tests/test_web_agents_glue.py:52) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `ProviderBinTypeTest.test_resolved_binary_ignores_non_string_override` (py/tests/test_provider_bin_type.py) | `parity.rs::parity_build` `-override-tip` `override-tip-sayi` | TAŞINDI |
+| `ProviderBinTypeTest.test_ucli_resolve_binary_ignores_non_string_override` (py/tests/test_provider_bin_type.py) | `parity.rs::parity_build` `-override-tip` `override-tip-sayi` | TAŞINDI |
+| `BadUtf8Test.test_claude_override_unreadable_is_logged_and_left_untouched` (py/tests/test_guidance_bad_utf8.py) | `parity.rs::parity_build` `claude-routing-override-bozuk-utf8` | TAŞINDI |
+| `BadUtf8Test.test_sync_skips_bad_file_and_still_syncs_the_other` (py/tests/test_guidance_bad_utf8.py) | yok: `sync_global_files` yok (karar `sync-bozuk-utf8`) | EKSİK(G9) |
+| `BadUtf8Test.test_sync_bad_agy_file_is_not_removed` (py/tests/test_guidance_bad_utf8.py) | `parity.rs::parity_misc` `sync-bozuk-utf8-kapali` | TAŞINDI |
+| `ModelsPayloadTest.test_non_object_or_non_list_payload_returns_none` (py/tests/test_ucli_models_payload.py) | `parity.rs::parity_misc` `live-bicim` `live0` | TAŞINDI |
+| `ModelsPayloadTest.test_valid_payload_still_works` (py/tests/test_ucli_models_payload.py) | `parity.rs::parity_misc` `live-bicim` `live0` | TAŞINDI |
+| `McpToolNameTest.test_trailing_newline_name_is_dropped` (py/tests/test_ucli_mcp_tool_name.py) | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
+| `McpToolNameTest.test_only_bad_names_means_no_mcp` (py/tests/test_ucli_mcp_tool_name.py) | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
+| `KeyPathQuotingTest.test_key_is_read_from_home_with_space_and_quote` (py/tests/test_ucli_key_path_quoting.py) | `parity.rs::parity_ucli` `tirnak-` | TAŞINDI |
+| `TrustFolder.test_bracket_in_registered_path_does_not_duplicate` (py/tests/test_copilot_trust.py) | `parity.rs::parity_build` `trust-ayrac` `trust-unicode-ham` | TAŞINDI |
+| `TrustFolder.test_bracket_cwd_is_added_once_and_rest_is_kept` (py/tests/test_copilot_trust.py) | `parity.rs::parity_build` `trust-ayrac` `trust-unicode-ham` | TAŞINDI |
+| `TrustFolder.test_comments_inside_list_and_escaped_quote` (py/tests/test_copilot_trust.py) | `parity.rs::parity_build` `trust-ayrac` `trust-unicode-ham` | TAŞINDI |
+| `TrustFolder.test_non_ascii_entry_stored_raw_is_not_duplicated` (py/tests/test_copilot_trust.py) | `parity.rs::parity_build` `trust-ayrac` `trust-unicode-ham` | TAŞINDI |
+| `TrustFolder.test_unterminated_list_is_left_alone` (py/tests/test_copilot_trust.py) | `parity.rs::parity_build` `trust-ayrac` `trust-unicode-ham` | TAŞINDI |
+| `DryRunPureTest.test_claude` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-claude-` | TAŞINDI |
+| `DryRunPureTest.test_copilot` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-copilot-` | TAŞINDI |
+| `DryRunPureTest.test_agy_and_codex` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `-dry` | TAŞINDI |
+| `DryRunPureTest.test_ucli_default_service` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry` | TAŞINDI |
+| `DryRunPureTest.test_ucli_unsafe_name_gets_no_agent_flags_in_either_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry-1` | TAŞINDI |
+| `DryRunPureTest.test_ucli_claude_service_with_ask_dir` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-hizmet-` | TAŞINDI |
+| `DryRunPureTest.test_ucli_removed_key_is_not_deleted_by_dry_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry` | TAŞINDI |
