@@ -122,6 +122,27 @@ fn sighup_reloads_force_proxy_and_stats_count_it() {
         "SIGHUP süreci öldürmemeli"
     );
 
+    // Bozuk dosyayla yeniden yükleme: eski (boş) liste KORUNMAZ, her şey Python'a (kapalı yön). `/api/front/stats` yine Rust'tan
+    // cevaplanır (belgeli istisna) ve etkin listeyi gösterir.
+    std::fs::write(&list, b"\xff\xfe\n").unwrap();
+    hup(p.0.id());
+    until("bozuk dosyada `*` uygulanmadı", || {
+        asset().starts_with("HTTP/1.1 502")
+    });
+    let r = get(
+        port,
+        "/api/front/stats",
+        "Authorization: Bearer tok-NOT-REAL\r\nX-Cops-Parity: 1\r\n",
+    );
+    assert!(
+        r.starts_with("HTTP/1.1 200") && r.contains("x-cops-served: local"),
+        "{r}"
+    );
+    assert!(r.contains(r#""force_proxy":["*"]"#), "{r}");
+    std::fs::remove_file(&list).unwrap();
+    hup(p.0.id());
+    until("`*` geri alınmadı", || asset().contains("YEREL"));
+
     assert!(get(port, "/api/front/stats", "").starts_with("HTTP/1.1 401"));
     let r = get(
         port,

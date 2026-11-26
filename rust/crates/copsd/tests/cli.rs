@@ -1,5 +1,5 @@
 //! İkili düzeyi: `--help`/`--version` yan etkisiz, varsayılan üst port Python `cops front` ile aynı, ön kapı gizlisinin açılış
-//! (gevşek/bozuk dosyada çıkış 2) ve çalışma (değişince yeniden okuma, bozulunca kapalı yön) davranışı, `/api/front/stats`
+//! (gevşek/bozuk dosyada uyarı, süreç sürer) ve çalışma (değişince yeniden okuma, bozulunca kapalı yön) davranışı, `/api/front/stats`
 //! sürümü. Her şey geçici `$HOME`, geçici durum dizini ve boş portlarda; canlı dizine ve portlara dokunulmaz.
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -56,18 +56,6 @@ fn copsd(home: &Path) -> Command {
     c
 }
 
-/// Süreç `limit` içinde biterse çıkış kodu.
-fn wait_exit(c: &mut Child, limit: Duration) -> Option<i32> {
-    let t = Instant::now();
-    while t.elapsed() < limit {
-        if let Some(st) = c.try_wait().unwrap() {
-            return st.code();
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    None
-}
-
 /// Her bağlantıda aldığı başlıkları gövde olarak döner (Python iç portu yerine).
 fn echo_upstream() -> u16 {
     let ln = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -110,6 +98,34 @@ fn get(port: u16, path: &str, extra: &str) -> String {
     buf
 }
 
+fn wait_listen(c: &mut Child, port: u16) {
+    let t = Instant::now();
+    while TcpStream::connect(("127.0.0.1", port)).is_err() {
+        assert!(c.try_wait().unwrap().is_none(), "copsd erken çıktı");
+        assert!(t.elapsed() < Duration::from_secs(10), "copsd açılmadı");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Varsayılan gizli yoluyla (durum dizini), stderr dosyaya.
+fn spawn_logged(home: &Path, state: &Path, up: u16, log: &Path) -> (Proc, u16) {
+    let port = free_port();
+    let mut c = copsd(home);
+    c.args([
+        "--listen",
+        &format!("127.0.0.1:{port}"),
+        "--upstream",
+        &format!("127.0.0.1:{up}"),
+    ])
+    .arg("--state-dir")
+    .arg(state)
+    .stdout(Stdio::null())
+    .stderr(std::fs::File::create(log).unwrap());
+    let mut p = Proc(c.spawn().unwrap());
+    wait_listen(&mut p.0, port);
+    (p, port)
+}
+
 fn spawn(home: &Path, state: &Path, secret: &Path, up: u16) -> (Proc, u16) {
     let port = free_port();
     let mut c = copsd(home);
@@ -126,12 +142,7 @@ fn spawn(home: &Path, state: &Path, secret: &Path, up: u16) -> (Proc, u16) {
     .stdout(Stdio::null())
     .stderr(Stdio::null());
     let mut p = Proc(c.spawn().unwrap());
-    let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(p.0.try_wait().unwrap().is_none(), "copsd erken çıktı");
-        assert!(t.elapsed() < Duration::from_secs(10), "copsd açılmadı");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait_listen(&mut p.0, port);
     (p, port)
 }
 
@@ -185,59 +196,53 @@ fn default_upstream_matches_python_front_cmd() {
     assert!(src.contains(&format!("--upstream ADRES ({})", copsd::DEFAULT_UPSTREAM)));
 }
 
-/// İş 2 (açılış): gizli dosyası var ama kullanılamıyorsa copsd çıkış 2 ile durur (Python yok sayar; Rust daha sıkı). Ortam
-/// değişkeni doluysa dosyaya bakılmaz (Python önceliği). Dosya yoksa açılır.
+/// Açılış: gizli dosyası var ama kullanılamıyorsa (0644, bozuk) copsd ÇIKMAZ; uyarı yazar, gizli YOK sayar, dosya düzelince
+/// yeniden başlatmadan kullanır. Uyarı ve günlük gizli değerini taşımaz.
 #[test]
-fn startup_refuses_unusable_secret_file() {
+fn startup_ignores_unusable_secret_file_and_warns() {
     let home = tmp("start");
     let state = tmp("start-state");
     let sec = state.0.join("front.secret");
-    for (bytes, mode, env, want_exit) in [
-        (&b"gizli\n"[..], 0o644, None, Some(2)),
-        (&b"\xff\xfe\n"[..], 0o600, None, Some(2)),
-        (&b"gizli\n"[..], 0o644, Some("ortam"), None),
-    ] {
+    let up = echo_upstream();
+    for (bytes, mode) in [(&b"sizmis-deger\n"[..], 0o644), (&b"\xff\xfe\n"[..], 0o600)] {
         put(&sec, bytes, mode);
+        let log = state.0.join("err.log");
+        let (mut p, port) = spawn_logged(&home.0, &state.0, up, &log);
+        let r = get(port, "/api/x", "").to_ascii_lowercase();
+        assert!(r.starts_with("http/1.1 200"), "{r}");
+        assert!(!r.contains("x-cops-front"), "{r}");
+        assert!(p.0.try_wait().unwrap().is_none(), "{mode:o}: copsd çıktı");
+        let err = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            err.contains("UYARI") && err.contains("front.secret"),
+            "{err}"
+        );
+        assert!(!err.contains("sizmis-deger"), "{err}");
+        put(&sec, b"duzeldi\n", 0o600);
+        assert!(get(port, "/api/x", "")
+            .to_ascii_lowercase()
+            .contains("x-cops-front: duzeldi|"));
+    }
+}
+
+/// `--secret-file` yoksa varsayılan yol durum dizinidir (Python `front.secret_path`): `--state-dir` ve `CLAUDEOPS_DIR` izlenir,
+/// `$HOME/.claude/claudeops/front.secret` durum dizini başkayken okunmaz.
+#[test]
+fn default_secret_path_follows_state_dir() {
+    let home = tmp("path");
+    let state = tmp("path-state");
+    let hd = home.0.join(".claude/claudeops");
+    std::fs::create_dir_all(&hd).unwrap();
+    put(&hd.join("front.secret"), b"ev\n", 0o600);
+    let up = echo_upstream();
+    for by_env in [false, true] {
         let port = free_port();
         let mut c = copsd(&home.0);
         c.args([
             "--listen",
             &format!("127.0.0.1:{port}"),
             "--upstream",
-            &format!("127.0.0.1:{}", free_port()),
-            "--state-dir",
-            state.0.to_str().unwrap(),
-            "--secret-file",
-            sec.to_str().unwrap(),
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-        if let Some(e) = env {
-            c.env("CLAUDEOPS_FRONT_SECRET", e);
-        }
-        let mut p = Proc(c.spawn().unwrap());
-        assert_eq!(
-            wait_exit(&mut p.0, Duration::from_secs(3)),
-            want_exit,
-            "{mode:o} {env:?}"
-        );
-    }
-    std::fs::remove_file(&sec).unwrap();
-    let (_p, port) = spawn(&home.0, &state.0, &sec, echo_upstream());
-    assert!(get(port, "/api/x", "").starts_with("HTTP/1.1 200"));
-    // `--secret-file` yoksa varsayılan yol durum dizinidir (Python `front.secret_path`): `--state-dir` ve `CLAUDEOPS_DIR` izlenir,
-    // `$HOME/.claude/claudeops/front.secret` durum dizini başkayken okunmaz.
-    let hd = home.0.join(".claude/claudeops");
-    std::fs::create_dir_all(&hd).unwrap();
-    put(&hd.join("front.secret"), b"gizli\n", 0o644);
-    put(&sec, b"gizli\n", 0o644);
-    for by_env in [false, true] {
-        let mut c = copsd(&home.0);
-        c.args([
-            "--listen",
-            &format!("127.0.0.1:{}", free_port()),
-            "--upstream",
-            &format!("127.0.0.1:{}", free_port()),
+            &format!("127.0.0.1:{up}"),
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -246,32 +251,69 @@ fn startup_refuses_unusable_secret_file() {
         } else {
             c.arg("--state-dir").arg(&state.0);
         }
+        let _ = std::fs::remove_file(state.0.join("front.secret"));
         let mut p = Proc(c.spawn().unwrap());
-        assert_eq!(
-            wait_exit(&mut p.0, Duration::from_secs(3)),
-            Some(2),
-            "durum dizinindeki gizli okunmadı (env={by_env})"
-        );
+        wait_listen(&mut p.0, port);
+        let fwd = || get(port, "/api/x", "").to_ascii_lowercase();
+        assert!(!fwd().contains("x-cops-front"), "$HOME gizlisi okunmamalı");
+        put(&state.0.join("front.secret"), b"durum\n", 0o600);
+        assert!(fwd().contains("x-cops-front: durum|"), "env={by_env}");
     }
-    std::fs::remove_file(&sec).unwrap();
-    let mut c = copsd(&home.0);
+}
+
+/// Dosya tanıtıcısı tükenince (`EMFILE`) copsd çıkmaz; bağlantılar bırakılınca yeniden cevap verir.
+#[test]
+fn accept_errors_do_not_stop_the_server() {
+    let home = tmp("emfile");
+    let state = tmp("emfile-state");
+    let up = echo_upstream();
     let port = free_port();
-    c.args([
-        "--listen",
-        &format!("127.0.0.1:{port}"),
-        "--upstream",
-        &format!("127.0.0.1:{}", free_port()),
-        "--state-dir",
-        state.0.to_str().unwrap(),
-    ])
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    let log = state.0.join("err.log");
+    let base = copsd(&home.0);
+    let mut c = Command::new("sh");
+    c.args(["-c", "ulimit -n 40 && exec \"$0\" \"$@\""])
+        .arg(base.get_program())
+        .args([
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--upstream",
+            &format!("127.0.0.1:{up}"),
+        ])
+        .arg("--state-dir")
+        .arg(&state.0)
+        .env("HOME", &home.0)
+        .env_remove("CLAUDEOPS_DIR")
+        .env_remove("CLAUDEOPS_FRONT_SECRET")
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(&log).unwrap());
     let mut p = Proc(c.spawn().unwrap());
-    assert_eq!(
-        wait_exit(&mut p.0, Duration::from_secs(1)),
-        None,
-        "$HOME altındaki gizli okunmamalı"
+    wait_listen(&mut p.0, port);
+    let held: Vec<TcpStream> = (0..80)
+        .filter_map(|_| TcpStream::connect(("127.0.0.1", port)).ok())
+        .collect();
+    let t = Instant::now();
+    while !std::fs::read_to_string(&log)
+        .unwrap()
+        .contains("kabul edilemedi")
+    {
+        assert!(
+            p.0.try_wait().unwrap().is_none(),
+            "copsd kabul hatasında çıktı"
+        );
+        assert!(t.elapsed() < Duration::from_secs(10), "EMFILE oluşmadı");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        p.0.try_wait().unwrap().is_none(),
+        "copsd kabul hatasında çıktı"
     );
+    drop(held);
+    let t = Instant::now();
+    while !get(port, "/api/x", "").starts_with("HTTP/1.1 200") {
+        assert!(t.elapsed() < Duration::from_secs(10), "copsd toparlanmadı");
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// İş 2 (çalışma): dosya değişince yeni değer aktarılır ve `X-Cops-Front` denetimi onu kullanır; gevşerse ya da silinirse

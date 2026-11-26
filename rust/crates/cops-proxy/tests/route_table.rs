@@ -248,12 +248,23 @@ fn force_file_parsing_and_failure_modes() {
     let f = ForceProxy::load(&file);
     assert_eq!(f.list(), ["/api/status", "/ws"]);
     assert!(f.matches("/ws/term") && !f.matches("/api/stat"));
-    // okunamaz hale geldi: yeniden okuma eski listeyi korur, ilk yükleme her şeyi Python'a verir
+    // okunamaz hale geldi: yeniden okuma da ilk yükleme de her şeyi Python'a verir (kapalı yön)
     std::fs::remove_file(&file).unwrap();
     std::fs::create_dir(&file).unwrap();
     assert!(f.reload().is_err());
-    assert_eq!(f.list(), ["/api/status", "/ws"]);
+    assert_eq!(f.list(), ["*"]);
     assert_eq!(ForceProxy::load(&file).list(), ["*"]);
+    // bozuk (UTF-8 olmayan) içerik de aynı; düzelince liste geri gelir, silinince boşalır
+    std::fs::remove_dir(&file).unwrap();
+    std::fs::write(&file, "/ws\n").unwrap();
+    f.reload().unwrap();
+    assert_eq!(f.list(), ["/ws"]);
+    std::fs::write(&file, b"/api/a\n\xff\n").unwrap();
+    assert!(f.reload().is_err());
+    assert_eq!(f.list(), ["*"]);
+    std::fs::remove_file(&file).unwrap();
+    f.reload().unwrap();
+    assert!(f.list().is_empty());
 }
 
 #[tokio::test]

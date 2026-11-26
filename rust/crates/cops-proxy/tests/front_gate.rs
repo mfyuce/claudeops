@@ -657,8 +657,8 @@ async fn stats_carry_binary_version() {
     assert_eq!(v["version"], "unknown");
 }
 
-/// İş 7: `force_proxy` boyut sınırları. 512 satır geçerli, 513 = `*`; 64 KiB üstü dosya ilk okumada `*`, yeniden okumada
-/// eski liste; düzenli dosya olmayan yol okuma hatası.
+/// İş 7: `force_proxy` boyut sınırları. 512 satır geçerli, 513 = `*`; 64 KiB üstü dosya ilk ve yeniden okumada `*`; düzenli
+/// dosya olmayan yol okuma hatası.
 #[test]
 fn force_proxy_size_limits() {
     let d = tempfile::tempdir().unwrap();
@@ -676,7 +676,7 @@ fn force_proxy_size_limits() {
     assert_eq!(fp.list(), vec!["/api/a"]);
     std::fs::write(&f, format!("/api/b\n{}", "#".repeat(64 * 1024))).unwrap();
     assert!(fp.reload().is_err(), "64 KiB üstü okuma hatası");
-    assert_eq!(fp.list(), vec!["/api/a"], "yeniden okumada eski liste");
+    assert_eq!(fp.list(), vec!["*"], "yeniden okumada da `*`");
     let fresh = ForceProxy::load(&f);
     assert_eq!(fresh.list(), vec!["*"], "ilk okumada `*`");
     let dir_as_file = ForceProxy::load(d.path());

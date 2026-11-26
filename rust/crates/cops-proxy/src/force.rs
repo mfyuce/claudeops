@@ -34,7 +34,7 @@ pub struct ForceProxy {
 }
 
 impl ForceProxy {
-    /// Dosyayı hemen okur. Dosya VAR ama okunamıyorsa liste `*` (her şey Python'a): istenen geri alma sessizce kaybolmasın.
+    /// Dosyayı hemen okur. Okuma kuralı [`ForceProxy::reload`] ile aynı.
     pub fn load(path: impl Into<PathBuf>) -> ForceProxy {
         let f = ForceProxy {
             path: path.into(),
@@ -45,17 +45,20 @@ impl ForceProxy {
                 "copsd: force_proxy okunamadı, TÜM istekler Python'a: {}: {e}",
                 f.path.display()
             );
-            f.set(vec!["*".into()]);
         }
         f
     }
 
-    /// Yeniden okur; yeni önek sayısını döner. Dosya yoksa liste boşalır. Okuma hatasında ESKİ liste kalır.
+    /// Yeniden okur; yeni önek sayısını döner. Dosya yoksa liste boşalır. Dosya VAR ama okunamıyor ya da bozuksa liste `*` olur
+    /// (her şey Python'a, kapalı yön: istenen geri alma sessizce kaybolmasın) ve hata döner.
     pub fn reload(&self) -> std::io::Result<usize> {
         let mut list = match read(&self.path) {
             Ok(t) => parse(&t),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(e),
+            Err(e) => {
+                self.set(vec!["*".into()]);
+                return Err(e);
+            }
         };
         if list.len() > MAX_ENTRIES {
             // Sessiz kesme geri almayı kaybettirir: sınır aşıldıysa her şey Python'a.

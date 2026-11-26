@@ -13,3 +13,7 @@ cops-progress = { path = "../cops-progress" }
 
 [dev-dependencies]
 serde_json = "1"
+
+[[test]]
+name = "ctx_front"
+harness = false

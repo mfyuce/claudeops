@@ -1875,6 +1875,9 @@ pub async fn serve(listen: SocketAddr, proxy: Arc<Proxy>) -> std::io::Result<()>
 /// İstek satırı + başlıkların okunma süre sınırı (Python `_Handler.HEADER_READ_TIMEOUT`, slowloris). Aşılırsa bağlantı kapanır.
 pub const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// `accept` hatasından (ör. `EMFILE`) sonra yeniden denemeden önceki bekleme.
+pub const ACCEPT_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// `serve`, hazır bağlanmış dinleyiciyle (port seçimiyle dinleme arasında başkası portu alamaz).
 pub async fn serve_on(ln: tokio::net::TcpListener, proxy: Arc<Proxy>) -> std::io::Result<()> {
     serve_on_with(ln, proxy, HEADER_READ_TIMEOUT).await
@@ -1887,7 +1890,15 @@ pub async fn serve_on_with(
     header_read_timeout: std::time::Duration,
 ) -> std::io::Result<()> {
     loop {
-        let (sock, peer) = ln.accept().await?;
+        // Tek bir kabul hatası (dosya tanıtıcısı tükenmesi, kopan bağlantı) dinleyiciyi bitirmez.
+        let (sock, peer) = match ln.accept().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("copsd: bağlantı kabul edilemedi, yeniden denenecek: {e}");
+                tokio::time::sleep(ACCEPT_RETRY).await;
+                continue;
+            }
+        };
         let p = proxy.clone();
         tokio::spawn(async move {
             let svc = hyper::service::service_fn(move |r| p.clone().handle(r, peer));
