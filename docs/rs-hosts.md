@@ -130,16 +130,19 @@ test `proxy_get` + `record_reads` bileşimini sınar.
 - `remote_stop`: bütçe kodu `destructive_budget` + Python metni (eskiden `deferred`), bloklu host yanıtında
   `code: host_down`, yanıt `host` ve `name` taşır, `ok` olmayan yanıt `ok:false` (Python `_remote_stop`).
 
-Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli davranıyor):
-- `web_hosts.merge_status._row_key`: `r["cwd"].lower()`/`r["name"].lower()`; `cwd`/`name` alanı olmayan ya da `null`
-  uzak satır KeyError/AttributeError ile yerel `/api/status` birleştirmesini düşürür. Rust boş metin sayar.
-- `web_hosts._tag_rows`: nesne olmayan satırda `dict(r)` TypeError; `_fetch_status_from` yalnız `"sessions" in parsed`
-  bakar, `sessions: 5` de aynı istisnaya gider (poller turu ölür, watchdog yeniden başlatır, host durumu yazılmaz).
-  Rust: dizi olmayan `sessions` = "unexpected response shape", nesne olmayan satır atlanır.
-- `web_steward._remote_session`/`_remote_running_row` tam ad yolunda İLK çalışan satırı alır (`next(...)`), aynı
-  adlı iki çalışan satırı belirsiz saymaz. Rust `ambiguous` döner (daha sıkı).
-- `_probe_facts`: `capabilities` metin gelirse karakterlerine bölünür; Rust dizi olmayanı boş, metin olmayan öğeyi
-  atar (Python `str()` ile tutar). `has("exact_target")` sonucu iki tarafta aynı.
+Python'da hatalı bulunanlar (TBD#372, sahip kararı: Python'da ve Rust'ta düzelsin):
+- Python düzeltildi: `e2e497a`. `web_hosts.merge_status._row_key`: `cwd`/`name` alanı olmayan, `null` ya da metin
+  olmayan uzak satır yerel `/api/status` birleştirmesini düşürüyordu. İki taraf da boş metin sayar.
+- Python düzeltildi: `3e525fe`. `web_hosts._tag_rows` / `_fetch_status_from`: nesne olmayan satır ve `sessions: 5`
+  poller turunu öldürüyordu. İki taraf da: dizi olmayan `sessions` = "unexpected response shape", nesne olmayan satır
+  atlanır. WS push'ta `sessions` dizi olmayan (eksik ve `null` dahil) durum karesi atlanır; Rust eskiden bunu boş
+  oturum listesiyle "ok" kaydediyordu (Rust `4cee0a1`, test
+  `fake_ws::junk_frames_keep_the_stream_alive_but_rest_polling_continues`).
+- Python düzeltildi: `a0cd64f`. `web_steward._remote_session` tam ad yolu ve `_remote_running_row` ilk çalışan satırı
+  alıyordu. Aynı adlı iki çalışan satır artık `ambiguous_sessions` (`_remote_running_row`: bilinmiyor); Rust
+  `exact_target` zaten `ambiguous` dönüyordu.
+- Python düzeltildi: `769f899`. `_probe_facts` / `_caps_put`: metin `capabilities` karakterlerine bölünüyordu. İki taraf
+  da dizi olmayanı boş sayar, metin olmayan öğeyi atar.
 
 ### İş 3 test eşlemesi
 
