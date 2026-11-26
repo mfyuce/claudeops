@@ -36,6 +36,7 @@ class InstancesCorrupt(RuntimeError):
 
 _cache_key: Optional[tuple] = None
 _cache: Dict[str, dict] = {}
+_db_cache: Optional[tuple] = None      # db kipi: (DB damgası, kayıtlar); TEK atama (iş parçacıkları yarım çift görmesin)
 
 
 def read_strict() -> dict:
@@ -56,14 +57,22 @@ def read_strict() -> dict:
 
 def load_instances() -> Dict[str, dict]:
     """{isim: kayıt}. Okuyucular için toleranslı: bozuk dosyada boş döner."""
-    global _cache_key, _cache
+    global _cache_key, _cache, _db_cache
     from . import statedocs
-    if statedocs.backend() == "db":     # kayıt DB'de: ayna dosyanın imzası değişmese de içerik değişebilir (TBD#374 S4)
+    if statedocs.backend() == "db":     # kayıt DB'de: ayna dosyanın imzası değil DB satır damgası anahtardır (TBD#374 S4)
         _cache_key = None
+        stamp = statedocs._db_stamp("instances", INSTANCES_JSON)
+        hit = _db_cache
+        if stamp is not None and hit is not None and hit[0] == stamp:
+            return dict(hit[1])
         try:
-            return dict(read_strict()["instances"])
+            data = read_strict()["instances"]
         except InstancesCorrupt:
             return {}
+        # damga okumadan ÖNCE alındı: arada yazım olursa sonraki çağrı yeniden okur; okuma dosyaya düştüyse saklanmaz
+        if stamp is not None and statedocs._db_stamp("instances", INSTANCES_JSON) == stamp:
+            _db_cache = (stamp, data)
+        return dict(data)
     try:
         st = os.stat(INSTANCES_JSON)
     except FileNotFoundError:       # ayna dosya yok: db kipinde kayıtlar DB'de olabilir (önbelleksiz oku)
