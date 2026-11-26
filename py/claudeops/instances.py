@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, flock_bounded
 from .paths import CLAUDEOPS_DIR
 
 INSTANCES_JSON = os.path.join(CLAUDEOPS_DIR, "instances.json")
@@ -84,7 +84,7 @@ def get_instance(name: str) -> Optional[dict]:
 def _locked():
     os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
     with open(_LOCK_PATH, "w") as fd:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        flock_bounded(fd.fileno())      # süresiz bekleme yok: `LockError` (TBD#374 S6)
         try:
             yield
         finally:
