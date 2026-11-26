@@ -144,7 +144,8 @@ fn claude_last(data: &[u8]) -> Exchange {
         return Exchange::empty();
     };
     let user = rows
-        .filter(|r| kind(r) == Some("user") && !flag(r, "isSidechain") && !flag(r, "isMeta"))
+        // Sıkıştırma özeti kullanıcının mesajı değildir.
+        .filter(|r| kind(r) == Some("user") && !["isSidechain", "isMeta", "isCompactSummary"].iter().any(|k| flag(r, k)))
         .find(|r| claude_real_user(claude_content(r)))
         .map(|r| claude_text(claude_content(&r)))
         .unwrap_or_default();

@@ -1131,7 +1131,8 @@ class ClaudeProvider(CliProvider):
         user_text = ""
         for i in range(ai - 1, -1, -1):
             d = lines[i]
-            if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta"):
+            # Sıkıştırma özeti kullanıcının mesajı değildir (`full_history`de `summary`).
+            if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta") or d.get("isCompactSummary"):
                 continue
             content = _row_content(d)
             if _is_real_user_text(content):

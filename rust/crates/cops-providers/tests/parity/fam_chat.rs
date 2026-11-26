@@ -313,6 +313,11 @@ fn claude_divergences(b: &mut Build<'_>) {
     let huge = format!("{{\"type\":\"x\",\"n\":{}}}", "9".repeat(5000));
     let c = b.claude("sekil-dev-sayi", lines(&[q.as_str(), r.as_str(), huge.as_str()]));
     b.agrees(c, ok.clone());
+    let summary = msg("user", json!("özet"), json!({"isCompactSummary": true}));
+    let c = b.claude("ozet-kullanici-degil", lines(&[q.as_str(), summary.as_str(), r.as_str()]));
+    b.agrees(c, json!({"last_exchange": {"user": "soru", "assistant": "cevap"}}));
+    let c = b.claude("ozet-yalniz", lines(&[summary.as_str(), r.as_str()]));
+    b.agrees(c, json!({"last_exchange": {"user": "", "assistant": "cevap"}}));
     let c = b.claude("mesaj-son-asistan", lines(&[q.as_str(), r.as_str(), r#"{"type":"assistant","message":5}"#]));
     b.agrees(c, json!({"last_exchange": {"user": "soru", "assistant": ""}}));
     let lone = r#"{"type":"assistant","message":{"content":"yarım \ud83d"}}"#;

@@ -178,6 +178,18 @@ class BadShapeTest(Base):
             with self.subTest(bad=bad[:30]):
                 self.assertIsNone(self.ucli((bad + "\n").encode()).full_history(str(self.root), "s"))
 
+class CompactSummaryTest(Base):
+    def test_summary_is_not_the_users_message(self):
+        summary = c_row("user", "SIKIŞTIRMA ÖZETİ", isCompactSummary=True)
+        p = self.claude(c_row("user", "soru"), summary, c_row("assistant", [{"type": "text", "text": "cevap"}]))
+        self.assertEqual(p.last_exchange("/x", "s"), EXCHANGE)
+        self.assertIn({"role": "summary", "text": "SIKIŞTIRMA ÖZETİ"}, p.full_history("/x", "s"))
+
+    def test_only_summary_before_the_answer_means_no_user_message(self):
+        summary = c_row("user", "ÖZET", isCompactSummary=True)
+        p = self.claude(summary, c_row("assistant", [{"type": "text", "text": "cevap"}]))
+        self.assertEqual(p.last_exchange("/x", "s"), {"user": "", "assistant": "cevap"})
+
 
 if __name__ == "__main__":
     unittest.main()
