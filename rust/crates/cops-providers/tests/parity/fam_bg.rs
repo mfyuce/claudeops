@@ -289,7 +289,7 @@ fn transcripts() -> Vec<Vec<String>> {
 }
 
 /// Python'da TÜM taramayı düşüren satırlar (Rust satırı atlayıp sürdürür); her biri ardından geçerli bir iş gelir.
-fn crashing() -> Vec<(&'static str, Vec<String>)> {
+fn odd_lines() -> Vec<(&'static str, Vec<String>)> {
     let good = use_("t1", true, "2026-11-23T10:00:00Z");
     let agent = sub_agent("started", json!("a1"), "2026-11-23T10:17:26Z");
     let c = |bad: &str| vec![bad.to_string(), good.clone()];
@@ -417,12 +417,9 @@ fn cases(e: &Env) -> Vec<Case> {
             ));
         }
     }
-    for (name, lines) in crashing() {
-        v.push(
-            Case::new(format!("bg-istisna-{name}"), "bg", json!({"transcripts": [lines], "now": T, "tz": "UTC0"})).known(
-                "beklenmeyen tipte satır: Python istisnası tüm taramayı düşürür, Rust yalnız o satırı/bloğu atlar",
-            ),
-        );
+    // beklenmeyen tipte satır: iki tarafta da yalnız o satır/blok atlanır; sağlam satır sayılmaya devam eder
+    for (name, lines) in odd_lines() {
+        v.push(Case::new(format!("bg-sekil-{name}"), "bg", json!({"transcripts": [lines], "now": T, "tz": "UTC0"})));
     }
     // dosya kuyruğu: yok, dizin, boş yol, boş dosya, bozuk UTF-8, yarım satır, 8 MiB sınırında kesilen kayıt
     let path = |rel: &str| format!("{}/{rel}", e.root);

@@ -1,9 +1,8 @@
 //! Arka plan işi tespiti (`py/claudeops/bg_work.py`): ekran işaretleri ve transkriptte bildirimi gelmemiş iş. SAF
 //! işlevler; dosya okuma `live` modülündedir.
 //!
-//! Python'dan bilinçli fark (parite testinde `known`): beklenmeyen tipte bir satır (nesne olmayan belge, nesne olmayan
-//! `message`/`input`/`payload`/`item`, listelenemeyen kimlik) Python'da istisnadır ve TÜM taramayı düşürür; burada
-//! yalnız o satır/blok atlanır.
+//! İki tarafta da beklenmeyen tipte bir satır (nesne olmayan belge, nesne olmayan `message`/`input`/`payload`/`item`,
+//! anahtar olamayan kimlik) yalnız o satırı/bloğu atlatır.
 
 use crate::pyfmt::{decimal_value, strip};
 use crate::pyjson::Py;
@@ -129,7 +128,7 @@ fn key(v: &Py) -> Option<Key> {
     }
 }
 
-/// `(v or {})` sonra `.get(...)`: falsy değer boş sözlük, truthy ama sözlük olmayan değer None (Python'da istisna).
+/// `(v or {})`: falsy değer boş sözlük, truthy ama sözlük olmayan değer None (satır/blok atlanır).
 fn dict_or_empty(v: Option<&Py>) -> Option<&Py> {
     static EMPTY: Py = Py::Object(Vec::new());
     match v {

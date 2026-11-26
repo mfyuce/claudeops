@@ -64,10 +64,14 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
             continue
         try:
             o = json.loads(ln)
-        except ValueError:
+        except (ValueError, RecursionError):
+            continue
+        # Beklenmedik yapıdaki satır/blok yalnız atlanır: istisna bütün taramayı düşürüyordu.
+        msg = (o.get("message") or {}) if isinstance(o, dict) else None
+        if not isinstance(msg, dict):
             continue
         ts = _epoch(o.get("timestamp"))
-        c = (o.get("message") or {}).get("content")
+        c = msg.get("content")
         if isinstance(c, str):
             if "<task-notification>" in c:
                 st = _STATUS_RE.search(c)
@@ -82,9 +86,11 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
         for b in c:
             if not isinstance(b, dict):
                 continue
-            if b.get("type") == "tool_use" and (b.get("input") or {}).get("run_in_background") is True and b.get("id"):
-                pending[b["id"]] = [ts or now, None]
-            elif b.get("type") == "tool_result" and b.get("tool_use_id") in pending:
+            if b.get("type") == "tool_use":
+                inp = b.get("input")
+                if isinstance(inp, dict) and inp.get("run_in_background") is True and b.get("id") and _hashable(b["id"]):
+                    pending[b["id"]] = [ts or now, None]
+            elif b.get("type") == "tool_result" and _hashable(b.get("tool_use_id")) and b.get("tool_use_id") in pending:
                 if b.get("is_error") is True:      # çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
                     del pending[b["tool_use_id"]]
                     continue
@@ -97,6 +103,11 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
         if now - t < PENDING_MAX_AGE_SECONDS:
             return True
     return False
+
+
+def _hashable(v) -> bool:
+    """JSON değeri küme/sözlük anahtarı olabilir mi (liste ve nesne olamaz)."""
+    return not isinstance(v, (list, dict))
 
 
 def _epoch(v) -> Optional[float]:
@@ -144,9 +155,12 @@ def codex_subagents_pending(lines: Iterable[str], now: Optional[float] = None) -
             continue
         try:
             o = json.loads(ln)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
-        it = (o.get("payload") or {}).get("item") or {}
+        payload = (o.get("payload") or {}) if isinstance(o, dict) else None
+        it = (payload.get("item") or {}) if isinstance(payload, dict) else None
+        if not isinstance(it, dict):
+            continue
         if it.get("type") != "SubAgentActivity" or not it.get("agent_thread_id"):
             continue
         aid = str(it["agent_thread_id"])
