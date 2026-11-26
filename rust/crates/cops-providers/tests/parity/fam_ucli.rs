@@ -328,6 +328,14 @@ fn opts_cases(e: &Env) -> Vec<Case> {
     v.push(opts(e, "hizmet-anahtar-dosyasi-symlink", json!({"service": "grok"})).settings_json(byok.clone())
         .file(file("home/hedef", "h", 0o600))
         .file(Fx::Link("home/.claude/claudeops/ucli_key_grok".into(), "../../hedef".into())));
+    // Dizin açılamayınca komut değişir (`Probe::apply_now`): bayrak düşer ve/veya günlüğe yazılır.
+    v.push(ucase(e, "dizin-metrics-dosya", json!({})).file(file("state/ucli_metrics", "x", 0o600)));
+    let usage = "home/.claude/claudeops/ucli_usage";
+    v.push(ucase(e, "dizin-usage-diger-dosya", json!({})).file(file(&format!("{usage}/other"), "x", 0o600)));
+    v.push(ucase(e, "dizin-usage-kok-dosya", json!({})).file(file(usage, "x", 0o600)));
+    v.push(ucase(e, "dizin-usage-izinsiz", json!({})).file(Fx::Dir(usage.into(), 0o500)));
+    v.push(opts(e, "dizin-usage-claude-dosya", json!({"service": "claude"})).settings_json(byok.clone())
+        .file(file(usage, "x", 0o600)));
     v.push(ucase(e, "opts-cost-fiyatli", json!({"validate": true, "raw_opts": {"max_cost_usd": "0.5"}, "model": "claude-sonnet-5-5"})));
     v.push(ucase(e, "opts-cost-fiyatsiz", json!({"validate": true, "raw_opts": {"max_cost_usd": "0.5"}})));
     v.push(ucase(e, "opts-cost-modelsiz", json!({"validate": true, "raw_opts": {"max_cost_usd": "0.5"}, "model": ""})));

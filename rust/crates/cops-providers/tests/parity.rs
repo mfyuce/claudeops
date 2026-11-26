@@ -112,3 +112,10 @@ mod fam_resume;
 fn parity_resume() {
     fam_resume::run();
 }
+#[path = "parity/fam_g8.rs"]
+mod fam_g8;
+
+#[test]
+fn parity_real() {
+    fam_g8::run();
+}

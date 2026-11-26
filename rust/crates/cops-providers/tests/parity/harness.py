@@ -9,6 +9,7 @@ anlık görüntüyü Rust tarafı kurar/alır; bu süreç yalnız çağrıyı ya
 """
 import json
 import os
+import shutil
 import sys
 import time
 import types
@@ -59,6 +60,7 @@ class _FakePopen:
         return 0
 
 
+_REAL_RUN, _REAL_POPEN = subprocess.run, subprocess.Popen      # yalnız `g8_*` işlemleri: geçici ağaçtaki sahte betikler
 subprocess.run = _fake_run
 subprocess.Popen = _FakePopen
 subprocess.call = subprocess.check_call = subprocess.check_output = _fake_run
@@ -158,6 +160,7 @@ def _fake_ext_mcp(cwd):
     return _spec(s) if s else None
 
 
+_ORIG_PATH_EXEC, _ORIG_TOOLCHAIN, _ORIG_REGISTRY = uso.path_executables, uso.rust_toolchain, ucli_checks.load_registry
 searxng.ensure_search_url = _fake_ensure_search_url
 ucli_agents.issue_token = _fake_issue_token
 uso.rust_toolchain = _fake_toolchain
@@ -801,6 +804,104 @@ def op_resume(a):
 
 
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}
+
+
+class _RealProcesses:
+    """Gerçek alt süreç (yalnız vaka ağacındaki sahte betik): `with` süresince sahteler kaldırılır."""
+
+    def __enter__(self):
+        subprocess.run, subprocess.Popen = _REAL_RUN, _REAL_POPEN
+
+    def __exit__(self, *exc):
+        subprocess.run, subprocess.Popen = _fake_run, _FakePopen
+
+
+def op_g8_paths(a):
+    return {"which": [shutil.which(n) for n in a["which"]],
+            "real": [os.path.realpath(p) for p in a["real"]],
+            "exec": _ORIG_PATH_EXEC()}
+
+
+def op_g8_toolchain(a):
+    tc, err = _ORIG_TOOLCHAIN()
+    return [tc or None, err]
+
+
+def op_g8_checks(a):
+    out = []
+    for owner in a["owners"]:
+        data, err = _ORIG_REGISTRY(owner)
+        out.append([err, None if err else data])
+    return out
+
+
+def op_g8_agents(a):
+    seq = iter(range(1, 1000))
+    saved = ucli_agents.secrets.token_hex, ucli_agents.time
+    ucli_agents.secrets.token_hex = lambda n: (bytes([next(seq)]) * n).hex()
+    ucli_agents.time = types.SimpleNamespace(time=lambda: a["now"])
+    out = []
+    try:
+        for step, name in a["steps"]:
+            try:
+                if step == "issue":
+                    out.append(["ok", _ORIG_ISSUE(name)])
+                elif step == "revoke":
+                    ucli_agents.revoke_parent(name)
+                    out.append(["ok", None])
+                else:
+                    out.append(["ok", ucli_agents.parent_for_token((bytes([int(name)]) * 32).hex())])
+            except Exception as e:      # noqa: BLE001
+                out.append(["err", type(e).__name__])
+    finally:
+        ucli_agents.secrets.token_hex, ucli_agents.time = saved
+    return out
+
+
+def _fix_ts(path):
+    import re
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(re.sub(r'"ts": "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d"', '"ts": "T"', text))
+
+
+def op_g8_diag(a):
+    for event, fields in a["events"]:
+        _ORIG_DIAG(event, **dict(fields))
+    _fix_ts(diaglog.diag_log_path())
+    return None
+
+
+def op_g8_agy(a):
+    for name, sid in a["writes"]:
+        agy_p._remember_agy_sid(name, sid)
+    return agy_p._load_agy_sids()
+
+
+def op_g8_help(a):
+    out = []
+    with _RealProcesses():
+        for kind, binary in a["calls"]:
+            fn = claude_p.claude_help_text if kind == "claude" else ucli_client.chat_help_text
+            out.append(fn(binary))
+    return out
+
+
+def op_g8_mcp(a):
+    saved = ucli_p._MCP_ADD_TIMEOUT
+    ucli_p._MCP_ADD_TIMEOUT = a.get("timeout", 20)
+    try:
+        with _RealProcesses():
+            return providers.get_provider("ucli").mcp_launch_args(_spec(a["spec"]), a["cwd"])
+    finally:
+        ucli_p._MCP_ADD_TIMEOUT = saved
+
+
+OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith("op_g8_")})
 
 
 def main():

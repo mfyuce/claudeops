@@ -7,6 +7,11 @@
 
 #![allow(dead_code)]
 
+use cops_providers::real::docs::FileDocs;
+use cops_providers::real::effects::{self, EffectError};
+use cops_providers::real::help::HelpCache;
+use cops_providers::real::probe::{FailClosedCostGate, NoSearch, ProjectDirs};
+use cops_providers::real::{Env as OsEnv, RealDeps, RealProbe};
 use cops_providers::ucli::LiveModels;
 use cops_providers::ucli_opts::Toolchain;
 use cops_providers::{BuildOutput, Diag, Effect, McpRegisterError, ModelCatalog, Paths, Probe, Settings};
@@ -15,12 +20,12 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
 use tempfile::TempDir;
 
-const O_NOFOLLOW: i32 = 0o400000; // Linux
 pub const COST_CAP_MSG: &str =
     "claude: günlük USD tavanı aşıldı (1.50 / 1.00); Ayarlar'dan ucli_cost.daily_cap_usd yükselt ya da yarın dene";
 
@@ -321,95 +326,88 @@ fn walk(p: &Path, root: &str, out: &mut BTreeMap<String, String>) {
 
 // ------------------------------------------------------------------------------------------------------------- Probe
 
-/// Dosya sistemi olguları gerçek geçici ağaçtan; süreç/ağ olguları vakanın `facts`ından (Python'da aynı sahte değerler).
+/// Python `claude_provider._encode_cwd` (gerçek karşılığı rs/proc `transcript.rs::encode_cwd`).
+pub fn encode_cwd(cwd: &str) -> String {
+    cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
+}
+
+pub struct TestProjects(pub String);
+
+impl ProjectDirs for TestProjects {
+    fn claude_project_dir(&self, cwd: &str) -> String {
+        format!("{}/.claude/projects/{}", self.0, encode_cwd(cwd))
+    }
+}
+
+/// Koşucu Python'unun ortamı: taban + vakanın değişkenleri.
+pub fn case_env(e: &Env, case: &Case) -> OsEnv {
+    let mut vars = vec![
+        ("HOME".to_string(), e.home.clone()),
+        ("CLAUDEOPS_DIR".to_string(), e.state.clone()),
+        ("PATH".to_string(), e.bin.clone()),
+        ("CLAUDEOPS_STORE_BACKEND".to_string(), "files".to_string()),
+    ];
+    vars.extend(case.env.iter().cloned());
+    OsEnv::fixed(vars)
+}
+
+/// Geçici ağaç üzerinde GERÇEK uygulayıcı.
+pub fn real_probe(e: &Env, case: &Case) -> RealProbe {
+    let paths = e.paths();
+    let env = case_env(e, case);
+    let deps = RealDeps {
+        docs: Arc::new(FileDocs::new(&paths, env.clone())),
+        projects: Arc::new(TestProjects(e.home.clone())),
+        cost: Arc::new(FailClosedCostGate { daily_cap_usd: 0.0 }),
+        search: Arc::new(NoSearch),
+        help: Arc::new(HelpCache::default()),
+        panel_port: None,
+    };
+    RealProbe::new(paths, env, deps).with_cwd(e.root.clone())
+}
+
+/// Dosya sistemi olguları GERÇEK uygulayıcıdan ([`RealProbe`]; parite onu da sınar); süreç/ağ olguları vakanın
+/// `facts`ından (Python'da aynı sahte değerler).
 pub struct FsProbe<'a> {
     pub e: &'a Env,
     pub case: &'a Case,
+    pub real: RealProbe,
     pub mcp_calls: RefCell<Vec<Vec<String>>>,
 }
 
 impl<'a> FsProbe<'a> {
     pub fn new(e: &'a Env, case: &'a Case) -> Self {
-        FsProbe { e, case, mcp_calls: RefCell::new(Vec::new()) }
+        FsProbe { e, case, real: real_probe(e, case), mcp_calls: RefCell::new(Vec::new()) }
     }
-
-    fn path_env(&self) -> String {
-        self.case.env.iter().rev().find(|(k, _)| k == "PATH").map_or(self.e.bin.clone(), |(_, v)| v.clone())
-    }
-}
-
-fn is_exec(p: &str) -> bool {
-    fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o100 != 0)
-}
-
-/// `posixpath.realpath(path, strict=False)`.
-pub fn py_realpath(path: &str, cwd: &str) -> String {
-    let abs = if path.starts_with('/') { path.to_string() } else { format!("{cwd}/{path}") };
-    let mut seen = 0;
-    resolve("/", &abs, &mut seen)
-}
-
-fn resolve(base: &str, rest: &str, depth: &mut u32) -> String {
-    let mut cur = base.to_string();
-    for name in rest.split('/') {
-        if name.is_empty() || name == "." {
-            continue;
-        }
-        if name == ".." {
-            cur = match cur.rfind('/') {
-                Some(0) | None => "/".into(),
-                Some(i) => cur[..i].into(),
-            };
-            continue;
-        }
-        let next = if cur == "/" { format!("/{name}") } else { format!("{cur}/{name}") };
-        match fs::read_link(&next) {
-            Ok(t) if *depth < 40 => {
-                *depth += 1;
-                let t = t.to_string_lossy().into_owned();
-                cur = if t.starts_with('/') { resolve("/", &t, depth) } else { resolve(&cur, &t, depth) };
-            }
-            _ => cur = next,
-        }
-    }
-    cur
 }
 
 impl Probe for FsProbe<'_> {
     fn is_file(&self, path: &str) -> bool {
-        Path::new(path).is_file()
+        self.real.is_file(path)
     }
     fn is_dir(&self, path: &str) -> bool {
-        Path::new(path).is_dir()
+        self.real.is_dir(path)
     }
     fn exists(&self, path: &str) -> bool {
-        Path::new(path).exists()
+        self.real.exists(path)
     }
     fn is_symlink(&self, path: &str) -> bool {
-        fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
+        self.real.is_symlink(path)
     }
     fn is_executable_file(&self, path: &str) -> bool {
-        is_exec(path)
+        self.real.is_executable_file(path)
     }
     fn file_size(&self, path: &str) -> Option<u64> {
-        fs::metadata(path).ok().map(|m| m.len())
+        self.real.file_size(path)
     }
     fn read_text(&self, path: &str) -> Option<String> {
-        // Python metin kipi: evrensel satır sonu (`\r\n` ve `\r` -> `\n`).
-        let s = String::from_utf8(fs::read(path).ok()?).ok()?;
-        Some(s.replace("\r\n", "\n").replace('\r', "\n"))
+        self.real.read_text(path)
     }
     fn realpath(&self, path: &str) -> String {
-        py_realpath(path, &self.e.root)
+        self.real.realpath(path)
     }
     fn which(&self, name: &str) -> Option<String> {
-        if name.contains('/') {
-            return (is_exec(name) && !Path::new(name).is_dir()).then(|| name.to_string());
-        }
-        if name.is_empty() {
-            return None;
-        }
-        self.path_env().split(':').filter(|d| !d.is_empty()).map(|d| format!("{d}/{name}")).find(|p| is_exec(p))
+        self.real.which(name)
     }
     fn env_var(&self, name: &str) -> Option<String> {
         self.case.env.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.clone())
@@ -489,63 +487,9 @@ impl Probe for FsProbe<'_> {
         }
         Ok(())
     }
-}
-
-// ----------------------------------------------------------------------------------------------------- Effect uygulama
-
-/// `Effect` sözleşmesini (bkz. crate belgesi) Python'un yazım yardımcılarıyla aynı anlamda uygular.
-pub fn apply_effects(effects: &[Effect]) -> std::io::Result<()> {
-    for ef in effects {
-        match ef {
-            Effect::WriteSecret { path, content } => write_private(path, content.as_bytes())?,
-            Effect::Touch { path } => write_private(path, b"")?,
-            Effect::Remove { path } => {
-                let _ = fs::remove_file(path);
-            }
-            Effect::MkdirPrivate { path } => {
-                // `os.makedirs(mode=0o700, exist_ok=True)`: ara dizinler varsayılan izinle, son dizin 0700 & ~umask.
-                if let Some(parent) = Path::new(path).parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                match fs::DirBuilder::new().mode(0o700).create(path) {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && Path::new(path).is_dir() => {}
-                    Err(e) => return Err(e),
-                }
-            }
-            Effect::ChmodPrivate { path } => fs::set_permissions(path, fs::Permissions::from_mode(0o700))?,
-            Effect::WriteAtomic { path, content } => {
-                // `atomic_write_text`: üst dizinler oluşturulur, var olan normal dosyanın izni korunur, tmp + rename.
-                if let Some(parent) = Path::new(path).parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                let keep = fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.permissions().mode() & 0o7777);
-                let tmp = format!("{path}.rs-parity.tmp");
-                let mut opts = fs::OpenOptions::new();
-                opts.write(true).create_new(true).custom_flags(O_NOFOLLOW);
-                if let Some(m) = keep {
-                    opts.mode(m);
-                }
-                let mut f = opts.open(&tmp)?;
-                if let Some(m) = keep {
-                    f.set_permissions(fs::Permissions::from_mode(m))?;
-                }
-                f.write_all(content.as_bytes())?;
-                drop(f);
-                if let Err(err) = fs::rename(&tmp, path) {
-                    let _ = fs::remove_file(&tmp);
-                    return Err(err);
-                }
-            }
-        }
+    fn apply_now(&self, effect: &Effect) -> Result<(), EffectError> {
+        effects::apply(effect)
     }
-    Ok(())
-}
-
-fn write_private(path: &str, data: &[u8]) -> std::io::Result<()> {
-    let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).custom_flags(O_NOFOLLOW).open(path)?;
-    f.set_permissions(fs::Permissions::from_mode(0o600))?;
-    f.write_all(data)
 }
 
 // ------------------------------------------------------------------------------------------------------ karşılaştırma
@@ -657,7 +601,8 @@ impl Runner {
             self.e.apply_fixtures(&case);
             prepare(&self.e, &case);
             let mut rs = rust(&self.e, &case);
-            let apply_err = if rs.skip_effects { Ok(()) } else { apply_effects(&rs.out.effects) };
+            // GERÇEK uygulayıcı: dosya ağacı karşılaştırması onu da sınar
+            let apply_err = if rs.skip_effects { Ok(()) } else { effects::apply_all(&rs.out.effects) };
             let snap_rs = self.e.snapshot();
             self.compare(&case, &py, &mut rs, apply_err, &snap_py, &snap_rs, drop_events);
         }
@@ -669,7 +614,7 @@ impl Runner {
         case: &Case,
         py: &Value,
         rs: &mut RsOut,
-        apply_err: std::io::Result<()>,
+        apply_err: Result<(), EffectError>,
         snap_py: &BTreeMap<String, String>,
         snap_rs: &BTreeMap<String, String>,
         drop_events: &[&str],

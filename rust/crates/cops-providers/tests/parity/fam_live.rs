@@ -8,52 +8,27 @@ use cops_providers::bg_work::Clock;
 use cops_providers::ucli::state_dir_for;
 use cops_providers::ucli_status::{PHASE_INT_FIELDS, STATUS_MAX_BYTES, USAGE_FIELDS};
 use cops_providers::{Cli, FileStat, Live, LiveProbe, SqlCell};
-use rusqlite::types::{Value as Sql, ValueRef};
+use rusqlite::types::Value as Sql;
 use serde_json::{json, Map, Value};
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
-use std::time::Duration;
 
-/// Python `claude_provider._encode_cwd` (gerçek karşılığı rs/proc `transcript.rs::encode_cwd`).
-fn encode_cwd(cwd: &str) -> String {
-    cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
-}
-
-/// Test uygulaması: dosya/dizin/SQLite gerçek geçici ağaçtan; `/proc` ve süreç dizini vakanın sahte olguları.
+/// Dosya/dizin/SQLite GERÇEK uygulayıcıdan ([`cops_providers::real::RealProbe`]); `/proc` ve süreç dizini vakanın sahte
+/// olguları.
 impl LiveProbe for FsProbe<'_> {
     fn read_bytes(&self, path: &str, max: u64) -> Option<Vec<u8>> {
-        let m = fs::metadata(path).ok()?;
-        (m.is_file() && m.len() <= max).then(|| fs::read(path).ok()).flatten()
+        self.real.read_bytes(path, max)
     }
     fn read_tail(&self, path: &str, max: u64) -> Option<Vec<u8>> {
-        if !fs::metadata(path).ok()?.is_file() {
-            return None;
-        }
-        let mut f = fs::File::open(path).ok()?;
-        let size = f.seek(SeekFrom::End(0)).ok()?;
-        f.seek(SeekFrom::Start(size.saturating_sub(max))).ok()?;
-        let mut out = Vec::new();
-        f.take(max).read_to_end(&mut out).ok()?;
-        Some(out)
+        self.real.read_tail(path, max)
     }
     fn read_range(&self, path: &str, start: u64, len: u64) -> Option<Vec<u8>> {
-        if !fs::metadata(path).ok()?.is_file() {
-            return None;
-        }
-        let mut f = fs::File::open(path).ok()?;
-        f.seek(SeekFrom::Start(start)).ok()?;
-        let mut out = Vec::new();
-        f.take(len).read_to_end(&mut out).ok()?;
-        Some(out)
+        self.real.read_range(path, start, len)
     }
     fn list_dir(&self, path: &str) -> Option<Vec<String>> {
-        Some(fs::read_dir(path).ok()?.flatten().filter_map(|e| e.file_name().into_string().ok()).collect())
+        self.real.list_dir(path)
     }
     fn stat(&self, path: &str) -> Option<FileStat> {
-        let m = fs::metadata(path).ok()?;
-        let mtime_ns = m.mtime() * 1_000_000_000 + m.mtime_nsec();
-        Some(FileStat { is_file: m.is_file(), mtime_ns, size: m.len() })
+        self.real.stat(path)
     }
     fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
         self.case.fact("proc_stat")?.get(pid.to_string())?.as_str().map(|s| s.as_bytes().to_vec())
@@ -62,63 +37,17 @@ impl LiveProbe for FsProbe<'_> {
         self.e.root.clone()
     }
     fn agy_sids_doc(&self) -> Option<cops_providers::pyjson::Py> {
-        let text = fs::read_to_string(format!("{}/agy_sids.json", self.e.state)).ok()?;
-        cops_providers::pyjson::Py::parse(&text)
+        self.real.agy_sids_doc()
     }
     fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
-        sqlite_rows(db, sql, params, row).is_some()
+        self.real.sqlite_rows(db, sql, params, row)
     }
     fn claude_project_dir(&self, cwd: &str) -> String {
-        format!("{}/.claude/projects/{}", self.e.home, encode_cwd(cwd))
+        self.real.claude_project_dir(cwd)
     }
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell> {
-        let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
-        let conn = rusqlite::Connection::open_with_flags(db, flags).ok()?;
-        conn.busy_timeout(Duration::from_secs(2)).ok()?;
-        conn.query_row(sql, [param], |row| {
-            Ok(match row.get_ref(0)? {
-                ValueRef::Null => Some(SqlCell::Null),
-                ValueRef::Integer(i) => Some(SqlCell::Int(i)),
-                ValueRef::Real(f) => Some(SqlCell::Real(f)),
-                ValueRef::Text(t) => std::str::from_utf8(t).ok().map(|s| SqlCell::Text(s.into())),
-                ValueRef::Blob(b) => Some(SqlCell::Blob(b.into())),
-            })
-        })
-        .ok()
-        .flatten()
+        self.real.sqlite_cell(db, sql, param)
     }
-}
-
-/// [`LiveProbe::sqlite_rows`] sözleşmesinin test uygulaması (None = SQLite hatası).
-fn sqlite_rows(db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> Option<()> {
-    let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    conn.busy_timeout(Duration::from_secs(2)).ok()?;
-    let mut statement = conn.prepare(sql).ok()?;
-    let columns = statement.column_count();
-    let params = params.iter().map(|p| match p {
-        SqlCell::Null => Sql::Null,
-        SqlCell::Int(i) => Sql::Integer(*i),
-        SqlCell::Real(f) => Sql::Real(*f),
-        SqlCell::Text(s) => Sql::Text(s.clone()),
-        SqlCell::Blob(b) => Sql::Blob(b.clone()),
-    });
-    let mut rows = statement.query(rusqlite::params_from_iter(params)).ok()?;
-    while let Some(r) = rows.next().ok()? {
-        let mut cells = Vec::with_capacity(columns);
-        for i in 0..columns {
-            cells.push(match r.get_ref(i).ok()? {
-                ValueRef::Null => SqlCell::Null,
-                ValueRef::Integer(i) => SqlCell::Int(i),
-                ValueRef::Real(f) => SqlCell::Real(f),
-                ValueRef::Text(t) => SqlCell::Text(std::str::from_utf8(t).ok()?.into()),
-                ValueRef::Blob(b) => SqlCell::Blob(b.into()),
-            });
-        }
-        if !row(cells) {
-            break;
-        }
-    }
-    Some(())
 }
 
 fn opt<T: Into<Value>>(v: Option<T>) -> Value {

@@ -163,8 +163,7 @@ fn build_cases(e: &Env) -> Vec<Case> {
         .file(Fx::Link("state/routing-guidance.md".into(), "hedef.md".into())));
     v.push(rg("override-bosluk", json!({"routing_guidance_text": " \u{1f} "})));
     v.push(rg("override-dizin", json!({"routing_guidance_text": "Y"}))
-        .file(Fx::Dir("state/routing-guidance.md".into(), 0o755))
-        .known("Effect sözleşmesi: Python override yazılamazsa (burada yol dizin) bayrağı DÜŞÜRÜP açılır; Rust bayrağı koyar, WriteAtomic çağıranda düşer"));
+        .file(Fx::Dir("state/routing-guidance.md".into(), 0o755)));
     // copilot: güven klasörü (config.json JSONC) ve BYOK dosyası.
     let cfg = |t: &str| file("home/.copilot/config.json", t, 0o600);
     let cp = |id: &str| bcase(format!("copilot-{id}"), "copilot", json!({"cwd": w}));

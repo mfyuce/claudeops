@@ -371,8 +371,10 @@ impl Ctx<'_, '_> {
         if !self.session.is_empty() && s.ucli_metrics_enabled() && self.known("--metrics-file") {
             let dir = self.p.paths.ucli_metrics_dir();
             let file = format!("{dir}/{}.jsonl", safe_name(self.session));
-            self.out.effects.push(Effect::MkdirPrivate { path: dir });
-            argv.extend(["--metrics-file".into(), file]);
+            // dizin açılamıyorsa bayrak eklenmez
+            if self.out.apply_now(self.p.probe, Effect::MkdirPrivate { path: dir }).is_ok() {
+                argv.extend(["--metrics-file".into(), file]);
+            }
         }
         if self.known("--interactive") {
             argv.push("--interactive".into());
@@ -476,8 +478,16 @@ impl Ctx<'_, '_> {
         if !argv.iter().any(|x| x == "--usage-log") && self.known("--usage-log") {
             let dir = format!("{}/other", self.p.paths.ucli_usage_dir());
             let log = usage_log_path(&dir, self.session);
-            self.out.effects.push(Effect::MkdirPrivate { path: dir });
-            set_flag_value(argv, "--usage-log", &log);
+            match self.out.apply_now(self.p.probe, Effect::MkdirPrivate { path: dir }) {
+                Ok(()) => set_flag_value(argv, "--usage-log", &log),
+                // bekleyen yazım düştü: spawn zaten o hatayla düşecek
+                Err(None) => {}
+                Err(Some(e)) => {
+                    let name = self.session.to_string();
+                    let text: String = e.to_string().chars().take(120).collect();
+                    self.out.diag("ucli_usage_log_dir_failed", vec![("name", json!(&name)), ("error", json!(text))]);
+                }
+            }
         }
         // `float(opts[k])`: dönüşmeyen değer Python'da ValueError/TypeError fırlatır (spawn düşer).
         let as_usd = |k: &str| -> Result<Option<f64>, SpawnError> {

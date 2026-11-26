@@ -1,5 +1,6 @@
 //! Dış dünya ile sınır: crate'in okuduğu olgular ([`Probe`]), istediği yan etkiler ([`Effect`]) ve sabit yollar.
 
+use crate::real::effects::EffectError;
 use crate::ucli_opts::Toolchain;
 use serde_json::Value;
 use std::fmt;
@@ -68,10 +69,22 @@ impl Paths {
     }
     /// `ucli_agents.token_file(session)`.
     pub fn ucli_agent_token_file(&self, session: &str) -> String {
-        format!("{}/ucli_agent_tokens/{session}", self.claudeops_dir)
+        format!("{}/{session}", self.ucli_agent_token_dir())
     }
     pub fn ucli_ask_root(&self) -> String {
         format!("{}/ucli_ask", self.claudeops_dir)
+    }
+    /// `AGY_SIDS_JSON`.
+    pub fn agy_sids_json(&self) -> String {
+        format!("{}/agy_sids.json", self.claudeops_dir)
+    }
+    /// `ucli_agents.STATE_FILE`.
+    pub fn ucli_agents_json(&self) -> String {
+        format!("{}/ucli_agents.json", self.claudeops_dir)
+    }
+    /// `ucli_agents.TOKEN_DIR`.
+    pub fn ucli_agent_token_dir(&self) -> String {
+        format!("{}/ucli_agent_tokens", self.claudeops_dir)
     }
     pub fn ucli_checks_root(&self) -> String {
         format!("{}/ucli_checks", self.claudeops_dir)
@@ -89,8 +102,8 @@ impl Paths {
 
 /// Komut kurulurken okunan olgular. Uygulama G/Ç yapar; crate yapmaz.
 ///
-/// İki yöntem durum değiştirir ([`Probe::claude_cost_gate`], [`Probe::issue_agent_token`], [`Probe::register_mcp`]):
-/// sonuçları komutu etkilediği için [`Effect`] olamazlar.
+/// Dört yöntem durum değiştirir ([`Probe::claude_cost_gate`], [`Probe::issue_agent_token`], [`Probe::register_mcp`],
+/// [`Probe::apply_now`]): sonuçları komutu etkilediği için [`Effect`] listesine bırakılamazlar.
 pub trait Probe {
     fn is_file(&self, path: &str) -> bool;
     fn is_dir(&self, path: &str) -> bool;
@@ -130,6 +143,9 @@ pub trait Probe {
     /// ucli MCP kaydı: `config_path` (`os.path.lexists` ise) silinir, `argv` `cwd`de çalıştırılır (20 sn). Günlük olaylarını
     /// crate yazar (Python `register_mcp` ile aynı alanlar).
     fn register_mcp(&self, cwd: &str, config_path: &str, argv: &[String]) -> Result<(), McpRegisterError>;
+    /// Başarısızlığı KOMUTU değiştiren yazımlar için yan etkiyi HEMEN uygula (Python'da bayrak yazım başarılıysa
+    /// eklenir). Kuru çalıştırmada çağrılmaz; bekleyen yan etkiler bu yolla önceden uygulanıp listeden düşer. Gerçek uygulama: [`crate::real::effects::apply`].
+    fn apply_now(&self, effect: &Effect) -> Result<(), EffectError>;
 }
 
 /// Komuttan ÖNCE çağıranın uygulaması gereken dosya işlemleri (verilen sırayla).
@@ -193,6 +209,21 @@ pub struct BuildOutput {
 }
 
 impl BuildOutput {
+    /// Başarısı komutu değiştiren yan etki: önce bekleyen [`Effect`]ler SIRAYLA uygulanır (Python'da yazımlar komut
+    /// kurulurken olur), sonra `effect`. Bekleyen biri düşerse o ve sonrası listede KALIR (çağıran aynı hatayı alır,
+    /// spawn düşer), `effect` denenmez: `Err(None)`. `effect`in kendisi düşerse `Err(Some(..))`. Kuru çalıştırmada
+    /// hiçbir şey yapılmaz ve başarı sayılır.
+    pub(crate) fn apply_now(&mut self, probe: &dyn Probe, effect: Effect) -> Result<(), Option<EffectError>> {
+        if self.dry_run {
+            return Ok(());
+        }
+        while let Some(first) = self.effects.first() {
+            probe.apply_now(first).map_err(|_| None)?;
+            self.effects.remove(0);
+        }
+        probe.apply_now(&effect).map_err(Some)
+    }
+
     pub(crate) fn diag(&mut self, event: &'static str, fields: Vec<(&'static str, Value)>) {
         self.diags.push(Diag { event, fields });
     }

@@ -1,4 +1,4 @@
-//! Python `json.loads` + `str()`/`repr()`/`json.dumps(ensure_ascii=False)` anlamı (YALNIZ okuyucular için).
+//! Python `json.loads` + `str()`/`repr()`/`json.dumps(ensure_ascii=False[, indent=2])` anlamı.
 //!
 //! `serde_json` yerine ayrı ayrıştırıcı: Python `NaN`/`Infinity` kabul eder, 64 bite sığmayan tam sayı tam sayı kalır
 //! ve eşlenmemiş vekil kaçışı (`"\ud83d"`, kesilmiş emoji: JS `JSON.stringify` böyle yazar) satırı düşürmez; `serde_json`
@@ -149,6 +149,49 @@ impl Py {
         let mut out = String::new();
         self.dumps_into(&mut out);
         out
+    }
+
+    /// `json.dumps(v, ensure_ascii=False, indent=2)` (belge yazımı; sonda satır sonu yok).
+    pub fn dumps_pretty(&self) -> String {
+        let mut out = String::new();
+        self.pretty_into(&mut out, 0);
+        out
+    }
+
+    fn pretty_into(&self, out: &mut String, level: usize) {
+        let pad = |out: &mut String, n: usize| {
+            out.push('\n');
+            out.extend(std::iter::repeat_n(' ', n * 2));
+        };
+        match self {
+            Py::Array(a) if !a.is_empty() => {
+                out.push('[');
+                for (i, v) in a.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    pad(out, level + 1);
+                    v.pretty_into(out, level + 1);
+                }
+                pad(out, level);
+                out.push(']');
+            }
+            Py::Object(o) if !o.is_empty() => {
+                out.push('{');
+                for (i, (k, v)) in o.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    pad(out, level + 1);
+                    dumps_str(k, out);
+                    out.push_str(": ");
+                    v.pretty_into(out, level + 1);
+                }
+                pad(out, level);
+                out.push('}');
+            }
+            other => other.dumps_into(out),
+        }
     }
 
     fn dumps_into(&self, out: &mut String) {

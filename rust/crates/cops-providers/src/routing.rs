@@ -40,8 +40,11 @@ pub fn claude_guidance_path(p: &Providers<'_>, out: &mut BuildOutput) -> Option<
         out.diag("routing_guidance_unreadable", vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))]);
         return None;
     }
-    if current.as_deref() != Some(text.as_str()) {
-        out.effects.push(Effect::WriteAtomic { path: path.clone(), content: text });
+    // Yazılamazsa bayrak EKLENMEZ (spawn yönerge yüzünden düşmez).
+    if current.as_deref() != Some(text.as_str())
+        && out.apply_now(p.probe, Effect::WriteAtomic { path: path.clone(), content: text }).is_err()
+    {
+        return None;
     }
     Some(path)
 }

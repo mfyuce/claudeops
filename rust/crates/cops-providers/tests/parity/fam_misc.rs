@@ -82,8 +82,8 @@ fn rs_sync_one(e: &Env, c: &Case) -> RsOut {
                     fs::set_permissions(&bak, fs::Permissions::from_mode(mode)).unwrap();
                 }
                 let real = probe.realpath(path);
-                if let Err(err) = apply_effects(&[cops_providers::Effect::WriteAtomic { path: real, content }]) {
-                    return RsOut::ret(json!(format!("skipped:{:?}", err.kind())));
+                if let Err(err) = cops_providers::real::effects::apply_all(&[cops_providers::Effect::WriteAtomic { path: real, content }]) {
+                    return RsOut::ret(json!(format!("skipped:{:?}", err.error.kind())));
                 }
                 (if removed { "removed" } else { "written" }).to_string()
             }

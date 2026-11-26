@@ -78,6 +78,9 @@ impl Probe for Mem {
     fn panel_port(&self) -> Option<u16> {
         unreachable!()
     }
+    fn apply_now(&self, _: &cops_providers::Effect) -> Result<(), cops_providers::real::effects::EffectError> {
+        unimplemented!()
+    }
     fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<(), McpRegisterError> {
         unreachable!()
     }

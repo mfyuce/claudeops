@@ -1,8 +1,8 @@
 //! CLI sağlayıcıları (claude, agy, codex, copilot, ucli, shell): spawn komut satırı ve ortam kurulumu.
 //!
-//! `py/claudeops/providers/` + `spawn.py` + `routing.py` karşılığı. Crate SAF: süreç başlatmaz, dosyaya dokunmaz, ağa
-//! çıkmaz. Dış olgular [`Probe`] ile içeri gelir, yazma/silme istekleri [`Effect`] listesi olarak dışarı döner;
-//! ikisini de çağıran uygular. Doğruluk ölçütü Python ile paritedir (`tests/parity.rs`).
+//! `py/claudeops/providers/` + `spawn.py` + `routing.py` karşılığı. Çekirdek SAF: süreç başlatmaz, dosyaya dokunmaz,
+//! ağa çıkmaz. Dış olgular [`Probe`] ile içeri gelir, yazma/silme istekleri [`Effect`] listesi olarak dışarı döner.
+//! Gerçek G/Ç uygulayıcıları yalnız [`real`] altındadır. Doğruluk ölçütü Python ile paritedir (`tests/parity.rs`).
 
 pub mod agy;
 pub mod agy_resume;
@@ -23,6 +23,7 @@ pub mod pyfmt;
 pub mod pyjson;
 pub mod provider;
 pub mod py_re;
+pub mod real;
 pub mod resume;
 pub mod routing;
 pub mod settings;
