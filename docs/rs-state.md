@@ -189,6 +189,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | `settings.rs` imza, `backup_if_corrupt` (2) | `.ok()` | `stat` hatası = imza yok (önbellek yok); okunamayan dosya yedeklenmez (Python `OSError` -> dön) |
 | `settings_read.rs` port | `.ok()` | 1024..65535 aralığı zaten süzüldü |
 | `statedocs.rs` `sig`, `read_file` (3) | `.ok()` | Python `_sig` `OSError` -> `None`; `_file_read` UTF-8/JSON hatası -> `Corrupt` |
+| `instances.rs` `recover_mirror` | `if let Ok(raw)` | ham ayna okunamazsa yedek yok; DB satırı yine geçerli (Python `OSError` -> dön) |
 | `statedocs.rs` `db_stamp` (2) | `.ok()` | DB açılamıyor/okunamıyor = damga yok, önbellek yok; okuma asıl yoldan yapılır ve hatayı orada loglar (Python `_db_stamp` `except` -> `None`) |
 | `instances.rs` `load` (2) | `unwrap_or_default()` | bozuk belge okuyucuda boş (Python `InstancesCorrupt` -> `{}`); yazıcılar `try_mutate` ile hata alır |
 | `statedocs.rs` `new` | `unwrap_or_default()` | `CLAUDEOPS_DB_URL` yok = SQLite (Python `""`); UTF-8 olmayan değer de SQLite'a düşer (Python `DbError`; önemsiz) |
@@ -987,6 +988,7 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 | `test_steward_tbd370.py` kalan 3 metot | | | kapsam dışı: rs/stew |
 | `test_state_settings_unreadable.py` (2) | | | kapsam dışı: ayar yazımı (T7) |
 | `test_ucli_approval_lock_error.py` (3), `test_cli_lock_error.py` (1) | | | kapsam dışı: ucli istemcisi / CLI (T6) |
+| `db_truth` (statedocs.py), `_valid`, `_keep_corrupt_mirror` (instances.py), `test_state_instances_corrupt_mirror.py` (10) | statedocs.rs::db_truth, instances.rs::recover_mirror | parity.rs::instances_match_python (yedek adı/izni iki dilde); parity_instances.rs::load_db_cache_follows_row_stamp (ret dalları); statedocs.rs::db_stamp_refused_when_dirty_or_not_db; fd_leak.rs | tamam |
 | `_copy`, `_shared` (instances.py), `test_state_instances_cache_copy.py` (2) | instances.rs::Instances::{load, get} sahipli (derin) kopya döner | parity_instances.rs::load_db_cache_follows_row_stamp (dönen sözlük kopyadır) | tamam |
 | `_Handler._lock_busy`, GET `LockError` -> 503 (web.py), `test_web_get_lock_error.py` (1) | | | kapsam dışı: HTTP katmanı bu izde değil; HTTP izi taşırken kilit hatasını 503 yapar |
 | `_db_stamp`, `_FALLBACKS` (statedocs.py), `Store._doc_stamp`, `_db_cache` (instances.py) | statedocs.rs::{db_stamp, DbStamp, State.fallbacks}, store.rs::doc_stamp, instances.rs::load_db | parity_instances.rs::load_db_cache_follows_row_stamp; statedocs.rs::db_stamp_refused_when_dirty_or_not_db | tamam |

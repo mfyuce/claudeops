@@ -8,6 +8,7 @@ silmez, `forgotten` işaretiyle Geçmiş'ten gizler.
 """
 from __future__ import annotations
 import datetime
+import hashlib
 import json
 import marshal
 import os
@@ -17,6 +18,7 @@ from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
 from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file
+from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
 
 INSTANCES_JSON = os.path.join(CLAUDEOPS_DIR, "instances.json")
@@ -41,19 +43,42 @@ _db_cache: Optional[tuple] = None      # db kipi: (DB damgası, kayıtlar); TEK 
 
 
 def read_strict() -> dict:
-    """Eksikse boş şekil; bozuksa InstancesCorrupt (yazıcılar üstüne yazmasın diye)."""
+    """Eksikse boş şekil; bozuksa InstancesCorrupt (yazıcılar üstüne yazmasın diye). db kipinde bozuk olan yalnız ayna
+    ise DB satırı döner, aynanın ham hali `.corrupt-<sha8>` olarak saklanır."""
+    from . import statedocs
     try:
         with open(INSTANCES_JSON, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         data = {"version": _VERSION, "instances": {}}     # dosya yoksa db kipinde DB'den okunur (aşağıda)
     except (ValueError, OSError) as e:      # UnicodeDecodeError dahil (bozuk kodlama): yazıcılar üstüne yazmasın
-        raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
-    from . import statedocs
+        data = statedocs.db_truth("instances", INSTANCES_JSON)
+        if not _valid(data):
+            raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
+        _keep_corrupt_mirror()
+        return data
     data = statedocs.read_json("instances", INSTANCES_JSON, data)   # db: DB tek kaynak (dosya ayna); files: dosya
-    if not isinstance(data, dict) or not isinstance(data.get("instances"), dict):
+    if not _valid(data):
         raise InstancesCorrupt(f"{INSTANCES_JSON} beklenen şekilde değil")
     return data
+
+
+def _valid(data) -> bool:
+    return isinstance(data, dict) and isinstance(data.get("instances"), dict)
+
+
+def _keep_corrupt_mirror() -> None:
+    """Sonraki yazım aynayı ezmeden ham halinin 0600 kopyası (aynı içerik bir kez, o zaman diag.log). Hata yutulur."""
+    try:
+        with open(INSTANCES_JSON, "rb") as f:
+            raw = f.read()
+        dest = f"{INSTANCES_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(raw)
+    except OSError:
+        return
+    diag_log("instances_mirror_corrupt", backup=dest)
 
 
 def _copy(value):
