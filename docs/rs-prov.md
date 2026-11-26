@@ -1,15 +1,15 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1-G4, G6-G10 ve ders listesi açık; G5 ve G11 taşındı). `cargo clippy -p cops-providers
---all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 11/11 (birim 3, parite 8).
+Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1-G4, G7-G10 ve ders listesi açık; G5, G6 ve G11 taşındı). `cargo clippy -p cops-providers
+--all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 16/16 (birim 6, parite 10).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 1826 vaka: model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 2548 vaka: bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 20 "bilinen ayrışma" testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+- 39 "bilinen ayrışma" (19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
   kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
   (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
@@ -57,11 +57,11 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 - `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G6, G2, G3, G7, G1, G8, G4, G10, G9 (G11 ve G5 taşındı).
+1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G2, G3, G7, G1, G8, G4, G10, G9 (G11, G5 ve G6 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
-5. Birim testi yalnız `pyfmt.rs`de (2 test): effort, `with_block`, `validate_opts`, "sır argv'de yok" için ekle.
+5. Birim testi yalnız `pyfmt.rs`de (2 test): effort, `with_block`, `validate_opts`, "sır argv'de yok" için ekle (G6 ile `bg_work.rs`e 3 test eklendi).
 6. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
 
 ## Parite testinde bakılacak bilinen farklar / şüpheler
@@ -87,16 +87,76 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | Grup | Kapsam | işlev/atama | test | zorluk notu |
 |---|---|---|---|---|
 | G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 39 | 35 | zor: Python davranış ayrıntısı çok (stub eleme, cwd/ad eşleme, önbellek); rs/proc ve rs/state'e bağlanır |
-| G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 38 | 24 | orta-zor: dört ayrı biçim, boundary/summary rolleri |
+| G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 38 | 25 | orta-zor: dört ayrı biçim, boundary/summary rolleri |
 | G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 18 | 54 | orta: tek dosya ailesi, kuyruktan okuma |
 | G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 37 | 17 | orta-zor: rs/tmux'a bağlı, zamanlama ve kör Enter kuralları |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
-| G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 39 | 51 | orta: çok satır, çoğu bağımsız saf okuma |
+| G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 17 | 11 | orta: G/Ç ve önbellek tazeleme |
-| G8 `Probe` ve `Effect` gerçek uygulayıcısı | atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü | 54 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
+| G8 `Probe` ve `Effect` gerçek uygulayıcısı | atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü | 53 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
 | G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 13 | zor: rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` kullanılan kısım), bütçe notu | 19 | 19 | orta: alt süreç, zaman aşımı, sır ortamda |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
+
+## G6: canlı durum okuyucuları
+
+### Tasarım ve bağımlılıklar
+- Modüller: `bg_work.rs` (saf), `live.rs` (`LiveProbe`, `Live`, sağlayıcı dağıtımı, codex/copilot bağlamı), `ucli_status.rs`,
+  `pyjson.rs` (Python `json.loads`/`str`/`dumps` anlamında salt okur ayrıştırıcı). Crate G/Ç yapmaz; SQL metni crate'te
+  (`COPILOT_CONTEXT_SQL`), sorguyu çağıran koşar. `rusqlite` yalnız dev bağımlılığı.
+- `LiveProbe`un gerçek uygulaması YOK (G8). Sözleşme: yalnız normal dosya (FIFO/aygıt açılışta bloklamasın), `max` aşan dosya
+  None, kuyruk okuması en çok `max` bayt, SQLite `mode=ro` + 2 sn meşgul beklemesi, bağlantı her sorguda kapanır.
+- G1 bağımlılığı: `claude_transcript` (`jsonl_path_for`, "cwd'deki en yeni" düşüşü dahil), `codex_rollout` (`_rollout_path`),
+  `copilot_resume_id`. Testteki uygulama yalnız vakaların kullandığı yolları taklit eder; G1 taşınınca bu üç yöntem crate
+  içi işleve dönmeli ve codex cwd taraması paritede sınanmalı. `rs/proc` `transcript.rs::jsonl_path_for` yalnız tam sid eşler.
+- Birleştirmede tekleştirilecek: `pyjson.rs` ile `rs/state` `cops-state::json::Json`; `bg_work.rs::iso_epoch` ile `rs/state`
+  `pytime.rs`. İkisi de bu dalda olmadığı için bağlanmadı.
+- `Clock {now, utc_offset_secs}` çağırandan gelir. Saat dilimsiz damga sabit farkla yorumlanır (yaz saati geçişi yok;
+  Claude ve codex damgaları `Z` taşır).
+- Tablo dışında kalıp taşınanlar: `screen_bg_work`, `transcript_pending`, `_epoch` (`iso_epoch`), `chat_session_dir`
+  (`chat_session_dirs()[0]`; ayrı işlev yok).
+- Taşınmayan: `web_steward` durum dosyası kullanımı ve panel sarmalayıcıları (T1/T10); `quota_equivalent_tokens`,
+  `usage_warn_level`, `archive_session_files`, `read_chat_history` (bu grupta değil).
+
+### Bilinen ayrışmalar (19; testte `known(`)
+- `bg_work` 9 (`bg-istisna-`): nesne olmayan belge/`message`/`input`/`payload`/`item` ya da liste kimlik, Python'da istisna
+  ile tüm taramayı düşürür; Rust yalnız o satırı/bloğu atlar.
+- `live` 10: 512'den derin durum dosyası; 4300+ basamaklı sayı; u64/i64'e sığmayan sayaç ve zaman (doygun) (3); üst simge
+  rakamlı hata kaydı adı; boolean `input_tokens`; sayıya çevrilemeyen SQLite hücresi (2); 8 MiB üstü durum dosyası.
+- Testsiz farklar: 64 MiB üstü hata kaydı okunmaz; eşlenmemiş vekil kaçışı çıktıda U+FFFD olur (Python vekili taşır);
+  UTF-8 olmayan dosya adları listelenmeyebilir (oturum adıyla eşleşemez); 2^53 mikro saniyeyi aşan yıllarda (~2255 sonrası)
+  damga son bitte ayrışabilir.
+
+### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı)
+1. `bg_work.transcript_pending` / `codex_subagents_pending`: beklenen sözlük yerine metin/liste taşıyan TEK satır istisna
+   atar. codex'te alt ajan sayısı 0 sayılır (meşgul oturum boşta görünür); claude'da istisna çağırana yükselir. Rust satırı atlar.
+2. `failed_turn_records`: `<oturum>-²-1.json` gibi bir ad (`isdigit` doğru, `int` hata) tüm hata kayıtlarını gizler. Rust atlar.
+3. `read_status_file`: yalnız `JSONDecodeError`/`UnicodeDecodeError`/`OSError` yakalanır; 4300+ basamaklı sayı (`ValueError`)
+   ya da çok derin belge (`RecursionError`) `live_busy`/`live_usage`/`live_phase`den istisna olarak çıkar. Rust "okunamadı".
+4. codex `live_context`: `input_tokens: true` `True` döner; negatif sayı da döner (ucli okuyucuları ikisini de reddeder).
+   Rust boolean'ı atlar, negatifi Python gibi döndürür (kayıtlı ayrışma değil).
+5. copilot `live_context`: `int(row[0])` metin/sonsuz hücrede `ValueError`/`OverflowError` atar (`sqlite3.Error` değil). Rust None.
+6. `bg_work`: `run_in_background` sonucu `str(content)[:400]` üzerinde aranır; içerik liste ise metin `repr` olur, satır
+   başındaki `ID:` `\nID:` biçiminde sözcük sınırını yitirir ve görev kimliği yakalanmaz (bildirim yalnız `task-id`
+   taşıyorsa iş 6 saat bekliyor sayılır). Rust Python gibi davranır (parite `bg-transkript-`).
+
+### Ders listesi (`docs/rust-lessons-from-python.md`), G6 koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| 2.5 sağlayıcı başına tek modül (H4) | dağıtım `Cli` eşlemesi `live.rs`, ucli okuyucuları `ucli_status.rs`, kalıp sabitleri sağlayıcı modüllerinde; `varsayilan-` |
+| 2.5 kota kaynağı yoksa "bilinmiyor", sıfır değil (H3, H21) | tüm okuyucular `Option`; `durum-` (alan yok/bozuk), `varsayilan-` |
+| 3.3 okunamayan durum "yok/başarı"ya dönmesin (H13, H10, H9) | None döner. İstisna (Python gibi): `transcript_pending_path`/`tail_lines` okunamazsa false/boş; `bg-dosya` |
+| 3.5 ve 3.10 panik yok, girdi sınırları (H5, H9) | `bg_work::tests::truncated_and_mutated_input_never_panics`, `durum-`, `rastgele-` (400), `bg-damga-` (6000); `unwrap`/`expect` yalnız sabit desenlerde. Okuma hatasının NEDENİ loglanmıyor (Python da loglamaz; H20 açık) |
+| 3.6 bayat önbellek (H3) | okuyucularda önbellek yok, her çağrı dosyayı okur |
+| 3.7 sınırsız döngü (H8) | döngüler yalnız sınırlı girdi üzerinde |
+| 3.9 kaynak sahibi ve sınırı (H1) | okuma sınırları `TRANSCRIPT_TAIL_BYTES`, `CODEX_CONTEXT_TAIL_BYTES`, `STATUS_MAX_BYTES`, `RECORD_MAX_BYTES`; `bg-kuyruk-`, `codex-ctx-`, `sinir-`. Dosya/SQLite kapanışı G8'de sınanacak |
+| 3.11 işaret ayrıştırma tek modül + Python'la eşit (H6, H14) | `bg_work.rs`; `bg-ekran` (3000 rastgele metin), `bg-transkript-` |
+| 3.12 diferansiyel test (H14) | `parity_bg_work`, `parity_live`; `$HOME` yolları yalnız `Paths` üzerinden |
+| 3.14 yol girdisi (H17) | AÇIK: oturum adı Python gibi dosya yoluna eklenir (`..`/`/` denetlenmez); yalnız okuma. Denetim çağıranda ya da G1'de |
+| 3.17 test yalıtımı (H16) | geçici HOME/CLAUDEOPS_DIR; koşucu bunu `assert` eder |
+| 3.20 performans (H21) | desenler doğrusal `regex`: geri izlemeli motor 4 MB satırda sessizce 0 sayıyordu, `very_long_screen_line_is_still_scanned` |
+| H7 "en yeni" tahmini | claude transkripti ve copilot resume Python'da "en yeni"ye düşer; karar G1'de |
+| Uygulanmaz | 3.1, 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: bu kod yazmaz, süreç/ağ/uç açmaz, sır okumaz |
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
@@ -106,7 +166,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5 ve G11 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. 635 satır: TAŞINDI 306, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 275.
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11 ve G6 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. 635 satır: TAŞINDI 345, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 54, EKSİK 236.
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -131,7 +191,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_conversation_ids` (py/claudeops/providers/agy_provider.py:179) | yok | - | EKSİK(G1) |
 | `PERMISSION_MODES` (py/claudeops/providers/agy_provider.py:187) | `agy.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/agy_provider.py:188) | `agy.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:195) | yok | - | EKSİK(G6) |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:195) | `agy.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/agy_provider.py:197) | `agy.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:203) | yok: `ModelCatalog::agy_models` girdisi; TTL/arka plan tazeleme yok | - | EKSİK(G7) |
 | `_load_agy_sids` (py/claudeops/providers/agy_provider.py:206) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur | KAPSAM DIŞI |
@@ -152,7 +212,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `AgyProvider.permission_modes` (py/claudeops/providers/agy_provider.py:411) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.effort_levels` (py/claudeops/providers/agy_provider.py:414) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.model_effort_levels` (py/claudeops/providers/agy_provider.py:417) | `agy.rs::model_effort_levels` | `parity.rs::parity_model_effort` `agy-models` | TAŞINDI |
-| `AgyProvider.busy_status_pattern` (py/claudeops/providers/agy_provider.py:430) | yok | - | EKSİK(G6) |
+| `AgyProvider.busy_status_pattern` (py/claudeops/providers/agy_provider.py:430) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `AgyProvider.usage_command` (py/claudeops/providers/agy_provider.py:433) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
 | `AgyProvider.usage_fresh_argv` (py/claudeops/providers/agy_provider.py:444) | `usage.rs::Providers::usage_fresh_argv` | `parity.rs::parity_usage` `usage-agy` `usage-bin-*-agy` | TAŞINDI |
 | `AgyProvider.usage_auth_missing` (py/claudeops/providers/agy_provider.py:449) | `usage.rs::Cli::usage_auth_missing` | `parity.rs::parity_usage` `usage-agy` (giriş iletisi metinleri) | TAŞINDI |
@@ -228,14 +288,14 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `CliProvider.default_effort` (py/claudeops/providers/base.py:530) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.resolve_effort` (py/claudeops/providers/base.py:536) | `provider.rs::Providers::resolve_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.mode_status_patterns` (py/claudeops/providers/base.py:548) | yok | - | EKSİK(G4) |
-| `CliProvider.busy_status_pattern` (py/claudeops/providers/base.py:555) | yok | - | EKSİK(G6) |
-| `CliProvider.background_work` (py/claudeops/providers/base.py:565) | yok | - | EKSİK(G6) |
-| `CliProvider.live_busy` (py/claudeops/providers/base.py:571) | yok | - | EKSİK(G6) |
-| `CliProvider.live_tools` (py/claudeops/providers/base.py:584) | yok | - | EKSİK(G6) |
-| `CliProvider.live_context` (py/claudeops/providers/base.py:589) | yok | - | EKSİK(G6) |
-| `CliProvider.live_usage` (py/claudeops/providers/base.py:596) | yok | - | EKSİK(G6) |
-| `CliProvider.live_failed_turns` (py/claudeops/providers/base.py:606) | yok | - | EKSİK(G6) |
-| `CliProvider.live_phase` (py/claudeops/providers/base.py:611) | yok | - | EKSİK(G6) |
+| `CliProvider.busy_status_pattern` (py/claudeops/providers/base.py:555) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.background_work` (py/claudeops/providers/base.py:565) | `live.rs::Live::background_work` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_busy` (py/claudeops/providers/base.py:571) | `live.rs::Live::live_busy` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_tools` (py/claudeops/providers/base.py:584) | `live.rs::Live::live_tools` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_context` (py/claudeops/providers/base.py:589) | `live.rs::Live::live_context` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_usage` (py/claudeops/providers/base.py:596) | `live.rs::Live::live_usage` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_failed_turns` (py/claudeops/providers/base.py:606) | `live.rs::Live::live_failed_turns` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_phase` (py/claudeops/providers/base.py:611) | `live.rs::Live::live_phase` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CliProvider.cyclable_modes` (py/claudeops/providers/base.py:620) | yok | - | EKSİK(G4) |
 | `CliProvider.snapshot_for_live_sid` (py/claudeops/providers/base.py:629) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
 | `CliProvider.discover_live_sid` (py/claudeops/providers/base.py:650) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
@@ -252,7 +312,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_CONTEXT_CATEGORY_RE` (py/claudeops/providers/claude_provider.py:49) | `usage.rs::CONTEXT_CATEGORY` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
 | `MODE_STATUS_PATTERNS` (py/claudeops/providers/claude_provider.py:61) | yok | - | EKSİK(G4) |
 | `CYCLABLE_MODES` (py/claudeops/providers/claude_provider.py:73) | yok | - | EKSİK(G4) |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/claude_provider.py:80) | yok | - | EKSİK(G6) |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/claude_provider.py:80) | `claude.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_encode_cwd` (py/claudeops/providers/claude_provider.py:83) | `rs/proc` `transcript.rs::encode_cwd` | rs/proc: `transcript.rs::encodes_non_ascii_per_char`, altın ad+cwd kodlama | KAPSAM DIŞI |
 | `_safe_mtime` (py/claudeops/providers/claude_provider.py:102) | yok | - | EKSİK(G1) |
 | `jsonl_path_for` (py/claudeops/providers/claude_provider.py:110) | yok: rs/proc `transcript.rs::jsonl_path_for` YALNIZ tam sid eşleşmesi; Python'daki "cwd'deki en yeni dosya" düşüşü bilerek yok | - | EKSİK(G1) |
@@ -328,8 +388,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `ClaudeProvider.permission_modes` (py/claudeops/providers/claude_provider.py:1029) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ClaudeProvider.effort_levels` (py/claudeops/providers/claude_provider.py:1032) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ClaudeProvider.mode_status_patterns` (py/claudeops/providers/claude_provider.py:1035) | yok | - | EKSİK(G4) |
-| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1038) | yok | - | EKSİK(G6) |
-| `ClaudeProvider.busy_status_pattern` (py/claudeops/providers/claude_provider.py:1048) | yok | - | EKSİK(G6) |
+| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1038) | `live.rs::Live::background_work` | `parity.rs::parity_live` `claude-`, `ekran-claude-` (transkript yolu `LiveProbe::claude_transcript`, G1) | TAŞINDI |
+| `ClaudeProvider.busy_status_pattern` (py/claudeops/providers/claude_provider.py:1048) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `ClaudeProvider.cyclable_modes` (py/claudeops/providers/claude_provider.py:1051) | yok | - | EKSİK(G4) |
 | `ClaudeProvider._transcript_lines` (py/claudeops/providers/claude_provider.py:1054) | yok | - | EKSİK(G2) |
 | `ClaudeProvider.last_exchange` (py/claudeops/providers/claude_provider.py:1080) | yok | - | EKSİK(G2) |
@@ -341,7 +401,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:44) | yok: `ModelCatalog::codex_cache` girdisi; yol, okuma ve TTL yok | - | EKSİK(G7) |
 | `PERMISSION_MODES` (py/claudeops/providers/codex_provider.py:46) | `codex.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/codex_provider.py:47) | `codex.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/codex_provider.py:58) | yok | - | EKSİK(G6) |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/codex_provider.py:58) | `codex.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `FALLBACK_MODELS` (py/claudeops/providers/codex_provider.py:62) | `codex.rs::FALLBACK_MODELS` | `parity.rs::parity_model_effort` `codex-cache-bozuk` `bos-*` | TAŞINDI |
 | `_NON_SESSION_SUBCOMMANDS` (py/claudeops/providers/codex_provider.py:77) | `rs/proc` `providers.rs::CODEX_NON_SESSION` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/codex_provider.py:84) | `codex.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
@@ -367,12 +427,12 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `CodexProvider.permission_modes` (py/claudeops/providers/codex_provider.py:265) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CodexProvider.effort_levels` (py/claudeops/providers/codex_provider.py:268) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CodexProvider.model_effort_levels` (py/claudeops/providers/codex_provider.py:271) | `codex.rs::model_effort_levels` | `parity.rs::parity_model_effort` `codex-cache`; ve `parity_spawn` `codex-effort` | TAŞINDI |
-| `CodexProvider.busy_status_pattern` (py/claudeops/providers/codex_provider.py:292) | yok | - | EKSİK(G6) |
+| `CodexProvider.busy_status_pattern` (py/claudeops/providers/codex_provider.py:292) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CodexProvider.input_settle_delay` (py/claudeops/providers/codex_provider.py:295) | yok | - | EKSİK(G4) |
-| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:306) | yok | - | EKSİK(G6) |
+| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:306) | `live.rs::Live::background_work` | `parity.rs::parity_live` `codex-ajan-`, `ekran-codex-` (rollout yolu `LiveProbe::codex_rollout`, G1) | TAŞINDI |
 | `CodexProvider._rollout_path` (py/claudeops/providers/codex_provider.py:317) | yok | - | EKSİK(G1) |
 | `CodexProvider._transcript_lines` (py/claudeops/providers/codex_provider.py:336) | yok | - | EKSİK(G2) |
-| `CodexProvider.live_context` (py/claudeops/providers/codex_provider.py:358) | yok | - | EKSİK(G6) |
+| `CodexProvider.live_context` (py/claudeops/providers/codex_provider.py:358) | `live.rs::Live::codex_context` | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
 | `CodexProvider.last_exchange` (py/claudeops/providers/codex_provider.py:385) | yok | - | EKSİK(G2) |
 | `CodexProvider.full_history` (py/claudeops/providers/codex_provider.py:410) | yok | - | EKSİK(G2) |
 | `SESSION_STORE_DB` (py/claudeops/providers/copilot_provider.py:107) | yok | - | EKSİK(G2) |
@@ -383,7 +443,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `PERMISSION_MODES` (py/claudeops/providers/copilot_provider.py:176) | `copilot.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/copilot_provider.py:177) | `copilot.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `MODE_STATUS_PATTERNS` (py/claudeops/providers/copilot_provider.py:183) | yok | - | EKSİK(G4) |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/copilot_provider.py:187) | yok | - | EKSİK(G6) |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/copilot_provider.py:187) | `copilot.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/copilot_provider.py:189) | `copilot.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `_RESUME_SCAN_LIMIT` (py/claudeops/providers/copilot_provider.py:196) | yok | - | EKSİK(G1) |
 | `_USAGE_PLAN_RE` (py/claudeops/providers/copilot_provider.py:205) | `usage.rs::PLAN` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
@@ -404,12 +464,12 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `CopilotProvider.permission_modes` (py/claudeops/providers/copilot_provider.py:348) | `provider.rs` `permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CopilotProvider.effort_levels` (py/claudeops/providers/copilot_provider.py:351) | `provider.rs` `effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CopilotProvider.mode_status_patterns` (py/claudeops/providers/copilot_provider.py:354) | yok | - | EKSİK(G4) |
-| `CopilotProvider.busy_status_pattern` (py/claudeops/providers/copilot_provider.py:357) | yok | - | EKSİK(G6) |
+| `CopilotProvider.busy_status_pattern` (py/claudeops/providers/copilot_provider.py:357) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CopilotProvider.usage_command` (py/claudeops/providers/copilot_provider.py:360) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `CopilotProvider.parse_usage_text` (py/claudeops/providers/copilot_provider.py:369) | `usage.rs::copilot_usage` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `CopilotProvider.usage_fresh_tui_argv` (py/claudeops/providers/copilot_provider.py:380) | `usage.rs::Providers::usage_fresh_tui_argv` | `parity.rs::parity_usage` `usage-copilot` `usage-bin-*-copilot` | TAŞINDI |
 | `CopilotProvider._turns` (py/claudeops/providers/copilot_provider.py:384) | yok | - | EKSİK(G2) |
-| `CopilotProvider.live_context` (py/claudeops/providers/copilot_provider.py:407) | yok | - | EKSİK(G6) |
+| `CopilotProvider.live_context` (py/claudeops/providers/copilot_provider.py:407) | `live.rs::Live::copilot_context`, `COPILOT_CONTEXT_SQL` | `parity.rs::parity_live` `copilot-` | TAŞINDI |
 | `CopilotProvider.last_exchange` (py/claudeops/providers/copilot_provider.py:425) | yok | - | EKSİK(G2) |
 | `CopilotProvider.full_history` (py/claudeops/providers/copilot_provider.py:434) | yok | - | EKSİK(G2) |
 | `PROC_TAG` (py/claudeops/providers/shell_provider.py:31) | `shell.rs::PROC_TAG` | `parity.rs::parity_build` `-perm` | TAŞINDI |
@@ -430,8 +490,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_EFFORT_LEVELS` (py/claudeops/providers/ucli_provider.py:157) | `ucli.rs::{EFFORT_LIMITS, EFFORT_LEVELS}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` | TAŞINDI |
 | `_REQUEST_TIMEOUT_SECS` (py/claudeops/providers/ucli_provider.py:167) | `ucli.rs::{REQUEST_TIMEOUT_SECS, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
 | `_MAX_HISTORY_KIB` (py/claudeops/providers/ucli_provider.py:173) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
-| `_USAGE_FIELDS` (py/claudeops/providers/ucli_provider.py:178) | yok | - | EKSİK(G6) |
-| `_PHASE_INT_FIELDS` (py/claudeops/providers/ucli_provider.py:182) | yok | - | EKSİK(G6) |
+| `_USAGE_FIELDS` (py/claudeops/providers/ucli_provider.py:178) | `ucli_status.rs::USAGE_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `_PHASE_INT_FIELDS` (py/claudeops/providers/ucli_provider.py:182) | `ucli_status.rs::PHASE_INT_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
 | `_READ_ONLY` (py/claudeops/providers/ucli_provider.py:187) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `_ALLOW_EDIT` (py/claudeops/providers/ucli_provider.py:188) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `_ALLOW_CREATE` (py/claudeops/providers/ucli_provider.py:192) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
@@ -500,13 +560,13 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `UcliProvider.effort_levels` (py/claudeops/providers/ucli_provider.py:1083) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.full_history` (py/claudeops/providers/ucli_provider.py:1086) | yok | - | EKSİK(G2) |
 | `UcliProvider.sid_for_stopped_session` (py/claudeops/providers/ucli_provider.py:1091) | yok | - | EKSİK(G1) |
-| `UcliProvider.live_busy` (py/claudeops/providers/ucli_provider.py:1097) | yok | - | EKSİK(G6) |
-| `UcliProvider.background_work` (py/claudeops/providers/ucli_provider.py:1112) | yok | - | EKSİK(G6) |
-| `UcliProvider.live_tools` (py/claudeops/providers/ucli_provider.py:1127) | yok | - | EKSİK(G6) |
-| `UcliProvider.live_context` (py/claudeops/providers/ucli_provider.py:1141) | yok | - | EKSİK(G6) |
-| `UcliProvider.live_usage` (py/claudeops/providers/ucli_provider.py:1156) | yok | - | EKSİK(G6) |
-| `UcliProvider.live_failed_turns` (py/claudeops/providers/ucli_provider.py:1173) | yok | - | EKSİK(G6) |
-| `UcliProvider.live_phase` (py/claudeops/providers/ucli_provider.py:1196) | yok | - | EKSİK(G6) |
+| `UcliProvider.live_busy` (py/claudeops/providers/ucli_provider.py:1097) | `ucli_status.rs::Live::ucli_busy` (`Live::live_busy`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.background_work` (py/claudeops/providers/ucli_provider.py:1112) | `live.rs::Live::background_work` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_tools` (py/claudeops/providers/ucli_provider.py:1127) | `ucli_status.rs::Live::ucli_tools` (`Live::live_tools`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_context` (py/claudeops/providers/ucli_provider.py:1141) | `ucli_status.rs::Live::ucli_context` (`Live::live_context`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_usage` (py/claudeops/providers/ucli_provider.py:1156) | `ucli_status.rs::Live::ucli_usage` (`Live::live_usage`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_failed_turns` (py/claudeops/providers/ucli_provider.py:1173) | `ucli_status.rs::Live::ucli_failed_turns` (`Live::live_failed_turns`) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `UcliProvider.live_phase` (py/claudeops/providers/ucli_provider.py:1196) | `ucli_status.rs::Live::ucli_phase` (`Live::live_phase`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
 | `UcliProvider.last_exchange` (py/claudeops/providers/ucli_provider.py:1226) | yok | - | EKSİK(G2) |
 | `BUNDLED_PATH` (py/claudeops/routing.py:21) | `probe.rs::Paths::routing_bundled` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `OVERRIDE_PATH` (py/claudeops/routing.py:22) | `probe.rs::Paths::routing_override` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
@@ -689,12 +749,12 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `_subprocess_env` (py/claudeops/ucli_client.py:235) | yok | - | EKSİK(G10) |
 | `STATE_ROOT` (py/claudeops/ucli_client.py:249) | `probe.rs::Paths::ucli_state_root` | `parity.rs::parity_ucli` `statedir-` | TAŞINDI |
 | `state_dir_for` (py/claudeops/ucli_client.py:252) | `ucli.rs::state_dir_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `statedir-` | TAŞINDI |
-| `legacy_chat_dir` (py/claudeops/ucli_client.py:260) | `ucli.rs::Ctx::state_dir_args` (satır içi yol) | `parity.rs::parity_ucli` `statedir-eski-gecmis`; okuyucular için public işlev yok (G6) | TAŞINDI |
-| `chat_session_dirs` (py/claudeops/ucli_client.py:264) | yok | - | EKSİK(G6) |
-| `find_chat_file` (py/claudeops/ucli_client.py:273) | yok | - | EKSİK(G6) |
-| `failed_turn_records` (py/claudeops/ucli_client.py:292) | yok | - | EKSİK(G6) |
-| `status_is_busy` (py/claudeops/ucli_client.py:348) | yok | - | EKSİK(G6) |
-| `read_status_file` (py/claudeops/ucli_client.py:354) | yok | - | EKSİK(G6) |
+| `legacy_chat_dir` (py/claudeops/ucli_client.py:260) | `ucli.rs::Ctx::state_dir_args` (satır içi yol) | `parity.rs::parity_ucli` `statedir-eski-gecmis`; okuyucular `ucli_status.rs::Live::chat_session_dirs` (`parity_live` `dizin-`) | TAŞINDI |
+| `chat_session_dirs` (py/claudeops/ucli_client.py:264) | `ucli_status.rs::Live::chat_session_dirs` | `parity.rs::parity_live` `dizin-` | TAŞINDI |
+| `find_chat_file` (py/claudeops/ucli_client.py:273) | `ucli_status.rs::Live::find_chat_file` | `parity.rs::parity_live` `dizin-`, `durum-` | TAŞINDI |
+| `failed_turn_records` (py/claudeops/ucli_client.py:292) | `ucli_status.rs::Live::failed_turn_records` | `parity.rs::parity_live` `hata-`, `dizin-` | TAŞINDI |
+| `status_is_busy` (py/claudeops/ucli_client.py:348) | `ucli_status.rs::status_is_busy` | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `read_status_file` (py/claudeops/ucli_client.py:354) | `ucli_status.rs::Live::read_status_file` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
 | `read_chat_history` (py/claudeops/ucli_client.py:402) | yok | - | EKSİK(G2) |
 | `_BUDGET_NOTES` (py/claudeops/ucli_client.py:429) | yok | - | EKSİK(G10) |
 | `mark_budget_exhausted` (py/claudeops/ucli_client.py:434) | yok | - | EKSİK(G10) |
@@ -736,11 +796,11 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `atomic_write_text` (py/claudeops/atomic_json.py:101) | yok: `Effect::{WriteAtomic,WriteSecret}` uygulayıcısı yalnız testte | - | EKSİK(G8) |
 | `file_lock` (py/claudeops/atomic_json.py:132) | `rs/state` `fsutil.rs::FileLock` | rs/state | KAPSAM DIŞI |
 | `spawn_env` (py/claudeops/authz.py:493) | yok: `SpawnRequest::hook_env` girdisi | - | EKSİK(G9) |
-| `codex_screen_count` (py/claudeops/bg_work.py:130) | yok | - | EKSİK(G6) |
-| `codex_subagents_pending` (py/claudeops/bg_work.py:136) | yok | - | EKSİK(G6) |
-| `screen_bg_count` (py/claudeops/bg_work.py:32) | yok | - | EKSİK(G6) |
-| `tail_lines` (py/claudeops/bg_work.py:160) | yok | - | EKSİK(G6) |
-| `transcript_pending_path` (py/claudeops/bg_work.py:112) | yok | - | EKSİK(G6) |
+| `codex_screen_count` (py/claudeops/bg_work.py:130) | `bg_work.rs::codex_screen_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `codex_subagents_pending` (py/claudeops/bg_work.py:136) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-istisna-rollout-` | TAŞINDI |
+| `screen_bg_count` (py/claudeops/bg_work.py:32) | `bg_work.rs::screen_bg_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `tail_lines` (py/claudeops/bg_work.py:160) | `live.rs::Live::tail_lines` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
+| `transcript_pending_path` (py/claudeops/bg_work.py:112) | `live.rs::Live::transcript_pending_path` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
 | `diag_log` (py/claudeops/diaglog.py:39) | yok: `Diag` biriktirilir, günlüğe yazan yok | - | EKSİK(G8) |
 | `find_sessions` (py/claudeops/discovery.py:200) | `rs/proc` `discovery.rs::find_sessions` | rs/proc: `fake_proc::discovers_each_cli_and_names` | KAPSAM DIŞI |
 | `session_mcp_spec` (py/claudeops/extensions.py:440) | yok: `SpawnRequest::extension_mcp` girdisi | - | EKSİK(G9) |
@@ -761,7 +821,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 
 ## TEST EŞLEME TABLOSU
 
-1349 satır: TAŞINDI 354, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 696, EKSİK 277.
+1349 satır: TAŞINDI 402, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 698, EKSİK 227.
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -828,19 +888,19 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `ExtActionTableTest.test_action_for_reads_ext_table_longest_first` (py/tests/test_authz.py:498) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
 | `ExtActionTableTest.test_register_action_prefix_restricted` (py/tests/test_authz.py:508) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
 | `ExtActionTableTest.test_ui_extension_title_en` (py/tests/test_authz.py:512) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ScreenFixture.test_busy_screens` (py/tests/test_bg_work.py:39) | yok | EKSİK(G6) |
-| `ScreenFixture.test_idle_screen_with_prose_numbers` (py/tests/test_bg_work.py:43) | yok | EKSİK(G6) |
-| `TranscriptFixture.test_pending_without_notification` (py/tests/test_bg_work.py:69) | yok | EKSİK(G6) |
-| `TranscriptFixture.test_completed_by_tool_use_id_or_task_id` (py/tests/test_bg_work.py:72) | yok | EKSİK(G6) |
-| `TranscriptFixture.test_foreground_and_stale` (py/tests/test_bg_work.py:77) | yok | EKSİK(G6) |
-| `TranscriptFixture.test_errored_call_is_not_pending` (py/tests/test_bg_work.py:81) | yok | EKSİK(G6) |
-| `TranscriptFixture.test_one_of_two_pending` (py/tests/test_bg_work.py:87) | yok | EKSİK(G6) |
+| `ScreenFixture.test_busy_screens` (py/tests/test_bg_work.py:39) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `ScreenFixture.test_idle_screen_with_prose_numbers` (py/tests/test_bg_work.py:43) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `TranscriptFixture.test_pending_without_notification` (py/tests/test_bg_work.py:69) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_completed_by_tool_use_id_or_task_id` (py/tests/test_bg_work.py:72) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_foreground_and_stale` (py/tests/test_bg_work.py:77) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_errored_call_is_not_pending` (py/tests/test_bg_work.py:81) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_one_of_two_pending` (py/tests/test_bg_work.py:87) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` (py/tests/test_bg_work.py:92) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
 | `SubagentActiveForUsesBoth.test_transcript_pending_makes_active` (py/tests/test_bg_work.py:98) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
-| `ProviderBackgroundWork.test_base_unknown_and_claude_counts` (py/tests/test_bg_work.py:113) | yok | EKSİK(G6) |
-| `UcliBackgroundWork.test_reads_status_field_never_guesses` (py/tests/test_bg_work.py:126) | yok | EKSİK(G6) |
-| `CodexBackgroundWork.test_screen_and_rollout` (py/tests/test_bg_work.py:150) | yok | EKSİK(G6) |
-| `CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` (py/tests/test_bg_work.py:157) | yok | EKSİK(G6) |
+| `ProviderBackgroundWork.test_base_unknown_and_claude_counts` (py/tests/test_bg_work.py:113) | `parity.rs::parity_live` `varsayilan-`, `ekran-claude-` | TAŞINDI |
+| `UcliBackgroundWork.test_reads_status_field_never_guesses` (py/tests/test_bg_work.py:126) | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `CodexBackgroundWork.test_screen_and_rollout` (py/tests/test_bg_work.py:150) | `parity.rs::parity_bg_work` `bg-ekran`, `bg-transkript-` | TAŞINDI |
+| `CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` (py/tests/test_bg_work.py:157) | `parity.rs::parity_live` `ekran-codex-`, `codex-ajan-` | TAŞINDI |
 | `BrainPermission.test_default_allow_edit_is_a_valid_ucli_mode` (py/tests/test_brain_permission_ucli.py:11) | rs/stew: `brain_permission`; mod listesi `parity_model_effort` `bos-*` | KAPSAM DIŞI |
 | `BrainPermission.test_applied_only_for_ucli` (py/tests/test_brain_permission_ucli.py:15) | rs/stew | KAPSAM DIŞI |
 | `CompactionViewTests.test_boundary_and_summary_roles_keep_pre_compaction_messages` (py/tests/test_chat_compaction_view.py:21) | yok | EKSİK(G2) |
@@ -1048,13 +1108,13 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `NoBlindEnterTest.test_permission_dialog_is_not_confirmed` (py/tests/test_proc08_model_switch_no_blind_enter.py:33) | yok | EKSİK(G4) |
 | `NoBlindEnterTest.test_switch_dialog_confirmed_once` (py/tests/test_proc08_model_switch_no_blind_enter.py:36) | yok | EKSİK(G4) |
 | `NoBlindEnterTest.test_applied_without_dialog` (py/tests/test_proc08_model_switch_no_blind_enter.py:39) | yok | EKSİK(G4) |
-| `TestBase.test_default_and_unsupported_are_none` (py/tests/test_provider_live_context.py:23) | yok | EKSİK(G6) |
-| `TestCodex.test_last_token_count_input_tokens` (py/tests/test_provider_live_context.py:43) | yok | EKSİK(G6) |
-| `TestCodex.test_no_token_event_or_no_file_is_none` (py/tests/test_provider_live_context.py:47) | yok | EKSİK(G6) |
-| `TestCodex.test_null_info_is_none` (py/tests/test_provider_live_context.py:52) | yok | EKSİK(G6) |
-| `TestCopilot.test_latest_main_agent_row` (py/tests/test_provider_live_context.py:75) | yok | EKSİK(G6) |
-| `TestCopilot.test_unknown_session_or_no_db_is_none` (py/tests/test_provider_live_context.py:78) | yok | EKSİK(G6) |
-| `TestStatusRow.test_context_info_uses_provider_hook_and_hides_unknown` (py/tests/test_provider_live_context.py:89) | yok | EKSİK(G6) |
+| `TestBase.test_default_and_unsupported_are_none` (py/tests/test_provider_live_context.py:23) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `TestCodex.test_last_token_count_input_tokens` (py/tests/test_provider_live_context.py:43) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
+| `TestCodex.test_no_token_event_or_no_file_is_none` (py/tests/test_provider_live_context.py:47) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
+| `TestCodex.test_null_info_is_none` (py/tests/test_provider_live_context.py:52) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
+| `TestCopilot.test_latest_main_agent_row` (py/tests/test_provider_live_context.py:75) | `parity.rs::parity_live` `copilot-` | TAŞINDI |
+| `TestCopilot.test_unknown_session_or_no_db_is_none` (py/tests/test_provider_live_context.py:78) | `parity.rs::parity_live` `copilot-` | TAŞINDI |
+| `TestStatusRow.test_context_info_uses_provider_hook_and_hides_unknown` (py/tests/test_provider_live_context.py:89) | T1: panel `web._context_info_cached` önbelleği; sağlayıcı kancası `parity.rs::parity_live` `codex-ctx-` | KAPSAM DIŞI |
 | `WantsSplitTests.test_ucli_no_wrapup_but_has_conversation_and_stuck` (py/tests/test_provider_wants_split.py:15) | yok | EKSİK(G4) |
 | `WantsSplitTests.test_claude_defaults_follow_has_conversation` (py/tests/test_provider_wants_split.py:21) | yok | EKSİK(G4) |
 | `WantsSplitTests.test_shell_wants_nothing` (py/tests/test_provider_wants_split.py:26) | yok | EKSİK(G4) |
@@ -1594,13 +1654,13 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `ExecToolchainTests.test_flags_use_real_binaries_and_only_allowed_env` (py/tests/test_ucli_exec_toolchain.py:28) | yok: gerçek `rust_toolchain` keşfi yok; bayraklar `parity_misc` `exec` | EKSİK(G8) |
 | `ExecToolchainTests.test_no_toolchain_means_old_flags_unchanged` (py/tests/test_ucli_exec_toolchain.py:46) | `parity.rs::parity_misc` `exec` | TAŞINDI |
 | `ExecToolchainTests.test_path_in_exec_cmds_is_still_rejected` (py/tests/test_ucli_exec_toolchain.py:53) | `parity.rs::parity_ucli` `cmds-yol` | TAŞINDI |
-| `FailedTurnsTests.test_no_directory_or_no_record_is_none_not_zero` (py/tests/test_ucli_failed_turns.py:28) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_counts_this_session_only_and_reports_the_newest_error` (py/tests/test_ucli_failed_turns.py:33) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_a_broken_or_errorless_record_still_counts` (py/tests/test_ucli_failed_turns.py:42) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_dict_error_uses_its_message` (py/tests/test_ucli_failed_turns.py:46) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_no_sid_is_none` (py/tests/test_ucli_failed_turns.py:50) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_web_wrapper_never_raises` (py/tests/test_ucli_failed_turns.py:53) | yok | EKSİK(G6) |
-| `FailedTurnsTests.test_other_cli_has_no_failed_turns` (py/tests/test_ucli_failed_turns.py:58) | yok | EKSİK(G6) |
+| `FailedTurnsTests.test_no_directory_or_no_record_is_none_not_zero` (py/tests/test_ucli_failed_turns.py:28) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `FailedTurnsTests.test_counts_this_session_only_and_reports_the_newest_error` (py/tests/test_ucli_failed_turns.py:33) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `FailedTurnsTests.test_a_broken_or_errorless_record_still_counts` (py/tests/test_ucli_failed_turns.py:42) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `FailedTurnsTests.test_dict_error_uses_its_message` (py/tests/test_ucli_failed_turns.py:46) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `FailedTurnsTests.test_no_sid_is_none` (py/tests/test_ucli_failed_turns.py:50) | `parity.rs::parity_live` `durum-yok-sid` `durum-bos-sid` | TAŞINDI |
+| `FailedTurnsTests.test_web_wrapper_never_raises` (py/tests/test_ucli_failed_turns.py:53) | T1: panel `web._live_failed_turns` sarmalayıcısı | KAPSAM DIŞI |
+| `FailedTurnsTests.test_other_cli_has_no_failed_turns` (py/tests/test_ucli_failed_turns.py:58) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `ForbiddenCmds.test_interpreters_rejected_by_name` (py/tests/test_ucli_forbidden_cmds.py:10) | `parity.rs::parity_misc` `ucli-misc` ; `parity.rs::parity_ucli` `cmds-kabuk` `cmds-python3` | TAŞINDI |
 | `ForbiddenCmds.test_is_forbidden_cmd` (py/tests/test_ucli_forbidden_cmds.py:16) | `parity.rs::parity_misc` `ucli-misc` ; `parity.rs::parity_ucli` `cmds-kabuk` `cmds-python3` | TAŞINDI |
 | `ArchiveTest.test_moves_history_and_status_keeps_others` (py/tests/test_ucli_fresh_handover.py:31) | T4: `archive_session_files` ve taze açılış akışı | KAPSAM DIŞI |
@@ -1641,10 +1701,10 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `ArgvTests.test_price_and_bools` (py/tests/test_ucli_limit_flags.py:80) | `parity.rs::parity_ucli` `int` `bayraklar` `price` | TAŞINDI |
 | `ArgvTests.test_unsupported_flag_is_skipped_not_fatal` (py/tests/test_ucli_limit_flags.py:86) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
 | `ArgvTests.test_only_supported_ones_added` (py/tests/test_ucli_limit_flags.py:90) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
-| `LiveContext.test_bytes_over_four` (py/tests/test_ucli_live_context.py:16) | yok | EKSİK(G6) |
-| `LiveContext.test_zero_is_zero` (py/tests/test_ucli_live_context.py:19) | yok | EKSİK(G6) |
-| `LiveContext.test_unknown_cases_are_none` (py/tests/test_ucli_live_context.py:22) | yok | EKSİK(G6) |
-| `LiveContext.test_reader_error_is_none` (py/tests/test_ucli_live_context.py:30) | yok | EKSİK(G6) |
+| `LiveContext.test_bytes_over_four` (py/tests/test_ucli_live_context.py:16) | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `LiveContext.test_zero_is_zero` (py/tests/test_ucli_live_context.py:19) | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `LiveContext.test_unknown_cases_are_none` (py/tests/test_ucli_live_context.py:22) | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `LiveContext.test_reader_error_is_none` (py/tests/test_ucli_live_context.py:30) | `parity.rs::parity_live` `durum-dizin` (okunamayan dosya = None) | TAŞINDI |
 | `MaxSessionUsd.test_valid_kept_as_float` (py/tests/test_ucli_max_session_usd.py:10) | `parity.rs::parity_ucli` `session` `cost` | TAŞINDI |
 | `MaxSessionUsd.test_zero_and_empty_dropped` (py/tests/test_ucli_max_session_usd.py:14) | `parity.rs::parity_ucli` `session` `cost` | TAŞINDI |
 | `MaxSessionUsd.test_invalid_rejected` (py/tests/test_ucli_max_session_usd.py:18) | `parity.rs::parity_ucli` `session` `cost` | TAŞINDI |
@@ -1661,18 +1721,18 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `FlattenTest.test_ucli_long_text_not_truncated` (py/tests/test_ucli_multiline_flatten.py:29) | yok | EKSİK(G4) |
 | `FlattenTest.test_single_fold_point_in_callers` (py/tests/test_ucli_multiline_flatten.py:37) | yok | EKSİK(G4) |
 | `FlattenTest.test_other_providers_untouched` (py/tests/test_ucli_multiline_flatten.py:44) | yok | EKSİK(G4) |
-| `LivePhaseTests.test_a_streaming_phase_comes_through` (py/tests/test_ucli_phase.py:36) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_the_last_write_time_of_the_file_comes_through_as_last_unix` (py/tests/test_ucli_phase.py:41) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_a_missing_or_garbage_last_activity_is_left_out_not_zeroed` (py/tests/test_ucli_phase.py:46) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_a_retry_phase_keeps_its_reason` (py/tests/test_ucli_phase.py:54) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_no_phase_a_null_phase_or_an_older_binary_mean_none` (py/tests/test_ucli_phase.py:60) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_a_phase_without_a_usable_name_is_ignored` (py/tests/test_ucli_phase.py:67) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_bad_numbers_are_dropped_never_turned_into_an_invented_zero` (py/tests/test_ucli_phase.py:73) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_text_is_trimmed_and_capped` (py/tests/test_ucli_phase.py:79) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_a_future_phase_name_passes_through_so_the_badge_does_not_go_silent` (py/tests/test_ucli_phase.py:85) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_only_the_known_fields_are_returned` (py/tests/test_ucli_phase.py:89) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_no_status_file_no_sid_or_a_broken_file_mean_none` (py/tests/test_ucli_phase.py:93) | yok | EKSİK(G6) |
-| `LivePhaseTests.test_every_other_provider_has_no_phase` (py/tests/test_ucli_phase.py:101) | yok | EKSİK(G6) |
+| `LivePhaseTests.test_a_streaming_phase_comes_through` (py/tests/test_ucli_phase.py:36) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_the_last_write_time_of_the_file_comes_through_as_last_unix` (py/tests/test_ucli_phase.py:41) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_a_missing_or_garbage_last_activity_is_left_out_not_zeroed` (py/tests/test_ucli_phase.py:46) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_a_retry_phase_keeps_its_reason` (py/tests/test_ucli_phase.py:54) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_no_phase_a_null_phase_or_an_older_binary_mean_none` (py/tests/test_ucli_phase.py:60) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_a_phase_without_a_usable_name_is_ignored` (py/tests/test_ucli_phase.py:67) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_bad_numbers_are_dropped_never_turned_into_an_invented_zero` (py/tests/test_ucli_phase.py:73) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_text_is_trimmed_and_capped` (py/tests/test_ucli_phase.py:79) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_a_future_phase_name_passes_through_so_the_badge_does_not_go_silent` (py/tests/test_ucli_phase.py:85) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_only_the_known_fields_are_returned` (py/tests/test_ucli_phase.py:89) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_no_status_file_no_sid_or_a_broken_file_mean_none` (py/tests/test_ucli_phase.py:93) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LivePhaseTests.test_every_other_provider_has_no_phase` (py/tests/test_ucli_phase.py:101) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `LivePhaseHelperTests.test_it_asks_the_sessions_own_provider_with_its_cwd_and_sid` (py/tests/test_ucli_phase.py:122) | T1: panel faz rozeti ve durum satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
 | `LivePhaseHelperTests.test_waiting_for_the_response_turns_amber_then_red_on_the_thresholds` (py/tests/test_ucli_phase.py:127) | T1: panel faz rozeti ve durum satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
 | `LivePhaseHelperTests.test_retries_and_rate_limits_are_always_amber` (py/tests/test_ucli_phase.py:133) | T1: panel faz rozeti ve durum satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
@@ -1778,8 +1838,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `TestSetting.test_default_off_and_words` (py/tests/test_ucli_state_dir.py:42) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `TestChatOnce.test_state_dir_passed_only_when_on_supported_and_session` (py/tests/test_ucli_state_dir.py:67) | yok | EKSİK(G10) |
 | `TestPaths.test_dir_is_per_root_and_stable_and_outside_the_repo` (py/tests/test_ucli_state_dir.py:79) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `TestPaths.test_off_reads_only_legacy_until_the_new_dir_exists` (py/tests/test_ucli_state_dir.py:88) | yok: oturum dizini okuyucuları yok | EKSİK(G6) |
-| `TestPaths.test_on_prefers_new_then_falls_back_to_legacy_for_files` (py/tests/test_ucli_state_dir.py:95) | yok: oturum dizini okuyucuları yok | EKSİK(G6) |
+| `TestPaths.test_off_reads_only_legacy_until_the_new_dir_exists` (py/tests/test_ucli_state_dir.py:88) | `parity.rs::parity_live` `dizin-kapali-` | TAŞINDI |
+| `TestPaths.test_on_prefers_new_then_falls_back_to_legacy_for_files` (py/tests/test_ucli_state_dir.py:95) | yol sırası ve durum dosyası `parity_live` `dizin-acik-` ile sınandı; `read_chat_history` iddiaları açık | EKSİK(G2) |
 | `TestSpawnArgv.test_off_by_default_adds_nothing` (py/tests/test_ucli_state_dir.py:118) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `TestSpawnArgv.test_on_adds_flag_for_new_session_only_when_binary_knows_it` (py/tests/test_ucli_state_dir.py:122) | `parity.rs::parity_ucli` `statedir-acik` `eksik` | TAŞINDI |
 | `TestSpawnArgv.test_session_with_legacy_history_keeps_the_legacy_dir` (py/tests/test_ucli_state_dir.py:127) | `parity.rs::parity_ucli` `statedir-eski-gecmis` | TAŞINDI |
@@ -1796,14 +1856,14 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `BuildCommandTests.test_off_leaves_the_command_without_the_flag` (py/tests/test_ucli_stream.py:124) | `parity.rs::parity_ucli` `ayar-stream-off` | TAŞINDI |
 | `BuildCommandTests.test_on_adds_exactly_one_bare_flag` (py/tests/test_ucli_stream.py:129) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `BuildCommandTests.test_an_old_binary_without_the_flag_is_not_given_it_and_the_skip_is_logged` (py/tests/test_ucli_stream.py:134) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
-| `LiveUsageTests.test_the_counters_come_through_as_written` (py/tests/test_ucli_usage.py:50) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_a_binary_without_usage_means_unknown_not_zero` (py/tests/test_ucli_usage.py:54) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_a_usage_that_is_not_an_object_means_unknown` (py/tests/test_ucli_usage.py:58) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_no_status_file_no_sid_or_a_broken_file_mean_unknown` (py/tests/test_ucli_usage.py:64) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_the_unmetered_fields_of_an_older_binary_count_as_zero` (py/tests/test_ucli_usage.py:72) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_garbage_values_become_zero_never_an_invented_number` (py/tests/test_ucli_usage.py:78) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_only_the_known_counters_are_returned` (py/tests/test_ucli_usage.py:86) | yok | EKSİK(G6) |
-| `LiveUsageTests.test_every_other_provider_has_no_counter` (py/tests/test_ucli_usage.py:92) | yok | EKSİK(G6) |
+| `LiveUsageTests.test_the_counters_come_through_as_written` (py/tests/test_ucli_usage.py:50) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_a_binary_without_usage_means_unknown_not_zero` (py/tests/test_ucli_usage.py:54) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_a_usage_that_is_not_an_object_means_unknown` (py/tests/test_ucli_usage.py:58) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_no_status_file_no_sid_or_a_broken_file_mean_unknown` (py/tests/test_ucli_usage.py:64) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_the_unmetered_fields_of_an_older_binary_count_as_zero` (py/tests/test_ucli_usage.py:72) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_garbage_values_become_zero_never_an_invented_number` (py/tests/test_ucli_usage.py:78) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_only_the_known_counters_are_returned` (py/tests/test_ucli_usage.py:86) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `LiveUsageTests.test_every_other_provider_has_no_counter` (py/tests/test_ucli_usage.py:92) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `LiveUsageHelperTests.test_it_asks_the_sessions_own_provider_with_its_cwd_and_sid` (py/tests/test_ucli_usage.py:104) | T1: panel kullanım satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
 | `LiveUsageHelperTests.test_a_failing_provider_never_breaks_the_panel` (py/tests/test_ucli_usage.py:112) | T1: panel kullanım satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
 | `StatusPayloadUsageTests.test_a_registered_running_ucli_row_carries_its_counters` (py/tests/test_ucli_usage.py:148) | T1: panel kullanım satırı; sağlayıcı okuyucusu G6 | KAPSAM DIŞI |
