@@ -785,7 +785,7 @@ for n in range(40):
     assert_eq!(Roster::new(&docs).entries().unwrap().len(), 80);
     let st = docs.store().unwrap();
     assert_eq!(st.get_doc("sayac").unwrap(), Some(Json::Int(80)));
-    assert_eq!(st.tsv_rows("roster.tsv").unwrap().len(), 80);
+    assert_eq!(st.tsv_rows("roster.tsv", None).unwrap().len(), 80);
 }
 
 #[test]

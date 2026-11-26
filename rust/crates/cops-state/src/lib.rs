@@ -9,6 +9,7 @@ pub mod pycompat;
 pub mod roster;
 pub mod settings;
 pub mod settings_read;
+mod sha256;
 pub mod statedocs;
 pub mod store;
 mod unicode_tables;

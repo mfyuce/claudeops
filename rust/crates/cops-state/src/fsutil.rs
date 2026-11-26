@@ -33,6 +33,8 @@ fn fsync_dir(path: &Path) {
 }
 
 fn write_replace(tmp: &Path, path: &Path, data: &[u8], mode: Option<u32>) -> io::Result<()> {
+    crate::paths::guard_write(path);
+    crate::paths::guard_write(tmp);
     let mut o = OpenOptions::new();
     o.write(true)
         .create_new(true)
@@ -68,6 +70,69 @@ pub fn atomic_write_json(path: &Path, obj: &Json, mode: Option<u32>) -> io::Resu
     let tmp = with_suffix(path, &format!(".{}-rs{n}.tmp", std::process::id()));
     let _ = fs::remove_file(&tmp);
     write_replace(&tmp, path, obj.to_indented().as_bytes(), mode)
+}
+
+/// `atomic_json.atomic_write_text`: `atomic_write_json`un düz metin karşılığı (`mode=None` iken var olan izin korunur).
+pub fn atomic_write_text(path: &Path, text: &str, mode: Option<u32>) -> io::Result<()> {
+    fs::create_dir_all(parent_of(path))?;
+    let mode = mode.or_else(|| {
+        fs::metadata(path)
+            .ok()
+            .filter(fs::Metadata::is_file)
+            .map(|m| m.mode() & 0o7777)
+    });
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = with_suffix(path, &format!(".{}-rs{n}.tmp", std::process::id()));
+    let _ = fs::remove_file(&tmp);
+    write_replace(&tmp, path, text.as_bytes(), mode)
+}
+
+/// `dir` içinde `prefix<eşsiz>suffix` adlı YENİ dosya (`O_EXCL|O_NOFOLLOW`, 0600; Python `tempfile.mkstemp`).
+pub fn create_unique(dir: &Path, prefix: &str, suffix: &str) -> io::Result<PathBuf> {
+    for _ in 0..100 {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos());
+        let p = dir.join(format!(
+            "{prefix}{}x{n}x{nanos:x}{suffix}",
+            std::process::id()
+        ));
+        crate::paths::guard_write(&p);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .mode(0o600)
+            .open(&p)
+        {
+            Ok(_) => return Ok(p),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "eşsiz geçici ad bulunamadı",
+    ))
+}
+
+/// Bozuk belgenin kanıt kopyası: `<path>.corrupt-<sha256 ilk 8>` (0600, `O_EXCL`; aynı içerik bir kez). Python
+/// `settings._backup_if_corrupt` ad ve izin kuralı. Kopya zaten varsa aynı yol döner.
+pub fn write_corrupt_copy(path: &Path, raw: &[u8]) -> io::Result<PathBuf> {
+    let sha = crate::sha256::sha256_hex(raw);
+    let dest = with_suffix(path, &format!(".corrupt-{}", &sha[..8]));
+    crate::paths::guard_write(&dest);
+    if dest.exists() {
+        return Ok(dest);
+    }
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&dest)?;
+    f.write_all(raw)?;
+    Ok(dest)
 }
 
 /// `web._atomic_write_text` (roster/models): aynı dizinde `.tmp-*.tsv`, her zaman 0600 (Python `mkstemp`).

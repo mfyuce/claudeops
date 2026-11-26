@@ -144,6 +144,23 @@ impl SettingsReader {
     }
 }
 
+/// `settings._backup_if_corrupt`: `settings.json` VAR, boş değil ve JSON nesnesi değilse ham içerik
+/// `settings.json.corrupt-<sha8>` olarak (0600, bir kez) yedeklenir. Dönüş: `None` = bozuk değil/yok; `Some(Ok(yol))`;
+/// `Some(Err)` = yedeklenemedi (Python "(yedeklenemedi)" yazar). Settings yazan Rust kodu yazımdan ÖNCE çağırmalı.
+pub fn backup_if_corrupt(dir: &StateDir) -> Option<std::io::Result<std::path::PathBuf>> {
+    let path = dir.settings_json();
+    let raw = std::fs::read(&path).ok()?;
+    if raw.trim_ascii().is_empty() {
+        return None;
+    }
+    if let Ok(t) = std::str::from_utf8(&raw) {
+        if matches!(Json::parse(t), Ok(Json::Object(_))) {
+            return None;
+        }
+    }
+    Some(crate::fsutil::write_corrupt_copy(&path, &raw))
+}
+
 /// Önbelleksiz tek okuma.
 pub fn load(dir: &StateDir) -> Settings {
     let text = std::fs::read_to_string(dir.settings_json()).ok();

@@ -29,6 +29,10 @@ pub const DB_READY: [&str; 6] = [
 ];
 /// Python `DB_READY_PREFIXES`.
 pub const DB_READY_PREFIXES: [&str; 2] = ["steward/", "orchestration/"];
+/// Python `_MIRROR_KEEP`.
+pub const MIRROR_KEEP: i64 = 200_000;
+/// Python `_MIRROR_EVERY`.
+pub const MIRROR_EVERY: u64 = 2000;
 const BACKEND_TTL: Duration = Duration::from_secs(5);
 const TSV_FILES: [&str; 2] = ["roster.tsv", "models.tsv"];
 
@@ -125,6 +129,7 @@ struct State {
     dirty: HashSet<String>,
     synced: HashMap<String, Sig>,
     ext_prefixes: Vec<String>,
+    mirror_n: HashMap<String, u64>,
 }
 
 type Logger = Box<dyn Fn(&str) + Send + Sync>;
@@ -247,22 +252,47 @@ impl StateDocs {
         self.read_opts(name, path, true)
     }
 
-    /// `file_truth=false`: dual kipte de DB önce. `Corrupt` dönüşünde kanıt yedeği çağıranın işi.
+    /// `file_truth=false`: dual kipte de DB önce.
     pub fn read_opts(&self, name: &str, path: &Path, file_truth: bool) -> Read {
+        self.read_with(name, path, file_truth, None)
+    }
+
+    /// `read_json(..., on_corrupt=f)`: dosya her bozuk okunduğunda `f(path)` çağrılır (Python `_file_read` gibi: bir okuma
+    /// içinde dosya birden çok kez okunursa birden çok kez). Kanıt yedeği çağıranın işi (ör. [`crate::fsutil::write_corrupt_copy`]).
+    pub fn read_with(
+        &self,
+        name: &str,
+        path: &Path,
+        file_truth: bool,
+        on_corrupt: Option<&dyn Fn(&Path)>,
+    ) -> Read {
+        let rf = |p: &Path| {
+            let r = read_file(p);
+            if let (Read::Corrupt, Some(f)) = (&r, on_corrupt) {
+                f(p);
+            }
+            r
+        };
         let mode = self.effective(name);
         if mode == Backend::Files || !self.db_ok(path) {
-            return read_file(path);
+            return rf(path);
         }
-        match self.read_db(name, path, mode == Backend::Dual && file_truth) {
+        match self.read_db(name, path, mode == Backend::Dual && file_truth, &rf) {
             Ok(r) => r,
             Err(e) => {
                 self.log(&format!("read {name}: {e} -> dosya"));
-                read_file(path)
+                rf(path)
             }
         }
     }
 
-    fn read_db(&self, name: &str, path: &Path, file_first: bool) -> Result<Read, StoreError> {
+    fn read_db(
+        &self,
+        name: &str,
+        path: &Path,
+        file_first: bool,
+        read_file: &dyn Fn(&Path) -> Read,
+    ) -> Result<Read, StoreError> {
         if file_first {
             // DB açılamasa da dosya (doğruluk kaynağı) döner: hata üst katta dosyaya düşer
             let st = self.store()?;
@@ -358,6 +388,32 @@ impl StateDocs {
             }
         }
         Ok(WriteOutcome::Written)
+    }
+
+    /// `mirror_log`: dosya günlüğüne yazılan satırı DB `log` akışına da ekle (dual/db). SESSİZ (Python gibi: günlük
+    /// best-effort; hata yalnız sayılır, loglanmaz: günlük -> mirror -> log döngüsü olmasın). Akış her
+    /// [`MIRROR_EVERY`] eklemede [`MIRROR_KEEP`] satıra kırpılır. Dönüş: eklendi mi.
+    pub fn mirror_log(&self, stream: &str, path: &Path, entry: &Json) -> bool {
+        if self.backend() == Backend::Files || !self.db_ok(path) {
+            return false;
+        }
+        let Ok(st) = self.store() else {
+            return false;
+        };
+        if st.append_log(stream, entry).is_err() {
+            return false;
+        }
+        let n = {
+            let mut g = self.lock();
+            let c = g.mirror_n.entry(stream.to_string()).or_insert(0);
+            *c += 1;
+            *c
+        };
+        if n % MIRROR_EVERY == 0 {
+            // kırpma hatası bir sonraki eşikte yeniden denenir (Python ile aynı)
+            let _ = st.trim_log(stream, MIRROR_KEEP);
+        }
+        true
     }
 
     /// `shadow_tsv`: roster/models dosyasının güncel içeriğini `tsv_rows`a eşitle. Sessiz (hata yalnız loglanır).
