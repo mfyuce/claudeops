@@ -35,14 +35,20 @@ fn message_lines(msg: &str) -> impl Iterator<Item = &str> {
 }
 
 pub fn kind(msg: &str) -> Kind {
-    let mut subject = message_lines(msg).map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let mut subject = message_lines(msg)
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
     for p in ["fixup! ", "squash! ", "amend! "] {
         while let Some(rest) = subject.strip_prefix(p) {
             subject = rest;
         }
     }
     let low = subject.to_ascii_lowercase();
-    let is = |t: &str| low.strip_prefix(t).is_some_and(|r| r.starts_with(['(', ':', '!']));
+    let is = |t: &str| {
+        low.strip_prefix(t)
+            .is_some_and(|r| r.starts_with(['(', ':', '!']))
+    };
     if is("feat") {
         Kind::Feat
     } else if is("fix") {
@@ -68,7 +74,11 @@ pub fn approved(tbd: &str, id: u32) -> bool {
     for line in tbd.lines() {
         if line.starts_with("## ") || line.starts_with("### ") {
             inside = line.starts_with(&a) || line.starts_with(&b);
-        } else if inside && line.trim_start_matches(['-', ' ', '*']).starts_with(APPROVAL) {
+        } else if inside
+            && line
+                .trim_start_matches(['-', ' ', '*'])
+                .starts_with(APPROVAL)
+        {
             return true;
         }
     }
@@ -89,13 +99,19 @@ fn def_name(line: &str) -> Option<&str> {
     if line.len() - body.len() > 4 {
         return None;
     }
-    let rest = body.strip_prefix("async ").unwrap_or(body).strip_prefix("def ")?;
+    let rest = body
+        .strip_prefix("async ")
+        .unwrap_or(body)
+        .strip_prefix("def ")?;
     let name = &rest[..rest.find('(')?];
     (!name.starts_with('_') && !name.starts_with("test")).then_some(name)
 }
 
 fn api_literals(line: &str) -> impl Iterator<Item = &str> {
-    line.split(['"', '\'']).skip(1).step_by(2).filter(|s| s.starts_with("/api/"))
+    line.split(['"', '\''])
+        .skip(1)
+        .step_by(2)
+        .filter(|s| s.starts_with("/api/"))
 }
 
 /// `git diff -U0` çıktısından kapsamdaki (test olmayan) dosyalarda yeni public işlev ve uç adları.
@@ -127,7 +143,13 @@ pub fn new_public(diff: &str) -> Vec<String> {
         .filter_map(|l| def_name(l))
         .filter(|n| !old_defs.contains(n))
         .map(|n| format!("işlev {n}"))
-        .chain(added.iter().flat_map(|l| api_literals(l)).filter(|a| !old_apis.contains(a)).map(|a| format!("uç {a}")))
+        .chain(
+            added
+                .iter()
+                .flat_map(|l| api_literals(l))
+                .filter(|a| !old_apis.contains(a))
+                .map(|a| format!("uç {a}")),
+        )
         .collect();
     out.sort();
     out.dedup();
@@ -149,13 +171,18 @@ pub fn evaluate(msg: &str, files: &[FileStat], diff: &str, tbd: Option<&str>) ->
             }
             let ids = exception_ids(msg);
             if let Some(id) = ids.iter().find(|&&id| tbd.is_some_and(|t| approved(t, id))) {
-                v.warnings.push(format!("Python istisnası TBD#{id} ile geçti: {}", grown.join(", ")));
+                v.warnings.push(format!(
+                    "Python istisnası TBD#{id} ile geçti: {}",
+                    grown.join(", ")
+                ));
                 return v;
             }
             let why = match (ids.first(), tbd) {
                 (None, _) => format!("trailer yok ('{TRAILER} TBD#<n>')"),
                 (Some(_), None) => "TOBEDECIDED.md okunamadı".to_string(),
-                (Some(id), Some(_)) => format!("TBD#{id} sahip onaylı değil (bölümde '{APPROVAL} <tarih>)' satırı yok)"),
+                (Some(id), Some(_)) => format!(
+                    "TBD#{id} sahip onaylı değil (bölümde '{APPROVAL} <tarih>)' satırı yok)"
+                ),
             };
             v.errors.push(format!(
                 "feat commit'i Python büyütüyor: {}. Yeni geliştirme Rust'ta yazılır; {why}.",
@@ -182,7 +209,9 @@ pub fn parse_numstat(raw: &str) -> Vec<FileStat> {
     let mut it = raw.split('\0');
     while let Some(rec) = it.next() {
         let mut cols = rec.splitn(3, '\t');
-        let (Some(a), Some(d), Some(p)) = (cols.next(), cols.next(), cols.next()) else { continue };
+        let (Some(a), Some(d), Some(p)) = (cols.next(), cols.next(), cols.next()) else {
+            continue;
+        };
         let path = if p.is_empty() {
             let _old = it.next();
             it.next().unwrap_or("")

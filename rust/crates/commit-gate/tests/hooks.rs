@@ -13,9 +13,17 @@ impl Drop for Tmp {
 
 fn git(dir: &Path, args: &[&str]) -> Output {
     let mut c = Command::new("git");
-    c.arg("-C").arg(dir).args(args).env("GIT_CONFIG_GLOBAL", "/dev/null").env("GIT_CONFIG_NOSYSTEM", "1");
-    for (k, v) in [("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@example.invalid"),
-                   ("GIT_COMMITTER_NAME", "t"), ("GIT_COMMITTER_EMAIL", "t@example.invalid")] {
+    c.arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1");
+    for (k, v) in [
+        ("GIT_AUTHOR_NAME", "t"),
+        ("GIT_AUTHOR_EMAIL", "t@example.invalid"),
+        ("GIT_COMMITTER_NAME", "t"),
+        ("GIT_COMMITTER_EMAIL", "t@example.invalid"),
+    ] {
         c.env(k, v);
     }
     c.output().unwrap()
@@ -41,7 +49,11 @@ fn setup(name: &str) -> (Tmp, PathBuf, PathBuf) {
     ok(git(&repo, &["init", "-q"]));
     ok(git(&repo, &["remote", "add", "origin", "../remote.git"]));
     let tbd = root.join("TOBEDECIDED.md");
-    std::fs::write(&tbd, "## #7 x\n- Python-istisnası: ONAYLI (sahip, 2026-11-25)\n").unwrap();
+    std::fs::write(
+        &tbd,
+        "## #7 x\n- Python-istisnası: ONAYLI (sahip, 2026-11-25)\n",
+    )
+    .unwrap();
     (Tmp(root), repo, tbd)
 }
 
@@ -63,8 +75,15 @@ fn commit_msg_hook_blocks_and_allows() {
     let out = git(&repo, &["commit", "-qm", "feat: x"]);
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("py/a.py"));
-    ok(git(&repo, &["commit", "-qm", "feat: x\n\nPython-exception: TBD#7"]));
-    write(&repo, "py/a.py", "def a():\n    pass\n\ndef b():\n    pass\n");
+    ok(git(
+        &repo,
+        &["commit", "-qm", "feat: x\n\nPython-exception: TBD#7"],
+    ));
+    write(
+        &repo,
+        "py/a.py",
+        "def a():\n    pass\n\ndef b():\n    pass\n",
+    );
     let out = git(&repo, &["commit", "-qam", "fix: y"]);
     assert!(out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("işlev b"));
@@ -79,12 +98,18 @@ fn pre_push_and_check_catch_bypassed_commit_only_while_unpushed() {
     let out = gate(&["check", "--core", s(&repo)]);
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr).into_owned();
-    assert!(err.contains("kancası kurulu değil") && err.contains("py/a.py"), "{err}");
+    assert!(
+        err.contains("kancası kurulu değil") && err.contains("py/a.py"),
+        "{err}"
+    );
     ok(gate(&["install", "--tbd", s(&tbd), "--repo", s(&repo)]));
     let out = git(&repo, &["push", "-q", "origin", "HEAD:main"]);
     assert!(!out.status.success());
     // zaten uzakta olan commit geriye dönük reddedilmez
-    ok(git(&repo, &["push", "-q", "--no-verify", "origin", "HEAD:main"]));
+    ok(git(
+        &repo,
+        &["push", "-q", "--no-verify", "origin", "HEAD:main"],
+    ));
     write(&repo, "rust/a.rs", "fn a() {}\n");
     ok(git(&repo, &["add", "."]));
     ok(git(&repo, &["commit", "-qm", "feat: rust"]));

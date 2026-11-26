@@ -6,7 +6,8 @@ use std::process::{Command, ExitCode};
 
 const MARK: &str = "# claudeops-commit-gate";
 const HOOKS: [&str; 2] = ["commit-msg", "pre-push"];
-const USAGE: &str = "kullanım: commit-gate commit-msg --tbd DOSYA MESAJ | pre-push --tbd DOSYA [uzak url] | \
+const USAGE: &str =
+    "kullanım: commit-gate commit-msg --tbd DOSYA MESAJ | pre-push --tbd DOSYA [uzak url] | \
 install --tbd DOSYA --repo DİZİN... | check --core DİZİN";
 
 fn git(repo: Option<&Path>, args: &[&str]) -> Result<String, String> {
@@ -14,25 +15,44 @@ fn git(repo: Option<&Path>, args: &[&str]) -> Result<String, String> {
     if let Some(r) = repo {
         // başka repoya bakarken kancadan miras kalan GIT_* değişkenleri hedefi değiştirmesin
         c.arg("-C").arg(r);
-        for k in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"] {
+        for k in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_COMMON_DIR",
+        ] {
             c.env_remove(k);
         }
     }
     c.args(["-c", "core.quotePath=false"]).args(args);
     let out = c.output().map_err(|e| format!("git çalışmadı: {e}"))?;
     if !out.status.success() {
-        return Err(format!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-const DIFF_FMT: [&str; 4] = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
+const DIFF_FMT: [&str; 4] = [
+    "--no-color",
+    "--no-ext-diff",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+];
 
 fn staged_verdict(msg: &str, tbd: Option<&str>) -> Result<Verdict, String> {
     let stat = git(None, &["diff", "--cached", "--numstat", "-z", "-M"])?;
     let mut args = vec!["diff", "--cached", "-U0", "-M"];
     args.extend(DIFF_FMT);
-    Ok(evaluate(msg, &parse_numstat(&stat), &git(None, &args)?, tbd))
+    Ok(evaluate(
+        msg,
+        &parse_numstat(&stat),
+        &git(None, &args)?,
+        tbd,
+    ))
 }
 
 fn commit_verdict(repo: Option<&Path>, sha: &str, tbd: Option<&str>) -> Result<Verdict, String> {
@@ -108,8 +128,15 @@ fn install(tbd: &str, repos: &[String]) -> Result<bool, String> {
         // önce hepsini denetle: yabancı kanca varsa hiçbir şey yazma
         for h in HOOKS {
             let p = dir.join(h);
-            if p.symlink_metadata().is_ok() && !std::fs::read_to_string(&p).unwrap_or_default().contains(MARK) {
-                return Err(format!("{} başka bir kanca; üzerine yazılmadı", p.display()));
+            if p.symlink_metadata().is_ok()
+                && !std::fs::read_to_string(&p)
+                    .unwrap_or_default()
+                    .contains(MARK)
+            {
+                return Err(format!(
+                    "{} başka bir kanca; üzerine yazılmadı",
+                    p.display()
+                ));
             }
         }
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -123,7 +150,8 @@ fn install(tbd: &str, repos: &[String]) -> Result<bool, String> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|e| e.to_string())?;
             }
             println!("kuruldu: {}", p.display());
         }
@@ -134,7 +162,11 @@ fn install(tbd: &str, repos: &[String]) -> Result<bool, String> {
 /// Çekirdek ve yanındaki enterprise: kancalar kurulu mu, gönderilmemiş commit'ler kurala uyuyor mu.
 fn check(core: &Path) -> Result<bool, String> {
     let mut repos = vec![core.to_path_buf()];
-    if let Some(ent) = core.parent().map(|p| p.join("claudeops-enterprise")).filter(|p| p.join(".git").exists()) {
+    if let Some(ent) = core
+        .parent()
+        .map(|p| p.join("claudeops-enterprise"))
+        .filter(|p| p.join(".git").exists())
+    {
         repos.push(ent);
     }
     // TOBEDECIDED.md ana checkout'ta (worktree'de yoksa ortak git dizininin üstü)
@@ -148,13 +180,19 @@ fn check(core: &Path) -> Result<bool, String> {
         let name = repo.display();
         let dir = hooks_dir(repo)?;
         for h in HOOKS {
-            if !std::fs::read_to_string(dir.join(h)).unwrap_or_default().contains(MARK) {
+            if !std::fs::read_to_string(dir.join(h))
+                .unwrap_or_default()
+                .contains(MARK)
+            {
                 eprintln!("commit-gate uyarı: {name}: {h} kancası kurulu değil (scripts/commit-gate-install.sh)");
                 ok = false;
             }
         }
         for sha in commits(Some(repo), &["HEAD", "--not", "--remotes"])? {
-            ok &= report(&format!("{name} {:.9}: ", sha), &commit_verdict(Some(repo), &sha, tbd.as_deref())?);
+            ok &= report(
+                &format!("{name} {:.9}: ", sha),
+                &commit_verdict(Some(repo), &sha, tbd.as_deref())?,
+            );
         }
     }
     Ok(ok)
