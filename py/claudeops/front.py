@@ -29,7 +29,7 @@ def read_secret() -> str:
             return ""
         with open(secret_path(), encoding="utf-8") as fh:
             return fh.read().strip()
-    except OSError:
+    except (OSError, UnicodeError):     # bozuk (UTF-8 olmayan) dosya = gizli yok (kapalı yön)
         return ""
 
 

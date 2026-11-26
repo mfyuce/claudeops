@@ -24,6 +24,13 @@ class Secret(unittest.TestCase):
         os.chmod(front.secret_path(), 0o644)
         self.assertEqual(front.read_secret(), "")
 
+    def test_non_utf8_file_means_no_secret(self):
+        front.ensure_secret()
+        with open(front.secret_path(), "wb") as fh:
+            fh.write(b"\xff\xfe\n")
+        self.assertEqual(front.read_secret(), "")
+        self.assertFalse(front.trusted_front("127.0.0.1", {"X-Cops-Front": "x"}))
+
     def test_env_wins_and_missing_is_empty(self):
         self.assertEqual(front.read_secret(), "")
         os.environ["CLAUDEOPS_FRONT_SECRET"] = "e"
