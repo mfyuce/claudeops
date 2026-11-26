@@ -991,7 +991,7 @@ class UcliProvider(CliProvider):
             # anahtar SADECE ucli process'inin (argv'de DEĞİL) ortamında kalır,
             # `exec` sh'yi ucli ile DEĞİŞTİRDİĞİ için (aynı PROC_TAG deseni,
             # bkz. shell_provider.py) discovery'nin gördüğü argv de temiz kalır.
-            wrapped = f'UCLI_API_KEY="$(cat {_API_KEY_FILE})" {agent_prefix}exec {inner}'
+            wrapped = f'UCLI_API_KEY="$(cat {shlex.quote(_API_KEY_FILE)})" {agent_prefix}exec {inner}'
             return "sh -c " + shlex.quote(wrapped)
         if agent_prefix:
             return "sh -c " + shlex.quote(f'{agent_prefix}exec {inner}')
