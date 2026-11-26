@@ -6073,17 +6073,21 @@ def daily_path(date: str, paths: Any = None) -> str:
 
 
 def log_entries_for_date(date: str, paths: Any = None) -> List[Dict[str, Any]]:
-    """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz)."""
+    """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz).
+    Bozuk satır (geçersiz UTF-8/JSON, sözlük olmayan) atlanır."""
     out: List[Dict[str, Any]] = []
     try:
-        with open(_pp(paths).log, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8", errors="surrogateescape") as f:
             for ln in f:
                 if f'"ts": "{date}' not in ln[:40]:
                     continue
                 try:
-                    out.append(json.loads(ln))
-                except json.JSONDecodeError:
+                    ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
+                    e = json.loads(ln)
+                except ValueError:
                     continue
+                if isinstance(e, dict):
+                    out.append(e)
     except OSError:
         pass
     return out
@@ -6255,7 +6259,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
     handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
     T = _SUMMARY_TXT["en" if lang == "en" else "tr"]
-    day = [e for e in entries if str(e.get("ts", "")).startswith(date)]
+    day = [e for e in entries if isinstance(e, dict) and str(e.get("ts", "")).startswith(date)]
     ev = lambda name: [e for e in day if e.get("event") == name]   # noqa: E731
     ticks = ev("tick")
     folded = ev("ticks")            # `compact_log` sonrası: o günün tick'leri tek toplam satırında
@@ -6268,7 +6272,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     handovers = [e for e in actions if e.get("kind") == "handover" and e.get("ok")] + ev("handover")
     applied = [e for e in actions if e.get("kind") not in ("ask_user", "idea", "set_phase")]
     mode = next((str(e.get("mode")) for e in reversed(ticks + folded) if e.get("mode")), "")
-    n_ticks = len(ticks) + sum(int(e.get("n") or 0) for e in folded)
+    n_ticks = len(ticks) + sum(_count_or_zero(e.get("n")) for e in folded)
 
     lines = [f"# {T['title']} — {date}"]
     if mode:
@@ -6276,8 +6280,8 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     lines.append("")
     if n_ticks:
         extra = []
-        manual = sum(1 for e in ticks if e.get("trigger") != "timer") + sum(int(e.get("manual") or 0) for e in folded)
-        bad = sum(1 for e in ticks if e.get("error")) + sum(int(e.get("errors") or 0) for e in folded)
+        manual = sum(1 for e in ticks if e.get("trigger") != "timer") + sum(_count_or_zero(e.get("manual")) for e in folded)
+        bad = sum(1 for e in ticks if e.get("error")) + sum(_count_or_zero(e.get("errors")) for e in folded)
         if manual:
             extra.append(f"{manual} {T['manual']}")
         if bad:
@@ -6309,8 +6313,9 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
         lines.append(f"- {T['handovers']}: {len(handovers)} ({_names([str(e.get('name')) for e in handovers])})")
     held_ev = ev("review_store_held")
     if held_ev:
+        held_files = held_ev[-1].get("files")
         lines.append(f"- {'review store: files held back by the secret scan' if lang == 'en' else 'review saklama: gizli değer taramasında dışarıda kalan dosya'}: "
-                     f"{int(held_ev[-1].get('n') or 0)} ({_names([str(x) for x in (held_ev[-1].get('files') or [])])})")
+                     f"{_count_or_zero(held_ev[-1].get('n'))} ({_names([str(x) for x in held_files] if isinstance(held_files, list) else [])})")
     dirs = ev("directive")
     if dirs:
         lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
@@ -6338,7 +6343,7 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
     state = load_state(paths)
     pending = {"open_questions": len(open_questions(paths=paths)),
                "ideas_new": sum(1 for i in load_ideas(paths) if i.status == "new"),
-               "pending_items": int(state.get("pending_items") or 0),
+               "pending_items": _count_or_zero(state.get("pending_items")),
                "undelivered_answers": len(undelivered_answers(paths=paths))}
     try:    # sahipsiz kaynak (orphan_watch durum dosyasından; tarama yok); okunamazsa satır atlanır
         from .periodic import orphan_summary
