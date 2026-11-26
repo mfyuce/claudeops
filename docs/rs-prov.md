@@ -8,18 +8,26 @@ sözleşmesi 12, parite 15; G8 gerçek uygulayıcı: dosya 26, süreç 10, HTTP 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 5403 vaka: gerçek uygulayıcı 124 (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 5428 vaka: gerçek uygulayıcı 124 (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1177 (G2), bg_work 73 ve live 653 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 109 "bilinen ayrışma" (14ü G1, 7si G7, 21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+- 56 "bilinen ayrışma" (14ü G1, 7si G7, 9u G3, 2si G2, 5i G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
   kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
   (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
 - Dosya, dizin, `stat`, SQLite, yol çözümü ve `Effect` uygulaması paritede GERÇEK uygulayıcıyla (`real`) koşar; yalnız
   süreç/ağ olguları sahtedir (`parity_real` hariç: orada iki tarafta da gerçek alt süreç, yalnız geçici ağaçtaki betikler).
+- Koşucu ağa çıkmaz: `harness.py` soket bağlantısını ve ad çözümünü kapatır; `/models` istekleri `_open_no_redirect`
+  sahtesinden geçer.
 - Kapsanmayan: oturum başlatma, tmux parçası, hayalet oturum temizliği (G9); maliyet defteri ve SearXNG (G8 ikinci parça);
   `db` kipindeki belge deposu (rs/state).
 - Rust'ta henüz yok: `_sync_one` dosya adımları (G9); diag `ucli_web_searxng_error` (G8 ikinci parça).
+- TBD#386, TBD#389 ve G2/G6 Python hataları (TBD#383 kalıcı kuralı) iki tarafta düzeltildi; ayrıntı ilgili grup bölümünde.
+  Eklenen özel yardımcılar (Rust karşılığı): `claude_provider._row_model` (`claude_transcript::assistant_model`),
+  `_row_content`, `codex_provider._codex_item` (`chat.rs`), `copilot_provider._cell_value` (`chat.rs::cell_or_empty`),
+  `ucli_client._read_turns` (`chat.rs::ucli_turns`), `bg_work.{_result_text, _hashable}` (`bg_work.rs::{result_text, key}`),
+  `base._ro_sqlite_uri` (Rust yolu URI diye ayrıştırmaz), `ucli_session_opts._open_no_redirect` (`real/http.rs`). Tablodaki
+  Python satır numaraları bu düzeltmelerden önceki konumlardır.
 - TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
   `settings.json`) rs/state'in işi. Kalan fark: var olan ama izin yüzünden okunamayan yönerge override dosyasında Python üzerine
   yazar, Rust dokunmaz (`Probe::read_text` iki durumu ayırmıyor); `trustedFolders`ta eşi olmayan vekil kod (`\ud800`) içeren
@@ -122,27 +130,19 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 - Taşınmayan: `web_steward` durum dosyası kullanımı ve panel sarmalayıcıları (T1/T10); `quota_equivalent_tokens`,
   `usage_warn_level`, `archive_session_files`, `read_chat_history` (bu grupta değil).
 
-### Bilinen ayrışmalar (19; testte `known(`)
-- `bg_work` 9 (`bg-istisna-`): nesne olmayan belge/`message`/`input`/`payload`/`item` ya da liste kimlik, Python'da istisna
-  ile tüm taramayı düşürür; Rust yalnız o satırı/bloğu atlar.
-- `live` 10: 512'den derin durum dosyası; 4300+ basamaklı sayı; u64/i64'e sığmayan sayaç ve zaman (doygun) (3); üst simge
-  rakamlı hata kaydı adı; boolean `input_tokens`; sayıya çevrilemeyen SQLite hücresi (2); 8 MiB üstü durum dosyası.
+### Bilinen ayrışmalar (5; testte `known(`)
+- `live` 5: 512'den derin durum dosyası; u64/i64'e sığmayan sayaç ve zaman (doygun) (3); 8 MiB üstü durum dosyası.
 - Testsiz farklar: 64 MiB üstü hata kaydı okunmaz; eşlenmemiş vekil kaçışı çıktıda U+FFFD olur (Python vekili taşır);
   UTF-8 olmayan dosya adları listelenmeyebilir (oturum adıyla eşleşemez); 2^53 mikro saniyeyi aşan yıllarda (~2255 sonrası)
-  damga son bitte ayrışabilir.
+  damga son bitte ayrışabilir; 512-1000 arası iç içe transkript satırını Python okur, Rust atlar.
 
-### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı)
-1. `bg_work.transcript_pending` / `codex_subagents_pending`: beklenen sözlük yerine metin/liste taşıyan TEK satır istisna
-   atar. codex'te alt ajan sayısı 0 sayılır (meşgul oturum boşta görünür); claude'da istisna çağırana yükselir. Rust satırı atlar.
-2. `failed_turn_records`: `<oturum>-²-1.json` gibi bir ad (`isdigit` doğru, `int` hata) tüm hata kayıtlarını gizler. Rust atlar.
-3. `read_status_file`: yalnız `JSONDecodeError`/`UnicodeDecodeError`/`OSError` yakalanır; 4300+ basamaklı sayı (`ValueError`)
-   ya da çok derin belge (`RecursionError`) `live_busy`/`live_usage`/`live_phase`den istisna olarak çıkar. Rust "okunamadı".
-4. codex `live_context`: `input_tokens: true` `True` döner; negatif sayı da döner (ucli okuyucuları ikisini de reddeder).
-   Rust boolean'ı atlar, negatifi Python gibi döndürür (kayıtlı ayrışma değil).
-5. copilot `live_context`: `int(row[0])` metin/sonsuz hücrede `ValueError`/`OverflowError` atar (`sqlite3.Error` değil). Rust None.
-6. `bg_work`: `run_in_background` sonucu `str(content)[:400]` üzerinde aranır; içerik liste ise metin `repr` olur, satır
-   başındaki `ID:` `\nID:` biçiminde sözcük sınırını yitirir ve görev kimliği yakalanmaz (bildirim yalnız `task-id`
-   taşıyorsa iş 6 saat bekliyor sayılır). Rust Python gibi davranır (parite `bg-transkript-`).
+### Python hataları (26 Kas gece iki tarafta DÜZELDİ; her biri ayrı `fix:` + `py/tests/test_rsprov_live_readers.py`)
+1. `bg_work`: beklenmedik yapıdaki tek satır/blok yalnız atlanır (parite `bg-sekil-`).
+2. `failed_turn_records`: `isdecimal`; üst simge rakamlı ad yalnız kendisi atlanır (`hata-ust-simge`).
+3. `read_status_file` ve hata kaydı okuma: dev sayı ve aşırı derin yapı "okunamadı" (`durum-dev-sayi`).
+4. codex `live_context`: `true` ve negatif sayaç taşıyan olay atlanır, aşırı derin satır da (`codex-ctx-bool`, `-negatif`).
+5. copilot `live_context`: sayıya çevrilemeyen hücre None (`copilot-hucre-metin-harf`, `-sonsuz`).
+6. `bg_work`: liste biçimli araç sonucunda yalnız metin blokları, gerçek satır sonlarıyla taranır (`bg-transkript-`).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G6 koduna düşen maddeler
 | Madde | Durum / test |
@@ -179,27 +179,25 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
   sondan tembel aranır. Boyut sınırı konmadı (konursa Python'dan sapma olur); bellek dosya boyutu kadar.
 - Taşınmayan: `web._term_chat` bağlaması (T1), `io_providers`.
 
-### Bilinen ayrışmalar (29; testte `chat-...sapma-`, Rust sonucu `expect` ile ayrıca doğrulanır)
-- claude 17: nesne olmayan satır (4), nesne olmayan `message` (4), metin olmayan `text` (3), nesne olmayan `compactMetadata`,
-  bozuk UTF-8 (2), çok derin satır, 4300+ basamaklı sayı, eşlenmemiş vekil.
-- codex 5: nesne olmayan satır/`payload` (3), metin olmayan `text`, bozuk UTF-8.
-- ucli 4: bozuk UTF-8, çok derin satır, dev sayı (üçü Rust'ta "okunamadı"), eşlenmemiş vekil.
-- agy 2: okuma ortasında SQLite hatası (Rust iyi satırı tutar), yolda `#`. copilot 1: BLOB hücre metne çevrilir.
+### Bilinen ayrışmalar (2; testte `chat-...sapma-vekil`, Rust sonucu `expect` ile ayrıca doğrulanır)
+- claude 1 ve ucli 1: eşlenmemiş vekil (Python vekili taşır, Rust U+FFFD).
 - Testsiz fark: 512-1000 arası iç içe JSON satırı Python'da okunur, Rust atlar (ucli'de okunamadı sayar).
 
-### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı)
-1. claude/codex `_transcript_lines` ve `read_chat_history` `UnicodeDecodeError` yakalamaz: dosyada tek bozuk bayt (ör. yazım
-   sürerken yarım kalan "ğ") sohbet görünümünü istisnayla düşürür.
-2. claude/codex: geçerli JSON ama nesne olmayan satır ya da nesne olmayan `message`/`payload`/`compactMetadata`, metin olmayan
-   `text` tüm geçmişi istisnayla düşürür (`bg_work` şüphe 1 ile aynı sınıf).
-3. agy `_transcript_steps`/`_steps_desc` SQLite'ı `file:{yol}?mode=ro` URI'siyle açar, yol kaçışlanmaz: yolda `#` ya da `?` varsa
-   yanlış dosya açılır, `mode=ro` düşer ve boş dosya YARATILIR (parite `agy-sapma-uri`; HOME ya da kimlikte bu karakter gerekir).
-   copilot `_connect_ro` aynı kalıp.
-4. agy `last_exchange`: ortadaki bozuk hücre, imlecin bir satır önden okuması yüzünden önceki iyi kullanıcı satırını da düşürür.
-5. claude `last_exchange`: son asistan satırı yalnız `tool_use` ise yanıt "" döner (önceki metinli satıra bakılmaz); sıkıştırma
-   özeti (`isCompactSummary`) `full_history`de `summary` iken `last_exchange`de kullanıcı mesajı sayılır. Rust aynı.
-6. ucli `read_chat_history`: yazım sürerken yarım kalan son satır bütün geçmişi `None` ("desteklenmiyor") yapar. Rust aynı.
-7. copilot: `user_message` BLOB ise `bytes` döner ve panel yanıtı JSON'a yazılamaz.
+### Python hataları (26 Kas gece iki tarafta DÜZELDİ; `py/tests/test_rsprov_{chat,sqlite}_readers.py`)
+1. claude/codex'te bozuk bayt yalnız kendi satırını atlatır; ucli'de tamamlanmış satırdaki bozuk bayt dosyayı okunamaz yapar.
+   Son dolu satır okunamıyorsa (bozuk bayt ya da nesne olmayan JSON) `last_message_role` None: takılma tespiti öncekine bakıp
+   oturumu yeniden açmaz (parite `rol-`).
+2. claude/codex: nesne olmayan satır, `message`/`payload`/`compactMetadata`, metin olmayan `text`, aşırı derin ya da dev sayılı
+   satır yalnız atlanır. Son asistan satırının `message`i bozuksa yanıt "" (önceki yanıt güncel diye sunulmaz). ucli'de aşırı
+   derin ya da dev sayılı satır None (`sekil-`).
+3. agy ve copilot SQLite URI'sinde yol kaçışlanır (`base._ro_sqlite_uri`; parite `agy-uri-`, copilot yalnız Python testi).
+4. agy: yalnız BLOB yük çekilir; bozuk metin hücresi ne önceki satırı ne tam geçmişi düşürür (`utf8-hucre`).
+5. claude `last_exchange`: sıkıştırma özeti (`isCompactSummary`) kullanıcı mesajı sayılmaz (`ozet-`). AÇIK (sahip kararı
+   bekliyor, iki tarafta aynı): son asistan satırı yalnız `tool_use` ise yanıt "" döner. Önceki metne bakmak değnekçinin
+   işaret okumasını ve devir teslimini değiştirir.
+6. ucli: yarım yazılmış son satır (satır sonu yok, ayrışmıyor) atlanır; o sırada `last_message_role` eskisi gibi None
+   (`yarim-son-`).
+7. copilot BLOB hücre: geçerli UTF-8 ise metin, değilse "" (`blob`, `blob-bozuk`).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G2 koduna düşen maddeler
 | Madde | Durum / test |
@@ -236,21 +234,15 @@ bu ize yönlendirilmeli.
   uygulamalı); `handover` politikası (T4); `handover_*_downgrade` ve canlı geçiş (G4); `web_steward.context_tokens_for`
   (T10; `rs/stew` tablosunda EKSİK, henüz kimse taşımadı).
 
-### Bilinen ayrışmalar (21; testte `known(`, Rust sonucu çoğunda `expect*` ile ayrıca doğrulanır)
-- Nesne olmayan satır 4, nesne olmayan `message` 4: Python istisna, Rust satırı atlar.
+### Bilinen ayrışmalar (9; testte `known(`, Rust sonucu çoğunda `expect*` ile ayrıca doğrulanır)
 - Metin olmayan model 4 (`sayi/liste/nesne/true`) ve istek vakasında sayı model 1: Python değeri döndürür, Rust atlar.
-- `<synthetic>` model 4: Python model diye döndürür, Rust gerçek modeli arar. İstek zamanı iki tarafta aynı.
 - 512'den derin satır, eşlenmemiş vekil, 1. yılın ilk günü dilimsiz damga, dosya adı sınırını aşan sid (1'er).
 - Testsiz fark: i128'e sığmayan birbirini götüren token sayaçları (doygun toplam); yaz saati geçişli dilimsiz damga.
 
-### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı)
-1. `last_assistant_model` `<synthetic>` yer tutucusunu (API hatası/iptal satırı) model sayar. `stuck.recover_stuck`
-   (`live_or_spawn_model`) ve kapanış anlık görüntüsü (`web._live_snapshot_entries`) bu metni yeniden açılışta model
-   olarak taşır; `spawn`da süzen bir yer görülmedi. Takılan oturumun son satırının bu olması olası (? canlı veriyle
-   doğrulanmadı). Panel de model diye gösterir. Rust yer tutucuyu atlar.
-2. `_last_assistant_value`: geçerli JSON ama nesne olmayan tek satır (`5`, `"x"`) ya da nesne olmayan `message`
-   `AttributeError` atar. Devir yolunda `live_or_spawn_model` korumasız (`handover.apply_handover_downgrades`),
-   `stuck.recover_stuck` oturumu öldürdükten SONRA çağırır: oturum yeniden açılmadan kalır. Rust satırı atlar.
+### Python hatası şüpheleri (1 ve 2 DÜZELDİ; kalanlara Python'da dokunulmadı)
+1. DÜZELDİ (TBD#386): `last_assistant_model` `<synthetic>` yer tutucusunu atlar (`test_rsprov_model_reader.py`, parite
+   `esit-sentetik-yalniz-yeni`, `canli-sentetik`).
+2. DÜZELDİ (TBD#386): `_last_assistant_value` nesne olmayan satırı, model okuyucu nesne olmayan `message`i atlar (`esit-`).
 3. Metin olmayan model (ör. `5`) olduğu gibi döner ve komut satırına gidebilir. Rust atlar.
 4. `live_or_spawn_*` sid yoksa ya da dosyası yoksa cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
    modeli/effort'u devir kararına ve takılan oturumun yeniden açılışına girer (aynı modüldeki `last_request_epoch` bu
@@ -301,7 +293,7 @@ bu ize yönlendirilmeli.
   Boyutu aşan yanıtı crate ayrıca yok sayar.
 - G7'de bağımlılık eklenmedi; gerçek `ModelIo` ve G8 sözleşmesi (TOPLAM süre, kill+wait, sınırlı boru, boş stdin, çıkış koduna
   bakmama, yalnız 2xx gövdesi, latin-1 başlık baytı, `*_proxy` ortamı, `CLOCK_MONOTONIC`, normal dosya) G8'de uygulandı.
-- HTTP yönlendirmesi (G8): izlenmiyor (TOBEDECIDED #389 varsayılanı; Python izler ve anahtar başlığını taşır, şüphe 5).
+- HTTP yönlendirmesi: iki tarafta da İZLENMEZ (TBD#389).
 
 ### Bilinen ayrışmalar (7; testte `diverges(`, Rust dönüşü `expect` ile ayrıca doğrulanır)
 - codex: UTF-8 olmayan belge (Python istisna, Rust eski liste).
@@ -324,8 +316,8 @@ bu ize yönlendirilmeli.
    (`src-ucli-sapma-liste-id`).
 4. ucli `/models` çok derin gövdede `RecursionError` yakalanmaz ("asla fırlatmaz" sözüne aykırı). Yeniden üretildi
    (`src-ucli-sapma-derin`).
-5. `urllib` yönlendirmesi `X-API-Key` / `Authorization` başlığını başka alan adına ve `http`ye de taşır (iki `/models` ucu).
-   Ağsız, `HTTPRedirectHandler.redirect_request` doğrudan çağrılarak yeniden üretildi; gerçek istek yapılmadı.
+5. DÜZELDİ (TBD#389): iki `/models` isteği 3xx'i izlemez (`ucli_session_opts._open_no_redirect`; loopback testi
+   `test_rsprov_models_redirect.py`). Rust zaten izlemiyordu (`redirects_are_never_followed_*`).
 6. `service_models`: süre dolunca tek başarısız çekim iyi listeyi `[]` ile ezer (öteki üç önbellek korur). Yeniden üretildi
    (`src-svc-ttl`).
 7. `service_models` önbelleği yalnız hizmet kimliğine bağlı: anahtar ya da uç nokta değişse de 24 saat eski liste. Anahtar kısmı
@@ -484,7 +476,7 @@ bu ize yönlendirilmeli.
   Claude (API) oturumu açılamaz.
 
 ### Bilinen ayrışmalar (bilinçli; `parity_real`da kayıtlı ayrışma yok: bunlar ya yalnız Rust testinde ya da testsiz)
-- HTTP: yönlendirme İZLENMEZ (TOBEDECIDED #389 varsayılanı; Python izler ve anahtarı taşır): `redirects_are_never_followed_*`.
+- HTTP: yönlendirme iki tarafta da izlenmez (TBD#389; `redirects_are_never_followed_*`). Fark:
   `User-Agent: claudeops` (Python `Python-urllib/3.10`); adreste `kullanıcı@` ve başlıkta denetim karakteri reddedilir; süre
   toplam; gövde sınırlı; kök sertifikalar `rustls-native-certs`; yalnız `http`/`https` (Python `file:`/`ftp:` de açar).
 - Süreç: zaman aşımında torunlar da öldürülür; `ucli chat --help` stdin'i boş (Python miras verir); UTF-8 olmayan yardım çıktısı
@@ -1178,7 +1170,7 @@ bu ize yönlendirilmeli.
 | `file_lock` (py/claudeops/atomic_json.py:132) | `rs/state` `fsutil.rs::FileLock` | rs/state | KAPSAM DIŞI |
 | `spawn_env` (py/claudeops/authz.py:493) | yok: `SpawnRequest::hook_env` girdisi | - | EKSİK(G9) |
 | `codex_screen_count` (py/claudeops/bg_work.py:130) | `bg_work.rs::codex_screen_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
-| `codex_subagents_pending` (py/claudeops/bg_work.py:136) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-istisna-rollout-` | TAŞINDI |
+| `codex_subagents_pending` (py/claudeops/bg_work.py:136) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-sekil-rollout-` | TAŞINDI |
 | `screen_bg_count` (py/claudeops/bg_work.py:32) | `bg_work.rs::screen_bg_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
 | `tail_lines` (py/claudeops/bg_work.py:160) | `live.rs::Live::tail_lines` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
 | `transcript_pending_path` (py/claudeops/bg_work.py:112) | `live.rs::Live::transcript_pending_path` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
