@@ -8,11 +8,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from claudeops import orphan_watch as ow  # noqa: E402
 
 CT = namedtuple("CT", "user system")
+UIDS = namedtuple("UIDS", "real effective saved")
+ME = UIDS(os.getuid(), os.getuid(), os.getuid())     # içerik yalnız kendi sürecimizde okunur (TBD#365)
 
 
 class P:
     def __init__(self, pid, name, cpu, created=1000.0):
-        self.info = {"pid": pid, "name": name, "cmdline": [name, "x"], "create_time": created, "cpu_times": CT(cpu, 0.0)}
+        self.info = {"pid": pid, "name": name, "cmdline": [name, "x"], "create_time": created, "cpu_times": CT(cpu, 0.0), "uids": ME}
 
 
 class Hogs(unittest.TestCase):

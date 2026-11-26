@@ -137,6 +137,83 @@ class ForeignCmdlineTest(unittest.TestCase):
             self.assertEqual(mirrors.running_mirrors(), {"h:benim": [11]})
 
 
+CT = namedtuple("CT", "user system")
+
+
+class _Q:
+    """`process_iter` öğesi: başka kullanıcının sürecinde pid/uids dışında HİÇBİR öznitelik istenmemeli ya da okunmamalı."""
+
+    def __init__(self, pid, uid, name, cmd, age=7200.0, cpu=0.0, parent=None, attrs=None):
+        self.pid, self._uid, self._parent = pid, uid, parent
+        self._vals = {"pid": pid, "uids": UIDS(uid, uid, uid), "name": name, "cmdline": cmd, "cwd": "/tmp",
+                      "create_time": 1_000_000.0 - age, "cpu_times": CT(cpu, 0.0)}
+        if attrs is not None:
+            extra = set(attrs) - {"pid", "uids"}
+            if uid != ME and extra:
+                raise AssertionError(f"başka kullanıcının süreci için uid süzgecinden önce istendi: {sorted(extra)}")
+            self.info = {k: self._vals[k] for k in attrs}
+
+    def _read(self, k):
+        if self._uid != ME:
+            raise AssertionError(f"başka kullanıcının {k} değeri okundu")
+        return self._vals[k]
+
+    def uids(self):
+        return self._vals["uids"]
+
+    def cmdline(self):
+        return self._read("cmdline")
+
+    def name(self):
+        return self._read("name")
+
+    def cwd(self):
+        return self._read("cwd")
+
+    def create_time(self):
+        return self._read("create_time")
+
+    def cpu_times(self):
+        return self._read("cpu_times")
+
+    def parent(self):
+        return self._parent
+
+
+class ForeignProcessContentTest(unittest.TestCase):
+    """Birleştirme kapısı: `orphan_watch.scan_procs`/`scan_cpu_hogs` ve `web._find_gnome_terminal_server` uid süzgecinden
+    ÖNCE herkesin cmdline'ını istiyordu (başka kullanıcının eski claude süreci yetim listesine pid+cmdline ile düşebilirdi)."""
+
+    def _iter(self, procs):
+        return lambda attrs=None, *a, **k: iter([p(attrs) for p in procs])
+
+    def test_orphans_only_own_and_foreign_ancestor_not_read(self):
+        from claudeops import orphan_watch as ow
+        root_parent = _Q(1, OTHER, "sshd", ["sshd: x"])          # ata başka kullanıcının: cmdline'ı okunmamalı
+        procs = [lambda a: _Q(10, OTHER, "claude", ["claude", "--resume", "gizli"], attrs=a),
+                 lambda a: _Q(11, ME, "claude", ["claude"], parent=root_parent, attrs=a)]
+        with mock.patch("psutil.process_iter", self._iter(procs)):
+            got = ow.scan_procs([], now=1_000_000.0, pane_pids=set())
+        self.assertEqual([p["pid"] for p in got], [11])
+
+    def test_cpu_hogs_only_own(self):
+        from claudeops import orphan_watch as ow
+        prev = {"10": [0.0, 1_000_000.0 - 600, 1_000_000.0 - 7200], "11": [0.0, 1_000_000.0 - 600, 1_000_000.0 - 7200]}
+        procs = [lambda a: _Q(10, OTHER, "bench", ["bench", "--gizli"], cpu=6000.0, attrs=a),
+                 lambda a: _Q(11, ME, "bench", ["bench"], cpu=6000.0, attrs=a)]
+        with mock.patch("psutil.process_iter", self._iter(procs)):
+            hogs, _ = ow.scan_cpu_hogs(prev, now=1_000_000.0)
+        self.assertEqual([h["pid"] for h in hogs], [11])
+
+    def test_gnome_terminal_server_cmdline_read_only_for_own(self):
+        from claudeops.commands import web
+        gts = ["/usr/libexec/gnome-terminal-server"]
+        procs = [lambda a: _Q(20, OTHER, "gnome-terminal-", gts, attrs=a),
+                 lambda a: _Q(21, ME, "gnome-terminal-", gts, attrs=a)]
+        with mock.patch.object(web.psutil, "process_iter", self._iter(procs)):
+            self.assertEqual(web._find_gnome_terminal_server().pid, 21)
+
+
 class _Anc:
     def __init__(self, uid, cmd, parent=None):
         self._uid, self._cmd, self._parent = uid, cmd, parent
