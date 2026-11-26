@@ -92,7 +92,23 @@ Güncel çağıran durumu (kapı 2 sonrası): Python'da `tmux_send_keys` varsay�
 | codex 0.166.0 | kısa, `/help`, ~3 KB, çok satır: gönderildi |
 | ucli | kısa, `/help`, çok satır gönderildi; ~3 KB yeni yolla gönderildi, eski yolla denemede gönderilmeden kaldı |
 | bash | kısa, `!`, çok satır: aynı |
-| agy, copilot | DENENEMEDİ (ilk kurulum/giriş ekranı) |
+| agy, copilot | bu ağsız turda denenemedi (ilk kurulum/giriş ekranı); giriş yapılmış halde ayrıca denendi, aşağıda |
+
+#### agy ve copilot, giriş yapılmış gerçek oturum (26 Kas ~22:15, ayrı tmux soketi, geçici çalışma dizini)
+
+Yeni yol = `claudeops.tmux_backend.tmux_send_keys` (gerçek kod, `get_provider(...).input_settle_delay()`); eski yol = `send-keys -l` + Enter. "Aynen" = CLI'ın kendi transkriptindeki metin gönderilenle karşılaştırıldı. Rust yolu canlı ekranda ayrıca koşulmadı; aynı komutları kullanır (`load-buffer -`, `paste-buffer -p -d`, 150 ms, Enter), eşlik testleri `tests/` altında.
+
+| Durum | agy 1.5.18 yeni | agy eski | copilot (ekranda 1.0.114) yeni | copilot eski |
+|---|---|---|---|---|
+| `/help` | yardım açıldı | denenmedi | yardım açıldı | denenmedi |
+| kısa (43) | gönderildi, aynen | gönderildi, aynen | gönderildi, aynen | gönderildi, aynen |
+| çok satır (125; Türkçe, `#{x}`, `$HOME`, tırnak, `\`, sekme, sondaki `;`) | tek mesaj; sekme 4 boşluk, gerisi aynen | tek mesaj; sekme SİLİNDİ | tek mesaj; sekme 4 boşluk, gerisi aynen | yeni ile aynı |
+| tek satır 3196 karakter | gönderildi, aynen | kutuda KALDI (elle ikinci Enter ile gitti, aynen) | gönderildi, aynen | kutuda KALDI (transkriptte yok) |
+| `!echo ...` | `/plan` kipinde komut izni sordu (Esc ile iptal) | denenmedi | kabukta koştu | denenmedi |
+
+- agy `--mode plan`da her mesajın başına kendisi `/plan` ekliyor (iki yolda da).
+- copilot hesabının aylık kotası DOLU: mesajlar teslim edildi, her model çağrısı "You have exceeded your monthly quota" döndü (0 AIC). Gönderim sonucu etkilenmez.
+- Temizlik: deneme tmux sunucusu kapatıldı; `kill-server` sonrası kalan deneme agy süreci ayrıca sonlandırıldı; agy `trustedWorkspaces`a eklenen deneme dizini geri çıkarıldı.
 
 ## Maske durumu bilinmiyorken gönderim (TBD 367: iki tarafta kapalı yön)
 Sahip kararı (26 Kas): "ikisi de göndermesin; Python'a da ayrı `fix:` + test". Commit `073578a`.
