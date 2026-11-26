@@ -5,8 +5,9 @@
 //! - `CLAUDE_DIR = os.path.join(HOME, ".claude")`, `CLAUDEOPS_DIR = $CLAUDEOPS_DIR (boş değilse) ya da join(CLAUDE_DIR, "claudeops")`.
 //! - [`join`] `os.path.join`, [`pathlib_str`] `str(pathlib.PurePosixPath(...))`, [`normpath`] `os.path.normpath`.
 //!
-//! Göreli kök (ör. `CLAUDEOPS_DIR=rel`) Python'da `py/cops`un `cd py/` adımı yüzünden `py/` dizinine göre çözülür
-//! (docs/rs-cli.md "Python hatası?" P2); Rust bunu sessizce taklit etmez: [`Roots::check_absolute`] açık hata verir.
+//! Göreli `CLAUDEOPS_DIR` iki tarafta açık hata (Python `paths.py`, docs/rs-cli.md "Python hatası?" 8; aynı metin). Göreli
+//! `HOME` Python'da hâlâ `py/cops`un `cd py/` adımı yüzünden `py/` dizinine göre çözülür; Rust bunu taklit etmez:
+//! [`Roots::check_absolute`] açık hata verir (sapma).
 
 use std::ffi::OsString;
 
@@ -180,12 +181,18 @@ impl Roots {
 
     /// Yazma/okuma yapan komutlar için: iki kök de mutlak olmalı (göreli kök Python'da `py/`ye göre çözülür).
     pub fn check_absolute(&self) -> Result<(), RootsError> {
-        for (name, v) in [("HOME", &self.home), ("CLAUDEOPS_DIR", &self.claudeops_dir)] {
-            if !v.starts_with('/') {
-                return Err(RootsError(format!(
-                    "{name} göreli ({v}): Python bunu py/ dizinine göre çözer, cops-rs çözmez; mutlak yol verin"
-                )));
-            }
+        if !self.home.starts_with('/') {
+            return Err(RootsError(format!(
+                "HOME göreli ({}): Python bunu py/ dizinine göre çözer, cops-rs çözmez; mutlak yol verin",
+                self.home
+            )));
+        }
+        if !self.claudeops_dir.starts_with('/') {
+            // Python `paths.py` ile aynı metin.
+            return Err(RootsError(format!(
+                "CLAUDEOPS_DIR göreli ({}): mutlak yol verin",
+                self.claudeops_dir
+            )));
         }
         Ok(())
     }
@@ -236,7 +243,12 @@ mod tests {
         assert_eq!(r.claude_dir(), "/.claude");
         assert!(r.check_absolute().is_ok());
         let r = Roots::from_values(Some("/h".into()), Some("rel".into()), || None).unwrap();
-        assert!(r.check_absolute().unwrap_err().0.contains("göreli"));
+        assert_eq!(
+            r.check_absolute().unwrap_err().0,
+            "CLAUDEOPS_DIR göreli (rel): mutlak yol verin"
+        );
+        let r = Roots::from_values(Some("h".into()), None, || None).unwrap();
+        assert!(r.check_absolute().unwrap_err().0.starts_with("HOME göreli (h)"));
     }
 
     #[test]

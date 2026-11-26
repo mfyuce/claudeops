@@ -276,6 +276,31 @@ fn parity_control_characters_in_bin_block() {
 }
 
 #[test]
+fn parity_relative_state_dir_is_refused() {
+    // "Python hatası?" 8 düzeltildi: göreli CLAUDEOPS_DIR iki tarafta aynı açık hata (Rust önekli), hiçbir şey yazılmaz.
+    let sb = Sandbox::new();
+    for args in [&["front", "status"][..], &["front", "on", "--apply"]] {
+        let run = |prog: &Path| {
+            sb.cmd(prog)
+                .env("CLAUDEOPS_DIR", "goreli-durum")
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        let (p, r) = (run(&py_cops()), run(&bin()));
+        assert_eq!(p.status.code(), Some(1), "{args:?}");
+        assert_eq!(r.status.code(), Some(1), "{args:?}");
+        assert_eq!(p.stdout, r.stdout);
+        let pe = String::from_utf8_lossy(&p.stderr);
+        assert_eq!(pe, "CLAUDEOPS_DIR göreli (goreli-durum): mutlak yol verin\n");
+        assert_eq!(String::from_utf8_lossy(&r.stderr), format!("cops-rs: {pe}"));
+    }
+    assert!(!sb.t.path().join("goreli-durum").exists());
+    assert!(!repo().join("py/goreli-durum").exists());
+    assert!(!sb.sc_log().exists());
+}
+
+#[test]
 fn parity_delegated_commands_and_argparse_errors() {
     let sb = Sandbox::new();
     for args in [

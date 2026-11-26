@@ -287,5 +287,38 @@ class P7SecretEnv(Env):
         self.assertTrue((self.state / "front.secret").is_file())
 
 
+class P8RelativeStateDir(unittest.TestCase):
+    """8: göreli `CLAUDEOPS_DIR` `py/cops`un `cd py/` adımı yüzünden `py/` altına çözülüyordu (gizli, birim `--state-dir`
+    oraya gidiyordu). Artık açık hata, hiçbir şey yazılmaz (Rust `Roots::check_absolute` ile aynı)."""
+
+    PY = Path(__file__).resolve().parents[1]
+
+    def _env(self, d):
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDEOPS_DIR"}
+        env.update(CLAUDEOPS_DIR=d, CLAUDEOPS_EXTENSIONS="off")
+        return env
+
+    def test_relative_state_dir_is_refused_before_anything_is_written(self):
+        import subprocess
+        rel = "cops-goreli-durum-testi"
+        self.assertFalse((self.PY / rel).exists())
+        with tempfile.TemporaryDirectory() as cwd:
+            for argv in (["python3", "-c", "import claudeops.paths"], [str(self.PY / "cops"), "front", "status"]):
+                r = subprocess.run(argv, cwd=self.PY if argv[0] == "python3" else cwd, env=self._env(rel),
+                                   capture_output=True, text=True, timeout=120)
+                self.assertEqual(r.returncode, 1, (argv, r.stdout, r.stderr))
+                self.assertEqual(r.stderr, f"CLAUDEOPS_DIR göreli ({rel}): mutlak yol verin\n", argv)
+                self.assertEqual(r.stdout, "")
+                self.assertFalse((self.PY / rel).exists())
+                self.assertEqual(os.listdir(cwd), [])
+
+    def test_absolute_state_dir_still_works(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run(["python3", "-c", "from claudeops import paths; print(paths.CLAUDEOPS_DIR)"], cwd=self.PY,
+                               env=self._env(d), capture_output=True, text=True, timeout=120)
+            self.assertEqual((r.returncode, r.stdout), (0, d + "\n"), r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
