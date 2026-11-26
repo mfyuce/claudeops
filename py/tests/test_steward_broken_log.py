@@ -94,5 +94,17 @@ class SummaryTextTest(_Log):
                 self.assertIn("dışarıda kalan dosya: 0 ()", text)
 
 
+class CompactLogTest(_Log):
+    def test_invalid_utf8_leaves_file_untouched(self):
+        data = _line(ts=f"{D}T01:00:00", event="tick", trigger="timer") + b"bozuk \xff\n"
+        path = self.write_log(data)
+        before = os.stat(path)
+        self.assertEqual(sw.compact_log(D), 0)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), data)
+        after = os.stat(path)
+        self.assertEqual((after.st_ino, after.st_mtime_ns), (before.st_ino, before.st_mtime_ns))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1897,12 +1897,13 @@ def compact_log(date: str, paths: Any = None) -> int:
     """O günün (`YYYY-MM-DD`) `tick` satırlarını (günde ~720: her 2 dakikada bir) TEK bir `ticks` satırına katla:
     `{"ts": "<date>T23:59:59", "event": "ticks", "n", "manual", "errors", "mode"}`. Günlük özet yazıldıktan SONRA
     çağrılır; `daily_summary` bu toplamı sayar, dolayısıyla o günün özeti sıkıştırmadan sonra da AYNI çıkar. Diğer
-    olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı)."""
+    olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı). Dosya
+    okunamıyorsa ya da geçerli UTF-8 değilse yeniden yazılmaz (0)."""
     with _LOG_LOCK, _log_guard(paths):
         try:
             with open(_pp(paths).log, encoding="utf-8") as f:
                 lines = f.readlines()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return 0
         agg = {"n": 0, "manual": 0, "errors": 0, "mode": ""}
         out: List[str] = []
