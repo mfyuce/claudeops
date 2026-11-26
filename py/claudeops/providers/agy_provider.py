@@ -76,7 +76,8 @@ import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg
-from ..atomic_json import atomic_write_json, file_lock
+from ..atomic_json import LockError, atomic_write_json, file_lock
+from ..diaglog import diag_log
 from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
@@ -219,12 +220,15 @@ def _remember_agy_sid(session_name: str, sid: str) -> None:
     if _load_agy_sids().get(session_name) == sid:
         return                      # ucuz yol: kilitsiz
     from .. import statedocs
-    with file_lock(AGY_SIDS_JSON):  # oku-değiştir-yaz bütün kilit altında: eşzamanlı iki agy açılışı birbirinin kaydını silmez (SQL göçü Adım C)
-        known = _load_agy_sids()
-        if known.get(session_name) == sid:
-            return
-        known[session_name] = sid
-        statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
+    try:
+        with file_lock(AGY_SIDS_JSON):  # oku-değiştir-yaz bütün kilit altında: eşzamanlı iki agy açılışı birbirinin kaydını silmez (SQL göçü Adım C)
+            known = _load_agy_sids()
+            if known.get(session_name) == sid:
+                return
+            known[session_name] = sid
+            statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
+    except LockError as e:          # keşif turu düşmesin: sonraki turda yeniden öğrenilir
+        diag_log("agy_sids_lock_busy", error=str(e)[:200])
 
 
 def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) -> bool:

@@ -109,12 +109,34 @@ def list_runs(uid: str = "", all_users: bool = True) -> List[Dict[str, Any]]:
     return out
 
 
+def _consumed_path(run_key: str) -> str:
+    return os.path.join(dir_for(run_key), "consumed")
+
+
+def _consumed(run_key: str) -> bool:
+    """Onay kullanıldı ama sonucu kayda yazılamadı mı (kilitsiz işaret dosyası)."""
+    try:
+        return os.path.lexists(_consumed_path(run_key))
+    except ValueError:
+        return False
+
+
+def _mark_consumed(run_key: str) -> None:
+    """Kayıt kilitlenemediğinde bile yazılabilen işaret; yazılamazsa yalnız günlüğe düşer."""
+    try:
+        os.makedirs(dir_for(run_key), mode=0o700, exist_ok=True)
+        os.close(os.open(_consumed_path(run_key), os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600))
+    except (OSError, ValueError) as e:
+        from .diaglog import diag_log
+        diag_log("ucli_approval_mark_failed", run_key=run_key, error=f"{type(e).__name__}: {e}"[:200])
+
+
 def begin_resume(run_key: str) -> Optional[List[str]]:
     """`suspended` -> `resuming` ATOMİK (çift sürdürme yok); döner: kayıtlı argv. Başka durumdaysa None."""
     with file_lock(_index_path()):
         idx = _load_index()
         rec = idx.get(run_key)
-        if not isinstance(rec, dict) or rec.get("state") != "suspended":
+        if not isinstance(rec, dict) or rec.get("state") != "suspended" or _consumed(run_key):
             return None
         rec["state"] = "resuming"
         atomic_write_json(_index_path(), idx, mode=0o600)
@@ -127,9 +149,12 @@ def recover_resuming(now: Optional[float] = None, max_age: float = 7 * 86400) ->
     n = 0
     with file_lock(_index_path()):
         idx = _load_index()
-        for rec in idx.values():
+        for key, rec in idx.items():
             if not isinstance(rec, dict):
                 continue
+            if rec.get("state") in ("resuming", "suspended") and _consumed(key):    # onaylı eylem ikinci kez sürmesin
+                rec.update(state="done", result={"error": "resume ran but its result was not recorded"}, finished_at=now)
+                n += 1
             if rec.get("state") == "resuming":
                 rec["state"] = "suspended"
                 n += 1
