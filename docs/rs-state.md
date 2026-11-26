@@ -1,5 +1,7 @@
 # rs/state (W0-a): `cops-state` crate'i
 
+**DİKKAT (26 Kas 23:00): kapı 1. tur DÜZELTİLSİN; Python tarafı düzeldi (`7dd610c6` S4 damgalı önbellek, sonraki commit çift sürdürme), Rust `Instances::load` HENÜZ EŞİT DEĞİL ve tam test koşulmadı: BİRLEŞTİRMEYE HAZIR DEĞİL** (TODO "rs/state devri"). Aşağıdaki durum satırı eskidir.
+
 Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK. **BİRLEŞTİRMEYE HAZIR.** TBD#374 (a) UYGULANDI: S1-S9
 iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. TBD#379 (a) UYGULANDI:
 S11-S12 (Python `214eb4a2`, `ec53bb28`). TBD#383 (a) UYGULANDI (Python `8b1b4c39`, `04608a2c`, `a6e96e97`, `9e003333`). **Birleşince web servisi restart + uzak deploy ister.**
@@ -983,3 +985,6 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 | `test_steward_tbd370.py` kalan 3 metot | | | kapsam dışı: rs/stew |
 | `test_state_settings_unreadable.py` (2) | | | kapsam dışı: ayar yazımı (T7) |
 | `test_ucli_approval_lock_error.py` (3), `test_cli_lock_error.py` (1) | | | kapsam dışı: ucli istemcisi / CLI (T6) |
+| `_db_stamp`, `_FALLBACKS` (statedocs.py), `Store._doc_stamp`, `_db_cache` (instances.py) | | | EKSİK: Rust eşitlemesi açık |
+| `_consumed_path`, `_consumed`, `_mark_consumed` (ucli_approval.py), `_run_resume` (ucli_client.py), `test_ucli_approval_consumed.py` (3) | | | kapsam dışı: ucli onay kaydı bu izin modülü değil |
+| `test_state_instances_db_version_cache.py` (5) | | | EKSİK: Rust eşitlemesi açık |
