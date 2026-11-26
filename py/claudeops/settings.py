@@ -829,7 +829,9 @@ def normalize_ucli_services(raw: Any) -> list:
         models = r.get("models")
         if isinstance(models, str):
             models = models.replace("\n", ",").split(",")
-        models = list(dict.fromkeys(str(m).strip()[:80] for m in (models or []) if str(m).strip()))[:60]
+        if not isinstance(models, (list, tuple)):    # elle düzenlenmiş sayı/sözlük yok sayılır (TBD#374 S8)
+            models = []
+        models = list(dict.fromkeys(str(m).strip()[:80] for m in models if str(m).strip()))[:60]
         efforts: Dict[str, list] = {}
         raw_eff = r.get("efforts")
         if isinstance(raw_eff, dict):
