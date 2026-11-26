@@ -67,5 +67,29 @@ class Probes(unittest.TestCase):
         self.assertIsNone(searxng._int(float("inf")))
 
 
+class State(unittest.TestCase):
+    def test_concurrent_updates_keep_both_keys(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(searxng, "STATE_DIR", d):
+            real = searxng.atomic_write_json
+            first_writing, go = threading.Event(), threading.Event()
+
+            def slow(path, obj, **kw):
+                if "a" in obj and "b" not in obj:
+                    first_writing.set()
+                    go.wait(5)
+                real(path, obj, **kw)
+            with mock.patch.object(searxng, "atomic_write_json", slow):
+                one = threading.Thread(target=lambda: searxng._update_state(a=1))
+                two = threading.Thread(target=lambda: searxng._update_state(b=2))
+                one.start()
+                self.assertTrue(first_writing.wait(5))
+                two.start()
+                two.join(0.3)
+                go.set()
+                one.join(5)
+                two.join(5)
+            self.assertEqual(searxng._read_state(), {"a": 1, "b": 2})
+
+
 if __name__ == "__main__":
     unittest.main()

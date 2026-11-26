@@ -49,7 +49,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, file_lock
 from . import preview
 from .diaglog import diag_log
 from .paths import CLAUDE_DIR, CLAUDEOPS_DIR
@@ -278,15 +278,17 @@ def _read_state() -> Dict[str, Any]:
 
 
 def _update_state(**kw: Any) -> None:
-    """`None` değer o anahtarı siler. Best-effort: durum yazılamazsa akış bozulmaz."""
-    st = _read_state()
-    for k, v in kw.items():
-        if v is None:
-            st.pop(k, None)
-        else:
-            st[k] = v
+    """`None` değer o anahtarı siler. Best-effort: durum yazılamazsa akış bozulmaz. Oku-değiştir-yaz `file_lock` altında
+    (panel ve ayrık kurulum süreci aynı dosyayı yazar; kurulum kilidi `.lock`tan AYRI: o dakikalarca tutulur)."""
     try:
-        atomic_write_json(_state_path(), st, mode=0o600)
+        with file_lock(_state_path()):
+            st = _read_state()
+            for k, v in kw.items():
+                if v is None:
+                    st.pop(k, None)
+                else:
+                    st[k] = v
+            atomic_write_json(_state_path(), st, mode=0o600)
     except OSError:
         pass
 
