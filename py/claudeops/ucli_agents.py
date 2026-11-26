@@ -135,7 +135,31 @@ def _load() -> Dict[str, Any]:
     return data
 
 
+def _keep_corrupt_copy() -> None:
+    """Defter bozuksa (`_load` boş sayar) üzerine yazmadan ÖNCE `<defter>.corrupt-<özet>` kopyası (0600) bırak.
+    Okunamayan defter ya da yazılamayan kopya `OSError`: üzerine yazılmaz."""
+    try:
+        with open(STATE_FILE, "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        if isinstance(data, dict) and all(isinstance(data.get(k, {}), dict) for k in ("parents", "children")):
+            return
+    except (ValueError, RecursionError):
+        pass
+    copy = f"{STATE_FILE}.corrupt-{hashlib.sha256(raw).hexdigest()[:12]}"
+    try:
+        fd = os.open(copy, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        return
+    with os.fdopen(fd, "wb") as f:
+        f.write(raw)
+
+
 def _save(data: Dict[str, Any]) -> None:
+    _keep_corrupt_copy()
     os.makedirs(os.path.dirname(STATE_FILE), mode=0o700, exist_ok=True)
     atomic_write_json(STATE_FILE, data, mode=0o600)      # benzersiz tmp + O_EXCL|O_NOFOLLOW + fsync + replace (review cliops R-8)
 
@@ -176,6 +200,7 @@ def issue_token(session_name: str) -> str:
         return token_file(session_name)
     token = secrets.token_hex(32)
     with _writing():     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
+        _keep_corrupt_copy()      # kopyalanamıyorsa token dosyasına da dokunma
         data = _load()
         if not isinstance(data["parents"].get(session_name, {}), dict):      # token yazılmadan ÖNCE reddet
             raise TypeError("ucli_agents: üst oturum kaydı nesne değil; defteri düzelt")

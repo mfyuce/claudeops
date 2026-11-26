@@ -60,5 +60,34 @@ class BadParentRecord(_Registry):
         self.assertEqual(self.text(self.state), body)
 
 
+class CorruptRegistry(_Registry):
+    def backups(self):
+        return sorted(glob.glob(self.state + ".corrupt-*"))
+
+    def test_corrupt_content_is_kept_aside_before_overwrite(self):
+        for i, body in enumerate(("{bozuk", "[]", "", '{"parents": [1], "children": {}}')):
+            self.put(body)
+            ua.issue_token("p")
+            kept = [p for p in self.backups() if self.text(p) == body]
+            self.assertEqual(len(kept), 1, body)
+            self.assertEqual(os.stat(kept[0]).st_mode & 0o777, 0o600)
+        self.assertEqual(len(self.backups()), 4)
+
+    def test_a_healthy_registry_is_not_copied(self):
+        ua.issue_token("p")
+        ua.issue_token("p")
+        self.assertEqual(self.backups(), [])
+
+    @unittest.skipIf(os.getuid() == 0, "root izinleri aşar")
+    def test_an_unreadable_registry_is_not_overwritten(self):
+        self.put('{"parents": {"q": {"sha256": "x"}}}')
+        os.chmod(self.state, 0)
+        with self.assertRaises(OSError):
+            ua.issue_token("p")
+        self.assertFalse(os.path.exists(ua.token_file("p")))
+        os.chmod(self.state, 0o600)
+        self.assertIn('"q"', self.text(self.state))
+
+
 if __name__ == "__main__":
     unittest.main()
