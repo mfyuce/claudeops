@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use cops_hosts::consts::{POLLER_STALL, POLL_INTERVAL};
+use cops_hosts::consts::{CAPABILITY_PROBE_INTERVAL, POLLER_STALL, POLL_INTERVAL};
 use cops_hosts::{Federation, HostClient};
 use serde_json::json;
 use support::*;
@@ -142,6 +142,51 @@ async fn panicking_turn_is_counted_and_the_poller_keeps_running() {
         tokio::time::sleep(POLL_INTERVAL * 3).await;
         assert_eq!(restarted(&ev).len(), n);
         assert!(fed.poller_health(&run).age.unwrap() <= POLL_INTERVAL + Duration::from_secs(1));
+    })
+    .await
+}
+
+/// Takılan kademe yoklaması aralık dolunca iptal edilir, olay yazılır, sonraki tur yeniden dener (soket birikmez);
+/// host düzelince kademe yükselir. Takılma, yoklama zaman aşımı aralıktan uzun tutularak üretilir.
+#[tokio::test(start_paused = true)]
+async fn stalled_probe_turn_is_cancelled_and_the_prober_keeps_probing() {
+    virtual_deadline(async {
+        let raw = Raw::start(hold_until_eof).await;
+        let src = MemSource::new(vec![host("a", &raw.url())]);
+        let ev = Arc::new(RecEvents::default());
+        let mut c = HostClient::new(cops_hosts::net::Connector::default());
+        c.timeouts = timeouts();
+        c.timeouts.ws_probe = Duration::from_secs(600);
+        c.timeouts.total_cap = Duration::from_secs(900);
+        c.events = ev.clone();
+        assert!(c.timeouts.ws_probe > CAPABILITY_PROBE_INTERVAL);
+        let fed = Federation::new(Arc::new(c), src.clone());
+        let t0 = tokio::time::Instant::now();
+        let run = fed.start();
+        let stalls = |ev: &RecEvents| {
+            ev.names()
+                .iter()
+                .filter(|n| *n == "host_prober_restarted")
+                .count()
+        };
+
+        wait_until("first prober restart", Duration::from_secs(600), || {
+            stalls(&ev) >= 1
+        })
+        .await;
+        let waited = t0.elapsed();
+        assert!(
+            waited >= CAPABILITY_PROBE_INTERVAL
+                && waited < CAPABILITY_PROBE_INTERVAL + Duration::from_secs(5),
+            "{waited:?}"
+        );
+        wait_until("three prober restarts", Duration::from_secs(900), || {
+            stalls(&ev) >= 3
+        })
+        .await;
+
+        drop(run);
+        raw.wait_no_live().await;
     })
     .await
 }

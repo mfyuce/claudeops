@@ -12,7 +12,8 @@ Kalan (birleştirmeyi tutan) maddeler:
 - Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
 - Python bulguları (aşağıda "İş 4'te bulunan Python hataları"): sahip kararı gerekir; Rust güvenli davranışta, parity
   testinde "bilinen fark" olarak kilitli. Karar Rust'ta değişiklik gerektirirse parity listesi düşer, unutulmaz.
-- Prober'ın kendi takılma yeniden başlatması testsiz (iş 3 gerekçesi; davranış Python'da hiç yok).
+- Bilinen fark (belgeli): `orphan_watch` sayıları `i64`e sığmayan sonlu bir sayıysa (`1e300`) Rust `i64::MAX`a kırpar,
+  Python büyük tam sayı üretir. Anlamlı bir sayaç değeri değil; `serde_json` keyfi büyüklükte tam sayı taşımaz.
 
 ## Birleştirme notu (26 Kas gece)
 
@@ -195,8 +196,9 @@ relay 2 sn kuralı, ölü relay'i kaldırma, `PushConsumer` düşünce abort (WS
 gRPC), gRPC `origin`, gRPC 4 MiB sınırı, `GrpcClient::retain`, boştaki relay biçme, ikili çerçeve ayrıştırma.
 
 Kapanamayanlar (iş 3): gerçek 60+ sn sessiz WS bağlantısının canlılığı (sessizlik zaten 45 sn'de yeniden kurar;
-Python ile aynı); prober'ın kendi takılma yeniden başlatması (`CAPABILITY_PROBE_INTERVAL` zaman aşımı) testsiz:
-yoklamalar kısa zaman aşımlı, takılma üretmek için üretim koduna dikiş gerekirdi; tarayıcı + Python `websockets`
+Python ile aynı); prober'ın takılma yeniden başlatması sonradan kapandı
+(`fake_restart::stalled_probe_turn_is_cancelled_and_the_prober_keeps_probing`, `ws_probe` süresi aralıktan uzun
+tutulur; üretim koduna dikiş gerekmedi); tarayıcı + Python `websockets`
 ikili e2e (H18) copsd entegrasyonunda. Özel ağ http istisnası (iş 2'deki gerekçe).
 
 İş 3'te düzeltilen (Python ile eşitleme, `federation.rs`/`relay.rs`): durum tüketicisinin "uç değişti" anahtarı tüm
@@ -213,8 +215,10 @@ WS karesi (TBD#376, Python düzeltildi: `fix(hosts)` bozuk kare) ve açık yarı
   iki taraf da tür (`status`/`term`) başına dakikada en çok bir `push_frame_skipped` loglar (Rust `push::SkipLog`,
   testler `push::tests::skipped_frames_are_logged_at_most_once_a_minute_per_kind`, `fake_ws::junk_frames_...`,
   `fake_ws::term_relay_streams_...`).
-- Yarış (Python ile aynı, ders H3 açık): yeni akışın ilk karesi aynı turun REST sonucundan önce gelirse REST onu ezer
-  (her iki kaynak da `record` eder, sıra/damga yok). Bir tur kadar daha eski veri; sonraki kare düzeltir.
+- Yarış (ders H3) KAPANDI (26 Kas gece, iki dilde): REST isteğinden önce alınan push işareti (`_push_mark` /
+  `StatusBook::push_mark`) istek sürerken kare geldiyse değişir; o REST sonucu (başarı ya da hata) yazılmaz, yalnız
+  deneme zamanı tazelenir. "Şimdi test et" yine kendi REST sonucunu döndürür. Testler: `py/tests/test_host_push_race.py`,
+  `fake_ws::push_frame_that_arrives_during_rest_is_not_overwritten` (ikisi de düzeltmesiz düştü).
 
 ### İş 4 parite eşlemesi
 
@@ -278,7 +282,7 @@ Aynı adlı oturum ve sonsuz sayı (TBD#380, sahip kararı: iki tarafta düzelsi
 - `web_hosts._is_private_lan_http` Python 3.10 `is_private`i geniş (198.18/15, 192.0.2/24, 2001:db8::/32 "özel ağ"):
   https tabanlı host'ta bu http adaylar token'ı şifresiz alabilir. Rust yalnız RFC1918 + ULA (bilinçli fark, zaten
   belgeliydi).
-- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz; WS/REST yarışı (H3).
+- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz (`require` kipine etkisi TBD#391).
 
 Hata yutma taraması (gözden geçirme #5): `src/` içindeki her `.ok()`, `let _`, `unwrap_or_default()`, `Err(_)`,
 `map_err(|_| ...)` okundu. Sonucu değiştiren yutma yok. Bilerek yutulanlar: `net.rs` `set_nodelay` (performans
