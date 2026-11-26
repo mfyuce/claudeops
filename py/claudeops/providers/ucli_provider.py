@@ -1012,13 +1012,24 @@ class UcliProvider(CliProvider):
         # argv ile ifade edilemez (anahtar argv'ye girmez, `ucli_client` env'e koyar): `oneshot_argv` None kalır.
         # Evren uç noktası + BYOK anahtarı spawn ile AYNI kaynaktan (`byok.ucli.UCLI_API_KEY`, yoksa anahtar dosyası).
         key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip() or None
+        bad_key = ""
         if key is None:
-            try:
-                with open(_API_KEY_FILE, encoding="utf-8") as f:
-                    key = f.read().strip() or None
-            except OSError:
-                key = None
-        os.makedirs(cwd, exist_ok=True)
+            if os.path.exists(_API_KEY_FILE) and not (os.path.isfile(_API_KEY_FILE) or os.path.isdir(_API_KEY_FILE)):
+                bad_key = "normal dosya değil"      # FIFO/aygıt: açmak bloklar
+            else:
+                try:
+                    with open(_API_KEY_FILE, encoding="utf-8") as f:
+                        key = f.read().strip() or None
+                except OSError:
+                    key = None
+                except UnicodeDecodeError:
+                    bad_key = "UTF-8 değil"
+        if bad_key:     # `except` dışında: istisna zinciri anahtar baytlarını taşımasın
+            raise OneshotError(f"ucli: anahtar dosyası okunamadı ({bad_key})")
+        try:
+            os.makedirs(cwd, exist_ok=True)
+        except OSError as e:
+            raise OneshotError(f"ucli: çalışma dizini açılamadı: {e}") from e
         try:
             res = ucli_chat_once(cwd, prompt, model=(model or None), endpoint=endpoint(), api_key=key, timeout=timeout)
         except UcliError as e:

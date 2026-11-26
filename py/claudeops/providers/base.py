@@ -472,6 +472,10 @@ class CliProvider(ABC):
             raise OneshotError(f"{self.name}: {timeout:.0f}s içinde yanıt vermedi") from e
         except OSError as e:
             raise OneshotError(f"{self.name}: çalıştırılamadı: {e}") from e
+        except UnicodeDecodeError:
+            raise OneshotError(f"{self.name}: çıktı UTF-8 değil") from None
+        except ValueError:          # argv/cwd içinde NUL ya da kodlanamayan karakter
+            raise OneshotError(f"{self.name}: çalıştırılamadı: geçersiz argüman") from None
         text = (res.stdout or "").strip()
         if res.returncode != 0:
             raise OneshotError(f"{self.name}: exit={res.returncode}: {(res.stderr or text)[:300].strip()}")
