@@ -207,6 +207,10 @@ _USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
 _USAGE_RESET_RE = re.compile(r"resets\s+in\s+([^\n•]+?)\s*(?:\n|$)")
 
 
+# `trustedFolders` dizisini gezen sözcükler: dize (içindeki `]` dizi sonu DEĞİL), JSONC yorumu, dizi sonu.
+_TRUST_TOKEN_RE = re.compile(r'''"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*.*?\*/|\]''', re.S)
+
+
 def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
     """cwd'yi copilot'un `trustedFolders` listesine ekler (ilk açılıştaki "Confirm folder trust"
     diyaloğunu önler; "Yes, and remember" ile aynı sonuç). Dosya yorum satırlı (JSONC) olduğundan
@@ -218,9 +222,18 @@ def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
         with open(path, encoding="utf-8") as f:
             text = f.read()
         m = re.search(r'"trustedFolders"\s*:\s*\[', text)
-        if not m or json.dumps(cwd) in text[m.end():text.find("]", m.end())]:
+        if not m:
             return False
-        rest = text[m.end():text.find("]", m.end())]
+        entries, end = [], None
+        for token in _TRUST_TOKEN_RE.finditer(text, m.end()):
+            if token.group() == "]":
+                end = token.start()
+                break
+            if token.group().startswith('"'):
+                entries.append(token.group())
+        if end is None or any(json.loads(e) == cwd for e in entries):      # kapanmayan liste: dokunma
+            return False
+        rest = text[m.end():end]
         sep = "," if rest.strip() else ""
         new = text[:m.end()] + "\n    " + json.dumps(cwd) + sep + text[m.end():]
         atomic_write_text(os.path.realpath(path), new)      # mevcut izin (0600) korunur; symlink ise hedef yazılır
