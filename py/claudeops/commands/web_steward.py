@@ -1200,7 +1200,8 @@ def _remote_last_exchange(host: str, name: str, budget: float) -> Dict[str, Any]
 def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str, ...] = DOCS,
                          head: int = DOC_HEAD_CHARS) -> Dict[str, Any]:
     """`http_context`in uzak karşılığı: son konuşma + (istenirse) belge başları, TOPLAM `REMOTE_READ_BUDGET_SECONDS`.
-    Hata/zaman aşımı boş döner, fırlatmaz. Aynı adlı iki çalışan oturum varsa hiçbir uzak okuma yapılmaz.
+    Hata/zaman aşımı boş döner, fırlatmaz. Hedef belirsizse (aynı adlı ya da projenin iki çalışan oturumu, klasörü
+    farklı adaşlar) hiçbir uzak okuma yapılmaz.
     Çıktı: {"last_exchange", "docs", "remote_cwd"}."""
     deadline = time.monotonic() + REMOTE_READ_BUDGET_SECONDS
     real, cwd = _remote_ref(host, name)
@@ -1208,7 +1209,10 @@ def _remote_read_context(host: str, name: str, want_docs: bool, docs: Tuple[str,
         rows, world = _remote_rows(host) or [], _world()
         key = _remote_key(name, host, world)
         mine = [str(r.get("name") or "") for r in _remote_project_rows(rows, host, key, world)] if key else []
-        if len(_remote_named_rows(rows, name)) > 1 or len(mine) != len(set(mine)):
+        st = _remote.status(host) or {}
+        folders = {str(r["cwd"]) for k in ("sessions", "closed") for r in (st.get(k) or [])
+                   if isinstance(r, dict) and r.get("name") == name and r.get("cwd")}
+        if len(_remote_named_rows(rows, name)) > 1 or len(mine) > 1 or len(folders) > 1:
             return {"last_exchange": {}, "docs": {}, "remote_cwd": ""}
     name = real or name         # okumalar oturumun GERÇEK adıyla (proje adı `oiso`, oturum `oiso20261017`)
     out: Dict[str, Any] = {"last_exchange": _remote_last_exchange(host, name, deadline - time.monotonic()),

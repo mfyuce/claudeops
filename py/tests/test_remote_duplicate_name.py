@@ -349,5 +349,23 @@ class TestReviewFolderFallback(_Resolve):
         self.assertEqual(self.folder(_row("oiso", cwd="/srv/eski", running=False), _row("oiso", cwd="/srv/yeni")), "/srv/yeni")
 
 
+class TestContextAmbiguity(_Resolve):
+    """TBD#390/3: hedef belirsizse `_remote_read_context` hicbir uzak okuma yapmaz."""
+
+    def assert_nothing_read(self):
+        self.fake.gets.clear()
+        self.assertEqual(ws._remote_read_context(HOST, "oiso", True),
+                         {"last_exchange": {}, "docs": {}, "remote_cwd": ""})
+        self.assertEqual(self.fake.gets, [])
+
+    def test_two_sessions_of_the_project_with_different_names(self):
+        self.fake.set(HOST, [_row("oiso20261017", cwd="/srv/a"), _row("oiso20261018", cwd="/srv/a")])
+        self.assert_nothing_read()
+
+    def test_stopped_twins_with_different_folders(self):
+        self.fake.set(HOST, [], closed=[_row("oiso", cwd="/srv/a", running=False), _row("oiso", cwd="/srv/b", running=False)])
+        self.assert_nothing_read()
+
+
 if __name__ == "__main__":
     unittest.main()
