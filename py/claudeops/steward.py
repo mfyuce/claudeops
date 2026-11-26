@@ -3571,12 +3571,26 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
 _CTX_Q_SESSION_RE = re.compile(r"bu oturum|this session", re.I)
 _CTX_Q_HANDOVER_RE = re.compile(r"devir|yeni oturum|handover|new session", re.I)
 _CTX_Q_EXCLUDE_RE = re.compile(r"commit|push|merge|deploy|force|\bsil|delete", re.I)   # sahip kararları otomatik cevaplanmaz
+# Bağlam ÖLÇÜSÜ olarak "token" ("210K token", "250,000 tokens", "token sayısı", "tokens: 200K"): kimlik bilgisi değil. Yalnız bu
+# bölümde `OWNER_ONLY_RE`den önce ayıklanır; sayı büyüklük eki/binlik ayracı ister ("2 token", "yeni token" kimlik bilgisi sayılır).
+_CTX_NUM = r"(?:\d+(?:[.,]\d+)?\s*(?:[km]|bin|milyon|thousand|million)(?!\w)|\d{1,3}(?:[.,]\d{3})+|\d{5,})"
+_CTX_TOKEN_MEASURE_RE = re.compile(
+    r"(?<![\w.,])" + _CTX_NUM + r"(?:'?l[ıiuü]k)?(?:\s*/\s*" + _CTX_NUM + r")?\+?\s*\btokens?\b"
+    r"|\btokens?\s+(?:say[ıi]s[ıi]|kullan[ıi]m[ıi]|count|usage)\b"
+    r"|\btokens?\s*[:=]\s*~?\d+(?:[.,]\d+)?\s*[km](?!\w)", re.I)
+
+
+def _context_owner_topic(text: str) -> bool:
+    """SAF (TBD#382). Metin sahibe ait bir konu (`OWNER_ONLY_RE`: kurulum, harcama, parola/token/yetki, silme, force) geçiriyor
+    mu; bağlam ölçüsü olarak geçen "token" sayılmaz."""
+    return bool(OWNER_ONLY_RE.search(_CTX_TOKEN_MEASURE_RE.sub(" ", text or "")))
 
 
 def is_context_question(text: str) -> bool:
     """'Bu oturumda mı sürdüreyim, devir notuyla yeni oturuma mı bırakayım?' kalıbı: cevabı bağlam ölçümünden çıkar."""
     t = text or ""
-    return bool(_CTX_Q_SESSION_RE.search(t) and _CTX_Q_HANDOVER_RE.search(t) and not _CTX_Q_EXCLUDE_RE.search(t))
+    return bool(_CTX_Q_SESSION_RE.search(t) and _CTX_Q_HANDOVER_RE.search(t) and not _CTX_Q_EXCLUDE_RE.search(t)
+                and not _context_owner_topic(t))
 
 
 def context_answer(tokens: int, warn: int, ratio: float, lang: str = "tr") -> Tuple[bool, str]:
@@ -4260,6 +4274,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         for q in questions:
             if q.status != "open" or not is_context_question(q.text):
                 continue
+            if any(_context_owner_topic(t) for t in (*q.options, q.detail, *q.extra_texts, *q.prev_texts)):
+                continue    # sahibe ait konu seçenekte/detayda/birleşen metinde: cevap soruyu kapatırdı
             v = by_name.get(q.source)
             if v is None or not v.running or not v.tmux or not v.context_tokens or not _managed(v.name):
                 continue
