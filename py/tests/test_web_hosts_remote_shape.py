@@ -89,6 +89,15 @@ class RemoteShapeTest(unittest.TestCase):
         ok = web_hosts._parse_ws_status_frame(json.dumps({"type": "status", "data": {"sessions": [1, {"name": "a"}]}}))
         self.assertEqual(web_hosts._finalize_remote_result("h", ok)["sessions"], [{"name": "a", "host": "h"}])
 
+    def test_non_object_or_unreadable_frame_is_skipped_and_logged_once(self):
+        web_hosts._bad_frame_log_last.clear()
+        parsers = (web_hosts._parse_ws_status_frame, web_hosts._parse_ws_term_frame)
+        with mock.patch.object(web_hosts, "diag_log") as log:
+            for parse in parsers:
+                for raw in ("[1]", "[]", "5", '"x"', "null", "true", b"\xff"):
+                    self.assertIsNone(parse(raw), (parse.__name__, raw))
+        self.assertEqual([c.args[0] for c in log.call_args_list], ["push_frame_skipped"] * len(parsers))
+
 
 if __name__ == "__main__":
     unittest.main()

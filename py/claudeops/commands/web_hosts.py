@@ -1472,6 +1472,26 @@ _status_consumer_lock = threading.Lock()
 _status_consumers: Dict[str, _PushConsumer] = {}
 
 
+_bad_frame_log_last: Dict[str, float] = {}  # kare türü -> son log'un monotonic zamanı
+
+
+def _ws_envelope(raw: Any, kind: str) -> Optional[dict]:
+    """Uzaktan gelen WS karesini nesne olarak çözer; okunamayan ya da nesne olmayan kare `None` (atlanır, akış sürer)
+    ve dakikada en fazla bir kez loglanır."""
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    now = time.monotonic()
+    last = _bad_frame_log_last.get(kind)
+    if last is None or now - last >= _CONSUMER_DEATH_LOG_MIN_INTERVAL_SECONDS:
+        _bad_frame_log_last[kind] = now
+        diag_log("push_frame_skipped", kind=kind)
+    return None
+
+
 def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
     """`/ws`'in `{"type":"status","data":{...}}` zarfını (`web_ws._encode()`)
     `_finalize_remote_result()`'un beklediği ham şekle indirger — tag/
@@ -1479,11 +1499,8 @@ def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
     ortak) yapıyor. `type != "status"`, bozuk JSON ya da `sessions` dizi değil →
     sessizce `None` (bu frame atlanır, `_PushConsumer` devam eder; boş oturum
     listesi gibi kaydedilmez)."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
+    parsed = _ws_envelope(raw, "status")
+    if parsed is None or parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
         return None
     data = parsed["data"]
     if not isinstance(data.get("sessions"), list):
@@ -1647,11 +1664,8 @@ def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
     """`/ws/term`'ün `{"type":"term","data":{...}}` zarfını çözer — `data`
     zaten `_term_output()`'un TAM şekli (tag/normalize gerekmiyor, term-output
     host-etiketleme kavramı taşımıyor status'un aksine)."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if parsed.get("type") != "term" or not isinstance(parsed.get("data"), dict):
+    parsed = _ws_envelope(raw, "term")
+    if parsed is None or parsed.get("type") != "term" or not isinstance(parsed.get("data"), dict):
         return None
     return parsed["data"]
 
