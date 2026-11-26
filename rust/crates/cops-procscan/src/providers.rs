@@ -241,14 +241,25 @@ pub struct AgyState {
     known: Map<String, Value>,
     cache: Map<String, Value>,
     pub learned: Vec<(String, String)>,
+    /// Var olan ama okunamayan ya da nesne olmayan dosya sayısı (Python gibi boş sayılır).
+    pub unreadable: u32,
 }
 
 impl AgyState {
     pub fn load(cfg: &Config) -> Self {
+        let mut unreadable = 0;
+        let mut read = |p: &Path| {
+            read_object(p).unwrap_or_else(|| {
+                unreadable += 1;
+                Map::new()
+            })
+        };
+        let (known, cache) = (read(&cfg.agy_sids), read(&cfg.agy_cache));
         AgyState {
-            known: read_object(&cfg.agy_sids),
-            cache: read_object(&cfg.agy_cache),
+            known,
+            cache,
             learned: Vec::new(),
+            unreadable,
         }
     }
 
@@ -281,10 +292,16 @@ impl AgyState {
     }
 }
 
-fn read_object(path: &Path) -> Map<String, Value> {
-    match std::fs::read(path).ok().and_then(|raw| py::json(&raw)) {
-        Some(Value::Object(o)) => o,
-        _ => Map::new(),
+/// Nesne ya da yok (`Some(boş)`); var olup okunamayan/nesne olmayan `None`.
+fn read_object(path: &Path) -> Option<Map<String, Value>> {
+    let raw = match std::fs::read(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Map::new()),
+        Err(_) => return None,
+    };
+    match py::json(&raw) {
+        Some(Value::Object(o)) => Some(o),
+        _ => None,
     }
 }
 

@@ -6,6 +6,7 @@ use crate::providers::{AgyState, Cli};
 use crate::py;
 use crate::session::{fold_background, fold_subshells, Session};
 use crate::Config;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -27,6 +28,41 @@ pub struct Scan {
     pub mirrors: BTreeMap<String, Vec<u32>>,
     /// Yeni öğrenilen agy (ad, sohbet) eşlemeleri; kalıcılaştırmak çağıranın işi.
     pub agy_learned: Vec<(String, String)>,
+    /// Python gibi yutulan okuma hataları (sonuç aynı kalır, burada sayılır).
+    pub diag: ScanDiag,
+}
+
+/// Taramanın yuttuğu hatalar. Davranış Python'la aynıdır (satır atlanır, alan boş kalır); bu sayaçlar
+/// "yok" ile "okunamadı"yı ayırır. Hepsi sıfır/`None` ise tarama tam görmüştür.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct ScanDiag {
+    /// `/proc` listelenemedi: süreç listesi boş döner ama bu "süreç yok" DEĞİL, "bilinmiyor"dur
+    /// (Python'da psutil burada istisna fırlatır).
+    pub proc_root_error: Option<String>,
+    /// `sessions/` var ama listelenemedi (yokluğu hata değil).
+    pub sessions_dir_error: Option<String>,
+    /// Tarama sırasında çıkan süreçler (`ENOENT`/`ESRCH`).
+    pub procs_vanished: u32,
+    /// `status`ı okunamayan ya da `Uid:` satırı bozuk süreçler (atlandı).
+    pub procs_unreadable: u32,
+    /// Bize ait ama `cmdline`ı okunamayan süreçler (boş sayıldı).
+    pub cmdline_unreadable: u32,
+    /// Tanınan CLI sürecinin `cwd`si okunamadı (satır atlandı).
+    pub cwd_unreadable: u32,
+    /// `stat` okunamadı ya da ayrıştırılamadı (`procStart` denetimi atlandı, CPU 0 kaldı).
+    pub stat_unreadable: u32,
+    /// `sessions/*.json` okunamadı.
+    pub session_files_unreadable: u32,
+    /// `sessions/*.json` geçerli JSON değil.
+    pub session_files_invalid: u32,
+    /// agy önbelleği ya da `agy_sids` aynası var ama okunamadı ya da nesne değil (boş sayıldı).
+    pub agy_files_unreadable: u32,
+}
+
+impl ScanDiag {
+    pub fn is_clean(&self) -> bool {
+        *self == ScanDiag::default()
+    }
 }
 
 /// Python'un taramayı istisnayla bitirdiği girdi (bozuk ama ayrıştırılabilir oturum dosyası).
@@ -56,9 +92,14 @@ fn json_pid(v: Option<&Value>) -> Option<u32> {
 }
 
 /// `~/.claude/sessions/*.json`: canlı (ve bize ait), `procStart`ı tutan kayıtlar.
-fn sessions_from_json(cfg: &Config, proc: &ProcFs) -> Result<Vec<Session>, ScanError> {
-    let Ok(rd) = std::fs::read_dir(cfg.claude_dir.join("sessions")) else {
-        return Ok(Vec::new());
+fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Result<Vec<Session>, ScanError> {
+    let rd = match std::fs::read_dir(cfg.claude_dir.join("sessions")) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => {
+            diag.sessions_dir_error = Some(e.to_string());
+            return Ok(Vec::new());
+        }
     };
     let mut out = Vec::new();
     for entry in rd.flatten() {
@@ -67,7 +108,15 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs) -> Result<Vec<Session>, ScanE
         if !file.ends_with(".json") || file.starts_with('.') {
             continue;
         }
-        let Some(value) = std::fs::read(entry.path()).ok().and_then(|raw| py::json(&raw)) else {
+        let value = match std::fs::read(entry.path()) {
+            Ok(raw) => py::json(&raw),
+            Err(_) => {
+                diag.session_files_unreadable += 1;
+                continue;
+            }
+        };
+        let Some(value) = value else {
+            diag.session_files_invalid += 1;
             continue;
         };
         let Value::Object(d) = value else {
@@ -85,7 +134,11 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs) -> Result<Vec<Session>, ScanE
             .get("procStart")
             .map(|v| py::strip(&py::to_str(v)).to_owned())
             .unwrap_or_default();
-        if !want.is_empty() && own.stat().is_some_and(|s| s.starttime.to_string() != want) {
+        let stat = own.stat();
+        if stat.is_none() {
+            diag.stat_unreadable += 1; // Python: `/proc` okunamazsa denetim atlanır
+        }
+        if !want.is_empty() && stat.is_some_and(|s| s.starttime.to_string() != want) {
             continue;
         }
         let Some(cwd) = own
@@ -104,6 +157,7 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs) -> Result<Vec<Session>, ScanE
             kind: py::truthy_str(d.get("kind")).unwrap_or_default(),
             job_id: py::truthy_str(d.get("jobId")),
             parked_job_id: py::truthy_str(d.get("parkedJobId")),
+            proc_id: own.id(),
             ..Default::default()
         });
     }
@@ -181,13 +235,27 @@ pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Result<Scan, ScanError> 
     let proc = ProcFs::new(&cfg.proc_root, cfg.uid);
     let mut scan = Scan::default();
     let mut table = Table::default();
-    let from_json = sessions_from_json(cfg, &proc)?;
+    let from_json = sessions_from_json(cfg, &proc, &mut scan.diag)?;
     let json_by_pid: HashMap<u32, Session> = from_json.iter().map(|s| (s.pid, s.clone())).collect();
     from_json.into_iter().for_each(|s| table.put(s));
 
+    let procs = match proc.own_processes_checked() {
+        Ok((v, counts)) => {
+            scan.diag.procs_vanished += counts.vanished;
+            scan.diag.procs_unreadable += counts.unreadable;
+            v
+        }
+        Err(e) => {
+            scan.diag.proc_root_error = Some(e.to_string());
+            Vec::new()
+        }
+    };
     let mut raw = Vec::new();
-    for p in proc.own_processes() {
-        let cmd = p.cmdline();
+    for p in procs {
+        let cmd = p.try_cmdline().unwrap_or_else(|_| {
+            scan.diag.cmdline_unreadable += 1;
+            Vec::new()
+        });
         note_mirror(&mut scan.mirrors, p.pid(), &cmd);
         if let Some(cli) = Cli::detect(&cmd) {
             raw.push((p, cmd, cli));
@@ -219,9 +287,13 @@ pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Result<Scan, ScanError> 
     };
 
     let mut agy = AgyState::load(cfg);
+    scan.diag.agy_files_unreadable += agy.unreadable;
     for (p, cmd, cli) in raw {
         let pid = p.pid();
-        let cwd = p.cwd().unwrap_or_default();
+        let cwd = p.try_cwd().unwrap_or_else(|_| {
+            scan.diag.cwd_unreadable += 1;
+            String::new()
+        });
         let mut name = cli.extract_name(&p, &cmd);
         if name.is_none() && cli != Cli::Claude && !cwd.is_empty() {
             name = Some(fallback_name(cli.as_str(), &cwd, pid));
@@ -253,6 +325,7 @@ pub fn find_sessions(cfg: &Config, cpu: CpuMode<'_>) -> Result<Scan, ScanError> 
             job_id: prior.and_then(|j| j.job_id.clone()),
             parked_job_id: prior.and_then(|j| j.parked_job_id.clone()),
             bg_pid: None,
+            proc_id: p.id(),
         });
     }
     scan.agy_learned = agy.learned;

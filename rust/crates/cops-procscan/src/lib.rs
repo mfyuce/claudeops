@@ -5,13 +5,15 @@
 //! **Çok kullanıcılı makine:** başka kullanıcının sürecinden yalnız `status` (sahiplik tespiti) okunur;
 //! `cmdline`/`environ`/`stat`/`cwd`/`fd` okumaları yalnız [`procfs::OwnProc`] üzerinden yapılabilir.
 //!
-//! Crate HİÇBİR dosyaya yazmaz.
+//! Crate durum dosyası yazmaz; tek yazım `needs_ho::NeedsHo::repo_baseline_set` (çağıranın verdiği dizin).
+//! Süreç öldürme yalnız `proc_cmd`te, yalnız kendi başlattığı çocuğa (`clippy.toml` `disallowed-methods`).
 
 pub mod discovery;
 pub mod list;
 pub mod mirrors;
 pub mod needs_ho;
-mod proc_cmd;
+#[doc(hidden)]
+pub mod proc_cmd;
 pub mod procfs;
 pub mod providers;
 pub mod py;
@@ -22,7 +24,8 @@ pub mod usage;
 
 use std::path::PathBuf;
 
-pub use discovery::{find_by_name, find_sessions, CpuMode, Scan, ScanError};
+pub use discovery::{find_by_name, find_sessions, CpuMode, Scan, ScanDiag, ScanError};
+pub use procfs::{Liveness, ProcId};
 pub use session::{duplicates, Session};
 
 /// Taramanın okuduğu kökler. Testler hepsini geçici dizine çevirir.

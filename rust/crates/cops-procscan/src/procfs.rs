@@ -1,8 +1,55 @@
 //! `/proc` okuma. Sahiplik kapısı tip düzeyinde: süreç içeriği yalnız [`OwnProc`] ile okunur.
 
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
+
+/// Süreç kimliği: pid yeniden kullanılabildiği için `starttime` (açılıştan beri saat tıkı) ile birlikte.
+/// Bir sürece eylem (sinyal vb.) uygulamadan önce [`ProcFs::verify`] `Liveness::Same` dönmelidir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub struct ProcId {
+    pub pid: u32,
+    pub start_time: u64,
+}
+
+/// [`ProcFs::verify`] sonucu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Liveness {
+    /// Aynı süreç, bu kullanıcının.
+    Same,
+    /// Pid yaşıyor ama başka süreç (başlangıç zamanı farklı).
+    Replaced,
+    /// Pid yok.
+    Gone,
+    /// Başka kullanıcının süreci: içerik okunmaz, eylem yapılmaz.
+    NotOwn,
+    /// Okunamadı (izin, bozuk `status`/`stat`): "yok" ya da "aynı" SAYILMAZ.
+    Unknown,
+}
+
+/// [`ProcFs::access`] sonucu: "yok", "başkasının" ve "okunamadı" ayrı.
+#[derive(Debug, Clone)]
+pub enum Access {
+    Own(OwnProc),
+    NotOwn,
+    Gone,
+    /// `status` okunamadı ya da `Uid:` satırı ayrıştırılamadı.
+    Unreadable,
+}
+
+/// [`ProcFs::own_processes_checked`]in atladığı süreç sayıları (tarama sırasında çıkan ya da okunamayan).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct ListCounts {
+    pub vanished: u32,
+    pub unreadable: u32,
+}
+
+/// Kaybolan süreç (`ENOENT`/`ESRCH`) ile okunamayan süreci ayırır.
+fn is_gone(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::NotFound || e.raw_os_error() == Some(libc::ESRCH)
+}
 
 /// `/proc/<pid>/stat`in kullanılan alanları.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,22 +101,73 @@ impl ProcFs {
         }
     }
 
-    /// Süreç bu kullanıcınınsa (gerçek uid) tutamak; değilse ya da yoksa `None`.
-    pub fn own(&self, pid: u32) -> Option<OwnProc> {
+    /// Sahiplik sınıflaması; yalnız `status` okunur.
+    pub fn access(&self, pid: u32) -> Access {
         let dir = self.root.join(pid.to_string());
-        let status = fs::read(dir.join("status")).ok()?;
+        let status = match fs::read(dir.join("status")) {
+            Ok(s) => s,
+            Err(e) if is_gone(&e) => return Access::Gone,
+            Err(_) => return Access::Unreadable,
+        };
         let status = String::from_utf8_lossy(&status);
-        let line = status.lines().find_map(|l| l.strip_prefix("Uid:"))?;
-        let real: u32 = line.split_whitespace().next()?.parse().ok()?;
-        (real == self.uid).then_some(OwnProc { pid, dir })
+        let real = status
+            .lines()
+            .find_map(|l| l.strip_prefix("Uid:"))
+            .and_then(|l| l.split_whitespace().next()?.parse::<u32>().ok());
+        match real {
+            Some(r) if r == self.uid => Access::Own(OwnProc { pid, dir }),
+            Some(_) => Access::NotOwn,
+            None => Access::Unreadable,
+        }
     }
 
-    /// Bu kullanıcının tüm süreçleri, pid sırasıyla (psutil `process_iter` sırası).
+    /// Süreç bu kullanıcınınsa (gerçek uid) tutamak; değilse, yoksa ya da okunamıyorsa `None`
+    /// (ayrım gerekiyorsa [`ProcFs::access`]).
+    pub fn own(&self, pid: u32) -> Option<OwnProc> {
+        match self.access(pid) {
+            Access::Own(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Bu kullanıcının tüm süreçleri, pid sırasıyla (psutil `process_iter` sırası). Kök okunamazsa boş
+    /// (ayrım gerekiyorsa [`ProcFs::own_processes_checked`]).
     pub fn own_processes(&self) -> Vec<OwnProc> {
-        let Ok(rd) = fs::read_dir(&self.root) else { return Vec::new() };
-        let mut pids: Vec<u32> = rd.filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok()).collect();
+        self.own_processes_checked().map(|(v, _)| v).unwrap_or_default()
+    }
+
+    /// Kök listelenemezse hata ("süreç yok" ile karışmasın); atlanan süreçler sayılır.
+    pub fn own_processes_checked(&self) -> io::Result<(Vec<OwnProc>, ListCounts)> {
+        let mut pids: Vec<u32> = fs::read_dir(&self.root)?
+            .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
+            .collect();
         pids.sort_unstable();
-        pids.into_iter().filter_map(|p| self.own(p)).collect()
+        let mut counts = ListCounts::default();
+        let mut out = Vec::new();
+        for pid in pids {
+            match self.access(pid) {
+                Access::Own(p) => out.push(p),
+                Access::NotOwn => {}
+                Access::Gone => counts.vanished += 1,
+                Access::Unreadable => counts.unreadable += 1,
+            }
+        }
+        Ok((out, counts))
+    }
+
+    /// Kimliği taşıyan süreç hâlâ aynı mı. Sinyal/eylem öncesi zorunlu denetim (`eacd56c` dersi).
+    pub fn verify(&self, id: &ProcId) -> Liveness {
+        match self.access(id.pid) {
+            Access::Own(p) => match p.try_stat() {
+                Ok(Some(st)) if st.starttime == id.start_time => Liveness::Same,
+                Ok(Some(_)) => Liveness::Replaced,
+                Err(e) if is_gone(&e) => Liveness::Gone,
+                _ => Liveness::Unknown,
+            },
+            Access::NotOwn => Liveness::NotOwn,
+            Access::Gone => Liveness::Gone,
+            Access::Unreadable => Liveness::Unknown,
+        }
     }
 
     /// Açılış anı (epoch sn), `/proc/stat` `btime`.
@@ -91,44 +189,70 @@ impl OwnProc {
         self.pid
     }
 
+    /// Okunamazsa boş (psutil `process_iter` `cmdline` özniteliği gibi); ayrım için [`OwnProc::try_cmdline`].
     pub fn cmdline(&self) -> Vec<String> {
-        fs::read(self.dir.join("cmdline"))
-            .map(|r| split_cmdline(&r))
-            .unwrap_or_default()
+        self.try_cmdline().unwrap_or_default()
     }
 
+    pub fn try_cmdline(&self) -> io::Result<Vec<String>> {
+        fs::read(self.dir.join("cmdline")).map(|r| split_cmdline(&r))
+    }
+
+    /// Okunamaz ya da ayrıştırılamazsa `None`; ayrım için [`OwnProc::try_stat`].
     pub fn stat(&self) -> Option<Stat> {
-        let raw = fs::read(self.dir.join("stat")).ok()?;
-        parse_stat(&String::from_utf8_lossy(&raw))
+        self.try_stat().ok().flatten()
+    }
+
+    /// Okuma hatası `Err`, okunan ama ayrıştırılamayan içerik `Ok(None)`.
+    pub fn try_stat(&self) -> io::Result<Option<Stat>> {
+        let raw = fs::read(self.dir.join("stat"))?;
+        Ok(parse_stat(&String::from_utf8_lossy(&raw)))
+    }
+
+    /// Kimlik (`starttime` okunabiliyorsa).
+    pub fn id(&self) -> Option<ProcId> {
+        self.stat().map(|s| ProcId {
+            pid: self.pid,
+            start_time: s.starttime,
+        })
     }
 
     pub fn environ(&self) -> Option<HashMap<String, String>> {
-        let raw = fs::read(self.dir.join("environ")).ok()?;
-        Some(
-            raw.split(|b| *b == 0)
-                .filter_map(|kv| {
-                    let s = String::from_utf8_lossy(kv);
-                    let (k, v) = s.split_once('=')?;
-                    (!k.is_empty()).then(|| (k.to_owned(), v.to_owned()))
-                })
-                .collect(),
-        )
+        self.try_environ().ok()
+    }
+
+    pub fn try_environ(&self) -> io::Result<HashMap<String, String>> {
+        let raw = fs::read(self.dir.join("environ"))?;
+        Ok(raw
+            .split(|b| *b == 0)
+            .filter_map(|kv| {
+                let s = String::from_utf8_lossy(kv);
+                let (k, v) = s.split_once('=')?;
+                (!k.is_empty()).then(|| (k.to_owned(), v.to_owned()))
+            })
+            .collect())
     }
 
     /// `readlink(cwd)` olduğu gibi (sessions json kaynağı bunu kullanır).
     pub fn cwd_raw(&self) -> Option<String> {
-        fs::read_link(self.dir.join("cwd"))
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned())
+        self.try_cwd_raw().ok()
+    }
+
+    pub fn try_cwd_raw(&self) -> io::Result<String> {
+        fs::read_link(self.dir.join("cwd")).map(|p| p.to_string_lossy().into_owned())
     }
 
     /// psutil `cwd()`: silinmiş dizinin ` (deleted)` eki atılır.
     pub fn cwd(&self) -> Option<String> {
-        let mut c = self.cwd_raw()?;
+        self.try_cwd().ok()
+    }
+
+    pub fn try_cwd(&self) -> io::Result<String> {
+        let mut c = self.try_cwd_raw()?;
         if c.ends_with(" (deleted)") && !Path::new(&c).exists() {
             c.truncate(c.len() - " (deleted)".len());
         }
-        Some(c)
+        Ok(c)
     }
 
     /// Terminal gitmiş mi: `fd/0` ` (deleted)` ya da pts/tty'ye bakmıyor. Okunamazsa `false`.

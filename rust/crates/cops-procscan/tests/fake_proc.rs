@@ -428,3 +428,221 @@ fn usage_dedups_subagents_and_increments() {
     fs::write(&main, row("z", "z", "x", 1)).unwrap(); // küçüldü: baştan
     assert_eq!(r.usage_for_path(&main).unwrap().main.turns, 1);
 }
+
+/// Python `test_discovery_sid`: canlı json sid'i bayat argv sid'ini yener, sid'siz json argv sid'ini silmez,
+/// başka CLI'nin json kaydı (pid yeniden kullanımı) sid bağışlamaz, her pid kendi sid'ini alır.
+#[test]
+fn json_sid_merge_rules_like_python() {
+    let f = Fake::new();
+    let claude = |pid, name: &str, resume: Option<&str>| {
+        let cmd = match resume {
+            Some(r) => format!("claude --remote-control {name} --model claude-sonnet-5-5 --resume {r}"),
+            None => format!("claude --remote-control {name} --model claude-sonnet-5-5"),
+        };
+        f.add(P {
+            pid,
+            cmd: Box::leak(cmd.into_boxed_str()),
+            ..Default::default()
+        });
+    };
+    claude(80, "stale", Some("old-sid"));
+    f.session_json("80.json", r#"{"pid":80,"name":"stale","sessionId":"new-sid"}"#);
+    claude(81, "keep", Some("sid-a"));
+    f.session_json("81.json", r#"{"pid":81,"name":"keep"}"#);
+    claude(82, "one", None);
+    claude(83, "two", None);
+    f.session_json("82.json", r#"{"pid":82,"name":"one","sessionId":"sid-1"}"#);
+    f.session_json("83.json", r#"{"pid":83,"name":"two","sessionId":"sid-2"}"#);
+    f.add(P {
+        pid: 84,
+        cmd: "codex",
+        env: &["COPS_NAME=cx"],
+        ..Default::default()
+    });
+    f.session_json("84.json", r#"{"pid":84,"name":"cx","sessionId":"claude-sid"}"#);
+    let v = f.scan();
+    let s = by_name(&v, "stale");
+    assert_eq!(
+        (s.sid.as_deref(), s.resumed, s.is_fresh()),
+        (Some("new-sid"), Some(true), false)
+    );
+    assert_eq!(by_name(&v, "keep").sid.as_deref(), Some("sid-a"));
+    assert_eq!(
+        (by_name(&v, "one").sid.as_deref(), by_name(&v, "two").sid.as_deref()),
+        (Some("sid-1"), Some("sid-2"))
+    );
+    // codex satırı sid'siz; json'un claude satırı aynı (ad, pid) anahtarında ezilir (Python dict gibi)
+    let cx: Vec<_> = v.iter().filter(|s| s.name == "cx").collect();
+    assert_eq!(
+        cx.iter().map(|s| (s.cli.as_str(), s.sid.as_deref())).collect::<Vec<_>>(),
+        [("codex", None)]
+    );
+}
+
+#[test]
+fn sessions_carry_proc_id_and_verify_detects_reuse() {
+    use cops_procscan::procfs::ProcFs;
+    use cops_procscan::{Liveness, ProcId};
+    let f = Fake::new();
+    f.add(P {
+        pid: 90,
+        cmd: "claude --remote-control a",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 91,
+        uid: OTHER,
+        cmd: "x",
+        ..Default::default()
+    });
+    let v = f.scan();
+    let id = v[0].proc_id.expect("kimlik yok");
+    assert_eq!(
+        id,
+        ProcId {
+            pid: 90,
+            start_time: 900
+        }
+    );
+    // JSON çıktısına girmez (Python paritesi)
+    assert!(serde_json::to_value(&v[0]).unwrap().get("proc_id").is_none());
+    let pf = ProcFs::new(&f.cfg.proc_root, ME);
+    assert_eq!(pf.verify(&id), Liveness::Same);
+    assert_eq!(
+        pf.verify(&ProcId {
+            pid: 91,
+            start_time: 910
+        }),
+        Liveness::NotOwn
+    );
+    assert_eq!(pf.verify(&ProcId { pid: 92, start_time: 1 }), Liveness::Gone);
+    // aynı pid, başka başlangıç: yeniden kullanılmış
+    fs::write(
+        f.root.join("proc/90/stat"),
+        "90 (x) S 1 0 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 12345 0 0\n",
+    )
+    .unwrap();
+    assert_eq!(pf.verify(&id), Liveness::Replaced);
+    fs::write(f.root.join("proc/90/stat"), "bozuk").unwrap();
+    assert_eq!(pf.verify(&id), Liveness::Unknown);
+    fs::write(f.root.join("proc/90/status"), "Name:\tx\n").unwrap();
+    assert_eq!(pf.verify(&id), Liveness::Unknown, "Uid satırı yok: okunamadı, 'yok' değil");
+}
+
+/// Bozuk `/proc` alanları paniğe ya da yanlış satıra yol açmaz; Python gibi davranılır, sayaçlar ayrımı taşır.
+#[test]
+fn broken_proc_fields() {
+    let f = Fake::new();
+    for (pid, name) in [
+        (100, "badstat"),
+        (101, "nouid"),
+        (102, "badutf"),
+        (103, "nocwd"),
+        (104, "badenv"),
+    ] {
+        f.add(P {
+            pid,
+            cmd: Box::leak(format!("claude --remote-control {name}").into_boxed_str()),
+            ..Default::default()
+        });
+    }
+    let d = |pid: u32| f.root.join("proc").join(pid.to_string());
+    fs::write(d(100).join("stat"), "100 bozuk").unwrap();
+    f.session_json("100.json", r#"{"pid":100,"name":"badstat","procStart":"1"}"#);
+    fs::write(d(101).join("status"), "Name:\tx\nUid:\tabc\n").unwrap();
+    fs::write(d(102).join("cmdline"), b"claude\0--remote-control\0bad\xffname\0").unwrap();
+    fs::remove_file(d(103).join("cwd")).unwrap();
+    fs::write(d(104).join("environ"), b"\xff\0=x\0NOEQ\0COPS_NAME\0").unwrap();
+    f.add(P {
+        pid: 105,
+        cmd: "codex",
+        ..Default::default()
+    });
+    fs::write(d(105).join("environ"), b"\xff\0=x\0NOEQ\0COPS_NAME=\0").unwrap();
+    let scan = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    let names: Vec<_> = scan.sessions.iter().map(|s| s.name.as_str()).collect();
+    // stat bozuk: procStart denetimi atlanır (Python `except: pass`), kimlik yok
+    assert!(names.contains(&"badstat"));
+    assert_eq!(by_name(&scan.sessions, "badstat").proc_id, None);
+    assert!(!names.contains(&"nouid"), "uid okunamayan süreç bizim sayılmaz");
+    assert!(names.contains(&"bad\u{fffd}name"));
+    assert!(!names.contains(&"nocwd"));
+    assert!(names.contains(&"badenv"));
+    assert!(names.contains(&"codex-105"), "boş COPS_NAME = ad yok: {names:?}");
+    let diag = &scan.diag;
+    assert_eq!((diag.procs_unreadable, diag.cwd_unreadable), (1, 1), "{diag:?}");
+    assert!(diag.stat_unreadable >= 1, "{diag:?}");
+    assert!(diag.proc_root_error.is_none() && diag.sessions_dir_error.is_none());
+}
+
+/// Okunamayan `/proc` kökü ve `sessions/` "yok"tan ayrılır; sonuç yine Python gibi boştur.
+#[test]
+fn unreadable_roots_are_not_absence() {
+    let f = Fake::new();
+    f.add(P {
+        pid: 110,
+        cmd: "claude --remote-control a",
+        ..Default::default()
+    });
+    let clean = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    assert!(clean.diag.is_clean(), "{:?}", clean.diag);
+
+    let sessions = f.root.join("claude/sessions");
+    fs::remove_dir(&sessions).unwrap();
+    assert!(
+        find_sessions(&f.cfg, CpuMode::Skip).unwrap().diag.is_clean(),
+        "sessions/ yokluğu hata değil"
+    );
+    fs::write(&sessions, "dosya").unwrap();
+    let s = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    assert!(s.diag.sessions_dir_error.is_some());
+    assert_eq!(s.sessions.len(), 1);
+
+    let mut cfg = f.cfg.clone();
+    cfg.proc_root = f.root.join("yok");
+    let s = find_sessions(&cfg, CpuMode::Skip).unwrap();
+    assert!(s.sessions.is_empty());
+    assert!(s.diag.proc_root_error.is_some(), "süreç listesi bilinmiyor, 'yok' değil");
+}
+
+/// Bozuk agy dosyaları boş sayılır (Python `_load_agy_sids`/önbellek okuması gibi), sayaç artar.
+#[test]
+fn broken_agy_files() {
+    let f = Fake::new();
+    f.add(P {
+        pid: 120,
+        cmd: "agy",
+        env: &["COPS_NAME=ag"],
+        ..Default::default()
+    });
+    let sid_of = |f: &Fake| {
+        let s = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+        (
+            by_name(&s.sessions, "ag").sid.clone(),
+            s.diag.agy_files_unreadable,
+            s.agy_learned,
+        )
+    };
+    // dosyalar yok: hata değil
+    assert_eq!(sid_of(&f), (None, 0, vec![]));
+    fs::write(&f.cfg.agy_cache, r#"{"/work/proj": " c1 "}"#).unwrap();
+    assert_eq!(sid_of(&f), (Some("c1".into()), 0, vec![("ag".into(), "c1".into())]));
+    // başka ada kayıtlı: çalınmaz
+    fs::write(&f.cfg.agy_sids, r#"{"baska": "c1"}"#).unwrap();
+    assert_eq!(sid_of(&f).0, None);
+    for bad in [&b"[]"[..], b"{bozuk", b"\xff\xfe", b"", b"null"] {
+        fs::write(&f.cfg.agy_sids, bad).unwrap();
+        assert_eq!(
+            sid_of(&f),
+            (Some("c1".into()), 1, vec![("ag".into(), "c1".into())]),
+            "{bad:?}"
+        );
+    }
+    fs::remove_file(&f.cfg.agy_sids).unwrap();
+    for bad in [&br#"{"/work/proj": 5}"#[..], br#"{"/work/proj": "  "}"#, b"[1]"] {
+        fs::write(&f.cfg.agy_cache, bad).unwrap();
+        let (sid, n, _) = sid_of(&f);
+        assert_eq!(sid, None, "{bad:?}");
+        assert_eq!(n, u32::from(bad == b"[1]"), "{bad:?}");
+    }
+}

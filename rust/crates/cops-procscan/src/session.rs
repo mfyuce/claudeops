@@ -1,5 +1,6 @@
 //! Çalışan oturum modeli ve satır katlama kuralları (`session.py`, `discovery.fold_*`).
 
+use crate::procfs::ProcId;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -25,6 +26,10 @@ pub struct Session {
     pub parked_job_id: Option<String>,
     /// Ön yüz satırına katlanmış arka plan süreci.
     pub bg_pid: Option<u32>,
+    /// Taramada okunan kimlik (pid + başlangıç zamanı). Eylemden önce `ProcFs::verify` ile doğrulanır.
+    /// Python'da karşılığı yok: JSON çıktısına yazılmaz (parite).
+    #[serde(skip)]
+    pub proc_id: Option<ProcId>,
 }
 
 impl Session {

@@ -79,7 +79,7 @@ pub fn int(s: &str) -> Option<i64> {
 }
 
 /// Eşsiz vekil `\uD8xx` kaçışlarını `�` yapar (Python kabul eder, serde_json reddeder).
-fn mask_lone_surrogates(s: &str) -> String {
+pub(crate) fn mask_lone_surrogates(s: &str) -> String {
     let b = s.as_bytes();
     let unit = |i: usize| -> Option<u32> {
         if b.get(i) != Some(&b'\\') || b.get(i + 1) != Some(&b'u') {

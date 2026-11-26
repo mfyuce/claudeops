@@ -2,7 +2,9 @@
 //!   cops-procscan list [--no-cpu] [--base AD] [--json]   (`cops list` çıktısı)
 //!   cops-procscan scan [--no-cpu]                        (süreç alanları, JSON)
 //!   cops-procscan usage TRANSKRIPT.jsonl                 (token toplamı, JSON)
+//!   cops-procscan needs-ho DURUM_DIZINI CWD [TRANSKRIPT] (devir sinyalleri, JSON; git'i yalnız okur)
 
+use cops_procscan::needs_ho::{handover_done, has_real_user_turn, repo_dirty, repo_untracked_count, NeedsHo};
 use cops_procscan::status::{OrphanTracker, Probe};
 use cops_procscan::transcript::jsonl_path_for;
 use cops_procscan::usage::UsageReader;
@@ -11,7 +13,25 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::process::ExitCode;
 
-const USAGE: &str = "kullanım: cops-procscan list [--no-cpu] [--base AD] [--json] | scan [--no-cpu] | usage DOSYA";
+const USAGE: &str =
+    "kullanım: cops-procscan list [--no-cpu] [--base AD] [--json] | scan [--no-cpu] | usage DOSYA | needs-ho DURUM CWD [JSONL]";
+
+/// Sinyaller ayrı ayrı; Python'un istisna fırlattığı transkript `"error"` alanında.
+fn needs_ho_doc(state: &str, cwd: &str, jsonl: Option<&std::path::Path>) -> Value {
+    let ho = NeedsHo::new(state);
+    let tr = |r: Result<bool, _>| match r {
+        Ok(b) => json!(b),
+        Err(e) => json!({ "error": format!("{e}") }),
+    };
+    json!({
+        "needs_ho": tr(ho.needs_ho(cwd, jsonl)),
+        "dirty": repo_dirty(cwd),
+        "untracked": repo_untracked_count(cwd),
+        "committed_since": ho.repo_committed_since(cwd),
+        "has_real_user_turn": jsonl.map(|p| tr(has_real_user_turn(p))),
+        "handover_done": jsonl.map(|p| tr(handover_done(p))),
+    })
+}
 
 fn scan(cfg: &Config, mode: CpuMode<'_>) -> std::io::Result<Scan> {
     find_sessions(cfg, mode).map_err(std::io::Error::other)
@@ -22,6 +42,15 @@ fn run(args: &[String], out: &mut impl Write) -> std::io::Result<bool> {
     let Some((cmd, rest)) = args.split_first() else {
         return Ok(false);
     };
+    if cmd == "needs-ho" {
+        let (state, cwd, jsonl) = match rest {
+            [s, c] => (s, c, None),
+            [s, c, j] => (s, c, Some(std::path::Path::new(j))),
+            _ => return Ok(false),
+        };
+        writeln!(out, "{}", needs_ho_doc(state, cwd, jsonl))?;
+        return Ok(true);
+    }
     if cmd == "usage" {
         let [path] = rest else { return Ok(false) };
         let u = UsageReader::default().usage_for_path(path.as_ref());
@@ -77,7 +106,8 @@ fn run(args: &[String], out: &mut impl Write) -> std::io::Result<bool> {
                 .collect();
             let orphans = OrphanTracker::default().report(&probe, &scan.sessions, 0.0);
             let doc = json!({"sessions": rows, "duplicates": duplicates(&scan.sessions),
-                             "mirrors": scan.mirrors, "orphans": orphans});
+                             "mirrors": scan.mirrors, "orphans": orphans, "diag": scan.diag,
+                             "agy_learned": scan.agy_learned});
             writeln!(out, "{doc}")?;
         }
         _ => return Ok(false),

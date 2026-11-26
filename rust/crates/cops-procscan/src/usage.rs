@@ -57,8 +57,8 @@ pub struct Usage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Key {
-    Message(String, String),
-    Row(String),
+    /// Python demeti: `(message.id, requestId)` ya da `("row", uuid)` (aynı uzayda; Python'da da çakışabilirler).
+    Pair(String, String),
     /// Kimliksiz satır: her biri ayrı tur.
     Unique(u64),
 }
@@ -104,18 +104,27 @@ fn count(v: Option<&Value>) -> u64 {
     }
 }
 
-/// Kimlik değeri: Python doğruluk değeri yanlışsa `None`.
-fn ident(v: Option<&Value>) -> Option<String> {
-    match v? {
-        Value::Null | Value::Bool(false) => None,
-        Value::String(s) if s.is_empty() => None,
-        Value::String(s) => Some(s.clone()),
-        other => Some(format!("\0{other}")),
-    }
-}
-
-/// Python'un `usage_for_path`i `None`a düşüren satır (doğru ama dizgi olmayan `model`).
+/// Python'un `usage_for_path`i `None`a düşüren satır: doğru ama dizgi olmayan `model`, ya da tur anahtarında
+/// hashlenemeyen (dizi/nesne) değer.
+#[derive(Debug, PartialEq, Eq)]
 struct BadRow;
+
+/// Python sözlük anahtarı eşitliği: `True == 1 == 1.0`, `None` ayrı, dizi/nesne hashlenemez (`TypeError`).
+fn py_key(v: Option<&Value>) -> Result<String, BadRow> {
+    Ok(match v {
+        None | Some(Value::Null) => "N".into(),
+        Some(Value::Bool(b)) => format!("n{}", u8::from(*b)),
+        Some(Value::Number(n)) => match (n.as_i64(), n.as_u64(), n.as_f64()) {
+            (Some(i), _, _) => format!("n{i}"),
+            (_, Some(u), _) => format!("n{u}"),
+            (_, _, Some(f)) if f.fract() == 0.0 && f.abs() < 9.0e18 => format!("n{}", f as i64),
+            (_, _, Some(f)) => format!("f{f}"),
+            _ => format!("f{n}"),
+        },
+        Some(Value::String(s)) => format!("s{s}"),
+        Some(Value::Array(_) | Value::Object(_)) => return Err(BadRow),
+    })
+}
 
 fn parse(line: &[u8], unique: &mut u64) -> Result<Option<(Key, Turn)>, BadRow> {
     if !line.windows(7).any(|w| w == b"\"usage\"") {
@@ -127,7 +136,9 @@ fn parse(line: &[u8], unique: &mut u64) -> Result<Option<(Key, Turn)>, BadRow> {
     if !text.trim_start().starts_with('{') {
         return Ok(None);
     }
-    let Ok(row) = serde_json::from_str::<Row>(text) else {
+    // Python eşsiz vekil kaçışını (`\ud800`) kabul eder: kimlik/model alanında olsa da satır kaybolmasın.
+    let Ok(row) = serde_json::from_str::<Row>(text).or_else(|_| serde_json::from_str::<Row>(&py::mask_lone_surrogates(text)))
+    else {
         return Ok(None);
     };
     if row.kind.as_ref().and_then(Value::as_str) != Some("assistant") {
@@ -143,10 +154,11 @@ fn parse(line: &[u8], unique: &mut u64) -> Result<Option<(Key, Turn)>, BadRow> {
     if model == "<synthetic>" {
         return Ok(None); // API hata/kesinti sentetik mesajı
     }
-    let key = match (ident(m.id.as_ref()), ident(row.uuid.as_ref())) {
-        (Some(id), _) => Key::Message(id, row.request_id.map(|r| r.to_string()).unwrap_or_else(|| "null".into())),
-        (None, Some(uuid)) => Key::Row(uuid),
-        (None, None) => {
+    // `(mid, requestId) if mid else ("row", uuid or object())`
+    let key = match (&m.id, &row.uuid) {
+        (Some(id), _) if py::truthy(id) => Key::Pair(py_key(Some(id))?, py_key(row.request_id.as_ref())?),
+        (_, Some(uuid)) if py::truthy(uuid) => Key::Pair("srow".into(), py_key(Some(uuid))?),
+        _ => {
             *unique += 1;
             Key::Unique(*unique)
         }
@@ -182,10 +194,11 @@ pub struct UsageReader {
 }
 
 impl UsageReader {
-    fn update(&mut self, path: &Path) -> Option<&FileState> {
+    /// Dosya yok/okunamıyor `Ok(None)`; Python'un istisna fırlattığı satır `Err` (offset satırın ötesinde kalır).
+    fn update(&mut self, path: &Path) -> Result<Option<&FileState>, BadRow> {
         let Ok(meta) = std::fs::metadata(path) else {
             self.files.remove(path);
-            return None;
+            return Ok(None);
         };
         let size = meta.len();
         if !self.files.contains_key(path) && self.files.len() >= MAX_CACHED_FILES {
@@ -198,17 +211,22 @@ impl UsageReader {
             *st = FileState::default();
         }
         if size != st.offset {
-            let mut f = File::open(path).ok()?;
-            f.seek(SeekFrom::Start(st.offset)).ok()?;
+            let Ok(mut f) = File::open(path) else { return Ok(None) };
+            if f.seek(SeekFrom::Start(st.offset)).is_err() {
+                return Ok(None);
+            }
             let mut r = BufReader::new(f);
             let mut line = Vec::new();
             loop {
                 line.clear();
-                if r.read_until(b'\n', &mut line).ok()? == 0 || line.last() != Some(&b'\n') {
-                    break;
+                match r.read_until(b'\n', &mut line) {
+                    Err(_) => return Ok(None),
+                    Ok(0) => break,
+                    Ok(_) if line.last() != Some(&b'\n') => break,
+                    Ok(_) => {}
                 }
                 st.offset += line.len() as u64;
-                if let Some((key, turn)) = parse(&line, &mut self.unique).ok()? {
+                if let Some((key, turn)) = parse(&line, &mut self.unique)? {
                     st.turns
                         .entry(key)
                         .and_modify(|old| {
@@ -222,10 +240,11 @@ impl UsageReader {
             }
         }
         st.size = size;
-        Some(st)
+        Ok(Some(st))
     }
 
-    /// Ana transkript okunamazsa `None`.
+    /// Ana transkript okunamazsa ya da (ana ya da alt ajan) dosyada Python'un istisna fırlattığı satır varsa `None`
+    /// (o satır bir sonraki çağrıda atlanmış olur, Python gibi).
     pub fn usage_for_path(&mut self, main: &Path) -> Option<Usage> {
         fn sum(st: &FileState, into: &mut Totals, fams: &mut BTreeMap<&'static str, Totals>) {
             for t in st.turns.values() {
@@ -234,7 +253,7 @@ impl UsageReader {
             }
         }
         let mut out = Usage::default();
-        sum(self.update(main)?, &mut out.main, &mut out.by_family);
+        sum(self.update(main).ok()??, &mut out.main, &mut out.by_family);
         let stem = match main.extension() {
             Some(e) if e == "jsonl" => main.with_extension(""),
             _ => main.to_path_buf(),
@@ -252,7 +271,8 @@ impl UsageReader {
             .collect();
         subs.sort();
         for p in subs {
-            if let Some(st) = self.update(&p) {
+            // Python: alt ajan dosyasındaki istisna da tüm toplamı `None` yapar
+            if let Some(st) = self.update(&p).ok()? {
                 out.subagents.n += 1;
                 sum(st, &mut out.subagents.totals, &mut out.by_family);
             }
@@ -347,5 +367,122 @@ pub fn fmt_tokens(n: u64) -> String {
         format!("{:.1}K", n as f64 / 1000.0)
     } else {
         n.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn row(id: &str, model: &str, out: u64) -> String {
+        format!(
+            r#"{{"type":"assistant","requestId":"r","message":{{"id":"{id}","model":{model},"usage":{{"output_tokens":{out}}}}}}}"#
+        ) + "\n"
+    }
+
+    fn append(p: &Path, s: &str) {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(p)
+            .unwrap()
+            .write_all(s.as_bytes())
+            .unwrap();
+    }
+
+    #[test]
+    fn bad_row_returns_none_once_and_offset_moves_past_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        append(&p, &(row("m1", "\"x\"", 1) + &row("m2", "5", 2) + &row("m3", "\"x\"", 4)));
+        let mut r = UsageReader::default();
+        assert_eq!(r.usage_for_path(&p), None);
+        // Python gibi: offset bozuk satırın ötesinde, önceki tur korunur, sonraki tur okunur
+        let st = &r.files[&p];
+        assert_eq!(
+            (st.offset, st.size, st.turns.len()),
+            ((row("m1", "\"x\"", 1).len() + row("m2", "5", 2).len()) as u64, 0, 1)
+        );
+        let u = r.usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.main.output), (2, 5));
+        assert_eq!(r.files[&p].size, r.files[&p].offset);
+    }
+
+    #[test]
+    fn python_key_equality() {
+        let k = |v: Value| py_key(Some(&v));
+        assert_eq!(k(json(1)), k(json(1.0)));
+        assert_eq!(k(json(true)), k(json(1)));
+        assert_ne!(k(json("1")), k(json(1)));
+        assert_eq!(py_key(None), k(Value::Null));
+        assert_eq!(k(json([1])), Err(BadRow));
+        assert_eq!(k(serde_json::json!({})), Err(BadRow));
+        assert_ne!(k(json(1.5)), k(json(1)));
+    }
+
+    fn json<T: Serialize>(v: T) -> Value {
+        serde_json::to_value(v).unwrap()
+    }
+
+    /// İlk çağrı `None` (beklemez), arka plan yenilemesinden sonra değer; okuma hatası eski değeri EZMEZ.
+    #[test]
+    fn cache_first_none_then_value_and_error_keeps_last_good() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        append(&p, &row("m1", "\"claude-opus\"", 3));
+        let cache = UsageCache::new(Duration::ZERO);
+        let wait_for = |want: &dyn Fn(&Option<Usage>) -> bool| {
+            let t = Instant::now();
+            loop {
+                let v = cache.get(&p);
+                if want(&v) || t.elapsed() > Duration::from_secs(5) {
+                    return v;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        assert_eq!(cache.get(&p), None);
+        let v = wait_for(&|v| v.is_some()).unwrap();
+        assert_eq!((v.main.turns, v.main.output), (1, 3));
+
+        // dosya gitti: yenilemeler `None` üretir ama son iyi değer kalır
+        std::fs::remove_file(&p).unwrap();
+        let refreshed_after_delete = |c: &UsageCache| lock(&c.summaries)[&p].at;
+        let before = refreshed_after_delete(&cache);
+        let t = Instant::now();
+        while refreshed_after_delete(&cache) == before && t.elapsed() < Duration::from_secs(5) {
+            assert_eq!(cache.get(&p).map(|u| u.main.turns), Some(1));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_ne!(refreshed_after_delete(&cache), before, "yenileme koşmadı");
+        assert_eq!(cache.get(&p).map(|u| u.main.turns), Some(1));
+
+        // yeni içerik gelince güncellenir
+        append(&p, &(row("a", "\"x\"", 1) + &row("b", "\"x\"", 1)));
+        let v = wait_for(&|v| v.as_ref().is_some_and(|u| u.main.turns == 2)).unwrap();
+        assert_eq!(v.main.turns, 2);
+    }
+
+    /// TTL içinde ikinci yenileme başlatılmaz.
+    #[test]
+    fn cache_respects_ttl() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        append(&p, &row("m1", "\"x\"", 3));
+        let cache = UsageCache::new(Duration::from_secs(3600));
+        assert_eq!(cache.get(&p), None);
+        let t = Instant::now();
+        while cache.get(&p).is_none() && t.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        append(&p, &row("m2", "\"x\"", 3));
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(cache.get(&p).map(|u| u.main.turns), Some(1));
+    }
+
+    #[test]
+    fn fmt_tokens_python_examples() {
+        assert_eq!([5, 12345, 1_234_567].map(fmt_tokens), ["5", "12.3K", "1.23M"]);
     }
 }

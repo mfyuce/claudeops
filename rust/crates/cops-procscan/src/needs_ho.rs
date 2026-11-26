@@ -166,10 +166,8 @@ fn from_iso(s: &str) -> Option<IsoTime> {
     }
     // ayraç herhangi tek karakter
     let sep = s.get(10..)?.chars().next()?;
+    // ayraçtan sonra saat zorunlu ("2026-11-04T" geçersiz; altın vektör)
     let time = s.get(10 + sep.len_utf8()..)?.as_bytes();
-    if time.is_empty() {
-        return Some((midnight, None));
-    }
     let (clock, offset) = match time.iter().position(|&c| c == b'+' || c == b'-') {
         Some(i) => {
             let tz = &time[i + 1..];
@@ -257,8 +255,9 @@ impl NeedsHo {
     }
 }
 
-/// Zaman damgası dalı: çözülemeyen commit zamanı = yeni değil, çözülemeyen baseline = yeni.
-fn committed_after(commit_iso: &str, base_iso: &str) -> bool {
+/// Zaman damgası dalı (`repo_committed_since`, baseline yokken): çözülemeyen commit zamanı = yeni değil,
+/// çözülemeyen baseline = yeni. Python 3.10 `datetime.fromisoformat` kuralı.
+pub fn committed_after(commit_iso: &str, base_iso: &str) -> bool {
     let Some(commit) = from_iso(commit_iso) else { return false };
     from_iso(base_iso).is_none_or(|base| newer(commit, base))
 }
