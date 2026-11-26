@@ -1,11 +1,11 @@
 # rs/state (W0-a): `cops-state` crate'i
 
-Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK (boşluk kapatma turu). **BİRLEŞTİRMEYE HAZIR DEĞİL**:
-sahip TBD#374'ü (a) cevapladı (q20261126_182502_d29f: S1-S9 iki tarafta düzelsin), HENÜZ UYGULANMADI; S11-S12 TBD#379'da.
-Kod: `31f9868` (ilk); ikinci tur `d438cd1`, `a4dfdda`, `becc4d6`, `56ebd96`, `15b97b5`, `bd11a27`; boşluk turu `98384f1`
+Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK. **BİRLEŞTİRMEYE HAZIR.** TBD#374 (a) UYGULANDI: S1-S9
+iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. S11-S12 sahibe açık
+(TBD#379): cevap gelene dek bugünkü belgelenmiş davranış (engel değil). **Birleşince web servisi restart + uzak deploy ister.**
 (K1, K6), `a172591` (K2, K3), sonrası K4 + test boşlukları ve belge commit'leri.
 Doğrulama (rust/ içinde): `cargo fmt -p cops-state --check`, `cargo clippy -p cops-state --all-targets -- -D warnings`,
-`cargo test -p cops-state` (16 birim + 98 entegrasyon/parite = 114 test, 19 test ikilisi). Parite testleri `python3` ve kullanıcı site paketlerini (`websockets`),
+`cargo test -p cops-state` (18 birim + 98 entegrasyon/parite = 116 test). Parite testleri `python3` ve kullanıcı site paketlerini (`websockets`),
 `tests/fs_atomic.rs::fsync_before_rename_and_dir_after` ayrıca `strace` ister; testler yalnız geçici dizine yazar
 (`HOME` ve `CLAUDEOPS_DIR` geçici, `TestEnv`).
 
@@ -78,16 +78,16 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 | Sapma | Python | Rust (şimdi) | Karar, kanıt |
 |---|---|---|---|
 | `FileLock` yeniden giriş | aynı iş parçacığında iç içe alınır | AYNI (`56ebd96`): yol `normpath(abspath)`, iç içe alma yeni `flock` almaz, düşürme sırası önemsiz | Python gibi. `fsutil::tests::reentrant_same_thread_exclusive_across_threads`, `tests/lock_e2e.rs` |
-| `FileLock` zaman aşımı / yabancı ya da bağ kilit dosyası | uyarı + kilitsiz sürer | `TimedOut` / `PermissionDenied` / `ELOOP` hatası | Değiştirilmedi: S1, S5. `fsutil::tests::lock_symlink_refused` |
-| Süreç içi bekleyen iş parçacığı | `RLock` süresiz bekler | `flock` 30 sn sonra hata | S1 kapsamında |
+| `FileLock` zaman aşımı / yabancı ya da bağ kilit dosyası | `LockError`, gövde çalışmaz (panelde 503) | `TimedOut` / `PermissionDenied` / `ELOOP` hatası | EŞİT (TBD#374 S1, S5). `fsutil::tests::lock_symlink_refused`, `test_state_lock_fail_closed.py` |
+| Süreç içi bekleyen iş parçacığı | `RLock` süresiz bekler (sahibi 30 sn sınırlı `flock`ta) | `flock` 30 sn sonra hata | Küçük fark: uzun tutulan kilidin arkasındaki iş parçacığı |
 | `CLAUDEOPS_STORE_BACKEND` | her çağrıda okunur | AYNI (`56ebd96`; `isolated` okumaz) | Python gibi. `tests/env_backend.rs` |
 | `db` kipte KALICI DB hatası (DB yok, şema yeni, Postgres) | dosyaya yazar, belgeyi kirli sayar | hiçbir yere yazmaz, hata döner | SIKI KALDI. Gerekçe (veri kaybı): Rust bu DB'ye hiç yazamayacağı için dosyaya yazdığı değer db-hazır belgede Python okuyucularına görünmez ve Python'un sonraki ayna yazımı onu ezer (sessiz kayıp, iki süreç farklı değer görür). Geçici hata (kilit) Python gibi `DbDeferred`. `parity.rs::schema_mismatch_never_writes`, `db_transient_failure_defers_and_recovers` |
-| TSV alanında sekme / satır sonu | denetlenmez (yalnız `cwd`) | `InvalidInput`, hiçbir dosya yazılmaz | SIKI KALDI. Gerekçe (güvenlik + veri bütünlüğü): satır sonu yeni roster satırı enjekte eder, sekme `cli` sütununu kaydırır. `parity_instances::register_model_newline_documented_divergence`, S3 |
+| TSV alanında sekme / satır sonu | `model_bad_chars` / `cwd_bad_chars` | AYNI; alt düzey yazıcı ayrıca `InvalidInput` | EŞİT (S3). `parity_instances::register_model_bad_chars_like_python` |
 | `~kullanici` | `pwd` ile genişletilir | AYNI (`d438cd1`, `paths::expanduser_with`; `HOME` yoksa passwd) | Python gibi. `parity_settings::expanduser_and_proc_match_python` |
 | Eşlenmemiş vekil (`"\ud800"`) | okunur, yazılamaz | AYNI: `Read::Lossy` (U+FFFD ile okunur, DB'ye aktarılmaz), yazıcı hata | Python gibi; U+FFFD yalnız Rust dizesinde tutulamadığı için. `parity_instances::lone_surrogate_readable_not_writable` |
-| UTF-8 olmayan `settings.json` | istisna | varsayılanlar | Değiştirilmedi: S2. `parity_settings::settings_non_utf8_documented_divergence` |
-| `Instances::load` önbelleği | dosya anahtarlı önbellek | `files`/`dual`: AYNI (`becc4d6`); `db`: önbelleksiz | `db` kısmı S4. `parity_instances::load_cache_semantics` |
-| `load_settings` G/Ç hatası | varsayılanlar önbelleğe girer | varsayılanlar döner, önbelleğe GİRMEZ | Ders listesi (last_good) gereği UYGULANDI, S7'de onay istenir. `parity_settings::settings_io_error_keeps_last_good` |
+| Bozuk / UTF-8 olmayan `settings.json` | varsayılanlar, `store_backend` son iyi değer | AYNI (`SettingsReader`, `StateDocs::backend`); durumsuz `settings::load` son değer tutmaz | EŞİT (S2). `parity_settings::settings_corrupt_keeps_store_backend_like_python`, `backend_tests` |
+| `Instances::load` önbelleği | `files`/`dual`: dosya anahtarlı; `db`: önbelleksiz | AYNI | EŞİT (S4). `parity_instances::load_cache_semantics` |
+| `load_settings` G/Ç hatası | varsayılanlar, önbelleğe girmez, `store_backend` son iyi değer | AYNI (ek: `last_good()` son iyi belgeyi tutar) | EŞİT (S7). `parity_settings::settings_io_error_keeps_last_good` |
 | `Store::backup` meşgul DB | süresiz bekler (0,25 sn aralık) | 30 sn sonra hata | Sınırlı bekleme dersi (H8); tek tutamaç |
 | `add_missing` kayıt değeri liste çiftleri (`dict([[k, v]])`) | sözlüğe çevrilir | hata | Önemsiz (yalnız göç aracı); kayıtlar her zaman nesne |
 | `proc_ppid` alan eksik | `IndexError` | `ProcError::Parse` | İkisi de hata |
@@ -97,8 +97,8 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 
 ## Sahibe soruldu
 
-Python davranışı hatalı olabilir; Rust'ta SESSİZ düzeltme ya da SESSİZ taklit yok. Rust'ın şimdiki davranışı (S7 hariç
-hepsinde değişmedi) yazılı; karar sahibin.
+Sahip cevabı (TBD#374, q20261126_182502_d29f): (a). S1-S9 UYGULANDI (aşağıdaki tablo sorulduğu andaki durumu gösterir;
+güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 TBD#379'da açık.
 
 | # | Konu | Python | Rust (şimdi) | Seçenek A | Seçenek B | Öneri |
 |---|---|---|---|---|---|---|
@@ -128,7 +128,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | Her durum parçası için tek yazar ve doğruluk kaynağı yazılı; ayna yalnız dışa aktarım (H3) | karşılandı | bu belge "Durum parçaları" tablosu; `parity.rs::statedocs_modes_with_python` (db-hazır belgede db kipi dosyaya bakmaz) |
 | Yeni durum SQLite; yeni JSON/JSONL durum dosyası yok (H2) | karşılandı | crate yeni durum dosyası açmaz (yalnız Python'un var olan dosyaları, `diag.log` ekleme günlüğü ve `.corrupt-<sha8>` kanıt kopyası, Python kuralı); `tests/scan.rs::no_direct_file_writes` |
 | Dosya yazımı yalnız atomik yazıcı (aynı dizinde tmp, dosya + dizin fsync, izin açılışta); `std::fs::write` yok (H2) | karşılandı | `fsutil.rs:38` `write_replace` (O_EXCL+O_NOFOLLOW, fsync, rename, dizin fsync); `scan.rs::no_direct_file_writes`; `parity_store::atomic_write_text_matches_python` (bayt + izin + geçici dosya kalmaz) |
-| Oku-değiştir-yaz kilit altında, zaman aşımlı flock; kilit yolu normalize (`0872f86`) (H2) | karşılandı | `RosterGuard` (`roster.rs`), `Instances::try_mutate`, `Store::update_doc` (`BEGIN IMMEDIATE`); `FileLock` 30 sn + `abs_normpath`: `fsutil::tests::reentrant_same_thread_exclusive_across_threads` (`alt/../belge.json` aynı kilit, zaman aşımı); istisna `FileLock::blocking` süresiz (Python ile aynı, S6) |
+| Oku-değiştir-yaz kilit altında, zaman aşımlı flock; kilit yolu normalize (`0872f86`) (H2) | karşılandı | `RosterGuard` (`roster.rs`), `Instances::try_mutate`, `Store::update_doc` (`BEGIN IMMEDIATE`); `FileLock` 30 sn + `abs_normpath`: `fsutil::tests::reentrant_same_thread_exclusive_across_threads` (`alt/../belge.json` aynı kilit, zaman aşımı); `FileLock::exclusive` 30 sn (S6, `exclusive_lock_is_bounded`) |
 | Python ile paylaşılan belge: kilit sözleşmesi belgeli, iki yazarlı e2e (R1-3) (H2, H14) | karşılandı | "Durum parçaları" tablosu + `tests/lock_e2e.rs` başlığı; `lock_e2e::python_lock_blocks_rust_and_back`, `roster_and_instances_locks_shared`; `parity.rs::concurrent_writers_lose_nothing` |
 | "Yok", "boş", "bozuk" ayrı; bozuk belge yazımdan önce `.corrupt-<sha>` yedeği (`d63c39d`) (H5) | karşılandı | `Read::{Value, Lossy, Missing, Corrupt}`; boş TSV ile yok TSV ayrı (`parity.rs::roster_reads_and_writes_match_python` boş/silinen dosya); Rust yazıcıları bozuk belgenin üstüne yazmaz (`parity.rs::instances_match_python`, `parity_instances::bad_encoding_files_not_overwritten`); yedek: `fsutil::write_corrupt_copy`, `settings::backup_if_corrupt`, `StateDocs::read_with(on_corrupt)`: `parity_store::sha256_and_corrupt_backup_match_python`, `mirror_log_and_on_corrupt_match_python` |
 | Ayarda varsayılanların derin kopyası paylaşılmaz; sözlük olmayan blok yamayı çökertmez/silmez (`de592ee`, `683a750`) (H5) | karşılandı | okuma: `Settings::from_text` varsayılanları kopyalar, `DICT_KEYS` sözlük değilse `{}` (`parity.rs::settings_match_python`, `settings::tests::merge_rules`, 59 durumlu `parity_settings::settings_readers_match_python`); yama yazımı Rust'ta yok (ayar yazımı Python'da, T7) |
@@ -148,7 +148,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | 4 | Eylem sonucu doğrulanıyor; NEGATİF test (H9) | karşılandı | `WriteOutcome::{Written, DbDeferred}`; negatif testler: `db_transient_failure_defers_and_recovers`, `schema_mismatch_never_writes`, `bad_records_fail_like_python`, `bad_encoding_files_not_overwritten`, `guard.rs` |
 | 5 | `let _`, `.ok()`, `unwrap_or_default()`, `expect` taraması; yutulan hata gerekçeli (H9, H20) | karşılandı | `tests/scan.rs::swallow_patterns_match_allowlist` (dosya başına sayı); gerekçeler aşağıda "Hata yutma taraması". `unwrap`/`expect` test dışı kodda yok |
 | 6 | Önbellek/ayar bayatlamıyor; hata `last_good`u ezmiyor (H3) | karşılandı | `SettingsReader` imza (mtime, boyut, inode) anahtarlı, G/Ç hatası önbelleğe girmez (`settings_io_error_keeps_last_good`); instances önbelleği dosya anahtarlı, db kipte yok (`load_cache_semantics`); kip ortamı her çağrıda (`env_backend.rs`) |
-| 7 | Her döngü/bekleme sınırlı (H8) | karşılandı (istisna S6) | `FileLock` 30 sn (`reentrant_...`, `lock_e2e::python_lock_blocks_rust_and_back` 300 ms), `Store::backup` 30 sn (`BACKUP_RETRIES`), `create_unique` 100 deneme, `realpath` 40 bağ, `getpw` 4 tampon; `FileLock::blocking` süresiz (Python `_locked` ile aynı; sahibe S6) |
+| 7 | Her döngü/bekleme sınırlı (H8) | karşılandı | `FileLock` 30 sn (`reentrant_...`, `lock_e2e::python_lock_blocks_rust_and_back` 300 ms), `Store::backup` 30 sn (`BACKUP_RETRIES`), `create_unique` 100 deneme, `realpath` 40 bağ, `getpw` 4 tampon; `FileLock::exclusive` 30 sn (S6, `exclusive_lock_is_bounded`) |
 | 8 | Dış CLI/TUI davranışı fixture'lı (H4) | kapsam dışı | bu crate CLI/TUI sürmez; rs/tmux (W0-b), rs/prov |
 | 9 | Alt süreç/bağlantı sahibi belli; fd sızıntı testi (H1) | karşılandı | crate alt süreç açmaz; DB bağlantısı `Store` ile düşer; `tests/fd_leak.rs` (ayrı ikili, 60 tur tüm yollar + hata yolları; bilerek eklenen 1 sızıntıyla kırmızıya döndüğü doğrulandı) |
 | 10 | Girdi sınırları: boş, negatif/dev, NaN/inf, bozuk UTF-8, tip hatalı JSON (H5) | karşılandı | `parity_settings::settings_readers_match_python` (NaN, inf, 1e400, -1, 10^23, yanlış tipler), `int_float_parse_match_python`, `str_repr_match_python`, `parity.rs::settings_match_python`, `bad_encoding_files_not_overwritten`, `lone_surrogate_readable_not_writable`, `parity.rs::json_bytes_match_python` |
@@ -213,10 +213,10 @@ Okuma kuralı:
 
 | Satır türü | Toplam | tamam | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| Tanım satırı | 234 | 202 | 32 | 0 |
-| Test metodu satırı | 306 | 190 | 116 | 0 |
+| Tanım satırı | 234 | 203 | 31 | 0 |
+| Test metodu satırı | 306 | 193 | 113 | 0 |
 | Dosya satırı (kalan metotlar) | 103 | 0 | 103 | 0 |
-| Toplam | 643 | 392 | 251 | 0 |
+| Toplam | 643 | 396 | 247 | 0 |
 
 Listelenen 31 test dosyasının 189 metodu tek tek yazıldı; diğer dosyalardan 117 metot tek tek, kalan 1715 metot 103 dosya
 satırıyla yazıldı.
@@ -229,7 +229,7 @@ satırıyla yazıldı.
 | K2 | `steward_config`, `steward_ids` yoktu | `steward_settings.rs` (`a172591`) |
 | K3 | `default_model_for`, `default_effort_for`, `resolved_model_for` yoktu | `settings_read.rs`, sağlayıcı bilgisi parametre (`a172591`) |
 | K4 | `statedocs` günlüğü stderr'e gidiyordu | `diag.log` + `log` akışı `diag` (Python gibi) |
-| K5 | `file_lock` uyarıp kilitsiz sürmüyor | DEĞİŞMEDİ: bilinçli sapma, sahip kararı S1/S5 (TBD#374) |
+| K5 | `file_lock` uyarıp kilitsiz sürmüyor | KAPANDI: Python da `LockError` veriyor (TBD#374 S1/S5) |
 | K6 | `known_names` canlı süreç adlarını içermiyordu | `running` parametresi (`98384f1`) |
 | ek | `register_doc_prefix` uzunluğu bayt sayıyordu (`é/` kabul ediliyordu; Python reddeder) | kod noktası sayılır |
 | ek | `sqlite_path_from_url` `str.strip()` yerine `trim()` kullanıyordu (U+001C) | Python gibi |
@@ -425,7 +425,7 @@ satırıyla yazıldı.
 | `read_strict` (instances.py:42) | instances.rs::Instances::read_strict, read_checked | parity.rs::instances_match_python; parity_instances.rs::bad_encoding_files_not_overwritten | tamam |
 | `load_instances` (instances.py:58) | instances.rs::Instances::load | parity.rs::instances_match_python; parity_instances.rs::load_cache_semantics | tamam |
 | `get_instance` (instances.py:79) | instances.rs::Instances::get | parity.rs::register_project_across_languages | tamam |
-| `_locked` (instances.py:84) | fsutil.rs::FileLock::blocking | lock_e2e.rs::roster_and_instances_locks_shared | tamam |
+| `_locked` (instances.py:84) | fsutil.rs::FileLock::exclusive | lock_e2e.rs::roster_and_instances_locks_shared | tamam |
 | `_mutate` (instances.py:94) | instances.rs::Instances::try_mutate, mutate | parity.rs::instances_match_python, concurrent_writers_lose_nothing | tamam |
 | `record_instance` (instances.py:108) | instances.rs::Instances::record | parity.rs::instances_match_python | tamam |
 | `record_instance._apply` (instances.py:116) | instances.rs::Instances::record (kapanış) | parity.rs::instances_match_python | tamam |
@@ -456,7 +456,7 @@ satırıyla yazıldı.
 | `_LOCKS_GUARD` (atomic_json.py:125) | yok | yok | kapsam dışı: Python'un süreç içi kilit tablosunun koruyucusu; Rust'ta ortak tablo yok (iş parçacığı yerel kayıt ve ayrı fd flock); iz W0-a |
 | `_THREAD_LOCKS` (atomic_json.py:126) | fsutil.rs::HELD ve fd başına flock | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
 | `_HELD` (atomic_json.py:127) | fsutil.rs::HELD | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
-| `_WARNED_LOCKS` (atomic_json.py:128) | yok | fsutil.rs::lock_symlink_refused; lock_e2e.rs::python_lock_blocks_rust_and_back (uyarı yok, hata döner) | kapsam dışı: bilinçli sapma, sahip kararı S1/S5 (TBD#374) |
+| `LockError`, `flock_bounded` (atomic_json.py) | fsutil.rs::FileLock (`TimedOut`/`PermissionDenied`), flock_within | fsutil.rs::lock_symlink_refused, exclusive_lock_is_bounded; lock_e2e.rs::python_lock_blocks_rust_and_back | tamam |
 | `file_lock` (atomic_json.py:132) | fsutil.rs::FileLock::acquire, acquire_within | fsutil.rs::reentrant_same_thread_exclusive_across_threads, lock_symlink_refused; lock_e2e.rs::python_lock_blocks_rust_and_back | tamam |
 | `roster_lock` (atomic_json.py:169) | fsutil.rs::FileLock::roster | lock_e2e.rs::roster_and_instances_locks_shared | tamam |
 | `_file_lock_outer` (atomic_json.py:177) | fsutil.rs::FileLock::acquire_within | fsutil.rs::lock_file_owner_and_type_rules (uid/tür kararı), lock_symlink_refused; fs_atomic.rs::non_regular_lock_file_refused; lock_e2e.rs::python_lock_blocks_rust_and_back | tamam |
@@ -510,7 +510,7 @@ satırıyla yazıldı.
 | `_append_tsv_line` (commands/web.py:759) | roster.rs::RosterGuard::append | parity.rs::roster_reads_and_writes_match_python | tamam |
 | `_append_tsv_line_unlocked` (commands/web.py:765) | roster.rs::RosterGuard::append | parity.rs::roster_reads_and_writes_match_python | tamam |
 | `_NAME_VALID_RE` (commands/web.py:777) | roster.rs::valid_project_name | parity.rs::register_project_across_languages | tamam |
-| `_register_project` (commands/web.py:780) | roster.rs::Roster::register_project | parity_roster.rs::register_cwd_bad_chars_like_python; parity.rs::register_project_across_languages; parity_instances.rs::register_model_newline_documented_divergence (S3) | tamam |
+| `_register_project` (commands/web.py:780) | roster.rs::Roster::register_project | parity_roster.rs::register_cwd_bad_chars_like_python; parity.rs::register_project_across_languages; parity_instances.rs::register_model_bad_chars_like_python | tamam |
 | `_edit_project` (commands/web.py:817) | yok (yazım ilkelleri RosterGuard::replace, Instances::rename_blueprint) | yok | kapsam dışı: `/api/edit` uç eylemi, süreç taraması ister; iz T4 |
 | `_blueprint_cwds` (commands/web.py:881) | roster.rs::blueprint_cwds | parity_instances.rs::roster_by_name_and_blueprint_cwds_match_python | tamam |
 | `_roster_lock` (commands/web.py:985) | roster.rs::Roster::lock | lock_e2e.rs::roster_and_instances_locks_shared | tamam |
@@ -535,11 +535,11 @@ satırıyla yazıldı.
 | `test_agy_sids_store.py::AgySidsStoreTest::test_concurrent_remembers_lose_nothing` | yok | kapsam dışı: `agy_provider` kilitli yazımı; iz W1-pre sağlayıcı |
 | `test_atomic_json_fd_dirsync.py::DirFsyncTest::test_directory_is_fsynced_after_replace` | fs_atomic.rs::fsync_before_rename_and_dir_after | tamam |
 | `test_atomic_json_fd_dirsync.py::FdopenLeakTest::test_fd_closed_when_fdopen_fails` | fd_leak.rs::no_fd_leak (yazım hatası yolu); fs_atomic.rs::failed_write_removes_tmp | tamam |
-| `test_atomic_json_lock.py::TestFileLockFallback::test_symlink_lock_warns_once_and_still_runs` | fsutil.rs::lock_symlink_refused (hata döner, hedef yaratılmaz) | kapsam dışı: bilinçli sapma, sahip kararı S1/S5 (TBD#374) |
+| `test_atomic_json_lock.py::TestFileLockFailsClosed::test_symlink_lock_raises_and_body_does_not_run` | fsutil.rs::lock_symlink_refused (hata döner, hedef yaratılmaz) | tamam |
 | `test_atomic_json_lock.py::TestFileLockFallback::test_normal_lock_no_warning` | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
 | `test_atomic_json_lock.py::TestAtomicWriteTmp::test_utf8_with_mode_and_stale_symlink_tmp_not_followed` | fs_atomic.rs::stale_symlink_tmp_not_followed | tamam |
 | `test_atomic_json_lock.py::TestAtomicWriteTmp::test_default_mode_respects_umask` | fs_process.rs::umask_and_bare_filename | tamam |
-| `test_atomic_json_lock_timeout.py::LockTimeout::test_times_out_instead_of_hanging` | lock_e2e.rs::python_lock_blocks_rust_and_back (süre sonunda `TimedOut`) | kapsam dışı: bilinçli sapma, sahip kararı S1/S5 (TBD#374) |
+| `test_atomic_json_lock_timeout.py::LockTimeout::test_times_out_instead_of_hanging` | lock_e2e.rs::python_lock_blocks_rust_and_back (süre sonunda `TimedOut`) | tamam |
 | `test_atomic_json_lock_timeout.py::LockTimeout::test_normal_acquire` | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
 | `test_atomic_json_mode.py::AtomicModeTest::test_existing_mode_preserved_text` | parity_store.rs::atomic_write_text_matches_python | tamam |
 | `test_atomic_json_mode.py::AtomicModeTest::test_existing_mode_preserved_json` | fs_atomic.rs::json_mode_preserved_and_explicit | tamam |
@@ -548,7 +548,7 @@ satırıyla yazıldı.
 | `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_entries_removed_after_use` | fsutil.rs::reentrant_same_thread_exclusive_across_threads (HELD boşalır) | tamam |
 | `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_nested_same_path_ok_and_cleaned` | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
 | `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_exception_still_cleans` | fs_atomic.rs::panic_releases_lock | tamam |
-| `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_unusable_lock_file_warns_once_per_path` | fsutil.rs::lock_symlink_refused; fs_atomic.rs::non_regular_lock_file_refused | kapsam dışı: bilinçli sapma, sahip kararı S1/S5 (TBD#374) |
+| `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_unusable_lock_file_raises_and_cleans` | fsutil.rs::lock_symlink_refused; fs_atomic.rs::non_regular_lock_file_refused | tamam |
 | `test_atomic_json_thread_locks_bounded.py::ThreadLocksBoundedTest::test_concurrent_threads_stay_mutually_exclusive` | fsutil.rs::reentrant_same_thread_exclusive_across_threads; parity.rs::concurrent_writers_lose_nothing | tamam |
 | `test_atomic_text_concurrent.py::AtomicTextTest::test_concurrent_writers_leave_one_complete_file_and_no_tmp` | fs_atomic.rs::concurrent_text_writers_leave_one_complete_file | tamam |
 | `test_atomic_text_concurrent.py::AtomicTextTest::test_mode_600_and_unicode` | parity_store.rs::atomic_write_text_matches_python | tamam |
@@ -958,4 +958,12 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 3. ~~Taşınmamış işlevler~~ (bu tur: settings okuyucuları `d438cd1`; store/statedocs `a4dfdda`; instances/roster/paths
    `d438cd1`, `becc4d6`).
 4. ~~Sapmalar~~ (yukarıdaki tablo).
-5. Sahip cevapları S1-S12 (yukarıda; S1/S5: TBD#374); cevaba göre iki dilde birlikte değişiklik.
+5. ~~Sahip cevapları S1-S9~~ (uygulandı). S11-S12: TBD#379 (cevap gelince iki dilde birlikte).
+
+### TBD#374 ile eklenen Python tanımları ve testleri
+
+| Python | Rust | Rust testi | Durum |
+|---|---|---|---|
+| `_LAST_BACKEND`, `_keep_backend` (settings.py), `_CACHE["good"]` (statedocs.py) | settings.rs::SettingsReader.last_backend, statedocs.rs State.good_backend | parity_settings.rs::settings_corrupt_keeps_store_backend_like_python; statedocs.rs::backend_tests | tamam |
+| `_tsv_unsafe` (web.py) | roster.rs::tsv_unsafe | parity_instances.rs::register_model_bad_chars_like_python | tamam |
+| `test_state_*.py` (7 dosya), `test_provider_bin_type.py` | yukarıdaki testler; parity_settings.rs::settings_readers_match_python (S8, S9 vakaları) | | tamam |
