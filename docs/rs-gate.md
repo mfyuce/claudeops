@@ -178,3 +178,5 @@ Her test adı `rust/crates` altında grep ile bulundu (betik: eşlik bölüm 7).
 - Python (`py/tests` içinde, geçici `HOME` ve `CLAUDEOPS_DIR`): `test_front_internal` (CSP eşitliği `lib.rs`i okur),
   `test_front_cmd`, `test_authz_vectors`, `test_front_xff`: 24 test geçti.
 - Testler yalnız geçici dizin ve boş port kullanır.
+
+BİRLEŞTİRMEYE HAZIR: rs/gate 5ce9f57 (cargo test cops-proxy+copsd+cops-parity+cops-auth 122 geçti 0 kaldı; clippy -D warnings ve fmt temiz; copsd-ent 50/0 ve Python 24 test alt ajan koşusu; parite GET 7/7, 174c18e ikilisiyle). main 5ce9f57 tabanından ileride: birleştirilmiş ağaçta testler ve bağımsız gözden geçirme cops kapısında.
