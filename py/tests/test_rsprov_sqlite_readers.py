@@ -73,6 +73,21 @@ class UriTest(unittest.TestCase):
                 copilot_provider._connect_ro()                   # yok olan dosya yaratılmaz
         self.assertEqual(os.listdir(self.root), [])
 
+class AgyBadCellTest(unittest.TestCase):
+    def test_bad_text_cell_does_not_drop_good_rows(self):
+        for idx in (0, 3):              # bozuk hücre eskide ya da en yenide
+            with self.subTest(idx=idx), tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "abc.db")
+                steps(path, [(1, 14, U(b"s")), (2, 15, A(b"c"))])
+                db = sqlite3.connect(path)
+                db.execute("INSERT INTO steps VALUES (?, 14, CAST(X'FF' AS TEXT))", (idx,))
+                db.commit()
+                db.close()
+                with mock.patch.object(agy_provider, "CONVERSATIONS_DIR", d):
+                    p = agy_provider.AgyProvider()
+                    self.assertEqual(p.last_exchange("x", "abc"), {"user": "s", "assistant": "c"})
+                    self.assertEqual(p.full_history("x", "abc"), PAIR)
+
 
 if __name__ == "__main__":
     unittest.main()

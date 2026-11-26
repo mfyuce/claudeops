@@ -518,7 +518,8 @@ class AgyProvider(CliProvider):
             conn = sqlite3.connect(_ro_sqlite_uri(db_path), uri=True, timeout=2.0)
             try:
                 rows = conn.execute(
-                    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx",
+                    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) "
+                    "AND typeof(step_payload) = 'blob' ORDER BY idx",
                     (_STEP_TYPE_USER, _STEP_TYPE_ASSISTANT, _STEP_TYPE_CHECKPOINT),
                 ).fetchall()
             finally:
@@ -543,7 +544,10 @@ class AgyProvider(CliProvider):
             return
         try:
             cur = conn.execute(
-                "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx DESC",
+                # Yalnız BLOB yük çekilir: bozuk bir metin hücresi okunurken doğan hata, imleç bir satır önden okuduğu
+                # için ondan önceki sağlam satırı da düşürüyordu.
+                "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) "
+                "AND typeof(step_payload) = 'blob' ORDER BY idx DESC",
                 (_STEP_TYPE_USER, _STEP_TYPE_ASSISTANT, _STEP_TYPE_CHECKPOINT),
             )
             for t, pl in cur:

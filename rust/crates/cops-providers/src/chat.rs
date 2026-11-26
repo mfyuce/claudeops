@@ -22,12 +22,10 @@ pub const AGY_STEP_ASSISTANT: i64 = 15;
 /// agy `/compact` kontrol noktası: bu tür VE yükte `<summary>` (tür tek başına kanıt değil).
 pub const AGY_STEP_CHECKPOINT: i64 = 23;
 
-/// Eskiden yeniye adımlar (parametreler: üç adım türü).
-pub const AGY_STEPS_SQL: &str =
-    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx";
+/// Eskiden yeniye adımlar (parametreler: üç adım türü). Yalnız BLOB yük: bozuk metin hücresi okumayı kesmez.
+pub const AGY_STEPS_SQL: &str = "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) AND typeof(step_payload) = 'blob' ORDER BY idx";
 /// Yeniden eskiye adımlar ([`AGY_STEPS_SQL`] ile aynı süzgeç).
-pub const AGY_STEPS_DESC_SQL: &str =
-    "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) ORDER BY idx DESC";
+pub const AGY_STEPS_DESC_SQL: &str = "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) AND typeof(step_payload) = 'blob' ORDER BY idx DESC";
 /// copilot oturumunun turları (tek parametre: oturum kimliği).
 pub const COPILOT_TURNS_SQL: &str =
     "SELECT user_message, assistant_response FROM turns WHERE session_id = ? ORDER BY turn_index";

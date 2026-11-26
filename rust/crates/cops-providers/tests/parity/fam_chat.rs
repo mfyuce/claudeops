@@ -839,8 +839,7 @@ fn agy_cases(b: &mut Build<'_>) {
     b.push(c);
     let c = b.case("agy-izinsiz", "agy", Some("abc")).file(Fx::File(format!("{AGY_DIR}/abc.db"), db.clone(), 0o000));
     b.push(c);
-    // UTF-8 olmayan metin hücresi sütunda: iki tarafta SQLite hatası. Python bir satır önden okuduğu için hatadan
-    // önceki son iyi satırı da kaybeder.
+    // UTF-8 olmayan metin hücresi: yalnız BLOB yük çekildiğinden iki tarafta da sağlam satırlar okunur.
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("s.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
@@ -852,11 +851,10 @@ fn agy_cases(b: &mut Build<'_>) {
     put(2, 15, pa("c"));
     conn.execute_batch("INSERT INTO steps VALUES (0, 14, CAST(X'FF' AS TEXT))").unwrap();
     drop(conn);
-    let c = b.agy("sapma-utf8-hucre", fs::read(&path).unwrap());
-    b.diverges(
+    let c = b.agy("utf8-hucre", fs::read(&path).unwrap());
+    b.agrees(
         c,
-        "okuma ortasında SQLite hatası: Python bir satır önden okuduğundan hatadan önceki iyi satırı da atar, Rust tutar",
-        json!({"last_exchange": {"user": "s", "assistant": "c"}, "full_history": []}),
+        json!({"last_exchange": {"user": "s", "assistant": "c"}, "full_history": turns(&[("user", "s"), ("assistant", "c")])}),
     );
     // yoldaki `#`, `?`, `%`: iki tarafta da dosyanın kendisi salt okur açılır
     for (id, sid) in [("diyez", "a#b"), ("soru", "a?b"), ("yuzde", "a%41b")] {
