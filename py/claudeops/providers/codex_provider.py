@@ -342,10 +342,16 @@ class CodexProvider(CliProvider):
             return []
         out: List[dict] = []
         try:
-            with open(path, encoding="utf-8") as f:
+            # claude_provider ile AYNI kural: bozuk bayt yalnız kendi satırını okunamaz kılar.
+            with open(path, encoding="utf-8", errors="surrogateescape") as f:
                 for raw in f:
                     raw = raw.strip()
                     if not raw:
+                        continue
+                    try:
+                        raw.encode("utf-8")
+                    except UnicodeEncodeError:
+                        out.append({})          # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
                         out.append(json.loads(raw))
@@ -381,6 +387,13 @@ class CodexProvider(CliProvider):
             if isinstance(last, dict) and isinstance(last.get("input_tokens"), int):
                 return last["input_tokens"] or None
         return None
+
+    def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        # Son satır okunamıyorsa rol BİLİNMİYOR (claude_provider ile aynı kural).
+        rows = self._transcript_lines(cwd, sid)
+        if rows and rows[-1] == {}:
+            return None
+        return super().last_message_role(cwd, sid)
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude_provider.py'nin last_exchange'iyle AYNI "her zaman dict, None değil"

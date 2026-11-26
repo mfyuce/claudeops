@@ -50,6 +50,12 @@ impl Build<'_> {
         self.push(c.known(why));
     }
 
+    /// Eskiden ayrışan, artık iki tarafta eşit vaka: sonuç `expect` ile de sabitlenir.
+    fn agrees(&mut self, c: Case, expect: Value) {
+        self.expect.insert(c.id.clone(), expect);
+        self.push(c);
+    }
+
     fn claude_rel(&self, file: &str) -> String {
         let encoded: String = self.cwd().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
         format!("home/.claude/projects/{encoded}/{file}")
@@ -299,12 +305,12 @@ fn claude_divergences(b: &mut Build<'_>) {
     let mut cut = lines(&[q.as_str(), r.as_str()]).into_bytes();
     cut.extend_from_slice(b"{\"type\":\"assistant\",\"message\":{\"content\":\"\xc4");
     let c = b.claude("sapma-utf8-kesik", cut);
-    b.diverges(c, "bozuk UTF-8: Python `UnicodeDecodeError` (yakalanmıyor), Rust satırı atlar", ok.clone());
+    b.agrees(c, ok.clone());
     let mut mid = format!("{q}\n").into_bytes();
     mid.extend_from_slice(b"\xff\xfe\n");
     mid.extend_from_slice(format!("{r}\n").as_bytes());
     let c = b.claude("sapma-utf8-orta", mid);
-    b.diverges(c, "bozuk UTF-8: Python `UnicodeDecodeError`, Rust satırı atlar", ok.clone());
+    b.agrees(c, ok.clone());
     let deep = format!("{{\"type\":\"x\",\"d\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
     let c = b.claude("sapma-derin", lines(&[q.as_str(), r.as_str(), deep.as_str()]));
     b.diverges(c, "çok derin satır: Python `RecursionError`, Rust satırı atlar", ok.clone());
@@ -426,7 +432,25 @@ fn codex_cases(b: &mut Build<'_>) {
     let mut cut = body.clone().into_bytes();
     cut.extend_from_slice(b"{\"x\":\"\xe2\x82");
     let c = b.codex("sapma-utf8", cut);
-    b.diverges(c, "bozuk UTF-8: Python `UnicodeDecodeError`, Rust satırı atlar", ok);
+    b.agrees(c, ok);
+    // okunamayan son satır: son rol bilinmiyor; geride kalan okunamayan satır rolü gizlemez
+    for (id, tail, role) in [
+        ("kuyruk-bayt", b"\xff\n".as_slice(), Value::Null),
+        ("kuyruk-bayt-bosluk", b"\xff\n\n  \n", Value::Null),
+        ("kuyruk-bayt-yarim", b"\xff\n{\"type\":\"resp", Value::Null),
+        ("kuyruk-bos-nesne", b"{}\n", Value::Null),
+        ("kuyruk-yarim", b"{\"type\":\"resp", json!("user")),
+        ("kuyruk-gecildi", b"\xff\n{\"type\":\"x\"}\n", json!("user")),
+    ] {
+        let mut data = format!("{q}\n").into_bytes();
+        data.extend_from_slice(tail);
+        let c = b.codex(&format!("rol-{id}"), data);
+        b.agrees(c, json!({"last_message_role": role}));
+        let mut data = format!("{}\n", msg("user", json!("soru"), json!({}))).into_bytes();
+        data.extend_from_slice(tail);
+        let c = b.claude(&format!("rol-{id}"), data);
+        b.agrees(c, json!({"last_message_role": role}));
+    }
 }
 
 // -------------------------------------------------------------------------------------------------------------- ucli
@@ -533,12 +557,8 @@ fn ucli_cases(b: &mut Build<'_>) {
     }
     let mut bad = body.clone().into_bytes();
     bad.extend_from_slice(b"\xff\n");
-    let c = b.ucli("sapma-utf8", bad);
-    b.diverges(
-        c,
-        "bozuk UTF-8: Python `UnicodeDecodeError` yakalanmıyor, Rust okunamadı (None)",
-        json!({"full_history": null, "last_exchange": null, "read_chat_history": null}),
-    );
+    let c = b.ucli("utf8", bad);
+    b.agrees(c, json!({"full_history": null, "last_exchange": null, "read_chat_history": null}));
     let deep = format!("{{\"role\":\"x\",\"content\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
     let c = b.ucli("sapma-derin", lines(&[user("a"), deep]));
     b.diverges(c, "çok derin satır: Python `RecursionError`, Rust None", json!({"full_history": null}));

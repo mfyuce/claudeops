@@ -422,7 +422,7 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
                 if not isinstance(turn, dict) or "role" not in turn:
                     continue
                 turns.append({"role": turn["role"], "text": turn["content"]})
-    except (OSError, json.JSONDecodeError, KeyError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError):
         return None
     return turns
 

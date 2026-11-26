@@ -1076,10 +1076,16 @@ class ClaudeProvider(CliProvider):
             return []
         try:
             lines = []
-            with path.open(encoding="utf-8") as f:
+            # Bozuk bayt (ör. yazım sürerken yarım kalan çok baytlı karakter) yalnız KENDİ satırını okunamaz kılar.
+            with path.open(encoding="utf-8", errors="surrogateescape") as f:
                 for raw in f:
                     raw = raw.strip()
                     if not raw:
+                        continue
+                    try:
+                        raw.encode("utf-8")
+                    except UnicodeEncodeError:
+                        lines.append({})        # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
                         lines.append(json.loads(raw))
@@ -1088,6 +1094,13 @@ class ClaudeProvider(CliProvider):
             return lines
         except OSError:
             return []
+
+    def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        # Son satır okunamıyorsa rol BİLİNMİYOR: takılma tespiti öncekine bakıp oturumu öldürüp yeniden açmasın.
+        rows = self._transcript_lines(cwd, sid)
+        if rows and rows[-1] == {}:
+            return None
+        return super().last_message_role(cwd, sid)
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # NOT: aşağıdaki "bulamadım" dallarının hepsi None DEĞİL boş dict döner —

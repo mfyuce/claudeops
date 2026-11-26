@@ -5,8 +5,9 @@
 //! Sözleşme (Python gibi): `None` = bu CLI'da sohbet görünümü yok ya da dosya okunamaz (ucli); boş liste / boş çift =
 //! destekleniyor ama henüz mesaj yok.
 //!
-//! Python'dan bilinen sapmalar (parite `chat-sapma-`): claude/codex'te bozuk UTF-8, nesne olmayan satır ya da alan ve
-//! metin olmayan `text` Python'da istisnadır; burada yalnız o satır/blok atlanır. ucli'de aynı durum `None` olur.
+//! İki tarafta da claude/codex'te bozuk UTF-8 yalnız o satırı atlatır; ucli'de dosya okunamaz (`None`) sayılır.
+//! Python'dan bilinen sapmalar (parite `chat-sapma-`): claude/codex'te nesne olmayan satır ya da alan ve metin olmayan
+//! `text` Python'da istisnadır; burada yalnız o satır/blok atlanır.
 //! Eşlenmemiş vekil kaçışı U+FFFD olur. Dosya okumasına boyut sınırı YOKTUR (Python gibi).
 
 use crate::live::{Live, SqlCell};
@@ -77,6 +78,22 @@ fn object_line(raw: &[u8]) -> Option<Py> {
         return None;
     }
     Py::parse(line).filter(Py::is_object)
+}
+
+/// Transkriptin son dolu satırı okunamıyor mu: UTF-8 değil, nesne olmayan JSON ya da boş nesne. JSON olarak
+/// ayrışmayan (yarım) satır sayılmaz, bir önceki dolu satıra bakılır (Python gibi).
+fn unreadable_tail(data: &[u8]) -> bool {
+    raw_lines(data)
+        .rev()
+        .find_map(|raw| match std::str::from_utf8(raw) {
+            Err(_) => Some(true),
+            Ok(text) => {
+                let line = strip(text);
+                let row = (!line.is_empty()).then(|| Py::parse(line)).flatten()?;
+                Some(!matches!(&row, Py::Object(entries) if !entries.is_empty()))
+            }
+        })
+        .unwrap_or(false)
 }
 
 fn flag(row: &Py, key: &str) -> bool {
@@ -393,9 +410,27 @@ impl Live<'_> {
         }
     }
 
-    /// Kronolojik olarak son satırın rolü (takılma tespiti); None = bilinmiyor.
+    /// Kronolojik olarak son satırın rolü (takılma tespiti); None = bilinmiyor. claude/codex'te son satır okunamıyorsa
+    /// da bilinmiyor: öncekine bakıp oturum yeniden açılmaz.
     pub fn last_message_role(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Py> {
-        let role = self.full_history(cli, cwd, sid)?.pop()?.role;
+        let history = match cli {
+            Cli::Claude | Cli::Codex => {
+                let path = match cli {
+                    Cli::Claude => self.jsonl_path_for(cwd, sid),
+                    _ => self.codex_rollout_path(cwd, sid),
+                };
+                let data = self.transcript_bytes(path);
+                if unreadable_tail(&data) {
+                    return None;
+                }
+                match cli {
+                    Cli::Claude => claude_history(&data),
+                    _ => codex_history(&data),
+                }
+            }
+            _ => self.full_history(cli, cwd, sid)?,
+        };
+        let role = history.into_iter().next_back()?.role;
         (role != Py::Null).then_some(role)
     }
 
