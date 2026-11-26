@@ -246,7 +246,9 @@ def load_settings() -> Dict[str, Any]:
 
     `/api/status` her ~2-3 sn'de sağlayıcı başına birkaç kez çağırıyordu (N+1 dosya okuma + ayrıştırma, D9): sonuç
     dosya imzasına (yol, mtime_ns, boyut, inode; atomik yazım inode'u değiştirir) bağlı önbelleklenir ve çağırana
-    DERİN KOPYA verilir (çağıranlar sözlüğü değiştirip `save_settings`e yama verebilir). Dosya yoksa/okunamazsa önbellek yok."""
+    DERİN KOPYA verilir (çağıranlar sözlüğü değiştirip `save_settings`e yama verebilir). Dosya yoksa/okunamazsa önbellek yok.
+    Dosya okunamıyor ya da bozuksa (UTF-8/JSON/nesne değil) varsayılanlar döner; yalnız `store_backend` son iyi okumadaki
+    değerini korur (canlı `db` kipi geçici bir hatayla sessizce `files`a dönmesin)."""
     try:
         st = os.stat(SETTINGS_JSON)
         sig = (str(SETTINGS_JSON), st.st_mtime_ns, st.st_size, st.st_ino)
@@ -254,8 +256,8 @@ def load_settings() -> Dict[str, Any]:
         sig = None
     if sig is not None and _LOAD_CACHE["sig"] == sig:
         return copy.deepcopy(_LOAD_CACHE["val"])
-    val = _load_settings_uncached()
-    if sig is not None:
+    val, cacheable = _load_settings_uncached()
+    if sig is not None and cacheable:
         try:
             st2 = os.stat(SETTINGS_JSON)
             if (str(SETTINGS_JSON), st2.st_mtime_ns, st2.st_size, st2.st_ino) == sig:     # okurken değişmediyse sakla
@@ -265,7 +267,12 @@ def load_settings() -> Dict[str, Any]:
     return val
 
 
-def _load_settings_uncached() -> Dict[str, Any]:
+_LAST_BACKEND: Dict[str, Any] = {}     # yol -> son başarılı okumadaki `store_backend`
+
+
+def _load_settings_uncached() -> Tuple[Dict[str, Any], bool]:
+    """(ayarlar, önbelleğe alınabilir mi): G/Ç hatasında (yok dışında) hayır, hata geçince yeniden okunsun."""
+    path = str(SETTINGS_JSON)
     out: Dict[str, Any] = copy.deepcopy(DEFAULT_SETTINGS)     # çağıran iç sözlüğü değiştirirse varsayılan bozulmasın
     try:
         with open(SETTINGS_JSON, encoding="utf-8") as f:
@@ -296,8 +303,20 @@ def _load_settings_uncached() -> Dict[str, Any]:
                 out["cli_managed"] = {}
             if not isinstance(out.get("stewards"), dict):
                 out["stewards"] = {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+            _LAST_BACKEND[path] = out["store_backend"]
+            return out, True
+    except FileNotFoundError:
+        return out, True
+    except ValueError:      # JSONDecodeError + UnicodeDecodeError: içerikten gelen hata, imzayla önbelleğe alınabilir
         pass
+    except OSError:
+        return _keep_backend(out, path), False
+    return _keep_backend(out, path), True
+
+
+def _keep_backend(out: Dict[str, Any], path: str) -> Dict[str, Any]:
+    if path in _LAST_BACKEND:
+        out["store_backend"] = _LAST_BACKEND[path]
     return out
 
 
