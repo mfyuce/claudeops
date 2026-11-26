@@ -5019,5 +5019,119 @@
    "status.read"
   ]
  ],
+ "token_query": [
+  {
+   "query": "",
+   "token": ""
+  },
+  {
+   "query": "&",
+   "token": ""
+  },
+  {
+   "query": "token",
+   "token": ""
+  },
+  {
+   "query": "token=",
+   "token": ""
+  },
+  {
+   "query": "token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "x=1&token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "token=abc&token=def",
+   "token": "abc"
+  },
+  {
+   "query": "token=&token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "token&token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "%74oken=x&token=abc",
+   "token": "x"
+  },
+  {
+   "query": "tok%65n=abc",
+   "token": "abc"
+  },
+  {
+   "query": "tok%65n=&token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "TOKEN=abc",
+   "token": ""
+  },
+  {
+   "query": "tok+en=abc",
+   "token": ""
+  },
+  {
+   "query": "token%3Dabc",
+   "token": ""
+  },
+  {
+   "query": "=abc&token=d",
+   "token": "d"
+  },
+  {
+   "query": "token=abc=def",
+   "token": "abc=def"
+  },
+  {
+   "query": "token=abc;x=1",
+   "token": "abc;x=1"
+  },
+  {
+   "query": "a=1&&token=abc",
+   "token": "abc"
+  },
+  {
+   "query": "token=a+b%20c",
+   "token": "a b c"
+  },
+  {
+   "query": "token=+",
+   "token": " "
+  },
+  {
+   "query": "token=%zz",
+   "token": "%zz"
+  },
+  {
+   "query": "token=%2",
+   "token": "%2"
+  },
+  {
+   "query": "token=%C3%A9",
+   "token": "\u00e9"
+  },
+  {
+   "query": "token=%FF",
+   "token": "\ufffd"
+  },
+  {
+   "query": "token=%E2%80",
+   "token": "\ufffd"
+  },
+  {
+   "query": "token=%00",
+   "token": "\u0000"
+  },
+  {
+   "query": "token=%41bc",
+   "token": "Abc"
+  }
+ ],
  "unmapped": "admin.unmapped"
 }

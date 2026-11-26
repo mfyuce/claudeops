@@ -53,6 +53,16 @@ RUST_REJECTS = [
     ("/api/start", "", '{bozuk'), ("/api/start", "", '{"name": NaN}'),
 ]
 
+# `?token=` ayrıştırma (R1-11): Python `_authorized` = `(parse_qs(sorgu).get("token") or [""])[0]` (ad yüzde-çözülür, boş değer
+# atılır, ilk dolu değer). Rust `cops_auth::query_param` aynısını vermeli. AYNI liste enterprise
+# `tests/golden/gen_service_vectors.py` `TOKEN_QUERIES` içinde (iki kopya tutarlı kalmalı).
+TOKEN_QUERIES = [
+    "", "&", "token", "token=", "token=abc", "x=1&token=abc", "token=abc&token=def", "token=&token=abc",
+    "token&token=abc", "%74oken=x&token=abc", "tok%65n=abc", "tok%65n=&token=abc", "TOKEN=abc", "tok+en=abc",
+    "token%3Dabc", "=abc&token=d", "token=abc=def", "token=abc;x=1", "a=1&&token=abc", "token=a+b%20c",
+    "token=+", "token=%zz", "token=%2", "token=%C3%A9", "token=%FF", "token=%E2%80", "token=%00", "token=%41bc",
+]
+
 
 def _paths():
     out = list(EXTRA_PATHS)
@@ -73,7 +83,8 @@ def build():
                         "expect": [{"kind": r.kind, "host": r.host, "name": r.name, "cwd": r.cwd, "steward": r.steward} for r in got]})
     res += [{"path": p, "query": q, "body": b, "rust_rejects": True} for p, q, b in RUST_REJECTS]
     legacy = authz.LEGACY
-    return {"unmapped": authz.UNMAPPED, "table": [list(t) for t in authz._ACTION_TABLE],
+    token_query = [{"query": q, "token": (parse_qs(q).get("token") or [""])[0]} for q in TOKEN_QUERIES]
+    return {"token_query": token_query, "unmapped": authz.UNMAPPED, "table": [list(t) for t in authz._ACTION_TABLE],
             "legacy": {"uid": legacy.uid, "roles": list(legacy.roles), "kind": legacy.kind},
             "approvals": APPROVALS, "actions": actions, "resources": res}
 
