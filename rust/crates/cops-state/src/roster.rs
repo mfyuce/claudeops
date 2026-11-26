@@ -152,35 +152,7 @@ fn first_rows(rows: Vec<RawRow>) -> IndexMap<String, RawRow> {
     m
 }
 
-/// `os.path.normpath` (posix).
-pub fn normpath(p: &str) -> String {
-    if p.is_empty() {
-        return ".".into();
-    }
-    let slashes = p.len() - p.trim_start_matches('/').len();
-    let lead = match slashes {
-        0 => "",
-        2 => "//",
-        _ => "/",
-    };
-    let mut parts: Vec<&str> = Vec::new();
-    for c in p.split('/') {
-        match c {
-            "" | "." => {}
-            ".." if parts.last().is_some_and(|l| *l != "..") => {
-                parts.pop();
-            }
-            ".." if !lead.is_empty() && parts.is_empty() => {}
-            _ => parts.push(c),
-        }
-    }
-    let out = format!("{lead}{}", parts.join("/"));
-    if out.is_empty() {
-        ".".into()
-    } else {
-        out
-    }
-}
+pub use crate::paths::normpath;
 
 /// `^[a-z][a-z0-9_]*$`.
 pub fn valid_project_name(name: &str) -> bool {
@@ -188,20 +160,6 @@ pub fn valid_project_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-}
-
-fn expand_user(p: &str) -> String {
-    match (p.strip_prefix('~'), std::env::var("HOME")) {
-        (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => {
-            let joined = format!("{}{rest}", home.trim_end_matches('/'));
-            if joined.is_empty() {
-                "/".into()
-            } else {
-                joined
-            }
-        }
-        _ => p.to_string(), // `~kullanici` desteklenmez
-    }
 }
 
 /// `(satır indeksi, yorumlu mu, '#'siz satır)`: ilk alanı `name` olan ilk satır.
@@ -354,7 +312,7 @@ impl<'a> Roster<'a> {
                 other: other.clone(),
             });
         }
-        let cwd = expand_user(py_strip(cwd));
+        let cwd = crate::paths::expanduser(py_strip(cwd));
         if cwd.is_empty() || !Path::new(&cwd).is_dir() {
             return Err(RegisterError::DirNotFound { cwd });
         }

@@ -351,15 +351,7 @@ impl Store {
     }
 }
 
-/// Python `str.isspace` kümesi: Unicode boşlukları + U+001C..U+001F.
-fn py_space(c: char) -> bool {
-    c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
-}
-
-/// Python `str.strip()`.
-pub(crate) fn py_strip(s: &str) -> &str {
-    s.trim_matches(py_space)
-}
+pub(crate) use crate::pycompat::strip as py_strip;
 
 /// Python `str.splitlines(keepends=True)`.
 pub(crate) fn split_lines_keepends(text: &str) -> Vec<&str> {

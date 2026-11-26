@@ -9,12 +9,12 @@
 //! (Python tarafı DB'yi okuyacağı için yalnız dosyaya yazmak sessiz kayıp olurdu).
 use crate::fsutil::atomic_write_json;
 use crate::json::Json;
-use crate::paths::StateDir;
+use crate::paths::{realpath, StateDir};
 use crate::store::{sqlite_path_from_url, Store, StoreError};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -116,35 +116,6 @@ pub fn read_file(path: &Path) -> Read {
             None => Read::Corrupt,
         },
     }
-}
-
-/// `os.path.realpath`: var olmayan kuyruk olduğu gibi kalır.
-fn realpath(p: &Path) -> PathBuf {
-    let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-    let mut out = PathBuf::from("/");
-    for c in abs.components() {
-        match c {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::Normal(n) => {
-                out.push(n);
-                // sembolik bağ (hedefi olmayan dahil) izlenir
-                for _ in 0..40 {
-                    let Ok(t) = std::fs::read_link(&out) else {
-                        break;
-                    };
-                    out.pop();
-                    out = if t.is_absolute() { t } else { out.join(t) };
-                    if let Ok(c) = out.canonicalize() {
-                        out = c;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    out
 }
 
 #[derive(Default)]

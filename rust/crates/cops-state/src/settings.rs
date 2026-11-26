@@ -2,6 +2,7 @@
 //! (Python `DEFAULT_SETTINGS`in aynısı; parite testi farkı yakalar). Dosya `store_backend` kipinden bağımsız okunur.
 use crate::json::{Json, Map};
 use crate::paths::StateDir;
+use crate::pycompat;
 use std::os::unix::fs::MetadataExt;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -24,7 +25,7 @@ const DICT_KEYS: [&str; 12] = [
 ];
 
 /// Python `settings._OFF_WORDS`.
-const OFF_WORDS: [&str; 11] = [
+pub const OFF_WORDS: [&str; 11] = [
     "off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none",
 ];
 
@@ -84,15 +85,22 @@ impl Settings {
             .and_then(Json::as_str)
             .unwrap_or("")
     }
-    /// Varsayılanı AÇIK bayrak (`tunnel_watch`, `routing_guidance`): yalnız kapatma sözcükleri kapatır.
+    /// Varsayılanı AÇIK bayrak (`tunnel_watch`, `routing_guidance`): `("on" if v is None else str(v)).strip().lower()`
+    /// kapatma sözcüğü değilse açık.
     pub fn flag_default_on(&self, key: &str) -> bool {
         let text = match self.get(key) {
-            None | Some(Json::Null) => return true,
-            Some(Json::Str(s)) => s.clone(),
-            Some(Json::Bool(b)) => (if *b { "True" } else { "False" }).to_string(),
-            Some(v) => v.to_compact(),
+            None | Some(Json::Null) => "on".to_string(),
+            Some(v) => pycompat::str_of(v),
         };
-        !OFF_WORDS.contains(&text.trim().to_lowercase().as_str())
+        !OFF_WORDS.contains(&pycompat::lower(pycompat::strip(&text)).as_str())
+    }
+    /// `routing_guidance_enabled`.
+    pub fn routing_guidance_enabled(&self) -> bool {
+        self.flag_default_on("routing_guidance")
+    }
+    /// `tunnel_watch_enabled`.
+    pub fn tunnel_watch_enabled(&self) -> bool {
+        self.flag_default_on("tunnel_watch")
     }
 }
 
