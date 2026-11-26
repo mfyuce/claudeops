@@ -127,15 +127,18 @@ class ReaskTest(unittest.TestCase):
 
 
 class RemoteTest(unittest.TestCase):
-    def run_remote(self, row=True, prov=None, baseline=True, ho=None, reply="READY FOR HANDOVER", force_stop=None):
+    def run_remote(self, row=True, prov=None, baseline=True, ho=None, reply="READY FOR HANDOVER", force_stop=None, fresh=True):
         calls = []
+        self.logs = []
 
         def proxy(path, host, body, timeout=None):
             calls.append((path, dict(body)))
             if path == "/api/handover":
                 return (ho or {"ok": True}), 200
             return (force_stop or {"ok": True, "result": ["clean"]}), 200
-        with mock.patch.object(web.web_steward, "_remote_running_row", lambda h, n: (True, {"name": n, "cli": "claude"} if row else None)), \
+        found = lambda h, n: (fresh, {"name": n, "cli": "claude"} if fresh and row else None)
+        with mock.patch.object(web.web_steward, "_remote_running_row", found), \
+                mock.patch.object(web, "diag_log", lambda ev, **k: self.logs.append((ev, k))), \
                 mock.patch.object(web, "get_provider", lambda cli: prov or _Prov()), \
                 mock.patch.object(web.web_orch, "_fetch_exchange", lambda *a, **k: {"user": "u", "assistant": "a"} if baseline else None), \
                 mock.patch.object(web.web_hosts, "proxy_action", proxy), \
@@ -167,6 +170,33 @@ class RemoteTest(unittest.TestCase):
     def test_not_applicable_returns_none(self):
         self.assertIsNone(self.run_remote(row=False)[0])
         self.assertIsNone(self.run_remote(prov=_Prov(conv=False))[0])
+
+    def test_unreadable_host_does_not_stop(self):
+        res, calls = self.run_remote(fresh=False)                # durum okunamadı: "uygulanamaz" değil, DOĞRULANAMADI
+        self.assertIsNotNone(res)
+        self.assertEqual((res["ok"], res["code"], res["suggest"]), (False, "handover_unreadable", "force"))
+        self.assertEqual(calls, [])
+
+    def test_each_outcome_is_logged(self):
+        for kw, event in ((dict(fresh=False), "ho_stop_remote_unreadable"), (dict(row=False), "ho_stop_remote_skip"),
+                          (dict(baseline=False), "ho_stop_remote_unreadable"), (dict(ho={"ok": False, "error": "boom"}), "ho_stop_send_failed"),
+                          (dict(), "ho_stop_sent")):
+            self.run_remote(**kw)
+            self.assertIn(event, [e for e, _ in self.logs], kw)
+
+
+class RemoteFallbackTest(unittest.TestCase):
+    """Devir uygulanamayınca uzak düz durdurma TAM adla gider: uzak taraf ön ekle başka oturumu devirsiz kapatamaz."""
+    def test_fallback_stop_is_exact_and_logged(self):
+        calls, logs = [], []
+        with mock.patch.object(web, "_remote_stop_with_handover", lambda *a, **k: None), \
+                mock.patch.object(web.web_hosts, "proxy_action", lambda path, host, body, timeout=None: (calls.append((path, dict(body))) or ({"ok": False, "code": "no_exact_match"}, 200))), \
+                mock.patch.object(web, "diag_log", lambda ev, **k: logs.append((ev, k))), \
+                mock.patch.object(web.web_ws, "notify_status_changed", lambda: None):
+            web._ho_stop_run("ulak31:oiso", "ulak31", "oiso", "tr")
+        self.assertEqual(calls, [("/api/stop", {"name": "oiso", "lang": "tr", "exact": True})])
+        done = [k for e, k in logs if e == "ho_stop_done"]
+        self.assertEqual((done[0]["ok"], done[0]["code"]), (False, "no_exact_match"))
 
 
 class RouteTest(unittest.TestCase):

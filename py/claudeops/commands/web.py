@@ -2266,19 +2266,25 @@ def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TI
 
 def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS) -> Optional[dict]:
     """UZAK oturum (tam adı çalışan satır): uzak `/api/handover` -> `/api/term/chat` ile READY FOR HANDOVER -> uzak
-    `/api/stop` `force`+`exact` (devir zaten alındı). None = devir uygulanamaz: çağıran eski düz proxy yoluna düşer."""
+    `/api/stop` `force`+`exact` (devir zaten alındı). None = devir uygulanamaz (çalışan satır yok ya da konuşmasız): çağıran
+    tam adlı düz durdurmaya düşer. Host durumu OKUNAMAZSA "uygulanamaz" sayılmaz: devir doğrulanamaz, kapatmaz."""
     fresh, row = web_steward._remote_running_row(host, name)
-    if not fresh or row is None:
-        return None
-    provider = get_provider(str(row.get("cli") or DEFAULT_CLI))
-    if not provider.has_conversation():
+    if not fresh:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="status")
+        return _ho_stop_fail(lang, "", "handover_unreadable")
+    provider = None if row is None else get_provider(str(row.get("cli") or DEFAULT_CLI))
+    if provider is None or not provider.has_conversation():
+        diag_log("ho_stop_remote_skip", name=name, host=host, reason="no_running_row" if row is None else "no_conversation")
         return None
     baseline = web_orch._fetch_exchange(host, name, "", None, provider)
     if baseline is None:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="exchange")
         return _ho_stop_fail(lang, "", "handover_unreadable")
     res, _status = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
     if not res.get("ok"):
+        diag_log("ho_stop_send_failed", name=name, host=host, error=str(res.get("error") or ""))
         return _ho_stop_fail(lang, str(res.get("error") or ""), "handover_failed")
+    diag_log("ho_stop_sent", name=name, host=host)
     first = timeout * HO_STOP_REASK_FRACTION
     reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
@@ -2321,13 +2327,15 @@ def _ho_stop_run(key: str, host: str, name: str, lang: str, exact: bool = False,
                 res = _stop(name, lang=lang, exact=exact)
         else:
             res = _remote_stop_with_handover(host, name, lang=lang)
-            if res is None:
-                res, _status = web_hosts.proxy_action("/api/stop", host, dict({"name": name, "lang": lang}, **({"exact": True} if exact else {})))
+            if res is None:      # devirsiz düz durdurma YALNIZ tam adla: uzak unique_base başka bir oturumu devirsiz kapatmasın
+                res, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "exact": True})
     except Exception as e:
         diag_log("ho_stop_job_error", name=name, host=host, error=repr(e))
         res = {"ok": False, "error": f"{type(e).__name__}: {e}", "code": "handover_failed", "suggest": "force"}
     if not isinstance(res, dict):
         res = {"ok": False, "error": "unexpected result"}
+    diag_log("ho_stop_done", name=name, host=host, ok=bool(res.get("ok")), handover=bool(res.get("handover")),
+             code=str(res.get("code") or ""))
     with _HO_STOP_LOCK:
         job = _HO_STOP_JOBS.get(key)
         if job is not None:
