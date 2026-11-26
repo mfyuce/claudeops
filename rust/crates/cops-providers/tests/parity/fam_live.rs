@@ -618,11 +618,11 @@ fn copilot_context(b: &mut Build<'_>) {
             .file(Fx::File(DB.into(), db_bytes(&[("s1", 0, None, v, t0)]), 0o600));
         b.push(c);
     }
+    // sayı olmayan hücre iki tarafta da "bilinmiyor"
     for (id, v) in [("metin-harf", Sql::Text("abc".into())), ("sonsuz", Sql::Real(f64::INFINITY))] {
         let c = b
             .case(&format!("copilot-hucre-{id}"), "copilot", Some("s1"), "")
-            .file(Fx::File(DB.into(), db_bytes(&[("s1", 0, None, v, t0)]), 0o600))
-            .known("sayıya çevrilemeyen hücre: Python `int()` istisnası yükselir, Rust None");
+            .file(Fx::File(DB.into(), db_bytes(&[("s1", 0, None, v, t0)]), 0o600));
         b.push(c);
     }
     for (id, content) in [("bozuk", b"not a database at all, definitely not".to_vec()), ("bos", Vec::new())] {

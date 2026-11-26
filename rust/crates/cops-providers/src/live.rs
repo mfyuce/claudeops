@@ -206,9 +206,9 @@ impl Live<'_> {
         match self.probe.sqlite_cell(&self.paths.copilot_session_db(), COPILOT_CONTEXT_SQL, &session)? {
             SqlCell::Null => None,
             SqlCell::Int(n) => (n != 0).then_some(n),
-            // `int(f)`: sıfıra doğru keser; sonsuz/NaN Python'da istisna
+            // `int(f)`: sıfıra doğru keser; sonsuz/NaN bilinmiyor
             SqlCell::Real(f) => (f != 0.0 && f.is_finite()).then(|| f.trunc() as i64),
-            // `int(metin)`: sayı olmayan metin Python'da istisna
+            // `int(metin)`: sayı olmayan metin bilinmiyor
             SqlCell::Text(s) => parse_int(&s),
             SqlCell::Blob(b) => parse_int(std::str::from_utf8(&b).ok()?),
         }

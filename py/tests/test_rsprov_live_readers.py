@@ -4,6 +4,7 @@
 """
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import bg_work, settings, ucli_client  # noqa: E402
 from claudeops.providers import codex_provider as xp  # noqa: E402
+from claudeops.providers import copilot_provider as cop  # noqa: E402
 from claudeops.providers import ucli_provider as up  # noqa: E402
 
 NOW = 1795428000.0
@@ -115,6 +117,29 @@ class CodexContextTest(unittest.TestCase):
         deep = '{"x":"token_count","d":' + "[" * 100000 + "]" * 100000 + "}"
         deep = deep.replace('"x":"token_count"', '"token_count":1')
         self.assertEqual(self.context(_token_count(7), deep), 7)
+
+class CopilotContextTest(unittest.TestCase):
+    def context(self, value):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "store.db")
+            db = sqlite3.connect(path)
+            db.execute("CREATE TABLE assistant_usage_events (session_id TEXT, turn_index INT, agent_id TEXT, "
+                       "input_tokens, created_at TEXT)")
+            db.execute("INSERT INTO assistant_usage_events VALUES ('s', 0, NULL, ?, 't')", (value,))
+            db.commit()
+            db.close()
+            with mock.patch.object(cop, "SESSION_STORE_DB", path):
+                return cop.CopilotProvider().live_context("/x", "s")
+
+    def test_non_number_means_unknown(self):
+        for value in ("abc", "", "1.5", float("inf"), float("-inf"), b"x"):
+            with self.subTest(value=value):
+                self.assertIsNone(self.context(value))
+
+    def test_numbers_still_work(self):
+        self.assertEqual(self.context(12), 12)
+        self.assertEqual(self.context(" 1_000 "), 1000)
+        self.assertEqual(self.context(1234.9), 1234)
 
 
 if __name__ == "__main__":

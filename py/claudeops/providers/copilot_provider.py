@@ -446,7 +446,12 @@ class CopilotProvider(CliProvider):
                 conn.close()
         except sqlite3.Error:
             return None
-        return int(row[0]) if row and row[0] else None
+        if not row or not row[0]:
+            return None
+        try:
+            return int(row[0])
+        except (ValueError, OverflowError, TypeError):      # sayı olmayan metin/BLOB, sonsuz: bilinmiyor
+            return None
 
     def last_exchange(self, cwd: str, sid: Optional[str]) -> Optional[Dict[str, str]]:
         # claude/agy/codex'le AYNI "her zaman dict, None değil" sözleşmesi — None
