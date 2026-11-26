@@ -30,14 +30,22 @@ def backend() -> str:
         if now - _CACHE["at"] < 5.0:
             return _CACHE["mode"]
         mode = "files"
+        path = None
         try:
             from .paths import CLAUDEOPS_DIR
-            with open(os.path.join(CLAUDEOPS_DIR, "settings.json"), encoding="utf-8") as f:
+            path = os.path.join(CLAUDEOPS_DIR, "settings.json")
+            with open(path, encoding="utf-8") as f:
                 v = str((json.load(f) or {}).get("store_backend") or "").strip().lower()
             if v in MODES:
                 mode = v
-        except (OSError, ValueError, AttributeError):
+            _CACHE["good"] = (path, mode)
+        except FileNotFoundError:
             pass
+        except (OSError, ValueError, AttributeError):
+            # bozuk/okunamayan ayar dosyası canlı `db` kipini sessizce `files`a çevirmesin (TBD#374 S2/S7)
+            good = _CACHE.get("good")
+            if good and good[0] == path:
+                mode = good[1]
         _CACHE.update(at=now, mode=mode)
         return mode
 
