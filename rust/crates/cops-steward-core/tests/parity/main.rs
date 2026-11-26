@@ -11,6 +11,7 @@ mod identity;
 mod idle;
 mod idletext;
 mod inserts;
+mod lessons;
 mod logdedup;
 mod markers;
 mod notify;

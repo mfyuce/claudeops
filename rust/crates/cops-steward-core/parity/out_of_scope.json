@@ -30,29 +30,19 @@
   "_project_names",
   "ownership_index",
   "auto_remove_labels",
-  "remove_project",
-  "transfer_project",
-  "apply_review_where_answer",
-  "build_raw_card"
+  "remove_project"
  ],
  "G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı": [
   "_log_guard",
   "log_event",
   "_rewrite_log",
-  "compact_log",
   "rotate_log",
   "tail_log",
   "log_entries_for_date",
-  "dry_report",
-  "missed_summary_dates",
-  "summary_text",
   "write_daily"
  ],
  "G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı": [
   "_read_doc_head",
-  "_git_recent",
-  "persona_text",
-  "tour_delivery",
   "panic_active",
   "set_panic",
   "read_brain_mcp",
@@ -74,5 +64,35 @@
   "_NO_LOG_DAYS",
   "LOCK_TIMEOUT",
   "_LOCK_POLL"
+ ],
+ "AÇIK: G/Ç işlevi ama içinde Rust'ta olmayan saf mantık var (taşınmadı), T10: `persona_text` override kolu": [
+  "persona_text"
+ ],
+ "AÇIK: G/Ç işlevi; satır içi eşiği, TR/EN yönlendirme metni ve saklanacak tur dosyası seçimi Rust'ta yok, T10": [
+  "tour_delivery"
+ ],
+ "AÇIK: G/Ç işlevi; `source_hash` özeti Rust'ta yok (aynı üretilmezse geçişte tüm kartlar eskimiş sayılır), T10": [
+  "build_raw_card"
+ ],
+ "AÇIK: alt süreç işlevi; `git log` satırı ayrıştırma Rust'ta yok, T10": [
+  "_git_recent"
+ ],
+ "AÇIK: depo işlemi; proje devrinde hangi soru ve işin taşınacağı kararı ve hata koşulları Rust'ta yok, T10": [
+  "transfer_project"
+ ],
+ "AÇIK: günlük dosyası işlevi; tick satırlarını tek `ticks` satırına katlama kuralı Rust'ta yok, T10": [
+  "compact_log"
+ ],
+ "AÇIK: günlük okuyan işlev; `would:` olaylarını türe göre sayma Rust'ta yok (`dry_report_text` yalnız biçimler), T10": [
+  "dry_report"
+ ],
+ "AÇIK: dosya okuyan işlev; kaçan özet günlerini seçme kuralı Rust'ta yok, T10": [
+  "missed_summary_dates"
+ ],
+ "AÇIK: depo okuyan sarmalayıcı; bekleyen sayıları toplama Rust'ta yok (`daily_summary` hazır alır), T10": [
+  "summary_text"
+ ],
+ "AÇIK: review cevabını projeye yazma; `review_remote.parse_answer` ve alan eşlemesi Rust'ta yok, T8/T10": [
+  "apply_review_where_answer"
  ]
 }

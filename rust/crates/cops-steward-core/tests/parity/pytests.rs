@@ -94,7 +94,8 @@ fn owner_only_pattern_false_positives() {
     ] {
         assert!(!hit(t), "{t}");
     }
-    for t in ["git push --force yapayım mı", "dosyayı sileyim mi", "API token ver", "apt install x", "parolayı gir"] {
+    for t in ["git push --force yapayım mı", "dosyayı sileyim mi", "API token ver", "apt install x", "parolayı gir"]
+    {
         assert!(hit(t), "{t}");
     }
 }
@@ -171,7 +172,8 @@ fn auto_start_off_never_starts_a_due_project() {
         })
         .expect("plan");
         let n = actions.iter().filter(|a| a.kind == "start").count();
-        let reason = after.get("start_blocked").and_then(|v| v.get("reason")).and_then(|v| v.as_str()).map(String::from);
+        let reason =
+            after.get("start_blocked").and_then(|v| v.get("reason")).and_then(|v| v.as_str()).map(String::from);
         (n, reason)
     };
     assert_eq!(starts(true), (1, None));

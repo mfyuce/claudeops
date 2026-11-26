@@ -154,7 +154,7 @@ def build():
         parent = next((".".join(parts[:k]) for k in range(len(parts) - 1, 0, -1)
                        if targets.get(".".join(parts[:k])) or ".".join(parts[:k]) in why), None)
         if name in why:
-            status = f"kapsam dışı: {why[name]}"
+            status = why[name] if why[name].startswith("AÇIK: ") else f"kapsam dışı: {why[name]}"
         elif target.startswith(("consts_gen::", "types::")):
             status, ptest = "tamam", ptest or [const_test]
         elif target:
@@ -220,6 +220,8 @@ def build():
     count = (f"Test satırı özeti: {len(trows)} satır; doğrudan açık (aşağıda `AÇIK`) {len(opened)}; parite ile bağlı olup "
              f"crate dışı çağrısı da olan {len(partial)}, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) "
              f"{len(indirect)}.")
+    items_open = sum(1 for r in rows if "| AÇIK: " in r)
+    count += f" Python öğesi satırında `AÇIK`: {items_open}."
     block = "\n".join([BEGIN, "", f"### Python öğeleri ({len(rows)} satır)", "", "| Python adı (dosya:satır) | Rust karşılığı | parite testi | durum |",
                        "|---|---|---|---|", *rows, "", f"### Python testleri ({len(trows)} satır)", "",
                        "| Python testi | Rust karşılığı / gerekçe |", "|---|---|", *trows, "", END])

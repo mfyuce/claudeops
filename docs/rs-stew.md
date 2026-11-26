@@ -9,13 +9,22 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
 ## Parite düzeni
 
 - `parity/gen.py`: tüm modül sabitleri/regex'leri ve veri sınıfları Python'dan ÜRETİLİR (`generated` testi bayatlığı yakalar).
-- `parity/record.py`: Python steward testleri (2.531 test, yalıtılmış geçici dizin) koşarken saf işlevlerin girdi/çıktısı
+- `parity/record.py`: Python steward testleri (2.591 test, yalıtılmış geçici dizin) koşarken saf işlevlerin girdi/çıktısı
   `fixtures/vectors/*.jsonl.gz`'ye kaydedilir; `tests/parity` Rust'ta tekrar oynatır. İşlev başına en çok 250
   (`plan_tick` 600, `scan_markers` 500) tekil çağrı, özet sırasıyla seçilir (her test çağrısı değil).
 - `parity/map.py`: aşağıdaki tabloyu `ast` ile üretir; EKSİK satır varsa `--check` kırmızı.
 - Altın tick: `py/tests/steward_golden_tick.json`.
 
-## Durum ve devir (27 Kas 2026): BİRLEŞTİRMEYE HAZIR DEĞİL
+## Durum ve devir (27 Kas 2026): kapanış grubu bitti, kapıya gidebilir; AÇIK maddeler aşağıda
+
+`parity/map.py --check` temiz (EKSİK 0). Temiz olması "eşlik tamam" DEMEK DEĞİL: taşınmamış davranışlar tabloda `AÇIK`
+olarak durur ("Açık davranışlar"), ders listesinin kısmen ya da hiç karşılanmayan maddeleri "Python dersleri"ndedir.
+Sprint kuralı "Rust, Python'dan eksik olamaz" bu açıklar için henüz sağlanmıyor; crate hiçbir yere bağlı değil (canlıya
+alınacak uç yok), kapı kararı cops'ta.
+`origin/main` bu daldan ileride (27 Kas, `feae0764`, 61 commit; rs/state orada). Deneme birleştirmesinde (`git merge-tree`)
+çakışan dosyalar: `py/tests/test_steward_tbd370.py`, `rust/Cargo.toml`, `rust/Cargo.lock`. Birleşik ağaçta testler ve
+`map.py --check` yeniden koşulmalı (merge bu turda YAPILMADI). Açık dallara yapılan atıflar o dallar birleşene dek
+bu ağaçta doğrulanamaz.
 
 Taşınan: `identity.rs`, `markers.rs` (`fa5cecc`), `cards.rs`, `prompts.rs` (`c9e1d80`), grup 1 (soru/fikir):
 `questions.rs`, `store.rs`, `notify.rs`, `inserts.rs`, `logdedup.rs` (+ `cards.rs`de `make_card`, `mark_card_stale`,
@@ -101,21 +110,85 @@ vektörleri yeniden yazar. `python3 -I` ile koşar (kullanıcı paketleri sistem
 kısmı yüklenemez). `gen.py` artık `src/unicode_gen.rs`yi de üretir (`casefold`, `isdigit`). Crate'te `rustfmt.toml`
 (`max_width = 120`): mevcut dosyaların biçimi buydu, ayar commit'lenmemişti.
 
-Kalan gruplar, SIRAYLA (her biri taze Sonnet alt ajanı, `PORTING.md` ile):
-5. `plan_tick`: TAMAM (yukarıda).
-6. Kapanış: `parity/test_reasons.json`, `map.py --check` temiz, ders listesi (aşağıda).
+Grup 6 (kapanış): test satırları testler okunarak kapatıldı. Bir test satırı şu dört yoldan biriyle kapanır: (a) kayıtlı
+saf çağrılarının parite testi; (b) kendi adını `/// py:` ile taşıyan Rust testi (`tests/parity/pytests.rs`); (c)
+`parity/test_reasons.json` gerekçesi (G/Ç, uç, CLI ya da başka dalda taşınmış; dal ve commit yazılı, o dallar yazım
+anındaki uç hallerine göre); (d) `AÇIK:` ile başlayan gerekçe (taşınmadı). Sınırlar: (a) türü satır, o testin KENDİ
+girdisinin tekrar oynatıldığını söylemez (işlev başına en çok 250, `plan_tick` 600 çağrı özet sırasıyla seçilir); aynı
+satırdaki "bu crate dışındaki çağrıları" notu `map.py`nin statik taramasıdır (testin ve yardımcılarının doğrudan
+`modül.işlev(...)` çağrıları; dolaylı çağrıları ve sınanan iddiayı bilmez) ve en çok 5 adı yazar.
+
+Kapanış doğrulaması (27 Kas): `record.py` yeniden koşuldu (2.591 test, 0 hata; `test_calls.json` birebir aynı) ve
+`hand_cases.py` ile birlikte TAZE üretilen vektörlere karşı crate testleri geçti; sonra depodaki fixture'lar korundu.
 
 Python `re` farkları için `pyc::py_regex` (`\b \w \W \s \S` Python tanımıyla; `(?i)` desende girdi `pyc::ci_input`tan geçer);
 sonraki gruplarda da bunu kullanın, desenleri elle yazmayın.
 
+## Açık davranışlar (Rust'ta yok)
+
+Satır satır liste eşleme tablosunda (`AÇIK`). Kümeler:
+
+- Bu crate'in kaynağında (`steward.py`) olup G/Ç işlevinin içinde kalan saf mantık (10 öğe satırı): `persona_text` override
+  kolu, `tour_delivery` (eşik, yönlendirme metni, budama), `build_raw_card` (`source_hash`), `_git_recent` ayrıştırma,
+  `transfer_project` taşıma kararı, `compact_log` katlama, `dry_report` sayımı, `missed_summary_dates`, `summary_text`
+  bekleyen sayıları, `apply_review_where_answer`.
+- Saf ama hiçbir dalda taşınmamış değnekçi modülleri: `steward_quota`, `steward_keepwarm`, `steward_nowork`,
+  `steward_advance`, `steward_lessons`, `steward_jobs` (saf kısımlar), `trust_dialog.classify`, `labels` ad kuralları,
+  `question_detail` tavanı, `ucli_cost.credit_window`, `review_remote.parse_answer`; `steward_ask.passes`,
+  `decisions_path`, `decisions_section` (cevap kapısı uygulaması, tabloda satırı yok).
+- `web_steward.py` ve `commands/steward.py` içindeki saf kararlar (teslim doğrulama, TODO sayımı, başlatma geri
+  çekilmesi, `_launch_kwargs`, ucli takılma merdiveni, maliyet bekçisi, `_answer_by` vb.): T10/T6.
+- `web_review.py` saf yardımcıları (argv üreticileri, çıktı/kullanım ayrıştırma, yuva kararı): T8. Sağlayıcı tek atımlık
+  çağrısının yürütülmesi: rs/prov G10.
+
 ## Python dersleri (`docs/rust-lessons-from-python.md` 2.6 ve bölüm 3)
 
-HENÜZ KARŞILANMADI: her madde için test adı ya da gerekçe bu bölüme yazılacak (birleştirme koşulu).
+Durumlar: KARŞILANIYOR, KISMEN (açık kalan parça yazılı), GEÇERSİZ (bu izde geçerli değil), AÇIK. Test adları
+`tests/parity` içindedir (`dosya::test`). Saf çekirdek G/Ç yapmadığı için "uygulama" yarısı T10'dur.
 
-Grup 5'in değdiği 2.6 maddeleri (ön not; liste kapanışta tamamlanır): hold/olumsuz sahip cevabı paused/done projeyi
-açmaz (`close_negative_answer` dalı, `plan_tick_vectors` + elle girdiler); paused/done projede otomatik devir/yeniden
-açma yok (`_halted_phase` dalları, `ho_halted`); alt ajan/meşgul oturumda devir ve DONE ertelenir (`handover_deferred`,
-`done_pending`). Hepsi Python davranışının birebir taşınmasıyla sınandı, yeni kural eklenmedi.
+### 2.6 Değnekçi çekirdeği
+
+| # | Madde | Durum | Kanıt / eksik |
+|---|---|---|---|
+| 1 | Karar saf, uygulama ayrı; faz x olay x aktör tablo testi | KISMEN | `plan_tick(TickInput)` -> (eylemler, yeni state), uygulama yok: `tick::plan_tick_vectors`, `tick::golden_world_none`, elle girdiler. Tam faz x olay x aktör tablosu YOK (kayıt + rastgele elle girdi + `lessons`) |
+| 2 | Aktör türü zorunlu, varsayılansız; ortamdan sessizce `owner` olmaz | AÇIK | Python gibi `answered_by` dizgedir: `Reply` `Default` türetir, tanınmayan değer "" olur ve `held_instruction_item` ""yi sahip sayar. `set_answered_by` bilinmeyeni reddeder (`store::set_answered_by_vectors`). Ortam tespiti (`_answer_by`) taşınmadı (T6). Tip düzeyinde kural T10 çağıranı yazılmadan karar ister |
+| 3 | Bekle/olumsuz cevap paused/done projeyi açmaz | KARŞILANIYOR | `lessons::negative_or_hold_answer_never_opens_a_halted_project`, `lessons::clearly_positive_answer_opens_a_paused_project`, `idletext::is_open_answer_vectors`. Bilinen davranış: "ok, ama bekle" açar (aynen) |
+| 4 | Reddedilen cevap direktif olarak dolanamaz | KISMEN | Yüklem taşındı: `gates::owner_pending_block_vectors`, `gates::brain_may_answer_vectors`. Direktif yolunda uygulanması `web_steward` (T10) |
+| 5 | Dürtme eyleyebilecek aktöre; "bildirildi" kalıcı | KISMEN | Kayıtlar dönen `state`te (`tbd_asked`, `todo_paused_asked`, `blocked_tours`; soru `notified_at`): `tick::plan_tick_vectors`, `store::mark_notified_vectors`. "Eyleyebilir mi" diye ayrı kural yok (Python'da da çekirdekte yok); bildirim T10 |
+| 6 | Döngü kesici ve üstel geri çekilme | KISMEN | `recovery::loop_guard_vectors`, `recovery::loop_paused_vectors`, API hatası gecikmeleri `recovery::plan_api_recovery_vectors`. Başlatma geri çekilmesi `web_steward`da (tablo AÇIK) |
+| 7 | İşaret taraması kod bloğu/alıntı/yer tutucu saymaz; corpus | KARŞILANIYOR | `markers::scan_markers_corpus`, `markers::scan_markers_vectors`, `markers::is_confirm_line_vectors`, `markers::needs_ho_rfh_marker_in`, `gates::job_marker_verdict_vectors` |
+| 8 | Teslim doğrulanır; sebep kodlu hata | GEÇERSİZ (teslim bu crate'te yok); T10'da AÇIK | Eylemin etki doğrulaması çekirdekte: `recovery::check_outcomes_vectors`. Pane teslimi `web_steward` (tablo AÇIK: `test_directive_delivery`, `test_steward_answer_dialog_blocked`) |
+| 9 | Yıkıcı hedef kilit içinde, tam adla; belirsizse hiçbir şey | KISMEN | Eylem tam oturum adı taşır; sahibin elle açtığı oturuma eylem yok: `world::world_session_class`, `world::update_owned_vectors`, `tick::plan_tick_vectors`. Kilit içinde yeniden çözme T10. Yıkıcı olmayan teslimde `pick_delivery_view` birden çok adaydan en kısa adı seçer (Python aynen) |
+| 10 | Alt ajan/meşgul/diyalogda direktif, devir, restart ertelenir | KISMEN | `lessons::active_subagent_defers_the_threshold_handover`, `lessons::busy_or_subagent_session_gets_no_answer_delivery`, `closing::handover_defer_decision_vectors`, `gates::directive_defer_reason_vectors`. Eksik (aynen): `directive_defer_reason` alt ajana bakmaz; kayıtsız projenin cevap iletimi `subagent_active`e bakmaz; süre/oran aşılınca devir zorlanır. Diyalog tespiti ve restart T4/T10 |
+| 11 | Eşikler tek kaynak; paused/done'da otomatik devir/açma yok | KISMEN | `closing::context_threshold_vectors`, `lessons::halted_project_gets_no_automatic_handover`, `tick::plan_tick_vectors` (`ho_halted`). Kota eşikleri (`steward_quota`) taşınmadı |
+| 12 | Soru kimliği tam; cevaplanmış ezilmez | KISMEN | `questions::find_question_vectors` (tam kimlik), `lessons::brain_cannot_answer_owner_questions_or_overwrite_an_answered_one` (`only_open`). `only_open=false` ile çekirdek cevaplanmışı ezer (Python aynen); `--force` kapısı CLI'da (T6) |
+| 13 | Uzak yazım: "yok" ≠ "okunamadı"; `persist_retry` | GEÇERSİZ | Crate G/Ç yapmaz; T10 uygulama katmanı |
+| 14 | Beynin hangi ASK/rutin soruyu gördüğü yazılı ve testli | KARŞILANIYOR (çekirdek) | `brain_may_answer` (yalnız rutin; sahip konusu hariç), `tour::review_items_vectors`, `gates::tour_eligible_hand`, `gates::owner_class_vectors`, `gates::blocked_reason_vectors`. Cevap kapısının uygulanması T10 |
+
+### Bölüm 3 genel liste
+
+| # | Madde (kısa) | Durum | Kanıt / eksik |
+|---|---|---|---|
+| 1 | Hedef `Unique` kanıtlı | KISMEN | 2.6/9 ile aynı: `Unique` tipi yok; kilit içinde çözme T10 |
+| 2 | Atomik yazım / kilit sözleşmesi | GEÇERSİZ | `src/` dosya yazmaz (`std::fs` yok); depo çekirdeği sözleşmesi yukarıda (grup 1): kilit ve kayıt çağıranda; `cops-state` (rs/state) |
+| 3 | Belirsiz durum `Allow`/başarı/"yok" olmaz | KISMEN | Kapalı yön: `owner_only` ve konu kapısı desen hatasında "sahip", `is_open_answer` açmaz; bozuk tipli girdi `BadValue` (`tick::bad_state_types_are_errors`, `closing::bad_state_types_are_errors`, `tour::bad_state_types_are_errors`, `gates::bad_values_are_errors`). Geri çağrının `None` (bilinmiyor) dönüşü Python'daki gibi işlenir; her kullanım ayrıca denetlenmedi |
+| 4 | Eylem sonucu doğrulanır, negatif test | KISMEN | `recovery::check_outcomes_vectors`; uygulama T10 |
+| 5 | Hata yutma yok; yutulan sayaç/log taşır | AÇIK | `let _ =` yok; `unwrap/expect/panic` clippy ile yasak (`consts_gen` sabit desen `expect`i hariç). Ama `src/`te onlarca `.ok()` ve `unwrap_or_default` var (desen derlemesi, Python `.get() or ""` karşılığı, desen arama hatası -> "eşleşme yok"); sayaç/log YOK (crate günlük yazmaz) ve her birinin hata yönü tek tek denetlenmedi |
+| 6 | Bir kez okunup bayatlayan önbellek yok | KARŞILANIYOR | Yalnız sabit desenler `LazyLock`; ayar, saat, durum girdidir; `LogSeen` çağıranda |
+| 7 | Döngüler sınırlı; bildirim durumu kalıcı | KARŞILANIYOR | `loop {}` yok, `while`lar girdi üzerinde ilerler; yeniden denemeler `state` kayıtlarıyla sınırlı (`recovery`) |
+| 8 | Dış CLI/TUI davranışı fixture'lı | GEÇERSİZ | Ekran okumaz, CLI çağırmaz; transkript metni tanıma `recovery::api_error_kind_vectors` |
+| 9 | Alt süreç/bağlantı sahipliği | GEÇERSİZ | Süreç/bağlantı yok |
+| 10 | Girdi sınırları (boş, dev, NaN/inf, UTF-8, tip) | KISMEN | Tip: `BadValue` testleri, `store::wrong_field_type_is_rejected_without_changes`; uzun metin `gates::long_texts_stay_within_regex_limits`; UTF-8 `&str` ile garanti. NaN/inf: `pyc::to_float` Python `float` gibi "nan"/"inf" dizgesini kabul eder, özel test ve ret kuralı YOK (rs/rev TBD#368 b'den farklı) |
+| 11 | İşaret ayrıştırma tek modül, corpus, altın vektör | KARŞILANIYOR | `markers.rs`; 2.6/7 testleri |
+| 12 | Python ile paylaşılan kural altın vektör/diferansiyel; `$HOME` yok | KARŞILANIYOR | `generated::generated_files_are_current`, kayıtlı ve elle vektörler, altın tick; `src/`te ortam/`$HOME` okuması yok (`STEWARD_DIR` parametre) |
+| 13 | Sırlar `Secret<T>`; sızıntı yok; yetki matrisi | AÇIK | Soru anahtarı (`Question.key`, `/q/` yetkisi) düz `String`; `Question` `Debug` türetir, anahtar `{:?}` ile basılabilir (crate kendisi günlük yazmaz). `Secret<T>` yok; yetki yalnız `brain_may_answer` |
+| 14 | Yol/adres girdileri güvenli | KISMEN | Kimlik doğrulaması yol kaçışını reddeder: `identity::paths_layout_and_errors`, `identity::name_rules_edges`, `identity::normalize_host_edges`. Çağırandan gelen diğer yollar ve symlink denetimi T10 |
+| 15 | Vekil/WS e2e | GEÇERSİZ | Vekil/WS yok |
+| 16 | Yeni uç tabloları eşit | GEÇERSİZ | Uç yok |
+| 17 | Test yalıtımı; canlı dizin değişmez | KARŞILANIYOR (yapısal) | Rust testleri dosya yazmaz; parite betikleri `env.isolate()` ile geçici `HOME`/`CLAUDEOPS_DIR`. "Canlı dizin değişmedi" diye otomatik iddia yok |
+| 18 | Uzak host sürüm/yetenek, deploy notu | GEÇERSİZ | Uzak çağrı yok (T5/T10) |
+| 19 | İkili sürümü, geri dönüş, restart kurtarma | GEÇERSİZ | Kütüphane; canlı ikiliye bağlı değil |
+| 20 | İddia ölçümlü; kuru koşu yan etkisiz; Python'a özellik yok | KARŞILANIYOR | Hız notu ölçüm olarak yazılı (debug; release ölçülmedi); bu daldaki `py/` commit'leri `fix:`/`test:` ve merge; kuru koşu yolu yok |
 
 ## Python hatası?
 
@@ -367,7 +440,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `upsert_project` (steward.py:773) | `store::upsert_project` | store::upsert_project_vectors, store::wrong_field_type_is_rejected_without_changes | tamam |
 | `auto_remove_labels` (steward.py:846) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
 | `remove_project` (steward.py:860) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
-| `transfer_project` (steward.py:870) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
+| `transfer_project` (steward.py:870) | - | - | AÇIK: depo işlemi; proje devrinde hangi soru ve işin taşınacağı kararı ve hata koşulları Rust'ta yok, T10 |
 | `load_ideas` (steward.py:933) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `save_ideas` (steward.py:938) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `add_idea` (steward.py:943) | `store::add_idea` | store::add_idea_vectors | tamam |
@@ -438,7 +511,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `ON_BEHALF_PREFIX` (steward.py:1429) | `consts_gen::ON_BEHALF_PREFIX` | generated::generated_files_are_current | tamam |
 | `answer_question` (steward.py:1432) | `store::answer_question` | store::answer_question_vectors | tamam |
 | `set_answered_by` (steward.py:1476) | `store::set_answered_by` | store::set_answered_by_vectors | tamam |
-| `apply_review_where_answer` (steward.py:1492) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
+| `apply_review_where_answer` (steward.py:1492) | - | - | AÇIK: review cevabını projeye yazma; `review_remote.parse_answer` ve alan eşlemesi Rust'ta yok, T8/T10 |
 | `find_question` (steward.py:1514) | `questions::find_question` | questions::find_question_vectors | tamam |
 | `mark_notified` (steward.py:1518) | `store::mark_notified` | store::mark_notified_vectors | tamam |
 | `question_link` (steward.py:1528) | `notify::question_link` | notify::question_link_vectors | tamam |
@@ -477,13 +550,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_log_dedup` (steward.py:1845) | `logdedup::log_dedup` | logdedup::old_subjects_are_evicted_past_the_cap, logdedup::p_log_dedup | tamam |
 | `log_event` (steward.py:1871) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `_rewrite_log` (steward.py:1891) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `compact_log` (steward.py:1896) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `compact_log` (steward.py:1896) | - | - | AÇIK: günlük dosyası işlevi; tick satırlarını tek `ticks` satırına katlama kuralı Rust'ta yok, T10 |
 | `rotate_log` (steward.py:1936) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `tail_log` (steward.py:1950) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `card_path` (steward.py:1972) | `cards::card_path` | cards::card_path_vectors | tamam |
 | `_read_doc_head` (steward.py:1976) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `_git_recent` (steward.py:1984) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `build_raw_card` (steward.py:2011) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
+| `_git_recent` (steward.py:1984) | - | - | AÇIK: alt süreç işlevi; `git log` satırı ayrıştırma Rust'ta yok, T10 |
+| `build_raw_card` (steward.py:2011) | - | - | AÇIK: G/Ç işlevi; `source_hash` özeti Rust'ta yok (aynı üretilmezse geçişte tüm kartlar eskimiş sayılır), T10 |
 | `raw_card_from_docs` (steward.py:2029) | `cards::raw_card_from_docs` | cards::raw_card_from_docs_vectors | tamam |
 | `_short` (steward.py:2039) | `cards::short` | cards::p_short | tamam |
 | `_str_list` (steward.py:2043) | `cards::str_list` | cards::p_str_list | tamam |
@@ -503,7 +576,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `card_refresh_reason` (steward.py:2244) | `cards::card_refresh_reason` | cards::card_refresh_reason_vectors | tamam |
 | `note_card_failure` (steward.py:2263) | `cards::note_card_failure` | store::note_card_failure_vectors | tamam |
 | `card_one_liner` (steward.py:2274) | `cards::card_one_liner` | cards::card_one_liner_vectors | tamam |
-| `persona_text` (steward.py:2280) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `persona_text` (steward.py:2280) | - | - | AÇIK: G/Ç işlevi ama içinde Rust'ta olmayan saf mantık var (taşınmadı), T10: `persona_text` override kolu |
 | `_unwrap_ticks` (steward.py:2293) | `markers::unwrap_ticks` | markers::p_unwrap_ticks | tamam |
 | `_PLACEHOLDER_BODY_RE` (steward.py:2306) | `consts_gen::P_PLACEHOLDER_BODY_RE` | generated::generated_files_are_current | tamam |
 | `count_open_tbd` (steward.py:2309) | `markers::count_open_tbd` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors | tamam |
@@ -603,7 +676,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_context_owner_topic` (steward.py:3613) | `closing::context_owner_topic` | closing::p_context_owner_topic | tamam |
 | `is_context_question` (steward.py:3619) | `closing::is_context_question` | closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits | tamam |
 | `context_answer` (steward.py:3626) | `closing::context_answer` | closing::context_answer_vectors | tamam |
-| `tour_delivery` (steward.py:3640) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `tour_delivery` (steward.py:3640) | - | - | AÇIK: G/Ç işlevi; satır içi eşiği, TR/EN yönlendirme metni ve saklanacak tur dosyası seçimi Rust'ta yok, T10 |
 | `SLOT_RECENT_SECONDS` (steward.py:3663) | `consts_gen::SLOT_RECENT_SECONDS` | generated::generated_files_are_current | tamam |
 | `DIRECTIVE_MIN_GAP_SECONDS` (steward.py:3664) | `consts_gen::DIRECTIVE_MIN_GAP_SECONDS` | generated::generated_files_are_current | tamam |
 | `OWNER_ONLY_RE` (steward.py:3669) | `consts_gen::OWNER_ONLY_RE` | generated::generated_files_are_current | tamam |
@@ -803,18 +876,18 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `log_entries_for_date` (steward.py:6075) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `DRY_KIPS` (steward.py:6094) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
 | `DRY_REPORT_HOURS` (steward.py:6096) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `dry_report` (steward.py:6099) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `dry_report` (steward.py:6099) | - | - | AÇIK: günlük okuyan işlev; `would:` olaylarını türe göre sayma Rust'ta yok (`dry_report_text` yalnız biçimler), T10 |
 | `dry_report_text` (steward.py:6129) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
 | `dry_ask_due` (steward.py:6141) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
 | `summary_due` (steward.py:6152) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6159) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `missed_summary_dates` (steward.py:6159) | - | - | AÇIK: dosya okuyan işlev; kaçan özet günlerini seçme kuralı Rust'ta yok, T10 |
 | `_NO_LOG_DAYS` (steward.py:6183) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
 | `_SUMMARY_TXT` (steward.py:6186) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
 | `_names` (steward.py:6210) | `report::names_line` | report::p_names | tamam |
 | `_kind_counts` (steward.py:6215) | `report::kind_counts` | report::p_kind_counts | tamam |
 | `_ask_gate_lines` (steward.py:6220) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
 | `daily_summary` (steward.py:6239) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6323) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summary_text` (steward.py:6323) | - | - | AÇIK: depo okuyan sarmalayıcı; bekleyen sayıları toplama Rust'ta yok (`daily_summary` hazır alır), T10 |
 | `write_daily` (steward.py:6341) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `summarize_projects` (steward.py:6348) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
@@ -825,7 +898,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 
 ### Python testleri (1856 satır)
 
-Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99.
+Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 189; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 10.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
