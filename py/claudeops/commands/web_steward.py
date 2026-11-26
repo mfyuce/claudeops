@@ -1114,12 +1114,12 @@ def remote_health(hosts: Any, now: Optional[float] = None) -> Dict[str, Dict[str
     return out
 
 
-def _remote_ref(host: str, name: str) -> Tuple[str, str]:
+def _remote_ref(host: str, name: str, sid: str = "") -> Tuple[str, str]:
     """Uzak okuma hedefi: (oturumun GERÇEK adı, klasörü); host'un TAZE önbelleğinden, ağa gitmez; bulunamazsa ("", "").
     Sıra: adı TAM `name` olan satır (çalışan ya da kapalı); yoksa ad bu host'taki bir projeye çözülüyorsa (proje adı
     `oiso`, oturum `oiso20261017`) projenin TEK çalışan oturumu; çalışan yoksa projeye çözülen kapalı satırlar (hepsi
     aynı klasördeyse ilki). Projenin iki çalışan oturumu varsa ya da kapalı satırların klasörleri farklıysa tahmin
-    edilmez: ("", "")."""
+    edilmez: ("", ""). `sid` verilirse ve ad kuralı tutmuyorsa değnekçinin İZLEDİĞİ oturum (`state.owned`)."""
     st = _remote.status(host)
     if not _host_fresh(st) or _backing_off(host, time.time()):
         return "", ""
@@ -1128,6 +1128,12 @@ def _remote_ref(host: str, name: str) -> Tuple[str, str]:
         for r in rows[key]:
             if r.get("name") == name and r.get("cwd"):
                 return name, str(r["cwd"])
+    tracked = str((sw.load_state(sw.paths_for(sid)).get("owned") or {}).get(name) or "") if sid else ""
+    if tracked:     # 26 Kas asp_fd: izlenen oturumun adı proje adından türemiyor (`ancient-script-pipeline-fd20261118`)
+        for key in ("sessions", "closed"):
+            for r in rows[key]:
+                if r.get("name") == tracked and r.get("cwd"):
+                    return tracked, str(r["cwd"])
     world = _world()
     key = _remote_key(name, host, world)
     if not key:
@@ -1426,6 +1432,12 @@ TRUST_RECHECK_SECONDS = 4.0        # güven diyaloğu kabulünden sonra ekranın
 TRUST_RECHECK_STEP_SECONDS = 0.3
 ANSWER_FAIL_ALERT = 3      # art arda bu kadar başarısız cevap iletimi: olay + bildirim
 _ANSWER_FAILS: Dict[str, int] = {}
+_ANSWER_FAIL_SINCE: Dict[str, float] = {}      # uzak host geçici hatası: ilk başarısızlık anı (bildirildiyse inf)
+
+
+def _transient_host_error(res: Dict[str, Any]) -> bool:
+    err = str(res.get("error") or "")
+    return res.get("code") in ("host_down", "host_unreachable") or " unreachable: " in err or "Connection reset by peer" in err
 
 
 def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
@@ -3593,12 +3605,19 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
             # kalmasın (7 Kas copsdev: 6 saat "send failed"): eşikte olay + sahibe tek bildirim.
             n = _ANSWER_FAILS.get(q.id, 0) + 1
             _ANSWER_FAILS[q.id] = n
-            if n == ANSWER_FAIL_ALERT:
+            alert = n == ANSWER_FAIL_ALERT
+            if _transient_host_error(res):      # yük altındaki host dakikalar sonra teslim alır: sahibe "ulaşmadı" denmez
+                since = _ANSWER_FAIL_SINCE.setdefault(q.id, time.time())
+                alert = time.time() - since >= PERSIST_NOTIFY_SECONDS
+                if alert:
+                    _ANSWER_FAIL_SINCE[q.id] = float("inf")
+            if alert:
                 sw.log_event("answer_delivery_failing", paths=paths, id=q.id, session=name, tries=n, error=res.get("error", ""))
                 _notify(cfg, (f"Cevap {name} oturumuna {n} denemedir İLETİLEMİYOR ({res.get('error', '')}): [{q.id}] {q.answer[:120]}" if cfg.lang != "en"
                               else f"Answer to {name} still NOT delivered after {n} tries ({res.get('error', '')}): [{q.id}] {q.answer[:120]}"))
         elif res.get("ok"):
             _ANSWER_FAILS.pop(q.id, None)
+            _ANSWER_FAIL_SINCE.pop(q.id, None)
         return res
     if k == "deliver_findings":
         if not host:
@@ -5494,7 +5513,10 @@ def jobs_fast_step() -> None:
     for sid in steward_ids():
         try:
             cfg = steward_config(sid)
-            if cfg.role == "reviewer" or not cfg.enabled:
+            if cfg.role == "reviewer":
+                continue
+            _persist_retry_step(sid)        # sahip cevabının uzak yazımı: değnekçi kapalı olsa da
+            if not cfg.enabled:
                 continue
             jobs_tick(cfg)
             _kick_delivery(cfg)
@@ -6503,12 +6525,84 @@ def _preserve_undelivered_answer(q: "sw.Question", cfg: "sw.Config", paths: Any,
         return "failed"
 
 
-def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
+PERSIST_NOTIFY_SECONDS = 1800.0          # geçici uzak hata bu kadar sürerse sahibe (bir kez) bildirilir
+PERSIST_GIVE_UP_SECONDS = 86400.0        # bu kadar sonra yeniden deneme bırakılır (son bildirim)
+_PERSIST_TRANSIENT = ("remote_unreadable", "remote_denied", "remote_conflict", "remote_write_failed", "no_folder")
+
+
+def _persist_retryable(out: Dict[str, str], host: str, sid: str) -> bool:
+    """Uzak yazım geçici bir nedenle mi kaldı (zaman aşımı, bayat host, çakışma): ayar/kayıt eksikliği kalıcıdır."""
+    if not host or hosts_mod.get_host(host) is None or not steward_config(sid).remote_actions:
+        return False
+    return any(v in _PERSIST_TRANSIENT for v in out.values())
+
+
+def _persist_queue(sid: str, qid: str, entry: Optional[Dict[str, Any]]) -> None:
+    """`state.persist_retry[qid]` yaz (`None` = sil)."""
+    paths = sw.paths_for(sid)
+    with sw.steward_lock(paths):
+        state = sw.load_state(paths)
+        queue = dict(state.get("persist_retry") or {})
+        if entry is None:
+            if queue.pop(qid, None) is None:
+                return
+        else:
+            queue[qid] = entry
+        state["persist_retry"] = queue
+        sw.save_state(state, paths)
+
+
+def _persist_failed_notify(q: "sw.Question", sid: str, why: str, retrying: bool) -> None:
+    if q.answered_by == "brain":        # beyin cevabında yazılamayan not sahibi rahatsız etmez
+        return
+    cfg = steward_config(sid)
+    tr_tail = " (arka planda yeniden deneniyor; yapman gereken bir şey yok)" if retrying else ""
+    en_tail = " (still retrying in the background; nothing to do)" if retrying else ""
+    _notify(cfg, (f"[{cfg.sid}] Cevabın {q.project} projesinin TOBEDECIDED.md'sine YAZILAMADI ({why}){tr_tail}: [{q.id}] {q.answer[:160]}"
+                  if cfg.lang != "en" else
+                  f"[{cfg.sid}] Your answer for {q.project} could NOT be written to TOBEDECIDED.md ({why}){en_tail}: [{q.id}] {q.answer[:160]}"))
+
+
+def _persist_retry_step(sid: str, now: Optional[float] = None) -> None:
+    """Kuyruktaki EN ESKİ vadesi gelmiş uzak cevap yazımını bir kez dener (iş döngüsünden; tick kilidi tutulmaz).
+    Yazım aynı soru kimliğini iki kez eklemez."""
+    now = time.time() if now is None else now
+    queue = sw.load_state(sw.paths_for(sid)).get("persist_retry") or {}
+    due = sorted((float(e.get("next") or 0.0), qid) for qid, e in queue.items() if float(e.get("next") or 0.0) <= now)
+    if not due:
+        return
+    qid = due[0][1]
+    entry = dict(queue[qid])
+    q = sw.find_question(qid, sid)
+    if q is None or q.status == "open":
+        _persist_queue(sid, qid, None)
+        return
+    tries = int(entry.get("tries") or 0) + 1
+    entry.update(tries=tries, next=now + min(REMOTE_BACKOFF_SECONDS, 60.0 * 2 ** min(tries, 4)))
+    _persist_queue(sid, qid, entry)         # denemeden ÖNCE: çökse de aynı madde hemen yeniden dönmez
+    out = _persist_owner_answer(q, sid, retry=True)
+    if all(v in ("written", "already", "skipped") for v in out.values()):
+        _persist_queue(sid, qid, None)
+        return
+    age = now - float(entry.get("first") or now)
+    why = ", ".join(f"{k}={v}" for k, v in out.items() if v not in ("written", "already", "skipped"))
+    if age >= PERSIST_GIVE_UP_SECONDS:
+        _persist_queue(sid, qid, None)
+        sw.log_event("answer_persist_gave_up", paths=sid, id=q.id, project=q.project, tries=tries, result=why)
+        _persist_failed_notify(q, sid, why, False)
+    elif age >= PERSIST_NOTIFY_SECONDS and not entry.get("notified"):
+        entry["notified"] = True
+        _persist_queue(sid, qid, entry)
+        _persist_failed_notify(q, sid, why, True)
+
+
+def _persist_owner_answer(q: "sw.Question", sid: str, retry: bool = False) -> Dict[str, str]:
     """Sahip cevabı (answer, `--as-owner`/cops dahil) HER ZAMAN projenin dosyasına yazılır (sahip 19 Kas: "cevaplar todo'ya yazılıyor mu?"):
     TOBEDECIDED.md'de ilgili TBD maddesinin altına (`tbd_insert_answer`, aynı qid iki kez yazılmaz), cevap eylem taşıyorsa TODO.md'ye
     `- [ ] (sahip cevabı <qid>) ...`. Yerel proje doğrudan, uzak proje host-routed `files/read`+`files/write` ile (dosya yoksa uzak yazmaz:
     `unreadable`). Oturuma iletim ayrıca sürer; bu yazı iletimden ÖNCE yapılır. Sonuç {"tbd": ..., "todo": ...}: written | already | skipped
-    | remote_* hata kodu | no_folder | failed. Asla fırlatmaz."""
+    | remote_* hata kodu | no_folder | failed. Geçici uzak hata kuyruğa girer (sonuçta `retry: queued`, bildirim yok;
+    `_persist_retry_step`; `retry=True` o denemedir: kuyruğa/bildirime dokunmaz). Asla fırlatmaz."""
     out = {"tbd": "failed", "todo": "skipped"}
     try:
         cfg = steward_config(sid)
@@ -6553,10 +6647,13 @@ def _persist_owner_answer(q: "sw.Question", sid: str) -> Dict[str, str]:
             except (OSError, subprocess.SubprocessError):
                 pass
         sw.log_event("answer_persisted", paths=sid, id=q.id, project=q.project, tbd=out["tbd"], todo=out["todo"])
-        if out["tbd"] not in ("written", "already") and q.answered_by != "brain":      # beyin cevabında yazılamayan not sahibi rahatsız etmez
-            _notify(cfg, (f"[{cfg.sid}] Cevabın {q.project} projesinin TOBEDECIDED.md'sine YAZILAMADI ({out['tbd']}): [{q.id}] {q.answer[:160]}"
-                          if cfg.lang != "en" else
-                          f"[{cfg.sid}] Your answer for {q.project} could NOT be written to TOBEDECIDED.md ({out['tbd']}): [{q.id}] {q.answer[:160]}"))
+        if not retry:
+            if _persist_retryable(out, host, sid):
+                t = time.time()
+                _persist_queue(sid, q.id, {"first": t, "next": t + 60.0, "tries": 0})
+                out["retry"] = "queued"
+            elif out["tbd"] not in ("written", "already"):
+                _persist_failed_notify(q, sid, out["tbd"], False)
     except Exception as e:
         diag_log("answer_persist_failed", id=getattr(q, "id", ""), error=repr(e))
     return out
@@ -6569,11 +6666,12 @@ def _remote_before(host: str, name: str, path: str, fname: str) -> Tuple[Optiona
     """Uzak dosyanın içeriği + `create` mı. Okunamayan/yok dosya proje not dosyasıysa boş içerikle ve create=True ile devam edilir."""
     before = _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS)
     if before is None and fname in _REMOTE_CREATABLE:
-        try:       # YALNIZ host net "yok" (404) dedi ise oluştur; ağ/zaman aşımı/boyut sınırı = okunamadı, yazma YOK
+        try:       # YALNIZ host net "yok" dedi ise oluştur (`files_not_found`, durum ne olursa olsun); ağ/zaman aşımı/boyut = yazma YOK
             parsed, status = _remote.get("/api/files/read", host, {"name": name, "path": path}, timeout=REMOTE_READ_BUDGET_SECONDS)
         except Exception:
             return None, False
-        if status == 404 and isinstance(parsed, dict) and parsed.get("ok") is False:
+        if isinstance(parsed, dict) and parsed.get("ok") is False \
+                and (parsed.get("code") == "files_not_found" or (status == 404 and not parsed.get("code"))):
             return "", True
     return before, False
 
@@ -6582,7 +6680,7 @@ def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Opt
     """Uzak projenin `fname` dosyasını `edit(metin)` ile günceller (`_remote_append_idea` ile aynı güvenlik sırası: kapı, oku, yeniden oku, yaz)."""
     if not _remote_files_gate(host, sid):
         return "remote_denied"
-    real, cwd = _remote_ref(host, name)
+    real, cwd = _remote_ref(host, name, sid)
     if not cwd:
         return "no_folder"
     name = real or name

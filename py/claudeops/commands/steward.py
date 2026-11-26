@@ -474,8 +474,10 @@ def _persist_cli_answer(args, q) -> None:
     else:
         from . import web_steward
         persisted = web_steward._persist_if_due(q, _sid(args))
-    bad = {k: v for k, v in persisted.items() if v not in ("written", "already", "skipped")}
-    if bad:
+    bad = {k: v for k, v in persisted.items() if k != "retry" and v not in ("written", "already", "skipped")}
+    if bad and persisted.get("retry"):
+        print("not: cevap proje dosyasına henüz yazılamadı, arka planda yeniden denenecek (" + ", ".join(f"{k}={v}" for k, v in bad.items()) + ")")
+    elif bad:
         print("uyarı: cevap proje dosyasına YAZILAMADI (" + ", ".join(f"{k}={v}" for k, v in bad.items()) + ")")
 
 

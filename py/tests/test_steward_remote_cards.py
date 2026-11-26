@@ -55,6 +55,7 @@ class FilesHost(FakeHost):
         self.writes = []
         self.on_read = None
         self.down = False
+        self.missing = ({"ok": False, "error": "yol bulunamadı"}, 404)      # gerçek host: 200 + code files_not_found
 
     def get(self, path, host, query, timeout=None):
         if path != "/api/files/read":
@@ -65,7 +66,7 @@ class FilesHost(FakeHost):
         p = query["path"]
         self.reads.append(p)
         text = self.files.get(p)
-        out = ({"ok": True, "text": text}, 200) if text is not None else ({"ok": False, "error": "yol bulunamadı"}, 404)
+        out = ({"ok": True, "text": text}, 200) if text is not None else self.missing
         if self.on_read:
             self.on_read(p, len(self.reads))
         return out
