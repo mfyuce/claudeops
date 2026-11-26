@@ -91,6 +91,13 @@ impl Build<'_> {
         self.cases.push(c);
     }
 
+    /// Eskiden ayrışan, artık iki tarafta eşit vaka: sonuç `expect` ile de sabitlenir.
+    fn agree(&mut self, id: &str, data: impl Into<Vec<u8>>, expect: Value) {
+        let mut c = self.read_case(&format!("esit-{id}"), data);
+        c.args["expect"] = expect;
+        self.cases.push(c);
+    }
+
     /// Bilinen ayrışma: Rust sonucu `expect` ([`since`siz, `since`li] model/effort/istek) ile ayrıca doğrulanır.
     fn diverge(&mut self, id: &str, data: impl Into<Vec<u8>>, expect: Value, why: &'static str) {
         let mut c = self.read_case(&format!("sapma-{id}"), data).known(why);
@@ -265,21 +272,12 @@ fn divergences(b: &mut Build<'_>) {
         if since { none } else { r }
     };
     let expect = json!([found(false), found(true)]);
+    // Nesne olmayan satır ve `message`: iki taraf da yalnız o satırı atlar (eşit sonuç).
     for (id, line) in [("satir-sayi", "5"), ("satir-liste", "[1]"), ("satir-metin", r#""assistant""#), ("satir-null", "null")] {
-        b.diverge(
-            id,
-            lines(&[base.clone(), line.into()]),
-            expect.clone(),
-            "nesne olmayan JSON satırı: Python `AttributeError` atar, Rust satırı atlar",
-        );
+        b.agree(id, lines(&[base.clone(), line.into()]), expect.clone());
     }
     for (id, msg) in [("mesaj-null", "null"), ("mesaj-metin", r#""x""#), ("mesaj-liste", "[1]"), ("mesaj-sayi", "3")] {
-        b.diverge(
-            id,
-            lines(&[base.clone(), format!(r#"{{"type":"assistant","message":{msg}}}"#)]),
-            expect.clone(),
-            "nesne olmayan `message`: Python model okurken `AttributeError` atar, Rust satırı atlar",
-        );
+        b.agree(id, lines(&[base.clone(), format!(r#"{{"type":"assistant","message":{msg}}}"#)]), expect.clone());
     }
     for (id, model) in [("model-sayi", "5"), ("model-liste", r#"["a"]"#), ("model-nesne", r#"{"a":1}"#), ("model-true", "true")] {
         b.diverge(

@@ -190,7 +190,8 @@ def _last_assistant_value(jsonl_path: Path, extract, since: Optional[float] = No
                         obj = json.loads(line)
                     except Exception:
                         continue
-                    if obj.get("type") != "assistant":
+                    # Geçerli JSON ama nesne olmayan satır yalnız atlanır (`obj.get` istisnası okumayı düşürmesin).
+                    if not isinstance(obj, dict) or obj.get("type") != "assistant":
                         continue
                     if since is not None:
                         ts = _row_epoch(obj.get("timestamp"))
@@ -209,7 +210,13 @@ def _last_assistant_value(jsonl_path: Path, extract, since: Optional[float] = No
 def last_assistant_model(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
     """En son `type:"assistant"` satırının `message.model`'i, yoksa None.
     `since`: bkz. `_last_assistant_value`."""
-    return _last_assistant_value(jsonl_path, lambda obj: obj.get("message", {}).get("model"), since)
+    return _last_assistant_value(jsonl_path, _row_model, since)
+
+
+def _row_model(obj: Dict[str, Any]) -> Optional[str]:
+    """Satırın `message.model`'i; `message` nesne değilse None."""
+    msg = obj.get("message")
+    return msg.get("model") if isinstance(msg, dict) else None
 
 
 def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
