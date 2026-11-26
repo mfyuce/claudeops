@@ -158,7 +158,7 @@ thread_local! {
 #[derive(Debug)]
 pub struct FileLock {
     file: Rc<File>,
-    /// Yeniden girilebilir kilidin anahtarı (normalize yol); `blocking` kilitte yok.
+    /// Yeniden girilebilir kilidin anahtarı (normalize yol); `exclusive` kilitte yok.
     key: Option<PathBuf>,
 }
 
@@ -171,6 +171,11 @@ impl Drop for FileLock {
             }
         }
     }
+}
+
+/// Kilit dosyası yalnız normal dosya VE çağırana aitse kullanılır (Python `_file_lock_outer`).
+fn lock_file_usable(is_file: bool, owner: u32, me: u32) -> bool {
+    is_file && owner == me
 }
 
 fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
@@ -186,11 +191,27 @@ fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
     }
 }
 
+/// `atomic_json.flock_bounded`: `LOCK_EX`, en çok `timeout` beklenir; dolarsa `TimedOut`.
+fn flock_within(f: &File, timeout: Duration) -> io::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match flock(f, libc::LOCK_EX | libc::LOCK_NB) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(io::ErrorKind::TimedOut, "flock zaman aşımı"));
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 impl FileLock {
     /// Python `file_lock(path)`: yol `normpath(abspath)`, kilit `<yol>.lock` (`O_NOFOLLOW`, 0600, bize ait normal dosya),
     /// 30 sn beklenir. Aynı iş parçacığında iç içe alınabilir.
-    /// Sapmalar (sahibe soruldu, `docs/rs-state.md`): zaman aşımında ve kilit dosyası bize ait değilse HATA (Python
-    /// uyarıp yalnız iş parçacığı kilidiyle, süreçler arası korumasız sürer).
+    /// Zaman aşımında ve kilit dosyası bize ait değilse HATA (Python `LockError`, TBD#374 S1/S5): korumasız yazım yok.
     pub fn acquire(path: &Path) -> io::Result<FileLock> {
         Self::acquire_within(path, LOCK_TIMEOUT)
     }
@@ -217,25 +238,13 @@ impl FileLock {
             .open(&lock)?;
         let m = f.metadata()?;
         // SAFETY: getuid her zaman başarılıdır.
-        if !m.is_file() || m.uid() != unsafe { libc::getuid() } {
+        if !lock_file_usable(m.is_file(), m.uid(), unsafe { libc::getuid() }) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "kilit dosyası bize ait değil",
             ));
         }
-        let deadline = Instant::now() + timeout;
-        loop {
-            match flock(&f, libc::LOCK_EX | libc::LOCK_NB) {
-                Ok(()) => break,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= deadline {
-                        return Err(io::Error::new(io::ErrorKind::TimedOut, "flock zaman aşımı"));
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        flock_within(&f, timeout)?;
         let file = Rc::new(f);
         HELD.with(|h| h.borrow_mut().insert(key.clone(), Rc::downgrade(&file)));
         Ok(FileLock {
@@ -251,16 +260,31 @@ impl FileLock {
         Self::acquire(&dir.join("roster"))
     }
 
-    /// Python `instances._locked`: verilen kilit dosyasında süresiz bekleyen `LOCK_EX` (yeniden girilemez; Python'da da).
-    pub fn blocking(lock_file: &Path) -> io::Result<FileLock> {
+    /// Python `instances._locked`: verilen kilit dosyasında `LOCK_EX`, en çok [`LOCK_TIMEOUT`] (yeniden girilemez;
+    /// Python'da da).
+    pub fn exclusive(lock_file: &Path) -> io::Result<FileLock> {
+        Self::exclusive_within(lock_file, LOCK_TIMEOUT)
+    }
+
+    pub fn exclusive_within(lock_file: &Path, timeout: Duration) -> io::Result<FileLock> {
         crate::paths::guard_write(lock_file);
         fs::create_dir_all(parent_of(lock_file))?;
+        // Python'dan SIKI (TBD#383): bağ izlenmez, içerik boşaltılmaz, başkasının dosyası kullanılmaz.
         let f = OpenOptions::new()
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
+            .custom_flags(libc::O_NOFOLLOW)
             .open(lock_file)?;
-        flock(&f, libc::LOCK_EX)?;
+        let m = f.metadata()?;
+        // SAFETY: getuid her zaman başarılıdır.
+        if !lock_file_usable(m.is_file(), m.uid(), unsafe { libc::getuid() }) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "kilit dosyası bize ait değil",
+            ));
+        }
+        flock_within(&f, timeout)?;
         Ok(FileLock {
             file: Rc::new(f),
             key: None,
@@ -308,6 +332,16 @@ mod tests {
         assert!(HELD.with(|h| h.borrow().is_empty()));
     }
 
+    /// Başkasına ait kilit dosyası root olmadan üretilemez: karar işlevi sınanır (normal dosya olmayan gerçek dosya:
+    /// `tests/fs_atomic.rs::non_regular_lock_file_refused`).
+    #[test]
+    fn lock_file_owner_and_type_rules() {
+        assert!(lock_file_usable(true, 1000, 1000));
+        assert!(!lock_file_usable(true, 0, 1000), "başkasının dosyası");
+        assert!(!lock_file_usable(true, 1001, 1000));
+        assert!(!lock_file_usable(false, 1000, 1000), "normal dosya değil");
+    }
+
     /// H17: kilit dosyası sembolik bağ ya da başkasının dosyasıysa kullanılmaz (bağ izlenmez, hedef oluşturulmaz).
     #[test]
     fn lock_symlink_refused() {
@@ -316,5 +350,27 @@ mod tests {
         std::os::unix::fs::symlink(&target, env.dir().join("b.lock")).unwrap();
         assert!(FileLock::acquire(&env.dir().join("b")).is_err());
         assert!(!target.exists(), "bağın hedefi oluşturulmadı");
+    }
+
+    /// TBD#383: oturum kaydı kilidi de sembolik bağı izlemez, hedefin içeriğine dokunmaz.
+    #[test]
+    fn exclusive_lock_symlink_refused() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let target = env.root().join("kurban");
+        fs::write(&target, "onemli").unwrap();
+        let p = env.dir().join("instances.json.lock");
+        std::os::unix::fs::symlink(&target, &p).unwrap();
+        assert!(FileLock::exclusive(&p).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "onemli");
+    }
+
+    /// TBD#374 S6: oturum kaydı kilidi süresiz beklemez.
+    #[test]
+    fn exclusive_lock_is_bounded() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let p = env.dir().join("instances.json.lock");
+        let _held = FileLock::exclusive(&p).unwrap();
+        let e = FileLock::exclusive_within(&p, Duration::from_millis(80)).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::TimedOut);
     }
 }

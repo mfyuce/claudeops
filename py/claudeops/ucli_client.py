@@ -119,7 +119,8 @@ def resolve_binary(binary: Optional[str] = None) -> str:
     otomatik yenileme TODO.md 2026-10-09'da açık."""
     if binary:
         return binary
-    override = (load_settings().get("provider_bin") or {}).get("ucli", "").strip()
+    raw = (load_settings().get("provider_bin") or {}).get("ucli")
+    override = raw.strip() if isinstance(raw, str) else ""      # elle düzenlenmiş metin olmayan değer yok sayılır
     if override:
         return override
     env_bin = os.environ.get("UCLI_BIN")

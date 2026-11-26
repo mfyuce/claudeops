@@ -1,6 +1,7 @@
 //! claudeops durum katmanı (Rust): Python `paths.py`, `store.py`, `statedocs.py`, `settings.py` (okuma), `roster.py` +
 //! `web.py` TSV yazımı ve `instances.py` karşılığı. Aynı dosyaları Python ile BİRLİKTE kullanır: aynı kilit dosyaları, aynı
 //! bayt biçimi, DB göçü YOK (yalnız sürüm denetimi). Genel API ve Python'dan bilinçli sapmalar: `docs/rs-state.md`.
+mod diaglog;
 pub mod fsutil;
 pub mod instances;
 pub mod json;
@@ -12,6 +13,7 @@ pub mod settings;
 pub mod settings_read;
 mod sha256;
 pub mod statedocs;
+pub mod steward_settings;
 pub mod store;
 mod unicode_tables;
 

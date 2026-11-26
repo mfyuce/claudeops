@@ -112,6 +112,8 @@ type Sig = (i64, i64, u64, u64);
 pub struct SettingsReader {
     dir: StateDir,
     cache: Mutex<Option<(Sig, Arc<Settings>)>>,
+    /// Son başarılı okumadaki `store_backend` (Python `_LAST_BACKEND`).
+    last_backend: Mutex<Option<Json>>,
 }
 
 impl SettingsReader {
@@ -119,12 +121,12 @@ impl SettingsReader {
         SettingsReader {
             dir,
             cache: Mutex::new(None),
+            last_backend: Mutex::new(None),
         }
     }
     /// İmza aynıysa önbellek; değilse okunur. OKUNAMAYAN dosya (yok dışındaki G/Ç hatası: EACCES, EMFILE, EIO...)
-    /// varsayılanları döndürür (Python gibi) ama önbelleğe ALINMAZ: son iyi değer önbellekte kalır, hata geçince yeni
-    /// içerik okunur (Python `_LOAD_CACHE` bu durumda varsayılanları imzaya bağlayıp dosya değişene dek döndürür;
-    /// belge "okunamazsa önbellek yok" diyor; sahibe soruldu, `docs/rs-state.md`).
+    /// varsayılanları döndürür ama önbelleğe ALINMAZ: son iyi değer önbellekte kalır, hata geçince yeni içerik okunur.
+    /// Okunamayan ya da bozuk dosyada `store_backend` son başarılı okumadaki değerini korur (Python ile aynı).
     pub fn load(&self) -> Arc<Settings> {
         let path = self.dir.settings_json();
         let sig = || {
@@ -139,7 +141,23 @@ impl SettingsReader {
                 return v.clone();
             }
         }
-        let (val, cacheable) = read(&self.dir);
+        let Loaded {
+            mut val,
+            cacheable,
+            state,
+        } = read(&self.dir);
+        {
+            let mut last = self.last_backend.lock().unwrap_or_else(|e| e.into_inner());
+            match state {
+                FileState::Good => *last = val.get("store_backend").cloned(),
+                FileState::Bad => {
+                    if let Some(b) = last.as_ref() {
+                        val.0.insert("store_backend".into(), b.clone());
+                    }
+                }
+                FileState::Missing => {}
+            }
+        }
         let val = Arc::new(val);
         if let (Some(b), true) = (before, cacheable) {
             if sig() == Some(b) {
@@ -159,14 +177,40 @@ impl SettingsReader {
     }
 }
 
-/// (ayarlar, önbelleğe alınabilir mi): içerik okunduysa (bozuk/UTF-8 değil dahil: içerikten belirlenir) evet; G/Ç
-/// hatasıysa hayır.
-fn read(dir: &StateDir) -> (Settings, bool) {
-    match std::fs::read_to_string(dir.settings_json()) {
-        Ok(t) => (Settings::from_text(Some(&t)), true),
-        // UTF-8 değil: Python istisna fırlatır; Rust varsayılanlar (sahibe soruldu)
-        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => (Settings::from_text(None), true),
-        Err(_) => (Settings::from_text(None), false),
+enum FileState {
+    /// JSON nesnesi okundu.
+    Good,
+    /// Dosya yok.
+    Missing,
+    /// Okunamıyor, UTF-8 / JSON değil ya da nesne değil.
+    Bad,
+}
+
+struct Loaded {
+    val: Settings,
+    /// İçerikten belirlenen sonuç önbelleğe alınır; G/Ç hatası alınmaz.
+    cacheable: bool,
+    state: FileState,
+}
+
+fn read(dir: &StateDir) -> Loaded {
+    let (text, cacheable, state) = match std::fs::read_to_string(dir.settings_json()) {
+        Ok(t) => {
+            let state = if matches!(Json::parse_lossy(&t), Ok((Json::Object(_), _))) {
+                FileState::Good
+            } else {
+                FileState::Bad
+            };
+            (Some(t), true, state)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => (None, true, FileState::Bad),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (None, false, FileState::Missing),
+        Err(_) => (None, false, FileState::Bad),
+    };
+    Loaded {
+        val: Settings::from_text(text.as_deref()),
+        cacheable,
+        state,
     }
 }
 
@@ -187,9 +231,9 @@ pub fn backup_if_corrupt(dir: &StateDir) -> Option<std::io::Result<std::path::Pa
     Some(crate::fsutil::write_corrupt_copy(&path, &raw))
 }
 
-/// Önbelleksiz tek okuma.
+/// Önbelleksiz tek okuma (son iyi değer tutmaz; uzun yaşayan süreç [`SettingsReader`] kullanır).
 pub fn load(dir: &StateDir) -> Settings {
-    read(dir).0
+    read(dir).val
 }
 
 #[cfg(test)]

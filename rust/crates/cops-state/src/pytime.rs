@@ -85,3 +85,23 @@ pub fn naive_local_timestamp(year: i64, month: i64, day: i64) -> Option<f64> {
     };
     Some((u - epoch()) as f64)
 }
+
+/// `datetime.fromtimestamp(secs).isoformat(timespec="seconds")` (yerel saat); dönüşüm hatası `None`.
+pub fn local_isoformat_seconds(secs: f64) -> Option<String> {
+    let t = libc::time_t::try_from(secs.floor() as i64).ok()?;
+    // SAFETY: sıfırlanmış tm; localtime_r yalnız başarıda dolu döner.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    let r = unsafe { libc::localtime_r(&t, &mut tm) };
+    if r.is_null() {
+        return None;
+    }
+    Some(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        i64::from(tm.tm_year) + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec
+    ))
+}

@@ -72,6 +72,7 @@ pub enum RegisterError {
     ConflictsRunning { other: String },
     DirNotFound { cwd: String },
     CwdBadChars,
+    ModelBadChars,
     Io(io::Error),
 }
 
@@ -84,6 +85,7 @@ impl RegisterError {
             RegisterError::ConflictsRunning { .. } => "conflicts_running",
             RegisterError::DirNotFound { .. } => "dir_not_found",
             RegisterError::CwdBadChars => "cwd_bad_chars",
+            RegisterError::ModelBadChars => "model_bad_chars",
             RegisterError::Io(_) => "io",
         }
     }
@@ -172,8 +174,13 @@ fn find_line<'a>(lines: &[&'a str], name: &str) -> Option<(usize, bool, &'a str)
     })
 }
 
+/// `web._tsv_unsafe`: TSV alanında sekme ya da satır sonu.
+fn tsv_unsafe(value: &str) -> bool {
+    value.contains(['\t', '\n', '\r'])
+}
+
 fn check_fields(fields: &[&str]) -> io::Result<()> {
-    if fields.iter().any(|f| f.contains(['\t', '\n', '\r'])) {
+    if fields.iter().any(|f| tsv_unsafe(f)) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "TSV alanında sekme/satır sonu",
@@ -325,7 +332,7 @@ impl<'a> Roster<'a> {
         if cwd.is_empty() || !Path::new(&cwd).is_dir() {
             return Err(RegisterError::DirNotFound { cwd });
         }
-        if cwd.contains(['\t', '\n']) {
+        if tsv_unsafe(&cwd) {
             return Err(RegisterError::CwdBadChars);
         }
         let cli = Some(py_strip(cli))
@@ -335,8 +342,9 @@ impl<'a> Roster<'a> {
             "" => default_model(cli),
             m => m.to_string(),
         };
-        // iki alan da yazılmadan önce denetlenir: roster eklenip models reddedilirse yarım kayıt kalırdı
-        check_fields(&[&cwd, &model])?;
+        if tsv_unsafe(&model) {
+            return Err(RegisterError::ModelBadChars);
+        }
         let guard = self.lock()?;
         if taken()? {
             return Err(RegisterError::AlreadyRegistered);
@@ -431,8 +439,10 @@ pub fn blueprint_cwds(fleet: &IndexMap<String, Project>) -> IndexMap<String, Str
         .collect()
 }
 
-/// Roster'daki (yorumlu dahil) ve instance kaydındaki tüm adlar (`_all_known_names`in süreç taraması dışındaki kısmı).
-pub fn known_names(docs: &StateDocs) -> io::Result<HashSet<String>> {
+/// `_all_known_names`: roster'daki (yorumlu dahil, `name` başlığı hariç) ve instance kaydındaki tüm adlar + çalışan
+/// süreçlerin ad ve taban adları. `running`: canlı süreçlerin `(ad, taban ad)` listesi (tarama çağıranın işi,
+/// [`Roster::register_project`] ile aynı biçim).
+pub fn known_names(docs: &StateDocs, running: &[(String, String)]) -> io::Result<HashSet<String>> {
     let mut s: HashSet<String> = Roster::new(docs)
         .raw_rows(Tsv::Roster)?
         .into_iter()
@@ -440,5 +450,9 @@ pub fn known_names(docs: &StateDocs) -> io::Result<HashSet<String>> {
         .filter(|n| n != "name")
         .collect();
     s.extend(Instances::new(docs).load().into_keys());
+    for (name, base) in running {
+        s.insert(name.clone());
+        s.insert(base.clone());
+    }
     Ok(s)
 }

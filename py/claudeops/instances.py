@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
-from .atomic_json import atomic_write_json
+from .atomic_json import atomic_write_json, flock_bounded
 from .paths import CLAUDEOPS_DIR
 
 INSTANCES_JSON = os.path.join(CLAUDEOPS_DIR, "instances.json")
@@ -58,6 +58,13 @@ def read_strict() -> dict:
 def load_instances() -> Dict[str, dict]:
     """{isim: kayıt}. Okuyucular için toleranslı: bozuk dosyada boş döner."""
     global _cache_key, _cache
+    from . import statedocs
+    if statedocs.backend() == "db":     # kayıt DB'de: ayna dosyanın imzası değişmese de içerik değişebilir (TBD#374 S4)
+        _cache_key = None
+        try:
+            return dict(read_strict()["instances"])
+        except InstancesCorrupt:
+            return {}
     try:
         st = os.stat(INSTANCES_JSON)
     except FileNotFoundError:       # ayna dosya yok: db kipinde kayıtlar DB'de olabilir (önbelleksiz oku)
@@ -84,7 +91,7 @@ def get_instance(name: str) -> Optional[dict]:
 def _locked():
     os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
     with open(_LOCK_PATH, "w") as fd:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        flock_bounded(fd.fileno())      # süresiz bekleme yok: `LockError` (TBD#374 S6)
         try:
             yield
         finally:

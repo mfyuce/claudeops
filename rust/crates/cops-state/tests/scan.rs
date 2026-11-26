@@ -16,19 +16,22 @@ const PATTERNS: [&str; 5] = [
 
 /// (dosya, kalıp) -> izinli sayı.
 const ALLOWED: &[(&str, &str, usize)] = &[
+    ("diaglog.rs", "let _ =", 1),
     ("fsutil.rs", "let _ =", 7),
     ("fsutil.rs", ".ok()", 2),
     ("json.rs", ".ok()", 1),
     ("paths.rs", "let _ =", 2),
     ("paths.rs", ".ok()", 1),
     ("pycompat.rs", ".ok()", 2),
-    ("pytime.rs", ".ok()", 1),
+    ("pytime.rs", ".ok()", 2),
     ("roster.rs", "unwrap_or_default()", 4),
     ("settings.rs", ".ok()", 2),
     ("settings_read.rs", ".ok()", 1),
+    ("settings_read.rs", "unwrap_or_default()", 1),
     ("statedocs.rs", ".ok()", 3),
     ("statedocs.rs", "unwrap_or_default()", 2),
     ("statedocs.rs", "let _ =", 1),
+    ("steward_settings.rs", "unwrap_or_default()", 3),
     ("store.rs", "let _ =", 1),
 ];
 

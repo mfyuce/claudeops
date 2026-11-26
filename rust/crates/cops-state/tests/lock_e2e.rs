@@ -1,7 +1,7 @@
 //! H2/R1-3: Python ve Rust AYNI kilit dosyalarını kullanır (iki yazarlı e2e). Kilit sözleşmesi:
 //! - `file_lock(p)` <-> `FileLock::acquire(p)`: `<normpath(abspath(p))>.lock` üzerinde `flock(LOCK_EX)`.
 //! - roster.tsv + models.tsv: `<dizin>/roster.lock` (`roster_lock` <-> `Roster::lock` / `FileLock::roster`).
-//! - instances.json: `instances.json.lock` (`instances._locked` <-> `FileLock::blocking`).
+//! - instances.json: `instances.json.lock` (`instances._locked` <-> `FileLock::exclusive`).
 use cops_state::fsutil::FileLock;
 use cops_state::roster::{Roster, Tsv};
 use cops_state::Backend;
@@ -93,7 +93,7 @@ fn roster_and_instances_locks_shared() {
         let state = e.state.clone();
         move || {
             let t0 = Instant::now();
-            let l = FileLock::blocking(&state.join("instances.json.lock")).unwrap();
+            let l = FileLock::exclusive(&state.join("instances.json.lock")).unwrap();
             drop(l);
             t0.elapsed()
         }

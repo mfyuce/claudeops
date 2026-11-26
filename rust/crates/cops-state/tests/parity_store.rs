@@ -391,3 +391,292 @@ fn atomic_write_text_matches_python() {
     };
     assert_eq!(names(&a), names(&b), "geçici dosya kalmadı");
 }
+
+/// K1: `replace_tsv` dönüş değeri Python ile aynı (boş metin 0; boş metin yine "empty" satırıyla saklanır).
+#[test]
+fn replace_tsv_count_matches_python() {
+    let (a, b) = (Env::new(), Env::new());
+    a.py("db", STORE);
+    b.py("db", STORE);
+    let texts = [
+        "",
+        "x\ty\n",
+        "",
+        "\n",
+        "# y\n\na\tb",
+        "a\u{2028}b\r\nc",
+        "   ",
+    ];
+    let py = a.py_in(
+        "db",
+        &format!(
+            "{STORE}for t in json.load(sys.stdin):\n    print(json.dumps([st.replace_tsv('a.tsv', t), st.tsv_text('a.tsv'), st.tsv_rows('a.tsv')], ensure_ascii=False))"
+        ),
+        &Json::Array(texts.iter().map(|t| Json::from(*t)).collect()).to_compact(),
+    );
+    let s = Store::open(&b.dir().db()).unwrap();
+    assert_eq!(s.tsv_text("a.tsv").unwrap(), None);
+    let py: Vec<&str> = py.split_terminator('\n').collect();
+    assert_eq!(py.len(), texts.len());
+    for (t, want) in texts.iter().zip(py) {
+        let n = s.replace_tsv("a.tsv", t).unwrap();
+        let rows = s.tsv_rows("a.tsv", None).unwrap();
+        let rows = rows
+            .into_iter()
+            .map(|r| {
+                Json::Object(
+                    [
+                        ("seq".to_string(), Json::Int(r.seq)),
+                        ("active".to_string(), Json::Bool(r.active)),
+                        ("name".to_string(), Json::from(r.name)),
+                        (
+                            "rest".to_string(),
+                            Json::Array(r.rest.into_iter().map(Json::from).collect()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            })
+            .collect();
+        let got = Json::Array(vec![
+            Json::Int(n as i64),
+            s.tsv_text("a.tsv").unwrap().map_or(Json::Null, Json::from),
+            Json::Array(rows),
+        ]);
+        assert_eq!(got.to_compact(), want, "{t:?}");
+    }
+    assert_eq!(dump(&a), dump(&b));
+}
+
+#[test]
+fn missing_doc_version_and_delete_like_python() {
+    let (a, b) = (Env::new(), Env::new());
+    a.py("db", STORE);
+    b.py("db", STORE);
+    let py = a.py(
+        "db",
+        &format!(
+            "{STORE}o = [st.doc_version('k'), st.delete_doc('k'), st.set_doc('k', [1]), st.set_doc('k', [2]), st.doc_version('k'),\n\
+             st.delete_doc('k'), st.delete_doc('k'), st.doc_version('k'), st.get_doc('k', 'YOK')]\nprint(json.dumps(o))"
+        ),
+    );
+    let s = Store::open(&b.dir().db()).unwrap();
+    let int = Json::Int;
+    let mut o = vec![
+        int(s.doc_version("k").unwrap()),
+        s.delete_doc("k").unwrap().into(),
+        int(s.set_doc("k", &j("[1]")).unwrap()),
+        int(s.set_doc("k", &j("[2]")).unwrap()),
+        int(s.doc_version("k").unwrap()),
+        s.delete_doc("k").unwrap().into(),
+        s.delete_doc("k").unwrap().into(),
+        int(s.doc_version("k").unwrap()),
+    ];
+    o.push(s.get_doc("k").unwrap().unwrap_or_else(|| "YOK".into()));
+    assert_eq!(Json::Array(o.clone()).to_compact(), py.trim_end());
+    assert_eq!(
+        Json::Array(o),
+        j(r#"[0, false, 1, 2, 2, true, false, 0, "YOK"]"#)
+    );
+}
+
+/// ROLLBACK: işlem ortasında SQL hatası ya da kapanışta panik hiçbir şey yazmaz; depo kullanılmaya devam eder.
+#[test]
+fn failed_write_rolls_back_like_python() {
+    let (a, b) = (Env::new(), Env::new());
+    // ikinci satırın eklenmesi hata verir: silme ve ilk ekleme geri alınmalı
+    const SETUP: &str = "{STORE}st.set_doc('k', {'n': 1}); st.replace_tsv('a.tsv', 'eski\\tx\\n')\n\
+c = st._conn()\nc.execute(\"CREATE TRIGGER hata BEFORE INSERT ON tsv_rows WHEN NEW.seq=1 BEGIN SELECT RAISE(ABORT, 'x'); END\")\n";
+    let setup = SETUP.replace("{STORE}", STORE);
+    a.py("db", &setup);
+    b.py("db", &setup);
+    let py = a.py(
+        "db",
+        &format!(
+            "{STORE}o = []\ntry:\n    st.replace_tsv('a.tsv', 'y\\t1\\nz\\t2\\n')\nexcept Exception:\n    o.append('hata')\n\
+             def boom(x):\n    raise ValueError('x')\ntry:\n    st.update_doc('k', boom)\nexcept ValueError:\n    o.append('hata')\n\
+             o += [st.tsv_text('a.tsv'), st.get_doc('k'), st.doc_version('k'), st.set_doc('k', 5)]\nprint(json.dumps(o))"
+        ),
+    );
+    let s = Store::open(&b.dir().db()).unwrap();
+    let mut o: Vec<Json> = Vec::new();
+    assert!(s.replace_tsv("a.tsv", "y\t1\nz\t2\n").is_err());
+    o.push("hata".into());
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        s.update_doc("k", Json::Null, |_| panic!("x"))
+    }));
+    assert!(panicked.is_err());
+    o.push("hata".into());
+    o.push(s.tsv_text("a.tsv").unwrap().map_or(Json::Null, Json::from));
+    o.push(s.get_doc("k").unwrap().unwrap());
+    o.push(Json::Int(s.doc_version("k").unwrap()));
+    // zehirli süreç kilidi ve açık işlem kalmadı: yazım sürer
+    o.push(Json::Int(s.set_doc("k", &j("5")).unwrap()));
+    assert_eq!(Json::Array(o.clone()).to_compact(), py.trim_end());
+    assert_eq!(
+        Json::Array(o),
+        j(r#"["hata", "hata", "eski\tx\n", {"n": 1}, 1, 2]"#)
+    );
+}
+
+fn tmp_files(dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|x| x.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp"))
+        .collect()
+}
+
+/// Yedek: üst üste iki çağrı ve başarısız `rename` geçici dosya bırakmaz.
+#[test]
+fn backup_repeat_and_failure_leave_no_tmp() {
+    let e = Env::new();
+    e.py("db", &format!("{STORE}st.set_doc('a', 1)"));
+    let s = Store::open(&e.dir().db()).unwrap();
+    let dest = e.root.join("bk.db");
+    s.backup(&dest).unwrap();
+    s.set_doc("a", &j("2")).unwrap();
+    s.backup(&dest).unwrap();
+    assert!(tmp_files(&e.root).is_empty());
+    assert_eq!(
+        Store::open(&dest).unwrap().get_doc("a").unwrap(),
+        Some(j("2"))
+    );
+    assert_eq!(
+        std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    // hedef dizin: son adım (rename) başarısız
+    let bad = e.root.join("bk3.db");
+    std::fs::create_dir(&bad).unwrap();
+    std::fs::write(bad.join("dolu"), "").unwrap();
+    assert!(matches!(s.backup(&bad), Err(cops_state::StoreError::Io(_))));
+    assert!(tmp_files(&e.root).is_empty(), "{:?}", tmp_files(&e.root));
+}
+
+#[test]
+fn db_url_rules_match_python() {
+    let urls = [
+        "",
+        "   ",
+        "sqlite:",
+        "sqlite://",
+        "sqlite:///tmp/a.db",
+        "sqlite:/tmp/a.db",
+        "sqlite:a.db",
+        " SQLite:///x.db?mode=ro ",
+        "\u{1c}sqlite:///y.db\u{1c}",
+        "sqlite:////z",
+        "postgresql://u@h/d",
+        "postgres://u@h/d",
+        "mysql://x",
+        "x.db",
+        "sqlit",
+        "şqlite:abc",
+    ];
+    let e = Env::new();
+    let input = Json::Array(urls.iter().map(|s| Json::from(*s)).collect()).to_compact();
+    let out = e.py_in(
+        "db",
+        "from claudeops import dbapi\nout = []\nfor u in json.load(sys.stdin):\n    try:\n        be = dbapi.backend_of(u)\n    except dbapi.DbError:\n        be = 'hata'\n\
+         \x20   out.append(dbapi.sqlite_path(u, 'VARSAYILAN') if be == 'sqlite' else None)\nprint(json.dumps(out, ensure_ascii=False))",
+        &input,
+    );
+    let rs = Json::Array(
+        urls.iter()
+            .map(|u| {
+                cops_state::store::sqlite_path_from_url(u, std::path::Path::new("VARSAYILAN"))
+                    .map_or(Json::Null, |p| p.display().to_string().into())
+            })
+            .collect(),
+    );
+    assert_eq!(rs.to_compact(), out.trim_end());
+    assert_eq!(
+        rs.as_array().unwrap()[4],
+        Json::from("/tmp/a.db"),
+        "sqlite: yolu kabul edilir"
+    );
+    for u in ["mysql://x", "postgres://u:parola@h/d"] {
+        let err =
+            cops_state::store::sqlite_path_from_url(u, std::path::Path::new("d")).unwrap_err();
+        assert!(matches!(err, cops_state::StoreError::Unsupported(ref s) if !s.contains("parola")));
+    }
+    // `StateDocs` bu url'yi kullanır
+    e.py("db", &format!("{STORE}st.set_doc('hosts', [1])"));
+    std::fs::rename(e.dir().db(), e.root.join("baska.db")).unwrap();
+    let url = format!("sqlite://{}", e.root.join("baska.db").display());
+    let docs = cops_state::StateDocs::isolated(e.dir(), Some(Backend::Db), &url);
+    assert_eq!(
+        docs.store().unwrap().get_doc("hosts").unwrap(),
+        Some(j("[1]"))
+    );
+}
+
+/// `schema_version` tablosu: tablosu olmayan eski DB açılır; tablo varsa `max(tablo, user_version)` belirler (Python
+/// `dbapi.schema_version`); satırı olmayan tablo 0 sayılır.
+#[test]
+fn schema_version_table_like_python() {
+    use cops_state::StoreError;
+    // (user_version, tablo: yok | boş | sürüm)
+    let cases: [(i64, Option<Option<i64>>); 7] = [
+        (2, None),
+        (2, Some(None)),
+        (0, Some(Some(2))),
+        (1, Some(Some(2))),
+        (2, Some(Some(1))),
+        (2, Some(Some(3))),
+        (0, None),
+    ];
+    for (user, table) in cases {
+        let e = Env::new();
+        let c = rusqlite::Connection::open(e.dir().db()).unwrap();
+        c.execute_batch(&format!(
+            "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);\
+             INSERT INTO docs VALUES('a','{{\"k\": 1}}',1,1.0); PRAGMA user_version={user}"
+        ))
+        .unwrap();
+        if let Some(v) = table {
+            c.execute_batch("CREATE TABLE schema_version(id INTEGER PRIMARY KEY, version INTEGER)")
+                .unwrap();
+            if let Some(v) = v {
+                c.execute("INSERT INTO schema_version VALUES(1, ?1)", [v])
+                    .unwrap();
+            }
+        }
+        drop(c);
+        let py = e.py(
+            "db",
+            "from claudeops import dbapi\nc = dbapi.connect('', os.path.join(os.environ['CLAUDEOPS_DIR'], 'claudeops.db'))\nprint(dbapi.schema_version(c))",
+        );
+        let want: i64 = py.trim().parse().unwrap();
+        match Store::open(&e.dir().db()) {
+            Ok(s) => {
+                assert_eq!(want, 2, "{user} {table:?}");
+                assert_eq!(s.schema_version().unwrap(), want);
+                assert_eq!(s.get_doc("a").unwrap(), Some(j(r#"{"k": 1}"#)));
+            }
+            Err(StoreError::Schema { found }) => {
+                assert_ne!(want, 2, "{user} {table:?}");
+                assert_eq!(found, want);
+            }
+            Err(x) => panic!("{x}"),
+        }
+    }
+}
+
+/// Python tarafının bağlantı ayarları (Rust: `store.rs::tests::open_sets_pragmas`).
+#[test]
+fn connection_pragmas_python() {
+    let e = Env::new();
+    let out = e.py(
+        "db",
+        &format!(
+            "{STORE}c = st._conn()\nprint([c.execute('PRAGMA ' + p).fetchone()[0] for p in ('journal_mode', 'synchronous', 'busy_timeout')])"
+        ),
+    );
+    assert_eq!(
+        out.trim_end(),
+        format!("['wal', 1, {}]", cops_state::store::BUSY_TIMEOUT_MS)
+    );
+}
