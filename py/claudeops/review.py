@@ -65,12 +65,22 @@ def _log_bad(what: str, key: Any) -> None:
 
 
 def _field(rec: Any, name: str, what: str, key: Any) -> Optional[float]:
-    """Kayıttaki sayı alanı; yok/boş = 0, sayıya çevrilemiyorsa None (loglanır, çağıran kaydı atlar)."""
+    """Kayıttaki sayı alanı; yok/boş = 0, sayıya çevrilemiyor ya da sonlu değilse None (loglanır, çağıran kaydı atlar)."""
     try:
-        return float(rec.get(name) or 0)
+        num = float(rec.get(name) or 0)
     except (TypeError, ValueError, OverflowError):
-        _log_bad(f"{what}.{name}", key)
-        return None
+        num = math.nan
+    if math.isfinite(num):
+        return num
+    _log_bad(f"{what}.{name}", key)
+    return None
+
+
+def _finite(v: float) -> bool:
+    try:
+        return math.isfinite(v)
+    except OverflowError:       # float'a sığmayan tam sayı
+        return False
 
 
 UNCOUNTED_ERRORS = ("cancelled", "spawn:", "yeniden başlatma", CAPACITY_ERROR_PREFIX)     # TBD#139: kaza sayılmayan hatalar (iptal, süreç açılamadı, servis restart'ı)
@@ -263,11 +273,17 @@ def review_title(project: str, mode: str, model: str, ts: Any) -> str:
 
 
 def _num(v: Any, default: float = 0.0) -> float:
-    """Diskten gelen (elle düzenlenmiş/bozuk) sayı alanı: sayıya çevrilemezse `default` (planlayıcı çökmesin)."""
+    """Diskten gelen (elle düzenlenmiş/bozuk) sayı alanı: sayıya çevrilemez ya da sonlu değilse `default` (planlayıcı çökmesin)."""
     try:
-        return float(v or 0)
-    except (TypeError, ValueError, OverflowError):
+        num = float(v or 0)
+    except OverflowError:
+        num = math.inf
+    except (TypeError, ValueError):
         return default
+    if math.isfinite(num):
+        return num
+    _log_bad("number.nonfinite", type(v).__name__)
+    return default
 
 
 def pair_key(proj: str, t: ReviewTarget) -> str:
@@ -1417,9 +1433,6 @@ def requeue_stale_verify(findings: Dict[str, Any], now: float, stale: float = VE
         done = _field(rec, "verify_tries", "findings", fid)
         if done is None:
             continue
-        if not math.isfinite(done):
-            _log_bad("findings.verify_tries", fid)
-            continue
         tries = int(done) + 1
         if tries >= VERIFY_MAX_TRIES:
             rec.update(state="unclear", verify_tries=tries, verdict_at=now,
@@ -1539,9 +1552,11 @@ def duration_summary(history: Any, project: str = "") -> List[Dict[str, Any]]:
         a = agg.setdefault((proj, tgt), {"project": proj, "target": tgt, "runs": 0, "timed": 0, "unknown": 0, "seconds": 0.0})
         a["runs"] += 1
         sec = r.get("seconds")
-        if isinstance(sec, (int, float)) and not isinstance(sec, bool) and sec >= 0:
+        num = (_field(r, "seconds", "runs", r["pair"])
+               if isinstance(sec, (int, float)) and not isinstance(sec, bool) else None)
+        if num is not None and num >= 0:
             a["timed"] += 1
-            a["seconds"] += float(sec)
+            a["seconds"] += num
         else:
             a["unknown"] += 1
     return sorted(agg.values(), key=lambda r: (-r["seconds"], r["project"], r["target"]))
@@ -1855,10 +1870,18 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                     t_rec = float(rec.get("t") or 0)
                 except (TypeError, ValueError):
                     t_rec = 0.0
+                except OverflowError:
+                    t_rec = math.inf
+                if not math.isfinite(t_rec):
+                    _log_bad("usage.record", path)
+                    continue
                 if since_ms and t_rec < since_ms:
                     continue
                 u = rec.get("usage")
                 if not isinstance(u, dict):
+                    continue
+                if not all(_finite(v) for v in u.values() if isinstance(v, (int, float))):
+                    _log_bad("usage.record", path)
                     continue
                 def g(*names: str) -> float:
                     for n in names:

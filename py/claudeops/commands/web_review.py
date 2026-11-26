@@ -797,7 +797,7 @@ def _pid_tree(root: Any) -> List[int]:
     Okunamazsa yalnız kök; pid yoksa boş."""
     try:
         root = int(root)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return []
     if root <= 0:
         return []
