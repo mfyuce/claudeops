@@ -15,6 +15,17 @@ sha1 = "0.10"
 libc = "0.2"
 rusqlite = { version = "0.37", features = ["bundled"] }
 sha2 = "0.10"
+base64 = "0.22"
+# HTTP: workspace'teki hyper; TLS secimi rs/hosts ile ayni (rustls + ring, sistem kok sertifikalari)
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls-native-certs = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
+# yalniz testlerde: loopback TLS sunucusu icin sertifika uretimi (uretim dogrulamasina dokunmaz)
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

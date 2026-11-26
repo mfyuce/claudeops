@@ -901,6 +901,35 @@ def op_g8_mcp(a):
         ucli_p._MCP_ADD_TIMEOUT = saved
 
 
+def op_g8_proxy(a):
+    import urllib.request as ur
+    out = []
+    for env, url in a["cases"]:
+        os.environ.clear()
+        os.environ.update(dict(env))
+        proxies = ur.getproxies_environment()
+        req = ur.Request(url)
+        if req.type not in proxies:
+            out.append(["direct"])
+            continue
+        handler = ur.ProxyHandler(proxies)
+        handler.parent = types.SimpleNamespace(open=lambda r, timeout=None: None)
+        orig = req.type
+        req.timeout = None      # `OpenerDirector.open` atar
+        try:
+            handler.proxy_open(req, proxies[orig], orig)
+        except Exception:      # noqa: BLE001
+            out.append(["unusable"])
+            continue
+        if not (req._tunnel_host is not None or req.has_proxy()):
+            out.append(["direct"])
+        elif (orig == "http" and req.type not in ("http", "https")) or not req.host:
+            out.append(["unusable"])
+        else:
+            out.append(["proxy", req.host, orig == "http" and req.type == "https", req.get_header("Proxy-authorization")])
+    return out
+
+
 OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith("op_g8_")})
 
 

@@ -1,6 +1,6 @@
 //! Aile (G8): gerçek uygulayıcı (`real`) Python'un aynı geçici ağaçtaki davranışıyla karşılaştırılır: yol çözümü,
 //! araç zinciri, `run_checks` kaydı, ajan token'ı, diag günlüğü, `agy_sids` yazımı, `--help` yoklaması ve MCP kaydı
-//! (iki tarafta da GERÇEK alt süreç: yalnız vaka ağacındaki sahte kabuk betikleri).
+//! (iki tarafta da GERÇEK alt süreç: yalnız vaka ağacındaki sahte kabuk betikleri) ve `urllib` proxy kuralları.
 
 use crate::common::*;
 use crate::fam_bg::Rng;
@@ -9,6 +9,7 @@ use cops_providers::pyjson::Py;
 use cops_providers::real::agents::{AgentRegistry, Sources};
 use cops_providers::real::diaglog::DiagLog;
 use cops_providers::real::docs::{DocAgySidStore, FileDocs};
+use cops_providers::real::proxy::{self, Route};
 use cops_providers::real::{checks, pathexec, RealProbe};
 use cops_providers::{AgySidStore, BuildOutput, Cli, McpSpec, Probe, Providers};
 use serde_json::{json, Value};
@@ -330,6 +331,47 @@ fn mcp_cases(e: &Env) -> Vec<Case> {
     ]
 }
 
+/// `urllib` proxy kuralları (saf; ağ yok): rastgele ortam x hedef.
+fn proxy_cases() -> Vec<Case> {
+    const NAMES: [&str; 13] = ["http_proxy", "HTTP_PROXY", "Http_Proxy", "https_proxy", "HTTPS_PROXY", "no_proxy", "NO_PROXY",
+        "all_proxy", "REQUEST_METHOD", "ftp_proxy", "_proxy", "xproxy", "http_PROXY"];
+    const VALUES: [&str; 40] = ["", "http://p:3128", "https://p:3128/", "p:3128", "p", "//p:1", "http://u:s@p:2", "u:s@p:2",
+        "http://u@p:2", "http://u:@p", "http://:s@p", "http://k%40x:pa%3Ass@p%41:8/yol", "http://u:p@w@p:2", "socks5://p:1",
+        "HTTP://P:1", "http:/p", "http:p", "/p", "//", "http://", "ftp://p", "http://p/a@b", "a/b", ":80", "@p", "u:s@",
+        "*", "ornek.com", ".ornek.com", "a.com, .ornek.com ,,", "ornek.com:8080", "127.0.0.1", "ORNEK.COM", "com", "x*", " * ",
+        "http://ğ:ş@p:1", "localhost,127.0.0.1", "[::1]:1", "%zz@p"];
+    const NETLOCS: [&str; 9] = ["ornek.com", "api.ornek.com", "ornek.com:8080", "API.Ornek.COM:443", "127.0.0.1:1",
+        "localhost", "xornek.com", "ornek.com:", "[::1]:8"];
+    let mut rng = Rng(0x9921);
+    let cases: Vec<Value> = (0..2500)
+        .map(|_| {
+            let mut env: Vec<(&str, &str)> = Vec::new();
+            for _ in 0..rng.below(5) {
+                let name = NAMES[rng.below(NAMES.len())];
+                if env.iter().all(|(k, _)| *k != name) {
+                    env.push((name, VALUES[rng.below(VALUES.len())]));
+                }
+            }
+            let scheme = if rng.below(2) == 0 { "http" } else { "https" };
+            json!([env, format!("{scheme}://{}/m", NETLOCS[rng.below(NETLOCS.len())])])
+        })
+        .collect();
+    vec![Case::new("vekil", "g8_proxy", json!({"cases": cases}))]
+}
+
+fn rs_proxy(case: &Value) -> Value {
+    let env: Vec<(String, String)> = pairs(&case[0]).into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+    let (scheme, rest) = case[1].as_str().unwrap().split_once("://").unwrap();
+    match proxy::route(&env, scheme, rest.split('/').next().unwrap()) {
+        Route::Direct => json!(["direct"]),
+        Route::Unusable => json!(["unusable"]),
+        Route::Proxy { hostport, tls_to_proxy, auth } => {
+            let auth = auth.map(|a| String::from_utf8(a.expose().to_vec()).unwrap());
+            json!(["proxy", hostport, tls_to_proxy, auth])
+        }
+    }
+}
+
 fn real(e: &Env, c: &Case) -> RealProbe {
     real_probe(e, c)
 }
@@ -420,6 +462,7 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
             let doc = store.load().filter(Py::is_object);
             RsOut::ret(doc.map_or(json!({}), |d| d.to_value()))
         }
+        "g8_proxy" => RsOut::ret(a["cases"].as_array().unwrap().iter().map(rs_proxy).collect()),
         "g8_help" => RsOut::ret(Value::from(
             pairs(&a["calls"])
                 .into_iter()
@@ -475,6 +518,7 @@ pub fn run() {
     cases.extend(agy_cases());
     cases.extend(help_cases(&r.e));
     cases.extend(mcp_cases(&r.e));
+    cases.extend(proxy_cases());
     // `mcp add argv` karşılaştırması sahte süreç listesindendir; burada argv betiğin yazdığı dosyadan karşılaştırılır
     r.run(cases, &[], rs_g8);
     r.finish("g8");

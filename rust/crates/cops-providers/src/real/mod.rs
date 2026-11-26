@@ -1,5 +1,5 @@
 //! Crate'in G/Ç sınırlarının GERÇEK uygulaması: [`crate::Probe`]/[`crate::LiveProbe`] ([`probe::RealProbe`]),
-//! [`crate::Effect`] uygulayıcısı ([`effects`]) ve
+//! [`crate::Effect`] uygulayıcısı ([`effects`]), [`crate::ModelIo`] ([`modelio::RealModelIo`]) ve
 //! [`crate::AgySidStore`] ([`docs::DocAgySidStore`]). Çekirdek modüller saf kalır; dosya, süreç, ağ ve saat yalnız
 //! buradadır.
 //!
@@ -15,11 +15,14 @@ pub mod effects;
 pub mod env;
 pub mod fsio;
 pub mod help;
+pub mod http;
 pub mod lock;
+pub mod modelio;
 pub mod oserr;
 pub mod pathexec;
 pub mod probe;
 pub mod process;
+pub mod proxy;
 pub mod sqlite;
 
 pub use env::Env;
