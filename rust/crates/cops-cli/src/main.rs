@@ -36,7 +36,10 @@ fn run_delegate(args: &[OsString]) -> ! {
             exit(EXIT_DELEGATE);
         }
     };
-    let depth = delegate::depth_from(std::env::var_os(delegate::DEPTH_ENV).as_deref());
+    let me = std::process::id();
+    let depth = delegate::depth_from(std::env::var_os(delegate::DEPTH_ENV).as_deref(), |p| {
+        delegate::is_self_or_ancestor(std::path::Path::new("/proc"), me, p)
+    });
     let msg = delegate::exec(&py, args, depth);
     eprintln!("cops-rs: {msg}");
     exit(EXIT_DELEGATE)

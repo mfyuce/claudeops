@@ -8,9 +8,11 @@
 //! 3. `<durum dizini>/bin/cops-py` (kurulumun bıraktığı symlink ya da dosya; `CLAUDEOPS_DIR`, yoksa `~/.claude/claudeops`).
 //!
 //! Bulunamazsa [`EXIT_DELEGATE`] (125) ile açık hata. Özyineleme koruması: (a) aday, gerçek yolu ya da (aygıt, inode) ile
-//! kendi ikilimizse reddedilir (`cops` adlı symlink'in kendine dönmesi); (b) her devirde `COPS_RS_DEPTH` bir artar,
-//! [`MAX_DEPTH`]'i aşınca devir reddedilir (başlatıcı dolaylı olarak yine bizi çağırıyorsa sonsuz `exec` olmaz; meşru iç içe
-//! çağrı zinciri bu derinliğe ulaşmaz).
+//! kendi ikilimizse reddedilir (`cops` adlı symlink'in kendine dönmesi); (b) her devirde `COPS_RS_DEPTH=<n>:<pid>` yazılır
+//! (`pid` = `exec` eden süreç; `exec` pid'i korur, Python başlatıcısı aynı pid'le koşar). Okurken sayaç YALNIZ o pid kendimiz
+//! ya da atamızsa geçerlidir, değilse 0: değişken Python'un başlattığı uzun ömürlü süreçlere (tmux sunucusu, oturumlar)
+//! sızar, aynı soydan olmayan sonraki çağrılar sayacı biriktirmez. [`MAX_DEPTH`]'e ulaşınca devir reddedilir (başlatıcı
+//! dolaylı olarak yine bizi çağırıyorsa sonsuz `exec` olmaz). Eski biçim (yalnız sayı) soy denetimsiz okunur.
 //!
 //! Devir Unix `exec` ile: argv AYNEN (UTF-8 olmayan dahil, `OsString`), çıkış kodu ve sinyaller Python sürecinin kendisinin.
 //! `argv[0]` başlatıcının gerçek yoludur (`py/cops` `cd "$(dirname "$0")"` yapar; symlink yolu ile `claudeops` paketi bulunamazdı).
@@ -132,21 +134,64 @@ pub fn locate(l: &Locate) -> Result<PyCli, LocateError> {
         }
         tried.push(format!("{} yok", cand.display()));
     }
+    // Bugün hiçbir kurulum adımı `bin/cops-py`yi yazmıyor ve ikili depo DIŞINDA derlenip (`~/.cargo-target`) kopyalanıyor
+    // (`<durum dizini>/bin`): kurulum tarifi hata metninde.
+    let hint = l
+        .state_dir
+        .as_ref()
+        .map(|sd| {
+            format!(
+                " (kurulum: `ln -s <depo>/py/cops {}` ya da COPS_PY=<depo>/py/cops)",
+                sd.join("bin/cops-py").display()
+            )
+        })
+        .unwrap_or_default();
     Err(LocateError(format!(
-        "Python CLI bulunamadı: COPS_PY ayarlı değil; {}",
+        "Python CLI bulunamadı: COPS_PY ayarlı değil; {}{hint}",
         tried.join("; ")
     )))
 }
 
-/// Ortamdaki derinliği okur (bozuk değer = sınırı aşmış say: kapalı yön).
-pub fn depth_from(v: Option<&OsStr>) -> u32 {
-    match v {
-        None => 0,
-        Some(s) => s
-            .to_str()
-            .and_then(|t| t.parse::<u32>().ok())
-            .unwrap_or(u32::MAX),
+/// Ortamdaki derinliği okur (bkz. modül belgesi; bozuk değer = sınırı aşmış say: kapalı yön). `in_lineage(pid)`: pid
+/// kendimiz ya da atamız mı.
+pub fn depth_from(v: Option<&OsStr>, in_lineage: impl Fn(u32) -> bool) -> u32 {
+    let Some(t) = v.map(|s| s.to_str()) else {
+        return 0;
+    };
+    let parsed = t.and_then(|t| match t.split_once(':') {
+        None => t.parse::<u32>().ok(),
+        Some((n, pid)) => {
+            let (n, pid) = (n.parse::<u32>().ok()?, pid.parse::<u32>().ok()?);
+            Some(if in_lineage(pid) { n } else { 0 })
+        }
+    });
+    parsed.unwrap_or(u32::MAX)
+}
+
+/// `pid` kendimiz ya da atamız mı (`/proc/<p>/stat` ppid zinciri, en çok 64 adım; pid 1 sayılmaz).
+pub fn is_self_or_ancestor(proc_root: &Path, me: u32, pid: u32) -> bool {
+    let mut p = me;
+    for _ in 0..64 {
+        if p <= 1 {
+            return false;
+        }
+        if p == pid {
+            return true;
+        }
+        let Ok(raw) = std::fs::read(proc_root.join(p.to_string()).join("stat")) else {
+            return false;
+        };
+        let s = String::from_utf8_lossy(&raw);
+        let Some(next) = s
+            .rfind(')')
+            .and_then(|i| s[i + 1..].split_whitespace().nth(1))
+            .and_then(|x| x.parse::<u32>().ok())
+        else {
+            return false;
+        };
+        p = next;
     }
+    false
 }
 
 /// Devrin hazırlığı: argv ve yeni derinlik. Özyineleme sınırı aşıldıysa hata.
@@ -174,7 +219,8 @@ pub fn exec(py: &PyCli, args: &[OsString], depth: u32) -> String {
     if let Some(a0) = argv.first() {
         cmd.arg0(a0);
     }
-    cmd.args(&argv[1..]).env(DEPTH_ENV, next.to_string());
+    cmd.args(&argv[1..])
+        .env(DEPTH_ENV, format!("{next}:{}", std::process::id()));
     let err = cmd.exec();
     format!("{} çalıştırılamadı: {err}", py.launcher.display())
 }
@@ -304,8 +350,37 @@ mod tests {
         assert!(prepare(&py, &args, MAX_DEPTH)
             .unwrap_err()
             .contains("özyineleme"));
-        assert_eq!(depth_from(None), 0);
-        assert_eq!(depth_from(Some(OsStr::new("2"))), 2);
-        assert_eq!(depth_from(Some(OsStr::new("x"))), u32::MAX);
+        let yes = |_| true;
+        assert_eq!(depth_from(None, yes), 0);
+        assert_eq!(depth_from(Some(OsStr::new("2")), yes), 2);
+        assert_eq!(depth_from(Some(OsStr::new("x")), yes), u32::MAX);
+        assert_eq!(depth_from(Some(OsStr::new("3:x")), yes), u32::MAX);
+        assert_eq!(depth_from(Some(OsStr::new("3:77")), |p| p == 77), 3);
+        assert_eq!(depth_from(Some(OsStr::new("3:77")), |p| p == 78), 0);
+    }
+
+    #[test]
+    fn depth_counts_only_in_own_lineage() {
+        // Sızmış değişken (ör. tmux sunucusunun ortamı) başka soydan gelir: sayılmaz.
+        let me = std::process::id();
+        let proc = Path::new("/proc");
+        assert!(is_self_or_ancestor(proc, me, me));
+        let parent = std::os::unix::process::parent_id();
+        if parent > 1 {
+            assert!(is_self_or_ancestor(proc, me, parent));
+        }
+        let mut child = std::process::Command::new("sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
+        assert!(!is_self_or_ancestor(proc, me, child.id()));
+        assert!(!is_self_or_ancestor(proc, me, 1));
+        let v = OsString::from(format!("3:{}", child.id()));
+        assert_eq!(
+            depth_from(Some(&v), |p| is_self_or_ancestor(proc, me, p)),
+            0
+        );
+        child.kill().unwrap();
+        child.wait().unwrap();
     }
 }
