@@ -403,5 +403,43 @@ class TestWindowRowTwins(unittest.TestCase):
         self.assertEqual(posts, [])
 
 
+class TestRecheckBeforeWrite(_Resolve):
+    """TBD#390/5: okuma ile yazma arasinda ikinci adas cikarsa `files/write` gitmez."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.set(HOST, [_row("oiso", cwd="/srv/a")])
+        self.reads = []
+
+        def read(host, name, path, budget):
+            self.reads.append(path)
+            if len(self.reads) == 2:        # yazmadan onceki ikinci okuma sirasinda adas belirdi
+                self.fake.set(HOST, [_row("oiso", cwd="/srv/a"), _row("oiso", cwd="/srv/b")])
+            return "metin"
+
+        for target, repl in (("_remote_read_full", read), ("_remote_files_gate", lambda *a, **k: True),
+                             ("_remote_before", lambda host, name, path, fname: (read(host, name, path, 0), False))):
+            p = mock.patch.object(ws, target, repl)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_edit_doc_does_not_write(self):
+        self.assertEqual(ws._remote_edit_doc(HOST, "oiso", "TODO.md", lambda t: t + "x", "default"), "no_folder")
+        self.assertEqual(self.posts(), [])
+
+    def test_idea_append_does_not_write(self):
+        idea = sw.add_idea("yeni fikir", source="t", project="oiso")
+        self.assertEqual(ws._remote_append_idea(HOST, "oiso", "TODO.md", idea, "2026-11-26", False), "no_folder")
+        self.assertEqual(self.posts(), [])
+
+    def test_export_file_does_not_write(self):
+        drv = ws.RemoteReviewDriver("oiso", HOST)
+        with mock.patch.object(drv, "ready", lambda: (True, "")):
+            res = drv.export_file("TODO.md", lambda t: (t + "x", ["f1"]))
+        self.assertFalse(res["ok"], res)
+        self.assertIn("target changed", res["error"])
+        self.assertEqual(self.posts(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -5842,6 +5842,7 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
     yalnız VAR OLAN dosyayı değiştirir, yeni dosya oluşturmaz: dosya yoksa okuma da başarısız olur → `unreadable`."""
     if not _remote_files_gate(host, sid):
         return "denied"
+    asked = name
     real, cwd = _remote_ref(host, name)
     if not cwd:
         return "no_folder"
@@ -5859,6 +5860,8 @@ def _remote_append_idea(host: str, name: str, fname: str, idea: "sw.Idea", stamp
         return "would"
     if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
+    if _remote_ref(host, asked) != (real, cwd):             # okuma sürerken adaş çıktı ya da hedef değişti
+        return "no_folder"
     res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
                        REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "write_failed"
@@ -6729,6 +6732,7 @@ def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Opt
     """Uzak projenin `fname` dosyasını `edit(metin)` ile günceller (`_remote_append_idea` ile aynı güvenlik sırası: kapı, oku, yeniden oku, yaz)."""
     if not _remote_files_gate(host, sid):
         return "remote_denied"
+    asked = name
     real, cwd = _remote_ref(host, name, sid)
     if not cwd:
         return "no_folder"
@@ -6742,6 +6746,8 @@ def _remote_edit_doc(host: str, name: str, fname: str, edit: Callable[[str], Opt
         return "already"
     if _remote_read_full(host, name, path, REMOTE_READ_BUDGET_SECONDS) != (None if create else before):
         return "remote_conflict"
+    if _remote_ref(host, asked, sid) != (real, cwd):       # okuma sürerken adaş çıktı ya da hedef değişti
+        return "no_folder"
     res = _remote_post(host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
                        REMOTE_INPUT_TIMEOUT_SECONDS)
     return "written" if res.get("ok") else "remote_write_failed"
@@ -8753,6 +8759,8 @@ class RemoteReviewDriver:
                 break
             if attempt:
                 return {"ok": False, "error": "remote_conflict: file changed while exporting", "path": path}
+        if _remote_ref(self.host, self.project) != (real, cwd):
+            return {"ok": False, "error": f"target changed on {self.host}: not written", "path": path}
         res = _remote_post(self.host, "/api/files/write", {"name": name, "path": path, "content": new, **({"create": True} if create else {})},
                            REMOTE_INPUT_TIMEOUT_SECONDS)
         if not res.get("ok"):
