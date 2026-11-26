@@ -528,7 +528,7 @@ def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
         return None
     try:
         return {"servers": int(v.get("servers") or 0), "procs": int(v.get("procs") or 0), "last_end": v.get("last_end")}
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # sonsuz (`1e999`/`Infinity`): `int()` OverflowError verir
         return None
 
 
