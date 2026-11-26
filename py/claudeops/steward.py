@@ -1068,6 +1068,7 @@ TOPIC_MIN_OVERLAP = 0.5            # ortak jeton / küçük kümenin boyu
 TOPIC_PREV_KEEP = 3
 MAX_OPEN_QUESTIONS_PER_PROJECT = 3       # L7b (11 Kas, anomaly 2 saatte aynı konuda 12 soru): konu benzerliği düşük olsa da açık (rutin olmayan) soru sayısı bu sınırı aşmaz
 EXTRA_TEXTS_KEEP = 8
+_BARE_CHOICE_RE = re.compile(r"^\(?[a-dA-D]\)?[.):]?$")
 TOPIC_OPEN_WINDOW_SECONDS = 72 * 3600    # açık soruya konu birleştirmesi (metin birleştirmesinin 24 sa'inden uzun: konu kalıcıdır)
 TOPIC_HOLD_WINDOW_SECONDS = 72 * 3600    # "bekle/sorma" cevabı bu kadar bağlayıcı
 # Sahibin "bekle / sonra / yeniden sorma" cevabı: aynı konu yeniden sorulursa bu cevap yeniden iletilir (soru açılmaz)
@@ -1443,6 +1444,12 @@ def answer_question(question_id: str, answer: str, paths: Any = None, by: str = 
                 q.status = "answered"
                 q.answered_at = _now()
                 q.delivered_at = 0.0
+                if q.extra_texts and not q.routine and _BARE_CHOICE_RE.match(answer):
+                    # Tek seçenek harfi yalnız ana metni cevaplar: ekler ayrı açık soru olur (aynı harf onlara da uyardı).
+                    questions.append(Question(id=_new_id("q"), project=q.project, text=q.extra_texts[0], created_at=_now(),
+                                              source=q.source, key=_unique_question_key(_pp(paths).sid),
+                                              extra_texts=q.extra_texts[1:]))
+                    q.extra_texts = []
                 save_questions(questions, paths)
                 hit = q
                 break

@@ -57,6 +57,31 @@ class Cap(_Tmp):
         self.assertEqual(sw.add_question_ex("anomaly", "rutin soru zeytin?", routine=True, paths=None)[1], "new")
         self.assertEqual(sw.add_question_ex("anomaly", sw.JOB_REQUEST_PREFIX + "embed a.json", routine=True, paths=None)[1], "new")
 
+    def _combined(self):
+        for i in range(3):
+            sw.add_question_ex("anomaly", f"konu {i} kutu{i} yelpaze{i} ormanlik{i}", paths=None)
+        q, _ = sw.add_question_ex("anomaly", "izler temizlensin mi? (a) dokunma (b) sil limon", paths=None)
+        return q
+
+    def test_bare_choice_answers_only_main_and_reopens_extras(self):
+        for ans in ("a", "(b)", "A."):
+            with self.subTest(ans=ans):
+                sw.save_questions([], None)
+                q = self._combined()
+                sw.answer_question(q.id, ans, paths=None)
+                qs = [x for x in sw.load_questions(None) if x.status == "open"]
+                split = [x for x in qs if x.text.startswith("izler temizlensin")]
+                self.assertEqual(len(split), 1)
+                self.assertEqual((split[0].project, split[0].extra_texts), ("anomaly", []))
+                self.assertEqual(next(x for x in sw.load_questions(None) if x.id == q.id).extra_texts, [])
+                self.assertNotEqual(split[0].key, q.key)
+                self.assertEqual(len(qs), 3)
+
+    def test_written_answer_closes_extras_too(self):
+        q = self._combined()
+        sw.answer_question(q.id, "ikisi de evet", paths=None)
+        self.assertEqual([x for x in sw.load_questions(None) if x.text.startswith("izler")], [])
+
     def test_answered_frees_slot(self):
         qs = [sw.add_question_ex("anomaly", f"konu {i} kutu{i} yelpaze{i} ormanlik{i}", paths=None)[0] for i in range(3)]
         sw.answer_question(qs[0].id, "tamam", paths=None)
