@@ -15,6 +15,31 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
 - `parity/map.py`: aşağıdaki tabloyu `ast` ile üretir; EKSİK satır varsa `--check` kırmızı.
 - Altın tick: `py/tests/steward_golden_tick.json`.
 
+## Durum ve devir (26 Kas 2026 akşam): BİRLEŞTİRMEYE HAZIR DEĞİL
+
+Taşınan: `identity.rs`, `markers.rs` (`fa5cecc`), `cards.rs`, `prompts.rs` (`c9e1d80`). `map.py`: 1620 EKSİK satır (öğe + test).
+
+Kalan gruplar, SIRAYLA (her biri taze Sonnet alt ajanı, `PORTING.md` ile):
+1. Soru/fikir (`steward.py` 734-1874): `HostChangeRefused`, normalize/konu/benzerlik/`find_*`, özet ve soru sayfası, TBD/TODO ekleme, `_log_dedup`;
+   depo sarmalayıcılarının karar çekirdekleri (`add_question_ex`, `answer_question`, `set_*`, `mark_*`, `recent_answers`, fikir işlevleri,
+   `make_card`, `mark_card_stale`, `note_card_failure`, `upsert_project` doğrulaması). Bu adlar `out_of_scope.json` + `io_functions.json`den
+   çıkarılacak, `record.py` bunlar için önce/sonra belge + `now`/kimlik kaydedecek (henüz yapılmadı).
+2. World/devir/kapatma/iş kapıları (3018-4120: `review_items`, `steward_ask.tour_eligible`, `World`, `plan_shutdown`, bağlam sorusu,
+   `plan_markers`, beyin araçları, DONE çelişkisi). `identity::owner_key` -> `_project_key`/`derived_of` ile tek kopya yapılacak.
+3. Boşta/kurtarma (4805-5977: api hatası, `loop_guard`, sonuç denetimi, ucli/claude boşta, `explain_idle`).
+4. Gözlem/rapor (5923-son).
+5. `plan_tick` (4120-4805), Opus alt ajanı; altın kayıt `py/tests/steward_golden_tick.json`.
+6. Kapanış: `parity/test_reasons.json`, `map.py --check` temiz, ders listesi (aşağıda).
+
+Grup 1 ön notları (doğrulanmadı, okuma sırasında çıkan): Python `\b`/`\w`/`\W` ve `re.I` (i/İ/ı) Rust'tan farklı, ilgili desenler
+(salient, konu kodu, sayı, erteleme, bekletme) tek tek çevrilmeli; `casefold`/`isdigit` için `pyc` yardımcısı; `max()` ilk en büyüğü
+seçer; `[-limit:]` limit 0 iken tümünü döner; `_rewrite_log` dosya yazar (kapsam dışı); `upsert_project` `_project_key` ister;
+`prompts.rs` içindeki yanıtlanan/iletilmeyen süzgeci tek açık kopya olmalı. Şüpheli: `resolve_answer` "²" (int) ve "ß" (ord) için istisna.
+
+## Python dersleri (`docs/rust-lessons-from-python.md` 2.6 ve bölüm 3)
+
+HENÜZ KARŞILANMADI: her madde için test adı ya da gerekçe bu bölüme yazılacak (birleştirme koşulu).
+
 ## Python hatası?
 
 Aynen taşındı, düzeltilmedi:
