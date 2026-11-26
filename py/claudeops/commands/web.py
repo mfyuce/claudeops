@@ -51,7 +51,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 import psutil
 
-from ..atomic_json import file_lock
+from ..atomic_json import LockError, file_lock
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..envnames import is_safe_env_name
@@ -147,6 +147,7 @@ ERR = {
                                  "pick a different name, or adopt/rename that session first"},
     "dir_not_found": {"tr": "{cwd}: dizin bulunamadı", "en": "{cwd}: directory not found"},
     "cwd_bad_chars": {"tr": "cwd geçersiz karakter içeriyor", "en": "cwd contains invalid characters"},
+    "model_bad_chars": {"tr": "model geçersiz karakter içeriyor", "en": "model contains invalid characters"},
     "base_not_in_roster": {"tr": "{base}: roster'da yok — önce ana ismi ekleyin",
                             "en": "{base}: not in roster — register the base name first"},
     "newchat_start_failed": {"tr": "{new_name}: instance olarak kaydedildi ama başlatılamadı "
@@ -777,6 +778,11 @@ def _append_tsv_line_unlocked(path: str, fields: list) -> None:
 _NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
+def _tsv_unsafe(value: str) -> bool:
+    """roster.tsv/models.tsv alanında sekme ya da satır sonu: sahte satır/sütun yazar (TBD#374 S3)."""
+    return any(c in value for c in "\t\n\r")
+
+
 def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang: str = "tr") -> dict:
     """UI'den yeni proje kaydı — roster.tsv+models.tsv'ye ekler, SPAWN ETMEZ.
 
@@ -802,10 +808,12 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
     cwd = os.path.expanduser(cwd.strip())
     if not cwd or not os.path.isdir(cwd):
         return _err(lang, "dir_not_found", cwd=cwd or ("(boş)" if lang != "en" else "(empty)"))
-    if "\t" in cwd or "\n" in cwd:
+    if _tsv_unsafe(cwd):
         return _err(lang, "cwd_bad_chars")
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
     chosen_model = model.strip() or default_model_for(get_provider(chosen_cli))
+    if _tsv_unsafe(chosen_model):
+        return _err(lang, "model_bad_chars")
     with _roster_lock(ROSTER_TSV):      # denetim + iki ekleme tek kilitte: eşzamanlı iki kayıt aynı adı iki kez yazmasın
         if any(r["name"] == name for r in _read_tsv_raw(ROSTER_TSV)):
             return _err(lang, "already_registered", name=name)
@@ -851,13 +859,15 @@ def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
     new_cwd = os.path.expanduser(new_cwd.strip())
     if not new_cwd:
         return _err(lang, "dir_not_found", cwd="(boş)" if lang != "en" else "(empty)")
-    if "\t" in new_cwd or "\n" in new_cwd:
+    if _tsv_unsafe(new_cwd):
         return _err(lang, "cwd_bad_chars")
 
     old_cwd = old["rest"][0] if old["rest"] else ""
     old_cli = old["rest"][2] if len(old["rest"]) >= 3 and old["rest"][2] in PROVIDERS else DEFAULT_CLI
     chosen_cli = new_cli.strip() if new_cli.strip() in PROVIDERS else old_cli
     chosen_model = new_model.strip() or default_model_for(get_provider(chosen_cli))
+    if _tsv_unsafe(chosen_model):
+        return _err(lang, "model_bad_chars")
 
     warnings = []
     if not os.path.isdir(new_cwd):
@@ -5467,12 +5477,23 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._json({"ok": True, "path": dest}, status=200)
 
+    def _lock_busy(self, event: str, e: LockError) -> None:
+        """Durum dosyası kilidi alınamadı: hiçbir şey yazılmadı, istemci yeniden deneyebilir (503, bağlantı kapanır)."""
+        diag_log(event, path=urlparse(self.path).path, error=str(e)[:200])
+        self.close_connection = True
+        try:
+            self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
+        except Exception:
+            pass
+
     def do_GET(self):
         from .. import authz as _az
         try:
             self._do_get_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("get_lock_busy", e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
 
@@ -5990,6 +6011,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("post_lock_busy", e)
         except (TypeError, ValueError, AttributeError, KeyError) as e:
             # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
             diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])

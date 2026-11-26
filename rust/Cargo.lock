@@ -119,6 +119,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-cli"
+version = "0.1.0"
+dependencies = [
+ "cops-auth",
+ "cops-proxy",
+ "libc",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "cops-local"
 version = "0.1.0"
 dependencies = [
@@ -185,6 +196,17 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "cops-state"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

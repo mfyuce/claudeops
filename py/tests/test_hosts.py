@@ -34,9 +34,11 @@ class ConcurrentWriteTest(unittest.TestCase):
         self.assertEqual(errs, [])
         self.assertEqual(sorted(h["name"] for h in hosts.load_hosts()), sorted(f"h{i}" for i in range(n)))
 
-    def test_flock_failure_falls_back_to_thread_lock(self):
+    def test_flock_failure_writes_nothing(self):
         with mock.patch.object(atomic_json.fcntl, "flock", side_effect=OSError("no")):
-            self.assertTrue(hosts.save_host("x", "http://x", "t")["ok"])
+            with self.assertRaises(atomic_json.LockError):
+                hosts.save_host("x", "http://x", "t")
+        self.assertEqual(hosts.load_hosts(), [])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "evren",
+    "label": "Evren",
+    "wire": "",
+    "endpoint": "",
+    "env": "UCLI_API_KEY",
+    "models": []
+  },
+  {
+    "id": "claude",
+    "label": "Claude (Anthropic)",
+    "wire": "anthropic-messages",
+    "endpoint": "https://api.anthropic.com/v1",
+    "env": "ANTHROPIC_API_KEY",
+    "models": [
+      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "claude-haiku-5-5",
+      "claude-fable-5-1"
+    ],
+    "efforts": {
+      "haiku": [],
+      "sonnet": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "opus": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "fable": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ]
+    }
+  },
+  {
+    "id": "grok",
+    "label": "Grok (xAI)",
+    "wire": "",
+    "endpoint": "https://api.x.ai/v1",
+    "env": "XAI_API_KEY",
+    "models": []
+  },
+  {
+    "id": "openrouter",
+    "label": "OpenRouter",
+    "wire": "",
+    "endpoint": "https://openrouter.ai/api/v1",
+    "env": "OPENROUTER_API_KEY",
+    "models": []
+  },
+  {
+    "id": "groq",
+    "label": "Groq (groq.com)",
+    "wire": "",
+    "endpoint": "https://api.groq.com/openai/v1",
+    "env": "GROQ_API_KEY",
+    "models": []
+  }
+]

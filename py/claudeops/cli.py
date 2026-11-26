@@ -8,6 +8,7 @@ import argparse
 import sys
 
 from . import __version__
+from .atomic_json import LockError
 from .commands import ls, kill, close, config, guard, rc, handover, stuck, layout, web, service, mcp_queue, migrate_instances, watch, winact, searxng, cache, usage, routing, steward, mcp_steward, ucli_push, cleanup_backups, ucli_cost_cmd, memory_backup, periodic_cmd, db_cmd, check, test_cmd, label_cmd, mcp_ext, front_cmd
 
 # devralındıkça büyüyecek: handover, rc, guard, layout, needs_ho, ...
@@ -49,7 +50,11 @@ def main(argv=None) -> int:
     if not getattr(args, "command", None):
         parser.print_help()
         return 1
-    return args.func(args) or 0
+    try:
+        return args.func(args) or 0
+    except LockError as e:      # durum dosyası kilitli/okunamıyor: döküm değil tek satır (TBD#383)
+        print(f"claudeops: işlem tamamlanmadı, yeniden deneyin: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
