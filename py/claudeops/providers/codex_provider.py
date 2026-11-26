@@ -386,13 +386,15 @@ class CodexProvider(CliProvider):
                 continue
             try:
                 o = json.loads(raw)
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
             p = o.get("payload") if isinstance(o, dict) else None
             info = p.get("info") if isinstance(p, dict) and p.get("type") == "token_count" else None
             last = info.get("last_token_usage") if isinstance(info, dict) else None
-            if isinstance(last, dict) and isinstance(last.get("input_tokens"), int):
-                return last["input_tokens"] or None
+            tokens = last.get("input_tokens") if isinstance(last, dict) else None
+            # `true` ve negatif sayaç değildir: olay atlanır (ucli okuyucularıyla aynı kural)
+            if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
+                return tokens or None
         return None
 
     def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:

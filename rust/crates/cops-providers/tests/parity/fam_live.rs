@@ -524,8 +524,11 @@ fn codex_context(b: &mut Build<'_>) {
     }
     let c = b
         .case("codex-ctx-bool", "codex", Some("sidabc"), "")
-        .file(file(ROLLOUT, &format!("{}\n{}\n", t(7), token_count(json!(true))), 0o600))
-        .known("boolean input_tokens: Python `True` döndürür (bool int sayılır), Rust atlar");
+        .file(file(ROLLOUT, &format!("{}\n{}\n", t(7), token_count(json!(true))), 0o600));
+    b.push(c);
+    let c = b
+        .case("codex-ctx-negatif", "codex", Some("sidabc"), "")
+        .file(file(ROLLOUT, &format!("{}\n{}\n", t(7), token_count(json!(-5))), 0o600));
     b.push(c);
     let c = b
         .case("codex-ctx-dev", "codex", Some("sidabc"), "")

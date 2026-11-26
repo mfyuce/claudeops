@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import bg_work, settings, ucli_client  # noqa: E402
+from claudeops.providers import codex_provider as xp  # noqa: E402
 from claudeops.providers import ucli_provider as up  # noqa: E402
 
 NOW = 1795428000.0
@@ -86,6 +87,34 @@ class StatusFileTest(UcliBase):
             with self.subTest(body=body[:30]):
                 (self.chat / "failed" / "s-5-1.json").write_text(body, encoding="utf-8")
                 self.assertEqual(up.UcliProvider().live_failed_turns(self.cwd, "s"), {"count": 1, "last_unix": 5})
+
+def _token_count(value):
+    return json.dumps({"type": "event_msg", "payload": {"type": "token_count",
+                                                         "info": {"last_token_usage": {"input_tokens": value}}}})
+
+
+class CodexContextTest(unittest.TestCase):
+    def context(self, *rows):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r.jsonl")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("".join(r + "\n" for r in rows))
+            with mock.patch.object(xp.CodexProvider, "_rollout_path", return_value=path):
+                return xp.CodexProvider().live_context("/x", "s")
+
+    def test_boolean_and_negative_counts_are_skipped(self):
+        for bad in (True, False, -5):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.context(_token_count(7), _token_count(bad)), 7)
+                self.assertIsNone(self.context(_token_count(bad)))
+
+    def test_zero_still_means_unknown(self):
+        self.assertIsNone(self.context(_token_count(7), _token_count(0)))
+
+    def test_deep_line_is_skipped(self):
+        deep = '{"x":"token_count","d":' + "[" * 100000 + "]" * 100000 + "}"
+        deep = deep.replace('"x":"token_count"', '"token_count":1')
+        self.assertEqual(self.context(_token_count(7), deep), 7)
 
 
 if __name__ == "__main__":

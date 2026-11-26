@@ -171,8 +171,8 @@ impl Live<'_> {
         bg_work::transcript_pending(lines.iter().map(String::as_str), self.clock)
     }
 
-    /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean değer sayı sayılmaz
-    /// (Python `True` döndürür).
+    /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean ve negatif değer sayaç
+    /// sayılmaz: olay atlanır.
     fn codex_context(&self, cwd: &str, sid: Option<&str>) -> Option<i64> {
         let path = self.codex_rollout_path(cwd, sid)?;
         let data = self.probe.read_tail(&path, CODEX_CONTEXT_TAIL_BYTES)?;
@@ -189,14 +189,8 @@ impl Live<'_> {
                 .and_then(|i| i.get("last_token_usage"))
                 .and_then(|u| u.get("input_tokens"));
             let n = match tokens {
-                Some(Py::Int(n)) => *n,
-                Some(Py::BigInt(s)) => {
-                    if s.starts_with('-') {
-                        i64::MIN
-                    } else {
-                        i64::MAX
-                    }
-                }
+                Some(Py::Int(n)) if *n >= 0 => *n,
+                Some(Py::BigInt(s)) if !s.starts_with('-') => i64::MAX,
                 _ => continue,
             };
             return (n != 0).then_some(n);
