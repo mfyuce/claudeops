@@ -1323,8 +1323,9 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
         # Oturum yakın zamanda cevaplanmış bir soruyu yeniden sordu: yeni soru açma, cevabı "zaten cevapladım"
         # notuyla yeniden ilet (üst sınırdan sonra gerçekten yeni soru say; sonsuz döngü olmasın).
         is_job = text.startswith(JOB_REQUEST_PREFIX)    # farklı dosyalı iş istekleri Jaccard'da birbirine benzer: kopya/birleştirme sayılmaz
-        dup = None if is_job else find_answered_duplicate(questions, project, text)
-        if dup is None and not is_job:
+        solo = is_job or text.startswith(_HELD_ANSWER_PREFIX)    # kendi başına madde: benzerlikle bastırılmaz
+        dup = None if solo else find_answered_duplicate(questions, project, text)
+        if dup is None and not solo:
             dup = find_answered_hold(questions, project, text)    # L7: aynı konuya "bekle/sorma" cevabı verilmiş
         if dup is not None and dup.routine and not routine:
             dup = None      # beynin RUTİN diye cevapladığı soru bu kez sahibe soruluyor: eski cevapla bastırma, soru sahibe düşsün
@@ -1343,12 +1344,13 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
                     return q, "promoted"
                 return q, "same"
         # Benzer (aynı olmayan) AÇIK soru: yenisi açılmaz, sayaç artar (devirle gelen yeni oturum öncekinin sorusunu bilmez).
-        sim = None if is_job else find_open_same_ask(questions, project, text)
+        pool = [q for q in questions if not q.text.startswith(_HELD_ANSWER_PREFIX)]    # tutulan cevap maddesinin metni ezilmez
+        sim = None if solo else find_open_same_ask(pool, project, text)
         newer = sim is not None      # birleşen soruda en yeni metin görünsün
-        if sim is None and not is_job:
-            sim = find_open_similar(questions, project, text)
-        if sim is None and not is_job:
-            sim = find_open_topic(questions, project, text)
+        if sim is None and not solo:
+            sim = find_open_similar(pool, project, text)
+        if sim is None and not solo:
+            sim = find_open_topic(pool, project, text)
             newer = sim is not None
         if sim is not None and newer:
             # L7: AYNI KONU, farklı anlatım: en yeni sürüm görünsün (oturum ilerledi), eskisi kaybolmasın (yanlış
@@ -4516,7 +4518,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             continue    # L2: proje sahibin elle açtığı oturumda; cevap o oturuma iletilmez, ikinci oturum da açılmaz
         elif projects[target].phase in ("done", "paused") and (is_negative_answer(q.answer) or not is_open_answer(q.answer)):
             # "Hayır / paused kalsın / açma": faz değişmez, oturum açılmaz; cevap yalnız teslim edildi sayılır (21 Kas)
-            actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı", {"question_id": q.id}))
+            actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı",
+                                  {"question_id": q.id, "held": _held_instruction_item(q)}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
               and starts < max_starts and _slots() > 0 and not (world is not None and world.start_held(target))):
             # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
@@ -5205,6 +5208,22 @@ def is_open_answer(text: str) -> bool:
     if _HOLD_ANY_RE.search(t):
         return False
     return bool(_OPEN_ANY_RE.search(t))
+
+
+_HELD_ANSWER_PREFIX = "CEVAP OTURUM AÇMADI:"   # beynin turuna düşen rutin madde; kopya/konu birleştirmesine girmez (her cevap ayrı)
+
+
+def _held_instruction_item(q: "Question") -> str:
+    """done/paused projeyi AÇMAYAN sahip cevabı uzunsa (yönerge olabilir) beyne gidecek rutin madde metni; kısa "tut" cevabı,
+    beyin/motor cevabı ve rutin sorunun cevabı için "" (döngü olmasın). SAF."""
+    text = (q.answer or "").strip()
+    if text.startswith(ON_BEHALF_PREFIX):
+        text = text[len(ON_BEHALF_PREFIX):]
+    if q.routine or q.answered_by in ("brain", "motor") or len(text) <= NEG_ANSWER_MAX_CHARS:
+        return ""
+    return (f"{_HELD_ANSWER_PREFIX} {q.project} projesi done/paused, sahibin cevabı ({q.id}) açıkça 'aç' demediği için oturum "
+            f"açılmadı. İş istiyorsa projeyi aç ya da işi uygun oturuma ver; yalnız 'beklet' diyorsa maddeyi 'atla' diye kapat. "
+            f"Cevap: {text}")
 
 
 CARD_NOTE_MAX_CHARS = 1200

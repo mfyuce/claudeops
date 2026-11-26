@@ -3659,8 +3659,12 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         notified = _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
         return {"ok": True, "id": q.id, "notified": notified}
     if k == "close_negative_answer":      # olumsuz/bekle cevabı: proje açılmaz, cevap teslim edildi sayılır (21 Kas)
+        held = str(action.payload.get("held") or "")
+        if held:      # uzun yönerge sessizce kapanmaz: önce beyin maddesi (yazılamazsa cevap iletilmemiş kalır, yeniden denenir)
+            sw.add_question(action.name, held, source="motor", routine=True, paths=paths)
         sw.mark_delivered(str(action.payload.get("question_id") or ""), paths)
-        sw.log_event("negative_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name)
+        sw.log_event("negative_answer_closed", paths=paths, id=action.payload.get("question_id"), project=action.name,
+                     **({"to_brain": True} if held else {}))
         return {"ok": True}
     if k == "close_stale_answer":      # bayat blokaj kaydı: teslim edilecek proje yok, tekrar tura düşmesin
         why = str(action.payload.get("reason") or "")

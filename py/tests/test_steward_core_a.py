@@ -994,6 +994,55 @@ class NegativeAnswerTest(unittest.TestCase):
         self.assertEqual(asks[0].payload["options"], ["Aç", "Paused kalsın"])
 
 
+class HeldInstructionAnswerTest(_Tmp):
+    """26 Kas (copsdevderbent, q20261125_121935_22db): paused projede sahibin UZUN yönerge cevabı oturum açmaz (22 Kas
+    kuralı kalır) ama sessizce de kapanmaz: beynin turuna rutin madde düşer."""
+    LONG = ("Sahip: ilk deneme mobilde başarısız oldu, ayrıntısına bakmadım. Hata metni yok; sen loglardan mobil isteği "
+            "bulup irdele, düzeltip yeniden denenecek adımı yaz.")
+
+    def _tick(self, answer, by="owner_cli", routine=False):
+        self.n = getattr(self, "n", 0) + 1
+        q = sw.add_question("p1", ["Maya son kontrolü yapar mısın?", "Hangi kuyruk silinsin?", "Ankara anahtarı nerede?",
+                                   "Kitap kapağı rengi ne olsun?", "Redis imajı indirilsin mi?"][self.n - 1], routine=routine)
+        sw.answer_question(q.id, answer, by=by)
+        cfg = _cfg()
+        projects = {"p1": sw.Project(name="p1", phase="paused", cadence_minutes=60)}
+        acts, _ = sw.plan_tick([], projects, {}, cfg, time.time(), sw.load_questions(), [])
+        mine = [a for a in acts if a.kind in ("start", "set_phase", "close_negative_answer")]
+        self.assertEqual([a.kind for a in mine], ["close_negative_answer"])
+        self.assertTrue(web_steward._apply(mine[0], cfg, projects)["ok"])
+        self.assertTrue(sw.find_question(q.id).delivered_at)
+        return q, [x for x in sw.load_questions() if x.id != q.id]
+
+    def test_long_owner_instruction_reaches_brain(self):
+        for by in ("owner_cli", "owner_panel", "owner_phone", "cops"):
+            q, new = self._tick(self.LONG, by=by)
+            item = [x for x in new if q.id in x.text]
+            self.assertEqual(len(item), 1, by)
+            self.assertTrue(item[0].routine and item[0].status == "open", by)
+            self.assertEqual(item[0].project, "p1")
+            self.assertIn("yeniden denenecek adımı yaz", item[0].text)
+
+    def test_second_held_instruction_gets_its_own_item(self):
+        self._tick(self.LONG)
+        q2, new = self._tick(self.LONG + " İkinci kez.")
+        self.assertEqual(len([x for x in new if x.status == "open" and x.routine]), 2)
+
+    def test_later_question_does_not_overwrite_held_item(self):
+        _, new = self._tick(self.LONG)
+        held = new[0]
+        q, outcome = sw.add_question_ex("p1", held.text.replace(sw._HELD_ANSWER_PREFIX, "") + " Açayım mı?")
+        self.assertEqual(outcome, "new")
+        self.assertEqual(sw.find_question(held.id).text, held.text)
+
+    def test_short_hold_brain_and_routine_answers_stay_silent(self):
+        for kw in ({"answer": "Hayır, paused kalsın"}, {"answer": self.LONG, "by": "brain"},
+                   {"answer": self.LONG, "routine": True}):
+            before = len(sw.load_questions())
+            self._tick(**kw)
+            self.assertEqual(len(sw.load_questions()), before + 1, kw)
+
+
 class DoneHandoverTest(unittest.TestCase):
     """STEWARD-DONE-CONFIRMED: teyit -> faz done -> DEVİR (READY FOR HANDOVER) -> stop (yeniden açma YOK); küçük bağlamda
     devir atlanır; sahip 'çelişti' cevabı yeniden soru açtırmaz, 'bitti' ise sayı çelişkisi sayılmaz."""
