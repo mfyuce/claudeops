@@ -30,5 +30,16 @@ class KidsShapeTest(unittest.TestCase):
         self.assertEqual(wh._fwd_brief({"kids": ["a", 1]}, 0.0)["kids"], ["a", "1"])
 
 
+class ListFieldsTest(unittest.TestCase):
+    def test_non_list_values_become_empty(self):
+        for bad in ("abc", {"a": 1}, 5, True):
+            out = wh._finalize_remote_result("h", {"ok": True, "cli_list": bad, "dups": bad})
+            self.assertEqual((out["cli_list"], out["dups"]), ([], []), bad)
+
+    def test_lists_pass(self):
+        out = wh._finalize_remote_result("h", {"ok": True, "cli_list": ["claude"], "dups": ["x"]})
+        self.assertEqual((out["cli_list"], out["dups"]), (["claude"], ["x"]))
+
+
 if __name__ == "__main__":
     unittest.main()
