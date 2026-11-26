@@ -602,6 +602,20 @@ mod tests {
         crate::transcript::TEST_MAX_LINE.with(|c| c.set(None));
     }
 
+    /// Birleştirme kapısı (taşma sınıfı): Python `int(inf)` toplamı `None` yapıyordu (düzeldi, 0 sayar). Rust'ta serde
+    /// `1e400`/`Infinity` satırını ayrıştırmaz: satır tur sayılmaz (sapma 4), toplam düşmez; çok büyük tamsayı doyar.
+    #[test]
+    fn overflowing_count_row_does_not_blank_total() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("s.jsonl");
+        let big = row("m2", "\"x\"", 5).replace("\"output_tokens\":5", "\"output_tokens\":1e400");
+        let inf = row("m3", "\"x\"", 5).replace("\"output_tokens\":5", "\"output_tokens\":Infinity");
+        let huge = row("m4", "\"x\"", 5).replace("\"output_tokens\":5", "\"output_tokens\":1e30");
+        append(&p, &(row("m1", "\"x\"", 3) + &big + &inf + &huge));
+        let u = UsageReader::default().usage_for_path(&p).unwrap();
+        assert_eq!((u.main.turns, u.main.output), (2, u64::MAX));
+    }
+
     #[test]
     fn python_key_equality() {
         let k = |v: Value| py_key(Some(&v));

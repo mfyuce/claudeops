@@ -39,7 +39,8 @@ PARTIAL = ["providers/__init__.py", "providers/base.py", "providers/claude_provi
            "providers/ucli_provider.py", "commands/usage.py", "model_usage.py", "orphan_watch.py", "paths.py"]
 # yalnız crate'in üstlendiği tanımlar ve doğrudan yardımcıları
 SUBSET = {
-    "commands/web.py": ["_usage_total", "_process_started_at", "_UCLI_FLAGS_CACHE", "_ucli_flags", "_with_ucli_tools"],
+    "commands/web.py": ["_usage_total", "_process_started_at", "_UCLI_FLAGS_CACHE", "_ucli_flags", "_with_ucli_tools",
+                        "_find_gnome_terminal_server", "_diag_status"],
     "tmux_backend.py": ["TMUX_SOCKET", "_ANCESTOR_WALK_LIMIT", "is_tmux_backed"],
 }
 TEST_IMPORT = re.compile(r"claudeops\.(discovery|session|session_usage|mirrors|needs_ho|commands\.ls|providers|"
@@ -76,12 +77,15 @@ DISC = "U:providers.rs::detect G:provider_detect_and_info I:fake_proc.rs::discov
 DEFS: dict = {}
 
 DEFS["discovery.py"] = [
-    ok("_sessions_from_json", "discovery.rs::sessions_from_json discovery.rs::json_pid",
+    ok("_sessions_from_json", "discovery.rs::sessions_from_json discovery.rs::json_pid discovery.rs::JsonPid",
        "I:fake_proc.rs::json_source_merges_with_proc_scan I:fake_proc.rs::broken_proc_fields "
-       "I:fake_proc.rs::bad_session_files_are_skipped_and_counted P:scan_sessions",
-       "sapma 5; bozuk dosya ve sıfır/negatif pid atlanır (TBD#365). Python düzeltildi: 6ae5da3"),
+       "I:fake_proc.rs::bad_session_files_are_skipped_and_counted I:fake_proc.rs::overflowing_pids_are_skipped_and_counted "
+       "P:scan_sessions",
+       "sapma 5; bozuk dosya ve sıfır/negatif pid atlanır (TBD#365). Python düzeltildi: 6ae5da3. `pid_t`ye sığmayan pid "
+       "(2**31+, `Infinity`) atlanır ve sayılır (`Infinity`/`1e400` Rust'ta geçersiz dosya). Python düzeltildi: 35a1eb78"),
     ok("_skipped", "discovery.rs::ScanDiag.session_files_bad", "I:fake_proc.rs::bad_session_files_are_skipped_and_counted",
-       "Python sayacı süreç geneli, Rust tarama başına. Python düzeltildi: 6ae5da3"),
+       "Python sayacı süreç geneli, Rust tarama başına. Python düzeltildi: 6ae5da3. Tanılama `diag.skipped`ta görünür "
+       "(Rust `scan` çıktısında `diag`). Python düzeltildi: 1af088ef"),
     ok("fold_background", "session.rs::fold_background",
        "U:session.rs::background_folds_into_single_front U:session.rs::background_fold_edge_cases_like_python "
        "I:fake_proc.rs::background_session_folds"),
@@ -157,18 +161,27 @@ DEFS["session_usage.py"] = [
        "U:usage.rs::bad_row_is_skipped_and_counted G:usage_totals_two_calls"),
     ok("_summaries", "usage.rs::UsageCache.summaries usage.rs::Summary",
        "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
-    ok("_int", "usage.rs::count", "G:usage_totals_two_calls P:usage_real", "sapma 4 ve 6; u64'te doyar"),
+    ok("_int", "usage.rs::count", "G:usage_totals_two_calls P:usage_real U:usage.rs::overflowing_count_row_does_not_blank_total",
+       "sapma 4 ve 6; u64'te doyar. `int(inf)` OverflowError toplamı None yapıyordu, artık 0; Rust'ta serde o satırı "
+       "ayrıştırmaz (sapma 4). Python düzeltildi: 35a1eb78"),
     ok("_parse _from_row", "usage.rs::parse usage.rs::py_key",
        "G:usage_totals_two_calls U:usage.rs::python_key_equality U:usage.rs::bad_row_is_skipped_and_counted "
        "P:usage_real", "sapma 4; dizgi olmayan model ve hashlenemeyen anahtar atlanır, sayılır. Python düzeltildi: 6ae5da3"),
-    ok("_skipped", "usage.rs::FileState.bad usage.rs::Usage.skipped_rows", "U:usage.rs::bad_row_is_skipped_and_counted",
-       "Python süreç geneli sayaç, Rust dosya başına (JSON'a yazılmaz). Python düzeltildi: 6ae5da3"),
+    ok("_skipped", "usage.rs::FileState.bad usage.rs::Usage.skipped_rows", "U:usage.rs::bad_row_is_skipped_and_counted "
+       "U:usage.rs::long_lines_are_skipped_and_counted G:usage_totals_two_calls P:usage_real",
+       "Python süreç geneli sayaç, Rust dosya başına. Python düzeltildi: 6ae5da3. Rust `skipped_rows` artık JSON'da; "
+       "altın vektör ve parite koşucusu Python artışıyla kıyaslar; Python Tanılama `diag.skipped`. Python düzeltildi: 1af088ef"),
+    ok("_MAX_LINE_BYTES _SKIP_CHUNK", "transcript.rs::MAX_LINE_BYTES transcript.rs::read_line transcript.rs::Line "
+       "usage.rs::FileState.skip", "U:usage.rs::long_lines_are_skipped_and_counted",
+       "64 MiB (ölçülen en uzun satır 13.234.801 bayt); tampon sınır+1'i aşmaz, kalan parça parça atılır; dosya sonundaki "
+       "yarım uzun satır bir kez sayılır. Python düzeltildi: 66b47a37"),
     ok("_merge", "usage.rs::UsageReader::update", "I:fake_proc.rs::usage_dedups_subagents_and_increments "
        "G:usage_totals_two_calls"),
     ok("_update_file", "usage.rs::UsageReader::update",
        "I:fake_proc.rs::usage_dedups_subagents_and_increments U:usage.rs::bad_row_is_skipped_and_counted "
        "U:usage.rs::file_cache_evicts_in_insertion_order",
-       "`mtime` tutulmaz (okuyanı yok); küçülen dosya yerinde sıfırlanır. Python düzeltildi: 6ae5da3"),
+       "`mtime` tutulmaz (okuyanı yok); küçülen dosya yerinde sıfırlanır. Python düzeltildi: 6ae5da3. Satır sınırı. "
+       "Python düzeltildi: 66b47a37"),
     ok("_sum", "usage.rs::sum usage.rs::Totals::add", "G:usage_totals_two_calls P:usage_real"),
     ok("usage_for_path", "usage.rs::UsageReader::usage_for_path usage.rs::Usage",
        "I:fake_proc.rs::usage_dedups_subagents_and_increments G:usage_totals_two_calls P:usage_real "
@@ -218,8 +231,13 @@ DEFS["needs_ho.py"] = [
     ok("rfh_marker_in rfh_marker_in::re1", "needs_ho.rs::rfh_marker_in",
        "G:rfh_marker U:needs_ho.rs::prose_mention_is_not_a_marker U:needs_ho.rs::heading_and_bare_line_count "
        "U:needs_ho.rs::code_block_and_quote_do_not_count"),
-    ok("_skipped", "needs_ho.rs::Checked.skipped", "U:needs_ho.rs::broken_input_is_skipped_and_counted",
-       "Python süreç geneli sayaç, Rust çağrı başına. Python düzeltildi: 6ae5da3"),
+    ok("_skipped", "needs_ho.rs::Checked.skipped", "U:needs_ho.rs::broken_input_is_skipped_and_counted "
+       "U:needs_ho.rs::long_lines_are_skipped_and_counted",
+       "Python süreç geneli sayaç, Rust çağrı başına (sınırı aşan satır da aynı sayaçta; Python ayrı anahtar "
+       "`transcript_line_too_long`). Python düzeltildi: 6ae5da3. Tanılama `diag.skipped`. Python düzeltildi: 1af088ef"),
+    ok("_MAX_LINE_BYTES _SKIP_CHUNK _lines", "transcript.rs::MAX_LINE_BYTES transcript.rs::read_line needs_ho.rs::each_row",
+       "U:needs_ho.rs::long_lines_are_skipped_and_counted G:transcripts_needs_ho P:needs_ho_transcripts",
+       "64 MiB; metin kipi satır sonları (`\\r`) ve U+FFFD aynı (altın vektörler değişmedi). Python düzeltildi: 66b47a37"),
     ok("_text_blocks", "needs_ho.rs::text_blocks",
        "U:needs_ho.rs::broken_input_is_skipped_and_counted G:transcripts_needs_ho",
        "dizgi olmayan `text` yok sayılır ve sayılır. Python düzeltildi: 6ae5da3"),
@@ -293,7 +311,9 @@ DEFS["providers/claude_provider.py"] = [
     ok("_encode_cwd _encode_cwd::re1", "transcript.rs::encode_cwd",
        "U:transcript.rs::encodes_non_ascii_per_char G:names_paths_and_token_format"),
     ok("jsonl_path_for", "transcript.rs::jsonl_path_for", "I:fake_proc.rs::transcript_requires_exact_sid "
-       "P:scan_sessions", "sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3"),
+       "P:scan_sessions", "sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3. "
+       "Sid VARKEN Python da yalnız tam dosya, yoksa None (sözleşme: None = transkript yok). Python düzeltildi: 43753998. "
+       "Kalan kasıtlı fark: sid YOKKEN Python tahmini (koşucu `KNOWN_DEVIATIONS`, `python_guess_without_sid`)"),
     oos("_safe_mtime find_latest_jsonl",
         "cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken "
         "yeniden karar gerekir", f"{T1}; {T4}"),
@@ -484,7 +504,10 @@ DEFS["model_usage.py"] = [
 DEFS["orphan_watch.py"] = [
     oos("MIN_AGE_S SOCKET_PREFIXES KILLABLE_PREFIXES CLI_NAMES _sock_dir _pid_alive _server_alive scan_sockets "
         "scan_sockets::re1 _pane_pids _is_app_server _ancestor_cmd scan_procs check HOG_PCT HOG_MIN_SPAN_S "
-        "scan_cpu_hogs", "sahipsiz tmux soketi/süreç ve CPU yakan süreç denetimi (periyodik iş; yıkıcı adım içerir)", T7),
+        "scan_cpu_hogs _own _attr", "sahipsiz tmux soketi/süreç ve CPU yakan süreç denetimi (periyodik iş; yıkıcı adım "
+        "içerir). uid süzgeci içerikten (cmdline/cwd/ad, ata cmdline'ı) ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı YOK, "
+        "en yakın yol `status.rs::OrphanTracker::report` yalnız kendi oturumlarını görür ve içeriği `OwnProc` ile okur "
+        "(kanıt `fake_proc.rs::other_users_processes_are_never_read`)", T7),
 ]
 
 DEFS["paths.py"] = [
@@ -518,6 +541,10 @@ DEFS["commands/web.py"] = [
        "I:fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached "
        "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges P:scan_sessions", "`tools` ve önbellek T1"),
     oos("_with_ucli_tools", "rozete durum dosyasından araç listesi ekler", T1),
+    oos("_find_gnome_terminal_server", "gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: "
+        "f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından)", T1),
+    oos("_diag_status", "Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python "
+        "düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da)", T1),
 ]
 
 DEFS["tmux_backend.py"] = [
@@ -738,6 +765,24 @@ CASES["test_procscan_tbd365.py"] = [
          "Python düzeltildi: 6ae5da3"),
     t_ok("BaselineAtomicTest.test_baseline_written_via_replace", "U:needs_ho.rs::baseline_is_written_atomically", "Python düzeltildi: 6ae5da3"),
     t_ok("SidPathTest.test_sid_with_path_parts_is_not_joined", "I:fake_proc.rs::transcript_requires_exact_sid", "Python düzeltildi: 6ae5da3"),
+    t_ok("SidPathTest.test_invalid_or_missing_sid_file_never_guesses", "I:fake_proc.rs::transcript_requires_exact_sid",
+         "Python düzeltildi: 43753998"),
+    t_ok("SessionFilesTest.test_overflowing_pid_is_skipped_and_counted",
+         "I:fake_proc.rs::overflowing_pids_are_skipped_and_counted", "Python düzeltildi: 35a1eb78"),
+    t_ok("UsageRowsTest.test_overflowing_token_count_does_not_blank_total",
+         "U:usage.rs::overflowing_count_row_does_not_blank_total", "Rust'ta satır serde'de ayrıştırılmaz (sapma 4). Python düzeltildi: 35a1eb78"),
+    t_ok("ForeignProcessContentTest.test_orphans_only_own_and_foreign_ancestor_not_read "
+         "ForeignProcessContentTest.test_cpu_hogs_only_own", "I:fake_proc.rs::other_users_processes_are_never_read",
+         "orphan_watch'ın Rust karşılığı yok (T7); en yakın yol OrphanTracker, kanıt testi. Python düzeltildi: f51a442f"),
+    t_oos("ForeignProcessContentTest.test_gnome_terminal_server_cmdline_read_only_for_own",
+          "gnome-terminal sunucusu araması, Rust karşılığı yok. Python düzeltildi: f51a442f", T1),
+    t_ok("LongLineTest.test_usage_limit_boundary_and_partial_tail LongLineTest.test_usage_memory_is_bounded",
+         "U:usage.rs::long_lines_are_skipped_and_counted", "Python düzeltildi: 66b47a37"),
+    t_ok("LongLineTest.test_needs_ho_long_line_skipped_and_counted", "U:needs_ho.rs::long_lines_are_skipped_and_counted",
+         "Python düzeltildi: 66b47a37"),
+    t_ok("DiagSkippedTest.test_diag_carries_all_skip_counters",
+         "U:usage.rs::bad_row_is_skipped_and_counted I:fake_proc.rs::bad_session_files_are_skipped_and_counted",
+         "Rust sayaçları JSON'da (`Usage.skipped_rows`, `ScanDiag`); Tanılama yükü T1. Python düzeltildi: 1af088ef"),
     t_ok("UsageRowsTest.test_bad_rows_skipped_on_first_call UsageRowsTest.test_bad_subagent_row_does_not_blank_total",
          "U:usage.rs::bad_row_is_skipped_and_counted G:usage_totals_two_calls", "Python düzeltildi: 6ae5da3"),
     t_oos("UsageRowsTest.test_day_usage_file_survives_bad_row",
@@ -853,7 +898,8 @@ FILES = {
     "kill_access_denied": ("kill yolu", T4),
     "live_model_effort": ("transkriptten canlı model/effort", T1),
     "model_usage": ("son 60 dakika model kullanım taraması", T7),
-    "needs_ho_transcript": ("web/toplu devirde transkript seçimi (en yeni dosyaya düşüş Rust'ta yok, sapma 1)",
+    "needs_ho_transcript": ("web/toplu devirde transkript seçimi (en yeni dosyaya düşüş Rust'ta yok, sapma 1; sid var "
+                            "dosya yok artık Python'da da None, Python düzeltildi: 43753998)",
                             f"{T1}; {T4}"),
     "orch_store_db": (_PATHS, f"{W0A}; {T7}"),
     "orphan_watch": ("sahipsiz kaynak denetimi", T7),
@@ -1333,7 +1379,7 @@ input_box_typed:13:ae087dd291
 kill_access_denied:1:916993d907
 live_model_effort:17:c5a05da63a
 model_usage:3:46df4bab8c
-needs_ho_transcript:4:aeba5a9bf8
+needs_ho_transcript:4:270118e250
 orch_store_db:5:647ecdf3af
 orphan_watch:12:e645fcc095
 paths_isolation:5:5103a70284

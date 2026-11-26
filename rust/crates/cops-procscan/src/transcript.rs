@@ -90,9 +90,16 @@ pub fn encode_cwd(cwd: &str) -> String {
     cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
-/// `<projects>/<cwd>/<sid>.jsonl`, yalnız TAM eşleşme. Python'un "sid yok/dosya yok -> cwd'deki en yeni dosya"
-/// düşüşü BİLEREK yok: ortak cwd'de başka oturumun transkriptini verir. `sid` tek yol parçası olmalı: `/` ya da NUL
-/// içeren sid yok sayılır (TBD#365; Python `jsonl_path_for` da süzer).
+/// `<projects>/<cwd>/<sid>.jsonl`, yalnız TAM eşleşme.
+///
+/// **Tüketici sözleşmesi: `None` = transkript yok.** Sid yok, geçersiz (`/` ya da NUL içerir, tek yol parçası değil)
+/// ya da dosyası yoksa `None`; çağıran bunu "bilinmiyor" olarak ele alır (usage gösterilmez, needs_ho transkript
+/// sinyalini atlar), başka bir dosyayla DOLDURMAZ.
+///
+/// Python'dan KASITLI fark (docs/rs-proc.md sapma 1; parite koşucusu `KNOWN_DEVIATIONS`): Python `jsonl_path_for`
+/// sid hiç YOKKEN cwd'deki en yeni transkripte düşer (tahmin); Rust düşmez, çünkü ortak cwd'de başka oturumun
+/// transkriptini verir. Sid VARKEN iki dil aynı: yalnız `<sid>.jsonl`, yoksa ya da sid geçersizse `None` (TBD#365
+/// birleştirme kapısı; Python önceden bu durumda da tahmine düşüyordu).
 pub fn jsonl_path_for(cfg: &Config, cwd: &str, sid: Option<&str>) -> Option<PathBuf> {
     let sid = sid.filter(|s| !s.is_empty() && !s.contains(['/', '\0']))?;
     let path = cfg
