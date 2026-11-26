@@ -1,7 +1,8 @@
 //! `settings.py` okuyucuları (yazım Python'da): `resolved_binary`, `byok_env_for`, `ucli_*`, `normalize_ucli_services`,
 //! `_valid_http_url`, `_daemon_config`/`uzakgoz_config`/`derbent_config`, `reader_config`. Elle düzenlenebilen değerler
 //! Python'daki `str(x)` / `int(...)` / `float(...)` zinciriyle AYNEN yorumlanır (`pycompat`); parite testi:
-//! `tests/parity.rs::settings_readers_match_python`.
+//! `tests/parity_settings.rs::settings_readers_match_python`. Model/effort varsayılanları (`default_model_for` ...)
+//! sağlayıcı bilgisini PARAMETRE alır (bu crate sağlayıcılara bağlı değil); parite: `tests/parity_steward.rs`.
 //!
 //! Python'un İSTİSNA fırlattığı iki tip hatası (bkz. `docs/rs-state.md` "Sahibe soruldu") burada [`SettingsTypeError`]
 //! döner: sessizce yutulmaz, sessizce düzeltilmez.
@@ -481,6 +482,63 @@ pub fn normalize_ucli_services(raw: Option<&Json>) -> Result<Vec<Json>, Settings
 impl Settings {
     fn block(&self, key: &str) -> Option<&Json> {
         self.get(key).filter(|b| b.as_object().is_some())
+    }
+
+    /// `settings[block][cli]` seçimi `choices` içindeyse o (Python `(x.get(cli) or "") in choices`: dize olmayan doğru
+    /// değer hiçbir seçeneğe eşit değil).
+    fn chosen_override(&self, block: &str, cli: &str, choices: &[String]) -> Option<String> {
+        let v = match self.block(block).and_then(|b| b.get(cli)) {
+            Some(Json::Str(s)) => s.as_str(),
+            Some(v) if v.truthy() => return None,
+            _ => "",
+        };
+        choices.iter().any(|c| c == v).then(|| v.to_string())
+    }
+
+    /// `default_model_for(provider)`: ayardaki `default_model[cli]` (listede geçerliyse) > `preferred` (listedeyse) >
+    /// listenin ilki > `""`. `choices` = `model_choices()`, `preferred` = `preferred_default_model()`.
+    pub fn default_model_for(
+        &self,
+        cli: &str,
+        choices: &[String],
+        preferred: Option<&str>,
+    ) -> String {
+        if let Some(m) = self.chosen_override("default_model", cli, choices) {
+            return m;
+        }
+        match preferred.filter(|p| choices.iter().any(|c| c == p)) {
+            Some(p) => p.to_string(),
+            None => choices.first().cloned().unwrap_or_default(),
+        }
+    }
+
+    /// `default_effort_for(provider)`: ayardaki `default_effort[cli]` (`levels` içindeyse), yoksa `provider_default`
+    /// (`default_effort()`).
+    pub fn default_effort_for(
+        &self,
+        cli: &str,
+        levels: &[String],
+        provider_default: &str,
+    ) -> String {
+        self.chosen_override("default_effort", cli, levels)
+            .unwrap_or_else(|| provider_default.to_string())
+    }
+
+    /// `resolved_model_for(provider, stored)`: `stored` boşsa [`Self::default_model_for`], doluysa `refresh`
+    /// (`refresh_stored_model`; genel varsayılan ayarı karışmaz).
+    pub fn resolved_model_for(
+        &self,
+        cli: &str,
+        stored: &str,
+        choices: &[String],
+        preferred: Option<&str>,
+        refresh: impl FnOnce(&str) -> String,
+    ) -> String {
+        if stored.is_empty() {
+            self.default_model_for(cli, choices, preferred)
+        } else {
+            refresh(stored)
+        }
     }
 
     /// `resolved_binary(cli)`: `provider_bin[cli]` (çalıştırılabilirse) > `shutil.which` > bilinen konumlar > çıplak ad.

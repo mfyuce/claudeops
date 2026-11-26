@@ -415,6 +415,7 @@ print(json.dumps([
   ranges(lambda c: not skip(c) and unicodedata.decimal(chr(c), None) is not None),
   [c for c in range(0x110000) if not skip(c) and unicodedata.decimal(chr(c), -1) == 0],
   [c for c in range(0x80, 0x110000) if not skip(c) and not s._valid_http_url('http://a' + chr(c) + 'b')],
+  ranges(lambda c: not skip(c) and chr(c).isalnum()),
 ]))
 "#,
     );
@@ -465,6 +466,12 @@ print(json.dumps([
         .map(|c| Json::Int(c.into()))
         .collect();
     assert_eq!(Json::Array(bad), py_a[4], "NFKC netloc");
+    assert_eq!(
+        ranges(&|c| py::is_alnum_str(c.encode_utf8(&mut [0; 4]))),
+        py_a[5],
+        "isalnum"
+    );
+    assert!(!py::is_alnum_str(""), "boş dize: Python False");
 }
 
 #[test]

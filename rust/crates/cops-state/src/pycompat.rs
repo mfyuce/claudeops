@@ -1,9 +1,9 @@
 //! Python yerleşiklerinin bu crate'in ihtiyaç duyduğu kadarı, BİREBİR: `str()`, `repr()`, `str.strip()`, `str.isspace()`,
-//! `str.isprintable()`, `int(str)`, `float(str)`, `re` `\d`. Ayar okuyucuları elle düzenlenebilen `settings.json`
+//! `str.isprintable()`, `str.isalnum()`, `int(str)`, `float(str)`, `re` `\d`. Ayar okuyucuları elle düzenlenebilen `settings.json`
 //! değerlerini Python'un `str(x)`/`int(...)`/`float(...)` zinciriyle yorumlar; aynı sonuç için aynı dönüşüm gerekir.
 //! Unicode tabloları Python 3.10'dan üretildi (`unicode_tables.rs`); parite testleri her işlevi Python'a karşı sınar.
 use crate::json::{py_float_repr, Json};
-use crate::unicode_tables::{DECIMAL_ZEROS, NFKC_NETLOC_BAD, NONPRINTABLE};
+use crate::unicode_tables::{ALNUM, DECIMAL_ZEROS, NFKC_NETLOC_BAD, NONPRINTABLE};
 
 /// `str.isspace()` (Python `Py_UNICODE_ISSPACE`): Unicode boşlukları + U+001C..U+001F.
 pub fn is_space(c: char) -> bool {
@@ -33,6 +33,16 @@ pub fn is_printable(c: char) -> bool {
     let c = c as u32;
     let i = NONPRINTABLE.partition_point(|&(lo, _)| lo <= c);
     !(i > 0 && c <= NONPRINTABLE[i - 1].1)
+}
+
+/// `str.isalnum()`: boş değil ve her karakter harf/sayı.
+pub fn is_alnum_str(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().all(|c| {
+            let c = c as u32;
+            let i = ALNUM.partition_point(|&(lo, _)| lo <= c);
+            i > 0 && c <= ALNUM[i - 1].1
+        })
 }
 
 /// `unicodedata.decimal(c)`: Nd rakamının değeri.
