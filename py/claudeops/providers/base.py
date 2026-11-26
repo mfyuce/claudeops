@@ -10,6 +10,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
+from urllib.parse import quote
 
 import psutil
 
@@ -24,6 +25,14 @@ def cmd_arg(cmd: List[str], flag: str) -> Optional[str]:
     except ValueError:
         return None
     return cmd[i + 1] if i + 1 < len(cmd) else None
+
+def _ro_sqlite_uri(path: str) -> str:
+    """`path`i salt okunur açan SQLite URI'si. Yol kaçışlanır: ham `#`/`?`/`%` başka bir dosya açtırıyor, `mode=ro`yu
+    düşürüp boş dosya yarattırıyordu."""
+    quoted = quote(os.fsencode(path))
+    prefix = "//" if quoted.startswith("//") else ""      # `//x` yolu URI'de sunucu adı sanılmasın
+    return f"file:{prefix}{quoted}?mode=ro"
+
 
 class OneshotError(RuntimeError):
     """`CliProvider.oneshot` çalıştırılamadı/başarısız (ikili yok, zaman aşımı, sıfır olmayan çıkış, boş yanıt)."""

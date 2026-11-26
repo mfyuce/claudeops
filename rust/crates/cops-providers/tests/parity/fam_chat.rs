@@ -858,13 +858,16 @@ fn agy_cases(b: &mut Build<'_>) {
         "okuma ortasında SQLite hatası: Python bir satır önden okuduğundan hatadan önceki iyi satırı da atar, Rust tutar",
         json!({"last_exchange": {"user": "s", "assistant": "c"}, "full_history": []}),
     );
-    // `#`: Python `file:{yol}?mode=ro` URI'sinde parça ayracı; yol kesilir ve `mode=ro` düşer.
-    let c = b.case("agy-sapma-uri", "agy", Some("a#b")).file(Fx::File(format!("{AGY_DIR}/a#b.db"), db, 0o600));
-    b.diverges(
-        c,
-        "yolda `#`: Python URI'yi yanlış ayrıştırır (konuşma okunmaz, `a` adlı boş dosya yaratır), Rust dosyayı salt okur açar",
-        json!({"last_exchange": {"user": "s", "assistant": "c"}, "full_history": turns(&[("user", "s"), ("assistant", "c")])}),
-    );
+    // yoldaki `#`, `?`, `%`: iki tarafta da dosyanın kendisi salt okur açılır
+    for (id, sid) in [("diyez", "a#b"), ("soru", "a?b"), ("yuzde", "a%41b")] {
+        let c = b
+            .case(&format!("agy-uri-{id}"), "agy", Some(sid))
+            .file(Fx::File(format!("{AGY_DIR}/{sid}.db"), db.clone(), 0o600));
+        b.agrees(
+            c,
+            json!({"last_exchange": {"user": "s", "assistant": "c"}, "full_history": turns(&[("user", "s"), ("assistant", "c")])}),
+        );
+    }
 }
 
 // ----------------------------------------------------------------------------------------------------------- copilot
