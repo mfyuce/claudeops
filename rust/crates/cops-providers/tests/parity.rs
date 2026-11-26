@@ -56,3 +56,17 @@ mod fam_misc;
 fn parity_misc() {
     fam_misc::run();
 }
+#[path = "parity/fam_usage.rs"]
+mod fam_usage;
+
+#[test]
+fn parity_usage() {
+    fam_usage::run();
+}
+#[path = "parity/fam_panel.rs"]
+mod fam_panel;
+
+#[test]
+fn parity_panel() {
+    fam_panel::run();
+}

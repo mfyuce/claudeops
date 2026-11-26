@@ -845,3 +845,52 @@ fn float_error(v: &Value) -> String {
 fn py_repr(class: &str, msg: &str) -> String {
     format!("{class}({})", py_str_repr(msg))
 }
+
+/// `instructions_check` içindeki bir dosya.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstructionsFile {
+    pub name: &'static str,
+    pub bytes: u64,
+    /// `bytes > limit` (sınır dahil değil).
+    pub over: bool,
+}
+
+/// `instructions_check` sonucu (içerik OKUNMAZ, yalnız boyut).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstructionsCheck {
+    pub limit: u64,
+    pub files: Vec<InstructionsFile>,
+}
+
+/// `os.path.dirname` (POSIX).
+fn py_dirname(p: &str) -> &str {
+    let head = &p[..p.rfind('/').map_or(0, |i| i + 1)];
+    if !head.is_empty() && head.bytes().any(|b| b != b'/') {
+        head.trim_end_matches('/')
+    } else {
+        head
+    }
+}
+
+/// `ucli_provider.instructions_check` (panel `/api/ucli/instructions-check`): `cwd`deki `AGENTS.md`/`CLAUDE.md`
+/// boyutları. `cwd` mutlak, NUL içermeyen, var olan bir dizin değilse boş liste. Dosya (symlink çözülünce) `cwd`
+/// dışındaysa ya da normal dosya değilse atlanır. Boyut okunamazsa (Python `OSError`) o ana dek bulunanlar döner.
+pub fn instructions_check(probe: &dyn crate::probe::Probe, cwd: &str) -> InstructionsCheck {
+    let mut res = InstructionsCheck { limit: INSTRUCTIONS_MAX_BYTES, files: Vec::new() };
+    if cwd.is_empty() || !cwd.starts_with('/') || cwd.contains('\0') {
+        return res;
+    }
+    let root = probe.realpath(cwd);
+    if !probe.is_dir(&root) {
+        return res;
+    }
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        let real = probe.realpath(&join_path(&root, name));
+        if py_dirname(&real) != root || !probe.is_file(&real) {
+            continue;
+        }
+        let Some(n) = probe.file_size(&real) else { return res };
+        res.files.push(InstructionsFile { name, bytes: n, over: n > INSTRUCTIONS_MAX_BYTES });
+    }
+    res
+}

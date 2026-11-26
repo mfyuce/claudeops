@@ -373,7 +373,8 @@ def op_settings(a):
     return {
         "ucli_endpoint": settings.ucli_endpoint(),
         "ucli_web": settings.ucli_web_config(),
-        "ucli_services": [{"id": d["id"], "wire": d["wire"], "endpoint": d["endpoint"], "env": d["env"],
+        "ucli_services": [{"id": d["id"], "label": d["label"], "wire": d["wire"], "endpoint": d["endpoint"],
+                           "env": d["env"], "models": d["models"],
                            "efforts": [[k, v] for k, v in (d.get("efforts") or {}).items()]} for d in svc],
         "ucli_limit_overrides": [[k, v] for k, v in settings.ucli_limit_overrides().items()],
         "ucli_reasoning_mode": settings.ucli_reasoning_mode(),
@@ -474,6 +475,35 @@ def _try(fn):
         return fn()
     except (ValueError, OverflowError):
         return None
+
+
+def op_usage(a):
+    p = _prov(a)
+    texts = a.get("texts") or []
+    return {
+        "usage_command": p.usage_command(),
+        "usage_needs_dismiss": p.usage_needs_dismiss(),
+        "context_command": p.context_command(),
+        "context_needs_dismiss": p.context_needs_dismiss(),
+        "usage_fresh_argv": p.usage_fresh_argv(),
+        "usage_fresh_tui_argv": p.usage_fresh_tui_argv(),
+        "parse_usage_text": [p.parse_usage_text(t) for t in texts],
+        "parse_fresh_usage": [p.parse_fresh_usage(t) for t in texts],
+        "parse_context_text": [p.parse_context_text(t) for t in texts],
+        "usage_auth_missing": [p.usage_auth_missing(t) for t in texts],
+    }
+
+
+def op_cost_config(a):
+    return settings.ucli_cost_config()
+
+
+def op_metrics_config(a):
+    return ucli_metrics.get_config(a["raw"]) if "raw" in a else ucli_metrics.get_config()
+
+
+def op_instr_check(a):
+    return ucli_p.instructions_check(a["cwd"])
 
 
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}

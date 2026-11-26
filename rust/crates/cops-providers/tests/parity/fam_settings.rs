@@ -26,7 +26,7 @@ fn rs_settings(e: &Env, c: &Case) -> RsOut {
         .ucli_services()
         .iter()
         .map(|d| {
-            json!({"id": d.id, "wire": d.wire, "endpoint": d.endpoint, "env": d.env,
+            json!({"id": d.id, "label": d.label, "wire": d.wire, "endpoint": d.endpoint, "env": d.env, "models": d.models,
                    "efforts": d.efforts.iter().map(|(k, v)| json!([k, v])).collect::<Vec<_>>()})
         })
         .collect();
@@ -134,6 +134,27 @@ fn settings_cases() -> Vec<Case> {
             "efforts": {"zz": ["low"], "aa": ["high"], "ZZ": ["max"]}}]})),
         ("servisler6", json!({"ucli_services": [{"id": "ozel", "endpoint": "https://o", "env": "OZEL_KEY",
             "efforts": {"b": ["low"], "a": ["high"]}}]})),
+        // G11: `label`/`models` (py/tests/test_ucli_services_settings.py ServicesTests örnekleri + sınırlar)
+        ("servis-label-models", json!({"ucli_services": [
+            {"id": "Bad Id", "env": "X_KEY", "endpoint": "https://a/v1"},
+            {"id": "ok1", "env": "lower", "endpoint": "https://a/v1"},
+            {"id": "ok2", "env": "OK2_KEY", "endpoint": "ftp://a"},
+            {"id": "ok3", "env": "OK3_KEY", "endpoint": ""},
+            {"id": "good", "label": "Good", "env": "GOOD_KEY", "endpoint": "https://g.example/v1/", "models": "a, b,a"}]})),
+        ("servis-models2", json!({"ucli_services": [
+            {"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "label": "  \u{1f}  ",
+             "models": "x\ny\r\nz,\u{85}w\u{85},,  ,x"},
+            {"id": "m2", "env": "M2_KEY", "endpoint": "https://m", "label": "Ş".repeat(50),
+             "models": ["  a ", "", " ", 5, 1.5, null, true, false, "a", "ğ".repeat(90)]},
+            {"id": "m3", "env": "M3_KEY", "endpoint": "https://m", "label": 7,
+             "models": (0..70).map(|i| format!("m{i}")).collect::<Vec<_>>()},
+            {"id": "m4", "env": "M4_KEY", "endpoint": "https://m", "label": null, "models": {"k1": 1, " k2 ": 2, "": 3}},
+            {"id": "m5", "env": "M5_KEY", "endpoint": "https://m", "label": [], "models": ""},
+            {"id": "m6", "env": "M6_KEY", "endpoint": "https://m", "label": false, "models": 0},
+            {"id": "m7", "env": "M7_KEY", "endpoint": "https://m", "label": "😀x", "models": []},
+            {"id": "m8", "env": "M8_KEY", "endpoint": "https://m", "models": null}]})),
+        ("servis-evren-label", json!({"ucli_services": [{"id": "evren", "env": "UCLI_API_KEY", "label": "Benim",
+            "models": ["glm"]}]})),
         ("usd1", json!({"ucli_max_session_usd": "1,5"})),
         ("usd2", json!({"ucli_max_session_usd": "abc"})),
         ("usd3", json!({"ucli_max_session_usd": "-1"})),
@@ -198,6 +219,16 @@ fn settings_cases() -> Vec<Case> {
         Case::new("rtext-liste", "settings", json!({}))
             .settings_json(json!({"routing_guidance_text": [1, "a"]}))
             .known("str(list) Python repr, Rust JSON metni; yalnız bozuk elle düzenlenmiş ayarda"),
+    );
+    v.push(
+        Case::new("servis-models-sayi", "settings", json!({}))
+            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": 5}]}))
+            .known("Python HATASI? `models` sıfır olmayan sayı/true: `for m in models` TypeError, `ucli_services()` düşer (başlat penceresi ve spawn); Rust boş liste"),
+    );
+    v.push(
+        Case::new("servis-models-ic-liste", "settings", json!({}))
+            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": [["a"], {"b": 1}]}]}))
+            .known("str(list/dict) Python repr, Rust JSON metni (model adında); yalnız bozuk elle düzenlenmiş ayarda"),
     );
     v.push(
         Case::new("buyuk-int", "settings", json!({}))

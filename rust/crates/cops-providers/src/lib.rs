@@ -20,6 +20,7 @@ pub mod shell;
 pub mod spawn;
 pub mod ucli;
 pub mod ucli_opts;
+pub mod usage;
 
 pub use probe::{BuildOutput, Diag, Effect, McpRegisterError, Paths, Probe, SpawnError};
 pub use provider::{BuildArgs, Cli, McpSpec, ModelCatalog, Providers};
