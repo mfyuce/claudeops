@@ -292,12 +292,15 @@ fn attached_client_is_counted_and_receives_safe_message() {
         .raw(&["list-clients", "-F", "#{client_name}"])
         .trim()
         .to_string();
-    assert_eq!(t.client_session(&client).as_deref(), Some("m"));
-    assert_eq!(t.client_session("/dev/pts/yok"), None);
-    assert_eq!(t.client_session("-x"), None);
+    assert_eq!(t.client_session(&client).unwrap().as_deref(), Some("m"));
+    assert_eq!(t.client_session("/dev/pts/yok").unwrap(), None);
+    assert_eq!(t.client_session("-x").unwrap(), None);
     t.message(&client, "-kod #{pane_pid} bitti;", 5000).unwrap();
     outer.wait_screen("o", "-kod #{pane_pid} bitti");
-    assert!(t.message("/dev/pts/yok", "x", 10).is_err());
+    assert!(matches!(
+        t.message("/dev/pts/yok", "x", 10),
+        Err(TmuxError::BadArgument("client"))
+    ));
     t.set_ctx("m", "ctx 1K;").unwrap();
     // Python eşliği: etiket kaçırılmaz, sondaki `;` tmux'ta komut ayıracı olur (docs/rs-tmux.md "Python hatası?").
     // `ctx_label` hiç `;` üretmez.

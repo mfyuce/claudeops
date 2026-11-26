@@ -239,20 +239,19 @@ impl Tmux {
         Ok(out.lines().filter(|l| !l.trim().is_empty()).count())
     }
 
-    /// `client` (ör. `/dev/pts/105`) hangi oturuma bağlı.
-    pub fn client_session(&self, client: &str) -> Option<String> {
+    /// `client` (ör. `/dev/pts/105`) hangi oturuma bağlı. `Ok(None)` = böyle bir istemci yok (ya da ad geçersiz);
+    /// `Err` = tmux sorulamadı (Python ikisini de `None` döner; davranış aynı, yalnız sebep korunur).
+    pub fn client_session(&self, client: &str) -> Result<Option<String>, TmuxError> {
         if client.is_empty() || client.starts_with('-') {
-            return None;
+            return Ok(None);
         }
-        let out = self
-            .text(&["list-clients", "-F", "#{client_name}\t#{client_session}"])
-            .ok()?;
-        out.lines().find_map(|line| match line.split_once('\t') {
+        let out = self.text(&["list-clients", "-F", "#{client_name}\t#{client_session}"])?;
+        Ok(out.lines().find_map(|line| match line.split_once('\t') {
             Some((name, session)) if name == client && !session.is_empty() => {
                 Some(session.to_string())
             }
             _ => None,
-        })
+        }))
     }
 
     /// `@cops_ctx` kullanıcı seçeneğini yazar; boş etiket seçeneği siler.

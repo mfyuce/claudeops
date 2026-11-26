@@ -340,7 +340,15 @@ fn broken_output_is_unknown_not_a_panic() {
     assert!(matches!(f.tmux.capture("x", 1), Err(TmuxError::BadOutput)));
     f.set("list-clients.rc", "1\n");
     assert!(f.tmux.outer_bash_via_list_clients("n").is_empty());
-    assert_eq!(f.tmux.client_session(CLIENT), None);
+    // tmux sorulamadı: "istemci yok" DEĞİL, hata (sebep korunur); mesaj da aynı hatayla döner.
+    assert!(matches!(
+        f.tmux.client_session(CLIENT),
+        Err(TmuxError::Failed { .. })
+    ));
+    assert!(matches!(
+        f.tmux.message(CLIENT, "x", 1),
+        Err(TmuxError::Failed { .. })
+    ));
     assert!(f.tmux.client_count("n").is_err());
 }
 

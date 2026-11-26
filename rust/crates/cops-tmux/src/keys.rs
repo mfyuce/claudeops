@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
+use crate::diag::{swallow, Swallowed};
 use crate::runner::{escape_arg, exact_target, Call, Tmux, DEFAULT_TIMEOUT};
 use crate::text::py_isspace;
 use crate::TmuxError;
@@ -80,7 +81,9 @@ impl Tmux {
             if let Err(e) = self.exec(Call::new(&paste), timeout) {
                 // Python gibi yalnız tmux "olmadı" dediyse sil (zaman aşımında tampon kalır).
                 if matches!(e, TmuxError::Failed { .. }) {
-                    let _ = self.run(&["delete-buffer", "-b", &buf]);
+                    if let Err(del) = self.run(&["delete-buffer", "-b", &buf]) {
+                        swallow(Swallowed::DeleteBuffer, &del);
+                    }
                 }
                 return Err(e);
             }
@@ -161,7 +164,7 @@ impl Tmux {
     /// `client`ın oturumunda `ms` süreli tek satırlık mesaj. Metin güvenli hale getirilir ([`safe_message`]).
     pub fn message(&self, client: &str, text: &str, ms: u32) -> Result<(), TmuxError> {
         let session = self
-            .client_session(client)
+            .client_session(client)?
             .ok_or(TmuxError::BadArgument("client"))?;
         // `-c <istemci>` DEĞİL: tmux 3.2a'da `display-message -c` hiç çalışmaz.
         let target = exact_target(&session);

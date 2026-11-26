@@ -1,11 +1,12 @@
 use std::ffi::{OsStr, OsString};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
+use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::diag::{swallow, Swallowed};
 use crate::TmuxError;
 
 /// claudeops'un ayrı tmux soketi.
@@ -164,7 +165,7 @@ impl Tmux {
             input,
             env,
         } = call;
-        let deadline = Instant::now() + timeout;
+        let deadline = Instant::now() + timeout.min(MAX_TIMEOUT);
         let mut child = self
             .command(utf8, env)
             .args(args)
@@ -176,68 +177,220 @@ impl Tmux {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        // Borular ayrı iş parçacıklarında: büyük girdi/çıktı süre sınırını kilitlemesin.
-        if let (Some(data), Some(mut pipe)) = (input, child.stdin.take()) {
-            let data = data.to_vec();
-            // Yazım hatası (tmux erken çıktı) çıkış kodunda zaten görünür.
-            thread::spawn(move || {
-                let _ = pipe.write_all(&data);
-            });
-        }
-        let stdout = drain(child.stdout.take());
-        let stderr = drain(child.stderr.take());
-        let (Some(out), Some(err)) = (receive(&stdout, deadline), receive(&stderr, deadline))
-        else {
-            kill(&mut child);
-            return Err(TmuxError::Timeout);
+        let io = match communicate(&mut child, input.unwrap_or(&[]), deadline) {
+            Ok(io) => io,
+            Err(e) => {
+                kill(child);
+                return Err(e);
+            }
         };
         let status = loop {
-            if let Some(status) = child.try_wait()? {
-                break status;
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
+                Ok(None) => {
+                    kill(child);
+                    return Err(TmuxError::Timeout);
+                }
+                Err(e) => {
+                    kill(child);
+                    return Err(e.into());
+                }
             }
-            if Instant::now() >= deadline {
-                kill(&mut child);
-                return Err(TmuxError::Timeout);
-            }
-            thread::sleep(Duration::from_millis(1));
         };
         if !status.success() {
+            if let Some(e) = &io.write_err {
+                // Asıl sonuç tmux'un hatası; girdinin yarım kalması onun sonucu.
+                swallow(Swallowed::StdinWrite, e);
+            }
             return Err(TmuxError::Failed {
                 code: status.code(),
-                stderr: String::from_utf8_lossy(&err?).into_owned(),
+                stderr: String::from_utf8_lossy(&io.stderr).into_owned(),
             });
         }
-        Ok(Output { stdout: out? })
+        // tmux "oldu" dedi ama girdinin tamamını almadı: yarım tamponu başarı sayma (kapalı yön).
+        if let Some(e) = io.write_err {
+            return Err(e.into());
+        }
+        Ok(Output { stdout: io.stdout })
     }
 }
 
-type Drained = mpsc::Receiver<std::io::Result<Vec<u8>>>;
+/// Bir çağrının en uzun süresi: daha uzun istenen süre buna kırpılır (`Instant` taşması panik atmasın).
+pub const MAX_TIMEOUT: Duration = Duration::from_secs(3600);
 
-fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> Drained {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let mut buf = Vec::new();
-        let res = match pipe {
-            Some(mut p) => p.read_to_end(&mut buf).map(|_| buf),
-            None => Ok(buf),
+/// Öldürülen tmux istemcisinin toplanması için bekleme; aşılırsa arka planda beklenir (zombi kalmaz).
+pub const REAP_GRACE: Duration = Duration::from_secs(1);
+
+/// Okuma tamponu (tur başına fd başına tek okuma: sonsuz çıktı süre sınırını aşamaz).
+const CHUNK: usize = 64 * 1024;
+
+struct Collected {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    write_err: Option<std::io::Error>,
+}
+
+fn set_nonblocking(fd: RawFd) -> std::io::Result<()> {
+    // SAFETY: `fd` çağıranın sahip olduğu açık bir boru ucu; fcntl yalnız bayrak okur/yazar.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Girdiyi yazar, iki çıktıyı EOF'a dek okur; hepsi TEK iş parçacığında `poll` ile, `deadline`a dek. İş parçacığı
+/// açılmaz: süre dolunca borular burada kapanır (torun süreç boruyu açık tutsa bile hiçbir şey geride kalmaz).
+fn communicate(child: &mut Child, input: &[u8], deadline: Instant) -> Result<Collected, TmuxError> {
+    let mut stdin = child.stdin.take();
+    let mut stdout = child.stdout.take();
+    let mut stderr = child.stderr.take();
+    let fds = [
+        stdin.as_ref().map(AsRawFd::as_raw_fd),
+        stdout.as_ref().map(AsRawFd::as_raw_fd),
+        stderr.as_ref().map(AsRawFd::as_raw_fd),
+    ];
+    for fd in fds.into_iter().flatten() {
+        set_nonblocking(fd)?;
+    }
+    if input.is_empty() {
+        stdin = None;
+    }
+    let mut io = Collected {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        write_err: None,
+    };
+    let mut written = 0;
+    let mut buf = vec![0u8; CHUNK];
+    loop {
+        let mut polled: Vec<libc::pollfd> = Vec::with_capacity(3);
+        if let Some(p) = &stdin {
+            polled.push(pollfd(p.as_raw_fd(), libc::POLLOUT));
+        }
+        for p in [
+            stdout.as_ref().map(AsRawFd::as_raw_fd),
+            stderr.as_ref().map(AsRawFd::as_raw_fd),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            polled.push(pollfd(p, libc::POLLIN));
+        }
+        if polled.is_empty() {
+            return Ok(io);
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(TmuxError::Timeout);
+        }
+        let ms = i32::try_from(left.as_millis().max(1)).unwrap_or(i32::MAX);
+        // SAFETY: `polled` geçerli, uzunluğu doğru verilen bir dizi; fd'ler bu işlev boyunca açık.
+        let n = unsafe { libc::poll(polled.as_mut_ptr(), polled.len() as libc::nfds_t, ms) };
+        if n < 0 {
+            let e = std::io::Error::last_os_error();
+            if e.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(e.into());
+        }
+        let ready = |fd: Option<RawFd>| {
+            fd.is_some_and(|fd| polled.iter().any(|p| p.fd == fd && p.revents != 0))
         };
-        let _ = tx.send(res);
-    });
-    rx
+        if ready(stdin.as_ref().map(AsRawFd::as_raw_fd)) {
+            if let Some(pipe) = stdin.as_mut() {
+                match pipe.write(&input[written..]) {
+                    Ok(0) => {
+                        io.write_err = Some(ErrorKind::WriteZero.into());
+                        stdin = None;
+                    }
+                    Ok(k) => {
+                        written += k;
+                        if written == input.len() {
+                            // Kapatma = EOF: tmux girdinin bittiğini görür.
+                            stdin = None;
+                        }
+                    }
+                    Err(e)
+                        if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => {}
+                    Err(e) => {
+                        io.write_err = Some(e);
+                        stdin = None;
+                    }
+                }
+            }
+        }
+        if ready(stdout.as_ref().map(AsRawFd::as_raw_fd))
+            && read_some(&mut stdout, &mut buf, &mut io.stdout)?
+        {
+            stdout = None;
+        }
+        if ready(stderr.as_ref().map(AsRawFd::as_raw_fd))
+            && read_some(&mut stderr, &mut buf, &mut io.stderr)?
+        {
+            stderr = None;
+        }
+    }
 }
 
-/// `None` = süre doldu.
-fn receive(rx: &Drained, deadline: Instant) -> Option<Result<Vec<u8>, TmuxError>> {
-    let left = deadline.saturating_duration_since(Instant::now());
-    rx.recv_timeout(left)
-        .ok()
-        .map(|r| r.map_err(TmuxError::from))
+fn pollfd(fd: RawFd, events: libc::c_short) -> libc::pollfd {
+    libc::pollfd {
+        fd,
+        events,
+        revents: 0,
+    }
 }
 
-/// Yalnız KENDİ başlattığımız tmux istemci süreci (sunucu ya da pane süreci değil).
-fn kill(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+/// Tek okuma. `Ok(true)` = EOF.
+fn read_some<R: Read>(
+    pipe: &mut Option<R>,
+    buf: &mut [u8],
+    out: &mut Vec<u8>,
+) -> Result<bool, TmuxError> {
+    let Some(p) = pipe.as_mut() else {
+        return Ok(true);
+    };
+    match p.read(buf) {
+        Ok(0) => Ok(true),
+        Ok(k) => {
+            out.extend_from_slice(&buf[..k]);
+            Ok(false)
+        }
+        Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted) => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Yalnız KENDİ başlattığımız tmux istemci süreci (sunucu ya da pane süreci değil): SIGKILL + toplama. Toplama
+/// [`REAP_GRACE`]i aşarsa arka plan iş parçacığı bekler; çağıran bloklanmaz, zombi kalmaz.
+fn kill(mut child: Child) {
+    if let Err(e) = child.kill() {
+        swallow(Swallowed::KillChild, &e);
+    }
+    let until = Instant::now() + REAP_GRACE;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return,
+            Ok(None) if Instant::now() < until => thread::sleep(Duration::from_millis(1)),
+            Ok(None) => break,
+            Err(e) => {
+                swallow(Swallowed::ReapChild, &e);
+                return;
+            }
+        }
+    }
+    swallow(Swallowed::ReapChild, &"süre doldu, arka planda bekleniyor");
+    let reaper = thread::Builder::new()
+        .name("cops-tmux-reap".into())
+        .spawn(move || {
+            if let Err(e) = child.wait() {
+                swallow(Swallowed::ReapChild, &e);
+            }
+        });
+    if let Err(e) = reaper {
+        swallow(Swallowed::ReapChild, &e);
+    }
 }
 
 #[cfg(test)]
@@ -284,15 +437,34 @@ mod tests {
             .program(&fake)
             .timeout(Duration::from_millis(200));
         let start = Instant::now();
-        // Paralel testlerin fork'u yazılan betiği kısa süre açık tutabilir (ETXTBSY): yeniden dene.
-        let err = loop {
+        // Paralel testlerin fork'u yazılan betiği kısa süre açık tutabilir (ETXTBSY): sınırlı yeniden deneme.
+        let mut err = None;
+        for _ in 0..200 {
             match t.run(&["ls"]) {
-                Err(TmuxError::Io(e)) if e.raw_os_error() == Some(libc::ETXTBSY) => continue,
-                other => break other.err(),
+                Err(TmuxError::Io(e)) if e.raw_os_error() == Some(libc::ETXTBSY) => {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                other => {
+                    err = other.err();
+                    break;
+                }
             }
-        };
+        }
         assert!(matches!(err, Some(TmuxError::Timeout)), "{err:?}");
         assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn huge_timeout_is_clamped_not_a_panic() {
+        // `Instant + Duration::MAX` taşardı.
+        let t = Tmux::with_socket("x")
+            .program("/bin/true")
+            .timeout(Duration::MAX);
+        assert!(t.run(&["ls"]).is_ok());
+        let zero = Tmux::with_socket("x")
+            .program("/bin/true")
+            .timeout(Duration::ZERO);
+        assert!(matches!(zero.run(&["ls"]), Err(TmuxError::Timeout)));
     }
 
     #[test]
