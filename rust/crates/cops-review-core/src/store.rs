@@ -508,6 +508,7 @@ impl ReviewStore {
                     Some(st),
                 );
             }
+            crate::flow::keep_verdict_state(rec);
             target
         };
         rec.insert("state".into(), target.into());

@@ -76,6 +76,16 @@ pub fn apply_verdicts(
     applied
 }
 
+/// Karar/dışa aktarma `state`i ezmeden ÖNCE doğrulama sonucunu `verdict_state`e alır (Python `_keep_verdict_state`).
+pub fn keep_verdict_state(rec: &mut Map) {
+    let state = rec.get("state");
+    if py::str_in(state, &VERDICTS) {
+        if let Some(state) = state.cloned() {
+            rec.insert("verdict_state".into(), state);
+        }
+    }
+}
+
 /// Cevapsız kalan oturum doğrulamalarını yeniden sıraya alır (deneme dolunca `unclear`).
 pub fn requeue_stale_verify(findings: &mut Map, now: f64, stale: f64) -> Result<Vec<String>> {
     let mut out = Vec::new();

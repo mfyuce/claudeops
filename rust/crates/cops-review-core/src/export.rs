@@ -122,7 +122,7 @@ fn mtime(p: &str) -> Option<f64> {
 /// `git log -1 --format=%ct`; hata ya da 10 sn zaman aşımında `Err`.
 fn git_commit_time(cwd: &str, path: &str) -> std::io::Result<String> {
     let mut child = Command::new("git")
-        .args(["-C", cwd, "log", "-1", "--format=%ct", "--", path])
+        .args(["-C", cwd, "--literal-pathspecs", "log", "-1", "--format=%ct", "--", path])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

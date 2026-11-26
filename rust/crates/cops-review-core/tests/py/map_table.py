@@ -92,6 +92,7 @@ MAP = {
     "_log_bad": _m("badrec", "log_bad"),
     "StoreCorrupt": _m("error", "Error"),
     "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
+    "_keep_verdict_state": _m("flow", "keep_verdict_state"),
     "_DECISION_RE": _m("export", "is_decision::DECISION"),
     "_BACKTICK_RE": _m("export", "BACKTICK"),
     "_WHERE_FILE_RE": _m("export", "where_path::FILE"),
@@ -107,7 +108,8 @@ NOTES = {
     "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
     "_LENS_FORMAT_EXTRA": "modül genel sözlüğü yerine kayıt nesnesinin alanı",
-    "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"",
+    "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"; `file://` öneki silinmiyor: bilinen Python davranışı, "
+                   "kimlik uyumu için korunuyor (TBD#375)",
 }
 
 # Özel yardımcıların / değerlerin Rust birim testleri (`tests/helpers.rs`).
@@ -220,6 +222,8 @@ classes("test_review_findings_flow", _flow, """TestAutoFindings TestExportStaleC
     TestEvrenRemoteExportE2E TestAutoApprove TestAutoExport TestAutoVerify TestBeforeTbd""")
 tests("test_review_findings_flow.TestExportStaleCheck", CORE, "stale_reason_pure")
 classes("test_review_findings_flow", CORE, "TestScanVerdicts")
+classes("test_review_verdict_state", _flow, "TestDecisionKeepsVerdict TestRemoteKeepsVerdict")
+classes("test_review_literal_path", CORE, "TestChangedAfterReviewLiteralPath")
 classes("test_review_findings_flow", out(CLI, "CLI argümanından API'ye eşleme"), "TestCli")
 classes("test_review_findings_flow", out(WR, "rapor ve kullanım dosyalarını depoya kopyalama"), "StoreReportsTest")
 classes("test_review_io_history", out(WR, "`IoLog`, canlı akış, bayraklar ve kurtarma"), "TestIoLog TestRunWritesIo")

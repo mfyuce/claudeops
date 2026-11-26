@@ -112,7 +112,10 @@ fn decision_keeps_verdict_fields() {
     let after = st.load_findings().unwrap();
     for fid in &ids {
         let (b, a) = (before[fid].as_object().unwrap(), after[fid].as_object().unwrap());
-        assert_eq!(b.keys().collect::<Vec<_>>(), a.keys().collect::<Vec<_>>(), "alan silinmedi, sıra korundu");
+        let mut keys = b.keys().map(String::as_str).collect::<Vec<_>>();
+        keys.push("verdict_state");
+        assert_eq!(a.keys().map(String::as_str).collect::<Vec<_>>(), keys, "alan silinmedi, sıra korundu");
+        assert_eq!(a["verdict_state"], b["state"]);
         for k in b.keys().filter(|k| !["state", "decided_by", "decided_at"].contains(&k.as_str())) {
             assert_eq!(b[k], a[k], "{fid}.{k}");
         }

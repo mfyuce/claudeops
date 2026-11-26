@@ -416,7 +416,7 @@ class TestEdges(unittest.TestCase):
             rv.export_lines([{}], "")
 
     def test_git_changed_after_review(self):
-        """Gerçek git deposu: commit zamanı mtime'ı ezer; `--literal-pathspecs` YOK (Python), `[a].py` `a.py`ye de uyar."""
+        """Gerçek git deposu: commit zamanı mtime'ı ezer; yol harfi harfine (`--literal-pathspecs`): `[a].py` `a.py`ye uymaz."""
         import subprocess
         d = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, d, True)
@@ -446,7 +446,7 @@ class TestEdges(unittest.TestCase):
             os.utime(os.path.join(g, n), (t, t))
         got = {n: rv.changed_after_review({"where": n + ":1", "review_file": rep}, g)
                for n in ("a.py", "[a].py", "b.py", "c.py", "d e.py")}
-        self.assertEqual(got, {"a.py": True, "[a].py": True, "b.py": False, "c.py": True, "d e.py": False})
+        self.assertEqual(got, {"a.py": True, "[a].py": False, "b.py": False, "c.py": True, "d e.py": False})
         rv.changed_after_review({"where": "a.py", "review_file": rep}, d)     # .git yok: yalnız mtime
 
     def test_usage_files(self):
