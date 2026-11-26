@@ -9,7 +9,8 @@
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
 //! kimlik/yetki kancası ([`cops_proxy::gate::LocalAuth`]), [`run_with_hooks`] ile ek olarak vekillenen istek ön süzgeci
-//! ([`cops_proxy::gate::ForwardFilter`]) takabilir; kanca yoksa davranış `copsd` ile aynıdır.
+//! ([`cops_proxy::gate::ForwardFilter`]) ve Rust'ın kendisinin cevapladığı uçlar ([`cops_proxy::gate::RouteHook`], ör. enterprise
+//! `/api/auth/*`) takabilir; kanca yoksa davranış `copsd` ile aynıdır.
 use std::future::Future;
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
@@ -86,6 +87,8 @@ pub struct Hooks {
     pub local_auth: Option<Arc<dyn cops_proxy::gate::LocalAuth>>,
     /// Python'a aktarılan istekler için kimlik bilgisi ön süzgeci.
     pub forward_filter: Option<Arc<dyn cops_proxy::gate::ForwardFilter>>,
+    /// Rust'ın kendisinin cevapladığı uçlar (enterprise `/api/auth/*`); üstlenmediği istek bugünkü gibi.
+    pub routes: Option<Arc<dyn cops_proxy::gate::RouteHook>>,
 }
 
 /// `copsd` ikilisi: kanca yok.
@@ -103,6 +106,7 @@ where
         Hooks {
             local_auth: hook(ctx).await,
             forward_filter: None,
+            routes: None,
         }
     })
     .await
@@ -282,6 +286,10 @@ where
     };
     let proxy = match h.forward_filter {
         Some(f) => proxy.with_forward_filter(f),
+        None => proxy,
+    };
+    let proxy = match h.routes {
+        Some(r) => proxy.with_routes(r),
         None => proxy,
     };
     cops_proxy::serve(listen, proxy).await

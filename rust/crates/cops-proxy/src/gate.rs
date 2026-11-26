@@ -126,6 +126,95 @@ pub async fn forward_check(f: Arc<dyn ForwardFilter>, view: RequestView) -> Cred
     .unwrap_or(fail)
 }
 
+/// [`RouteHook::handle`] için varsayılan süre (giriş uçları kasıtlı bekletebilir: hesap gecikmesi en çok 30 sn + yuva 5 sn).
+pub const ROUTE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// [`RouteHook::body_timeout`] varsayılanı: gövde bu sürede tamamlanmazsa 408.
+pub const ROUTE_BODY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Kancaya verilen gövde okunamadı.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyError {
+    /// Gövde [`RouteHook::route`]'un verdiği sınırı aşıyor (fazlası okunmadı).
+    TooLarge,
+    /// Bağlantı/akış hatası.
+    Read,
+}
+
+/// Kancanın cevapladığı istek: görünüm (başlıklar her satır, Latin-1), sınırlı gövde, istemcinin https olup olmadığı
+/// ([`crate::client_https`]: yalnız loopback eşin `X-Forwarded-Proto`'su).
+#[derive(Debug, Clone)]
+pub struct RouteRequest {
+    pub view: RequestView,
+    pub body: Result<bytes::Bytes, BodyError>,
+    pub https: bool,
+}
+
+/// Kancanın yanıtı. Başlıklar sırayla eklenir (aynı ad birden çok kez olabilir); geçersiz ad/değer atlanır.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteResponse {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl RouteResponse {
+    /// `{"ok": false, "error": <e>}` JSON (Python `json.dumps` ayırıcıları), `Cache-Control: no-store`.
+    pub fn error(status: u16, e: &str) -> RouteResponse {
+        RouteResponse {
+            status,
+            headers: vec![
+                (
+                    "Content-Type".into(),
+                    "application/json; charset=utf-8".into(),
+                ),
+                ("Cache-Control".into(), "no-store".into()),
+            ],
+            body: format!(
+                "{{\"ok\": false, \"error\": {}}}",
+                serde_json::Value::from(e)
+            )
+            .into_bytes(),
+        }
+    }
+}
+
+/// Python'a gitmeden Rust'ın KENDİSİNİN cevapladığı uçlar (enterprise; ör. `/api/auth/*`, A6b-2). Takılmamışsa ya da
+/// [`route`](RouteHook::route) `None` dönerse istek bugünkü gibi işlenir (yerel uç ya da Python'a aktarım).
+pub trait RouteHook: Send + Sync {
+    /// Her istekte çağrılır: G/Ç YOK, engellemez, yan etkisiz. `Some(sınır)` = bu istek kancanındır, gövde en çok `sınır`
+    /// bayt okunur (aşarsa [`BodyError::TooLarge`]).
+    fn route(&self, view: &RequestView) -> Option<usize>;
+    fn handle(&self, req: RouteRequest) -> BoxFut<'_, RouteResponse>;
+    /// Gövdenin tamamını okuma süre sınırı; aşılırsa kanca çağrılmadan 408 ve bağlantı kapanır (yavaş gövde saldırısı).
+    fn body_timeout(&self) -> Duration {
+        ROUTE_BODY_TIMEOUT
+    }
+    /// [`route_call`] süre sınırı.
+    fn timeout(&self) -> Duration {
+        ROUTE_TIMEOUT
+    }
+}
+
+/// Kancayı ayrı görevde, kancanın süre sınırıyla çağırır: panik = 500, süre aşımı = 503 (Python'a DÜŞÜLMEZ: kanca üstlendiği
+/// uçta tek yazardır).
+pub async fn route_call(hook: Arc<dyn RouteHook>, req: RouteRequest) -> RouteResponse {
+    let limit = hook.timeout();
+    let mut task = tokio::spawn(async move { hook.handle(req).await });
+    match timeout_at(Instant::now() + limit, &mut task).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            diag("route_hook_failed", &e.to_string());
+            RouteResponse::error(500, "internal error")
+        }
+        Err(_) => {
+            task.abort();
+            diag("route_hook_failed", "timeout");
+            RouteResponse::error(503, "timeout")
+        }
+    }
+}
+
 impl Gate {
     pub fn new(authenticator: Arc<dyn Authenticator>, authorizer: Arc<dyn Authorizer>) -> Gate {
         Gate {

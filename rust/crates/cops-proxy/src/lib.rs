@@ -56,6 +56,7 @@ pub struct MountCfg {
 
 pub struct Proxy {
     local_auth: Option<Arc<dyn gate::LocalAuth>>,
+    routes: Option<Arc<dyn gate::RouteHook>>,
     forward_filter: Option<Arc<dyn gate::ForwardFilter>>,
     mounts: Option<MountCfg>,
     metrics: Option<MetricsCfg>,
@@ -493,6 +494,7 @@ impl Proxy {
             .build_http();
         Arc::new(Proxy {
             local_auth: None,
+            routes: None,
             forward_filter: None,
             mounts: None,
             metrics: None,
@@ -553,6 +555,71 @@ impl Proxy {
                 me
             }
         }
+    }
+
+    /// Rust'ın kendisinin cevapladığı uç kancasını tak (enterprise `/api/auth/*`, A6b-2; [`gate::RouteHook`]). Takılmazsa ya da
+    /// kanca isteği üstlenmezse istek bugünkü gibi. Statik ve metrik uçlarından SONRA, yerel uçlardan ve Python'a aktarımdan ÖNCE
+    /// sorulur; `/api/_internal/*` hiç gelmez. Proxy paylaşılmışsa değişmeden döner ve günlüğe yazar.
+    pub fn with_routes(self: Arc<Self>, hook: Arc<dyn gate::RouteHook>) -> Arc<Self> {
+        match Arc::try_unwrap(self) {
+            Ok(me) => Arc::new(Proxy {
+                routes: Some(hook),
+                ..me
+            }),
+            Err(me) => {
+                eprintln!("copsd: with_routes: vekil paylaşılmış, kanca takılmadı");
+                me
+            }
+        }
+    }
+
+    /// Kanca isteği üstlenirse gövdeyi sınırla okur ve yanıtı kancadan alır; üstlenmezse isteği geri verir.
+    // Err = isteğin kendisi (`try_metrics` ile aynı gerekçe: kutulamak her istekte ayırma).
+    #[allow(clippy::result_large_err)]
+    async fn try_routes(
+        &self,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+    ) -> Result<Response<Body>, Request<Incoming>> {
+        let Some(hook) = &self.routes else {
+            return Err(req);
+        };
+        let view = request_view(&req, peer);
+        let Some(limit) = hook.route(&view) else {
+            return Err(req);
+        };
+        let https = client_https(req.headers(), peer);
+        let read = http_body_util::Limited::new(req.into_body(), limit).collect();
+        let body = match tokio::time::timeout(hook.body_timeout(), read).await {
+            Ok(Ok(c)) => Ok(c.to_bytes()),
+            Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => {
+                Err(gate::BodyError::TooLarge)
+            }
+            Ok(Err(_)) => Err(gate::BodyError::Read),
+            // Gövde tamamlanmadı: kalan baytlar sonraki isteğin başı sanılmasın, bağlantı kapanır.
+            Err(_) => {
+                let mut r = err(StatusCode::REQUEST_TIMEOUT, "request body timeout");
+                r.headers_mut()
+                    .insert(hyper::header::CONNECTION, HeaderValue::from_static("close"));
+                return Ok(r);
+            }
+        };
+        let r = gate::route_call(hook.clone(), gate::RouteRequest { view, body, https }).await;
+        let mut b = Response::builder()
+            .status(StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR));
+        for (k, v) in &r.headers {
+            if let (Ok(k), Ok(v)) = (
+                HeaderName::from_bytes(k.as_bytes()),
+                HeaderValue::from_str(v),
+            ) {
+                b = b.header(k, v);
+            }
+        }
+        let body = http_body_util::Full::new(Bytes::from(r.body))
+            .map_err(|never| match never {})
+            .boxed();
+        Ok(b.body(body)
+            .unwrap_or_else(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "internal error")))
     }
 
     /// Kanca takılı değilse `Default` (bugünkü yol).
@@ -726,6 +793,7 @@ impl Proxy {
             .build_http();
         Arc::new(Proxy {
             local_auth: None,
+            routes: None,
             forward_filter: None,
             mounts: None,
             metrics: None,
@@ -864,6 +932,10 @@ impl Proxy {
             return Ok(r);
         }
         let req = match self.try_metrics(req, peer).await {
+            Ok(r) => return Ok(r),
+            Err(r) => r,
+        };
+        let req = match self.try_routes(req, peer).await {
             Ok(r) => return Ok(r),
             Err(r) => r,
         };
