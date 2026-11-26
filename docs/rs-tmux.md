@@ -1,6 +1,6 @@
 # İz W0-b: `cops-tmux` (dal `rs/tmux`)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR.** Testler, clippy, fmt yeşil; ders listesi madde madde işlendi; eşleme tablosunda boş satır yok. Davranış Python ile eş; Python hatası şüpheleri sahibe soruldu (TBD 366, 367, 369), cevaba göre ek `fix` gelir ("Açık işler").
+Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR.** Testler, clippy, fmt yeşil; ders listesi madde madde işlendi; eşleme tablosunda boş satır yok; TBD 366 ve 367 kararları iki tarafta uygulandı (Python `fix` commit'leri bu dalda). Açık: TBD 369 (P8/P9) cevabı ve "Açık işler" 6-8 (birleştirme sonrası / başka iz).
 
 ## Yapılan
 `rust/crates/cops-tmux`, `py/claudeops/tmux_backend.py` karşılığı. `ast` listesindeki her tanımın Rust karşılığı var; satır satır tablo "Eşleme tablosu" bölümünde.
@@ -691,8 +691,8 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 1. (Yapıldı 26 Kas) Eşleme tablosu ve parite genişletmesi: "Eşleme tablosu" bölümü.
 2. (Yapıldı 26 Kas) `tests/parity.py` + `parity.rs`: 9 parite testi (aşağıdaki gösterge).
 3. (Yapıldı 26 Kas) P1-P7 (TBD 366) ve maske durumu bilinmiyorken gönderim (TBD 367) iki tarafta düzeltildi: commit'ler `b51c368`, `6536631`, `104cbcd`, `328c18b`, `073578a`. Ders listesi madde 1, 3, 10 kapandı; 8 yalnız T4 fixture'ları için kısmen.
-7. Panel (`webui`) `/api/context` `reason: mask_unknown`u tanımıyor (genel "yanıt okunamadı" gösterir): `TerminalView.tsx` + `strings.ts`e ayrı metin (bu dalın yazma kapsamı dışı).
-8. Rust'a taşınan otomatik göndericiler (değnekçi `_send`, devir, compact, orkestrasyon) `RefuseMasked` seçince `MaskUnknown`u "send failed"ten ayrı göstermeli (T10/T4).
 4. P8 (argv'de metin/parola) ve P9 (zaman aşımında kalan tampon): sahibe soruldu (TBD 369). Ders listesi madde 13.
 5. (Yapıldı 26 Kas) `KillChild`/`ReapChild` ve `REAP_GRACE` yolları: `Reapable` arayüzü + sahte süreçle birim testi.
 6. Birleştirme SONRASI (copsd bu crate'i kullanınca, bu dalda yapılamaz): `set_swallow_hook` copsd günlüğüne bağlanmalı (yoksa yutulan hatalar stderr'e, yani servis günlüğüne gider).
+7. Panel (`webui`) `/api/context` `reason: mask_unknown`u tanımıyor (genel "yanıt okunamadı" gösterir): `TerminalView.tsx` + `strings.ts`e ayrı metin (bu dalın yazma kapsamı dışı).
+8. Rust'a taşınan otomatik göndericiler (değnekçi `_send`, devir, compact, orkestrasyon) `RefuseMasked` seçince `MaskUnknown`u "send failed"ten ayrı göstermeli (T10/T4).
