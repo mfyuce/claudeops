@@ -18,7 +18,7 @@ Kapı öncesi doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` da
 | `shell.rs` | `shlex.quote`, kabuk parçaları, `spawn_direct`, `kill_session`, `ghost_session` |
 | `proc.rs` | `/proc` üstünden `is_tmux_backed`, `pid_childless`, `find_outer_bash_pids`, `CtxPusher` |
 
-Testler (94): 29 birim, 25 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 8 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
+Testler (95): 30 birim, 25 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 8 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
 
 Testin gerçekten yakaladığı elle sınandı (mutasyon, geri alındı): `mask.rs`ten `O_NOCTTY` çıkarılınca `probing_a_pty_never_makes_it_the_controlling_terminal` kırmızı ("pty'yi denetim terminali edindi"); eski (iş parçacıklı) `runner.rs` ile `no_fd_thread_or_zombie_survives_any_outcome` kırmızı (fd 6 -> 12: torun sürecin tuttuğu borular okuyucu iş parçacıklarıyla birlikte yaşıyordu).
 
@@ -187,8 +187,8 @@ Bölüm 1'deki ilgili sınıflar: H1 (madde 9), H4 (2.2, madde 8), H5 (madde 10)
 
 Kapsam:
 - Tanımlar: `py/claudeops/tmux_backend.py`nin TÜM üst düzey tanımları: 68 (47 işlev, 17 sabit, 4 regex; sınıf/yöntem yok).
-- Test metotları (488): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 54 dosya.
-- Sonuç: 488 test metodundan 108'i bu crate'te karşılandı (87 parite, 19 yalnız Rust testi, 2 tür denetimi), 380'i kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
+- Test metotları (512): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 55 dosya.
+- Sonuç: 512 test metodundan 109'u bu crate'te karşılandı (87 parite, 20 yalnız Rust testi, 2 tür denetimi), 403'ü kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
 
 Parite testleri (`rust/crates/cops-tmux/tests/parity.rs`, köprü `tests/parity.py`):
 - PR `reads_match_python`: gerçek tmux'ta okuma işlevleri (has_session, capture, capture_range, pane_size, snapshot, maske, client_count).
@@ -362,6 +362,30 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest::test_permission_dialog_is_not_confirmed` | yok: `apply_live_model_switch` diyalog kararı (T4 sağlayıcı) | kapsam dışı |
 | `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest::test_switch_dialog_confirmed_once` | yok: `apply_live_model_switch` diyalog kararı (T4 sağlayıcı) | kapsam dışı |
 | `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest::test_applied_without_dialog` | yok: `apply_live_model_switch` diyalog kararı (T4 sağlayıcı) | kapsam dışı |
+| `test_procscan_tbd365.py::SessionFilesTest::test_bad_files_are_skipped_and_counted` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::SessionFilesTest::test_negative_or_zero_pid_never_reaches_kill` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::SessionFilesTest::test_overflowing_pid_is_skipped_and_counted` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::ForeignCmdlineTest::test_find_sessions_reads_only_own_cmdline` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::ForeignCmdlineTest::test_running_mirrors_reads_only_own_cmdline` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::ForeignProcessContentTest::test_orphans_only_own_and_foreign_ancestor_not_read` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::ForeignProcessContentTest::test_cpu_hogs_only_own` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::ForeignProcessContentTest::test_gnome_terminal_server_cmdline_read_only_for_own` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::TmuxAncestorTest::test_foreign_ancestor_stops_walk_without_reading_it` | `proc::tests::another_users_tmux_ancestor_does_not_count` | karşılandı (yalnız Rust testi) |
+| `test_procscan_tbd365.py::TranscriptRowsTest::test_bad_rows_skipped` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::TranscriptRowsTest::test_needs_ho_decides_instead_of_raising` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::BaselineAtomicTest::test_baseline_written_via_replace` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::SidPathTest::test_sid_with_path_parts_is_not_joined` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::SidPathTest::test_invalid_or_missing_sid_file_never_guesses` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_bad_rows_skipped_on_first_call` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_overflowing_token_count_does_not_blank_total` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_bad_subagent_row_does_not_blank_total` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_day_usage_file_survives_bad_row` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_thread_start_failure_does_not_lock_path` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::UsageRowsTest::test_shrinking_file_does_not_evict_another_when_full` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::LongLineTest::test_usage_limit_boundary_and_partial_tail` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::LongLineTest::test_usage_memory_is_bounded` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::LongLineTest::test_needs_ho_long_line_skipped_and_counted` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
+| `test_procscan_tbd365.py::DiagSkippedTest::test_diag_carries_all_skip_counters` | yok: süreç taraması, transkript ve kullanım okuma (rs/proc `cops-procscan`, `docs/rs-proc-mapping.md`) | kapsam dışı |
 | `test_review_fixes_2026_11_04.py::HandoverBatchFixes::test_dry_run_does_not_write_baseline_and_shows_skip` | yok: `handover`/`guard` düzeltmeleri; tmux_backend adları (`is_tmux_backed`) sahte ya da dolaylı (T4) | kapsam dışı |
 | `test_review_fixes_2026_11_04.py::HandoverBatchFixes::test_real_run_writes_baseline_atomically` | yok: `handover`/`guard` düzeltmeleri; tmux_backend adları (`is_tmux_backed`) sahte ya da dolaylı (T4) | kapsam dışı |
 | `test_review_fixes_2026_11_04.py::HandoverBatchFixes::test_sidless_session_in_shared_cwd_is_not_skipped` | yok: `handover`/`guard` düzeltmeleri; tmux_backend adları (`is_tmux_backed`) sahte ya da dolaylı (T4) | kapsam dışı |
@@ -807,6 +831,10 @@ Adımlar: harf harf yazma, Backspace x2, sol x2 + harf, sağ + harf, Ctrl-C, `/h
 | agy 1.5.18 | gerçek oturum, plan + sandbox | güven diyaloğunda aşağı/yukarı/Enter dahil her adımda son 4 satır aynı |
 
 Denenmeyen: Rust yolu canlı CLI ekranında; Ctrl+Space; panelden uçtan uca (`/api/term/raw`) deneme.
+
+## `rs/proc` birleşmesi sonrası (27 Kas)
+- `is_tmux_backed`: Python'a `rs/proc` ile gelen kural (başka kullanıcının atası yürüyüşü bitirir, komut satırı okunmaz; TBD#365) Rust'a da taşındı (`proc::Tmux::tmux_ancestor_of`).
+- Parite testi yük altında düştü (356 sn sürdü, test pencereleri `sleep 60` ile kapandı: "no server running"); süre 900 sn oldu, sunucular test sonunda zaten kapatılıyor.
 
 ## Açık işler
 1. Birleştirme SONRASI (copsd bu crate'i kullanınca, bu dalda yapılamaz): `set_swallow_hook` copsd günlüğüne bağlanmalı (yoksa yutulan hatalar stderr'e, yani servis günlüğüne gider).
