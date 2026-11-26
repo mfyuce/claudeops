@@ -4,7 +4,7 @@
 use cops_providers::bg_work::Clock;
 use cops_providers::claude_transcript::{FIRST_WINDOW_BYTES, MAX_WINDOW_BYTES};
 use cops_providers::ucli_opts::Toolchain;
-use cops_providers::{Cli, Live, LiveProbe, McpRegisterError, Paths, Probe, Settings, SqlCell};
+use cops_providers::{Cli, FileStat, Live, LiveProbe, McpRegisterError, Paths, Probe, Settings, SqlCell};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -95,38 +95,37 @@ impl LiveProbe for Mem {
         let to = from.saturating_add(len as usize).min(data.len());
         Some(data[from..to].to_vec())
     }
-    fn claude_session_sid(&self, pid: i64) -> Option<String> {
-        (pid == 42).then(|| "from-pid".to_string())
+    fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
+        let after = "S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 777 0";
+        (pid == 42).then(|| format!("42 (claude (x)) {after}").into_bytes())
+    }
+    fn stat(&self, _: &str) -> Option<FileStat> {
+        None
+    }
+    fn current_dir(&self) -> String {
+        unreachable!()
+    }
+    fn agy_sids_doc(&self) -> Option<cops_providers::pyjson::Py> {
+        unreachable!()
     }
     fn claude_project_dir(&self, _: &str) -> String {
         "/p".into()
     }
-    fn claude_transcript(&self, _: &str, sid: Option<&str>) -> Option<String> {
-        let path = format!("/p/{}.jsonl", sid?);
-        self.files.contains_key(&path).then_some(path)
-    }
-    fn read_bytes(&self, _: &str, _: u64) -> Option<Vec<u8>> {
-        unreachable!()
+    fn read_bytes(&self, path: &str, _: u64) -> Option<Vec<u8>> {
+        // `sessions/42.json`: pid'den kimlik
+        (path == "/h/.claude/sessions/42.json")
+            .then(|| br#"{"pid":42,"sessionId":"from-pid","procStart":"777"}"#.to_vec())
     }
     fn read_tail(&self, _: &str, _: u64) -> Option<Vec<u8>> {
         unreachable!()
     }
     fn list_dir(&self, _: &str) -> Option<Vec<String>> {
-        unreachable!()
-    }
-    fn codex_rollout(&self, _: &str, _: Option<&str>) -> Option<String> {
-        unreachable!()
-    }
-    fn copilot_resume_id(&self, _: &str) -> Option<String> {
-        unreachable!()
+        None
     }
     fn sqlite_cell(&self, _: &str, _: &str, _: &str) -> Option<SqlCell> {
         unreachable!()
     }
     fn sqlite_rows(&self, _: &str, _: &str, _: &[SqlCell], _: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
-        unreachable!()
-    }
-    fn agy_resume_id(&self, _: &str) -> Option<String> {
         unreachable!()
     }
 }

@@ -4,6 +4,7 @@
 
 use crate::common::*;
 use crate::fam_bg::{random_stamps, Rng};
+use crate::fam_resume::proc_stat;
 use cops_providers::bg_work::{iso_epoch, Clock};
 use cops_providers::claude_transcript::{FIRST_WINDOW_BYTES, MAX_WINDOW_BYTES, PROMPT_CACHE_TTL_SECONDS};
 use cops_providers::pyjson::Py;
@@ -42,6 +43,17 @@ fn turn(delta: i64, model: &str, effort: Option<&str>) -> String {
         row["effort"] = e.into();
     }
     row.to_string()
+}
+
+/// Süreç kayıtları: `sessions/<pid>.json` + sahte `/proc/<pid>/stat`.
+fn registered(mut c: Case, sessions: &[(i64, &str)]) -> Case {
+    let mut stats = serde_json::Map::new();
+    for (pid, sid) in sessions {
+        let body = json!({"pid": pid, "sessionId": sid, "procStart": "777"}).to_string();
+        c = c.file(Fx::File(format!("home/.claude/sessions/{pid}.json"), body.into_bytes(), 0o644));
+        stats.insert(pid.to_string(), proc_stat(*pid, "777").into());
+    }
+    c.facts(json!({"proc_stat": stats}))
 }
 
 fn lines(rows: &[String]) -> Vec<u8> {
@@ -507,8 +519,10 @@ fn requests(b: &mut Build<'_>) {
     for cli in ["claude", "codex", "ucli", "bogus"] {
         let list: Vec<Value> =
             queries.iter().map(|(_, sid, pid)| json!({"cli": cli, "cwd": cwd, "sid": sid, "pid": pid})).collect();
-        let mut c = b.case(&format!("istek-{cli}"), json!({"requests": list})).facts(json!({"session_sid": {
-            "4242": "new-sid", "4243": "missing", "4244": "", "4245": "old-sid", "0": "new-sid"}}));
+        let mut c = registered(
+            b.case(&format!("istek-{cli}"), json!({"requests": list})),
+            &[(4242, "new-sid"), (4243, "missing"), (4244, ""), (4245, "old-sid"), (0, "new-sid")],
+        );
         c = put(c, "old-sid", -9000);
         c = put(c, "new-sid", -40);
         c = put(c, "sibling", -5);
@@ -523,16 +537,15 @@ fn requests(b: &mut Build<'_>) {
         .case("istek-mutlak", json!({"requests": [{"cli": "claude", "cwd": cwd, "sid": outside}]}))
         .file(Fx::File("work/disari.jsonl".into(), lines(&[real(-3, "x")]), 0o644));
     b.cases.push(c);
-    let mut c = b
-        .case("sapma-uzun-sid", json!({"requests": [{"cli": "claude", "cwd": cwd, "sid": "s".repeat(300), "pid": 4242}]}))
-        .facts(json!({"session_sid": {"4242": "new-sid"}}))
+    let long = json!({"requests": [{"cli": "claude", "cwd": cwd, "sid": "s".repeat(300), "pid": 4242}]});
+    let mut c = registered(b.case("sapma-uzun-sid", long), &[(4242, "new-sid")])
         .known("dosya adı sınırını aşan sid: Python `is_file` `OSError` atar, Rust adayı yok sayıp diğerine bakar");
     c = put(c, "new-sid", -40);
     c.args["expect_requests"] = json!([at(-40)]);
     b.cases.push(c);
 }
 
-/// `live_or_spawn_*`: claude dışında ya da transkript/tur yoksa spawn değeri. (Transkript çözümü G1: test uygulaması.)
+/// `live_or_spawn_*`: claude dışında ya da transkript/tur yoksa spawn değeri. 
 fn live(b: &mut Build<'_>) {
     let cwd = b.abs(CWD);
     let dir = project(&cwd);

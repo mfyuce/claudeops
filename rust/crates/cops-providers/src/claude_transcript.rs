@@ -159,7 +159,7 @@ impl Live<'_> {
         if cli != Cli::Claude.name() {
             return None;
         }
-        self.probe.claude_transcript(cwd, sid)
+        self.jsonl_path_for(cwd, sid)
     }
 
     /// Önbellek sıcaklığı için son gerçek isteğin zamanı. Yalnız TAM eşleşen `<sid>.jsonl` dosyaları okunur ("cwd'deki
@@ -169,7 +169,7 @@ impl Live<'_> {
         if cli != Cli::Claude {
             return None;
         }
-        let from_pid = pid.filter(|p| *p != 0).and_then(|p| self.probe.claude_session_sid(p));
+        let from_pid = pid.and_then(|p| self.session_file_sid(p));
         let first = sid.filter(|s| !s.is_empty());
         let second = from_pid.as_deref().filter(|s| !s.is_empty() && Some(*s) != first);
         let dir = self.probe.claude_project_dir(cwd);

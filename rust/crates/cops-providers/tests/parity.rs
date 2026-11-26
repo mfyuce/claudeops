@@ -105,3 +105,10 @@ mod fam_sources;
 fn parity_model_sources() {
     fam_sources::run();
 }
+#[path = "parity/fam_resume.rs"]
+mod fam_resume;
+
+#[test]
+fn parity_resume() {
+    fam_resume::run();
+}

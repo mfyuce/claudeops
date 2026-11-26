@@ -169,7 +169,19 @@ ucli_cost.reserve = lambda *a, **k: None
 ucli_checks.load_registry = _fake_load_registry
 authz.spawn_env = _fake_spawn_env
 extensions.session_mcp_spec = _fake_ext_mcp
-spawn._ids_held_by_others = lambda name: frozenset()
+_ORIG_IDS_HELD = spawn._ids_held_by_others
+spawn._ids_held_by_others = lambda name: frozenset()      # spawn ailesi; gerçeği `resume` ailesinde
+
+
+def _fake_proc_stat(pid):
+    """`/proc` hiç okunmaz: vaka olgusu (yoksa OSError)."""
+    raw = (FACTS.get("proc_stat") or {}).get(str(pid))
+    if raw is None:
+        raise OSError("sahte /proc: yok")
+    return paths.parse_proc_stat(raw)
+
+
+claude_p.proc_stat_fields = _fake_proc_stat
 
 
 def _spec(d):
@@ -184,10 +196,12 @@ def _reset(case):
     for k in CALLS:
         CALLS[k].clear()
     settings._LOAD_CACHE.update(sig=None, val=None)
+    claude_p._META_CACHE.clear()
     claude_p._HELP_CACHE.clear()
     ucli_client._HELP_CACHE.clear()
     os.environ.clear()
     os.environ.update(_BASE_ENV)
+    os.environ["CLAUDEOPS_STORE_BACKEND"] = "files"      # agy_sids okuması geçici dizinde DB yaratmasın
     for k, v in case.get("env") or []:
         os.environ[k] = v
     ucli_agents._PANEL_PORT = FACTS.get("panel_port")
@@ -524,9 +538,8 @@ def _safe(fn):
 def op_live(a):
     p = _prov(a)
     cwd, sid, pane = a["cwd"], a.get("sid"), a.get("pane") or ""
-    saved_time, saved_resume = bg_work.time, copilot_p.CopilotProvider.resolve_resume_id
+    saved_time = bg_work.time
     bg_work.time = types.SimpleNamespace(time=lambda: a["now"])
-    copilot_p.CopilotProvider.resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("copilot_resume")
     try:
         out = {
             "busy_status_pattern": p.busy_status_pattern(),
@@ -544,7 +557,7 @@ def op_live(a):
             out["records"] = _safe(lambda: ucli_client.failed_turn_records(cwd, sid or ""))
         return out
     finally:
-        bg_work.time, copilot_p.CopilotProvider.resolve_resume_id = saved_time, saved_resume
+        bg_work.time = saved_time
 
 
 def op_bg(a):
@@ -582,53 +595,40 @@ def _chat_out(v):
 def op_chat(a):
     p = _prov(a)
     cwd, sid = a["cwd"], a.get("sid")
-    classes = (agy_p.AgyProvider, copilot_p.CopilotProvider)
-    saved = [c.resolve_resume_id for c in classes]
-    classes[0].resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("agy_resume")
-    classes[1].resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("copilot_resume")
-    try:
-        out = {
-            "last_exchange": _safe(lambda: p.last_exchange(cwd, sid)),
-            "full_history": _safe(lambda: p.full_history(cwd, sid)),
-            "last_message_role": _safe(lambda: p.last_message_role(cwd, sid)),
-            "extra_file_roots": p.extra_file_roots(cwd),
-        }
-        if a["cli"] == "ucli":
-            out["read_chat_history"] = _safe(lambda: ucli_client.read_chat_history(cwd, sid or ""))
-        out["roots"] = [codex_p.SESSIONS_DIR, agy_p.CONVERSATIONS_DIR, copilot_p.SESSION_STORE_DB]
-        return _chat_out(out)
-    finally:
-        for c, f in zip(classes, saved):
-            c.resolve_resume_id = f
+    out = {
+        "last_exchange": _safe(lambda: p.last_exchange(cwd, sid)),
+        "full_history": _safe(lambda: p.full_history(cwd, sid)),
+        "last_message_role": _safe(lambda: p.last_message_role(cwd, sid)),
+        "extra_file_roots": p.extra_file_roots(cwd),
+    }
+    if a["cli"] == "ucli":
+        out["read_chat_history"] = _safe(lambda: ucli_client.read_chat_history(cwd, sid or ""))
+    out["roots"] = [codex_p.SESSIONS_DIR, agy_p.CONVERSATIONS_DIR, copilot_p.SESSION_STORE_DB]
+    return _chat_out(out)
 
 
 def op_transcript(a):
-    """claude transkripti okuyucuları. `session_file_sid` (G1) sahte: vaka olgusu."""
+    """claude transkripti okuyucuları."""
     os.environ["TZ"] = a.get("tz") or "UTC0"
     time.tzset()
-    saved = claude_p.session_file_sid
-    claude_p.session_file_sid = lambda pid: (FACTS.get("session_sid") or {}).get(str(pid)) if pid else None
-    try:
-        out = {}
-        out["reads"] = [{
-            "model": _safe(lambda: claude_p.last_assistant_model(claude_p.Path(r["path"]), since=r.get("since"))),
-            "effort": _safe(lambda: claude_p.last_assistant_effort(claude_p.Path(r["path"]), since=r.get("since"))),
-            "request": _safe(lambda: claude_p.last_real_request_epoch(claude_p.Path(r["path"]))),
-        } for r in a.get("reads") or []]
-        out["stamps"] = [_safe(lambda: claude_p._row_epoch(x)) for x in a.get("stamps") or []]
-        out["keeps"] = [[providers.get_provider(c).effort_switch_keeps_cache(m) for c in a.get("clis") or []]
-                        for m in a.get("models") or []]
-        out["ttl"] = [providers.get_provider(c).prompt_cache_ttl_seconds() for c in a.get("clis") or []]
-        out["live"] = [[_safe(lambda: claude_p.live_or_spawn_model(q["cli"], q["cwd"], q.get("sid"), q["fallback"])),
-                        _safe(lambda: claude_p.live_or_spawn_effort(q["cli"], q["cwd"], q.get("sid"), q["fallback"]))]
-                       for q in a.get("live") or []]
-        out["requests"] = [_safe(lambda: providers.get_provider(q["cli"]).last_request_epoch(
-            q["cwd"], q.get("sid"), q.get("pid"))) for q in a.get("requests") or []]
-        out["constants"] = [claude_p._LAST_MODEL_CHUNK_BYTES, claude_p._LAST_MODEL_MAX_BYTES,
-                            claude_p.PROMPT_CACHE_TTL_SECONDS]
-        return _chat_out(out)
-    finally:
-        claude_p.session_file_sid = saved
+    out = {}
+    out["reads"] = [{
+        "model": _safe(lambda: claude_p.last_assistant_model(claude_p.Path(r["path"]), since=r.get("since"))),
+        "effort": _safe(lambda: claude_p.last_assistant_effort(claude_p.Path(r["path"]), since=r.get("since"))),
+        "request": _safe(lambda: claude_p.last_real_request_epoch(claude_p.Path(r["path"]))),
+    } for r in a.get("reads") or []]
+    out["stamps"] = [_safe(lambda: claude_p._row_epoch(x)) for x in a.get("stamps") or []]
+    out["keeps"] = [[providers.get_provider(c).effort_switch_keeps_cache(m) for c in a.get("clis") or []]
+                    for m in a.get("models") or []]
+    out["ttl"] = [providers.get_provider(c).prompt_cache_ttl_seconds() for c in a.get("clis") or []]
+    out["live"] = [[_safe(lambda: claude_p.live_or_spawn_model(q["cli"], q["cwd"], q.get("sid"), q["fallback"])),
+                    _safe(lambda: claude_p.live_or_spawn_effort(q["cli"], q["cwd"], q.get("sid"), q["fallback"]))]
+                   for q in a.get("live") or []]
+    out["requests"] = [_safe(lambda: providers.get_provider(q["cli"]).last_request_epoch(
+        q["cwd"], q.get("sid"), q.get("pid"))) for q in a.get("requests") or []]
+    out["constants"] = [claude_p._LAST_MODEL_CHUNK_BYTES, claude_p._LAST_MODEL_MAX_BYTES,
+                        claude_p.PROMPT_CACHE_TTL_SECONDS]
+    return _chat_out(out)
 
 
 def op_sources(a):
@@ -734,6 +734,69 @@ def op_sources(a):
             out.append(row)
     finally:
         agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, urllib.request.urlopen = saved
+    return out
+
+
+def _resume_one(q):
+    """Oturum kimliği ve devam (G1): tek sorgu."""
+    f, cwd, name = q["f"], q.get("cwd"), q.get("name") or ""
+    if f == "resolve":
+        return providers.get_provider(q["cli"]).resolve_resume_id(cwd, in_use=frozenset(q.get("in_use") or []),
+                                                                  session_name=name)
+    if f == "stopped":
+        return providers.get_provider(q["cli"]).sid_for_stopped_session(cwd, name)
+    if f == "jsonl":
+        p = claude_p.jsonl_path_for(cwd, q.get("sid"))
+        return None if p is None else str(p)
+    if f == "latest":
+        p = claude_p.find_latest_jsonl(cwd)
+        return None if p is None else str(p)
+    if f == "rollout":
+        return providers.get_provider("codex")._rollout_path(cwd, q.get("sid"))
+    if f == "session_sid":
+        return claude_p.session_file_sid(q.get("pid"))
+    if f == "meta":
+        m = claude_p._jsonl_meta(claude_p.Path(q["path"]))
+        return [m["title"], m["cwd"]]
+    if f == "chat_rows":
+        return claude_p._has_chat_rows(claude_p.Path(q["path"]))
+    if f == "snapshot":
+        snap = providers.get_provider(q["cli"]).snapshot_for_live_sid(cwd)
+        return None if snap is None else sorted(snap)
+    if f == "discover":
+        before = q.get("before")
+        return providers.get_provider(q["cli"]).discover_live_sid(cwd, None if before is None else frozenset(before))
+    if f == "held":
+        live = q.get("live")
+
+        def _find(**_kw):
+            if live is None:
+                raise RuntimeError("tarama patladı")
+            return [types.SimpleNamespace(name=n, sid=s) for n, s in live]
+        saved, spawn.find_sessions = spawn.find_sessions, _find
+        try:
+            return sorted(_ORIG_IDS_HELD(name))
+        finally:
+            spawn.find_sessions = saved
+    if f == "claimed":
+        return agy_p._sid_claimed_by_other(q["known"], q["sid"], name)
+    if f == "remember":
+        agy_p._remember_agy_sid(name, q["sid"])
+        return agy_p._load_agy_sids()
+    if f == "constants":
+        return [claude_p._META_HEAD_LINES, claude_p._RESUME_SCAN_LIMIT, claude_p._STUB_MAX_BYTES, claude_p._META_CACHE_MAX,
+                codex_p._MAX_ROLLOUT_SCAN, copilot_p._RESUME_SCAN_LIMIT,
+                [agy_p.CONVERSATIONS_CACHE, agy_p.CONVERSATIONS_DIR, claude_p.SESSIONS_DIR, codex_p.SESSIONS_DIR]]
+    raise AssertionError(f"bilinmeyen sorgu: {f}")
+
+
+def op_resume(a):
+    out = _chat_out([_safe(lambda: _resume_one(q)) for q in a["queries"]])
+    # Yazım vakaları: belge dönüşte karşılaştırıldı; dosya ve kilit ağaç görüntüsüne girmez.
+    if any(q["f"] == "remember" for q in a["queries"]):
+        for p in (agy_p.AGY_SIDS_JSON, agy_p.AGY_SIDS_JSON + ".lock"):
+            if os.path.exists(p):
+                os.remove(p)
     return out
 
 

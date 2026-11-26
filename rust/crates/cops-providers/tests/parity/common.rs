@@ -634,10 +634,20 @@ impl Runner {
     where
         F: Fn(&Env, &Case) -> RsOut,
     {
+        self.run_prepared(cases, drop_events, |_, _| {}, rust)
+    }
+
+    /// [`Runner::run`] + her tarafta fixture kurulduktan sonra `prepare` (ör. dosya zamanları).
+    pub fn run_prepared<P, F>(&mut self, cases: Vec<Case>, drop_events: &[&str], prepare: P, rust: F)
+    where
+        P: Fn(&Env, &Case),
+        F: Fn(&Env, &Case) -> RsOut,
+    {
         for case in cases {
             self.count += 1;
             self.e.reset();
             self.e.apply_fixtures(&case);
+            prepare(&self.e, &case);
             let py = self.e.py_call(&case);
             let snap_py = self.e.snapshot();
             if std::env::var("COPS_PARITY_DUMP").is_ok_and(|d| case.id.contains(&d)) {
@@ -645,6 +655,7 @@ impl Runner {
             }
             self.e.reset();
             self.e.apply_fixtures(&case);
+            prepare(&self.e, &case);
             let mut rs = rust(&self.e, &case);
             let apply_err = if rs.skip_effects { Ok(()) } else { apply_effects(&rs.out.effects) };
             let snap_rs = self.e.snapshot();

@@ -10,12 +10,22 @@ use crate::pyfmt::{parse_int, splitlines};
 use crate::pyjson::Py;
 use crate::settings::Settings;
 use crate::ucli_status::{FailedTurns, LivePhase, LiveUsage};
+use std::collections::BTreeSet;
 
 /// codex rollout dosyasının sonundan bağlam için okunan bayt.
 pub const CODEX_CONTEXT_TAIL_BYTES: u64 = 262_144;
 
 /// copilot oturum deposunda ana ajanın son isteğinin `input_tokens`ı (tek parametre: oturum kimliği).
 pub const COPILOT_CONTEXT_SQL: &str = "SELECT input_tokens FROM assistant_usage_events WHERE session_id = ? AND agent_id IS NULL ORDER BY created_at DESC, turn_index DESC LIMIT 1";
+
+/// [`LiveProbe::stat`] sonucu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStat {
+    /// Normal dosya (`S_ISREG`).
+    pub is_file: bool,
+    pub mtime_ns: i64,
+    pub size: u64,
+}
 
 /// SQLite hücresi (dinamik tipli).
 #[derive(Debug, Clone, PartialEq)]
@@ -35,19 +45,20 @@ pub trait LiveProbe: Probe {
     fn read_bytes(&self, path: &str, max: u64) -> Option<Vec<u8>>;
     /// Dosyanın son en çok `max` baytı.
     fn read_tail(&self, path: &str, max: u64) -> Option<Vec<u8>>;
-    /// `os.listdir` (UTF-8 olmayan adlar atlanabilir: hiçbir oturum adıyla eşleşemez).
+    /// `os.listdir`: dizin okuma sırası KORUNUR (eşit zamanlı dosyalarda seçim sıraya bağlıdır); UTF-8 olmayan adlar
+    /// atlanabilir (hiçbir oturum adıyla eşleşemez). Dizin değilse ya da okunamazsa None.
     fn list_dir(&self, path: &str) -> Option<Vec<String>>;
+    /// `os.stat` (symlink izlenir); yoksa ya da erişilemezse None.
+    fn stat(&self, path: &str) -> Option<FileStat>;
+    /// `/proc/<pid>/stat`ın ham içeriği (küçük sözde dosya); okunamazsa None.
+    fn proc_stat(&self, pid: i64) -> Option<Vec<u8>>;
+    /// Çağıran sürecin çalışma dizini (`os.getcwd`; göreli yolların `abspath`i için).
+    fn current_dir(&self) -> String;
+    /// `agy_sids` belgesi (öğrenilen oturum adı -> konuşma kimliği; Python `statedocs.read_json("agy_sids", ..)`).
+    /// Yok, bozuk ya da okunamıyorsa None.
+    fn agy_sids_doc(&self) -> Option<Py>;
     /// Dosyanın `start`tan başlayan en çok `len` baytı (dosya kısaldıysa daha az).
     fn read_range(&self, path: &str, start: u64, len: u64) -> Option<Vec<u8>>;
-    /// `claude_provider.session_file_sid(pid)` (G1): `sessions/<pid>.json`ın kırpılmış `sessionId`si; yalnız dosyadaki
-    /// `pid` ve `procStart` canlı süreçle tutuyorsa, aksi halde None.
-    fn claude_session_sid(&self, pid: i64) -> Option<String>;
-    /// `claude_provider.jsonl_path_for(cwd, sid)` (transkript çözümü G1'in işi).
-    fn claude_transcript(&self, cwd: &str, sid: Option<&str>) -> Option<String>;
-    /// `CodexProvider._rollout_path(cwd, sid)` (G1).
-    fn codex_rollout(&self, cwd: &str, sid: Option<&str>) -> Option<String>;
-    /// `CopilotProvider.resolve_resume_id(cwd)` (G1).
-    fn copilot_resume_id(&self, cwd: &str) -> Option<String>;
     /// `db` SALT OKUNUR (`mode=ro`, 2 sn meşgul beklemesi) açılır, tek parametreli sorgunun ilk satırının ilk hücresi;
     /// satır yoksa ya da SQLite hatasında None.
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell>;
@@ -57,8 +68,6 @@ pub trait LiveProbe: Probe {
     fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool;
     /// `~/.claude/projects/<kodlanmış cwd>` (`claude_provider._encode_cwd`: rs/proc `transcript.rs::encode_cwd`).
     fn claude_project_dir(&self, cwd: &str) -> String;
-    /// `AgyProvider.resolve_resume_id(cwd)` (G1).
-    fn agy_resume_id(&self, cwd: &str) -> Option<String>;
 }
 
 /// Canlı okuma bağlamı.
@@ -88,11 +97,11 @@ impl Live<'_> {
     pub fn background_work(&self, cli: Cli, pane_text: &str, cwd: &str, sid: Option<&str>) -> Option<u64> {
         match cli {
             Cli::Claude => Some(match bg_work::screen_bg_count(pane_text) {
-                0 => u64::from(self.transcript_pending_path(self.probe.claude_transcript(cwd, sid).as_deref())),
+                0 => u64::from(self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref())),
                 n => n,
             }),
             Cli::Codex => {
-                let lines = self.tail_lines(self.probe.codex_rollout(cwd, sid).as_deref());
+                let lines = self.tail_lines(self.codex_rollout_path(cwd, sid).as_deref());
                 let agents = bg_work::codex_subagents_pending(lines.iter().map(String::as_str), self.clock);
                 Some(bg_work::codex_screen_count(pane_text).saturating_add(agents))
             }
@@ -165,7 +174,7 @@ impl Live<'_> {
     /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean değer sayı sayılmaz
     /// (Python `True` döndürür).
     fn codex_context(&self, cwd: &str, sid: Option<&str>) -> Option<i64> {
-        let path = self.probe.codex_rollout(cwd, sid).filter(|p| !p.is_empty())?;
+        let path = self.codex_rollout_path(cwd, sid)?;
         let data = self.probe.read_tail(&path, CODEX_CONTEXT_TAIL_BYTES)?;
         let tail = String::from_utf8_lossy(&data);
         for raw in splitlines(&tail).into_iter().rev() {
@@ -198,7 +207,7 @@ impl Live<'_> {
     fn copilot_context(&self, cwd: &str, sid: Option<&str>) -> Option<i64> {
         let session = match sid.filter(|s| !s.is_empty()) {
             Some(s) => s.to_string(),
-            None => self.probe.copilot_resume_id(cwd).filter(|s| !s.is_empty())?,
+            None => self.copilot_resume_id(cwd, &BTreeSet::new()).filter(|s| !s.is_empty())?,
         };
         match self.probe.sqlite_cell(&self.paths.copilot_session_db(), COPILOT_CONTEXT_SQL, &session)? {
             SqlCell::Null => None,

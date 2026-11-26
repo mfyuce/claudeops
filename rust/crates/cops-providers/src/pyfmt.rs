@@ -279,6 +279,41 @@ pub fn join_path(a: &str, b: &str) -> String {
     }
 }
 
+/// `os.path.normpath` (POSIX): `//` ve `.` düşer, `..` metin olarak çözülür; baştaki tam iki eğik çizgi korunur.
+pub fn normpath(p: &str) -> String {
+    let slashes = match p.len() - p.trim_start_matches('/').len() {
+        0 => 0,
+        2 => 2,
+        _ => 1,
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for c in p.split('/') {
+        match c {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|l| *l != "..") => {
+                parts.pop();
+            }
+            ".." if slashes > 0 => {}
+            c => parts.push(c),
+        }
+    }
+    let out = format!("{}{}", "/".repeat(slashes), parts.join("/"));
+    if out.is_empty() {
+        ".".into()
+    } else {
+        out
+    }
+}
+
+/// `os.path.abspath`: göreli yol `cwd`ye (sürecin çalışma dizini) eklenir.
+pub fn abspath(p: &str, cwd: &str) -> String {
+    if p.starts_with('/') {
+        normpath(p)
+    } else {
+        normpath(&join_path(cwd, p))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +323,18 @@ mod tests {
         for (x, want) in [(8.0, "8"), (0.5, "0.5"), (1234567.0, "1.23457e+06"), (0.00001, "1e-05"), (100.0, "100")] {
             assert_eq!(fmt_g(x), want, "{x}");
         }
+    }
+
+    #[test]
+    fn path_normalisation() {
+        // beklenen değerler `posixpath.normpath`
+        for (p, want) in [("", "."), (".", "."), ("/", "/"), ("//a//b/", "//a/b"), ("///a", "/a"), ("a/./b/..", "a"),
+            ("../..", "../.."), ("a/../../b", "../b"), ("/..", "/"), ("/a/../..", "/"), ("a/..", ".")]
+        {
+            assert_eq!(normpath(p), want, "{p}");
+        }
+        assert_eq!(abspath("w/p", "/r"), "/r/w/p");
+        assert_eq!(abspath("", "/r"), "/r");
     }
 
     #[test]

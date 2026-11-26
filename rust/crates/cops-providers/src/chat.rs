@@ -13,6 +13,7 @@ use crate::live::{Live, SqlCell};
 use crate::provider::Cli;
 use crate::pyfmt::{join_path, strip};
 use crate::pyjson::Py;
+use std::collections::BTreeSet;
 
 /// agy `steps.step_type`: kullanıcı turu.
 pub const AGY_STEP_USER: i64 = 14;
@@ -358,8 +359,8 @@ impl Live<'_> {
     /// Son kullanıcı mesajı + son asistan yanıtı; None = desteklenmiyor (shell) ya da ucli geçmişi okunamıyor.
     pub fn last_exchange(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Exchange> {
         match cli {
-            Cli::Claude => Some(claude_last(&self.transcript_bytes(self.probe.claude_transcript(cwd, sid)))),
-            Cli::Codex => Some(codex_last(&self.transcript_bytes(self.probe.codex_rollout(cwd, sid)))),
+            Cli::Claude => Some(claude_last(&self.transcript_bytes(self.jsonl_path_for(cwd, sid)))),
+            Cli::Codex => Some(codex_last(&self.transcript_bytes(self.codex_rollout_path(cwd, sid)))),
             Cli::Agy => Some(self.agy_last(cwd, sid)),
             Cli::Copilot => Some(match self.copilot_turns(cwd, sid).pop() {
                 Some((user, assistant)) => Exchange { user, assistant },
@@ -373,8 +374,8 @@ impl Live<'_> {
     /// Bütün konuşma, eskiden yeniye; None = desteklenmiyor (shell), ucli'de kimlik yok ya da dosya okunamıyor.
     pub fn full_history(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Vec<ChatTurn>> {
         match cli {
-            Cli::Claude => Some(claude_history(&self.transcript_bytes(self.probe.claude_transcript(cwd, sid)))),
-            Cli::Codex => Some(codex_history(&self.transcript_bytes(self.probe.codex_rollout(cwd, sid)))),
+            Cli::Claude => Some(claude_history(&self.transcript_bytes(self.jsonl_path_for(cwd, sid)))),
+            Cli::Codex => Some(codex_history(&self.transcript_bytes(self.codex_rollout_path(cwd, sid)))),
             Cli::Agy => Some(self.agy_history(cwd, sid)),
             Cli::Copilot => {
                 let mut out = Vec::new();
@@ -433,7 +434,7 @@ impl Live<'_> {
     fn agy_db(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
         let id = match sid.filter(|s| !s.is_empty()) {
             Some(s) => s.to_string(),
-            None => self.probe.agy_resume_id(cwd).filter(|s| !s.is_empty())?,
+            None => self.agy_resume_id(cwd, &BTreeSet::new(), "").filter(|s| !s.is_empty())?,
         };
         let path = join_path(&self.paths.agy_conversations_dir(), &format!("{id}.db"));
         self.probe.is_file(&path).then_some(path)
@@ -501,7 +502,7 @@ impl Live<'_> {
     fn copilot_turns(&self, cwd: &str, sid: Option<&str>) -> Vec<(Py, Py)> {
         let session = match sid.filter(|s| !s.is_empty()) {
             Some(s) => Some(s.to_string()),
-            None => self.probe.copilot_resume_id(cwd).filter(|s| !s.is_empty()),
+            None => self.copilot_resume_id(cwd, &BTreeSet::new()).filter(|s| !s.is_empty()),
         };
         let Some(session) = session else { return Vec::new() };
         let mut out = Vec::new();

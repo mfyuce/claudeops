@@ -35,6 +35,14 @@ impl Paths {
     pub fn copilot_session_db(&self) -> String {
         format!("{}/.copilot/session-store.db", self.home)
     }
+    /// claude'un süreç kayıt dizini (`SESSIONS_DIR`; `<pid>.json`).
+    pub fn claude_sessions_dir(&self) -> String {
+        format!("{}/.claude/sessions", self.home)
+    }
+    /// agy'nin cwd -> konuşma kimliği önbelleği (`CONVERSATIONS_CACHE`).
+    pub fn agy_conversations_cache(&self) -> String {
+        format!("{}/.gemini/antigravity-cli/cache/last_conversations.json", self.home)
+    }
     /// codex rollout arşivi (`CODEX_HOME`a bakmaz: Python `SESSIONS_DIR`).
     pub fn codex_sessions_dir(&self) -> String {
         format!("{}/.codex/sessions", self.home)

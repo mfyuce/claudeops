@@ -1,10 +1,12 @@
 //! copilot sağlayıcısı. BYOK anahtarları argv'ye girmez: 0600 dosya `exec`ten önce source edilir.
 
+use crate::live::{Live, SqlCell};
 use crate::probe::{BuildOutput, Effect};
 use crate::provider::{BuildArgs, Providers};
-use crate::pyfmt::quote;
+use crate::pyfmt::{float_repr, quote};
 use crate::settings::is_safe_env_name;
 use regex::Regex;
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 pub const MODEL_CHOICES: [&str; 17] = [
@@ -128,4 +130,41 @@ pub(crate) fn build_inner_command(p: &Providers<'_>, a: &BuildArgs<'_>, out: &mu
         return format!("sh -c {}", quote(&wrapped));
     }
     inner
+}
+
+/// `--resume` seçiminde bakılan en yeni oturum sayısı.
+pub const RESUME_SCAN_LIMIT: i64 = 500;
+/// Oturumlar yeniden eskiye (tek parametre: sınır).
+pub const RESUME_SQL: &str = "SELECT id, cwd FROM sessions ORDER BY updated_at DESC LIMIT ?";
+
+impl Live<'_> {
+    /// cwd'nin en son güncellenen, `in_use`da olmayan oturumu (`CopilotProvider.resolve_resume_id`). Taramanın herhangi
+    /// bir yerindeki SQLite hatası sonucu geçersiz kılar (Python `fetchall`).
+    pub(crate) fn copilot_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>) -> Option<String> {
+        let mut found: Option<Option<String>> = None;
+        let complete = self.probe.sqlite_rows(
+            &self.paths.copilot_session_db(),
+            RESUME_SQL,
+            &[SqlCell::Int(RESUME_SCAN_LIMIT)],
+            &mut |row| {
+                let [id, raw] = row.as_slice() else { return true };
+                let raw = match raw {
+                    SqlCell::Text(s) => s.clone(),
+                    SqlCell::Int(i) if *i != 0 => i.to_string(),
+                    SqlCell::Real(f) if *f != 0.0 => float_repr(*f),
+                    _ => return true,
+                };
+                let id = match id {
+                    SqlCell::Text(s) => Some(s.clone()),
+                    _ => None,
+                };
+                let held = id.as_ref().is_some_and(|i| in_use.contains(i));
+                if found.is_none() && !raw.is_empty() && self.same_path(&raw, cwd) && !held {
+                    found = Some(id);
+                }
+                true
+            },
+        );
+        found.filter(|_| complete).flatten()
+    }
 }

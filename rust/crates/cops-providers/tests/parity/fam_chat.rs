@@ -6,6 +6,7 @@
 //! Bilinen ayrışma vakalarında (`chat-sapma-`) Rust'ın güvenli sonucu `expect` ile ayrıca doğrulanır.
 
 use crate::common::*;
+use crate::fam_live::with_sessions;
 use crate::fam_bg::Rng;
 use cops_providers::bg_work::Clock;
 use cops_providers::pyjson::Py;
@@ -20,6 +21,8 @@ const CLAUDE_DB_SID: &str = "s1";
 const CODEX_FILE: &str = "home/.codex/sessions/2026/11/23/rollout-x-s1.jsonl";
 const COPILOT_DB: &str = "home/.copilot/session-store.db";
 const AGY_DIR: &str = "home/.gemini/antigravity-cli/conversations";
+
+const AGY_CACHE: &str = "home/.gemini/antigravity-cli/cache/last_conversations.json";
 
 struct Build<'a> {
     e: &'a Env,
@@ -785,7 +788,8 @@ fn agy_cases(b: &mut Build<'_>) {
             .case(&format!("agy-{id}"), "agy", sid)
             .file(Fx::File(format!("{AGY_DIR}/abc.db"), db.clone(), 0o600));
         if let Some(x) = resume {
-            c = c.facts(json!({"agy_resume": x}));
+            let cache = json!({ b.cwd(): x }).to_string();
+            c = c.file(Fx::File(AGY_CACHE.into(), cache.into_bytes(), 0o600));
         }
         b.push(c);
     }
@@ -862,10 +866,11 @@ fn copilot_cases(b: &mut Build<'_>) {
         ("resume-yok", None, None),
         ("resume-bos", None, Some("")),
     ] {
-        let mut c = b.case(&format!("copilot-sohbet-{id}"), "copilot", sid).file(Fx::File(COPILOT_DB.into(), db.clone(), 0o600));
-        if let Some(x) = resume {
-            c = c.facts(json!({"copilot_resume": x}));
-        }
+        let db = match resume {
+            Some(r) => with_sessions(&db, &[(Sql::Text(r.into()), Sql::Text(b.cwd()))]),
+            None => db.clone(),
+        };
+        let c = b.case(&format!("copilot-sohbet-{id}"), "copilot", sid).file(Fx::File(COPILOT_DB.into(), db, 0o600));
         b.push(c);
     }
     let cells = [

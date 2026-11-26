@@ -7,20 +7,20 @@ use crate::fam_bg::{pending_use, screens, sub_agent, Rng, T};
 use cops_providers::bg_work::Clock;
 use cops_providers::ucli::state_dir_for;
 use cops_providers::ucli_status::{PHASE_INT_FIELDS, STATUS_MAX_BYTES, USAGE_FIELDS};
-use cops_providers::{Cli, Live, LiveProbe, SqlCell};
+use cops_providers::{Cli, FileStat, Live, LiveProbe, SqlCell};
 use rusqlite::types::{Value as Sql, ValueRef};
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
+use std::os::unix::fs::MetadataExt;
 use std::time::Duration;
 
-/// Python `claude_provider._encode_cwd`.
+/// Python `claude_provider._encode_cwd` (gerçek karşılığı rs/proc `transcript.rs::encode_cwd`).
 fn encode_cwd(cwd: &str) -> String {
     cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
-/// Test uygulaması. Transkript/rollout/resume çözümü G1'in işi: burada yalnız vakaların kullandığı yollar var
-/// (claude: tam sid, yoksa cwd dizinindeki en yeni; codex: yalnız sid eşleşmesi; copilot resume: vaka olgusu).
+/// Test uygulaması: dosya/dizin/SQLite gerçek geçici ağaçtan; `/proc` ve süreç dizini vakanın sahte olguları.
 impl LiveProbe for FsProbe<'_> {
     fn read_bytes(&self, path: &str, max: u64) -> Option<Vec<u8>> {
         let m = fs::metadata(path).ok()?;
@@ -47,44 +47,29 @@ impl LiveProbe for FsProbe<'_> {
         f.take(len).read_to_end(&mut out).ok()?;
         Some(out)
     }
-    fn claude_session_sid(&self, pid: i64) -> Option<String> {
-        self.case.fact("session_sid")?.get(pid.to_string())?.as_str().map(String::from)
-    }
     fn list_dir(&self, path: &str) -> Option<Vec<String>> {
         Some(fs::read_dir(path).ok()?.flatten().filter_map(|e| e.file_name().into_string().ok()).collect())
     }
-    fn claude_transcript(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
-        let dir = format!("{}/.claude/projects/{}", self.e.home, encode_cwd(cwd));
-        if let Some(sid) = sid.filter(|s| !s.is_empty()) {
-            let p = format!("{dir}/{sid}.jsonl");
-            if fs::metadata(&p).is_ok_and(|m| m.is_file()) {
-                return Some(p);
-            }
-        }
-        fs::read_dir(dir)
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "jsonl") && p.is_file())
-            .max_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok())
-            .map(|p| p.to_string_lossy().into_owned())
+    fn stat(&self, path: &str) -> Option<FileStat> {
+        let m = fs::metadata(path).ok()?;
+        let mtime_ns = m.mtime() * 1_000_000_000 + m.mtime_nsec();
+        Some(FileStat { is_file: m.is_file(), mtime_ns, size: m.len() })
     }
-    fn codex_rollout(&self, _cwd: &str, sid: Option<&str>) -> Option<String> {
-        let sid = sid.filter(|s| !s.is_empty())?;
-        let path = format!("{}/.codex/sessions/2026/11/23/rollout-x-{sid}.jsonl", self.e.home);
-        fs::metadata(&path).ok().map(|_| path)
+    fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
+        self.case.fact("proc_stat")?.get(pid.to_string())?.as_str().map(|s| s.as_bytes().to_vec())
     }
-    fn copilot_resume_id(&self, _cwd: &str) -> Option<String> {
-        self.case.fact("copilot_resume").and_then(Value::as_str).map(String::from)
+    fn current_dir(&self) -> String {
+        self.e.root.clone()
+    }
+    fn agy_sids_doc(&self) -> Option<cops_providers::pyjson::Py> {
+        let text = fs::read_to_string(format!("{}/agy_sids.json", self.e.state)).ok()?;
+        cops_providers::pyjson::Py::parse(&text)
     }
     fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
         sqlite_rows(db, sql, params, row).is_some()
     }
     fn claude_project_dir(&self, cwd: &str) -> String {
         format!("{}/.claude/projects/{}", self.e.home, encode_cwd(cwd))
-    }
-    fn agy_resume_id(&self, _cwd: &str) -> Option<String> {
-        self.case.fact("agy_resume").and_then(Value::as_str).map(String::from)
     }
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
@@ -637,6 +622,20 @@ fn db_bytes(rows: &[(&str, i64, Option<&str>, Sql, &str)]) -> Vec<u8> {
     fs::read(path).unwrap()
 }
 
+/// Var olan SQLite baytlarına copilot `sessions` tablosu ekler: `(id, cwd)`, sırayla yeniye.
+pub fn with_sessions(db: &[u8], rows: &[(Sql, Sql)]) -> Vec<u8> {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("s.db");
+    fs::write(&path, db).unwrap();
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("CREATE TABLE sessions (id, cwd, updated_at)").unwrap();
+    for (i, (id, cwd)) in rows.iter().enumerate() {
+        c.execute("INSERT INTO sessions VALUES (?,?,?)", rusqlite::params![id, cwd, i as i64]).unwrap();
+    }
+    drop(c);
+    fs::read(path).unwrap()
+}
+
 fn copilot_context(b: &mut Build<'_>) {
     const DB: &str = "home/.copilot/session-store.db";
     let t0 = "2026-10-27T10:00:00Z";
@@ -660,10 +659,11 @@ fn copilot_context(b: &mut Build<'_>) {
         ("resume-yok", None, None),
         ("resume-bos", None, Some("")),
     ] {
-        let mut c = b.case(&format!("copilot-{id}"), "copilot", sid, "").file(Fx::File(DB.into(), rows.clone(), 0o600));
-        if let Some(r) = resume {
-            c = c.facts(json!({"copilot_resume": r}));
-        }
+        let db = match resume {
+            Some(r) => with_sessions(&rows, &[(Sql::Text(r.into()), Sql::Text(b.cwd()))]),
+            None => rows.clone(),
+        };
+        let c = b.case(&format!("copilot-{id}"), "copilot", sid, "").file(Fx::File(DB.into(), db, 0o600));
         b.push(c);
     }
     let cells: Vec<(&str, Sql)> = vec![
