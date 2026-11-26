@@ -276,6 +276,13 @@ class HttpTest(unittest.TestCase):
                                       {"ok": True})
         self.assertEqual(ev, [("created", "proj20261118"), ("adopted", "yeni"), ("created", "p1")])
 
+    def test_new_chat_resource_is_base_not_name(self):
+        """new-chat `base`e göre iş yapar (`name`i okumaz): yetki kaynağı `base`; kendi `name`ini ekleyen başkasının oturumundan türetemez."""
+        r = authz.resources_from("/api/new-chat", {}, {"base": " baskasinin ", "name": "benim", "host": "h"})
+        self.assertEqual([(x.kind, x.host, x.name) for x in r], [("session", "h", "baskasinin")])
+        r = authz.resources_from("/api/new-chat", {"base": ["q"], "name": ["benim"]}, {"name": "benim"})
+        self.assertEqual([(x.kind, x.name) for x in r], [("global", "")])      # handler yalnız gövdedeki `base`i okur
+
     def test_session_event_emitted_before_response(self):
         """Sahiplik olayı yanıttan ÖNCE: register yanıtını alan istemcinin hemen ardından gelen isteği sahibi tanımalı."""
         from types import SimpleNamespace as NS

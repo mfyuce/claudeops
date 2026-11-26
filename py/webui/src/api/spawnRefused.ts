@@ -11,7 +11,7 @@ const RULES: { re: RegExp; tr: (m: RegExpMatchArray) => string; en: (m: RegExpMa
   { re: /^quota_usd_day/, tr: () => "Günlük harcama (USD tahmini) sınırın doldu; yeni oturum yarın açılabilir.", en: () => "Your daily spend (estimated USD) limit is used up; new sessions can start tomorrow." },
   { re: /^quota_tokens_day/, tr: () => "Günlük token sınırın doldu; yeni oturum yarın açılabilir.", en: () => "Your daily token limit is used up; new sessions can start tomorrow." },
   { re: /^quota_/, tr: () => "Kullanıcı kotan doldu.", en: () => "Your user quota is used up." },
-  { re: /^ownership_corrupt$/, tr: () => "Bu oturumun sahip kaydı bozuk, bu yüzden başlatılmadı; yönetici sahibi yeniden atamalı.", en: () => "This session's owner record is corrupt, so it was not started; an administrator must assign the owner again." },
+  { re: /^ownership_corrupt$/, tr: () => "Bu oturumun sahip kaydı bozuk, bu yüzden başlatılmadı; yönetici sahibi yeniden atamalı; atama da reddedilirse sahiplik verisi elle onarılmalı.", en: () => "This session's owner record is corrupt, so it was not started; an administrator must assign the owner again; if the assignment is refused too, the ownership data must be repaired by hand." },
   { re: /^hook_error$/, tr: () => "Başlatma kontrolü başarısız oldu (güvenli tarafta reddedildi); yöneticiye bildir.", en: () => "The start check failed (refused to be safe); tell your administrator." },
 ];
 
