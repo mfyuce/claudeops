@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use crate::runner::{exact_target, Tmux};
 use crate::shell::shell_quote;
+use crate::text::py_split;
 
 /// Python `_ANCESTOR_WALK_LIMIT`.
 pub const ANCESTOR_WALK_LIMIT: usize = 6;
@@ -118,6 +119,7 @@ fn all_pids() -> Vec<u32> {
 
 /// Pane kabuğunun HİÇ alt süreci yok mu (Python `_pid_childless`; okunamazsa `false` = hayalet sayma).
 pub fn pid_childless(pid: &str) -> bool {
+    // Python `int(pid)` baştaki/sondaki Unicode boşluğu atar (`str.strip`ten farklı: U+001C..U+001F atılmaz).
     let Ok(pid) = pid.trim().parse::<u32>() else {
         return false;
     };
@@ -170,7 +172,8 @@ impl Tmux {
             return Vec::new();
         };
         let mut found = Vec::new();
-        for token in out.split_whitespace() {
+        // Python `stdout.split()`.
+        for token in py_split(&out) {
             let Some((pid, st)) = token.parse().ok().and_then(parent) else {
                 continue;
             };

@@ -2,7 +2,7 @@
 
 use crate::mask::tty_is_masked;
 use crate::runner::{exact_target, Tmux};
-use crate::text::strip_ansi;
+use crate::text::{py_split, py_splitlines, py_strip, strip_ansi};
 use crate::TmuxError;
 
 /// `data/tmux.conf`un `history-limit` değeriyle aynı.
@@ -67,7 +67,8 @@ fn parse_size(fields: &[&str]) -> Result<PaneSize, TmuxError> {
             cols: num(w)?,
             rows: num(h)?,
             history_size: num(hist)?,
-            alternate_on: num::<u8>(alt)? != 0,
+            // Python `bool(int(alt))`: 0 dışındaki her tamsayı doğru.
+            alternate_on: num::<i64>(alt)? != 0,
         }),
         _ => Err(TmuxError::BadOutput),
     }
@@ -195,8 +196,12 @@ impl Tmux {
             "-F",
             "#{pane_width} #{pane_height} #{history_size} #{alternate_on}",
         ])?;
-        let first = lines(&out).next().ok_or(TmuxError::BadOutput)?;
-        parse_size(&first.split_whitespace().collect::<Vec<_>>())
+        // Python: `stdout.strip().splitlines()[0].split()`.
+        let first = py_splitlines(py_strip(&out))
+            .into_iter()
+            .next()
+            .ok_or(TmuxError::BadOutput)?;
+        parse_size(&py_split(first).collect::<Vec<_>>())
     }
 
     pub fn snapshot(&self, name: &str) -> Result<Snapshot, TmuxError> {
@@ -236,7 +241,10 @@ impl Tmux {
             "-F",
             "#{client_tty}",
         ])?;
-        Ok(out.lines().filter(|l| !l.trim().is_empty()).count())
+        Ok(py_splitlines(&out)
+            .into_iter()
+            .filter(|l| !py_strip(l).is_empty())
+            .count())
     }
 
     /// `client` (ör. `/dev/pts/105`) hangi oturuma bağlı. `Ok(None)` = böyle bir istemci yok (ya da ad geçersiz);
@@ -246,12 +254,14 @@ impl Tmux {
             return Ok(None);
         }
         let out = self.text(&["list-clients", "-F", "#{client_name}\t#{client_session}"])?;
-        Ok(out.lines().find_map(|line| match line.split_once('\t') {
-            Some((name, session)) if name == client && !session.is_empty() => {
-                Some(session.to_string())
-            }
-            _ => None,
-        }))
+        Ok(py_splitlines(&out)
+            .into_iter()
+            .find_map(|line| match line.split_once('\t') {
+                Some((name, session)) if name == client && !session.is_empty() => {
+                    Some(session.to_string())
+                }
+                _ => None,
+            }))
     }
 
     /// `@cops_ctx` kullanıcı seçeneğini yazar; boş etiket seçeneği siler.

@@ -44,6 +44,44 @@ pub(crate) fn py_isspace(c: char) -> bool {
     c.is_whitespace() || ('\x1c'..='\x1f').contains(&c)
 }
 
+/// Python `str.strip()`.
+pub(crate) fn py_strip(s: &str) -> &str {
+    s.trim_matches(py_isspace)
+}
+
+/// Python `str.split()` (ayraçsız): boşluk dizileriyle böler, boş parça yok.
+pub(crate) fn py_split(s: &str) -> impl Iterator<Item = &str> {
+    s.split(py_isspace).filter(|w| !w.is_empty())
+}
+
+/// Python `str.splitlines()`: `\n`, `\r`, `\r\n`, `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028, U+2029 satır sonudur;
+/// metin satır sonuyla bitiyorsa sonda boş satır yoktur.
+pub(crate) fn py_splitlines(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        let mut end = i + c.len_utf8();
+        match c {
+            '\r' => {
+                if let Some(&(j, '\n')) = chars.peek() {
+                    chars.next();
+                    end = j + 1;
+                }
+            }
+            '\n' | '\x0b' | '\x0c' | '\x1c' | '\x1d' | '\x1e' | '\u{85}' | '\u{2028}'
+            | '\u{2029}' => {}
+            _ => continue,
+        }
+        out.push(&s[start..i]);
+        start = end;
+    }
+    if start < s.len() {
+        out.push(&s[start..]);
+    }
+    out
+}
+
 fn plain(line: &str) -> String {
     ANSI_ANY_RE.replace_all(line, "").into_owned()
 }
@@ -218,6 +256,37 @@ mod tests {
         let b = input_box(&format!("üst\n{}alt", screen("x \x1b[90mgri\x1b[39m y"))).unwrap();
         assert_eq!(b.typed, "❯\u{a0}x  y");
         assert_eq!(b.outside, format!("üst\n{rule}\n{rule}\nalt"));
+    }
+
+    /// Beklenen değerler Python 3.10 `str.splitlines/strip/split` çıktısı.
+    #[test]
+    fn str_helpers_match_python() {
+        let cases: [(&str, &[&str], &str, &[&str]); 9] = [
+            ("", &[], "", &[]),
+            ("a", &["a"], "a", &["a"]),
+            ("a\n", &["a"], "a", &["a"]),
+            ("a\n\nb", &["a", "", "b"], "a\n\nb", &["a", "b"]),
+            ("a\r\nb\rc", &["a", "b", "c"], "a\r\nb\rc", &["a", "b", "c"]),
+            (
+                "x\x0by\x0cz\x1cq\x1dr\x1es\x1ft",
+                &["x", "y", "z", "q", "r", "s\x1ft"],
+                "x\x0by\x0cz\x1cq\x1dr\x1es\x1ft",
+                &["x", "y", "z", "q", "r", "s", "t"],
+            ),
+            (
+                "u\u{85}v\u{2028}w\u{2029}",
+                &["u", "v", "w"],
+                "u\u{85}v\u{2028}w",
+                &["u", "v", "w"],
+            ),
+            ("\r\n", &[""], "", &[]),
+            ("\n\n", &["", ""], "", &[]),
+        ];
+        for (input, lines, stripped, words) in cases {
+            assert_eq!(py_splitlines(input), lines, "{input:?}");
+            assert_eq!(py_strip(input), stripped, "{input:?}");
+            assert_eq!(py_split(input).collect::<Vec<_>>(), words, "{input:?}");
+        }
     }
 
     #[test]

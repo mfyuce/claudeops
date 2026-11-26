@@ -47,3 +47,12 @@ fn menu_commands_take_the_client_name_never_the_session_name() {
         }
     }
 }
+
+#[test]
+fn strip_reads_cops_ctx_and_main_conf_stays_plain() {
+    // Python `test_tmux_ctx_strip.StripConfTests`: yeni özellik yalnız sürüm kapılı ayrı dosyada (tmux 3.0a'yı bozmasın).
+    let strip = fs::read_to_string(format!("{DATA}/tmux-strip.conf")).unwrap();
+    assert!(strip.contains("#{@cops_ctx}"));
+    let main = fs::read_to_string(format!("{DATA}/tmux.conf")).unwrap();
+    assert!(!main.contains("cops_ctx"));
+}

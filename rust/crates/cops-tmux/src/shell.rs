@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::proc::pid_childless;
 use crate::runner::{exact_target, Call, Tmux};
+use crate::text::{py_splitlines, py_strip};
 use crate::TmuxError;
 
 /// Python `_GHOST_SHELLS`.
@@ -44,8 +45,14 @@ pub fn tmux_available() -> bool {
 /// Python `tmux_conf_path`: çekirdek `py/` dizinindeki paketli yapılandırma. Dosya orada KALMALI
 /// (`tmux-strip.conf` başlatıcıyı ona göre bulur).
 pub fn tmux_conf_path(core_py_dir: &Path) -> PathBuf {
-    let path = core_py_dir.join("claudeops/data/tmux.conf");
-    path.canonicalize().unwrap_or(path)
+    // Python `Path(__file__).resolve().parent / "data" / "tmux.conf"`: yalnız paket dizini çözülür, dosyanın kendisi
+    // (bağ olsa da) çözülmez.
+    let package = core_py_dir.join("claudeops");
+    package
+        .canonicalize()
+        .unwrap_or(package)
+        .join("data")
+        .join("tmux.conf")
 }
 
 impl Tmux {
@@ -164,9 +171,9 @@ impl Tmux {
 
 /// `komut\toluşma\tpid` satırlarından hayalet kararı.
 fn ghost_rows(out: &str, now: f64, childless: impl Fn(&str) -> bool) -> bool {
-    let rows: Vec<Vec<&str>> = out
-        .lines()
-        .filter(|l| !l.trim().is_empty())
+    let rows: Vec<Vec<&str>> = py_splitlines(out)
+        .into_iter()
+        .filter(|l| !py_strip(l).is_empty())
         .map(|l| l.split('\t').collect())
         .collect();
     if rows.is_empty() || rows.iter().any(|r| r.len() != 3) {
@@ -174,6 +181,7 @@ fn ghost_rows(out: &str, now: f64, childless: impl Fn(&str) -> bool) -> bool {
     }
     let mut oldest = f64::INFINITY;
     for (i, row) in rows.iter().enumerate() {
+        // Python `float()` = Unicode boşluk kırpma (U+001C..U+001F hariç), `str::trim` ile aynı.
         let Ok(created) = row[1].trim().parse::<f64>() else {
             return false;
         };
