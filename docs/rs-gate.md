@@ -1,6 +1,6 @@
 # rs/gate (İz W0-c: kapı)
 
-**Durum (26 Kas 2026 gece):** kod ve testler tamam (aşağıda "Doğrulama"); değişiklikler `rs/gate` dalında
+**Durum (26 Kas 2026 gece):** kod ve testler tamam (aşağıda "Doğrulama"); değişiklikler `rs/gate-r2` dalında
 (ana oturum testleri yeniden koştu: 122 geçti, clippy ve fmt temiz). Canlı `copsd` ikilisine ve servislere dokunulmadı. Birleştirme kararı ve son satır cops'un (kapı: bağımsız
 gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 
@@ -197,4 +197,9 @@ Her test adı `rust/crates` altında grep ile bulundu (betik: eşlik bölüm 7).
   koşuda `r2_maint::b7_watchdog_closes_when_maintenance_stops` bir kez düştü; tekrar koşuda geçti (zamanlamaya duyarlı).
 - Parite yeniden koşulmadı (son koşu `174c18e`); bu düzeltmeler yanıt üreten yolu değiştirmiyor.
 
-BİRLEŞTİRMEYE HAZIR: rs/gate 31ff561 (yukarıdaki doğrulama). Birleştirilmiş ağaçta testler ve bağımsız gözden geçirme cops kapısında.
+Birleştirme kapısı düzeltmeleri (1-8) sonrası, `f780cdc` üstüne rebase edilmiş kod (`af06e80`):
+`cargo fmt --check` ve clippy `-D warnings` temiz, `cargo test --workspace` 146 geçti 0 kaldı; Python tam paket 5677 OK (23 atlandı);
+enterprise `73c3a69` `copsd-ent` (scratchpad kopyası, `patch` ile bu ağaca karşı) 50 geçti 0 kaldı. Parite yeniden koşulmadı.
+
+BİRLEŞTİRMEYE HAZIR: rs/gate-r2 (kod `af06e80`; rebase sonrası force-push yapılmadığı için yeni dal, eski uzak `rs/gate` `aacce15`
+bayat). Birleştirilmiş ağaçta testler ve gözden geçirme cops kapısında.
