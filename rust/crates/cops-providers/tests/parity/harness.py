@@ -9,6 +9,7 @@ anlık görüntüyü Rust tarafı kurar/alır; bu süreç yalnız çağrıyı ya
 """
 import json
 import os
+import pathlib
 import re
 import shutil
 import socket
@@ -93,6 +94,7 @@ import claudeops.extensions as extensions  # noqa: E402
 import claudeops.authz as authz  # noqa: E402
 import claudeops.searxng as searxng  # noqa: E402
 import claudeops.ucli_agents as ucli_agents  # noqa: E402
+import claudeops.ucli_approval as ucli_approval  # noqa: E402
 import claudeops.ucli_ask as ucli_ask  # noqa: E402
 import claudeops.ucli_checks as ucli_checks  # noqa: E402
 import claudeops.ucli_cost as ucli_cost  # noqa: E402
@@ -105,7 +107,7 @@ import claudeops.providers.ucli_provider as ucli_p  # noqa: E402
 import claudeops.providers.copilot_provider as copilot_p  # noqa: E402
 import claudeops.providers.agy_provider as agy_p  # noqa: E402
 import claudeops.providers.codex_provider as codex_p  # noqa: E402
-from claudeops.providers.base import McpServerSpec  # noqa: E402
+from claudeops.providers.base import McpServerSpec, OneshotError  # noqa: E402
 
 assert "claudeops_enterprise" not in sys.modules, "eklenti yüklendi"
 
@@ -1151,7 +1153,105 @@ def op_g8x_netguard(a):
     return out
 
 
-OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith(("op_g8_", "op_g8x_"))})
+# ------------------------------------------------------------------------------------------------- G10: tek atımlık çağrı, onay
+
+def _g10_guard():
+    """G10 işlemleri gerçek alt süreç koşar: ikili YALNIZ geçici ağaçtan gelebilir, onay kökü de ağaçta olmalı."""
+    ucli_client.OWN_UCLI = pathlib.Path(_ROOT) / "yok" / "ucli"
+    assert ucli_approval.ROOT.startswith(_ROOT + "/") and ucli_client.STATE_ROOT.startswith(_ROOT + "/")
+    assert ucli_p._API_KEY_FILE.startswith(_ROOT + "/")
+
+
+class _G10:
+    """Gerçek alt süreç + gerçek `diag_log` + sabit saat."""
+
+    def __init__(self, now=0.0):
+        self.now = now
+
+    def __enter__(self):
+        _g10_guard()
+        self.saved = diaglog.diag_log, ucli_approval.time
+        diaglog.diag_log = _ORIG_DIAG
+        ucli_approval.time = types.SimpleNamespace(time=lambda: self.now)
+        subprocess.run, subprocess.Popen = _REAL_RUN, _REAL_POPEN
+
+    def __exit__(self, *exc):
+        subprocess.run, subprocess.Popen = _fake_run, _FakePopen
+        diaglog.diag_log, ucli_approval.time = self.saved
+        if os.path.isfile(diaglog.diag_log_path()):
+            _fix_ts(diaglog.diag_log_path())
+
+
+def _g10_text(msg):
+    """JSON ayrıştırma ayrıntısı (`JSONDecodeError` metni) taşınmaz."""
+    return re.sub(r"\Aucli çıktısı JSON değildi: [^\n]*\nstdout=", "ucli çıktısı JSON değildi\nstdout=",
+                  re.sub(r"\Aucli: ucli çıktısı JSON değildi: [^\n]*\nstdout=", "ucli: ucli çıktısı JSON değildi\nstdout=", msg))
+
+
+def op_g10_chat(a):
+    out = []
+    with _G10(a.get("now", 0.0)):
+        for call in a["calls"]:
+            try:
+                out.append(["ok", ucli_client.ucli_chat_once(call["root"], call["prompt"], **call.get("kw", {}))])
+            except ucli_client.UcliError as e:
+                out.append(["err", _g10_text(str(e))])
+    return out
+
+
+def op_g10_oneshot(a):
+    out = []
+    with _G10():
+        for call in a["calls"]:
+            prov = providers.get_provider(call["cli"])
+            if call.get("argv") is not None:
+                prov.oneshot_argv = lambda prompt, model, argv=call["argv"]: argv
+            try:
+                out.append(["ok", prov.oneshot(call["prompt"], call.get("model"), call["cwd"], timeout=call["timeout"])])
+            except OneshotError as e:
+                out.append(["err", _g10_text(str(e))])
+            finally:
+                prov.__dict__.pop("oneshot_argv", None)
+    return out
+
+
+def op_g10_approval(a):
+    out = []
+    with _G10(a["now"]):
+        for step, *args in a["steps"]:
+            try:
+                if step == "register":
+                    key, cwd, session, argv, owner = args
+                    out.append(["ok", ucli_approval.register(key, cwd, session, argv, owner=owner)])
+                elif step == "set_state":
+                    out.append(["ok", ucli_approval.set_state(*args)])
+                elif step == "dir_for":
+                    out.append(["ok", ucli_approval.dir_for(args[0], create=args[1])])
+                else:
+                    out.append(["ok", ucli_approval._slot_free(ucli_approval._load_index(), args[0])])
+            except TypeError:
+                out.append(["err", "TypeError", ""])
+            except Exception as e:      # noqa: BLE001
+                out.append(["err", type(e).__name__, str(e)])
+    return out
+
+
+def op_g10_pure(a):
+    return {
+        "suspended": [ucli_approval.parse_suspended(s) for s in a.get("suspended") or []],
+        "run_key": [bool(ucli_approval._KEY.match(s)) for s in a.get("keys") or []],
+        "id": [bool(ucli_approval._ID.match(s)) for s in a.get("ids") or []],
+        "env_name": [bool(ucli_client._SAFE_ENV_NAME_RE.fullmatch(s)) for s in a.get("env_names") or []],
+        "budget": [ucli_client.mark_budget_exhausted(json.loads(s)) for s in a.get("budget") or []],
+        "redact": [ucli_client._redact(t, k) for t, k in a.get("redact") or []],
+        "argv": [ucli_client.build_chat_argv(
+            c["binary"], c["root"], repl=c["repl"], session=c["session"], model=c["model"], endpoint=c["endpoint"],
+            api_key_env=c["api_key_env"], with_mcp=c["with_mcp"], max_steps=c["max_steps"],
+            extra_args=c["extra_args"]) for c in a.get("argv") or []],
+    }
+
+
+OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith(("op_g8_", "op_g8x_", "op_g10_"))})
 
 
 def main():

@@ -133,6 +133,13 @@ mod fam_searxng;
 fn parity_searxng() {
     fam_searxng::run();
 }
+#[path = "parity/fam_oneshot.rs"]
+mod fam_oneshot;
+
+#[test]
+fn parity_oneshot() {
+    fam_oneshot::run();
+}
 #[path = "parity/fake_pane.rs"]
 mod fake_pane;
 #[path = "parity/fam_tui.rs"]

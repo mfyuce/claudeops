@@ -3,11 +3,14 @@
 //! [`crate::AgySidStore`] ([`docs::DocAgySidStore`]). Çekirdek modüller saf kalır; dosya, süreç, ağ ve saat yalnız
 //! buradadır.
 //!
+//! Tek atımlık çağrı ([`oneshot::OneShot`]) ve onay kaydının yazılan kısmı ([`approval::ApprovalStore`]).
+//!
 //! [`probe::CostGate`] (gerçek: [`ledger::CostLedger`]) ve [`probe::SearchUrl`] (gerçek:
 //! [`searxng::ManagedSearch`]) kurucuya dışarıdan verilir (süreç başına tek örnek). Başka ize ait bağımlılıklar:
 //! [`probe::ProjectDirs`] (rs/proc `encode_cwd`), [`docs::DocStore`]un `db` kipi (rs/state `statedocs`).
 
 pub mod agents;
+pub mod approval;
 pub mod checks;
 pub mod diaglog;
 pub mod docs;
@@ -19,6 +22,7 @@ pub mod http;
 pub mod ledger;
 pub mod lock;
 pub mod modelio;
+pub mod oneshot;
 pub mod oserr;
 pub mod pathexec;
 pub mod probe;

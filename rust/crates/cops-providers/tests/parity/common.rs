@@ -376,7 +376,11 @@ pub fn case_env(e: &Env, case: &Case) -> OsEnv {
 
 /// Geçici ağaç üzerinde GERÇEK uygulayıcı.
 pub fn real_probe(e: &Env, case: &Case) -> RealProbe {
-    let paths = e.paths();
+    real_probe_at(e, case, e.paths())
+}
+
+/// [`real_probe`], başka yollarla (ör. `repo_dir` ağaca çevrilmiş).
+pub fn real_probe_at(e: &Env, case: &Case, paths: Paths) -> RealProbe {
     let env = case_env(e, case);
     let deps = RealDeps {
         docs: Arc::new(FileDocs::new(&paths, env.clone())),

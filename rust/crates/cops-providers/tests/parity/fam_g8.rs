@@ -505,7 +505,7 @@ fn jsonable(v: &Py) -> Value {
 }
 
 /// Zaman damgası iki tarafta da sabit metne çevrilir.
-fn fix_ts(path: &str) {
+pub fn fix_ts(path: &str) {
     let Ok(text) = std::fs::read_to_string(path) else { return };
     let re = regex::Regex::new(r#""ts": "\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d""#).unwrap();
     std::fs::write(path, re.replace_all(&text, "\"ts\": \"T\"").as_bytes()).unwrap();

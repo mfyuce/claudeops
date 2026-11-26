@@ -75,6 +75,10 @@ impl Paths {
     pub fn ucli_ask_root(&self) -> String {
         format!("{}/ucli_ask", self.claudeops_dir)
     }
+    /// `ucli_approval.ROOT`.
+    pub fn ucli_approval_root(&self) -> String {
+        format!("{}/ucli_approval", self.claudeops_dir)
+    }
     /// `AGY_SIDS_JSON`.
     pub fn agy_sids_json(&self) -> String {
         format!("{}/agy_sids.json", self.claudeops_dir)

@@ -6,6 +6,7 @@
 
 pub mod agy;
 pub mod agy_resume;
+pub mod approval;
 pub mod bg_work;
 pub mod chat;
 pub mod claude;
@@ -19,6 +20,7 @@ pub mod effort;
 pub mod live;
 pub mod model_sources;
 pub mod ojson;
+pub mod oneshot;
 pub mod probe;
 pub mod pyfmt;
 pub mod pyjson;
