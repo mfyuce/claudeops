@@ -182,7 +182,7 @@ pub fn call(req: &Map, lenses: &mut LensRegistry) -> R {
     Ok(match name.as_str() {
         "is_capacity_error" => b(targets::is_capacity_error(&tx)),
         "capacity_retry_seconds" => f(targets::capacity_retry_seconds(&tx)),
-        "counts_as_attempt" => b(targets::counts_as_attempt(Some(a.raw("rec")))),
+        "counts_as_attempt" => b(targets::counts_as_attempt(Some(a.raw("rec"))).map_err(e)?),
         "max_attempts" => i(targets::max_attempts(&a.s("mode"))),
         "parse_slots" => Json::Object(
             targets::parse_slots(&a.s("spec")).into_iter().map(|(m, n)| (m.to_string(), i(n as i64))).collect(),

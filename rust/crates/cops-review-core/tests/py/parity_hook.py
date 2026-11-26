@@ -144,6 +144,8 @@ def adapt(name, a):
         return {"cfg": {f: getattr(a["cfg"], f) for f in dir(a["cfg"]) if f.startswith("review_") and isinstance(getattr(a["cfg"], f), str)}}, extra, post
     if name == "effort_for":
         cfg = {f: getattr(a["cfg"], f) for f in dir(a["cfg"]) if f.startswith("review_") and isinstance(getattr(a["cfg"], f), str)}
+        for m in ("claude", "codex", "copilot"):      # Python `getattr(..., "")`: eksik alan boş, Rust varsayılanı değil
+            cfg[f"review_{m}_effort"] = getattr(a["cfg"], f"review_{m}_effort", "")
         t = a["target"]
         if t is not None and not isinstance(t, rv.ReviewTarget):
             raise Skip("hedef sahte nesne")
@@ -195,7 +197,8 @@ def adapt(name, a):
             req.update(excluded=list(a["excluded"]), days=float(a["days"]))
         return req, extra, post
     if name in ("reconcile_copilot_blocks", "reconcile_agy_blocks"):
-        req = dict(a, hist=json.loads(json.dumps(a["hist"])), now=float(a["now"]))
+        extra["now"] = float(a["now"])      # üretimde `time.time()`: iki tarafa aynı tip
+        req = dict(a, hist=json.loads(json.dumps(a["hist"])), now=extra["now"])
         if name == "reconcile_agy_blocks":
             extra["target_keys"] = req["target_keys"] = list(a["target_keys"])
         else:
@@ -268,7 +271,9 @@ def call_store(name, fn, bound):
             value = enc(result)
         if compare(name, req, ok, value if ok else repr(exc), loose):
             after, theirs = _read(path), _read(mine)
-            if after != theirs:
+            if name.startswith("load_") and theirs == before and after is not None and after != before:
+                skip(name, "okuma sırasında başka iş parçacığı yazdı (dosya karşılaştırılmadı)")
+            elif after != theirs:
                 try:
                     equal = after is not None and theirs is not None and same(json.loads(after), json.loads(theirs), loose)
                 except ValueError:
@@ -310,7 +315,9 @@ def wrap(name, fn):
             try:
                 req, extra, post = adapt(name, dict(bound.arguments))
                 bound.arguments.update(extra)
-                if post is None:
+                if name == "export_root":
+                    pass                 # `resolved` çağrı SIRASINDA dolar: kodlama sonra
+                elif post is None:
                     req = enc(req)       # girdi çağrıdan ÖNCE sabitlenir
                 else:
                     req = json.loads(json.dumps(enc(req)))

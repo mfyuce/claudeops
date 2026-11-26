@@ -243,7 +243,10 @@ class TestEdges(unittest.TestCase):
             h = {"pairs": pairs, "blocks": blocks, "runs": []}
             heads = {"a": "h1", "b": "h2", "c": ""}
             rec = rnd.choice(list(pairs.values()) or [None])
-            rv.counts_as_attempt(rec)
+            try:
+                rv.counts_as_attempt(rec)
+            except AttributeError:      # dolu ama sözlük olmayan kayıt: Rust da Err dönmeli
+                pass
             try:
                 rv.blocked_modes(h, NOW)
                 rv.next_review(pool, h, targets, NOW, busy_projects=rnd.sample(["a", "b"], rnd.randint(0, 1)),

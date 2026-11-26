@@ -7,6 +7,7 @@ use crate::parse::Finding;
 use crate::planner::pair_key;
 use crate::py;
 use crate::targets::*;
+use crate::unicode13::unassigned;
 use cops_state::json::{Json, Map};
 use cops_state::statedocs::Read;
 use cops_state::{Backend, StateDocs};
@@ -530,7 +531,16 @@ pub fn round_to(x: f64, n: usize) -> f64 {
 /// Büyük/küçük harf + aksan katlama (Türkçe İ/I/ı/i dahil).
 fn fold(v: &str) -> String {
     let t = v.replace('İ', "I").replace('ı', "i");
-    let plain: String = t.nfkd().filter(|c| canonical_combining_class(*c) == 0).collect();
+    // Python 3.10 (Unicode 13) tanımadığı noktayı ayrıştırmaz, ccc=0 sayar: o noktalarda böl, aralarını NFKD'le.
+    let mut plain = String::new();
+    for part in t.split_inclusive(unassigned) {
+        let (head, tail) = match part.chars().next_back().filter(|c| unassigned(*c)) {
+            Some(c) => (&part[..part.len() - c.len_utf8()], Some(c)),
+            None => (part, None),
+        };
+        plain.extend(head.nfkd().filter(|c| canonical_combining_class(*c) == 0));
+        plain.extend(tail);
+    }
     py::casefold(&plain)
 }
 

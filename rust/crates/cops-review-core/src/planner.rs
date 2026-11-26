@@ -178,7 +178,7 @@ pub fn next_review(
             if let Some(r) = recs[i] {
                 if py::str_in(r.get("status"), &["error", "model_fallback", "partial"])
                     && py::num(r.get("attempts")).trunc() >= max_attempts(&t.mode) as f64
-                    && counts_as_attempt(raw[i])
+                    && counts_as_attempt(raw[i])?
                     && now - py::num(r.get("started_at")) < opts.window
                 {
                     continue;

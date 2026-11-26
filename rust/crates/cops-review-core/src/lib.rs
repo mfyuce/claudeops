@@ -16,6 +16,7 @@ pub mod redact;
 pub mod report;
 pub mod store;
 pub mod targets;
+mod unicode13;
 
 pub use error::{Error, Result};
 pub use parse::{Finding, Verdict};

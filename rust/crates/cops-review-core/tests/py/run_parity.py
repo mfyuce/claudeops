@@ -29,6 +29,8 @@ rep = json.load(open(os.environ["COPS_REV_PARITY_REPORT"], encoding="utf-8"))
 calls = sum(rep["calls"].values())
 print(f"modül: {len(mods)}  karşılaştırılan çağrı: {calls}  işlev: {len(rep['calls'])}  fark: {len(rep['mismatches'])}  "
       f"atlanan: {sum(rep['skipped'].values())}  python testleri rc={p.returncode}")
+with open(os.environ["COPS_REV_PARITY_REPORT"] + ".stderr", "w", encoding="utf-8") as f:
+    f.write(p.stderr)
 print(p.stderr[-1500:])
 for m in rep["mismatches"][:25]:
     print("FARK", json.dumps(m, ensure_ascii=False)[:1500])

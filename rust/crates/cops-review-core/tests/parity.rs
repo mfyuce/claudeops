@@ -54,10 +54,15 @@ fn python_suite_and_edges_match() {
     let here = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/py");
     let report = std::env::var_os("COPS_REV_PARITY_REPORT")
         .map_or_else(|| tmp.path().join("report.json"), PathBuf::from);
+    // Geçici `HOME` kullanıcı site-packages'ını (websockets vb.) gizlemesin.
+    let userbase = std::env::var_os("PYTHONUSERBASE")
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".local").into_os_string()))
+        .unwrap_or_default();
     let out = Command::new("python3")
         .arg(here.join("run_parity.py"))
         .env("HOME", &home)
         .env("CLAUDEOPS_DIR", &state)
+        .env("PYTHONUSERBASE", userbase)
         .env("CLAUDEOPS_EXTENSIONS", "off")
         .env_remove("CLAUDEOPS_STORE_BACKEND")
         .env_remove("CLAUDEOPS_DB_URL")
