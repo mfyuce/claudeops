@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
+import fcntl
 import hmac
 import os
 import secrets
+import tempfile
 from typing import Any, Dict, Mapping, Optional
 
 LOOPBACK = ("127.0.0.1", "::1")
@@ -34,23 +36,28 @@ def read_secret() -> str:
 
 
 def ensure_secret() -> str:
-    """Yoksa 0600 ile rastgele bir gizli üretir (atomik, O_EXCL); varsa mevcut değeri döner."""
+    """Geçerli gizli varsa onu döner; yoksa (dosya yok, boş, bozuk ya da izni gevşemiş = sızmış sayılır) YENİ gizli üretir.
+    Kilit altında, 0600 geçici dosya + `os.replace`: eşzamanlı çağıranlar diskteki tek değeri döner, okuyan yarım dosya görmez."""
     p = secret_path()
     cur = read_secret()
     if cur:
         return cur
-    os.makedirs(os.path.dirname(p), mode=0o700, exist_ok=True)
-    val = secrets.token_hex(32)
-    try:
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        os.chmod(p, 0o600)               # izin gevşemişti: sıkılaştır, içeriği koru (boşsa yeniden yaz)
-        with open(p, encoding="utf-8") as fh:
-            if fh.read().strip():
-                return read_secret()
-        fd = os.open(p, os.O_WRONLY | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(val + "\n")
+    d = os.path.dirname(p)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    with os.fdopen(os.open(p + ".lock", os.O_WRONLY | os.O_CREAT, 0o600), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)          # dosya kapanınca bırakılır
+        cur = read_secret()
+        if cur:
+            return cur
+        val = secrets.token_hex(32)
+        fd, tmp = tempfile.mkstemp(prefix=".front.secret.", dir=d)    # mkstemp 0600 açar
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(val + "\n")
+            os.replace(tmp, p)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
     return val
 
 
