@@ -1251,9 +1251,18 @@ fn root_cause(e: &dyn std::error::Error) -> String {
     cur.to_string()
 }
 
-/// Dakikada en çok `LOG_PER_WINDOW` satır; atlananların sayısı sonraki pencerenin ilk satırıyla bildirilir.
+/// Dakikada en çok `LOG_PER_WINDOW` satır; atlananların sayısı pencere bitince (ya da daha önce gelen sonraki pencerenin ilk
+/// satırıyla) bildirilir.
 const LOG_PER_WINDOW: u32 = 30;
 const LOG_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[derive(Debug, PartialEq)]
+enum Admit {
+    /// Yaz; önceden bu kadar satır atlandı.
+    Write(u64),
+    /// Yazma. `Some` yalnız penceredeki ilk atlamada: sayının bildirileceği ana kalan süre.
+    Skip(Option<std::time::Duration>),
+}
 
 struct LogLimiter {
     start: Option<std::time::Instant>,
@@ -1270,21 +1279,34 @@ impl LogLimiter {
         }
     }
 
-    /// `None` = yazma; `Some(n)` = yaz, önceden `n` satır atlandı.
-    fn admit(&mut self, now: std::time::Instant) -> Option<u64> {
-        if self
-            .start
+    fn expired(&self, now: std::time::Instant) -> bool {
+        self.start
             .is_none_or(|s| now.duration_since(s) >= LOG_WINDOW)
-        {
+    }
+
+    fn admit(&mut self, now: std::time::Instant) -> Admit {
+        if self.expired(now) {
             self.start = Some(now);
             self.written = 0;
         }
         if self.written >= LOG_PER_WINDOW {
             self.skipped += 1;
-            return None;
+            let left = self
+                .start
+                .map(|s| LOG_WINDOW.saturating_sub(now.duration_since(s)));
+            return Admit::Skip(left.filter(|_| self.skipped == 1));
         }
         self.written += 1;
-        Some(std::mem::take(&mut self.skipped))
+        Admit::Write(std::mem::take(&mut self.skipped))
+    }
+
+    /// Pencere bittiyse henüz bildirilmemiş atlanan sayısı (bir kez); yoksa 0.
+    fn flush(&mut self, now: std::time::Instant) -> u64 {
+        if self.expired(now) {
+            std::mem::take(&mut self.skipped)
+        } else {
+            0
+        }
     }
 }
 
@@ -1292,19 +1314,32 @@ impl LogLimiter {
 fn log_limited(status: StatusCode, line: &str) {
     static AUTH: std::sync::Mutex<LogLimiter> = std::sync::Mutex::new(LogLimiter::new());
     static OTHER: std::sync::Mutex<LogLimiter> = std::sync::Mutex::new(LogLimiter::new());
-    let bucket = if status == StatusCode::UNAUTHORIZED {
-        &AUTH
+    let (bucket, name) = if status == StatusCode::UNAUTHORIZED {
+        (&AUTH, "401")
     } else {
-        &OTHER
+        (&OTHER, "diğer")
     };
     let admitted = bucket
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .admit(std::time::Instant::now());
     match admitted {
-        Some(0) => eprintln!("{line}"),
-        Some(n) => eprintln!("{line} (önceki {n} satır atlandı)"),
-        None => {}
+        Admit::Write(0) => eprintln!("{line}"),
+        Admit::Write(n) => eprintln!("{line} (önceki {n} satır atlandı)"),
+        Admit::Skip(Some(left)) => {
+            // Sel bitip yeni hata gelmese de sayı kaybolmasın. Yalnız istek işlerken (tokio içinde) çağrılır.
+            tokio::spawn(async move {
+                tokio::time::sleep(left).await;
+                let n = bucket
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .flush(std::time::Instant::now());
+                if n > 0 {
+                    eprintln!("copsd: mount hata: {name} kovasında {n} satır atlandı");
+                }
+            });
+        }
+        Admit::Skip(None) => {}
     }
 }
 
@@ -1381,13 +1416,31 @@ mod mount_log_tests {
         let mut lim = LogLimiter::new();
         let t0 = std::time::Instant::now();
         for _ in 0..LOG_PER_WINDOW {
-            assert_eq!(lim.admit(t0), Some(0));
+            assert_eq!(lim.admit(t0), Admit::Write(0));
         }
-        for _ in 0..3 {
-            assert_eq!(lim.admit(t0), None);
+        let later = t0 + LOG_WINDOW / 4;
+        assert_eq!(
+            lim.admit(later),
+            Admit::Skip(Some(LOG_WINDOW - LOG_WINDOW / 4))
+        );
+        for _ in 0..2 {
+            assert_eq!(lim.admit(later), Admit::Skip(None));
         }
-        assert_eq!(lim.admit(t0 + LOG_WINDOW), Some(3));
-        assert_eq!(lim.admit(t0 + LOG_WINDOW), Some(0));
+        assert_eq!(lim.admit(t0 + LOG_WINDOW), Admit::Write(3));
+        assert_eq!(lim.admit(t0 + LOG_WINDOW), Admit::Write(0));
+    }
+
+    #[test]
+    fn skipped_count_is_flushed_once_after_the_window_without_a_new_line() {
+        let mut lim = LogLimiter::new();
+        let t0 = std::time::Instant::now();
+        for _ in 0..LOG_PER_WINDOW + 5 {
+            lim.admit(t0);
+        }
+        assert_eq!(lim.flush(t0 + LOG_WINDOW / 2), 0);
+        assert_eq!(lim.flush(t0 + LOG_WINDOW), 5);
+        assert_eq!(lim.flush(t0 + LOG_WINDOW), 0);
+        assert_eq!(lim.admit(t0 + LOG_WINDOW), Admit::Write(0));
     }
 
     #[test]
