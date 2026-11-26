@@ -404,6 +404,40 @@ class TestEdges(unittest.TestCase):
         with self.assertRaises(KeyError):
             rv.export_lines([{}], "")
 
+    def test_git_changed_after_review(self):
+        """Gerçek git deposu: commit zamanı mtime'ı ezer; `--literal-pathspecs` YOK (Python), `[a].py` `a.py`ye de uyar."""
+        import subprocess
+        d = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        g = d + "/g"
+        os.makedirs(g)
+
+        def git(*a, when=None):
+            env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+            if when is not None:
+                env.update(GIT_AUTHOR_DATE=f"@{when} +0000", GIT_COMMITTER_DATE=f"@{when} +0000")
+            subprocess.run(["git", "-C", g, "-c", "user.name=t", "-c", "user.email=t@t", *a], check=True,
+                           capture_output=True, env=env, timeout=30)
+
+        for n in ("a.py", "[a].py", "b.py", "c.py", "d e.py"):
+            with open(os.path.join(g, n), "w") as f:
+                f.write("x")
+        git("init", "-q")
+        git("add", "--", "a.py", "d e.py")
+        git("commit", "-qm", "ileri", when=2_000_000_000)
+        git("add", "b.py")
+        git("commit", "-qm", "eski", when=1000)
+        rep = d + "/r.md"
+        with open(rep, "w") as f:
+            f.write("r")
+        os.utime(rep, (1_900_000_000, 1_900_000_000))
+        for n, t in (("a.py", 1000), ("[a].py", 1000), ("b.py", 1_950_000_000), ("c.py", 1_950_000_000), ("d e.py", 1000)):
+            os.utime(os.path.join(g, n), (t, t))
+        got = {n: rv.changed_after_review({"where": n + ":1", "review_file": rep}, g)
+               for n in ("a.py", "[a].py", "b.py", "c.py", "d e.py")}
+        self.assertEqual(got, {"a.py": True, "[a].py": True, "b.py": False, "c.py": True, "d e.py": False})
+        rv.changed_after_review({"where": "a.py", "review_file": rep}, d)     # .git yok: yalnız mtime
+
     def test_usage_files(self):
         d = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, d, True)
