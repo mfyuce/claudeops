@@ -796,7 +796,8 @@ def find_outer_bash_pids(name: str) -> List[tuple]:
         return native
 
     needles = (
-        f"-s {shlex.quote(name)} -c ",              # spawn.py's initial window
+        f"-s {shlex.quote(name)} -c ",              # spawn.py's initial window (eski biçim: `;` kaçışsız)
+        f"-s {shlex.quote(_tmux_arg(name))} -c ",    # güncel biçim: sondaki `;` kaçışlı
         f"attach-session -t {shlex.quote(name)};",  # open_window()'s extra window(s) (eski biçim)
         f"attach-session -t {shlex.quote(_exact(name))};",   # güncel biçim: `-t =NAME` (tmux_attach_shell_fragment)
     )
