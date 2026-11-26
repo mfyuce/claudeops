@@ -55,5 +55,13 @@ class Toolchain(unittest.TestCase):
             self.assertIn("2 aday", err)
 
 
+class PathList(unittest.TestCase):
+    def test_a_name_ending_in_a_newline_is_not_a_command(self):
+        with tempfile.TemporaryDirectory() as d:
+            _script(os.path.join(d, "iyi"), "true")
+            _script(os.path.join(d, "kotu\n"), "true")
+            self.assertEqual(uso.path_executables(d), ["iyi"])
+
+
 if __name__ == "__main__":
     unittest.main()
