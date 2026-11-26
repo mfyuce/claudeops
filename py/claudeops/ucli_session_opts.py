@@ -373,7 +373,7 @@ def _rustup_default_toolchain(rustup_home: str) -> str:
                 m = re.match(r'\s*default_toolchain\s*=\s*"([^"]+)"', line)
                 if m:
                     return m.group(1).strip()
-    except OSError:
+    except (OSError, UnicodeDecodeError):     # bozuk dosya = varsayılan bilinmiyor (birden çok adayda "belirsiz" reddi)
         pass
     return ""
 

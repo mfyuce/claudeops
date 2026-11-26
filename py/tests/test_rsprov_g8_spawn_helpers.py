@@ -39,5 +39,21 @@ class HelpProbe(unittest.TestCase):
             self.assertEqual(left, b"gizli-girdi\n")
 
 
+class Toolchain(unittest.TestCase):
+    def test_a_non_utf8_rustup_settings_file_means_ambiguous_not_an_exception(self):
+        with tempfile.TemporaryDirectory() as home:
+            for name in ("a", "b"):
+                os.makedirs(os.path.join(home, ".rustup", "toolchains", name, "bin"))
+                for tool in ("cargo", "rustc"):
+                    open(os.path.join(home, ".rustup", "toolchains", name, "bin", tool), "w").close()
+            with open(os.path.join(home, ".rustup", "settings.toml"), "wb") as f:
+                f.write(b'\xff\ndefault_toolchain = "a"\n')
+            with mock.patch.dict(os.environ, {"HOME": home}):
+                os.environ.pop("RUSTUP_TOOLCHAIN", None)
+                tc, err = uso.rust_toolchain()
+            self.assertEqual(tc, {})
+            self.assertIn("2 aday", err)
+
+
 if __name__ == "__main__":
     unittest.main()
