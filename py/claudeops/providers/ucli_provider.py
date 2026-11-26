@@ -93,6 +93,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import psutil
 
+from .. import preview
 from .. import searxng
 from .. import ucli_agents
 from ..diaglog import diag_log
@@ -328,6 +329,8 @@ def _sync_api_key_file() -> bool:
     YOKSA dosyaya DOKUNMAZ — elle (ör. eski `read -s` deneme sürecinden)
     oluşturulmuş bir dosya varsa onu KORUR, sessizce silmez."""
     key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip()
+    if preview.active():      # gerçek koşunun döneceği cevap; dosyaya dokunulmaz
+        return bool(key) or (not os.path.isfile(_API_KEY_MANAGED_MARKER) and os.path.isfile(_API_KEY_FILE))
     if not key:
         if os.path.isfile(_API_KEY_MANAGED_MARKER):
             for p in (_API_KEY_FILE, _API_KEY_MANAGED_MARKER):
@@ -436,7 +439,8 @@ def _metrics_file_args(binary: str, session_name: str = "") -> List[str]:
         from ..paths import CLAUDEOPS_DIR
         safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in session_name)
         d = os.path.join(CLAUDEOPS_DIR, "ucli_metrics")
-        os.makedirs(d, mode=0o700, exist_ok=True)
+        if not preview.active():
+            os.makedirs(d, mode=0o700, exist_ok=True)
         return ["--metrics-file", os.path.join(d, safe + ".jsonl")]
     except Exception:
         return []
@@ -585,7 +589,8 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
             diag_log("ucli_instructions_skipped", name=session_name, cwd=cwd, limit=_INSTRUCTIONS_MAX_BYTES)
             continue
         if flag == "--usage-log":
-            os.makedirs(ucli_cost.USAGE_DIR, mode=0o700, exist_ok=True)
+            if not preview.active():
+                os.makedirs(ucli_cost.USAGE_DIR, mode=0o700, exist_ok=True)
             argv = _set_flag_value(argv, flag, ucli_cost.log_path(session_name))
         elif val == "":
             if flag not in argv:
@@ -652,6 +657,8 @@ def register_mcp(binary: str, cwd: str, spec: McpServerSpec, session_name: str =
         if os.path.islink(os.path.join(cwd, ".ucli")):
             diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=".ucli is a symlink")
             return False
+        if preview.active():      # kayıt silinmez/yazılmaz, `mcp add` koşmaz; komut satırı başarılı kayıttaki gibi
+            return True
         if os.path.lexists(path):
             os.unlink(path)         # symlink'se hedefi değil bağlantının kendisi silinir
     except OSError as e:
@@ -687,10 +694,11 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         if wire and not binary_supports_flag(binary, "--provider"):
             raise ValueError("ucli ikilisi --provider bayrağını tanımıyor")
         path = _service_key_file(service)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)   # symlink'i izleyip başka yere yazmasın
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(key)
+        if not preview.active():
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)   # symlink'i izleyip başka yere yazmasın
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(key)
         argv = _set_flag_value(argv, "--endpoint", ep)
         argv = _set_flag_value(argv, "--api-key-env", env_name)
         if wire:
@@ -710,7 +718,8 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     if "--usage-log" not in argv:       # Claude hizmeti kendi günlüğünü yukarıda ekledi; öteki TÜM açılışlar (Evren dahil) ayrı dizine yazar
         if binary_supports_flag(argv[0], "--usage-log"):
             try:
-                os.makedirs(ucli_cost.OTHER_DIR, mode=0o700, exist_ok=True)
+                if not preview.active():
+                    os.makedirs(ucli_cost.OTHER_DIR, mode=0o700, exist_ok=True)
                 argv = _set_flag_value(argv, "--usage-log", ucli_cost.other_log_path(session_name))
             except OSError as e:
                 diag_log("ucli_usage_log_dir_failed", name=session_name, error=str(e)[:120])
@@ -777,7 +786,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             diag_log("ucli_flag_unsupported", name=session_name, flag="--ask-dir", binary=binary)
             raise ValueError("ucli ikilisi --ask-dir bayrağını tanımıyor (soru kanalı yarım uygulanmaz)")
         from .. import ucli_ask
-        argv = _set_flag_value(argv, "--ask-dir", ucli_ask.dir_for(session_name, create=True))
+        argv = _set_flag_value(argv, "--ask-dir", ucli_ask.dir_for(session_name, create=not preview.active()))
     if opts.get("exec_cmds"):
         names, err = expand_exec_cmds(opts["exec_cmds"], path_executables())
         if err:

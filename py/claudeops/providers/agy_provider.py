@@ -77,6 +77,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..atomic_json import atomic_write_json, file_lock
+from .. import preview
 from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
@@ -216,6 +217,8 @@ def _remember_agy_sid(session_name: str, sid: str) -> None:
     """`extract_info()`'nun her discovery tick'inde çağırdığı öğrenme adımı —
     zaten aynı değer kayıtlıysa diske hiç yazmaz (4s'lik poll döngüsünde
     gereksiz I/O yapmamak için)."""
+    if preview.active():            # kuru çalıştırmanın süreç taraması öğrenilen sid'i yazmaz
+        return
     if _load_agy_sids().get(session_name) == sid:
         return                      # ucuz yol: kilitsiz
     from .. import statedocs

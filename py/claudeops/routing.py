@@ -14,6 +14,7 @@ import os
 import shutil
 from typing import Dict, Optional
 
+from . import preview
 from .atomic_json import atomic_write_text
 from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
@@ -59,6 +60,8 @@ def claude_guidance_path() -> Optional[str]:
             return None
         except OSError:
             pass
+        if preview.active():
+            return OVERRIDE_PATH
         os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
         from .atomic_json import atomic_write_text
         atomic_write_text(OVERRIDE_PATH, text)

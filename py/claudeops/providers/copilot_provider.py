@@ -116,6 +116,7 @@ SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
 # olduğu için dosya içeriği `export KEY=VALUE` satırları (shlex-quoted).
 from ..envnames import is_safe_env_name
 from ..atomic_json import atomic_write_text
+from .. import preview
 _BYOK_ENV_FILE = os.path.expanduser("~/.claude/claudeops/copilot_byok_env")
 _BYOK_ENV_MANAGED_MARKER = _BYOK_ENV_FILE + ".managed"  # bkz. ucli_provider.py'nin AYNI deseni
 
@@ -131,6 +132,8 @@ def _sync_byok_env_file() -> bool:
     notu, spawn.py'nin env_prefix'i için de geçerli aynı ilke)."""
     env = byok_env_for("copilot")
     safe_env = {k: v for k, v in env.items() if is_safe_env_name(k)}
+    if preview.active():      # gerçek koşunun döneceği cevap; dosyaya dokunulmaz
+        return bool(safe_env) or (not os.path.isfile(_BYOK_ENV_MANAGED_MARKER) and os.path.isfile(_BYOK_ENV_FILE))
     if not safe_env:
         if os.path.isfile(_BYOK_ENV_MANAGED_MARKER):
             for p in (_BYOK_ENV_FILE, _BYOK_ENV_MANAGED_MARKER):
@@ -217,7 +220,7 @@ def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
     metin üzerinde yalnız diziye bir giriş eklenir; anahtar yoksa dokunulmaz. True = yazıldı."""
     path = config_path or os.path.join(os.environ.get("COPILOT_HOME") or os.path.expanduser("~/.copilot"), "config.json")
     try:
-        if not cwd or not os.path.isabs(cwd):
+        if preview.active() or not cwd or not os.path.isabs(cwd):
             return False
         with open(path, encoding="utf-8") as f:
             text = f.read()

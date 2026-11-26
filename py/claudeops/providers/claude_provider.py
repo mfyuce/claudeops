@@ -12,6 +12,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
+from .. import preview
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
 
@@ -430,6 +431,8 @@ def _mcp_config_path(spec: McpServerSpec) -> str:
 
 def _write_mcp_config_file(spec: McpServerSpec) -> str:
     path = _mcp_config_path(spec)
+    if preview.active():
+        return path
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = {"mcpServers": {spec.name: {"command": spec.command, "args": list(spec.args)}}}
     from claudeops.atomic_json import atomic_write_json     # benzersiz tmp adı: eşzamanlı spawn'lar aynı .tmp'yi ezmesin

@@ -14,6 +14,7 @@ import json
 import os
 
 from .paths import CLAUDEOPS_DIR
+from . import preview
 
 # CLAUDEOPS_DIAG_LOG: testlerin gerçek diag.log'a yazmaması için yol geçersiz kılma (conftest.py / steward_testlib).
 DIAG_LOG_DEFAULT = os.path.join(CLAUDEOPS_DIR, "diag.log")
@@ -37,6 +38,8 @@ def _rotate_if_big(path: str) -> None:
 
 
 def diag_log(event: str, **data) -> None:
+    if preview.active():      # kuru çalıştırma hiçbir dosya yazmaz
+        return
     try:
         _rotate_if_big(diag_log_path())
         entry = {"ts": datetime.datetime.now().isoformat(timespec="seconds"), "event": event, **data}

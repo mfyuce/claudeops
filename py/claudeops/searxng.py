@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .atomic_json import atomic_write_json
+from . import preview
 from .diaglog import diag_log
 from .paths import CLAUDE_DIR, CLAUDEOPS_DIR
 
@@ -540,6 +541,8 @@ def _ensure(session_name: str) -> Optional[str]:
     port = _int(_read_state().get("port"))
     if port and healthy(port):
         return search_url(port)
+    if preview.active():
+        return None                       # kuru çalıştırma docker'a dokunmaz: yalnız ŞU AN cevap veren adres
     if _now() < _down_until:
         return None                       # docker yakın zamanda kullanılamıyordu; her spawn'da yeniden yoklama
     box = inspect_box()

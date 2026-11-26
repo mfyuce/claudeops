@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .atomic_json import atomic_write_json, atomic_write_text
 from .paths import CLAUDEOPS_DIR
+from . import preview
+from .preview import preview_only  # noqa: F401  (eski yol: `ucli_agents.preview_only`)
 from .settings import load_settings
 
 STATE_FILE = os.path.join(CLAUDEOPS_DIR, "ucli_agents.json")
@@ -36,16 +38,6 @@ _CHILD_RE = re.compile(r"^(?P<parent>.+)_aj(?P<n>[1-9][0-9]*)$")
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
 
 _LOCK = threading.RLock()
-_PREVIEW = threading.local()
-
-
-class preview_only:
-    """Ön-doğrulama (kuru komut kurulumu): `issue_token` token ÜRETMEZ/dosya yazmaz (çalışan oturumun token'ı bozulmasın)."""
-    def __enter__(self):
-        _PREVIEW.on = True
-
-    def __exit__(self, *exc):
-        _PREVIEW.on = False
 _PANEL_PORT: Optional[int] = None
 
 
@@ -170,7 +162,7 @@ def issue_token(session_name: str) -> str:
     dönen değer DOSYA YOLU (token'ın kendisi hiçbir yerde dönmez). Çocuk adı ya da güvensiz ad için ValueError."""
     if is_child_name(session_name):
         raise ValueError("child sessions do not get an agent token (depth 1)")
-    if getattr(_PREVIEW, "on", False):
+    if preview.active():      # kuru kurulum token ÜRETMEZ/dosya yazmaz (çalışan oturumun token'ı bozulmasın)
         return token_file(session_name)
     token = secrets.token_hex(32)
     with _LOCK:     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın

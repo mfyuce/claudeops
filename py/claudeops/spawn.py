@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from . import preview
 from .diaglog import diag_log
 from .discovery import find_sessions
 from .paths import CLAUDEOPS_DIR, REPO_DIR
@@ -192,8 +193,14 @@ def spawn_session(
     başlat). Sonradan `open_window()` ile normal şekilde pencere bağlanabilir.
     VARSAYILAN False = bugünkü davranış birebir, hiçbir mevcut çağıran etkilenmez.
 
+    dry_run=True → yan etkisiz (`preview.preview_only`): hiçbir dosya yazılmaz/silinmez, komut koşturulmaz.
+
     Returns: "resume:<id[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
+    if dry_run and not preview.active():
+        with preview.preview_only():
+            return spawn_session(name, cwd, model, display, permission_mode, effort, force_new, prompt, dry_run,
+                                 cli, mcp_server, hidden, cli_opts)
     provider = get_provider(cli)
 
     if display is None:
