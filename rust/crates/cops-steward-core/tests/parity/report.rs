@@ -57,6 +57,8 @@ parity!("dry_ask_due", dry_ask_due_vectors, |c| result(
 
 parity!("summary_due", summary_due_vectors, |c| summary_due(&c.arg::<Doc>("state"), c.arg("now"), c.arg("hour")));
 
+parity!("_count_or_zero", p_count_or_zero, |c| count_or_zero(c.args.get("value")));
+
 parity!("_names", p_names, |c| names_line(&c.arg::<Vec<String>>("names"), c.or("n", 5)));
 
 parity!("_kind_counts", p_kind_counts, |c| {
@@ -74,7 +76,7 @@ parity!("daily_summary", daily_summary_vectors, |c| {
     let (pending, orphans): (Option<Doc>, Option<Doc>) = (c.opt("pending"), c.opt("orphans"));
     let answered: Option<IndexMap<String, String>> = c.opt("answered_by");
     let extras = SummaryExtras { pending: pending.as_ref(), orphans: orphans.as_ref(), answered_by: answered.as_ref() };
-    result(c, daily_summary(&c.arg::<Vec<Doc>>("entries"), &c.str("date"), &c.or("lang", "tr".to_string()), extras))
+    daily_summary(&c.arg::<Vec<Doc>>("entries"), &c.str("date"), &c.or("lang", "tr".to_string()), extras)
 });
 
 parity!("summarize_projects", summarize_projects_vectors, |c| summarize_projects(

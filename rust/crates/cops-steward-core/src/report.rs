@@ -18,6 +18,14 @@ pub fn daily_path(base: &str, date: &str, paths: PathsArg<'_>) -> Result<String,
     Ok(pyc::path_join(&identity::pp(base, paths)?.daily, &format!("{date}.md")))
 }
 
+/// Günlük/state sayısı: `int(value or 0)`; sayıya çevrilemiyorsa 0 (bozuk alan raporu/özeti düşürmesin). i64'e
+/// sığmayan değer de 0 (Python sınırsız tutar).
+///
+/// py: _count_or_zero
+pub fn count_or_zero(value: Option<&Value>) -> i64 {
+    int_of(value).unwrap_or(0)
+}
+
 /// `d[key]`
 fn required<'a>(d: &'a Value, key: &str) -> Result<&'a Value, BadValue> {
     d.get(key).ok_or_else(|| BadValue(format!("missing key: {key}")))
@@ -213,8 +221,8 @@ fn event<'a>(day: &[&'a Doc], name: &str) -> Vec<&'a Doc> {
     day.iter().copied().filter(|e| is_text(e, "event", name)).collect()
 }
 
-fn sum_of(entries: &[&Doc], key: &str) -> Result<i64, BadValue> {
-    entries.iter().try_fold(0_i64, |acc, e| Ok(acc.saturating_add(int_of(e.get(key))?)))
+fn sum_of(entries: &[&Doc], key: &str) -> i64 {
+    entries.iter().fold(0_i64, |acc, e| acc.saturating_add(count_or_zero(e.get(key))))
 }
 
 fn names_of(entries: &[&Doc]) -> String {
@@ -222,11 +230,11 @@ fn names_of(entries: &[&Doc]) -> String {
 }
 
 /// Mod satırı ve tick satırı.
-fn tick_lines(day: &[&Doc], text: &dyn Fn(&str) -> String, lines: &mut Vec<String>) -> Result<(), BadValue> {
+fn tick_lines(day: &[&Doc], text: &dyn Fn(&str) -> String, lines: &mut Vec<String>) {
     let ticks = event(day, "tick");
     let folded = event(day, "ticks"); // sıkıştırma sonrası: o günün tick'leri tek toplam satırında
     let mode = ticks.iter().chain(&folded).rev().find(|e| truthy_at(e, "mode")).map(|e| shown(e, "mode"));
-    let count = (ticks.len() as i64).saturating_add(sum_of(&folded, "n")?);
+    let count = (ticks.len() as i64).saturating_add(sum_of(&folded, "n"));
     if let Some(mode) = mode.filter(|m| !m.is_empty()) {
         let note = if mode == "observe" { format!(" ({})", text("obs_note")) } else { String::new() };
         lines.push(format!("{}: **{mode}**{note}", text("mode")));
@@ -234,12 +242,12 @@ fn tick_lines(day: &[&Doc], text: &dyn Fn(&str) -> String, lines: &mut Vec<Strin
     lines.push(String::new());
     if count == 0 {
         lines.push(format!("- {}: {}", text("ticks"), text("no_ticks")));
-        return Ok(());
+        return;
     }
     let by_hand = ticks.iter().filter(|e| !is_text(e, "trigger", "timer")).count() as i64;
-    let manual = by_hand.saturating_add(sum_of(&folded, "manual")?);
+    let manual = by_hand.saturating_add(sum_of(&folded, "manual"));
     let failed = ticks.iter().filter(|e| truthy_at(e, "error")).count() as i64;
-    let bad_ticks = failed.saturating_add(sum_of(&folded, "errors")?);
+    let bad_ticks = failed.saturating_add(sum_of(&folded, "errors"));
     let extra: Vec<String> = [(manual, "manual"), (bad_ticks, "errors")]
         .iter()
         .filter(|(n, _)| *n != 0)
@@ -247,13 +255,12 @@ fn tick_lines(day: &[&Doc], text: &dyn Fn(&str) -> String, lines: &mut Vec<Strin
         .collect();
     let tail = if extra.is_empty() { String::new() } else { format!(" ({})", extra.join(", ")) };
     lines.push(format!("- {}: {count}{tail}", text("ticks")));
-    Ok(())
 }
 
 /// `log.jsonl` kayıtlarından (o güne ait olanlar süzülür) bir günün markdown özeti.
 ///
 /// py: daily_summary
-pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExtras<'_>) -> Result<String, BadValue> {
+pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExtras<'_>) -> String {
     let en = lang == "en";
     let table = P_SUMMARY_TXT.get(if en { "en" } else { "tr" });
     let text = |key: &str| table.and_then(|t| t.get(key)).and_then(Value::as_str).unwrap_or("").to_string();
@@ -287,7 +294,7 @@ pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExt
         .collect();
 
     let mut lines = vec![format!("# {} \u{2014} {date}", text("title"))];
-    tick_lines(&day, &text, &mut lines)?;
+    tick_lines(&day, &text, &mut lines);
     if !applied.is_empty() {
         let failed = applied.iter().filter(|e| !truthy_at(e, "ok")).count();
         let tail = if failed != 0 { format!(" ({failed} {})", text("failed")) } else { String::new() };
@@ -340,8 +347,9 @@ pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExt
         } else {
             "review saklama: gizli değer taramasında dışarıda kalan dosya"
         };
-        let files: Vec<String> = items_of(held.get("files"))?.iter().map(pyc::str_of).collect();
-        lines.push(format!("- {label}: {} ({})", int_of(held.get("n"))?, names_line(&files, 5)));
+        let files: Vec<String> =
+            held.get("files").and_then(Value::as_array).into_iter().flatten().map(pyc::str_of).collect();
+        lines.push(format!("- {label}: {} ({})", count_or_zero(held.get("n")), names_line(&files, 5)));
     }
     let directives = event(&day, "directive");
     if !directives.is_empty() {
@@ -397,7 +405,7 @@ pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExt
             text("orph_procs")
         ));
     }
-    Ok(lines.join("\n") + "\n")
+    lines.join("\n") + "\n"
 }
 
 /// Faz başına proje sayısı (bilinen fazlar sıfır da olsa listelenir).
@@ -421,27 +429,34 @@ fn json_line(ln: &str) -> Option<Value> {
     serde_json::from_str(ln).ok()
 }
 
-/// `log.jsonl` metninden o güne (`YYYY-MM-DD`) ait kayıtlar: satırın ilk 40 kod noktasında `"ts": "<tarih>` geçen,
-/// JSON olarak çözülebilen satırlar (nesne olmayabilir: Python da süzmez). `text` = dosyanın UTF-8 içeriği
-/// (okunamazsa çağıran boş liste kullanır).
+/// Günlük baytlarının geçerli UTF-8 olan satırları (satır sonları `\n`/`\r`, satıra dahil değil; boş parçalar kalabilir).
+/// Geçersiz UTF-8 satır atlanır (Python `errors="surrogateescape"` + `ln.encode("utf-8")`).
+fn utf8_lines(bytes: &[u8]) -> impl Iterator<Item = &str> {
+    bytes.split(|b| matches!(b, b'\n' | b'\r')).filter_map(|ln| std::str::from_utf8(ln).ok())
+}
+
+/// `log.jsonl` içeriğinden o güne (`YYYY-MM-DD`) ait kayıtlar: satırın ilk 40 kod noktasında `"ts": "<tarih>` geçen,
+/// JSON nesnesi olarak çözülebilen satırlar; bozuk satır (geçersiz UTF-8 dahil) atlanır. `bytes` = dosyanın ham
+/// içeriği (okunamazsa çağıran boş liste kullanır).
 ///
 /// py: log_entries_for_date
-pub fn log_entries_for_date(text: &str, date: &str) -> Vec<Value> {
+pub fn log_entries_for_date(bytes: &[u8], date: &str) -> Vec<Value> {
     let needle = format!("\"ts\": \"{date}");
-    pyc::readlines(text)
-        .iter()
+    utf8_lines(bytes)
         .filter(|ln| pyc::head(ln, 40).contains(&needle))
-        .filter_map(|ln| json_line(ln))
+        .filter_map(json_line)
+        .filter(Value::is_object)
         .collect()
 }
 
 /// O günün `tick` satırlarını TEK `ticks` satırına katlar (`{"ts": "<date>T23:59:59", "event": "ticks", "n",
 /// "manual", "errors", "mode"}`); toplam satırı sonraki günün ilk kaydından önce, yoksa sona girer. Diğer satırlar
-/// yerinde. `text` = `log.jsonl` içeriği (okunamazsa Python 0 döner, dosyaya dokunmaz: çağıran bunu çağırmaz).
-/// Dönen: `None` = katlanacak tick yok (dosyaya dokunma); `Some((yeni içerik, katlanan sayı))` = atomik yeniden yaz.
+/// yerinde. `bytes` = `log.jsonl`in ham içeriği (okunamazsa Python 0 döner, dosyaya dokunmaz: çağıran bunu çağırmaz).
+/// Dönen: `None` = katlanacak tick yok ya da içerik geçerli UTF-8 değil (dosyaya dokunma); `Some((yeni içerik, katlanan sayı))` = atomik yeniden yaz.
 ///
 /// py: compact_log
-pub fn compact_log(date: &str, text: &str) -> Option<(String, i64)> {
+pub fn compact_log(date: &str, bytes: &[u8]) -> Option<(String, i64)> {
+    let text = std::str::from_utf8(bytes).ok()?;
     let (mut n, mut manual, mut errors, mut mode) = (0_i64, 0_i64, 0_i64, String::new());
     let mut out: Vec<String> = Vec::new();
     let mut placed = false;
@@ -490,19 +505,18 @@ pub fn compact_log(date: &str, text: &str) -> Option<(String, i64)> {
 
 /// `log.jsonl.1` ve `log.jsonl` (bu sırayla; `None` = okunamadı, atlanır) içindeki `would:<tür>` olaylarını son
 /// `hours` saatte türe göre sayar: `{tür: {count, names: {ad: n}, chars, first, last}}`. `ts` yerel saattir
-/// (`time.mktime`; `TZ`ye uyar). Python'un yakalamadığı istisnalar (nesne olmayan JSON satırı, `int()` edilemeyen
-/// `chars`) hata.
+/// (`time.mktime`; `TZ`ye uyar). Bozuk satır (geçersiz UTF-8/JSON/`ts`, nesne olmayan) atlanır, sayıya çevrilemeyen
+/// `chars` 0 sayılır; toplamlar i64 sınırında doyar.
 ///
 /// py: dry_report
-pub fn dry_report(logs: &[Option<&str>], hours: f64, now: f64) -> Result<Doc, BadValue> {
+pub fn dry_report(logs: &[Option<&[u8]>], hours: f64, now: f64) -> Doc {
     let mut out = Doc::new();
-    for text in logs.iter().flatten() {
-        for ln in pyc::readlines(text) {
+    for bytes in logs.iter().flatten() {
+        for ln in utf8_lines(bytes) {
             if !ln.contains("\"would:") {
                 continue;
             }
-            let Some(e) = json_line(&ln) else { continue };
-            let e = e.as_object().ok_or_else(|| bad(&e))?; // Python: `e.get` AttributeError (yakalanmaz)
+            let Some(Value::Object(e)) = json_line(ln) else { continue };
             let raw_ts = pyc::str_of(e.get("ts").unwrap_or(&Value::Null));
             let Some(ts) = pyc::mktime_iso_seconds(pyc::head(&raw_ts, 19)) else { continue };
             let ev = e.get("event").map_or_else(String::new, pyc::str_of);
@@ -511,7 +525,7 @@ pub fn dry_report(logs: &[Option<&str>], hours: f64, now: f64) -> Result<Doc, Ba
                 continue;
             }
             let name = e.get("name").filter(|v| pyc::truthy(v)).map_or_else(|| "-".to_string(), pyc::str_of);
-            let chars = int_of(e.get("chars"))?;
+            let chars = count_or_zero(e.get("chars"));
             let r = out.entry(kind.to_string()).or_insert_with(|| {
                 Value::Object(doc_from([
                     ("count", Value::from(0)),
@@ -521,18 +535,16 @@ pub fn dry_report(logs: &[Option<&str>], hours: f64, now: f64) -> Result<Doc, Ba
                     ("last", Value::from(ts)),
                 ]))
             });
-            let r = r.as_object_mut().ok_or_else(|| BadValue("report row".into()))?;
-            let bump = |v: Option<&Value>, by: i64| -> Result<Value, BadValue> {
-                let cur = v.and_then(Value::as_i64).unwrap_or(0);
-                cur.checked_add(by).map(Value::from).ok_or_else(|| BadValue("overflow".into()))
-            };
-            let count = bump(r.get("count"), 1)?;
+            let Some(r) = r.as_object_mut() else { continue };
+            let bump =
+                |v: Option<&Value>, by: i64| Value::from(v.and_then(Value::as_i64).unwrap_or(0).saturating_add(by));
+            let count = bump(r.get("count"), 1);
             r.insert("count".into(), count);
             if let Some(names) = r.get_mut("names").and_then(Value::as_object_mut) {
-                let c = bump(names.get(&name), 1)?;
+                let c = bump(names.get(&name), 1);
                 names.insert(name, c);
             }
-            let total = bump(r.get("chars"), chars)?;
+            let total = bump(r.get("chars"), chars);
             r.insert("chars".into(), total);
             let first = r.get("first").and_then(Value::as_f64).unwrap_or(ts);
             let last = r.get("last").and_then(Value::as_f64).unwrap_or(ts);
@@ -540,7 +552,7 @@ pub fn dry_report(logs: &[Option<&str>], hours: f64, now: f64) -> Result<Doc, Ba
             r.insert("last".into(), Value::from(if ts > last { ts } else { last }));
         }
     }
-    Ok(out)
+    out
 }
 
 fn doc_from<const N: usize>(pairs: [(&str, Value); N]) -> Doc {
@@ -580,9 +592,9 @@ pub fn missed_summary_dates(
 
 /// Depolardan bir günün özeti: bekleyen sayıları (açık soru, yeni fikir, `state.pending_items`, iletilmemiş cevap) ve
 /// sahipsiz kaynak satırını kurup [`daily_summary`]i çağırır. Depo okuması çağıranda: `entries` =
-/// [`log_entries_for_date`]; `orphans` = `periodic.orphan_summary()` sonucu, istisnada `None` (sözlük değilse ya da
+/// [`log_entries_for_date`] (nesne olmayan kayıt atlanır); `orphans` = `periodic.orphan_summary()` sonucu, istisnada `None` (sözlük değilse ya da
 /// sayılar `int()` edilemezse Python satırı atlar). `date` verilmezse Python bugünü (yerel) alır: çağıran verir.
-/// `pending_items` `int()` edilemezse Python istisnası: hata.
+/// `pending_items` sayıya çevrilemezse 0.
 ///
 /// py: summary_text
 pub fn summary_text(
@@ -593,11 +605,11 @@ pub fn summary_text(
     ideas: &[crate::types::Idea],
     entries: &[Value],
     orphans: Option<&Value>,
-) -> Result<String, BadValue> {
+) -> String {
     let pending = doc_from([
         ("open_questions", Value::from(crate::questions::open_questions(questions).len())),
         ("ideas_new", Value::from(ideas.iter().filter(|i| i.status == "new").count())),
-        ("pending_items", Value::from(int_of(state.get("pending_items"))?)),
+        ("pending_items", Value::from(count_or_zero(state.get("pending_items")))),
         ("undelivered_answers", Value::from(crate::questions::undelivered_answers(questions).len())),
     ]);
     let orphans = orphans.and_then(Value::as_object).and_then(|o| {
@@ -609,8 +621,7 @@ pub fn summary_text(
     for q in questions {
         answered_by.insert(q.id.clone(), q.answered_by.clone());
     }
-    let entries: Vec<Doc> =
-        entries.iter().map(|e| e.as_object().cloned().ok_or_else(|| bad(e))).collect::<Result<_, _>>()?;
+    let entries: Vec<Doc> = entries.iter().filter_map(|e| e.as_object().cloned()).collect();
     daily_summary(
         &entries,
         date,

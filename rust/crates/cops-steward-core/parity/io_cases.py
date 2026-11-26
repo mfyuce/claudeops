@@ -258,6 +258,22 @@ if os.path.exists(LOG):
 add("compact_log", {"case": "dosya yok", "date": D, "text": None, "ret": sw.compact_log(D), "after": read(LOG)})
 
 
+# geçersiz UTF-8 (`raw`: bayt listesi): compact_log dosyaya dokunmaz, okuyucu yalnız bozuk satırı atlar
+GOOD = tick(f"{D}T01:00:00", trigger="timer").encode()
+BAD_LINE = tick(f"{D}T02:00:00", mode="y").encode().replace(b'"y"', b'"\xff"')
+for raw in [GOOD + BAD_LINE + GOOD, BAD_LINE, GOOD + b"bozuk \xff\n", GOOD + b"\xc3\r\n" + GOOD, GOOD + b"\xed\xa0\x80\r" + GOOD,
+            BAD_LINE.rstrip(b"\n") + b"\r" + GOOD, GOOD + b"\xf0\x9f"]:
+    with open(LOG, "wb") as f:
+        f.write(raw)
+    ret = sw.compact_log(D)
+    with open(LOG, "rb") as f:
+        after = f.read()
+    add("compact_log", {"case": "utf8", "date": D, "raw": list(raw), "ret": ret, "after_raw": list(after)})
+    with open(LOG, "wb") as f:
+        f.write(raw)
+    add("log_entries_for_date", {"case": "utf8", "date": D, "raw": list(raw), "ret": sw.log_entries_for_date(D)})
+
+
 def would(ts, kind="keepwarm", **kw):
     return json.dumps({"ts": ts, "event": f"would:{kind}", **kw}, ensure_ascii=False) + "\n"
 
@@ -279,6 +295,8 @@ DRY = {
     "liste": would("2027-01-15T07:00:00") + '["\\"would:x"]\n',
     "chars": would("2027-01-15T07:00:00", chars="çok"),
     "chars2": would("2027-01-15T07:00:00", chars=[1]),
+    "bozuk satır": ('["would:"]\n"x \\"would:"\n' + "".join(would("2027-01-15T07:00:00", name="a", chars=v)
+                    for v in ["çok", [1], {"a": 1}, "", [], None, "1.5", " 7 ", -3, 2.9]) + '["\\"would:x"]\n'),
     "boş": "",
 }
 for key, text in DRY.items():
@@ -295,6 +313,18 @@ for key, text in DRY.items():
             except Exception as e:       # noqa: BLE001  Python'un yakalamadığı istisna da vektördür
                 ret = err(e)
             add("dry_report", {"case": key, "logs": [read(LOG + ".1"), read(LOG)], "hours": hours, "now": now, "ret": ret})
+W = would("2027-01-15T07:00:00", name="a", chars=2).encode()
+W_BAD = would("2027-01-15T07:00:00", name="x").encode().replace(b'"x"', b'"\xff"')
+for raws in [(None, W + W_BAD + W), (W_BAD + W, W), (b"\xff", b'\xc3 "would:\r' + W)]:
+    for fn, raw in zip((LOG + ".1", LOG), raws):
+        if raw is None:
+            if os.path.exists(fn):
+                os.remove(fn)
+        else:
+            with open(fn, "wb") as f:
+                f.write(raw)
+    add("dry_report", {"case": "utf8", "raw_logs": [None if r is None else list(r) for r in raws], "hours": 72, "now": T0,
+                       "ret": sw.dry_report(now=T0)})
 os.remove(LOG)
 os.remove(LOG + ".1")
 add("dry_report", {"case": "dosya yok", "logs": [None, None], "hours": 72, "now": T0, "ret": sw.dry_report(now=T0)})
@@ -304,7 +334,7 @@ for days in [3, 0, -2, 1, 7]:
     for dailies in [[], ["2026-11-25"], ["2026-11-24", "2026-11-26", "2026-11-20"]]:
         for text in [None, "", '{"ts": "2026-11-24T10:00:00", "event": "tick"}\n{"ts": "2026-11-26T23:59:59", "event": "x"}\n'
                      '{"ts": "2026-11-25T00:00:00", bozuk\n{"ts": "2026-11-23", "event": "y"}\n',
-                     '{"ts": "2026-11-27T00:00:00", "event": "bugün"}\n']:
+                     '{"ts": "2026-11-27T00:00:00", "event": "bugün"}\n', '[{"ts": "2026-11-26T00:00:00"}]\n']:
             sw._NO_LOG_DAYS.clear()
             for f in os.listdir(sw._pp(None).daily) if os.path.isdir(sw._pp(None).daily) else []:
                 os.remove(os.path.join(sw._pp(None).daily, f))
@@ -336,10 +366,14 @@ SUM_LOG = (tick(f"{D}T00:00:01", trigger="timer", mode="act")
            + json.dumps({"ts": f"{D}T01:00:00", "event": "ask_gate", "id": "s2", "project": "p", "question": "soru", "answer": "cvp",
                          "applied": True}, ensure_ascii=False) + "\n"
            + json.dumps({"ts": f"{D}T02:00:00", "event": "action", "kind": "directive", "name": "p", "ok": True}) + "\n")
+BROKEN = "".join(json.dumps({"ts": f"{D}T23:59:59", "event": "ticks", "n": v, "manual": v, "errors": v}, ensure_ascii=False) + "\n"
+                 + json.dumps({"ts": f"{D}T03:00:00", "event": "review_store_held", "n": v, "files": v}, ensure_ascii=False) + "\n"
+                 for v in ["çok", [1], {"a": 1}, None, "4"])
 for state in [{}, {"pending_items": 3}, {"pending_items": "4"}, {"pending_items": 2.7}, {"pending_items": None},
-              {"pending_items": "x"}, {"pending_items": [1]}]:
+              {"pending_items": "x"}, {"pending_items": [1]}, {"pending_items": {"a": 1}}, {"pending_items": float("inf")}]:
     for orph in [None, {"servers": 2, "procs": 0}, {"servers": 0, "procs": 0}, {"servers": "x"}, "metin", {"procs": "3"}, "__raise__"]:
-        for date, lang, text in [(D, "tr", SUM_LOG), (D, "en", SUM_LOG), ("2026-11-22", "tr", SUM_LOG), (D, "tr", '[{"ts": "' + D + 'T00:00:00", "event": "tick"}]\n')]:
+        for date, lang, text in [(D, "tr", SUM_LOG), (D, "en", SUM_LOG), ("2026-11-22", "tr", SUM_LOG), (D, "tr", '[{"ts": "' + D + 'T00:00:00", "event": "tick"}]\n'),
+                                 (D, "tr", SUM_LOG + '[{"ts": "' + D + 'T00:00:00"}]\n' + BROKEN), (D, "en", BROKEN)]:
             sw.save_state(state)
             sw.save_questions(SQ)
             sw.save_ideas(SI)

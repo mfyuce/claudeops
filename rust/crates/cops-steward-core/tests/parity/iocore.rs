@@ -273,13 +273,22 @@ fn transfer_project_io_cases() {
     assert!(moved >= 10, "başarılı devir vektörü az: {moved}");
 }
 
+/// Ham bayt vektörü (`key`: bayt listesi) ya da metin alanı.
+fn bytes_of(r: &Map<String, Value>, raw: &str, text: &str) -> Option<Vec<u8>> {
+    match r.get(raw) {
+        Some(v) => Some(serde_json::from_value(v.clone()).expect("bayt listesi")),
+        None => opt_str(r, text).map(String::into_bytes),
+    }
+}
+
 /// py: log_entries_for_date
 #[test]
 fn log_entries_for_date_io_cases() {
     let rows = io_cases("log_entries_for_date");
     let mut bad = Vec::new();
     for (i, r) in rows.iter().enumerate() {
-        let got = Value::from(log_entries_for_date(&get::<String>(r, "text"), &get::<String>(r, "date")));
+        let bytes = bytes_of(r, "raw", "text").expect("içerik");
+        let got = Value::from(log_entries_for_date(&bytes, &get::<String>(r, "date")));
         // bilinen fark: NaN/Infinity içeren satırı Python çözer, Rust bozuk sayıp atlar
         let want: Vec<Value> =
             r["ret"].as_array().expect("liste").iter().filter(|e| !has_py_nonfinite(e)).cloned().collect();
@@ -299,23 +308,29 @@ fn compact_log_io_cases() {
     let rows = io_cases("compact_log");
     let mut bad = Vec::new();
     for (i, r) in rows.iter().enumerate() {
-        let Some(text) = opt_str(r, "text") else {
+        let Some(bytes) = bytes_of(r, "raw", "text") else {
             assert_eq!(r["ret"], json!(0), "dosya yoksa Python 0 döner");
             continue;
         };
         let date: String = get(r, "date");
-        let (after, n) = compact_log(&date, &text).unwrap_or((text.clone(), 0));
+        let (after, n) = match compact_log(&date, &bytes) {
+            Some((after, n)) => (after.into_bytes(), n),
+            None => (bytes, 0),
+        };
+        let want_after = bytes_of(r, "after_raw", "after").expect("sonuç içeriği");
         if r["case"] == "nan" && r["ret"].as_i64() != Some(n) {
             // bilinen fark: NaN/Infinity'li iki tick satırını Python katlar, Rust bozuk sayıp yerinde bırakır
             assert_eq!(r["ret"].as_i64(), Some(n + 2), "nan vakası");
             assert!(
-                after.contains("\"x\": NaN}") && after.contains("\"mode\": Infinity}"),
-                "bozuk satırlar yerinde: {after}"
+                String::from_utf8_lossy(&after).contains("\"x\": NaN}")
+                    && String::from_utf8_lossy(&after).contains("\"mode\": Infinity}"),
+                "bozuk satırlar yerinde"
             );
             continue;
         }
-        if json!([n, after]) != json!([r["ret"], r["after"]]) {
-            bad.push(format!("#{i} {} {}: {n} {:?} / python {} {}", r["case"], r["date"], after, r["ret"], r["after"]));
+        if r["ret"].as_i64() != Some(n) || after != want_after {
+            let got = String::from_utf8_lossy(&after);
+            bad.push(format!("#{i} {} {}: {n} {got:?} / python {} {}", r["case"], r["date"], r["ret"], r["after"]));
         }
     }
     check("compact_log", bad, rows.len());
@@ -328,12 +343,12 @@ fn dry_report_io_cases() {
     let rows = io_cases("dry_report");
     let mut bad = Vec::new();
     for (i, r) in rows.iter().enumerate() {
-        let logs: Vec<Option<String>> = get(r, "logs");
-        let refs: Vec<Option<&str>> = logs.iter().map(Option::as_deref).collect();
-        let got = match dry_report(&refs, num(&r["hours"]), num(&r["now"])) {
-            Ok(d) => Value::Object(d),
-            Err(_) => r["ret"].get("__error__").map_or(json!("rust hata"), |_| r["ret"].clone()),
+        let logs: Vec<Option<Vec<u8>>> = match r.get("raw_logs") {
+            Some(_) => get(r, "raw_logs"),
+            None => get::<Vec<Option<String>>>(r, "logs").into_iter().map(|t| t.map(String::into_bytes)).collect(),
         };
+        let refs: Vec<Option<&[u8]>> = logs.iter().map(Option::as_deref).collect();
+        let got = Value::Object(dry_report(&refs, num(&r["hours"]), num(&r["now"])));
         if !same(&got, &r["ret"]) {
             bad.push(format!("#{i} {} h={} -> {} / python {}", r["case"], r["hours"], clip(&got), clip(&r["ret"])));
         }
@@ -351,7 +366,7 @@ fn missed_summary_dates_io_cases() {
         let dailies: Vec<String> = get(r, "dailies");
         let text = opt_str(r, "text");
         let has_daily = |d: &str| dailies.iter().any(|x| x == d);
-        let has_entries = |d: &str| text.as_deref().is_some_and(|t| !log_entries_for_date(t, d).is_empty());
+        let has_entries = |d: &str| text.as_deref().is_some_and(|t| !log_entries_for_date(t.as_bytes(), d).is_empty());
         let got = match missed_summary_dates(num(&r["now"]), get(r, "days"), &has_daily, &has_entries) {
             Ok(v) => Value::from(v),
             Err(_) => r["ret"].get("__error__").map_or(json!("rust hata"), |_| r["ret"].clone()),
@@ -376,10 +391,7 @@ fn summary_text_io_cases() {
         let entries: Vec<Value> = get(r, "entries");
         let orphans = r.get("orphans").filter(|o| o.as_str() != Some("__raise__"));
         let (date, lang): (String, String) = (get(r, "date"), get(r, "lang"));
-        let got = match summary_text(&date, &lang, &state, &questions, &ideas, &entries, orphans) {
-            Ok(s) => Value::from(s),
-            Err(_) => r["ret"].get("__error__").map_or(json!("rust hata"), |_| r["ret"].clone()),
-        };
+        let got = Value::from(summary_text(&date, &lang, &state, &questions, &ideas, &entries, orphans));
         if got != r["ret"] {
             bad.push(format!(
                 "#{i} state={} orphans={:?} -> {} / python {}",

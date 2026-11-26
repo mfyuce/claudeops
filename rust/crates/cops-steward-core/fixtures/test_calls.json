@@ -5910,6 +5910,72 @@
 "waiting_for_gate",
 "world_for"
 ],
+"test_steward_broken_log.CompactLogTest.test_invalid_utf8_leaves_file_untouched": [
+"_pp",
+"paths_for"
+],
+"test_steward_broken_log.DryReportTest.test_bad_chars_counts_zero": [
+"_count_or_zero",
+"_pp",
+"paths_for"
+],
+"test_steward_broken_log.DryReportTest.test_invalid_utf8_line_skipped": [
+"_count_or_zero",
+"_pp",
+"paths_for"
+],
+"test_steward_broken_log.DryReportTest.test_non_dict_line_skipped": [
+"_count_or_zero",
+"_pp",
+"paths_for"
+],
+"test_steward_broken_log.SummaryTextTest.test_bad_numbers_in_records_are_zero": [
+"_ask_gate_lines",
+"_count_or_zero",
+"_names",
+"_pp",
+"daily_summary",
+"open_questions",
+"paths_for",
+"undelivered_answers"
+],
+"test_steward_broken_log.SummaryTextTest.test_bad_pending_items_is_zero": [
+"_ask_gate_lines",
+"_count_or_zero",
+"_pp",
+"daily_summary",
+"open_questions",
+"paths_for",
+"undelivered_answers"
+],
+"test_steward_broken_log.SummaryTextTest.test_daily_summary_skips_non_dict": [
+"_ask_gate_lines",
+"daily_summary"
+],
+"test_steward_broken_log.SummaryTextTest.test_day_with_only_broken_records_is_not_missed": [
+"_pp",
+"daily_path",
+"paths_for"
+],
+"test_steward_broken_log.SummaryTextTest.test_invalid_utf8_line_skipped": [
+"_ask_gate_lines",
+"_count_or_zero",
+"_pp",
+"daily_path",
+"daily_summary",
+"open_questions",
+"paths_for",
+"undelivered_answers"
+],
+"test_steward_broken_log.SummaryTextTest.test_non_dict_record_skipped": [
+"_ask_gate_lines",
+"_count_or_zero",
+"_pp",
+"daily_summary",
+"open_questions",
+"paths_for",
+"undelivered_answers"
+],
 "test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_blockers_are_used": [
 "_clip",
 "_goal_from_docs",

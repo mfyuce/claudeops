@@ -1058,6 +1058,8 @@ for _ in range(1500):
     add("_kind_counts", {"entries": entries, "key": rnd.choice(["kind", "event", "ok", "name"])})
     gate = [e for e in entries if e.get("event") == "ask_gate"] or ([entry()] if rnd.random() < 0.5 else [])
     add("_ask_gate_lines", {"events": gate, "answered_by": answered or {}, "en": rnd.random() < 0.5})
+for v in [None, "", "x", " 12 ", "1_0", "1.5", 0, -3, 2.9, True, False, [], [1], {}, {"a": 1}]:
+    add("_count_or_zero", {"value": v})
 for _ in range(60):
     add("summarize_projects", {"projects": {f"p{i}": P(f"p{i}", phase=rnd.choice(["idea", "planning", "planned", "paused", "done", "bozuk", ""])) for i in range(rnd.randint(0, 8))}})
 for date, sid in itertools.product(["2026-11-26", "", "a/b", "/kök"], [None, "default", "iso"]):
