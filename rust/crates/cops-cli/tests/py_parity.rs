@@ -181,8 +181,8 @@ fn parity_bad_addresses_are_blockers_on_both_sides() {
 }
 
 #[test]
-fn fix_b_diverges_from_python_on_foreign_internal_port() {
-    // Python: drop-in varken dolu iç port engel değil (yeniden uygulama); Rust: dinleyen web birimi değilse engel.
+fn parity_foreign_internal_port_blocks_on_both_sides() {
+    // "Python hatası?" 2 düzeltildi: drop-in varken iç portu yabancı süreç (burada test süreci) tutuyorsa iki taraf da engel.
     let sb = Sandbox::new();
     let (_l, busy, _) = ports();
     std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
@@ -198,17 +198,14 @@ fn fix_b_diverges_from_python_on_foreign_internal_port() {
         &[
             "front",
             "on",
+            "--apply",
             "--listen",
             "127.0.0.1:1",
             "--internal",
             &busy,
         ],
     );
-    assert_eq!(
-        p.status.code(),
-        Some(0),
-        "Python yabancı portu kabul ediyor"
-    );
+    same(&p, &r, "yabancı iç port");
     assert_eq!(r.status.code(), Some(1));
     let out = String::from_utf8_lossy(&r.stdout);
     assert!(
@@ -219,6 +216,7 @@ fn fix_b_diverges_from_python_on_foreign_internal_port() {
         out.contains(&format!("pid {}", std::process::id())),
         "{out}"
     );
+    assert!(!sb.sc_log().exists(), "engel systemctl çağırmaz");
 }
 
 #[test]

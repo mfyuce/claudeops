@@ -11,6 +11,7 @@ from claudeops.commands import front_cmd as f  # noqa: E402
 
 LIVE = "[Service]\nExecStart=/bin/bash -ic '/usr/bin/python3 -m claudeops web'\n"
 L, I = "127.0.0.1:8765", "127.0.0.1:28765"
+REAL_OWNER = f._port_owner      # Env sahtesiyle değiştirir; gerçek /proc taraması testleri bunu çağırır
 
 
 class World:
@@ -69,7 +70,8 @@ class Env(unittest.TestCase):
         for p in (mock.patch.object(f.front_mod.paths, "CLAUDEOPS_DIR", str(self.state)),
                   mock.patch.object(f, "WEB_UNIT", self.web), mock.patch.object(f, "FRONT_UNIT", self.front),
                   mock.patch.object(f, "DROPIN", self.dropin), mock.patch.object(f, "DIST_DIR", "/repo/py/webui/dist"),
-                  mock.patch.object(f, "port_busy", self.w.busy), mock.patch.object(f, "_sc", self.w.sc),
+                  mock.patch.object(f, "port_busy", self.w.busy), mock.patch.object(f, "_port_owner", self.w.owner),
+                  mock.patch.object(f, "_sc", self.w.sc),
                   mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": ""})):
             p.start(); self.addCleanup(p.stop)
 
@@ -79,6 +81,20 @@ class Env(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             rc = f.run(args)
         return rc, out.getvalue()
+
+
+    def front_on(self):
+        """"Açık" durum: ön kapı dışta, web içte, drop-in yazılı (Rust `Env::front_on`)."""
+        self.dropin.parent.mkdir(parents=True, exist_ok=True)
+        self.dropin.write_text("eski drop-in\n")
+        self.front.write_text("eski birim\nExecStart=/x/copsd --listen 127.0.0.1:8765 --upstream y\n")
+        w = self.w
+        w.front_active = w.front_enabled = True
+        w.owners[L], w.owners[I] = unit(f.FRONT_UNIT_NAME), unit(f.WEB_UNIT_NAME)
+        w.effects = [("disable --now claudeops-front.service", L, ("none",)),
+                     ("restart claudeops-web.service", I, ("none",)),
+                     ("restart claudeops-web.service", L, unit(f.WEB_UNIT_NAME)),
+                     ("enable --now claudeops-front.service", L, unit(f.FRONT_UNIT_NAME))]
 
 
 class P1Addresses(Env):
@@ -123,6 +139,76 @@ class P1Addresses(Env):
         self.assertEqual(str(c.exception),
                          '"[::1]:28765": iç adres IPv6 olamaz (Python web yalnız IPv4 dinler: ThreadingHTTPServer AF_INET)')
         self.assertEqual(f._rdbg('a"b\\c\n\x1b'), '"a\\"b\\\\c\\n\\u{1b}"')
+
+
+class P2ForeignInternalPort(Env):
+    """2: drop-in varken iç portu yabancı süreç tutuyorsa ön kapı ona vekil olmasın (ENGEL)."""
+
+    def test_foreign_process_on_internal_port_blocks_even_with_dropin(self):
+        self.front_on()
+        self.w.owners["127.0.0.1:29999"] = ("holders", [(99, None)])
+        rc, out = self.run_front("on", True, L, "127.0.0.1:29999")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("iç port başka bir süreçte: 127.0.0.1:29999 (pid 99 (birimsiz)); drop-in var ama dinleyen "
+                      "claudeops-web.service değil", out)
+        self.assertEqual(self.w.calls, [])
+        self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+        for o in (("other_user", 5), ("unknown",), unit("other.service"), ("holders", [(1, f.WEB_UNIT_NAME), (2, None)])):
+            self.w.owners[I] = o
+            rc, out = self.run_front("on", True, L, I)
+            self.assertEqual(rc, 1, o)
+            self.assertIn("başka bir süreçte", out)
+        self.assertEqual(self.w.calls, [])
+
+    def test_our_web_on_internal_port_is_a_reapply(self):
+        self.front_on()
+        self.w.effects = []
+        rc, out = self.run_front("on", True, L, I)
+        self.assertEqual(self.w.calls[:3], ["daemon-reload", "enable --now claudeops-front.service",
+                                            "restart claudeops-front.service"], out)
+
+    def test_real_listener_is_found_with_our_pid(self):
+        import socket
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0)); s.listen()
+            hp = "127.0.0.1:%d" % s.getsockname()[1]
+            o = REAL_OWNER(hp)
+            self.assertEqual(o[0], "holders", o)
+            self.assertIn(os.getpid(), [p for p, _ in o[1]])
+            self.assertFalse(f._is_unit(o, f.WEB_UNIT_NAME))
+        self.assertEqual(REAL_OWNER(hp), ("none",))
+
+    def test_fake_proc_tree_unit_detection(self):
+        p = self.root / "proc"
+        (p / "net").mkdir(parents=True)
+        head = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        uid = os.getuid()
+        addr = "0100007F" if sys.byteorder == "little" else "7F000001"
+        (p / "net" / "tcp").write_text(f"{head}   0: {addr}:6FDD 00000000:0000 0A 00000000:00000000 00:00000000 "
+                                       f"00000000  {uid}        0 4242 1 0 100 0 0 10 0\n")
+        (p / "77" / "fd").mkdir(parents=True)
+        os.symlink("socket:[4242]", p / "77" / "fd" / "3")
+        (p / "77" / "cgroup").write_text("0::/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-web.service\n")
+        with mock.patch.object(f, "_PROC", str(p)):
+            self.assertTrue(f._is_unit(REAL_OWNER("127.0.0.1:28637"), f.WEB_UNIT_NAME))
+            (p / "78" / "fd").mkdir(parents=True)
+            os.symlink("socket:[4242]", p / "78" / "fd" / "9")
+            (p / "78" / "cgroup").write_text("0::/user.slice/x.scope/\n")
+            self.assertFalse(f._is_unit(REAL_OWNER("127.0.0.1:28637"), f.WEB_UNIT_NAME))
+            hybrid = ("12:pids:/user.slice/user-1000.slice/user@1000.service\n"
+                      "1:name=systemd:/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-web.service\n"
+                      "0::/user.slice/user-1000.slice/user@1000.service/app.slice/claudeops-web.service\n")
+            (p / "78" / "cgroup").write_text(hybrid)
+            self.assertEqual(f._unit_of(str(p), 78), f.WEB_UNIT_NAME)
+            self.assertTrue(f._is_unit(REAL_OWNER("127.0.0.1:28637"), f.WEB_UNIT_NAME))
+            (p / "78" / "cgroup").write_text("12:pids:/user.slice/user-1000.slice/user@1000.service\n"
+                                             "1:name=systemd:/u/app.slice/claudeops-front.service\n")
+            self.assertEqual(f._unit_of(str(p), 78), f.FRONT_UNIT_NAME)
+            (p / "78" / "cgroup").write_text("12:pids:/user.slice/u@1.service\n")
+            self.assertIsNone(f._unit_of(str(p), 78))
+            with mock.patch.object(f.os, "getuid", lambda: uid + 1):
+                self.assertEqual(REAL_OWNER("127.0.0.1:28637"), ("other_user", uid))
+            self.assertEqual(f._describe(("holders", [(1, None), (2, "a.service")])), "pid 1 (birimsiz), pid 2 (a.service)")
 
 
 if __name__ == "__main__":

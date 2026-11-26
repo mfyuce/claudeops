@@ -17,6 +17,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -156,8 +157,152 @@ def port_busy(hostport: str) -> bool:
         return s.connect_ex((str(ip), port)) == 0
 
 
+FRONT_UNIT_NAME = "claudeops-front.service"
+WEB_UNIT_NAME = "claudeops-web.service"
+_PROC = "/proc"
+
+
+def _hex_addr(s: str):
+    """`/proc/net/tcp` adres alanı (`0100007F:1F90`): çekirdek her 32 bitlik sözcüğü konak bayt sırasıyla yazar."""
+    ip, sep, port = s.partition(":")
+    try:
+        if not sep:
+            return None
+        pn = int(port, 16)
+        if not 0 <= pn <= 65535:
+            return None
+        if len(ip) == 8:
+            return ipaddress.IPv4Address(int(ip, 16).to_bytes(4, sys.byteorder)), pn
+        if len(ip) == 32:
+            return ipaddress.IPv6Address(b"".join(int(ip[i:i + 8], 16).to_bytes(4, sys.byteorder) for i in range(0, 32, 8))), pn
+    except ValueError:
+        return None
+    return None
+
+
+def _canon(ip):
+    return ip.ipv4_mapped if ip.version == 6 and ip.ipv4_mapped else ip
+
+
+def _accepts(local, a) -> bool:
+    """`a`'ya gelen bağlantıyı `local` dinleyicisi kabul eder mi (joker ya da kesin IP; IPv4 eşlemeli IPv6 dahil)."""
+    a = _canon(a)
+    return local.is_unspecified or local == a or _canon(local) == a
+
+
+def _unit_of(proc: str, pid: int) -> Optional[str]:
+    """`/proc/<pid>/cgroup` birim adı: birleşik ağaç `0::<yol>`, yoksa v1 `name=systemd` satırı (denetleyici satırları
+    kullanıcı yöneticisini gösterir, bakılmaz); yolun son parçası `.service`/`.scope` ise."""
+    try:
+        with open(os.path.join(proc, str(pid), "cgroup"), encoding="utf-8") as fh:
+            text = fh.read()
+    except (OSError, UnicodeError):
+        return None
+    lines = [x[:-1] if x.endswith("\r") else x for x in text.split("\n")]
+    if lines and lines[-1] == "":
+        lines.pop()
+
+    def _path_of(want):
+        for line in lines:
+            parts = line.split(":", 2)
+            if len(parts) == 3 and want(parts[0], parts[1]):
+                return parts[2]
+        return None
+    path = _path_of(lambda i, c: i == "0" and c == "")
+    if path == "/":
+        path = None
+    if path is None:
+        path = _path_of(lambda i, c: c == "name=systemd")
+    if path is None:
+        return None
+    last = path.rsplit("/", 1)[-1]
+    return last if last.endswith(".service") or last.endswith(".scope") else None
+
+
+def _port_owner(hostport: str):
+    """Portu dinleyen: ("none",) | ("other_user", uid) | ("unknown",) | ("holders", [(pid, birim|None)]) (Rust
+    `net::port_owner`). Soket `/proc/net/tcp{,6}` LISTEN satırından, tutan süreçler yalnız kendi uid'imizin
+    `/proc/<pid>/fd` bağlantılarından, birim cgroup'tan. Bulunamayan/başkasının/okunamayan dinleyici "bizim değil"."""
+    ip, port = _parse_listen(hostport)
+    uid = os.getuid()
+    socks = []
+    for name in ("net/tcp", "net/tcp6"):
+        try:
+            with open(os.path.join(_PROC, name), encoding="utf-8", errors="replace") as fh:
+                rows = fh.read().splitlines()[1:]
+        except OSError:
+            continue
+        for line in rows:
+            c = line.split()
+            if len(c) < 10 or c[3] != "0A":
+                continue
+            la = _hex_addr(c[1])
+            if la is None or la[1] != port or not _accepts(la[0], ip):
+                continue
+            if c[7].isascii() and c[7].isdigit() and c[9].isascii() and c[9].isdigit():
+                socks.append((int(c[9]), int(c[7])))
+    if not socks:
+        return ("none",)
+    for _, u in socks:
+        if u != uid:
+            return ("other_user", u)
+    want = {f"socket:[{i}]" for i, _ in socks}
+    holders = []
+    try:
+        entries = os.listdir(_PROC)
+    except OSError:
+        return ("unknown",)
+    for e in entries:
+        if not (e.isascii() and e.isdigit()):
+            continue
+        d = os.path.join(_PROC, e)
+        try:
+            if os.lstat(d).st_uid != uid:
+                continue
+            fds = os.listdir(os.path.join(d, "fd"))
+        except OSError:
+            continue
+        held = False
+        for fd in fds:
+            try:
+                if os.readlink(os.path.join(d, "fd", fd)) in want:
+                    held = True
+                    break
+            except OSError:
+                continue
+        if held:
+            holders.append((int(e), _unit_of(_PROC, int(e))))
+    if not holders:
+        return ("unknown",)
+    holders.sort(key=lambda h: (h[0], h[1] is not None, h[1] or ""))
+    return ("holders", holders)
+
+
+def _is_unit(o, unit: str) -> bool:
+    """Soketi tutan HER süreç `unit` biriminde mi."""
+    return o[0] == "holders" and bool(o[1]) and all(u == unit for _, u in o[1])
+
+
+def _describe(o) -> str:
+    if o[0] == "none":
+        return "dinleyen soket bulunamadı"
+    if o[0] == "other_user":
+        return f"başka kullanıcının soketi (uid {o[1]})"
+    if o[0] == "unknown":
+        return "soketi tutan süreç bulunamadı"
+    return ", ".join(f"pid {p} ({u or 'birimsiz'})" for p, u in o[1])
+
+
 def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[List[str], List[str]]:
-    """(adımlar, engeller). Geçersiz `--listen`/`--internal` ve çakışan adresler ENGEL (Rust `plan_on` ile aynı sıra)."""
+    """(adımlar, engeller)."""
+    p = _plan_on(listen, internal, binp, web_unit_text)
+    return p["steps"], p["blockers"]
+
+
+def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
+    """Plan kararı (Rust `plan_on` ile aynı engel sırası ve metni): steps, blockers, reapply (drop-in var ve iç portu
+    bizim web birimimiz tutuyor), new_execstart, la, ia. Geçersiz/çakışan adres ENGEL; drop-in varken iç portu başka bir
+    süreç tutuyorsa ENGEL (eskiden "yeniden uygulama" sayılıp ön kapı yabancı porta vekil oluyordu)."""
     blockers: List[str] = []
     if not os.path.exists(binp):
         blockers.append(f"ikili yok: {binp} (rust/ altında `cargo build --release`, sonra kopyala)")
@@ -176,15 +321,24 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
         blockers.append(f"geçersiz --internal: {e}")
     if la and ia and la[1] == ia[1] and (la[0] == ia[0] or la[0].is_unspecified):
         blockers.append(f"dış ve iç adres çakışıyor: {listen} / {internal}")
-    if ia and port_busy(_fmt(ia)) and not DROPIN.exists():      # drop-in varsa zaten açık: yeniden uygulama (birim güncelle) serbest
-        blockers.append(f"iç port dolu: {internal}")
+    reapply = False
+    if ia and port_busy(_fmt(ia)):
+        if not DROPIN.exists():
+            blockers.append(f"iç port dolu: {internal}")
+        else:
+            o = _port_owner(_fmt(ia))
+            if _is_unit(o, WEB_UNIT_NAME):
+                reapply = True          # zaten açık: Python'a dokunma, yalnız front birimini yenile
+            else:
+                blockers.append(f"iç port başka bir süreçte: {internal} ({_describe(o)}); drop-in var ama dinleyen "
+                                f"{WEB_UNIT_NAME} değil")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
              f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR} "
              f"--state-dir {front_mod.paths.CLAUDEOPS_DIR})",
              f"yaz: {DROPIN} (Python -> {internal})",
              "systemctl --user daemon-reload", "systemctl --user restart claudeops-web.service (Python iç porta geçer, dış port boşalır)",
              "systemctl --user enable --now claudeops-front.service"]
-    return steps, blockers
+    return {"steps": steps, "blockers": blockers, "reapply": reapply, "new_execstart": new, "la": la, "ia": ia}
 
 
 def _sc(*a: str) -> int:
@@ -209,7 +363,8 @@ def run(args) -> int:
         return rc
     if args.action == "on":
         text = WEB_UNIT.read_text() if WEB_UNIT.exists() else ""
-        steps, blockers = plan_on(args.listen, args.internal, args.bin, text)
+        plan = _plan_on(args.listen, args.internal, args.bin, text)
+        steps, blockers = plan["steps"], plan["blockers"]
         print("PLAN:\n  " + "\n  ".join(steps))
         if blockers:
             print("ENGEL:\n  " + "\n  ".join(blockers))
@@ -217,7 +372,7 @@ def run(args) -> int:
         if not args.apply:
             print("(plan; uygulamak için --apply)")
             return 0
-        reapply = DROPIN.exists() and port_busy(_fmt(_parse_internal(args.internal)))       # zaten açık: Python'a dokunma, yalnız front birimini yenile
+        reapply = plan["reapply"]
         front_mod.ensure_secret()
         FRONT_UNIT.write_text(_unit_text(args.bin, args.listen, args.internal))
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
