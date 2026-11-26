@@ -915,6 +915,10 @@ FILES = {
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
+    "state_backend_last_good": (_PATHS, W0A),
+    "state_instances_cache_copy": (_PATHS, W0A),
+    "state_instances_corrupt_mirror": (_PATHS, W0A),
+    "state_instances_db_version_cache": (_PATHS, W0A),
     "statedocs": (_PATHS, W0A),
     "statedocs_hosts_diag": (_PATHS, W0A),
     "statedocs_writers": (_PATHS, W0A),
@@ -1394,6 +1398,10 @@ review_self_verify:18:4b125a8002
 routing_guidance:13:964131411b
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
+state_backend_last_good:3:5531228f00
+state_instances_cache_copy:2:22e22aae4c
+state_instances_corrupt_mirror:6:27e0a53c31
+state_instances_db_version_cache:5:aeb31a0dc5
 statedocs:15:dbd456badd
 statedocs_hosts_diag:4:a184027db4
 statedocs_writers:7:817e74b52a
@@ -1412,7 +1420,7 @@ steward_remote_facts:19:8999b83aa6
 steward_ucli_idle:47:59d0c5886e
 steward_ucli_send:16:193aaaa4bf
 steward_ui_api:19:922b3bb2a8
-stop_with_handover:30:1888241d42
+stop_with_handover:34:841cd91175
 stopped_session_chat:29:b4c521a883
 store_tsv:6:310f8c657f
 stuck_kills_parent:4:f6dcaf3ebf
