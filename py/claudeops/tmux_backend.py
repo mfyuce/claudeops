@@ -205,8 +205,12 @@ def strip_ansi(text: str) -> str:
     return ANSI_OSC_RE.sub("", ANSI_SGR_RE.sub("", text))
 
 
-def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
-    """`settle_delay` — literal metni gönderdikten SONRA, Enter'ı göndermeden
+def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0, guard: bool = True) -> bool:
+    """`guard` (varsayılan AÇIK, TBD#367): pane gizli girdi bekliyorsa YA DA durum bilinmiyorsa hiçbir şey yazılmaz,
+    False döner. Yalnız insanın kendi yazdığı girdi (parola yazmak meşru) `guard=False` verir. Denetim ile yazım ayrı
+    tmux çağrılarıdır: arada açılan bir parola istemi yakalanmaz (kapatılamayan yarış).
+
+    `settle_delay` — literal metni gönderdikten SONRA, Enter'ı göndermeden
     ÖNCE bekle (saniye). Varsayılan 0.0: claude/agy/shell zaten anlık Enter'ı
     doğru işliyor. codex GEREKTİRİYOR (2026-09-05, canlı bulundu: literal metin +
     AYNI anda ayrı bir Enter kombinasyonu mesajı input kutusunda gönderilmemiş
@@ -223,6 +227,8 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         target = _exact(name)     # hedeflenemeyen ad: tampon bile yüklenmeden False (TBD#366)
         if "\x00" in text:
             return False
+        if guard and not _mask_allows(name):
+            return False
         if text:
             # Metin ASLA argv'ye girmez (TBD#369: `/proc/<pid>/cmdline`ı başka kullanıcı okuyabilir): stdin'den tampona
             # yüklenir, tek parça bracketed paste ile yapıştırılır (`-p`: uygulama istemişse), sonra tek Enter. Satır
@@ -237,6 +243,20 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         return r.returncode == 0
     except Exception:
         return False
+
+
+def _mask_allows(name: str) -> bool:
+    """Otomatik enjeksiyon kapısı (TBD#367): yalnız pane'in gizli girdi BEKLEMEDİĞİ KESİNSE True. Ret günlüğe düşer
+    (`send_refused_mask`; metin yazılmaz)."""
+    masked = pane_is_masked_input(name)
+    if masked is False:
+        return True
+    try:
+        from .diaglog import diag_log
+        diag_log("send_refused_mask", name=name, state="masked" if masked else "unknown")
+    except Exception:
+        pass
+    return False
 
 
 _PASTE_SETTLE = 0.15
@@ -360,7 +380,7 @@ def tmux_send_special_key(name: str, key: str) -> bool:
 _RAW_CHUNK_CHARS = 2000
 
 
-def tmux_send_raw(name: str, data: str) -> bool:
+def tmux_send_raw(name: str, data: str, guard: bool = False) -> bool:
     """xterm.js'in `onData`'sından gelen HAM tuş verisini pane'e OLDUĞU GİBİ
     iletir — Terminal görünümünün "canlı yazma" modu için (kullanıcı siyah
     terminal alanına doğrudan yazıyor, alttaki komut kutusuna değil).
@@ -376,11 +396,15 @@ def tmux_send_raw(name: str, data: str) -> bool:
     bulundu: `--` ZORUNLU (tire ile başlayan bir parça — kullanıcının yazdığı
     düz bir `-` bile — aksi halde `tmux: unknown option` ile ölür) ve NUL
     baytı argv'den geçemez (Ctrl+Space) — sessizce atılır, tuş vuruşunun
-    tamamını başarısız saymaktansa o tek karakteri kaybetmek yeğdir."""
+    tamamını başarısız saymaktansa o tek karakteri kaybetmek yeğdir.
+
+    `guard` (varsayılan kapalı: bu yol insanın canlı yazımıdır): otomatik çağıran True verir (TBD#367, kapalı yön)."""
     data = data.replace("\x00", "")
     if not data:
         return True
     try:
+        if guard and not _mask_allows(name):
+            return False
         for i in range(0, len(data), _RAW_CHUNK_CHARS):
             chunk = data[i:i + _RAW_CHUNK_CHARS]
             if chunk.endswith(";"):

@@ -19,7 +19,8 @@ class SendTimeoutTest(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0)
 
         with mock.patch.object(tmux_backend.subprocess, "run", fake_run), \
-                mock.patch.object(tmux_backend, "_exact", lambda n: n):
+                mock.patch.object(tmux_backend, "_exact", lambda n: n), \
+            mock.patch.object(tmux_backend, "pane_is_masked_input", lambda n: False):
             self.assertTrue(tmux_backend.tmux_send_keys("x", text))
         return seen
 

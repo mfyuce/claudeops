@@ -227,6 +227,8 @@ ERR = {
                          "en": "{name}: this CLI (e.g. a plain shell) has no conversation to inject into"},
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
+    "term_mask_blocked": {"tr": "{name}: pane parola bekliyor olabilir (durum kesin değil), otomatik gönderim yapılmadı",
+                           "en": "{name}: the pane may be waiting for a password (state not certain), automatic send skipped"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
     "invalid_range": {"tr": "geçersiz satır aralığı", "en": "invalid line range"},
     "window_already_attached": {"tr": "{name}: zaten bağlı {count} pencere var — ikincisi yeni bir session AÇMAZ, "
@@ -2402,7 +2404,7 @@ class _AgentOps:
         return _stop(name, exact=True)
 
     def send(self, name: str, text: str) -> dict:
-        return _term_input(name, text, exact=True)
+        return _term_input(name, text, exact=True, auto=True)
 
 
 _AGENT_OPS = _AgentOps()
@@ -2783,12 +2785,18 @@ def _term_loop_seconds(host: str, interval: Optional[float]) -> Optional[float]:
     return interval
 
 
-def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False) -> dict:
+def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False, auto: bool = False) -> dict:
+    """`auto`: metni insan değil motor yolluyor (değnekçi, orkestrasyon, ajan): parola durumu "gizli girdi yok" diye
+    KESİN değilse gönderilmez (TBD#367). `auto` yoksa insanın panelden yazdığı girdidir (parola yazmak meşru)."""
     s, err = _term_resolve(name, lang, exact=True) if exact else _term_resolve(name, lang)
     if err:
         return err
     _prov = get_provider(s.cli)
-    ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay())
+    if auto and pane_is_masked_input(s.name) is not False:
+        diag_log("send_refused_mask", name=s.name, state="remote_auto")
+        return dict(_err(lang, "term_mask_blocked", name=name), code="mask_blocked")
+    guard = {} if auto else {"guard": False}
+    ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay(), **guard)
     if ok:
         web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
@@ -6660,7 +6668,8 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(self._term_dedup_result(path, data, _term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True)))
+            self._json(self._term_dedup_result(path, data, _term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True,
+                                                                   auto=data.get("auto") is True)))
             return
 
         if path == "/api/term/key":

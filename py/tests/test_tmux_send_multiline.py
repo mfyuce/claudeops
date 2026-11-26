@@ -20,6 +20,7 @@ def _run(text, fail_on=None):
 
     with mock.patch.object(tmux_backend.subprocess, "run", fake_run), \
             mock.patch.object(tmux_backend, "_exact", lambda n: n), \
+            mock.patch.object(tmux_backend, "pane_is_masked_input", lambda n: False), \
             mock.patch.object(tmux_backend.time, "sleep", lambda s: None):
         ok = tmux_backend.tmux_send_keys("x", text)
     return ok, calls

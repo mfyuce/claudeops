@@ -1,4 +1,4 @@
-"""`;` ile biten adda spawn parçası `-s 'ad\;'` yazar; yedek süreç taraması iğnesini aynı kaçışla kurmazsa pencereyi
+"""`;` ile biten adda spawn parçası `-s 'ad\\;'` yazar; yedek süreç taraması iğnesini aynı kaçışla kurmazsa pencereyi
 bulamaz."""
 import shlex
 import unittest

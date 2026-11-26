@@ -60,7 +60,7 @@ class UcliSendTest(unittest.TestCase):
                 mock.patch.object(ws, "tmux_capture", side_effect=lambda *a, **k: next(caps)), \
                 mock.patch.object(ws, "tmux_send_raw") as raw:
             ws._send("u", "ucli", "x")
-        raw.assert_called_once_with("u", "\r")
+        raw.assert_called_once_with("u", "\r", guard=True)
         self.log.assert_not_called()
 
     def test_still_stuck_logs_error(self):
@@ -97,7 +97,7 @@ class UcliSendTest(unittest.TestCase):
                 mock.patch.object(ws, "tmux_capture", side_effect=lambda *a, **k: next(caps)), \
                 mock.patch.object(ws, "tmux_send_raw") as raw:
             ws._send("u", "ucli", "x")
-        raw.assert_called_once_with("u", "\r")
+        raw.assert_called_once_with("u", "\r", guard=True)
         self.log.assert_not_called()
 
     def test_empty_box_no_extra_enter(self):

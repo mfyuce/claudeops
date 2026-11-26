@@ -28,7 +28,7 @@ class Pane:
             self.text = self.on_send(self, message)
         return True
 
-    def raw(self, name, data):
+    def raw(self, name, data, guard=False):
         self.enters += 1
         self.text = self.text.replace("[Pasted text #1 +3 lines]", "") + "\n" + MSG
         return True
@@ -68,7 +68,7 @@ class SendVerified(unittest.TestCase):
         keys = []
 
         class Stuck(Pane):
-            def raw(self, name, data):
+            def raw(self, name, data, guard=False):
                 keys.append(data)
                 if data == "\r" and " " in keys:
                     self.text = "\n" + MSG
@@ -83,7 +83,7 @@ class SendVerified(unittest.TestCase):
         keys = []
 
         class Dead(Pane):
-            def raw(self, name, data):
+            def raw(self, name, data, guard=False):
                 keys.append(data)
                 return True
 
@@ -95,7 +95,7 @@ class SendVerified(unittest.TestCase):
     def test_text_unsent_in_input_box_is_not_delivered(self):
         """26 Kas, Claude Code 2.1.332: açılışta yapıştırılan metin kutuda düz yazı olarak kalıyor; Enter gönderir."""
         class Boxed(Pane):
-            def raw(self, name, data):
+            def raw(self, name, data, guard=False):
                 self.enters += 1
                 self.text = "❯ " + MSG + "\n" + box("")
                 return True
@@ -107,7 +107,7 @@ class SendVerified(unittest.TestCase):
 
     def test_text_stuck_in_input_box_forever_fails_without_resend(self):
         class Dead(Pane):
-            def raw(self, name, data):
+            def raw(self, name, data, guard=False):
                 return True
 
         p = Dead("", on_send=lambda self, m: box(m))
@@ -122,7 +122,7 @@ class SendVerified(unittest.TestCase):
 
     def test_pasted_placeholder_in_input_box_gets_enter(self):
         class Boxed(Pane):
-            def raw(self, name, data):
+            def raw(self, name, data, guard=False):
                 self.enters += 1
                 self.text = "❯ " + MSG + "\n" + box("")
                 return True
@@ -142,7 +142,7 @@ class SendVerified(unittest.TestCase):
     def test_colored_typed_text_in_box_counts_as_unsent(self):
         for colour in ("\x1b[38;2;215;119;87m", "\x1b[48;2;40;40;40m", "\x1b[48;5;2m"):
             p = Pane("", on_send=lambda self, m, c=colour: box(c + m + "\x1b[0m"))
-            p.raw = lambda name, data: True
+            p.raw = lambda name, data, guard=False: True
             self.assertEqual(verify(p), "failed", repr(colour))
 
     def test_resend_when_nothing_arrived(self):

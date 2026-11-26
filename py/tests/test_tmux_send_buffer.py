@@ -22,7 +22,8 @@ class ArgvTests(unittest.TestCase):
                 return mock.Mock(returncode=1)
             return mock.Mock(returncode=0)
 
-        with mock.patch.object(tb.subprocess, "run", fake), mock.patch.object(tb.time, "sleep", lambda s: None):
+        with mock.patch.object(tb.subprocess, "run", fake), mock.patch.object(tb.time, "sleep", lambda s: None), \
+                mock.patch.object(tb, "pane_is_masked_input", lambda n: False):
             ok = tb.tmux_send_keys("k", text)
         return ok, calls
 
@@ -61,7 +62,7 @@ class RealTmuxSendTests(unittest.TestCase):
         with IsoTmux() as iso:
             out = iso.dir + "/girdi"
             iso.spawn("k", f"exec cat > {out}")
-            texts = ["düz metin", "-tire ile", "noktalı virgül;", "bar\;", "#{pane_tty} #(false)", "iki\nsatır"]
+            texts = ["düz metin", "-tire ile", "noktalı virgül;", "bar\\;", "#{pane_tty} #(false)", "iki\nsatır"]
             for text in texts:
                 iso.wait(lambda: tb.pane_is_masked_input("k") is False, "pane hazır")
                 self.assertTrue(tb.tmux_send_keys("k", text), text)

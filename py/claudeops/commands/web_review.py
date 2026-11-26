@@ -3030,7 +3030,8 @@ class RemoteVerifyIO:
         return res if isinstance(res, dict) else {"ok": False}
 
     def send(self, host: str, name: str, text: str) -> Dict[str, Any]:
-        res, _ = self._wh().proxy_action("/api/term/input", host, {"name": name, "text": text, "exact": True}, timeout=60)
+        res, _ = self._wh().proxy_action("/api/term/input", host, {"name": name, "text": text, "exact": True, "auto": True},
+                                        timeout=60)
         return res if isinstance(res, dict) else {"ok": False}
 
     def last_assistant(self, host: str, name: str) -> Optional[str]:
