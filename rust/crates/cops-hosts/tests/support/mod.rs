@@ -502,3 +502,107 @@ pub fn assert_clean(text: &str, port: u16) {
 pub fn fd_count() -> usize {
     std::fs::read_dir("/proc/self/fd").unwrap().count()
 }
+
+// ---------------------------------------------------------------- iş 2: federasyon/sağlık
+
+/// Olayları toplayan `Events` (alanlarda token olmamalı).
+#[derive(Default)]
+pub struct RecEvents(pub Mutex<Vec<(String, Value)>>);
+
+impl RecEvents {
+    pub fn names(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect()
+    }
+    pub fn all(&self) -> Vec<(String, Value)> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl cops_hosts::events::Events for RecEvents {
+    fn log(&self, event: &str, fields: Value) {
+        self.0.lock().unwrap().push((event.into(), fields));
+    }
+}
+
+/// Bellek içi `HostSource`: `promote` kaydı `record::promote_base_url` ile GERÇEKTEN günceller (Python
+/// `hosts_mod.promote_base_url` gibi), çağrılar sayılır.
+#[derive(Default)]
+pub struct MemSource {
+    pub hosts: Mutex<Vec<HostRecord>>,
+    pub promotes: Mutex<Vec<(String, String)>>,
+    pub switches: Mutex<Vec<String>>,
+    pub loads: AtomicUsize,
+    /// `None` = varsayılan reach portları.
+    pub ports: Mutex<Option<std::collections::BTreeSet<u16>>>,
+    pub choice: Mutex<Option<String>>,
+}
+
+impl MemSource {
+    pub fn new(hosts: Vec<HostRecord>) -> Arc<MemSource> {
+        let s = MemSource::default();
+        *s.hosts.lock().unwrap() = hosts;
+        Arc::new(s)
+    }
+    pub fn promotes(&self) -> Vec<(String, String)> {
+        self.promotes.lock().unwrap().clone()
+    }
+    pub fn base_url(&self, name: &str) -> String {
+        self.hosts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|h| h.name == name)
+            .map(|h| h.base_url.clone())
+            .unwrap_or_default()
+    }
+}
+
+impl cops_hosts::HostSource for MemSource {
+    fn load(&self) -> Vec<HostRecord> {
+        self.loads.fetch_add(1, Ordering::SeqCst);
+        self.hosts.lock().unwrap().clone()
+    }
+    fn promote(&self, name: &str, new_base_url: &str) {
+        self.promotes
+            .lock()
+            .unwrap()
+            .push((name.into(), new_base_url.into()));
+        let mut h = self.hosts.lock().unwrap();
+        let cur = cops_hosts::record::Parsed {
+            hosts: h.clone(),
+            ..Default::default()
+        };
+        if let Some(next) = cops_hosts::record::promote_base_url(&cur, name, new_base_url) {
+            *h = next;
+        }
+    }
+    fn reach_ports(&self) -> std::collections::BTreeSet<u16> {
+        self.ports
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| cops_hosts::guard::reach_loopback_ports(None))
+    }
+    fn probe_choice(&self, _host: &HostRecord) -> Option<String> {
+        self.choice.lock().unwrap().clone()
+    }
+    fn note_switch(&self, name: &str) {
+        self.switches.lock().unwrap().push(name.into());
+    }
+}
+
+/// Dinleyicisi olmayan loopback portu (bağlanma hemen reddedilir).
+pub async fn closed_port() -> u16 {
+    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    l.local_addr().unwrap().port()
+}
+
+/// Belirli yoldaki istek sayısı.
+pub fn count_path(f: &Fake, path: &str) -> usize {
+    f.recs().iter().filter(|r| r.path == path).count()
+}

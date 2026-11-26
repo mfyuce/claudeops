@@ -351,46 +351,60 @@ pub async fn remote_post(
     send(client, hosts, host, path, body, timeout, tick).await
 }
 
-/// Yıkıcı eylem kanıtı: taze host + `exact_target` yeteneği + adı TAM eşleşen tek çalışan satır.
+/// Yıkıcı eylem kanıtı: taze host + adı TAM eşleşen tek çalışan satır + `exact_target` yeteneği.
 #[derive(Debug)]
 pub struct ExactTarget {
     host: String,
     name: String,
 }
 
+/// Python doğruluk değeri (`bool(x)`): uzak `running` alanı `true` dışında da gelebilir; belirsizlik kapalı yöne
+/// düşsün diye eşleşme SAYIMI Python ile aynı kuralı kullanır.
+fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
+}
+
+/// Sıra Python `_remote_stop` ile aynı: tazelik, satır (0 = `no_exact_match`, 2+ = `ambiguous`), sonra yetenek.
+/// `caps` = [`CapabilityCache::cached`]; `None` = yetenek şu an bilinmiyor (`caps_unknown`), bilinip `exact_target`
+/// yoksa `remote_too_old`.
 pub fn exact_target(
     host: &str,
     name: &str,
     status: Option<&HostStatus>,
     last_ok_at: f64,
-    caps: &Capabilities,
+    caps: Option<&Capabilities>,
     now: f64,
 ) -> Result<ExactTarget, &'static str> {
     if !host_fresh(status, last_ok_at, now) {
         return Err("host_down");
     }
-    if !caps.has("exact_target") {
-        return Err(if caps.api == 0 {
-            "remote_too_old"
-        } else {
-            "capability_missing"
-        });
-    }
     let matches = status
         .map(|s| {
             s.sessions
                 .iter()
-                .filter(|r| r["name"] == name && r["running"] == true)
+                .filter(|r| r["name"] == name && truthy(&r["running"]))
                 .count()
         })
         .unwrap_or(0);
     match matches {
-        1 => Ok(ExactTarget {
+        1 => {}
+        0 => return Err("no_exact_match"),
+        _ => return Err("ambiguous"),
+    }
+    match caps {
+        None => Err("caps_unknown"),
+        Some(c) if !c.has("exact_target") => Err("remote_too_old"),
+        Some(_) => Ok(ExactTarget {
             host: host.into(),
             name: name.into(),
         }),
-        0 => Err("no_exact_match"),
-        _ => Err("ambiguous"),
     }
 }
 
@@ -405,14 +419,14 @@ pub async fn remote_stop(
 ) -> Value {
     let host = target.host.as_str();
     if tick.blocked(host) {
-        return json!({"ok": false, "error": "host_down", "host": host});
+        return fail(host, "host_down", "host_down".into());
     }
     let sent = tick.destructive.entry(host.to_string()).or_default();
     if *sent >= MAX_DESTRUCTIVE_PER_HOST {
         return fail(
             host,
-            "deferred",
-            "destructive action budget for this tick is used".into(),
+            "destructive_budget",
+            format!("one destructive action per host per tick ({host})"),
         );
     }
     *sent += 1;
@@ -420,5 +434,14 @@ pub async fn remote_stop(
     body.insert("name".into(), target.name.clone().into());
     body.insert("exact".into(), true.into());
     body.insert("lang".into(), lang.into());
-    send(client, hosts, host, "/api/stop", body, timeout, Some(tick)).await
+    let mut out = send(client, hosts, host, "/api/stop", body, timeout, Some(tick)).await;
+    // Python: `dict(_remote_post(...), host=host, name=name)`; `ok` olmayan yanıt uygulanmış SAYILMAZ.
+    if let Some(o) = out.as_object_mut() {
+        o.insert("host".into(), host.into());
+        o.insert("name".into(), target.name.clone().into());
+        if !o.get("ok").is_some_and(truthy) {
+            o.insert("ok".into(), false.into());
+        }
+    }
+    out
 }

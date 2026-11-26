@@ -3,10 +3,11 @@
 ## Durum (26 Kas 2026, devir anı): BİRLEŞTİRMEYE HAZIR DEĞİL
 
 Kütüphane kodu yazıldı ve derleniyor; `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz;
-`cargo test -p cops-hosts` 44/44 geçiyor (17 birim + 27 sahte sunuculu entegrasyon; art arda 8 koşu, oynak değil).
+`cargo test -p cops-hosts` 70/70 geçiyor (17 birim + 53 sahte sunuculu entegrasyon; art arda 6 koşu, oynak değil).
 Birim: `endpoint`, `guard`, `record`, `flight`, `tier`. Entegrasyon (iş 1, `tests/fake_*.rs`): `http` havuzu ve zaman
 aşımları, `proxy` (vekil, dedup, yükleme/indirme), `sign` (imza kapısı), `net` (REST yolunda DNS-loopback reddi).
-`status`, `health`, `federation`, `relay`, `push`, `ws`, `grpc` için HİÇ test yok (iş 2-3); Python parite testi yok (iş 4).
+İş 2 (`tests/fake_poller.rs`, `tests/fake_health.rs`): `status`, `federation` (poller/prober REST yolu), `health`.
+`relay`, `push`, `ws`, `grpc` için HİÇ test yok (iş 3); Python parite testi yok (iş 4).
 Test edilmemiş davranış doğrulanmış sayılmaz.
 Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
 
@@ -22,8 +23,8 @@ Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). G
    - dedup: eşzamanlı aynı URL tek istek; farklı kimlik ayrı anahtar; iptal edilen görev uçuşu bırakır.
    - yükleme: erken biten ve taşan gövde hata; ilerleyen yavaş gövde kesilmez; indirme başlık süzgeci.
    - imza: her denemede yeni imza, `Unbound`da imza yok, red = 502 ve istek GİTMEZ, panik ve yasak başlık = red.
-2. Poller/health testleri: N ardışık hata toleransı, `extra_urls` yedeği ve https'ten düşmeme, bozuk satırlar,
-   `merge_status` sıralaması, breaker, `probe_facts` (404, geçici hata önbelleğe yazılmaz), `remote_post`/`remote_stop`.
+2. BİTTİ (26 Kas): poller/health testleri, `tests/fake_poller.rs` (13) + `tests/fake_health.rs` (13); destek
+   `support::{MemSource, RecEvents, closed_port, count_path}`. Eşleme aşağıda "İş 2 test eşlemesi".
 3. WS ve gRPC: sahte `/ws`, `/ws/term` (tokio-tungstenite server) ve sahte tonic servisi; sessizlik watchdog'u, ölü
    relay yeniden kurma, DNS adı loopback'e çözülünce red (sahte `Resolver`). TLS: özel kök ile bir tur.
    gRPC'de `Dial` + `origin` ile https yolunun gerçekten çalıştığı DOĞRULANMADI.
@@ -75,6 +76,69 @@ denetlendiği için bağlantı kurucu 127.0.0.1'e izin verir; DNS yolu için mev
 Bulunan hata: yok (Rust kodunda değişiklik yapılmadı). Python ile bilinen fark `ticket` süzgeci (aşağıda) dışında yeni
 fark görülmedi.
 
+### İş 2 test eşlemesi
+
+| Senaryo | Test |
+|---|---|
+| eşik altı hata yazılmaz, `last_ok_at` değişmez; eşikte ok:false ama satırlar KORUNUR, 6.+ hatada da silinmez; başarı sayacı sıfırlar; hiç başarısı olmayan host ilk hatada görünür; silinen host önbellekten kalkar; hata metni temiz | `fake_poller::consecutive_failures_are_tolerated_then_rows_are_kept_stale` |
+| `extra_urls` yalnız 5. ve her 20. hatalı turda, başarısız aday kalıcılaşmaz, çalışan aday `promote` + kayıt güncellenir, sonraki tur yeni adrese | `fake_poller::extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure` |
+| `extra_urls` yoksa yedek ve `probe_choice` hiç devreye girmez | `fake_poller::host_without_extra_urls_never_tries_a_fallback` |
+| https tabanlı host'ta düz http aday: TCP bağlantısı bile yok, olayda URL yok; https aday denenir; `probe_choice` da aynı kural; reach portundaki aday izinli | `fake_poller::https_base_never_falls_back_to_plain_http` |
+| `probe_choice` yalnız kayıtlı aday, ağa gitmez, `note_switch` + olay | `fake_poller::probe_choice_only_promotes_registered_allowed_candidates` |
+| bozuk uzak yanıt: `sessions` yok/nesne/sayı, dizi, JSON değil, boş, 2xx dışı = hata; nesne olmayan satır düşer, yanlış tipli alanlar boşa, `cli_options` 4 alana tamamlanır, `orphan_watch`/`fwd`/`build` indirgemesi | `fake_poller::malformed_remote_status_is_an_error_or_reduced_to_empty_fields` |
+| bozuk host kaydı (sayı, metin, adsız) yoklanmaz | `fake_poller::irregular_host_records_are_skipped_by_the_poller` |
+| `merge_status`: ad (küçük harf) sonra cwd ya da tersi, eşit anahtarda kararlı (yerel önce), adsız satır, yanlış tipli yerel liste, `mirror_open` yalnız uzak satır ve yalnız küme verilince, yoklanmamış host yer tutucusu, kayıt sırası, kesintide bayat satırlar | `fake_poller::merge_status_resorts_globally_and_keeps_host_rows` |
+| `/api/hosts` satırlarında token/`token=` yok, `has_token`, hata metni temiz, `build_diff`, yoklanmamış host | `fake_poller::public_rows_never_carry_the_token` |
+| `probe_host`: kayıtsız host, 15 sn hız sınırı (istek GİTMEZ), sınır sonrası yeniden, poller ile aynı tolerans | `fake_poller::probe_host_is_rate_limited_and_records_like_the_poller` |
+| `test_now` taze sonucu döner, paylaşılan önbellek toleranslı kalır | `fake_poller::test_now_returns_the_fresh_result_not_the_smoothed_one` |
+| `Running` düşünce poller+prober durur (görevler `Federation` kopyalarını bırakır, 600 sn'de tur yok); tutulurken döner | `fake_poller::dropping_running_stops_poller_and_prober` (sanal saat) |
+| poller kalp atışı yaşı bir aralığı aşmaz, yeniden başlatma yok | `fake_poller::poller_beat_age_stays_within_one_interval` (sanal saat) |
+| taşıma hatası sınıfı (502-504, `<host> unreachable:` öneki; 404, 500, uygulama reddi, başka host adı değil) | `fake_health::transport_error_classification` |
+| devre kesici 3 hatalı tick'te açılır, `Down` bir kez, 600 sn, sonraki hata uzatır, temiz tick `Up` + sıfır | `fake_health::breaker_opens_after_three_failing_ticks_and_reports_once` |
+| eylemsiz tick sayılmaz, temiz tick sayacı sıfırlar, aynı tick'te hata önce, değişiklikler sıralı | `fake_health::breaker_ignores_idle_ticks_and_success_resets_streak` |
+| probe başarısı geri çekilmeyi ANINDA bitirir, sayaç sıfırlanır | `fake_health::probe_success_clears_backoff_immediately` |
+| tek yavaş okuma (gerçek zaman aşımı) host'u suçlamaz, hepsi yavaşsa suçlar | `fake_health::slow_single_read_does_not_blame_a_reachable_host` |
+| tazelik (bayat, hiç başarı yok, stale-while-error satırı) ve dosya kapısı (5 negatif) | `fake_health::freshness_and_files_gate` |
+| `probe_facts` tek istekte yetenek+olgu, sorgu, api>0 her seferinde sorulur, geçersiz `api` reddi | `fake_health::probe_facts_reads_caps_and_facts_in_one_request` |
+| 404 = api 0 önbelleğe, taşıma değil, 10 dk istek GİTMEZ, sonra yeniden yoklama | `fake_health::probe_facts_404_caches_old_host_and_stops_asking` |
+| geçici hata (500, ok:false, 502, 503, kopma, kapalı port, kayıtsız host) önbelleğe YAZILMAZ; yalnız taşıma hatası `tick.failed` | `fake_health::probe_facts_transient_failure_is_not_cached` |
+| `remote_post` 4 yıkıcı yolu ve `host` alanını reddeder (bağlantı yok), normal yol `host=local` ile gider | `fake_health::remote_post_refuses_destructive_paths_and_host_field` |
+| 404 `remote_not_found`, uygulama reddi aynen, kopma = `host_down` + POST yeniden denenmez + aynı tick'te istek yok, olayda token yok, 502 | `fake_health::remote_post_breaker_and_error_marking` |
+| belirsiz (2 çalışan satır, Python doğruluk kuralı), önek eşleşmesi, çalışmayan, büyük/küçük harf, bayat/kapalı host, yetenek yok/bilinmiyor: istek GİTMEZ (sunucu sayacı 0) | `fake_health::ambiguous_or_inexact_target_sends_nothing` |
+| `remote_stop` gövdesi, host başına tick başına 1 yıkıcı eylem, başka host ayrı bütçe, uzak ret uygulanmış sayılmaz, bloklu host, yeni tick | `fake_health::remote_stop_sends_one_exact_stop_per_host_per_tick` |
+
+Mutasyonla doğrulandı (26 mutasyon, hepsi en az bir testi düşürdü; kaynak geri alındı): tolerans eşiği, bayat satır
+koruması, yedek sıklığı, https düşürme denetimi, `probe_choice` kayıt denetimi, sıralama (küçük harf ve cwd eşitlik
+anahtarı), `public()` yerine `to_value()`, `Running` abort'u, breaker `clear`/`settle` önceliği, `record_reads`,
+facts geçici hatayı önbelleğe yazma, api 0 kısa devresi, yıkıcı yol reddi, `ambiguous`, bütçe, `probe_host` hız sınırı,
+2xx denetimi, taşıma öneki, doğruluk kuralı, bloklu `remote_stop`, `caps_unknown`, `retain`, `mirror_open`, `promote`.
+
+Kapsanamayanlar (iş 2): poller takılma/panik yeniden başlatması (`POLLER_STALL` 90 sn; tur içinde engelleyen bir adım
+gerekir, gerçek ağla sanal saat birlikte oynak olur); push tüketicili (`ws`/`grpc` kademe) poller dalı ve prober'ın
+kademe yükseltmesi (iş 3: sahte `/ws` ve tonic); özel ağ (RFC1918) http istisnası (loopback dışı adres gerekir;
+kural `guard` birim testinde). Rust'ta paralel okuma bütçesi (`_remote_last_assistant`) yok, değnekçi izinin işi:
+test `proxy_get` + `record_reads` bileşimini sınar.
+
+İş 2'de düzeltilen (Python ile eşitleme, `health.rs`):
+- `exact_target` sırası Python `_remote_stop` gibi: tazelik, satır, sonra yetenek (önce yetenek bakılıyordu).
+  Yetenek `Option`: bilinmiyorsa `caps_unknown`, bilinip `exact_target` yoksa `remote_too_old` (eskiden bilinmeyen
+  yetenek `remote_too_old`, api>0 `capability_missing` diye etiketleniyordu).
+- `running` eşleşme sayımı Python doğruluk kuralıyla (`bool(x)`): yalnız `true` sayılınca Python'da belirsiz olan
+  (`running: 1` ikinci satır) durum Rust'ta TEK hedef görünüyordu (kapalı yöne düşmüyordu).
+- `remote_stop`: bütçe kodu `destructive_budget` + Python metni (eskiden `deferred`), bloklu host yanıtında
+  `code: host_down`, yanıt `host` ve `name` taşır, `ok` olmayan yanıt `ok:false` (Python `_remote_stop`).
+
+Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli davranıyor):
+- `web_hosts.merge_status._row_key`: `r["cwd"].lower()`/`r["name"].lower()`; `cwd`/`name` alanı olmayan ya da `null`
+  uzak satır KeyError/AttributeError ile yerel `/api/status` birleştirmesini düşürür. Rust boş metin sayar.
+- `web_hosts._tag_rows`: nesne olmayan satırda `dict(r)` TypeError; `_fetch_status_from` yalnız `"sessions" in parsed`
+  bakar, `sessions: 5` de aynı istisnaya gider (poller turu ölür, watchdog yeniden başlatır, host durumu yazılmaz).
+  Rust: dizi olmayan `sessions` = "unexpected response shape", nesne olmayan satır atlanır.
+- `web_steward._remote_session`/`_remote_running_row` tam ad yolunda İLK çalışan satırı alır (`next(...)`), aynı
+  adlı iki çalışan satırı belirsiz saymaz. Rust `ambiguous` döner (daha sıkı).
+- `_probe_facts`: `capabilities` metin gelirse karakterlerine bölünür; Rust dizi olmayanı boş, metin olmayan öğeyi
+  atar (Python `str()` ile tutar). `has("exact_target")` sonucu iki tarafta aynı.
+
 ## Modüller
 
 | Modül | Python karşılığı |
@@ -117,11 +181,11 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 
 | Madde | Durum | Karşılık |
 |---|---|---|
-| `Remote<T>`; yıkıcı eylem yalnız `Ok` | K | `health::Remote`, `exact_target` + `remote_stop`; `remote_post` yıkıcı yolu reddeder |
+| `Remote<T>`; yıkıcı eylem yalnız `Ok` | T | `health::Remote`, `exact_target` + `remote_stop`; `remote_post` yıkıcı yolu reddeder |
 | SSRF tablo, menzil istisnası yalnız `extra_urls` | T | `guard::tests::*`, `record::tests::validation_order` |
-| HTTPS'ten düz HTTP'ye sessiz düşüş yok | T (kural), K (poller) | `https_never_downgrades_to_public_http`, `try_fallback_urls` |
-| Breaker, probe başarısında sıfırlama, yavaş okuma suçlamaz | K | `Breaker::{settle,clear}`, `TickState::record_reads` |
-| Yetenek yoklaması, eski sürüme zarif düşüş | K | `CapabilityCache::probe_facts`, `Remote::Unsupported` |
+| HTTPS'ten düz HTTP'ye sessiz düşüş yok | T | `https_never_downgrades_to_public_http`, `try_fallback_urls` |
+| Breaker, probe başarısında sıfırlama, yavaş okuma suçlamaz | T | `Breaker::{settle,clear}`, `TickState::record_reads` |
+| Yetenek yoklaması, eski sürüme zarif düşüş | T | `CapabilityCache::probe_facts`, `Remote::Unsupported` |
 | Route = host-routed = yetki tablosu eşitlik testi | A | iş 4 |
 | Deploy smoke | gerekçe | kütüphane; ikili ve deploy copsd entegrasyonunda (cops) |
 | Açık, uzun zaman aşımı | T (adım + tavan + terminal deneme sınırı), K (`long_read`) | `Timeouts` (`long_read` 90 sn çağıran seçer) |
@@ -133,13 +197,13 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 
 | # | Durum | Not |
 |---|---|---|
-| 1 hedef Unique | K | `exact_target` tam ad, birden çok eşleşme `ambiguous` |
+| 1 hedef Unique | T (`ambiguous_or_inexact_target_sends_nothing`) | `exact_target` tam ad, birden çok eşleşme `ambiguous` |
 | 2 atomik yazım | gerekçe | dosya yazımı yok |
 | 3 belirsiz = kapalı | kısmen T | signer paniği ve yasak başlık red (T, iş 1), bozuk belge yazılmaz (T), `Remote` ayrımı (K) |
-| 4 sonuç doğrulama + negatif test | kısmen T | iş 1 negatifleri sunucu sayacıyla (T); iş 2-3 açık |
+| 4 sonuç doğrulama + negatif test | kısmen T | iş 1-2 negatifleri sunucu sayacıyla (T); iş 3 açık |
 | 5 hata yutma | A | `.ok()`/`let _` taraması yapılmadı (WS kapanışı ve TCP nodelay bilerek yutuluyor) |
-| 6 bayat önbellek | K | kayıtlar her turda okunur; hata `last_good`u ezmez; test yok. Sistem TLS kökleri süreçte bir kez yüklenir |
-| 7 sınırlı döngü | kısmen T | yeniden deneme 2 ve 3 (T, iş 1); poller/prober sonsuz ama `Running` düşünce durur; dedup TTL + LRU (T) |
+| 6 bayat önbellek | T | kayıtlar her turda okunur; hata `last_good`u ezmez (T, iş 2). Sistem TLS kökleri süreçte bir kez yüklenir |
+| 7 sınırlı döngü | kısmen T | yeniden deneme 2 ve 3 (T, iş 1); poller/prober sonsuz ama `Running` düşünce durur (T, iş 2); dedup TTL + LRU (T) |
 | 8 CLI/TUI fixture | gerekçe | TUI yok |
 | 9 sahiplik, fd sızıntı testi | T (REST) | `fake_fd` (200 zaman aşımı, sunucu her soketin kapandığını görür); iptal edilen görev uçuşu bırakır (T). WS/relay görevleri iş 3. Havuz bağlantı görevi karşı taraf kapatınca biter |
 | 10 girdi sınırları | kısmen T | URL, kayıt, belge; uzak REST yanıt tipleri ve gövde sınırı (T, iş 1); WS/gRPC iş 3 |
