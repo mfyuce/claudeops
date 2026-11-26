@@ -21,9 +21,11 @@ pub mod inserts;
 pub mod logdedup;
 pub mod markers;
 pub mod notify;
+pub mod observe;
 pub mod prompts;
 pub mod questions;
 pub mod recovery;
+pub mod report;
 pub mod store;
 pub mod tour;
 #[rustfmt::skip]

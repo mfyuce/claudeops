@@ -2,7 +2,7 @@
 """Kayıtlı vektörlerin kapsamadığı dallar/kenar durumları (gruplar C ve D): girdiler burada elle yazılır, beklenen değer
 Python işlevi çalıştırılarak alınır. Çıktı `fixtures/hand/<işlev>.jsonl.gz` (aynı satır biçimi; `harness::cases` ikisini de
 oynatır). Kullanım: `python3 -I parity/hand_cases.py`."""
-import dataclasses, functools, glob, gzip, hashlib, itertools, json, os, random, sys
+import dataclasses, functools, glob, gzip, hashlib, itertools, json, os, random, sys, time
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -982,6 +982,75 @@ for i in range(2500):
         add_cb("explain_idle", eargs, lambda c: sw.explain_idle(projects["a"], views, projects, state, cfg, NOW, [], [], None, c["open_work"]), {"open_work": {"a": n_open}})
     else:
         add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, [], None, c["open_work"]), tables)
+
+# ── grup 4: gözlem süzgeci ve raporlar ──
+rnd = random.Random(4)
+OK_KINDS = ["start", "stop", "tour", "deliver_answer", "deliver_findings", "deliver_lesson", "deliver_job", "directive", "nudge", "ask_user", "idea", "set_phase", "loop_break", "notify", "keepwarm", "idle_nudge", "handover"]
+for _ in range(2000):
+    actions = []
+    for _ in range(rnd.randint(0, 5)):
+        kind = rnd.choice(OK_KINDS)
+        payload = rnd.choice([{}, {"question_id": "q1"}, {"question_id": "", "job_id": "j1"}, {"job_id": 7}, {"rows": [{"id": 1}, {"id": "b"}]}, {"hashes": ["h2", "h1"]},
+                              {"items": [{"kind": "blocked", "id": "q1"}, {"kind": "blocked", "id": "q2"}, {"kind": "ask", "id": "q1"}, {"kind": "blocked"}]},
+                              {"items": [{"kind": "blocked", "id": "q1"}, {"kind": "blocked", "id": "q1"}]}, {"items": None}, {"question_id": 0, "items": []}])
+        actions.append(sw.Action(kind, rnd.choice(["a", "b", ""]), "r", payload))
+    state = {}
+    if rnd.random() < 0.6:
+        state["observed"] = rnd.choice([{}, None, {"start:a:": NOW - 21599, "stop:b:": NOW - 21600, "tour:a:": str(NOW - 5), "start:b:q1": NOW}, {"start:a:": "x"}])
+    if rnd.random() < 0.5:
+        state["observed_visit"] = rnd.choice([{}, {"z": 1.0}, None])
+    if rnd.random() < 0.7:
+        state["blocked_tours"] = rnd.choice([{}, None, {"q1": 1, "q2": 3}, {"q1": 2, "None": 1}, {"q1": "2"}, {"q1": 0}, {"q1": None}, {"zz": 5}])
+    state["x"] = 1
+    add("observe_filter", {"actions": actions, "mode": rnd.choice(["observe", "observe", "observe", "act", ""]), "state": state, "now": NOW})
+for _ in range(500):
+    rep = {}
+    for kind in rnd.sample(["wake_repeat", "wake_cap", "brain_wake_cap", "keepwarm", "idle_big_handover", "start", "stop"], rnd.randint(0, 6)):
+        rep[kind] = {"count": rnd.randint(0, 5), "names": {n: rnd.randint(1, 3) for n in rnd.sample(["a", "b", "c", "d", "-"], rnd.randint(0, 5))}, "chars": rnd.choice([0, 0, 12, 3.5]),
+                     "first": rnd.choice([NOW - 10, NOW - 259200, NOW - 259199, NOW - 900000]), "last": NOW}
+    hours = rnd.choice([72, 1, 1.5, 0.0])
+    add("dry_report_text", {"rep": rep, "hours": hours})
+    add("dry_ask_due", {"rep": rep, "asked": rnd.choice([None, [], ["wake_gate"], ["keepwarm", "x"], "keepwarm"]), "now": NOW, "hours": hours})
+for hour, offset, sd in itertools.product([0, 8, 19, 20, 23, 24], [0, 3600 * 5, -3600 * 7, 86400 * 40], [None, "", "x", "bugün"]):
+    t = NOW + offset
+    today = time.strftime("%Y-%m-%d", time.localtime(t))
+    add("summary_due", {"state": {} if sd is None else {"summary_date": today if sd == "bugün" else sd}, "now": t, "hour": hour})
+for names, n in itertools.product([[], [""], ["a"], ["a", "a", "b", "", "c", "d", "e", "f", "g"], list("abcdefghij")], [0, 1, 5, 8]):
+    add("_names", {"names": names, "n": n})
+VALS = [None, "", "a", "b", 0, 1, True, False, 2.5, ["x"], {"k": "v"}]
+
+
+def entry():
+    e = {"ts": rnd.choice(["2026-11-26T10:00:00", "2026-11-26T23:59:59", "2026-11-25T10:00:00"] + ["2026-11-26T01:00:00"] * 3),
+         "event": rnd.choice(["tick", "tick", "ticks", "action", "action", "action", "would:start", "would:keepwarm", "would:a:b", "would:", "ask", "idea", "answer", "card", "handover", "directive", "tour", "skip", "review_store_held", "ask_gate", "ask_gate", "x"])}
+    opt = {"kind": rnd.choice(["ask_user", "idea", "set_phase", "handover", "start", "nudge", "", None, 5]), "ok": rnd.choice([True, True, False, 0, None]), "name": rnd.choice(["a", "b", "c", "d", "e", "f", "g", "", None, 3]),
+           "mode": rnd.choice(["act", "observe", "shadow", "shadow", "on", "", None]), "n": rnd.choice([0, 1, 40, None, "3"]), "manual": rnd.choice([0, 2, None]), "errors": rnd.choice([0, 1, None]),
+           "trigger": rnd.choice(["timer", "timer", "manual", None]), "error": rnd.choice(["", "boom", None]), "reason": rnd.choice(["done", "", None, "paused " * 30]), "files": rnd.choice([[], None, ["f1", "f2", "f1", 3, "f4", "f5", "f6"], "ab"]),
+           "applied": rnd.choice([True, False, None]), "allow": rnd.choice([True, False]), "id": rnd.choice(["q1", "q2", "q3", None, 5]), "project": rnd.choice(["p", None]), "question": rnd.choice(["soru?", "u " * 100, None, "", " x\ny "]),
+           "answer": rnd.choice(["evet", "😀" * 150, None, ""])}
+    for k, v in opt.items():
+        if rnd.random() < 0.7:
+            e[k] = v
+    return e
+
+
+for _ in range(1500):
+    entries = [entry() for _ in range(rnd.randint(0, 14))]
+    answered = rnd.choice([None, {}, {"q1": "brain", "q2": "owner_panel", "q3": "", "None": "motor", "5": "cops"}])
+    args = {"entries": entries, "date": rnd.choice(["2026-11-26"] * 5 + ["2026-11-25", "2026", ""]), "lang": rnd.choice(["tr", "en", "de"]),
+            "pending": rnd.choice([None, {}, {"open_questions": 2, "ideas_new": 0, "pending_items": 5, "undelivered_answers": 1}]),
+            "orphans": rnd.choice([None, {}, {"servers": 0, "procs": 0}, {"servers": 2}, {"procs": 3, "servers": 1}]), "answered_by": answered}
+    add("daily_summary", args)
+    add("_kind_counts", {"entries": entries, "key": rnd.choice(["kind", "event", "ok", "name"])})
+    gate = [e for e in entries if e.get("event") == "ask_gate"] or ([entry()] if rnd.random() < 0.5 else [])
+    add("_ask_gate_lines", {"events": gate, "answered_by": answered or {}, "en": rnd.random() < 0.5})
+for _ in range(60):
+    add("summarize_projects", {"projects": {f"p{i}": P(f"p{i}", phase=rnd.choice(["idea", "planning", "planned", "paused", "done", "bozuk", ""])) for i in range(rnd.randint(0, 8))}})
+for date, sid in itertools.product(["2026-11-26", "", "a/b", "/kök"], [None, "default", "iso"]):
+    base = "/s/steward"
+    paths = None if sid is None else sw.paths_for(sid)
+    # Rust'ta kök parametredir: vektördeki yol `STEWARD_DIR` yerine verilen köke taşınır
+    add("daily_path", {"base": base, "date": date, "sid": sid}, call=lambda: sw.daily_path(date, paths).replace(sw.STEWARD_DIR, base))
 
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)

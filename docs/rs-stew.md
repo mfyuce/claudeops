@@ -43,6 +43,17 @@ bilinmiyor/Python istisnası; `has_question` için "soru var"). `explain_idle` `
 `eligible` tablosu görünüm başınadır). Python istisnası beklenen vektörde Rust'ın hata dönmesi yeterlidir (sınıf ve
 ileti karşılaştırılmaz).
 
+Grup 4 (gözlem/rapor): `observe.rs` (`observe_filter`), `report.rs` (`daily_path`, `dry_report_text`,
+`dry_ask_due`, `summary_due`, `_names`, `_kind_counts`, `_ask_gate_lines`, `daily_summary`, `summarize_projects`).
+Taşınmayanlar (kapsam dışı listesinde, günlük/rapor dosyası G/Ç'si, T10): `log_entries_for_date`, `dry_report`,
+`missed_summary_dates` (ve `_NO_LOG_DAYS`), `summary_text`, `write_daily`. `map.py`: 718 -> 662 EKSİK; kalan 662'nin
+10'u `plan_tick` ve iç işlevleri, 219'u `plan_tick`i çağırdığı için bekleyen test satırı, 433'ü kapanış grubunun "saf
+çekirdek çağrısı yok" satırıdır.
+
+Grup 4 sözleşmesi (T10): `daily_path(STEWARD_DIR, ..)`; `daily_summary` günlük kayıtlarını ve `SummaryExtras`ı
+(bekleyen sayıları, sahipsiz kaynak, `answered_by`) çağırandan alır; `summary_due` sürecin `TZ`sine uyar. Parite:
+elle girdiler `parity/hand_cases.py` "grup 4" bölümü.
+
 Grup 2'de taşınmayanlar: `tour_delivery`, `panic_active`, `set_panic`, `read_brain_mcp`, `touch_brain_mcp` (dosya G/Ç'si;
 kapsam dışı listesinde); `steward_ask.passes`, `decisions_path`, `decisions_section` (cevap kapısı uygulaması; `steward.py` bölgesinde
 değil, `map.py` satırı yok; `passes` saftır, cevap yolunu taşıyan iz almalı).
@@ -72,7 +83,6 @@ kısmı yüklenemez). `gen.py` artık `src/unicode_gen.rs`yi de üretir (`casefo
 (`max_width = 120`): mevcut dosyaların biçimi buydu, ayar commit'lenmemişti.
 
 Kalan gruplar, SIRAYLA (her biri taze Sonnet alt ajanı, `PORTING.md` ile):
-4. Gözlem/rapor (5923-son).
 5. `plan_tick` (4120-4805), Opus alt ajanı; altın kayıt `py/tests/steward_golden_tick.json`.
 6. Kapanış: `parity/test_reasons.json`, `map.py --check` temiz, ders listesi (aşağıda).
 
@@ -135,7 +145,19 @@ Grup 3 (aynen taşındı; ilk üçü yalıtılmış Python koşusuyla doğruland
 - `loop_guard`: `pause_h` tur (45 dk) ve cevap iletimi (15 dk) kesintisinde 0'dır (`pause_min` ayrıca var; tüketicinin
   hangisini kullandığı bu izde incelenmedi).
 
+Grup 4 (aynen taşındı):
+
+- `daily_summary`: İngilizce özette de skip oranı Türkçe biçimde ("%75") yazılır.
+- `dry_report_text` panel dili ne olursa olsun Türkçedir.
+- `_ask_gate_lines`: hem `applied` hem `mode="shadow"` olan kayıt iki kez sayılır, "kapıdan dönen" eksiye düşebilir
+  (ASK kapısının böyle kayıt yazdığı doğrulanmadı).
+
 Rust'ta kaçınılmaz farklar (tipli arayüz):
+
+- Grup 4: `observe_filter` bozuk tipli `observed` / `blocked_tours` / tur maddesinde `BadValue` döner (Python
+  istisna; sözlük olmayan tur maddesinin `AttributeError`ı dahil). `dry_report_text` / `dry_ask_due` sayı beklenen
+  alanda dizge görürse `BadValue` döner (sayısal olmayan `count`/`first` için Python da hata verir). `dry_report_text`
+  `hours`u `f64` alır. `daily_summary`de kayıtlar sözlüktür.
 
 - Grup 3: bozuk tipli `state` bölümü/kaydında `BadValue` (`loop_guard`, `loop_paused`, `check_outcomes`,
   `api_error_brief`, `plan_api_recovery`, `plan_ucli_idle`, `plan_claude_idle`, `explain_idle`). `plan_claude_idle`
@@ -709,25 +731,25 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_why` (steward.py:5796) | `explain::why` | explain::p_why | tamam |
 | `explain_idle` (steward.py:5802) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
 | `explain_idle_all` (steward.py:5916) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:5943) | - | - | EKSİK |
-| `daily_path` (steward.py:5994) | - | - | EKSİK |
+| `observe_filter` (steward.py:5943) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:5994) | `report::daily_path` | report::daily_path_vectors | tamam |
 | `log_entries_for_date` (steward.py:5998) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `DRY_KIPS` (steward.py:6017) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
 | `DRY_REPORT_HOURS` (steward.py:6019) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
 | `dry_report` (steward.py:6022) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `dry_report_text` (steward.py:6052) | - | - | EKSİK |
-| `dry_ask_due` (steward.py:6063) | - | - | EKSİK |
-| `summary_due` (steward.py:6074) | - | - | EKSİK |
+| `dry_report_text` (steward.py:6052) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6063) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6074) | `report::summary_due` | report::summary_due_vectors | tamam |
 | `missed_summary_dates` (steward.py:6081) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `_NO_LOG_DAYS` (steward.py:6105) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
 | `_SUMMARY_TXT` (steward.py:6108) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6132) | - | - | EKSİK |
-| `_kind_counts` (steward.py:6137) | - | - | EKSİK |
-| `_ask_gate_lines` (steward.py:6142) | - | - | EKSİK |
-| `daily_summary` (steward.py:6161) | - | - | EKSİK |
+| `_names` (steward.py:6132) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6137) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6142) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6161) | `report::daily_summary` | report::daily_summary_vectors | tamam |
 | `summary_text` (steward.py:6244) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `write_daily` (steward.py:6262) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6269) | - | - | EKSİK |
+| `summarize_projects` (steward.py:6269) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:135) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
@@ -846,8 +868,8 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_note_claims.TestClaims.test_dead_pid_and_empty_gate_are_contradictions` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors, prompts::note_claims_vectors |
 | `test_note_claims.TestClaims.test_alive_unknown_or_ahead_are_silent` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors, prompts::note_claims_vectors |
 | `test_note_claims.TestClaims.test_contradiction_rides_the_idle_item_and_renders` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::build_tour_prompt_vectors (+10) |
-| `test_orphan_digest.OrphanDigestTest.test_line_shown_only_when_orphans` | EKSİK: parite testi olmayan _ask_gate_lines, daily_summary |
-| `test_orphan_digest.BrainTourRatioTest.test_ratio_line` | EKSİK: parite testi olmayan _ask_gate_lines, _names, daily_summary |
+| `test_orphan_digest.OrphanDigestTest.test_line_shown_only_when_orphans` | report::daily_summary_vectors, report::p_ask_gate_lines |
+| `test_orphan_digest.BrainTourRatioTest.test_ratio_line` | report::daily_summary_vectors, report::p_ask_gate_lines, report::p_names |
 | `test_owner_answer_persist.Pure.test_action_heuristic` | inserts::answer_has_action_vectors |
 | `test_owner_answer_persist.Pure.test_todo_insert_once` | inserts::todo_insert_answer_vectors |
 | `test_owner_answer_persist.Http.test_owner_answer_written_under_tbd_and_todo` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+25) |
@@ -1194,11 +1216,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_advance.RemoteAdvanceTest.test_todo_status_text` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_remote_message_carries_detail_and_limits` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_deliver_findings_passes_host` | identity::paths_for_vectors, identity::paths_layout_and_errors |
-| `test_steward_advance.TickE2E.test_exported_finding_delivered_once_then_done_line_stops_it` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_advance.TickE2E.test_done_line_never_sent_and_flag_off_sends_nothing` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_advance.TickE2E.test_act_mode_never_sends_secret_findings` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_advance.TickE2E.test_observe_mode_only_logs_would` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_advance.TickE2E.test_observe_does_not_change_state_and_repeats_only_when_set_changes` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_advance.TickE2E.test_exported_finding_delivered_once_then_done_line_stops_it` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_advance.TickE2E.test_done_line_never_sent_and_flag_off_sends_nothing` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_advance.TickE2E.test_act_mode_never_sends_secret_findings` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_advance.TickE2E.test_observe_mode_only_logs_would` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_advance.TickE2E.test_observe_does_not_change_state_and_repeats_only_when_set_changes` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_ago.AgoTest.test_units` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_answer_dialog_blocked.SendFailResult.test_dialog_reason_is_reported` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_answer_dialog_blocked.SendFailResult.test_plain_failure_stays_send_failed` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1219,7 +1241,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_api_recovery.OutageTest.test_closed_probe_session_is_not_a_recovery` | recovery::api_error_kind_vectors, recovery::plan_api_recovery_vectors |
 | `test_steward_api_recovery.OutageTest.test_two_sessions_is_an_outage_one_is_not` | recovery::api_error_kind_vectors, recovery::plan_api_recovery_vectors |
 | `test_steward_api_recovery.PlanTickIntegrationTest.test_state_keys_absent_when_clean_and_present_when_stuck` | EKSİK: parite testi olmayan plan_tick |
-| `test_steward_api_recovery.PlanTickIntegrationTest.test_observe_mode_does_not_apply_nudge` | EKSİK: parite testi olmayan observe_filter |
+| `test_steward_api_recovery.PlanTickIntegrationTest.test_observe_mode_does_not_apply_nudge` | observe::observe_filter_vectors, recovery::p_observe_cluster |
 | `test_steward_api_recovery.ApplyTest.test_nudge_sends_devam_to_tmux_session` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9) |
 | `test_steward_api_recovery.ApplyTest.test_nudge_refused_when_not_tmux_or_not_running` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+13) |
 | `test_steward_api_recovery.ApplyTest.test_giveup_and_outage_only_notify` | identity::paths_for_vectors, identity::paths_layout_and_errors |
@@ -1252,7 +1274,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ask_gate.TourTest.test_cut_question_items_16_others_8` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_ask_gate.TourTest.test_plan_tick_sends_ask_and_records_seen` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_ask_gate.DecisionsAndSummaryTest.test_owner_decisions_appended_to_brain_claude_md` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16) |
-| `test_steward_ask_gate.DecisionsAndSummaryTest.test_summary_lists_brain_answers_override_and_shadow` | EKSİK: parite testi olmayan _ask_gate_lines, daily_summary |
+| `test_steward_ask_gate.DecisionsAndSummaryTest.test_summary_lists_brain_answers_override_and_shadow` | gates::panic_path_is_under_default_root, gates::steward_ask_blocked_reason, gates::steward_ask_owner_class, identity::brain_name_for_vectors (+39) |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_old_link_with_the_previous_identity_still_finds_the_question_by_key` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+34) |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_fallback_needs_the_key_not_just_the_id` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+30) |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_find_question_any_prefers_the_stated_store` | identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+14) |
@@ -1306,19 +1328,19 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_brain.TestMcpIdentity.test_cli_parses_the_flag` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_brain.TestCtxFor.test_resolution` | identity::name_rules_edges, identity::valid_custom_id_vectors, identity::valid_steward_id_vectors |
 | `test_steward_brain.TestCtxFor.test_unknown_identity_is_an_explicit_error_and_writes_nothing` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+2) |
-| `test_steward_brain.TestCtxFor.test_no_param_means_default_and_old_callers_work` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_brain.TestCtxFor.test_requests_reach_the_right_store` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_brain.TestCtxFor.test_manual_tick_and_note_and_skip_use_the_identity` | EKSİK: parite testi olmayan observe_filter, plan_tick |
+| `test_steward_brain.TestCtxFor.test_no_param_means_default_and_old_callers_work` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16) |
+| `test_steward_brain.TestCtxFor.test_requests_reach_the_right_store` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+48) |
+| `test_steward_brain.TestCtxFor.test_manual_tick_and_note_and_skip_use_the_identity` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_brain.TestHumanGate.test_human_in_default_context_is_unrestricted` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+31) |
 | `test_steward_brain.TestHumanGate.test_human_in_other_context_only_own_projects_and_brain` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+31) |
 | `test_steward_brain.TestHumanGate.test_brain_in_identity_context` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_brain.TestHumanGate.test_reads_are_limited_to_own_projects_outside_default` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+30) |
-| `test_steward_bridges_e2e.LessonsBridge.test_reviewer_lesson_reaches_cli_session_once` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_bridges_e2e.LessonsBridge.test_reviewer_lesson_reaches_cli_session_once` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_bridges_e2e.LessonsBridge.test_lesson_masks_learned_password_in_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16) |
 | `test_steward_bridges_e2e.LessonsBridge.test_lesson_already_sent_in_state_is_not_resent` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
-| `test_steward_bridges_e2e.LessonsBridge.test_waits_for_idle_session_and_never_starts_one` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_bridges_e2e.LessonsBridge.test_observe_mode_only_logs_would_and_disabled_project_sends_nothing` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_bridges_e2e.LessonsBridge.test_hand_written_and_old_lines_are_not_delivered` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_bridges_e2e.LessonsBridge.test_waits_for_idle_session_and_never_starts_one` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_bridges_e2e.LessonsBridge.test_observe_mode_only_logs_would_and_disabled_project_sends_nothing` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_bridges_e2e.LessonsBridge.test_hand_written_and_old_lines_are_not_delivered` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_bridges_e2e.HandoverQuestions.test_open_question_travels_in_handover_extra` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+45) |
 | `test_steward_bridges_e2e.HandoverQuestions.test_ask_user_notifies_once_and_again_only_on_promotion` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+23) |
 | `test_steward_bridges_e2e.HandoverQuestions.test_directive_prior_answers_come_from_the_identitys_own_store` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+18) |
@@ -1350,7 +1372,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_cli.TestBrainCommand.test_bare_brain_is_read_only_status` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors (+2) |
 | `test_steward_cli.TestBrainCommand.test_start_and_stop_are_explicit` | identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors, identity::valid_custom_id_vectors (+1) |
 | `test_steward_cli.TestBrainCommand.test_help_mentions_status` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_cli.TestSidResolution.test_flag_env_default_and_unknown` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_cli.TestSidResolution.test_flag_env_default_and_unknown` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+11) |
 | `test_steward_cli.TestSidResolution.test_data_commands_use_selected_store_only` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+18) |
 | `test_steward_cli.TestSidResolution.test_api_body_default_unchanged_other_gets_steward` | identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors, identity::valid_custom_id_vectors (+1) |
 | `test_steward_cli.TestIdentityCommands.test_create_list_and_defaults_off` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9) |
@@ -1360,19 +1382,19 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_cli.TestIdentityCommands.test_transfer_moves_pending_jobs` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
 | `test_steward_cli.TestConfigAndStatus.test_config_machine_key_warns_and_is_not_written` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
 | `test_steward_cli.TestConfigAndStatus.test_on_off_per_identity_and_off_all` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
-| `test_steward_cli.TestConfigAndStatus.test_status_prints_ownership_conflict_for_this_identity` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_cli.TestConfigAndStatus.test_default_status_output_has_no_new_lines` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_cli.TestConfigAndStatus.test_status_prints_ownership_conflict_for_this_identity` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+19) |
+| `test_steward_cli.TestConfigAndStatus.test_default_status_output_has_no_new_lines` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+18) |
 | `test_steward_cli.TestNtfy.test_default_ask_is_byte_identical_to_before` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+29) |
 | `test_steward_cli.TestNtfy.test_other_identity_title_prefix_and_link` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+32) |
 | `test_steward_cli.TestNtfy.test_per_identity_topic_reaches_urlopen` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors (+2) |
-| `test_steward_cli.TestSummaryPerIdentity.test_daily_summary_and_compact_are_per_identity` | EKSİK: parite testi olmayan _ask_gate_lines, daily_path, daily_summary, summary_due |
-| `test_steward_cli.TestSummaryPerIdentity.test_default_summary_unchanged_call_shape` | EKSİK: parite testi olmayan _ask_gate_lines, daily_path, daily_summary, summary_due |
+| `test_steward_cli.TestSummaryPerIdentity.test_daily_summary_and_compact_are_per_identity` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+11) |
+| `test_steward_cli.TestSummaryPerIdentity.test_default_summary_unchanged_call_shape` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+9) |
 | `test_steward_cli.TestQuestionPage.test_s_param_and_legacy_search` | identity::brain_name_for_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::p_pp (+17) |
 | `test_steward_cli.TestQuestionPage.test_post_answers_into_owning_store` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+27) |
 | `test_steward_cli.TestQuestionPage.test_keys_do_not_collide_across_identities` | identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+13) |
 | `test_steward_cli.TestQuestionPage.test_same_id_in_two_stores_prefers_matching_key` | identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+14) |
-| `test_steward_cli.TestListAndStatusSlice.test_list_endpoint_and_stewards_slice` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_cli.TestListAndStatusSlice.test_default_summary_keys_unchanged` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_cli.TestListAndStatusSlice.test_list_endpoint_and_stewards_slice` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+30) |
+| `test_steward_cli.TestListAndStatusSlice.test_default_summary_keys_unchanged` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+5) |
 | `test_steward_cli_jobs_service.JobsServiceTest.test_show_picks_named_service` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_cli_jobs_service.JobsServiceTest.test_show_unknown_service_errors` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_cli_jobs_service.JobsServiceTest.test_ack_marks_named_service` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1428,7 +1450,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` | identity::normalize_host_edges, identity::normalize_host_vectors, identity::p_pp, identity::paths_for_vectors (+3) |
 | `test_steward_core_a.EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+6) |
-| `test_steward_core_a.ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_core_a.ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` | cards::card_one_liner_vectors, cards::card_path_vectors, closing::bad_state_types_are_errors, closing::plan_shutdown_vectors (+32) |
 | `test_steward_core_a.BrainCannotPauseTest.test_brain_cannot_pause_or_done_but_owner_can` | cards::brain_pause_verdict_vectors, cards::card_one_liner_vectors, cards::card_path_vectors, closing::bad_state_types_are_errors (+34) |
 | `test_steward_core_a.ShutdownPlanTest.test_waits_for_quiet_then_handover_then_stop_then_brain` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors, markers::needs_ho_rfh_marker_in |
 | `test_steward_core_a.ShutdownPlanTest.test_subagent_blocks_and_timeouts_leave_session_open` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors, markers::needs_ho_rfh_marker_in |
@@ -1487,7 +1509,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_a.TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_a.TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::item_signature_vectors (+3) |
-| `test_steward_core_a.TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | EKSİK: parite testi olmayan observe_filter, plan_tick |
+| `test_steward_core_a.TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_a.TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_a.TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors |
 | `test_steward_core_a.TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors |
@@ -1503,14 +1525,14 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_b.PlanMarkersTest.test_records_asks_and_ideas_only` | gates::p_ask_is_status_line, markers::is_confirm_line_vectors, markers::p_bare_marker, markers::p_unwrap_ticks (+6) |
 | `test_steward_core_b.PlanMarkersTest.test_same_reply_not_rescanned_and_routine_needs_question_mark` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors, tour::bad_state_types_are_errors (+3) |
 | `test_steward_core_b.PlanMarkersTest.test_matches_plan_tick_marker_actions` | EKSİK: parite testi olmayan plan_tick |
-| `test_steward_core_b.ObserveCoreTest.test_filter_act_passes_everything_and_clears_traces` | EKSİK: parite testi olmayan observe_filter |
-| `test_steward_core_b.ObserveCoreTest.test_filter_observe_splits_dedups_and_prunes` | EKSİK: parite testi olmayan observe_filter |
-| `test_steward_core_b.ObserveCoreTest.test_observed_visit_paces_due_projects_across_ticks` | EKSİK: parite testi olmayan observe_filter, plan_tick |
-| `test_steward_core_b.SummaryCoreTest.test_daily_summary_counts_and_filters_by_date` | EKSİK: parite testi olmayan _ask_gate_lines, _kind_counts, _names, daily_summary |
-| `test_steward_core_b.SummaryCoreTest.test_summary_due` | EKSİK: parite testi olmayan summary_due |
-| `test_steward_core_b.SummaryCoreTest.test_log_reader_and_summary_text` | EKSİK: parite testi olmayan _ask_gate_lines, _kind_counts, _names, daily_path |
-| `test_steward_core_b.SummaryCoreTest.test_compact_log_folds_ticks_and_keeps_summary_identical` | EKSİK: parite testi olmayan _ask_gate_lines, _kind_counts, _names, daily_summary |
-| `test_steward_core_b.SummaryCoreTest.test_missed_summary_dates_and_catch_up` | EKSİK: parite testi olmayan _ask_gate_lines, _names, daily_path, daily_summary |
+| `test_steward_core_b.ObserveCoreTest.test_filter_act_passes_everything_and_clears_traces` | observe::observe_filter_vectors |
+| `test_steward_core_b.ObserveCoreTest.test_filter_observe_splits_dedups_and_prunes` | observe::observe_filter_vectors, recovery::p_observe_cluster |
+| `test_steward_core_b.ObserveCoreTest.test_observed_visit_paces_due_projects_across_ticks` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_core_b.SummaryCoreTest.test_daily_summary_counts_and_filters_by_date` | report::daily_summary_vectors, report::p_ask_gate_lines, report::p_kind_counts, report::p_names |
+| `test_steward_core_b.SummaryCoreTest.test_summary_due` | report::summary_due_vectors |
+| `test_steward_core_b.SummaryCoreTest.test_log_reader_and_summary_text` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+21) |
+| `test_steward_core_b.SummaryCoreTest.test_compact_log_folds_ticks_and_keeps_summary_identical` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+5) |
+| `test_steward_core_b.SummaryCoreTest.test_missed_summary_dates_and_catch_up` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+10) |
 | `test_steward_core_b.RoutineQuestionTest.test_marker_scan_and_session_reply_opens_routine_ask` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_b.RoutineQuestionTest.test_routine_goes_to_brain_tour_not_phone_and_escalates_late` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_core_b.RoutineQuestionTest.test_brain_answer_is_delivered_like_any_answer` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+14) |
@@ -1622,22 +1644,22 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_directive_trace.Trace.test_empty_text_has_no_hash` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_directive_trace.DeferLogged.test_deferred_event_carries_hash_and_not_delivered` | gates::directive_defer_reason_vectors, identity::normalize_host_edges, identity::normalize_host_vectors |
 | `test_steward_directive_trace.DeferLogged.test_old_call_without_text_still_works` | gates::directive_defer_reason_vectors, identity::normalize_host_edges, identity::normalize_host_vectors |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_each_identity_acts_only_on_its_own_and_writes_only_its_own_files` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick, summarize_projects |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_markers_land_in_the_owners_store_adhoc_only_default` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_max_starts_total_is_shared_across_identities` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_max_active_total_counts_the_other_identity` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_disabled_identity_is_skipped` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_one_identity_failing_does_not_skip_the_other` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_engine_multi.TestTwoIdentityTick.test_manual_action_does_not_wait_for_another_identitys_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_each_identity_acts_only_on_its_own_and_writes_only_its_own_files` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_markers_land_in_the_owners_store_adhoc_only_default` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_max_starts_total_is_shared_across_identities` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_max_active_total_counts_the_other_identity` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_disabled_identity_is_skipped` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_one_identity_failing_does_not_skip_the_other` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestTwoIdentityTick.test_manual_action_does_not_wait_for_another_identitys_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_engine_multi.TestTwoIdentityTick.test_restart_does_not_deadlock_on_its_own_lock` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+32) |
 | `test_steward_engine_multi.TestIdentityGate.test_engine_of_one_identity_cannot_touch_the_other` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_engine_multi.TestIdentityGate.test_global_prefix_resolution` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_engine_multi.TestIdentityGate.test_human_calls_are_unrestricted` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+23) |
 | `test_steward_engine_multi.TestIdentityGate.test_non_default_brain_is_governed_like_default_p5` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+22) |
-| `test_steward_engine_multi.TestConflictAndRegister.test_ownership_conflict_logged_once_a_day_and_in_status` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick, summarize_projects |
-| `test_steward_engine_multi.TestConflictAndRegister.test_no_conflict_key_without_conflicts` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick, summarize_projects |
+| `test_steward_engine_multi.TestConflictAndRegister.test_ownership_conflict_logged_once_a_day_and_in_status` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_engine_multi.TestConflictAndRegister.test_no_conflict_key_without_conflicts` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_engine_multi.TestConflictAndRegister.test_register_checks_claim_before_side_effects_and_warns_on_prefix` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+24) |
-| `test_steward_engine_multi.TestEngineGolden.test_default_tick_once_matches_golden` | EKSİK: parite testi olmayan daily_path, dry_ask_due, observe_filter, plan_tick |
+| `test_steward_engine_multi.TestEngineGolden.test_default_tick_once_matches_golden` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_explain_idle.Explain.test_phase` | explain::explain_idle_vectors, explain::p_why |
 | `test_steward_explain_idle.Explain.test_notes_wait_and_cadence` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors, idletext::one_line_vectors |
 | `test_steward_explain_idle.Explain.test_questions` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors, idletext::one_line_vectors |
@@ -1653,7 +1675,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_generic.TestConfig.test_default_can_never_be_generic` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_generic.TestCreate.test_http_create_with_role_generic` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
 | `test_steward_generic.TestCreate.test_cli_create_with_role_generic` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
-| `test_steward_generic.TestCreate.test_list_row_carries_role_generic` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_generic.TestCreate.test_list_row_carries_role_generic` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+7) |
 | `test_steward_generic.TestBrainMd.test_generic_section_only_for_generic` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
 | `test_steward_generic.TestBrainMd.test_ensure_workspace_writes_generic_section` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
 | `test_steward_generic.TestBacklog.test_classification` | cards::p_short, gates::generic_backlog_vectors, prompts::p_clip |
@@ -1698,26 +1720,26 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.HttpTest.test_idea_export_all_tbd_and_idempotent` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+23) |
 | `test_steward_http.HttpTest.test_idea_export_appends_under_existing_heading_and_validates` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+23) |
 | `test_steward_http.HttpTest.test_running_names_resolve_digit_in_project_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+15) |
-| `test_steward_http.HttpTest.test_project_ask_answer_idea_note` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_http.HttpTest.test_project_ask_answer_idea_note` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+48) |
 | `test_steward_http.HttpTest.test_ask_with_options_notifies_with_link_once` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+34) |
 | `test_steward_http.HttpTest.test_question_page_auth_and_answer_flow` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+25) |
 | `test_steward_http.HttpTest.test_register_creates_folder_goal_and_roster` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+31) |
-| `test_steward_http.HttpTest.test_tick_applies_actions_with_mocked_views` | EKSİK: parite testi olmayan daily_path, dry_ask_due, observe_filter, plan_tick |
+| `test_steward_http.HttpTest.test_tick_applies_actions_with_mocked_views` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_http.HttpTest.test_refresh_card_writes_summary_and_logs` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::p_short, cards::p_str_list (+31) |
 | `test_steward_http.HttpTest.test_refresh_card_failure_keeps_old_card_or_writes_raw` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::p_short, cards::p_str_list (+32) |
 | `test_steward_http.HttpTest.test_refresh_due_cards_rules` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_goal_from_docs (+34) |
-| `test_steward_http.HttpTest.test_tick_runs_card_step_unless_disabled` | EKSİK: parite testi olmayan daily_path, dry_ask_due, observe_filter, plan_tick |
+| `test_steward_http.HttpTest.test_tick_runs_card_step_unless_disabled` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_http.HttpTest.test_respawn_marks_card_stale` | cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+31) |
-| `test_steward_http.HttpTest.test_cards_in_context_projects_and_api` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_http.HttpTest.test_observe_tick_records_would_and_touches_nothing` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick, summarize_projects |
-| `test_steward_http.HttpTest.test_observe_still_runs_questions_ideas_and_phase_changes` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_http.HttpTest.test_act_mode_applies_and_logs_actions` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_http.HttpTest.test_cards_in_context_projects_and_api` | cards::build_card_prompt_vectors, cards::card_one_liner_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors (+45) |
+| `test_steward_http.HttpTest.test_observe_tick_records_would_and_touches_nothing` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.HttpTest.test_observe_still_runs_questions_ideas_and_phase_changes` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.HttpTest.test_act_mode_applies_and_logs_actions` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_http.HttpTest.test_brain_calls_are_dry_in_observe_but_cli_calls_apply` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::directive_defer_reason_vectors, gates::is_upper_tier_vectors (+35) |
 | `test_steward_http.HttpTest.test_brain_cannot_touch_unregistered_session` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::panic_path_is_under_default_root, identity::brain_name_for_vectors (+24) |
 | `test_steward_http.HttpTest.test_brain_may_touch_brain_and_registered_projects` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_http.HttpTest.test_apply_gate_denies_engine_actions_on_unregistered_sessions` | identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+16) |
-| `test_steward_http.HttpTest.test_daily_summary_runs_once_after_hour_and_notifies` | EKSİK: parite testi olmayan _ask_gate_lines, daily_path, daily_summary, dry_ask_due |
-| `test_steward_http.HttpTest.test_summary_api_and_cli` | EKSİK: parite testi olmayan _ask_gate_lines, _names, daily_path, daily_summary |
+| `test_steward_http.HttpTest.test_daily_summary_runs_once_after_hour_and_notifies` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.HttpTest.test_summary_api_and_cli` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+9) |
 | `test_steward_http.HttpTest.test_handover_route_marks_pending` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+12) |
 | `test_steward_http.JobRequestGateTest.test_gate_pure` | gates::bad_values_are_errors, gates::job_request_gate_vectors |
 | `test_steward_http.JobRequestGateTest.test_brain_bare_devam_rejected_owner_allowed` | gates::bad_values_are_errors, gates::brain_may_answer_vectors, gates::job_request_gate_vectors, gates::long_texts_stay_within_regex_limits (+18) |
@@ -1727,13 +1749,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.JobRequestGateTest.test_brain_answer_after_submit_ok` | gates::bad_values_are_errors, gates::brain_may_answer_vectors, gates::job_request_gate_vectors, gates::long_texts_stay_within_regex_limits (+11) |
 | `test_steward_http.SkipMemoryHttpTest.test_skip_records_signature_from_last_tour` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+10) |
 | `test_steward_http.SkipMemoryHttpTest.test_close_stale_answer_action_marks_delivered` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+23) |
-| `test_steward_http.ActionJournalTest.test_crash_between_state_save_and_apply_replays_once` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_http.ActionJournalTest.test_normal_tick_leaves_no_journal_and_no_duplicates` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_http.ActionJournalTest.test_replay_skips_duplicate_idea` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_http.DryReportTest.test_report_counts_and_window` | EKSİK: parite testi olmayan dry_report_text |
-| `test_steward_http.DryReportTest.test_ask_due_only_known_kip_after_72h_once` | EKSİK: parite testi olmayan dry_ask_due |
-| `test_steward_http.DryReportTest.test_maybe_dry_ask_opens_one_question_and_not_again` | EKSİK: parite testi olmayan dry_ask_due, dry_report_text |
-| `test_steward_http.DryReportTest.test_no_ask_when_kip_already_act` | EKSİK: parite testi olmayan dry_ask_due |
+| `test_steward_http.ActionJournalTest.test_crash_between_state_save_and_apply_replays_once` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.ActionJournalTest.test_normal_tick_leaves_no_journal_and_no_duplicates` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.ActionJournalTest.test_replay_skips_duplicate_idea` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_http.DryReportTest.test_report_counts_and_window` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, report::dry_report_text_vectors |
+| `test_steward_http.DryReportTest.test_ask_due_only_known_kip_after_72h_once` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, report::dry_ask_due_vectors |
+| `test_steward_http.DryReportTest.test_maybe_dry_ask_opens_one_question_and_not_again` | identity::from_dict_drops_unknown_and_requires, identity::normalize_host_edges, identity::normalize_host_vectors, identity::p_pp (+20) |
+| `test_steward_http.DryReportTest.test_no_ask_when_kip_already_act` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, report::dry_ask_due_vectors |
 | `test_steward_http.BrainWakeGateTest.test_brain_directive_capped_per_day_separately_from_due` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1) |
 | `test_steward_http.BrainWakeGateTest.test_brain_gate_dry_logs_would_and_sends` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1) |
 | `test_steward_http.WakeGateTest.test_first_send_never_gated_then_repeat_dry_logs_but_sends_act_skips` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1) |
@@ -1743,7 +1765,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.BigResumeTest.test_small_unknown_other_cli_and_off_keep_resume` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_http.BigResumeTest.test_ensure_running_starts_fresh_for_big_context` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+10) |
 | `test_steward_http.WakeCapPanicTest.test_daily_cap_dry_and_act_and_reset_on_answer` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1) |
-| `test_steward_http.WakeCapPanicTest.test_panic_flag_forces_observe_and_blocks_brain_directive` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_http.WakeCapPanicTest.test_panic_flag_forces_observe_and_blocks_brain_directive` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_http.BlockedEscalationTest.test_blocked_waits_four_hours_routine_thirty_minutes` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_http.BlockedEscalationTest.test_owner_only_denial_escalates_routine_immediately` | gates::brain_may_answer_vectors, gates::is_readonly_job_request_vectors, gates::long_texts_stay_within_regex_limits, identity::build_ownership_index_vectors (+31) |
 | `test_steward_http.BlockedEscalationTest.test_owner_only_denial_blocks_brain_directive_until_answered` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::brain_may_answer_vectors, gates::is_readonly_job_request_vectors (+55) |
@@ -1775,7 +1797,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_jobs.TestServiceRegistry.test_token_file_permission_warning` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_jobs.TestPassiveService.test_target_denies_everyone_for_service_sessions` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
 | `test_steward_jobs.TestPassiveService.test_every_http_action_refuses_service_sessions` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
-| `test_steward_jobs.TestPassiveService.test_tick_never_touches_a_service_session` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_jobs.TestPassiveService.test_tick_never_touches_a_service_session` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_jobs.TestSubmit.test_json_submit_contract_and_local_record` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestSubmit.test_same_request_is_idempotent_locally_and_on_the_server` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestSubmit.test_failed_or_lost_job_can_be_resubmitted_but_live_or_done_cannot` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
@@ -1785,7 +1807,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_jobs.TestSubmit.test_unregistered_service_and_server_errors` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestSubmit.test_service_down_at_submit_is_reported_not_raised` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestSubmit.test_observe_mode_brain_submit_is_only_recorded` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
-| `test_steward_jobs.TestSubmit.test_awaiting_approval_is_surfaced_and_never_approved` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_jobs.TestSubmit.test_awaiting_approval_is_surfaced_and_never_approved` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_jobs.TestSubmit.test_token_never_reaches_logs_or_state_files` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+25) |
 | `test_steward_jobs.TestPoll.test_poll_updates_record_and_respects_interval` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestPoll.test_interval_limits_open_job_polling` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
@@ -1793,26 +1815,26 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_jobs.TestPoll.test_summary_is_clipped_and_404_marks_lost_and_foreign_requester_ignored` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestPoll.test_unreachable_is_one_event_with_backoff_and_recovery` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestPoll.test_auth_failure_is_swallowed_and_logged` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
-| `test_steward_jobs.TestPoll.test_down_service_does_not_break_the_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_jobs.TestPoll.test_down_service_does_not_break_the_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_jobs.TestPoll.test_service_removed_leaves_jobs_untouched` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestPoll.test_redirects_are_not_followed` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
-| `test_steward_jobs.TestDeliver.test_result_is_delivered_once_to_the_running_idle_session` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_kick_delivers_without_waiting_for_the_timed_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_jobs.TestDeliver.test_result_is_delivered_once_to_the_running_idle_session` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_kick_delivers_without_waiting_for_the_timed_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_jobs.TestDeliver.test_kick_is_noop_in_observe_mode` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestDeliver.test_fast_path_submits_auto_kind_without_the_brain_and_answers_the_item` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
 | `test_steward_jobs.TestDeliver.test_fast_path_defers_to_brain_when_ambiguous_or_not_auto_or_observe` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
 | `test_steward_jobs.TestDeliver.test_fast_path_reads_sql_file_in_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
 | `test_steward_jobs.TestDeliver.test_fast_path_json_params_and_file` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+29) |
-| `test_steward_jobs.TestDeliver.test_waits_while_a_subagent_is_active_or_unknown` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_waits_when_session_busy_or_not_running_and_never_starts_one` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_observe_mode_logs_would_deliver_job_and_does_not_mark` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_failed_and_cancelled_results_and_artifacts_in_message` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_approval_notice_then_result_are_two_separate_deliveries` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_approval_notice_is_skipped_when_already_approved_before_delivery` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_only_the_owner_delivers_and_transfer_moves_the_jobs` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_failed_send_is_retried_then_given_up` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_tick_polls_in_background_slot_and_delivers_next_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_jobs.TestDeliver.test_no_jobs_means_no_poll_and_no_files` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_jobs.TestDeliver.test_waits_while_a_subagent_is_active_or_unknown` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_waits_when_session_busy_or_not_running_and_never_starts_one` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_observe_mode_logs_would_deliver_job_and_does_not_mark` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_failed_and_cancelled_results_and_artifacts_in_message` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_approval_notice_then_result_are_two_separate_deliveries` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_approval_notice_is_skipped_when_already_approved_before_delivery` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_only_the_owner_delivers_and_transfer_moves_the_jobs` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_failed_send_is_retried_then_given_up` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_tick_polls_in_background_slot_and_delivers_next_tick` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_jobs.TestDeliver.test_no_jobs_means_no_poll_and_no_files` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_jobs.TestHttpAndMcp.test_routes_and_jobs_listing` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestHttpAndMcp.test_list_refresh_polls_now` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestHttpAndMcp.test_mcp_tools_exist_and_have_no_approve_tool` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
@@ -1820,7 +1842,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_jobs.TestHttpAndMcp.test_kitap_brain_cannot_submit_default_projects_through_mcp_identity` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
 | `test_steward_jobs.TestCli.test_service_add_list_rm` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_jobs.TestCli.test_service_does_not_need_a_steward_identity` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
-| `test_steward_jobs.TestCli.test_jobs_list_show_poll_ack` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_jobs.TestCli.test_jobs_list_show_poll_ack` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+29) |
 | `test_steward_jobs.TestCli.test_jobs_poll_with_service_down_reports_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestCli.test_identity_selection_for_jobs` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_jobs.TestParseAutoRequest.test_parser` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2003,11 +2025,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_owner_todo.Move.test_dry_mode_does_not_lock_act` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+1) |
 | `test_steward_owner_todo.Move.test_observe_skips_kind` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_owner_todo.Explain.test_count_in_why` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors |
-| `test_steward_paths.PathsForTest.test_default_equals_legacy_layout` | EKSİK: parite testi olmayan daily_path |
+| `test_steward_paths.PathsForTest.test_default_equals_legacy_layout` | cards::card_path_vectors, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+1) |
 | `test_steward_paths.PathsForTest.test_default_follows_constant_patches` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_paths.PathsForTest.test_other_sid_under_stewards` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_paths.PathsForTest.test_sid_rejects_traversal` | identity::paths_for_vectors, identity::paths_layout_and_errors |
-| `test_steward_paths.PathsForTest.test_no_arg_matches_explicit_default_byte_for_byte` | EKSİK: parite testi olmayan daily_path |
+| `test_steward_paths.PathsForTest.test_no_arg_matches_explicit_default_byte_for_byte` | cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires (+35) |
 | `test_steward_paths.PathsForTest.test_other_sid_isolated_from_default` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+27) |
 | `test_steward_pause_close.WrapUpText.test_wrap_up_detected` | closing::is_wrap_up_directive_vectors |
 | `test_steward_pause_close.WrapUpText.test_plain_work_not_wrap_up` | closing::is_wrap_up_directive_vectors |
@@ -2075,11 +2097,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote.TestProjectHost.test_host_change_needs_a_stopped_project_or_force_and_clears_state` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+18) |
 | `test_steward_remote.TestProjectHost.test_ownership_lock_first` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16) |
 | `test_steward_remote.TestEngineRemote.test_views_come_from_cache_and_term_chat` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
-| `test_steward_remote.TestEngineRemote.test_observe_records_would_with_host_and_never_posts` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote.TestEngineRemote.test_observe_start_and_answer_of_remote_project` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote.TestEngineRemote.test_act_mode_denies_remote_while_remote_actions_off` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote.TestEngineRemote.test_act_mode_remote_project_does_not_eat_local_start_budget` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote.TestEngineRemote.test_host_down_keeps_state_and_drops_views` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote.TestEngineRemote.test_observe_records_would_with_host_and_never_posts` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote.TestEngineRemote.test_observe_start_and_answer_of_remote_project` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote.TestEngineRemote.test_act_mode_denies_remote_while_remote_actions_off` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote.TestEngineRemote.test_act_mode_remote_project_does_not_eat_local_start_budget` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote.TestEngineRemote.test_host_down_keeps_state_and_drops_views` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote.TestEngineRemote.test_last_assistant_reads_share_a_budget` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
 | `test_steward_remote.TestEngineRemote.test_one_slow_session_does_not_blame_a_reachable_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
 | `test_steward_remote.TestEngineRemote.test_all_reads_timing_out_still_blames_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
@@ -2092,27 +2114,27 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote.TestUpsertRemote.test_host_change_checks_running_sessions` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+21) |
 | `test_steward_remote.TestUpsertRemote.test_cli_set_host_goes_through_the_panel` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_remote.TestWebHostsLastOk.test_last_ok_at_tracks_only_successes` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_remote_actions.TestRemoteActions.test_handover_path_body_timeout` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_actions.TestRemoteActions.test_handover_path_body_timeout` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_actions.TestRemoteActions.test_handover_needs_an_exact_running_row` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_actions.TestRemoteActions.test_answer_goes_through_term_input_exact_and_preamble_key_is_host_colon_name` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteActions.test_unknown_born_sends_full_preamble_and_records_nothing` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteActions.test_start_waits_on_the_poller_cache_without_network` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_actions.TestRemoteActions.test_answer_goes_through_term_input_exact_and_preamble_key_is_host_colon_name` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteActions.test_unknown_born_sends_full_preamble_and_records_nothing` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteActions.test_start_waits_on_the_poller_cache_without_network` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_actions.TestRemoteActions.test_start_ready_timeout_is_bounded` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_actions.TestRemoteActions.test_unknown_busy_is_ready_after_a_few_polls_not_the_full_timeout` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_actions.TestRemoteActions.test_start_is_not_attempted_on_a_down_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_remote_actions.TestRemoteActions.test_directive_endpoint_and_remote_reject_passes_through` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+34) |
 | `test_steward_remote_actions.TestRemoteActions.test_not_tmux_backed_or_not_running_rows_are_not_sent` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+30) |
-| `test_steward_remote_actions.TestRemoteGates.test_observe_records_would_and_never_posts` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteGates.test_remote_actions_off_denies_in_act_and_logs_once` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_actions.TestRemoteGates.test_observe_records_would_and_never_posts` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteGates.test_remote_actions_off_denies_in_act_and_logs_once` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_actions.TestRemoteGates.test_mismatch_unknown_and_unregistered_are_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
-| `test_steward_remote_actions.TestRemoteGates.test_down_or_stale_host_gets_no_actions` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_actions.TestRemoteGates.test_down_or_stale_host_gets_no_actions` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_actions.TestRemoteGates.test_destructive_kinds_need_exact_target_on_the_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_actions.TestRemoteGates.test_local_actions_are_unchanged_next_to_a_remote_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
-| `test_steward_remote_actions.TestRemoteResilience.test_breaker_stops_after_first_transport_error_in_a_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteResilience.test_404_and_app_level_reject_do_not_open_the_breaker` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteResilience.test_backoff_after_three_failed_ticks_and_single_state_events` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteResilience.test_no_phone_notification_for_unreachable` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_actions.TestRemoteResilience.test_one_freshness_snapshot_per_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_actions.TestRemoteResilience.test_breaker_stops_after_first_transport_error_in_a_tick` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteResilience.test_404_and_app_level_reject_do_not_open_the_breaker` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteResilience.test_backoff_after_three_failed_ticks_and_single_state_events` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteResilience.test_no_phone_notification_for_unreachable` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_actions.TestRemoteResilience.test_one_freshness_snapshot_per_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_actions.TestRemoteResilience.test_read_timeouts_feed_the_breaker` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+20) |
 | `test_steward_remote_actions.TestRemoteResilience.test_snapshot_drives_both_unavailable_and_views` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+20) |
 | `test_steward_remote_actions.TestRemoteResilience.test_proxy_action_timeout_and_forced_local_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
@@ -2122,7 +2144,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_answer_persist.Retry.test_timeout_queued_silently_then_written` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+34) |
 | `test_steward_remote_answer_persist.Retry.test_stale_host_notifies_once_after_30_min_and_gives_up_after_a_day` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+32) |
 | `test_steward_remote_answer_persist.Retry.test_remote_actions_off_notifies_at_once_without_queue` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+31) |
-| `test_steward_remote_answer_persist.Retry.test_tick_keeps_queue_and_jobs_step_retries` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_answer_persist.Retry.test_tick_keeps_queue_and_jobs_step_retries` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_answer_persist.OwnedSessionName.test_tracked_hyphen_session_gives_project_folder` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+33) |
 | `test_steward_remote_answer_persist.DeliveryAlert.test_transient_host_errors_alert_only_after_30_min` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+35) |
 | `test_steward_remote_cards.TestRemoteCards.test_card_built_from_remote_reads_and_written_locally` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_goal_from_docs (+28) |
@@ -2141,25 +2163,25 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_cards.TestRemoteRegister.test_adopts_existing_remote_roster_row_without_creating_anything` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+18) |
 | `test_steward_remote_cards.TestRemoteRegister.test_missing_remote_row_or_gate_gives_clear_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_remote_cards.TestRemoteRegister.test_conflicting_host_refused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
-| `test_steward_remote_destructive.TestRemoteStop.test_steward_done_stop_path_body_timeout` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_read_from_term_chat_when_facts_last_assistant_is_empty` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_on_host_without_facts_closes_a_quiet_idle_session` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_destructive.TestRemoteStop.test_steward_done_stop_path_body_timeout` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_read_from_term_chat_when_facts_last_assistant_is_empty` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_on_host_without_facts_closes_a_quiet_idle_session` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_destructive.TestRemoteStop.test_no_exact_target_logs_remote_too_old_once_and_never_posts` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_unknown_capabilities_are_not_treated_as_supported` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_precheck_exact_running_own_row` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+25) |
 | `test_steward_remote_destructive.TestRemoteStop.test_no_exact_match_is_not_applied_and_does_not_open_the_breaker` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_transport_error_still_opens_the_breaker` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteStop.test_observe_records_would_and_never_posts` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_destructive.TestRemoteStop.test_observe_records_would_and_never_posts` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_destructive.TestRemoteStop.test_remote_actions_off_and_down_host_are_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+23) |
-| `test_steward_remote_destructive.TestRemoteStop.test_one_destructive_action_per_host_per_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_destructive.TestRemoteStop.test_one_destructive_action_per_host_per_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_destructive.TestRemoteStop.test_human_http_stop_gates` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteRespawn.test_ready_after_handover_respawns_stop_start_directive_in_order` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_destructive.TestRemoteRespawn.test_ready_after_handover_respawns_stop_start_directive_in_order` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_stop_failure_means_no_start` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_stop_ok_but_row_never_closes_waits_bounded_then_stops` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_start_failure_means_no_directive` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+32) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_session_already_gone_skips_stop` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+34) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_old_host_respawn_is_refused_without_any_post` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_destructive.TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_stops_waits_then_directs` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_without_confirmed_stop_sends_nothing_more` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_host_mismatch_is_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
@@ -2186,9 +2208,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_nudge.TestRemoteNudge.test_nudge_posts_exact_devam_without_local_fallback` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_nudge.TestRemoteNudge.test_two_sessions_is_refused_and_nothing_is_sent` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_nudge.TestRemoteNudge.test_no_session_and_no_tmux_are_refused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
-| `test_steward_remote_nudge.TestRemoteNudge.test_tick_wakes_a_stuck_remote_session_after_the_first_delay` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_nudge.TestRemoteNudge.test_tick_wakes_a_stuck_remote_session_after_the_first_delay` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_session_resolve.TestDirective.test_project_name_reaches_the_single_dated_session_without_any_start` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+34) |
-| `test_steward_remote_session_resolve.TestDirective.test_engine_counts_a_dated_session_without_blueprint_as_running` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_session_resolve.TestDirective.test_engine_counts_a_dated_session_without_blueprint_as_running` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_session_resolve.TestDirective.test_no_running_session_starts_with_the_project_name` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36) |
 | `test_steward_remote_session_resolve.TestDirective.test_prefix_neighbour_session_is_not_a_second_session_of_the_project` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+34) |
 | `test_steward_remote_session_resolve.TestDirective.test_repeated_identical_failure_is_logged_once` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
@@ -2199,22 +2221,22 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_handover_uses_the_real_name_and_records_it` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_stop_uses_the_real_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_wait_closed_watches_the_real_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
-| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_respawn_after_handover_stops_real_name_starts_project_directs_new_name` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_respawn_after_handover_stops_real_name_starts_project_directs_new_name` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_human_restart_stops_real_name_then_starts_the_project` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36) |
-| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_engine_handover_on_dated_view_name` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_engine_handover_on_dated_view_name` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_remote_session_resolve.TestStartOnceAndReads.test_refresh_after_start_sees_the_new_session` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_session_resolve.TestStartOnceAndReads.test_lagging_cache_still_gets_no_second_start_in_the_tick` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_remote_session_resolve.TestStartOnceAndReads.test_cwd_and_file_reads_use_the_real_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+20) |
 | `test_steward_remote_session_resolve.TestLocalUnchanged.test_local_directive_still_uses_the_local_path` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+31) |
-| `test_steward_remote_surface.TestState.test_running_has_remote_rows_with_host_and_project_flag` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestState.test_state_shows_open_tbd_and_todo_counts` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestState.test_local_namesake_does_not_make_remote_project_running` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_remote_surface.TestState.test_running_has_remote_rows_with_host_and_project_flag` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+33) |
+| `test_steward_remote_surface.TestState.test_state_shows_open_tbd_and_todo_counts` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+27) |
+| `test_steward_remote_surface.TestState.test_local_namesake_does_not_make_remote_project_running` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+27) |
 | `test_steward_remote_surface.TestState.test_no_double_count` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+27) |
-| `test_steward_remote_surface.TestState.test_stale_host_rows_not_listed` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestState.test_question_host_and_remote_hosts_health` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestState.test_local_only_state_has_no_remote_keys` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_remote_surface.TestState.test_stale_host_rows_not_listed` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
+| `test_steward_remote_surface.TestState.test_question_host_and_remote_hosts_health` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+38) |
+| `test_steward_remote_surface.TestState.test_local_only_state_has_no_remote_keys` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires (+20) |
 | `test_steward_remote_surface.TestRemoteReads.test_context_reads_over_host_not_local_fs` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+24) |
-| `test_steward_remote_surface.TestRemoteReads.test_context_running_with_dated_session_name` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_remote_surface.TestRemoteReads.test_context_running_with_dated_session_name` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+28) |
 | `test_steward_remote_surface.TestRemoteReads.test_same_path_local_folder_is_never_read` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+24) |
 | `test_steward_remote_surface.TestRemoteReads.test_errors_and_down_host_return_empty_never_raise` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+24) |
 | `test_steward_remote_surface.TestRemoteReads.test_file_read_and_path_guard` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+19) |
@@ -2224,13 +2246,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_surface.TestNotifyAndLog.test_action_log_host_only_remote` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_remote_surface.TestJobSubmit.test_host_is_the_projects_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
 | `test_steward_remote_surface.TestJobSubmit.test_remote_project_rejects_local_files` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
-| `test_steward_remote_surface.TestMcpAndBrain.test_mcp_overview_carries_host_only_for_remote` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_remote_surface.TestMcpAndBrain.test_mcp_overview_carries_host_only_for_remote` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+33) |
 | `test_steward_remote_surface.TestMcpAndBrain.test_mcp_signatures_unchanged_notes_added` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
 | `test_steward_remote_surface.TestMcpAndBrain.test_workspace_note_only_when_remote` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16) |
 | `test_steward_remote_surface.TestCli.test_projects_host_column_only_with_remote` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires (+14) |
-| `test_steward_remote_surface.TestCli.test_status_remote_summary_and_health` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestCli.test_status_panel_down_is_unknown_not_error` | EKSİK: parite testi olmayan summarize_projects |
-| `test_steward_remote_surface.TestCli.test_status_without_remote_does_not_call_panel` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_remote_surface.TestCli.test_status_remote_summary_and_health` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+18) |
+| `test_steward_remote_surface.TestCli.test_status_panel_down_is_unknown_not_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+18) |
+| `test_steward_remote_surface.TestCli.test_status_without_remote_does_not_call_panel` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+18) |
 | `test_steward_remove_lock.RemoveLock.test_settings_delete_happens_while_lock_held` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_reply_language.Heuristic.test_mismatch_both_ways` | markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors |
 | `test_steward_reply_language.Heuristic.test_short_or_neutral_text_never_flagged` | markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors |
@@ -2240,7 +2262,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_reply_language.FixNote.test_plan_tick_emits_note_for_wrong_language_marker` | markers::marker_texts_vectors, markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus (+3) |
 | `test_steward_review_api.TestPool.test_pool_add_disable_enable_remove` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
 | `test_steward_review_api.TestPool.test_remove_of_auto_project_is_not_reenabled_by_sync` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
-| `test_steward_review_api.TestPool.test_list_row_carries_role_only_for_reviewer` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_review_api.TestPool.test_list_row_carries_role_only_for_reviewer` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+19) |
 | `test_steward_review_api.TestPool.test_non_reviewer_and_unknown_steward_rejected` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_review_api.TestPool.test_brain_actor_rejected_everywhere` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_review_api.TestRunCancel.test_manual_run_validates_and_starts` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+17) |
@@ -2252,9 +2274,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_review_api.TestReads.test_reads_need_reviewer` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_review_api.TestCli.test_parsing_maps_to_api` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
 | `test_steward_review_api.TestCli.test_reads_status_history_findings` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
-| `test_steward_reviewer_gate.TestReviewerTick.test_reviewer_tick_runs_only_review_tick` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_reviewer_gate.TestReviewerTick.test_idle_review_tick_is_noop_and_spawns_nothing` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_reviewer_gate.TestReviewerTick.test_disabled_reviewer_is_not_passively_scanned` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_reviewer_gate.TestReviewerTick.test_reviewer_tick_runs_only_review_tick` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_reviewer_gate.TestReviewerTick.test_idle_review_tick_is_noop_and_spawns_nothing` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_reviewer_gate.TestReviewerTick.test_disabled_reviewer_is_not_passively_scanned` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_reviewer_gate.TestReviewerTick.test_ownership_ignores_reviewer_projects_json` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_reviewer_gate.TestReviewerTarget.test_target_always_denied` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
 | `test_steward_reviewer_gate.TestReviewerTarget.test_default_target_unchanged` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+11) |
@@ -2350,7 +2372,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ucli_idle.PlanTest.test_close_marker_with_work_requests_handover_then_reopen` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+9) |
 | `test_steward_ucli_idle.PlanTest.test_close_marker_without_work_pauses_and_closes_after_handover` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
 | `test_steward_ucli_idle.PlanTest.test_ready_for_handover_already_written` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+7) |
-| `test_steward_ucli_idle.PlanTest.test_observe_does_not_touch_handover_state` | EKSİK: parite testi olmayan observe_filter |
+| `test_steward_ucli_idle.PlanTest.test_observe_does_not_touch_handover_state` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
 | `test_steward_ucli_idle.PlanTest.test_skips` | idle::plan_ucli_idle_vectors, idletext::ucli_idle_threshold_vectors |
 | `test_steward_ucli_idle.PlanTest.test_chain_limit_and_reset_on_activity` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
 | `test_steward_ucli_idle.PlanTest.test_dry_counts_do_not_block_act` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
@@ -2397,7 +2419,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ui_api.UiConfigTest.test_drain_toggle_and_brain_directive_gate` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+4) |
 | `test_steward_ui_api.UiConfigTest.test_enable_toggles` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+3) |
 | `test_steward_ui_api.UiUpTest.test_up_enables_restores_and_starts_brain_but_brain_cannot` | identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges, identity::normalize_host_vectors (+7) |
-| `test_steward_ui_api.UiShutdownStateTest.test_state_exposes_shutdown_only_when_started` | EKSİK: parite testi olmayan summarize_projects |
+| `test_steward_ui_api.UiShutdownStateTest.test_state_exposes_shutdown_only_when_started` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+12) |
 | `test_steward_ui_api.UiIdentityTest.test_create_validates_and_opens_off_observe` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
 | `test_steward_ui_api.UiIdentityTest.test_brain_cannot_manage_identities` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_ui_api.UiIdentityTest.test_remove_refuses_default_unknown_and_nonempty` | identity::brain_name_for_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+8) |
@@ -2415,14 +2437,14 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_upper_main.TestPure.test_is_upper_tier_itself_stays_model_family_agnostic` | gates::is_upper_tier_vectors |
 | `test_steward_upper_main.TestPure.test_reviewer_role_is_not_audited` | gates::upper_main_views_vectors |
 | `test_steward_upper_main.TestPure.test_reminder_text_is_a_reminder_not_an_order` | gates::upper_main_text_vectors |
-| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_setting_off_disables` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
-| `test_steward_upper_main.TestTick.test_sonnet_medium_main_is_silent` | EKSİK: parite testi olmayan dry_ask_due, observe_filter, plan_tick |
+| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_setting_off_disables` | EKSİK: parite testi olmayan plan_tick |
+| `test_steward_upper_main.TestTick.test_sonnet_medium_main_is_silent` | EKSİK: parite testi olmayan plan_tick |
 | `test_steward_upper_main.TestCollectViews.test_status_row_live_values_reach_the_view` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::normalize_host_edges (+14) |
 | `test_steward_upper_main.TestCollectViews.test_dated_local_session_without_instance_resolves_to_its_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_upper_main.TestCollectViews.test_remote_row_live_values_reach_the_view` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
