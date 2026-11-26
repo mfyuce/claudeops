@@ -5,7 +5,8 @@
 TBD#368 (b) UYGULANDI (26 Kas): bozuk kayıt iki tarafta atlanıp loglanır (`_log_bad` / `badrec`), bozuk depoya yazım
 `StoreCorrupt` ile reddedilir, aynı bozuk içerik için tek `.corrupt-` yedeği alınır (`steward.py`; Rust `backed_up`).
 Aşağıdaki "Python hatası?" 1-3 bu yüzden KAPALI; "Python dersleri" tablosunda o maddelere atıf yapan satırlar eski davranışı
-anlatır. 4 (`register_lens`) cevabın metninde yok, aynen. 5-7 açık soru: TBD#375.
+anlatır. 4 (`register_lens`) cevabın metninde yok, aynen.
+TBD#375 cevaplandı (b): 6 ve 7 iki tarafta düzelecek, 5 aynen; HENÜZ UYGULANMADI (TODO).
 Sapma: `usage_summary`de `i64` dışı tam sayı sınıra kırpılır (Python keyfi büyüklük).
 
 Kapı için cops'a kalanlar: `rs/state` (ikinci tur `e5a684e` bu dala birleştirildi; kendi eşleme tablosu henüz açık), `rust/Cargo.lock` üretimi, `main` ile
