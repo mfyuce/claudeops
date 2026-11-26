@@ -197,10 +197,11 @@ kademe değişimi tek başına relay'i yenilemez (Python gibi; önceki Rust davr
 Üretim koduna dikiş EKLENMEDİ: özel kök mevcut programatik `Connector.tls` alanıyla verildi (ortam değişkeni/ayar yok),
 doğrulama gevşetilmedi. Dev-bağımlılık: `rcgen 0.14` (`crypto`, `ring`; Cargo.lock'a yalnız test bağımlılıkları).
 
-Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli):
+WS karesi (TBD#376, Python düzeltildi: `fix(hosts)` bozuk kare) ve açık yarış:
 - `web_hosts._parse_ws_status_frame` / `_parse_ws_term_frame`: JSON dizi/sayı karesi `parsed.get` AttributeError
   verir (yalnız JSONDecodeError/TypeError yakalanıyor); `_PushConsumer._run` istisnayla ölür, tek bozuk kare akışı
-  düşürür. Rust kareyi atlar (`junk_frames_keep_the_stream_alive_but_rest_polling_continues`).
+  düşürürdü. Artık iki taraf da kareyi atlar (`junk_frames_keep_the_stream_alive_but_rest_polling_continues`);
+  Python dakikada bir `push_frame_skipped` loglar, Rust loglamaz (açık).
 - Yarış (Python ile aynı, ders H3 açık): yeni akışın ilk karesi aynı turun REST sonucundan önce gelirse REST onu ezer
   (her iki kaynak da `record` eder, sıra/damga yok). Bir tur kadar daha eski veri; sonraki kare düzeltir.
 
@@ -239,7 +240,6 @@ Python'da hatalı görünen (DÜZELTİLMEDİ, sahibe sorulacak; Rust güvenli):
 - WS en büyük mesaj 16 MiB (Python varsayılanı 1 MiB). Uzak WS URL'si taban yolunu korur (Python düşürüyordu).
 - Term relay kayıt (adres/token/grpc_url) değişince yeniden kurulur (Python hiç yenilemiyordu); `extra_urls` ya da kademe
   değişimi yenilemez.
-- Bozuk WS karesi (JSON dizi vb.) akışı öldürmez (Python'da AttributeError ile ölüyordu).
 - `interval` sorgu biçimi Rust `f64::to_string` (Python `{:g}`): 0.5/1/2.5 aynı; çok küçük/büyük değerde metin farklı
   (`1e-05` / `0.00001`). 0, negatif, NaN, sonsuz aralık Rust'ta yok sayılır (Python olduğu gibi iletir).
 - Bilinen eşit davranış (düzeltilmedi): gRPC çağrıları imzalanmaz.
