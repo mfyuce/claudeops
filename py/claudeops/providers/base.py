@@ -5,7 +5,9 @@ Manager kod (spawn.py/discovery.py/commands/web.py) YALNIZCA bu arayüz
 yeni bir CLI eklemek yeni bir provider dosyası + registry'ye bir satır demek.
 """
 from __future__ import annotations
+import errno
 import os
+import stat
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -36,6 +38,16 @@ def _ro_sqlite_uri(path: str) -> str:
 
 class OneshotError(RuntimeError):
     """`CliProvider.oneshot` çalıştırılamadı/başarısız (ikili yok, zaman aşımı, sıfır olmayan çıkış, boş yanıt)."""
+
+
+def _open_private_target(path: str) -> int:
+    """Sır/damga dosyasını kırpıp yazmak için açar (0600, bağlantı izlenmez). Normal dosya değilse (FIFO/aygıt) açılışta
+    BLOKLAMADAN `OSError`: spawn asılmasın, sır bir boru okuyucusuna gitmesin."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise OSError(errno.EINVAL, "normal dosya değil", path)
+    return fd
 
 
 @dataclass

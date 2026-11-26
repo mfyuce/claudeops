@@ -101,7 +101,7 @@ import shlex
 import sqlite3
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _ro_sqlite_uri
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _open_private_target, _ro_sqlite_uri
 from ..settings import byok_env_for, resolved_binary
 
 SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
@@ -144,11 +144,11 @@ def _sync_byok_env_file() -> bool:
             return False
         return os.path.isfile(_BYOK_ENV_FILE)
     lines = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in safe_env.items())
-    fd = os.open(_BYOK_ENV_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    fd = _open_private_target(_BYOK_ENV_FILE)
     os.fchmod(fd, 0o600)  # retroactive: O_CREAT's mode arg only applies on FIRST creation
     with os.fdopen(fd, "w") as f:
         f.write(lines)
-    os.close(os.open(_BYOK_ENV_MANAGED_MARKER, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600))
+    os.close(_open_private_target(_BYOK_ENV_MANAGED_MARKER))
     return True
 
 

@@ -107,7 +107,7 @@ from ..settings import (ucli_show_reasoning_enabled, byok_env_for, ucli_endpoint
 from ..ucli_client import _read_turns
 from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
-from .base import CliProvider, McpServerSpec, OneshotError
+from .base import CliProvider, McpServerSpec, OneshotError, _open_private_target
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
 # TOBEDECIDED.md'sine bu boşluk ayrıca not edildi) — ama 2026-09-24'te
@@ -342,11 +342,11 @@ def _sync_api_key_file() -> bool:
                     pass
             return False
         return os.path.isfile(_API_KEY_FILE)
-    fd = os.open(_API_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    fd = _open_private_target(_API_KEY_FILE)
     os.fchmod(fd, 0o600)  # retroactive: O_CREAT's mode arg only applies on FIRST creation
     with os.fdopen(fd, "w") as f:
         f.write(key)
-    os.close(os.open(_API_KEY_MANAGED_MARKER, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600))
+    os.close(_open_private_target(_API_KEY_MANAGED_MARKER))
     return True
 
 
@@ -697,7 +697,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
             raise ValueError("ucli ikilisi --provider bayrağını tanımıyor")
         path = _service_key_file(service)
         if not preview.active():
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)   # symlink'i izleyip başka yere yazmasın
+            fd = _open_private_target(path)   # symlink'i izleyip başka yere yazmasın
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w") as f:
                 f.write(key)
