@@ -15,12 +15,17 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
 - `parity/map.py`: aşağıdaki tabloyu `ast` ile üretir; EKSİK satır varsa `--check` kırmızı.
 - Altın tick: `py/tests/steward_golden_tick.json`.
 
-## Durum ve devir (27 Kas 2026): kapanış grubu bitti, kapıya gidebilir; AÇIK maddeler aşağıda
+## Durum ve devir (27 Kas 2026): BİRLEŞTİRMEYE HAZIR (kapsam: `steward.py` saf kararları); AÇIK maddeler aşağıda
 
-`parity/map.py --check` temiz (EKSİK 0). Temiz olması "eşlik tamam" DEMEK DEĞİL: taşınmamış davranışlar tabloda `AÇIK`
-olarak durur ("Açık davranışlar"), ders listesinin kısmen ya da hiç karşılanmayan maddeleri "Python dersleri"ndedir.
-Sprint kuralı "Rust, Python'dan eksik olamaz" bu açıklar için henüz sağlanmıyor; crate hiçbir yere bağlı değil (canlıya
-alınacak uç yok), kapı kararı cops'ta.
+`parity/map.py --check` temiz (EKSİK 0). `steward.py` öğelerinde `AÇIK` kalmadı; bu "eşlik tamam" DEMEK DEĞİL: diğer
+değnekçi modülleri ve çağıranlar test satırlarında `AÇIK` durur ("Açık davranışlar"), ders listesinin kısmen ya da hiç
+karşılanmayan maddeleri "Python dersleri"ndedir. Crate hiçbir yere bağlı değil (canlıya alınacak Rust ucu yok);
+canlı davranışı yalnız bu daldaki `py/` `fix:` commit'leri değiştirir (web restart gerekir). Kapı kararı cops'ta.
+
+`origin/main` dalda (`cdb41fab`, rs/hosts dahil). Birleşik ağaçta `cargo test --workspace` 867/0, clippy temiz, tam
+Python 5914 OK (23 atlandı), `cops-steward-core` ve `cops-hosts` eşleme denetimleri temiz. `cops-procscan`
+`parity/mapping.py --check` `origin/main`de de kırmızı (22 hata: `test_state_backend_last_good`,
+`test_state_instances_db_version_cache`, `test_stop_with_handover`); bu dalda düzeltilmedi.
 
 Grup 7 (27 Kas, `02a8020b`, `3a16c731`, `8743427e`): `steward.py`deki G/Ç işlevlerinin içinde kalan saf mantık taşındı;
 Python öğesi satırlarında `AÇIK` 10 -> 0, test satırlarında 189 -> 184 (`CardCoreTest` iki testi, `TourDeliveryTest`
@@ -952,9 +957,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1856 satır)
+### Python testleri (1902 satır)
 
-Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 184; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1902 satır; doğrudan açık (aşağıda `AÇIK`) 226; parite ile bağlı olup crate dışı çağrısı da olan 805, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1132,6 +1137,52 @@ Test satırı özeti: 1856 satır; doğrudan açık (aşağıda `AÇIK`) 184; pa
 | `test_quota_scoped_api_credit.TestCreditWindow.test_config_dates_validated` | gereksiz (bu crate'te sınanacak saf çağrı yok): `settings.ucli_cost_config` tarih doğrulama, rs/state `parity_settings.rs::settings_readers_match_python` (dal rs/state 544c7846, docs/rs-state.md) |
 | `test_quota_scoped_api_credit.TestCreditWindow.test_spent_counts_only_since` | gereksiz (bu crate'te sınanacak saf çağrı yok): `ucli_cost.state` kullanım jsonl dosyalarından dönem harcaması; dosya taraması, iz T7 |
 | `test_quota_scoped_api_credit.TestCreditWindow.test_window_days_and_budget` | AÇIK (taşınmadı ya da kısmen): `ucli_cost.credit_window` kalan gün ve günlük bütçe; saf, iz T7 |
+| `test_remote_duplicate_name.TestResolvers.test_remote_session_refuses_two_running_rows_of_the_same_name` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/hosts `cops-hosts` karşılıyor: `tests/fake_health.rs::ambiguous_or_inexact_target_sends_nothing` (docs/rs-hosts-mapping.md) |
+| `test_remote_duplicate_name.TestResolvers.test_running_row_is_unknown_not_absent` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/hosts `cops-hosts` karşılıyor: `health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown`, `tests/parity.rs::steward_client_parts_match_python` (docs/rs-hosts-mapping.md) |
+| `test_remote_duplicate_name.TestResolvers.test_one_running_and_one_closed_row_is_not_ambiguous` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/hosts `cops-hosts` karşılıyor: `health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown`, `tests/parity.rs::steward_client_parts_match_python` (docs/rs-hosts-mapping.md) |
+| `test_remote_duplicate_name.TestResolvers.test_registered_project_with_duplicate_name_is_refused_too` | AÇIK (taşınmadı ya da kısmen): projeye göre satır seçimi. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestCallers.test_ensure_running_neither_adopts_nor_starts` | AÇIK (taşınmadı ya da kısmen): uzak oturum yönetimi çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestCallers.test_nudge_handover_and_stop_send_nothing` | AÇIK (taşınmadı ya da kısmen): uzak oturum yönetimi çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestCallers.test_waits_do_not_report_ready_or_closed` | AÇIK (taşınmadı ya da kısmen): uzak oturum yönetimi çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestCallers.test_panel_stop_with_handover_fails_closed_without_plain_stop_fallback` | AÇIK (taşınmadı ya da kısmen): panel devirli durdurma. iz T4 (yaşam döngüsü) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewDriver.test_start_stop_send_and_sweep_post_nothing` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü. iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewDriver.test_poll_reports_unknown_not_ended` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü. iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewDriver.test_single_review_session_still_gets_stop_and_send` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü. iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestTwinAppearsDuringHandover.test_no_second_handover_request` | AÇIK (taşınmadı ya da kısmen): panel devirli durdurma (`web.py`). iz T4 (yaşam döngüsü) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestTwinAppearsDuringHandover.test_no_stop_after_reply` | AÇIK (taşınmadı ya da kısmen): panel devirli durdurma (`web.py`). iz T4 (yaşam döngüsü) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_remote_ref_refuses` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_closed_row_of_the_same_name_does_not_rescue_twins` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_tracked_session_twins_are_refused` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_one_running_and_one_closed_row_still_resolves` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/hosts `cops-hosts` karşılıyor: `health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown`, `tests/parity.rs::steward_client_parts_match_python` (docs/rs-hosts-mapping.md); satır sayımı kuralı; uzak klasör seçimi T10 |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_context_and_file_views_read_nothing` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_card_is_not_read_or_overwritten` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_advance_todo_status_is_unknown` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_idea_export_writes_nothing_and_keeps_the_idea` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_owner_answer_stays_queued_for_retry` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_directive_reports_the_unwritten_todo_line` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları. iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_review_driver_has_no_folder_and_keeps_findings` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü. iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefTwins.test_review_cwd_fallback_refuses_dated_twins` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü. iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestMirrorWindowTwins.test_twins_are_refused_whatever_their_folder_or_tmux_state` | AÇIK (taşınmadı ya da kısmen): masaüstü yansı penceresi. iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestMirrorWindowTwins.test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one` | AÇIK (taşınmadı ya da kısmen): masaüstü yansı penceresi. iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefRowChoice.test_running_row_wins_over_an_earlier_stopped_one` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefRowChoice.test_running_row_without_folder_does_not_borrow_a_stopped_one` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefRowChoice.test_stopped_twins_with_different_folders_are_refused` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefRowChoice.test_stopped_twins_with_one_folder_resolve` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRemoteRefRowChoice.test_tracked_session_follows_the_same_rule` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewFolderFallback.test_prefix_of_another_project_is_not_matched` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewFolderFallback.test_two_dated_sessions_with_different_names_are_refused` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewFolderFallback.test_running_session_wins_over_a_stopped_one` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewFolderFallback.test_stopped_sessions_need_a_common_folder` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestReviewFolderFallback.test_exact_name_prefers_the_running_row` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestContextAmbiguity.test_two_sessions_of_the_project_with_different_names` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestContextAmbiguity.test_stopped_twins_with_different_folders` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestWindowRowTwins.test_two_running_rows_give_no_row` | AÇIK (taşınmadı ya da kısmen): pencere eylemi satır seçimi (TBD#390). iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestWindowRowTwins.test_running_row_wins` | AÇIK (taşınmadı ya da kısmen): pencere eylemi satır seçimi (TBD#390). iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestWindowRowTwins.test_stopped_twins_need_a_common_folder` | AÇIK (taşınmadı ya da kısmen): pencere eylemi satır seçimi (TBD#390). iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestWindowRowTwins.test_action_reports_ambiguity_and_posts_nothing` | AÇIK (taşınmadı ya da kısmen): pencere eylemi satır seçimi (TBD#390). iz T2 (terminal) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRecheckBeforeWrite.test_edit_doc_does_not_write` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRecheckBeforeWrite.test_idea_append_does_not_write` | AÇIK (taşınmadı ya da kısmen): uzak dosya hedefi ve çağıranları (TBD#390). iz T10 (değnekçi) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
+| `test_remote_duplicate_name.TestRecheckBeforeWrite.test_export_file_does_not_write` | AÇIK (taşınmadı ya da kısmen): uzak review sürücüsü (TBD#390). iz T8 (reviewer) Rust'ta yok (docs/rs-hosts-mapping.md 'kapsam dışı') |
 | `test_review.TestSlugTargets.test_slug` | gereksiz (bu crate'te sınanacak saf çağrı yok): `review.py` saf çekirdeği, rs/rev izinde: targets.rs::slug_model; dal rs/rev 40b29bf4, docs/rs-rev.md |
 | `test_review.TestSlugTargets.test_targets_all_and_filtered` | gereksiz (bu crate'te sınanacak saf çağrı yok): `review.py` saf çekirdeği, rs/rev izinde: targets.rs::targets_from_config; dal rs/rev 40b29bf4, docs/rs-rev.md |
 | `test_review.TestSlugTargets.test_claude_mode_opt_in` | gereksiz (bu crate'te sınanacak saf çağrı yok): `review.py` saf çekirdeği, rs/rev izinde: targets.rs::targets_from_config; dal rs/rev 40b29bf4, docs/rs-rev.md |
