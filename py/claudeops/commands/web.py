@@ -3122,19 +3122,24 @@ def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force
     `require_running=False` + `focus=False`: snapshot geri yüklemesi (`_snapshot_resume`). Uzak
     session henüz çalışmıyor olabilir (yerel snapshot uzak session'ı BAŞLATMAZ); görüntüleyici
     "bekliyor" durumunda onu bekler, o yüzden varlık kontrolü atlanır (host kayıtlı mı, karakter
-    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur."""
+    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur.
+
+    Önbellekte aynı adlı iki ÇALIŞAN satır varsa hedef belirsizdir: iki durumda da (`force` dahil) pencere
+    açılmaz ya da öne getirilmez (`ambiguous_name`, TBD#380)."""
     if not host or host == LOCAL_HOST_NAME:
         return _err(lang, "mirror_local", name=name)
     if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
         return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
     if get_host(host) is None:
         return _err(lang, "unknown_host", name=host)
+    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+    hits = [r for r in rows if isinstance(r, dict) and r.get("name") == name and r.get("running")]
+    if len(hits) > 1:
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join([f"{host}:{name}"] * len(hits)))
     if require_running:
-        rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
-        row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
-        if row is None or not row.get("running"):
+        if not hits:
             return _err(lang, "not_running", name=name)
-        if not row.get("tmux"):
+        if not hits[0].get("tmux"):
             return _err(lang, "not_tmux_backed", name=name)
     display = detect_display()
     if not _x11_display_ok(display):

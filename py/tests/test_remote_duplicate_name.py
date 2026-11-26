@@ -260,5 +260,37 @@ class TestRemoteRefTwins(_Resolve):
         self.assertEqual(drv._project_cwd_remote(drv._rows()), "/srv/a")
 
 
+class TestMirrorWindowTwins(unittest.TestCase):
+    """TBD#380: masaüstü yansı penceresi (`web._open_mirror_window`) aynı adlı iki ÇALIŞAN uzak satırda açılmaz."""
+
+    def open(self, rows, **kw):
+        spawned, focused = [], []
+        mirrors = {"yuhem:s1": [1]} if kw.pop("open", False) else {}
+        with mock.patch.object(web, "get_host", lambda h: {"name": h}), \
+                mock.patch.object(web.web_hosts, "get_cached", lambda h: {"sessions": rows}), \
+                mock.patch.object(web, "detect_display", lambda: ":1"), \
+                mock.patch.object(web, "_x11_display_ok", lambda d: True), \
+                mock.patch.object(web.mirrors, "running_mirrors", lambda: mirrors), \
+                mock.patch.object(web.mirrors, "focus_window", lambda *a: focused.append(a) or True), \
+                mock.patch.object(web, "open_mirror_window", lambda *a, **k: spawned.append(a) or True):
+            return web._open_mirror_window("s1", "yuhem", 8765, lang="en", **kw), spawned, focused
+
+    def row(self, cwd="/srv/a", **kw):
+        return _row("s1", cwd=cwd, **kw)
+
+    def test_twins_are_refused_whatever_their_folder_or_tmux_state(self):
+        for rows in ([self.row(), self.row("/srv/b")], [self.row(), self.row()], [self.row(), self.row(tmux=False)]):
+            for kw in ({}, {"force": True}, {"open": True}, {"require_running": False, "focus": False}):
+                res, spawned, focused = self.open(rows, **kw)
+                self.assertFalse(res["ok"], (rows, kw, res))
+                self.assertIn("more than one running session", res["error"])
+                self.assertIn("yuhem:s1, yuhem:s1", res["error"])
+                self.assertEqual((spawned, focused), ([], []))
+
+    def test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one(self):
+        res, spawned, _ = self.open([self.row(running=False), self.row("/srv/b")])
+        self.assertEqual((res["ok"], len(spawned)), (True, 1), res)
+
+
 if __name__ == "__main__":
     unittest.main()
