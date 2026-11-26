@@ -1,11 +1,11 @@
 # rs/state (W0-a): `cops-state` crate'i
 
 Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK. **BİRLEŞTİRMEYE HAZIR.** TBD#374 (a) UYGULANDI: S1-S9
-iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. S11-S12 sahibe açık
-(TBD#379): cevap gelene dek bugünkü belgelenmiş davranış (engel değil). **Birleşince web servisi restart + uzak deploy ister.**
+iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. TBD#379 (a) UYGULANDI:
+S11-S12 (Python `214eb4a2`, `ec53bb28`). TBD#383 (dört Python yazım/kilit davranışı) sahipte, engel değil. **Birleşince web servisi restart + uzak deploy ister.**
 (K1, K6), `a172591` (K2, K3), sonrası K4 + test boşlukları ve belge commit'leri.
 Doğrulama (rust/ içinde): `cargo fmt -p cops-state --check`, `cargo clippy -p cops-state --all-targets -- -D warnings`,
-`cargo test -p cops-state` (18 birim + 98 entegrasyon/parite = 116 test). Parite testleri `python3` ve kullanıcı site paketlerini (`websockets`),
+`cargo test -p cops-state` (birim + entegrasyon/parite, toplam 118 test). Parite testleri `python3` ve kullanıcı site paketlerini (`websockets`),
 `tests/fs_atomic.rs::fsync_before_rename_and_dir_after` ayrıca `strace` ister; testler yalnız geçici dizine yazar
 (`HOME` ve `CLAUDEOPS_DIR` geçici, `TestEnv`).
 
@@ -92,14 +92,15 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 | `add_missing` kayıt değeri liste çiftleri (`dict([[k, v]])`) | sözlüğe çevrilir | hata | Önemsiz (yalnız göç aracı); kayıtlar her zaman nesne |
 | `proc_ppid` alan eksik | `IndexError` | `ProcError::Parse` | İkisi de hata |
 | `load_instances` `stat` EACCES | istisna | boş sözlük | Okuyucu toleranslı; yazıcı (`try_mutate`) yine hata verir |
-| Değnekçi kimliğinde sondaki satır sonu (`"kitap\n"`) | geçerli sayılır | reddedilir | SIKI: S11. `parity_steward::steward_id_trailing_newline_documented_divergence` |
+| Değnekçi kimliğinde sondaki satır sonu (`"kitap\n"`) | reddedilir | reddedilir | EŞ: TBD#379 S11. Python düzeltildi: `214eb4a2` (`rs/stew` `290f6a3a` cherry-pick). `parity_steward::steward_id_trailing_newline_rejected_in_both` |
+| `history_warn_at` sonsuz | varsayılan 1900 | varsayılan 1900 | EŞ: TBD#379 S12. Python düzeltildi: `ec53bb28`. `parity_steward::infinite_history_warn_at_keeps_default` |
 | `instances.json.lock` sembolik bağ / başkasının dosyası | `open("w")`: bağ izlenir, hedef boşaltılır (geçici dizinde yeniden üretildi) | reddedilir, hedefe dokunulmaz | SIKI: TBD#383 (4). `fsutil::tests::exclusive_lock_symlink_refused` |
 | `diag.log` iletisindeki istisna metni | `{e!r}` | Rust hata metni | Dile özgü; olay öneki, biçim, yol ve izin aynı. `parity_statedocs::diag_log_matches_python` |
 
 ## Sahibe soruldu
 
 Sahip cevabı (TBD#374, q20261126_182502_d29f): (a). S1-S9 UYGULANDI (aşağıdaki tablo sorulduğu andaki durumu gösterir;
-güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 TBD#379'da açık. Sonradan bulunan dört Python yazım/kilit davranışı TBD#383'te açık.
+güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 de UYGULANDI (TBD#379 (a), yukarıdaki sapma tablosu). Sonradan bulunan dört Python yazım/kilit davranışı TBD#383'te açık.
 
 | # | Konu | Python | Rust (şimdi) | Seçenek A | Seçenek B | Öneri |
 |---|---|---|---|---|---|---|
@@ -959,7 +960,7 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 3. ~~Taşınmamış işlevler~~ (bu tur: settings okuyucuları `d438cd1`; store/statedocs `a4dfdda`; instances/roster/paths
    `d438cd1`, `becc4d6`).
 4. ~~Sapmalar~~ (yukarıdaki tablo).
-5. ~~Sahip cevapları S1-S9~~ (uygulandı). S11-S12: TBD#379 (cevap gelince iki dilde birlikte).
+5. ~~Sahip cevapları S1-S9~~ (uygulandı). ~~S11-S12~~ (uygulandı).
 
 ### TBD#374 ile eklenen Python tanımları ve testleri
 

@@ -54,6 +54,7 @@ const CASES: &[&str] = &[
     r#"{"history_warn_at": 99999999999999999999999}"#,
     r#"{"history_warn_at": Infinity}"#,
     r#"{"history_warn_at": 1e400}"#,
+    r#"{"history_warn_at": -Infinity}"#,
 ];
 
 const SIDS: &[&str] = &[
@@ -121,7 +122,6 @@ fn steward_config_matches_python() {
     );
     let out = e.py_in("files", PY, &input.to_compact());
     let mut lines = out.split_terminator('\n');
-    let mut errors = 0;
     for case in CASES {
         let s = Settings::from_text(Some(case));
         assert_eq!(
@@ -133,16 +133,11 @@ fn steward_config_matches_python() {
             let got = match s.steward_config(sid) {
                 Ok(c) => c.to_json().to_compact(),
                 Err(StewardConfigError::InvalidSid(_)) => error("ValueError"),
-                Err(StewardConfigError::Type(t)) => {
-                    errors += 1;
-                    error(t.python)
-                }
             };
             assert_eq!(got, lines.next().unwrap(), "sid {sid:?}: {case}");
         }
     }
     assert_eq!(lines.next(), None);
-    assert!(errors > 0, "taşma durumu sınanmadı (S12)");
 }
 
 /// Python testlerinin iddiaları Rust tarafında açık değerlerle (parite iki tarafın birlikte kaymasını yakalamaz).
@@ -315,21 +310,17 @@ fn steward_constants_match_python() {
     assert_eq!(rs.to_compact(), lines.next().unwrap());
 }
 
-/// Sahibe soruldu S11: Python `STEWARD_ID_RE` `$` sondaki satır sonunu kabul eder (`"kitap\n"` geçerli, `"default\n"`
-/// rezerve denetimini aşar); Rust reddeder.
+/// TBD#379 S11: sondaki satır sonu iki dilde de reddedilir (`"default\n"` rezerve denetimini aşamaz).
 #[test]
-fn steward_id_trailing_newline_documented_divergence() {
+fn steward_id_trailing_newline_rejected_in_both() {
     let e = Env::new();
     let text = r#"{"stewards": {"kitap\n": {}, "default\n": {}}}"#;
     std::fs::write(e.dir().settings_json(), text).unwrap();
     let py = e.py(
         "files",
-        "from claudeops import settings as s\nprint(json.dumps([s.steward_ids(), s.steward_config('kitap\\n').brain_name]))",
+        "from claudeops import settings as s\ntry:\n    s.steward_config('kitap\\n'); r = 'kabul'\nexcept ValueError:\n    r = 'red'\nprint(json.dumps([s.steward_ids(), r]))",
     );
-    assert_eq!(
-        py.trim_end(),
-        r#"[["default", "default\n", "kitap\n"], "degnekci_kitap\n"]"#
-    );
+    assert_eq!(py.trim_end(), r#"[["default"], "red"]"#);
     let s = Settings::from_text(Some(text));
     assert_eq!(s.steward_ids(), ["default"]);
     assert!(matches!(
@@ -337,6 +328,16 @@ fn steward_id_trailing_newline_documented_divergence() {
         Err(StewardConfigError::InvalidSid(_))
     ));
     assert!(!ss::valid_custom_id("default\n") && !ss::valid_steward_id("kitap\n"));
+}
+
+/// TBD#379 S12: sonsuz `history_warn_at` varsayılana düşer.
+#[test]
+fn infinite_history_warn_at_keeps_default() {
+    for raw in ["Infinity", "-Infinity", "1e400"] {
+        let s = Settings::from_text(Some(&format!(r#"{{"history_warn_at": {raw}}}"#)));
+        let c = s.steward_config("default").unwrap();
+        assert_eq!(c.int_of("history_warn_at"), 1900, "{raw}");
+    }
 }
 
 // ---- K3 --------------------------------------------------------------------------------------------------------------
