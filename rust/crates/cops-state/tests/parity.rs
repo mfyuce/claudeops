@@ -720,15 +720,38 @@ assert i.forget_instance('r')
             std::fs::remove_file(b.dir().instances_json()).unwrap();
             assert_eq!(i.load().len(), 3);
         }
-        // bozuk dosyanın üstüne yazılmaz
+        // db kipinde bozuk olan yalnız ayna: DB satırından sürer, ham hali saklanır; diğer kiplerde üstüne yazılmaz
+        a.write("instances.json", "{yarim");
         b.write("instances.json", "{yarim");
-        assert!(i.forget("p20261126").is_err());
-        // önbelleksiz okuyucu boş görür; db kipinde damgası değişmemiş önbellek DB verisini vermeyi sürdürür (Python gibi)
         let fresh = b.docs(backend);
-        assert!(Instances::new(&fresh).load().is_empty());
-        let cached = if backend == Backend::Db { 3 } else { 0 };
-        assert_eq!(i.load().len(), cached);
-        assert_eq!(b.read("instances.json"), "{yarim");
+        if backend == Backend::Db {
+            assert_eq!(Instances::new(&fresh).load().len(), 3);
+            a.py(
+                mode,
+                "from claudeops import instances as i\ni.forget_instance('q20261126')",
+            );
+            i.forget("q20261126").unwrap();
+            assert_eq!(normalized_instances(&a), normalized_instances(&b), "{mode}");
+            let copies = |e: &Env| {
+                let mut v: Vec<String> = std::fs::read_dir(&e.state)
+                    .unwrap()
+                    .map(|d| d.unwrap().file_name().into_string().unwrap())
+                    .filter(|n| n.starts_with("instances.json.corrupt-"))
+                    .collect();
+                v.sort();
+                v
+            };
+            let kept = copies(&b);
+            assert_eq!(kept.len(), 1);
+            assert_eq!(copies(&a), kept, "iki dilde aynı yedek adı");
+            assert_eq!(b.read(&kept[0]), "{yarim");
+            assert_eq!(b.mode(&kept[0]), 0o600);
+        } else {
+            assert!(i.forget("p20261126").is_err());
+            assert!(Instances::new(&fresh).load().is_empty());
+            assert!(i.load().is_empty());
+            assert_eq!(b.read("instances.json"), "{yarim");
+        }
     }
 }
 

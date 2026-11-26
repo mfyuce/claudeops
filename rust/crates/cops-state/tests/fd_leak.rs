@@ -59,7 +59,9 @@ fn no_fd_leak() {
         drop(held);
         assert!(Store::open(&d.join("yok.db")).is_err());
         std::fs::write(d.join("instances.json"), "{bozuk").unwrap();
-        assert!(Instances::new(&docs).forget("n0").is_err());
+        assert!(Instances::new(&dual).forget("n0").is_err()); // dosya doğruluk kaynağı
+        std::fs::write(d.join("instances.json"), "{bozuk").unwrap();
+        Instances::new(&docs).forget("n0").unwrap(); // db: bozuk ayna yedeklenir, DB'den sürer
         std::fs::remove_file(d.join("instances.json")).unwrap();
         // atomik yazım hatası (`rename` hedefi dizin): tanıtıcı da geçici dosya da kalmaz
         let dolu = d.join("dolu-dizin");
