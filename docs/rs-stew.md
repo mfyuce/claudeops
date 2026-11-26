@@ -25,8 +25,7 @@ canlı davranışı yalnız bu daldaki `py/` `fix:` commit'leri değiştirir (we
 `origin/main` dalda (`6c5588a6`, main `7e7d8b72`, rs/rev dahil). Birleşik ağaçta `cargo test --workspace` 889/0, clippy temiz, tam
 Python 5968 OK (23 atlandı), `cops-steward-core` (map/gen/golden) denetimleri temiz. `tail_log` da bozuk satırı atlar
 (`a23c2b60`; G/Ç, Rust eşi yok). `cops-procscan`
-`parity/mapping.py --check` `origin/main`de de kırmızı (22 hata: `test_state_backend_last_good`,
-`test_state_instances_db_version_cache`, `test_stop_with_handover`); bu dalda düzeltilmedi.
+eşleme denetimi de bu `main` ile temiz (EKSİK 0, hata 0).
 
 Grup 7 (27 Kas, `02a8020b`, `3a16c731`, `8743427e`): `steward.py`deki G/Ç işlevlerinin içinde kalan saf mantık taşındı;
 Python öğesi satırlarında `AÇIK` 10 -> 0, test satırlarında 189 -> 184 (`CardCoreTest` iki testi, `TourDeliveryTest`
