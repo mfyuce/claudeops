@@ -133,6 +133,67 @@ fn load_failure_deletes_the_buffer_and_stops_before_paste() {
     assert_eq!(f.subcommands(), ["load-buffer", "delete-buffer"]);
 }
 
+/// TBD#369 P9: yapıştırma zaman aşımında da tampon silinir. En kısa süre 5 sn (`send_text` tabanı).
+#[test]
+fn paste_timeout_deletes_the_buffer_and_sends_no_enter() {
+    let f = Fake::new();
+    f.set("paste-buffer.sleep", "30");
+    assert!(matches!(
+        f.tmux.send_text("x", "metin", NOW, USER),
+        Err(TmuxError::Timeout)
+    ));
+    assert_eq!(
+        f.subcommands(),
+        ["load-buffer", "paste-buffer", "delete-buffer"]
+    );
+    let calls = f.calls();
+    assert_eq!(calls[2], ["delete-buffer", "-b", &calls[0][2]]);
+}
+
+#[test]
+fn nul_text_spawns_nothing_and_empty_text_is_only_enter() {
+    let f = Fake::new();
+    assert!(matches!(
+        f.tmux.send_text("x", "a\0b", NOW, USER),
+        Err(TmuxError::BadArgument("text"))
+    ));
+    assert!(f.calls().is_empty());
+    f.tmux.send_text("x", "", NOW, USER).unwrap();
+    assert_eq!(f.calls(), [vec!["send-keys", "-t", "=x:", "Enter"]]);
+}
+
+/// Biçim genişletmesine ya da ekrana kaçabilecek ad: hiçbir tmux süreci başlamaz.
+#[test]
+fn hash_and_control_character_names_are_rejected_everywhere() {
+    let f = Fake::new();
+    let conf = std::path::Path::new("/x.conf");
+    let bad = [
+        "a#b",
+        "d#(touch Y)",
+        "v#{?0,x,}",
+        "a\nb",
+        "a\tb",
+        "a\x7f",
+        "a\u{85}",
+    ];
+    let name_err = |r: Result<(), TmuxError>| matches!(r, Err(TmuxError::BadArgument("name")));
+    for name in bad {
+        assert!(!cops_tmux::addressable(name), "{name:?}");
+        let envs: [(&str, &str); 0] = [];
+        assert!(name_err(f.tmux.spawn_direct(conf, name, "/", "true", envs)));
+        assert!(name_err(f.tmux.send_text(name, "m", NOW, USER)));
+        assert!(name_err(f.tmux.send_raw(name, "m", USER)));
+        assert!(name_err(f.tmux.kill_session(name)));
+        assert!(f
+            .tmux
+            .new_session_shell_fragment("/x.conf", name, "/", "true")
+            .is_err());
+        assert!(f.tmux.attach_shell_fragment("/x.conf", name).is_err());
+        assert!(f.tmux.find_outer_bash_pids(name).is_empty(), "{name:?}");
+    }
+    assert!(f.calls().is_empty());
+}
+
 #[test]
 fn masked_guard_asks_for_the_tty_before_sending() {
     let f = Fake::new();

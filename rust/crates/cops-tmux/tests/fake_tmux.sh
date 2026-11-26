@@ -4,6 +4,7 @@
 #   <alt>.out : alt komutun stdout'u
 #   <alt>.rc  : satır başına bir çıkış kodu (n'inci çağrı n'inci satır, sonra son satır)
 #   stdin     : load-buffer'a gelen veri
+#   <alt>.sleep : alt komut bu kadar saniye askıda kalır (zaman aşımı testi)
 d=$(dirname "$0")
 {
     for a in "$@"; do printf '%s\037' "$a"; done
@@ -13,6 +14,7 @@ d=$(dirname "$0")
 [ "$1" = "-L" ] && shift 2
 sub=$1
 [ "$sub" = "load-buffer" ] && cat >"$d/stdin"
+[ -f "$d/$sub.sleep" ] && exec sleep "$(cat "$d/$sub.sleep")"
 [ -f "$d/$sub.out" ] && cat "$d/$sub.out"
 if [ -f "$d/$sub.rc" ]; then
     echo x >>"$d/$sub.n"

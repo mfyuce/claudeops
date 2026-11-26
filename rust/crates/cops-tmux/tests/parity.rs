@@ -457,7 +457,34 @@ fn constants_patterns_and_shell_fragments_match_python() {
         calls.push(json!(["_tmux_arg", arg]));
         rust.push(json!(cops_tmux::escape_arg(arg)));
     }
-    for name in names.iter().chain(&["=eq", "@1", "$", "a:", ":"]) {
+    for value in [
+        "/a/b",
+        "d#(touch Y)",
+        "a#[x]",
+        "a##[x]",
+        "#",
+        "##",
+        "a#",
+        "#{x}#[y]#z",
+        "[#]",
+        "ş#ğ",
+    ] {
+        calls.push(json!(["_tmux_format_literal", value]));
+        rust.push(json!(cops_tmux::format_literal(value)));
+    }
+    for name in names.iter().chain(&[
+        "=eq",
+        "@1",
+        "$",
+        "a:",
+        ":",
+        "a#b",
+        "#",
+        "a\nb",
+        "a\x7f",
+        "a\u{85}",
+        "a\u{200b}",
+    ]) {
         calls.push(json!(["_addressable", name]));
         rust.push(json!(cops_tmux::addressable(name)));
     }

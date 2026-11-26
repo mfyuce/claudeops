@@ -140,6 +140,68 @@ fn outer_bash_is_found_through_the_client_list() {
     assert_eq!(s.tmux.find_outer_bash_pids("m"), found);
 }
 
+/// `;` ile biten adda spawn parçası adı kaçışlı yazar; yedek tarama iğnesi aynı kaçışı aramalı.
+#[test]
+fn outer_bash_scan_finds_a_name_ending_with_a_semicolon() {
+    let s = Server::new();
+    let name = format!("cxrs-nokta-{};", std::process::id());
+    let fragment = s
+        .tmux
+        .new_session_shell_fragment("/x.conf", &name, "/x", "true")
+        .unwrap();
+    assert!(fragment.contains(r"\;"), "{fragment}");
+    let mut child = Command::new("bash")
+        .args(["-c", &format!("read x # {fragment}")])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut got = Vec::new();
+    wait_until(
+        || {
+            got = s.tmux.find_outer_bash_pids(&name);
+            !got.is_empty()
+        },
+        "yedek tarama",
+    );
+    drop(child.stdin.take());
+    child.wait().unwrap();
+    assert_eq!(got.iter().map(|x| x.0).collect::<Vec<_>>(), [child.id()]);
+}
+
+/// cwd biçim genişletmesinden geçmez: `#(komut)` koşmaz, oturum istenen dizinde açılır.
+#[test]
+fn hash_in_cwd_is_literal_on_a_real_server() {
+    let s = Server::new();
+    for (i, dir) in ["d#(touch Y)", "a#[x]", "b#{pane_id}", "c##d"]
+        .iter()
+        .enumerate()
+    {
+        let cwd = s.path().join(dir);
+        std::fs::create_dir(&cwd).unwrap();
+        let name = format!("h{i}");
+        s.tmux
+            .spawn_direct(
+                &conf(),
+                &name,
+                cwd.to_str().unwrap(),
+                "pwd > nerede; echo HAZIR",
+                pane_env(&s),
+            )
+            .unwrap();
+        wait_until(
+            || {
+                std::fs::read_to_string(cwd.join("nerede"))
+                    .is_ok_and(|p| p.trim_end() == cwd.to_str().unwrap())
+            },
+            dir,
+        );
+    }
+    // `#(...)` zaman uyumsuz koşar: sunucuya işleyecek süre tanı.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(!s.path().join("Y").exists());
+    assert!(!s.path().join("d#(touch Y)").join("Y").exists());
+}
+
 #[test]
 fn outer_bash_falls_back_to_scanning_command_lines() {
     let s = Server::new();

@@ -241,6 +241,9 @@ mod tests {
     fn strips_sgr_and_osc() {
         let raw = "\x1b[1m\x1b[38;5;220mSwitch\x1b[0m\x1b[39m \x1b]0;t\x07model?";
         assert_eq!(strip_ansi(raw), "Switch model?");
+        // ST (`ESC \\`) ile biten OSC: yalnız dizi silinir, arasındaki metin kalır.
+        let st = "\x1b]8;;http://x.invalid\x1b\\bag\x1b]8;;\x1b\\ son\x1b]0;t\x07!";
+        assert_eq!(strip_ansi(st), "bag son!");
     }
 
     #[test]
