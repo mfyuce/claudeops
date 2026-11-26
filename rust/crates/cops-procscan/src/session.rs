@@ -225,6 +225,69 @@ mod tests {
         assert_eq!(out.len(), 2);
     }
 
+    /// Python `test_discovery_bg_fold`: sıra bağımsız, ebeveynsiz/başka adlı bg kalır, ikinci bg görünür kalır,
+    /// bg'siz satırlar değişmez.
+    #[test]
+    fn background_fold_edge_cases_like_python() {
+        let front = || Session {
+            kind: "interactive".into(),
+            sid: Some("f".into()),
+            parked_job_id: Some("j".into()),
+            ..s("hof", 1, "claude")
+        };
+        let bg = |pid, name: &str| Session {
+            kind: "bg".into(),
+            sid: Some(format!("b{pid}")),
+            job_id: Some("j".into()),
+            ..s(name, pid, "claude")
+        };
+        let out = fold_background(vec![bg(2, "hof"), front()]);
+        assert_eq!(
+            out.iter().map(|x| (x.pid, x.bg_pid, x.sid.as_deref())).collect::<Vec<_>>(),
+            [(1, Some(2), Some("b2"))]
+        );
+        assert_eq!(fold_background(vec![bg(2, "hof")]), [bg(2, "hof")]);
+        assert_eq!(fold_background(vec![front(), bg(2, "zz")]).len(), 2);
+        let out = fold_background(vec![front(), bg(2, "hof"), bg(5, "hof")]);
+        let mut pids: Vec<u32> = out.iter().map(|x| x.pid).collect();
+        pids.sort_unstable();
+        assert_eq!(pids, [1, 5]);
+        let plain = vec![front(), Session { pid: 3, ..front() }];
+        assert_eq!(fold_background(plain.clone()), plain);
+        // bg'nin sid'i yoksa ön yüzün sid'i korunur
+        let out = fold_background(vec![
+            front(),
+            Session {
+                sid: None,
+                ..bg(2, "hof")
+            },
+        ]);
+        assert_eq!((out[0].sid.as_deref(), out[0].bg_pid), (Some("f"), Some(2)));
+    }
+
+    /// Python `test_discovery_subshell` ağacı: torunlar düşer, ebeveyni ölmüş (init'e bağlı) ve aynı adlı bağımsız
+    /// shell kalır, başka CLI'nin aynı adlı alt süreci kalır.
+    #[test]
+    fn subshell_tree_like_python() {
+        let rows = vec![
+            s("a", 10, "shell"),
+            s("a", 11, "shell"),
+            s("a", 12, "shell"),
+            s("a", 30, "shell"),
+            s("b", 21, "shell"),
+            s("c", 40, "claude"),
+            s("c", 41, "claude"),
+        ];
+        let out = fold_subshells(rows, |pid| match pid {
+            11 => vec![10],
+            12 => vec![99, 11, 10],
+            21 => vec![20],
+            30 => vec![],
+            _ => vec![40],
+        });
+        assert_eq!(out.iter().map(|s| s.pid).collect::<Vec<_>>(), [10, 30, 21, 40, 41]);
+    }
+
     #[test]
     fn subshells_fold_only_for_shell() {
         let v = vec![

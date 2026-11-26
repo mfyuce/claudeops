@@ -8,6 +8,9 @@
 //! Crate durum dosyası yazmaz; tek yazım `needs_ho::NeedsHo::repo_baseline_set` (çağıranın verdiği dizin).
 //! Süreç öldürme yalnız `proc_cmd`te, yalnız kendi başlattığı çocuğa (`clippy.toml` `disallowed-methods`).
 
+// Ders H5: üretim yolunda panik yok (testler hariç).
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 pub mod discovery;
 pub mod list;
 pub mod mirrors;

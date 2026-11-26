@@ -78,6 +78,25 @@ pub fn int(s: &str) -> Option<i64> {
     s.replace('_', "").parse().ok()
 }
 
+/// `float("...")` (ASCII): baştaki/sondaki boşluk, rakamlar arası tek `_` (PEP 515), `inf`/`nan` yazımları.
+/// Unicode rakamlar (`float("١")`) desteklenmez (bilinen sapma).
+pub fn float(s: &str) -> Option<f64> {
+    let s = strip(s);
+    if s.contains('_') {
+        let b = s.as_bytes();
+        let ok = b
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| **c == b'_')
+            .all(|(i, _)| i > 0 && b[i - 1].is_ascii_digit() && b.get(i + 1).is_some_and(u8::is_ascii_digit));
+        if !ok {
+            return None;
+        }
+        return s.replace('_', "").parse().ok();
+    }
+    s.parse().ok()
+}
+
 /// Eşsiz vekil `\uD8xx` kaçışlarını `�` yapar (Python kabul eder, serde_json reddeder).
 pub(crate) fn mask_lone_surrogates(s: &str) -> String {
     let b = s.as_bytes();
@@ -131,6 +150,24 @@ mod tests {
             (Some(1000), None, None, None, Some(-3))
         );
         assert_eq!(to_str(&Value::Null), "None");
+        for (v, want) in [
+            ("1_0", Some(10.0)),
+            ("1__0", None),
+            ("_1", None),
+            ("1_", None),
+            ("1_0.5_0", Some(10.5)),
+            ("1e1_0", Some(1e10)),
+            ("1_e10", None),
+            (" 2.5\n", Some(2.5)),
+            ("+.5", Some(0.5)),
+            ("5.", Some(5.0)),
+            ("0x10", None),
+            ("1,5", None),
+            ("-Infinity", Some(f64::NEG_INFINITY)),
+        ] {
+            assert_eq!(float(v), want, "{v:?}");
+        }
+        assert!(float("nan").is_some_and(f64::is_nan));
     }
 
     #[test]

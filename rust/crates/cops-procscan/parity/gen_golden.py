@@ -208,6 +208,8 @@ def usage_cases():
         "surrogate_id": {"main": b'{"type":"assistant","requestId":"r","message":{"id":"\\ud800","model":"x","usage":'
                                  b'{"output_tokens":3}}}\n' + urow("m1")},
         "partial_last": {"main": urow("m1") + urow("m2")[:20]},
+        "dup_keys": {"main": b'{"type":"user","type":"assistant","message":{"id":"d","model":"x","usage":{"output_tokens":1},'
+                             b'"usage":{"output_tokens":6}}}\n' + urow("m1")},
         "invalid_utf8": {"main": b'{"type":"assistant","message":{"id":"z","model":"\xff","usage":{}}}\n' + urow("m1")},
         "families": {"main": urow("a", model="Claude-FABLE-x") + urow("b", model="sonnet-opus") + urow("c", model="HAIKU")},
         "subagents": {"main": urow("m1"), "agent-1.jsonl": urow("m1", model="claude-haiku-5"),

@@ -137,8 +137,11 @@ fn parse(line: &[u8], unique: &mut u64) -> Result<Option<(Key, Turn)>, BadRow> {
         return Ok(None);
     }
     // Python eşsiz vekil kaçışını (`\ud800`) kabul eder: kimlik/model alanında olsa da satır kaybolmasın.
-    let Ok(row) = serde_json::from_str::<Row>(text).or_else(|_| serde_json::from_str::<Row>(&py::mask_lone_surrogates(text)))
-    else {
+    // Yedek yol `Value` üzerinden: yinelenen anahtarda Python gibi son değer kalır (türetilmiş struct hata verirdi).
+    let Some(row) = serde_json::from_str::<Row>(text).ok().or_else(|| {
+        let v = py::json(text.as_bytes())?;
+        Row::deserialize(v).ok()
+    }) else {
         return Ok(None);
     };
     if row.kind.as_ref().and_then(Value::as_str) != Some("assistant") {

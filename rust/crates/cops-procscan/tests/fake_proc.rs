@@ -646,3 +646,72 @@ fn broken_agy_files() {
         assert_eq!(n, u32::from(bad == b"[1]"), "{bad:?}");
     }
 }
+
+/// Python `test_mirror_window`/`test_orphan_cli`/`test_web_ucli_flags` karşılıkları: başka kullanıcının görüntüleyicisi
+/// sayılmaz, cmdline'ı kaybolan süreç atlanır, fd/0 okunamazsa terminal "kayıp" sayılmaz, ucli rozetleri bozuk değerde.
+#[test]
+fn mirrors_terminal_and_ucli_flag_edges() {
+    use cops_procscan::mirrors::running_mirrors;
+    let f = Fake::new();
+    f.add(P {
+        pid: 130,
+        cmd: "python3 -m claudeops watch yuhem:a",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 131,
+        uid: OTHER,
+        cmd: "python3 -m claudeops watch yuhem:a",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 132,
+        cmd: "python3 -m claudeops watch yuhem:b",
+        ..Default::default()
+    });
+    fs::remove_file(f.root.join("proc/132/cmdline")).unwrap(); // tarama sırasında kayboldu
+    assert_eq!(
+        running_mirrors(&f.cfg),
+        std::collections::BTreeMap::from([("yuhem:a".to_owned(), vec![130])])
+    );
+    let scan = find_sessions(&f.cfg, CpuMode::Skip).unwrap();
+    assert_eq!(scan.diag.cmdline_unreadable, 1);
+
+    f.add(P {
+        pid: 133,
+        cmd: "ucli chat --repl --session u --max-cost-usd 1.5 --max-cost-usd bozuk",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 134,
+        cmd: "ucli chat --repl --session v",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 135,
+        cmd: "claude --remote-control c",
+        ..Default::default()
+    });
+    fs::remove_file(f.root.join("proc/135/fd/0")).unwrap();
+    let v = f.scan();
+    let probe = Probe::new(&f.cfg);
+    let u = probe.ucli_flags(by_name(&v, "u")).unwrap();
+    assert_eq!(u.max_cost_usd, None, "son değer bozuk: None (Python gibi)");
+    let n = probe.ucli_flags(by_name(&v, "v")).unwrap();
+    assert_eq!(
+        (n.write, n.exec, n.max_cost_usd, n.ask, n.checks),
+        (false, false, None, false, false)
+    );
+    assert_eq!(probe.ucli_flags(by_name(&v, "c")), None);
+    assert!(!probe.terminal_lost(135) && !probe.no_terminal(135));
+}
+
+/// Gerçek `/proc`: kendi sürecimizin ppid'i (Python `test_own_ppid`).
+#[test]
+fn own_ppid_from_real_proc() {
+    use cops_procscan::procfs::ProcFs;
+    // SAFETY: argümansız libc çağrıları.
+    let (uid, ppid) = unsafe { (libc::getuid(), libc::getppid()) };
+    let me = ProcFs::new(Path::new("/proc"), uid).own(std::process::id()).unwrap();
+    assert_eq!(me.stat().unwrap().ppid, u32::try_from(ppid).unwrap());
+}

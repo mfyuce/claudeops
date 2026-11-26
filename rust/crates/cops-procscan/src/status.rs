@@ -107,7 +107,7 @@ impl Probe {
                 .windows(2)
                 .rev()
                 .find(|w| w[0] == "--max-cost-usd")
-                .and_then(|w| py::strip(&w[1]).parse().ok()),
+                .and_then(|w| py::float(&w[1])),
             ask: has("--ask-dir"),
             checks: has("--allow-checks"),
         })

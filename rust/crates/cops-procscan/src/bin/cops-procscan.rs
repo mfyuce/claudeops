@@ -4,6 +4,9 @@
 //!   cops-procscan usage TRANSKRIPT.jsonl                 (token toplamı, JSON)
 //!   cops-procscan needs-ho DURUM_DIZINI CWD [TRANSKRIPT] (devir sinyalleri, JSON; git'i yalnız okur)
 
+// Ders H5: üretim yolunda panik yok (testler hariç).
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 use cops_procscan::needs_ho::{handover_done, has_real_user_turn, repo_dirty, repo_untracked_count, NeedsHo};
 use cops_procscan::status::{OrphanTracker, Probe};
 use cops_procscan::transcript::jsonl_path_for;
