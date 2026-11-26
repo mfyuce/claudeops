@@ -1,6 +1,6 @@
 # rs/proc: cops-procscan (Rust sprinti W1-pre, süreç taraması)
 
-Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite koşucusu var. **Eşleme tablosu (sahip EK 2) dışında birleştirmeye hazır**; eşleme tablosunu başka oturum yazıyor. Sahibe açık sorular: TBD#365 ve aşağıdaki "Python hatası?" listesi.
+Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosu yazıldı ([rs-proc-mapping.md](rs-proc-mapping.md)); **13 EKSİK satır kapanmadan birleştirme kapısı geçilmez** (sahip eki: eksik satır = birleştirme yok). Sahibe açık sorular: TBD#365 ve aşağıdaki "Python hatası?" listesi.
 
 ## Kapsam (taşınan)
 | Python | Rust (`rust/crates/cops-procscan/src`) |
@@ -44,6 +44,9 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
 8. Canlılık: Python `os.kill(pid, 0)` çekirdek kuralı (gönderen uid = hedefin gerçek YA DA saklı uid'i); Rust yalnız gerçek uid'e bakar. Fark yalnız başka kullanıcının çalıştırdığı, saklı uid'i bize ait süreçte.
 9. `--max-cost-usd` `NaN`/`inf`: Python `float` kabul eder ve `json.dumps` geçersiz JSON (`NaN`) yazar; Rust değeri kabul eder, serde `null` yazar. `_ucli_flags`ın pid başına süresiz önbelleği (pid yeniden kullanımında bayat rozet) Rust'ta yok (önbellek T1'in işi).
 10. `UsageCache` arka plan iş parçacığı başlatılamazsa `None` döner (Python da istisnadan `None`); eldeki değer o çağrıda dönmez.
+11. Kullanım önbelleği taşınca (2000) Python en eski eklenen girdileri atar; Rust `HashMap` sırasına göre rastgele girdi atar (dosya durumu 1, özet 200). Test yok (eşleme tablosu EKSİK).
+12. `HOME` tanımsızsa `Config::from_env` `None` döner; Python `expanduser` parola veritabanına düşer.
+13. `Scan.mirrors` her taramada doldurulur (Python'da yalnız `mirrors_out` verilirse).
 
 ## "Python hatası?" (Rust şimdilik Python gibi davranır; sahibe soru TBD#365)
 - Nesne olmayan ya da `name`i dizgi olmayan `sessions/*.json` tüm taramayı düşürür (`ScanError`).
@@ -66,6 +69,7 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
   - needs_ho fikstür depoları: 11 depo durumu (depo değil, temiz, izlenmeyen, değişmiş, staged, push'lu, ileride, geride, detached, baseline=HEAD, eski baseline) x 29 transkript (yok + 28 altın) x 4 `last-handover.ts` (yok, eski, gelecek, bozuk) = 1276 durum x 4 sinyal: fark 0, `needs_ho`da 14 bilinen sapma (hepsi `nan_line`, sapma 4). Canlı 30 oturum cwd'si x 4 sinyal: fark 0.
 
 ## Test eşlemesi (Python testi -> Rust)
+Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.md](rs-proc-mapping.md): aşağıdaki satırların bir kısmı orada KISMİ olduğu için EKSİK.
 | Python | Rust |
 |---|---|
 | test_discovery_sid | `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan`, `discovers_each_cli_and_names` |
@@ -85,7 +89,11 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
 | test_web_ucli_flags | `fake_proc::ucli_flags`, `mirrors_terminal_and_ucli_flag_edges`, `py::tests::python_string_rules` (`float`); `tools` alanı kapsam dışı (durum dosyası, T1) |
 
 ## Açık işler
-- [ ] Eşleme tablosu (sahip EK 2): kapsam modüllerindeki her `ast` tanımı (dosya:satır | Rust | parite testi | durum). Başka oturum yazıyor.
+- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. 536 tanım (140 karşılandı, 392 kapsam dışı, 4 EKSİK); 115 test dosyasında 1552 test durumu (84 karşılandı, 1459 kapsam dışı, 9 EKSİK).
+  - Koşum (repo kökünden): `python3 -I rust/crates/cops-procscan/parity/mapping.py` yazar; `--check` tabloyu `ast` ve Rust kaynağıyla karşılaştırır (eksik/fazla/boş satır, uydurma Rust adı, bayat tablo ya da veri = çıkış 1); `--check --strict` EKSİK varken de 1 döner. `py/` modülleri içe aktarılmaz.
+  - Sınır: betik adların varlığını sınar, testin davranışı kapsadığını sınamaz ve testleri koşturmaz. Crate davranışını sınamayan test dosyaları dosya başına gerekçe/izle girildi (adet + ad özeti; dosya değişince betik durur, `--pins` yeni özeti basar).
+- [ ] Eşleme tablosundaki 13 EKSİK: Rust testi yazılacak (`find_by_name`, `Session::active`, `Probe::usage_total`, önbellek tahliyesi, `is_fresh` birleşimleri, `ucli_flags` write/checks ve kayıp süreç, ucli ön ayar kenarları). Tahliye sırası ayrıca davranış kararı (sapma 11).
+- [ ] İz ataması açık: sohbet geçmişi okuma (`last_exchange`, `full_history`, `sid_for_stopped_session` ve yardımcıları) için sprint planında T1..T10 satırı yok.
 - [ ] TBD#365 ve "Python hatası?" maddeleri sahipte.
 - [ ] `ProcId` doğrulamasını kullanan kill yolu T4'te (crate yalnız tipi ve `verify`ı sağlar).
 - [ ] Tick içi tarama maliyeti T1'de `/api/status`a bağlanınca ölçülmeli (CPU kipi +0,3 sn bekler).
