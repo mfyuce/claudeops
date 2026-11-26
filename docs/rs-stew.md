@@ -21,6 +21,33 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
 olarak durur ("Açık davranışlar"), ders listesinin kısmen ya da hiç karşılanmayan maddeleri "Python dersleri"ndedir.
 Sprint kuralı "Rust, Python'dan eksik olamaz" bu açıklar için henüz sağlanmıyor; crate hiçbir yere bağlı değil (canlıya
 alınacak uç yok), kapı kararı cops'ta.
+
+Grup 7 (27 Kas, `02a8020b`, `3a16c731`, `8743427e`): `steward.py`deki G/Ç işlevlerinin içinde kalan saf mantık taşındı;
+Python öğesi satırlarında `AÇIK` 10 -> 0, test satırlarında 189 -> 184 (`CardCoreTest` iki testi, `TourDeliveryTest`
+iki testi ve persona testi Rust testiyle kapandı). Taşınanlar ve G/Ç sınırı (okuma/yazma çağıranda, girdi
+parametre ya da geri çağrı, çıktı veri):
+- `prompts::persona_text(override, bundled)`: paketli dosya `bundled()` (okunamazsa `None`).
+- `tour::tour_delivery(prompt, workspace, now, lang)` -> `TourDelivery { message, path, dir }` (+ `tour_prune(adlar)`:
+  silinecekler). Klasörü oluşturma, yazma, listeleme, silme çağıranda.
+- `cards::git_recent(cwd, n, exists, run)` (argv `git_recent_argv`, ayrıştırma `parse_git_log`) ve
+  `cards::build_raw_card(cwd, read_head, git)`: `source_hash` Python ile birebir (`raw_card_from_docs` ile ortak yardımcı).
+- `store::transfer_source` (kilitlerden önceki denetimler, hata sırası Python'la aynı; kilit sırası döner) +
+  `store::transfer_project` (kilitler altında taşıma planı: kayıt, `open` ya da iletilmemiş sorular, iki iş listesi de
+  listeyse `project`i bu ad olan işler; yazım sırası belgede). `project_owner`, `steward_ids()`, reviewer kümesi girdidir.
+- `report::log_entries_for_date(metin, tarih)`, `report::compact_log(tarih, metin)` (`None` = dokunma),
+  `report::dry_report(günlükler, hours, now)`, `report::missed_summary_dates(now, days, has_daily, has_entries)` (Python'un
+  `_NO_LOG_DAYS` önbelleği yalnız hız içindir, çağıranda kalır), `report::summary_text(..)` (bekleyen sayıları ve sahipsiz
+  kaynak satırı; `orphan_summary` sonucu girdidir).
+- `store::apply_review_where_answer(q, parsed, find_local_copy, projects, ctx, questions)`: `parsed` =
+  `review_remote.parse_answer(q.answer)` sonucu. `parse_answer` `review_remote.py`dedir (bu crate'in kaynağı değil) ve
+  taşınmadı: test satırları AÇIK kalır (aşağıda).
+`pyc`: `readlines` (metin kipi satırları), `int_str` (`"%d" % int(x)`), `mktime_iso_seconds` (`mktime(strptime(..))`),
+`to_float` artık Unicode ondalık rakamı kabul eder (Python `float("１２")` 12; eski Rust `None` dönüyordu, bu düzeltme diğer
+grupların vektörlerini değiştirmedi). Parite: `parity/io_cases.py` Python işlevlerini yalıtılmış geçici dizinde GERÇEK
+dosyalarla (git deposu sabit tarihli) çalıştırıp `fixtures/io/<işlev>.json.gz` yazar (11 işlev, 1033 kayıt; çıktı
+belirlenimli, iki koşu aynı); `tests/parity/iocore.rs` aynı girdileri Rust'a verir. Kenarlar: boş/bozuk tipli alan, eksik
+dosya, Unicode (tam genişlik rakam, U+2028, emoji), CRLF, NaN/inf, bozuk JSON satırı, reviewer/geçersiz/ayarsız kimlik,
+silinmiş proje. Yerel saat yalnız `TZ=UTC` ile sınandı.
 `origin/main` bu daldan ileride (27 Kas, `feae0764`, 61 commit; rs/state orada). Deneme birleştirmesinde (`git merge-tree`)
 çakışan dosyalar: `py/tests/test_steward_tbd370.py`, `rust/Cargo.toml`, `rust/Cargo.lock`. Birleşik ağaçta testler ve
 `map.py --check` yeniden koşulmalı (merge bu turda YAPILMADI). Açık dallara yapılan atıflar o dallar birleşene dek
@@ -54,8 +81,8 @@ ileti karşılaştırılmaz).
 
 Grup 4 (gözlem/rapor): `observe.rs` (`observe_filter`), `report.rs` (`daily_path`, `dry_report_text`,
 `dry_ask_due`, `summary_due`, `_names`, `_kind_counts`, `_ask_gate_lines`, `daily_summary`, `summarize_projects`).
-Taşınmayanlar (kapsam dışı listesinde, günlük/rapor dosyası G/Ç'si, T10): `log_entries_for_date`, `dry_report`,
-`missed_summary_dates` (ve `_NO_LOG_DAYS`), `summary_text`, `write_daily`. `map.py`: 718 -> 662 EKSİK; kalan 662'nin
+Taşınmayanlar (kapsam dışı listesinde, günlük/rapor dosyası G/Ç'si, T10): `write_daily`; `log_entries_for_date`,
+`dry_report`, `missed_summary_dates`, `summary_text`in saf kısmı grup 7'de taşındı (`_NO_LOG_DAYS` önbelleği çağıranda). `map.py`: 718 -> 662 EKSİK; kalan 662'nin
 10'u `plan_tick` ve iç işlevleri, 219'u `plan_tick`i çağırdığı için bekleyen test satırı, 433'ü kapanış grubunun "saf
 çekirdek çağrısı yok" satırıdır.
 
@@ -82,7 +109,7 @@ Grup 5 sözleşmesi (T10): `plan_tick(TickInput)` -> `(eylemler, yeni state)`; g
 `&dyn Fn`: `open_work`/`open_tbd`/`open_work_real` `Option<i64>` (None = bilinmiyor), `claim_check` `Vec<String>`,
 `todo_sha` `Option<String>` (None = okunamadı ya da istisna; Python yutar). Bozuk tipli `state` alanında `BadValue`.
 
-Grup 2'de taşınmayanlar: `tour_delivery`, `panic_active`, `set_panic`, `read_brain_mcp`, `touch_brain_mcp` (dosya G/Ç'si;
+Grup 2'de taşınmayanlar (`tour_delivery`in saf kısmı grup 7'de taşındı): `panic_active`, `set_panic`, `read_brain_mcp`, `touch_brain_mcp` (dosya G/Ç'si;
 kapsam dışı listesinde); `steward_ask.passes`, `decisions_path`, `decisions_section` (cevap kapısı uygulaması; `steward.py` bölgesinde
 değil, `map.py` satırı yok; `passes` saftır, cevap yolunu taşıyan iz almalı).
 
@@ -94,10 +121,9 @@ tohumlu rastgele üretici; geri çağrılı dallar yalnız kayıtlı vektörlerd
 bağlıydı, sıralı seçime çevrildi (artık belirlenimli).
 
 Grup 1'de taşınmayanlar (kapsam dışı listesinde duruyor; T10 uygulama katmanı ya da sonraki grup):
-- `apply_review_where_answer`: `review_remote.parse_answer`/`find_local_copy` (review modülü, disk) ister. `answer_question`
-  çekirdeği `Answered::Done { review_where: true }` ile çağırana bildirir.
-- `remove_project`, `transfer_project` (görev listesinde yoktu; `transfer_project`in soru/iş taşıma kararı hâlâ yalnız
-  Python'da), `auto_remove_labels`, `project_owner`, `log_event`/`compact_log` ve diğer günlük/depo G/Ç'si.
+- `apply_review_where_answer` ve `transfer_project`: grup 7'de taşındı (yukarıda). `answer_question` çekirdeği
+  `Answered::Done { review_where: true }` ile çağırana bildirir; çağıran `apply_review_where_answer`i çağırır.
+- `remove_project`, `auto_remove_labels`, `project_owner`, `log_event` ve diğer günlük/depo G/Ç'si.
 
 Depo çekirdeği sözleşmesi (T10): çağıran kimlik kilidini alır, belgeyi okur, çekirdeği `now` ve kimlik üreticisiyle çağırır,
 `dirty`/`Some`/`true` ise kaydeder. `upsert_project` sonrası: kaydet; `host_changed` ise `clear_project_state` + `project_host`
@@ -126,20 +152,29 @@ sonraki gruplarda da bunu kullanın, desenleri elle yazmayın.
 
 ## Açık davranışlar (Rust'ta yok)
 
-Satır satır liste eşleme tablosunda (`AÇIK`). Kümeler:
+Satır satır liste eşleme tablosunda (`AÇIK`; Python öğesi satırında 0, test satırında 184). `steward.py`nin kendi
+öğelerinde açık kalan yok (grup 7). Açıkların tümü `steward.py` DIŞINDAKİ modüllerdedir ve hiçbiri bu izin işi
+değildir: `docs/rust-sprint-plan.md` bu izin kapsamını "`cops-steward-core`: steward.py saf kararları" diye koyar
+(W1-pre rsstew). İz adları plandan (Dalga 1-3):
 
-- Bu crate'in kaynağında (`steward.py`) olup G/Ç işlevinin içinde kalan saf mantık (10 öğe satırı): `persona_text` override
-  kolu, `tour_delivery` (eşik, yönlendirme metni, budama), `build_raw_card` (`source_hash`), `_git_recent` ayrıştırma,
-  `transfer_project` taşıma kararı, `compact_log` katlama, `dry_report` sayımı, `missed_summary_dates`, `summary_text`
-  bekleyen sayıları, `apply_review_where_answer`.
-- Saf ama hiçbir dalda taşınmamış değnekçi modülleri: `steward_quota`, `steward_keepwarm`, `steward_nowork`,
-  `steward_advance`, `steward_lessons`, `steward_jobs` (saf kısımlar), `trust_dialog.classify`, `labels` ad kuralları,
-  `question_detail` tavanı, `ucli_cost.credit_window`, `review_remote.parse_answer`; `steward_ask.passes`,
-  `decisions_path`, `decisions_section` (cevap kapısı uygulaması, tabloda satırı yok).
-- `web_steward.py` ve `commands/steward.py` içindeki saf kararlar (teslim doğrulama, TODO sayımı, başlatma geri
-  çekilmesi, `_launch_kwargs`, ucli takılma merdiveni, maliyet bekçisi, `_answer_by` vb.): T10/T6.
-- `web_review.py` saf yardımcıları (argv üreticileri, çıktı/kullanım ayrıştırma, yuva kararı): T8. Sağlayıcı tek atımlık
-  çağrısının yürütülmesi: rs/prov G10.
+- T10 (değnekçi, Dalga 3: plan adıyla `steward.py` + `web_steward.py` + `mcp_steward` + `/q/`): `web_steward.py`
+  içindeki saf kararlar (teslim doğrulama, TODO sayımı, başlatma geri çekilmesi, `_launch_kwargs`, ucli takılma merdiveni,
+  maliyet bekçisi, kota yeniden açma, `quota_held_projects`, `_box_has_typed_input`, `_todo_record_directive` vb.).
+- T6 (CLI, Dalga 1: "`cops` ikilisinin Rust'a geçişi, komut komut"): `commands/steward.py` (`_answer_by`, `_run_dur`,
+  `--force` kapısı).
+- T8 (reviewer, Dalga 2: plan adıyla `review.py` + `web_review.py`): `web_review.py` saf yardımcıları (argv üreticileri,
+  çıktı/kullanım ayrıştırma, dışa aktarım gövde ayıklama, yuva kararı). Sağlayıcı tek atımlık çağrısının yürütülmesi:
+  rs/prov G10 (`docs/rs-prov.md`, o dalda).
+- T4 (oturum yaşam döngüsü, Dalga 1: plan `trust_dialog`u adıyla sayar): `trust_dialog.classify`; diyalog tespiti ve
+  restart (ders 2.6/10).
+- Planda ADIYLA geçmeyen, sahibi belirsiz modüller (aşağıdaki iz tahmindir, plan bunu söylemez; karar cops'ta):
+  `steward_quota`, `steward_keepwarm`, `steward_nowork`, `steward_advance`, `steward_lessons`, `steward_jobs` (saf
+  kısımlar) ve `steward_ask.passes`/`decisions_path`/`decisions_section` (değnekçi ailesi: büyük olasılıkla T10);
+  `review_remote.parse_answer` (review cevabı: T8 ya da T10; `apply_review_where_answer` bunu girdi alır);
+  `ucli_cost.credit_window` (gerekçede T7 yazılı; plan T7'yi "periyodik + kullanım, ucli/ajan/orch uçları" diye
+  tanımlar, `ucli_cost`u adıyla saymaz); `question_detail` (soru ayrıntısı üretimi, `/q/` sayfasının yanında: T10?);
+  `labels` (ad kuralları; hiçbir ize atanmamış). Eşleme tablosundaki test gerekçelerinde bu modüller için yazılı
+  `iz T10` / `iz T8` / `iz T7` bu tahmindir, plan kararı değildir.
 
 ## Python dersleri (`docs/rust-lessons-from-python.md` 2.6 ve bölüm 3)
 
@@ -272,7 +307,28 @@ Grup 5 (aynen taşındı):
 - "yalnız TBD kaldı" sorusunun metnindeki sayı için `open_tbd` ikinci kez çağrılır (iki çağrı farklı dönerse metin
   koşulla tutarsız olabilir).
 
+Grup 7 (aynen taşındı; Python hata adayları, DÜZELTİLMEDİ):
+
+- `apply_review_where_answer`: proje silinmişse "cevap kayıtta kalır" yorumuna karşın `upsert_project` projeyi
+  YENİDEN OLUŞTURUR (yeni kayıt, `review_where` yazılmış; `review_where_failed` olayı yok). 112 vakanın 22'si
+  (`fixtures/io/apply_review_where_answer.json.gz`, `before.projects` boş). Yalnız geçersiz ad (ör. "Bad Name!") hata verir.
+- `dry_report`: `"would:` geçen satır JSON olarak çözülüp sözlük değilse (`["\"would:x"]`) `AttributeError`, `chars`
+  `int()` edilemezse (`"çok"`, `[1]`) `ValueError`/`TypeError` yakalanmaz: TEK bozuk günlük satırı tüm raporu
+  düşürür (`maybe_dry_ask` ve CLI `dry-report`). Rust aynı durumda `BadValue` döner.
+- `summary_text`: o güne ait satır sözlük olmayan JSON ise (`[{"ts": ...}]`) `daily_summary` `AttributeError`;
+  `state.pending_items` `int()` edilemezse `ValueError`/`TypeError`: günlük özet yazılamaz. Rust `BadValue`.
+- `compact_log`: `NaN`/`Infinity` içeren tick satırını Python katlar (Rust katlamaz, aşağıda); geçersiz UTF-8 günlükte
+  Python `UnicodeDecodeError` fırlatır (yalnız `OSError` yakalanıyor).
+
 Rust'ta kaçınılmaz farklar (tipli arayüz):
+
+- Grup 7: günlük satırları `serde_json` ile çözülür: `NaN`/`Infinity`/`-Infinity` sabiti ya da eşsiz `\ud800` kaçışı içeren
+  satır Rust'ta bozuk sayılır (Python çözer): `compact_log` onu katlamaz ve yerinde bırakır, `log_entries_for_date` atlar
+  (`iocore` testlerinde "nan" vakası bu farkı açıkça sınar). i64'e sığmayan `chars` toplamı Rust'ta hata (Python sınırsız).
+  `mktime_iso_seconds` yaz saati boşluğundaki yerel saatte `None` döner (Python bir değer üretir); yalnız UTC sınandı.
+  `transfer_project` hataları `TransferError::{Value, Reviewer}` (ileti Python'la aynı); `apply_review_where_answer`
+  `upsert_project` hatasını Python `str(e)` biçimiyle `failed`e yazar. Geçersiz UTF-8 girdi (`git` çıktısı, günlük)
+  çağıranın sorunudur: `&str` alınır.
 
 - Grup 5: `plan_tick` bozuk tipli `state` alanında `BadValue` (Python çoğunlukla `TypeError`/`ValueError`;
   `pause_close` dizge ise `AttributeError`). Python'dan farklı: `last_directive_at`/`reviewed_at` `review_items`e
