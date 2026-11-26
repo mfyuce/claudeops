@@ -10,6 +10,7 @@ anlık görüntüyü Rust tarafı kurar/alır; bu süreç yalnız çağrıyı ya
 import json
 import os
 import shutil
+import socket
 import sys
 import time
 import types
@@ -24,6 +25,15 @@ assert os.path.expanduser("~").startswith(_ROOT + "/")
 _BASE_ENV = {k: os.environ[k] for k in ("HOME", "CLAUDEOPS_DIR", "PATH", "CLAUDEOPS_EXTENSIONS", "COPS_PARITY_ROOT")}
 
 import subprocess  # noqa: E402
+
+
+def _no_network(*a, **kw):
+    """Parite koşucusu ağa ÇIKMAZ: unutulan bir sahte, gerçek isteğe değil görünür hataya dönsün."""
+    raise AssertionError("parite koşucusunda gerçek ağ erişimi")
+
+
+socket.getaddrinfo = socket.create_connection = _no_network
+socket.socket.connect = socket.socket.connect_ex = _no_network
 
 FACTS = {}
 CALLS = {"popen": [], "run": [], "direct": []}
@@ -459,14 +469,13 @@ def op_live_models(a):
         def read(self):
             return payload.encode("utf-8")
 
-    import urllib.request
-    old = urllib.request.urlopen
-    urllib.request.urlopen = lambda *x, **k: _R()
+    old = ucli_p._open_no_redirect
+    ucli_p._open_no_redirect = lambda *x, **k: _R()
     ucli_p._LIVE_CAPS = {}
     try:
         ids = ucli_p._fetch_live_models()
     finally:
-        urllib.request.urlopen = old
+        ucli_p._open_no_redirect = old
     return {"ids": ids, "caps": ucli_p._LIVE_CAPS}
 
 
@@ -637,7 +646,6 @@ def op_transcript(a):
 def op_sources(a):
     """Model kaynakları (G7): adım dizisi, sahte saat/süreç/HTTP; arka plan iş parçacığı adım isterse (`run_bg`) koşar."""
     import urllib.error
-    import urllib.request
     src = a["source"]
     clock = {"mono": 0.0, "wall": 0.0}
     calls, pending, current = [], [], {}
@@ -688,11 +696,12 @@ def op_sources(a):
             pending.append(self.target)
 
     fake_time = types.SimpleNamespace(monotonic=lambda: clock["mono"], time=lambda: clock["wall"])
-    saved = (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, urllib.request.urlopen)
+    saved = (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
+             uso._open_no_redirect)
     agy_p.time = codex_p.time = ucli_p.time = fake_time
     agy_p.threading = types.SimpleNamespace(Thread=_Thread)
     agy_p.subprocess = types.SimpleNamespace(run=_run)
-    urllib.request.urlopen = _open
+    ucli_p._open_no_redirect = uso._open_no_redirect = _open
     agy, codex = agy_p.AgyProvider(), codex_p.CodexProvider()
     ucli_p._LIVE_MODEL_CACHE, ucli_p._LIVE_MODEL_CACHE_TS, ucli_p._LIVE_CAPS = None, 0.0, {}
     uso._MODELS_CACHE.clear()
@@ -736,7 +745,8 @@ def op_sources(a):
             row["calls"] = list(calls)
             out.append(row)
     finally:
-        agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, urllib.request.urlopen = saved
+        (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
+         uso._open_no_redirect) = saved
     return out
 
 
