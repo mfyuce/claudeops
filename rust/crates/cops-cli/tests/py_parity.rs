@@ -429,6 +429,22 @@ fn secret_lock_contract_with_python() {
         std::fs::metadata(&sec).unwrap().permissions().mode() & 0o777,
         0o600
     );
+    // 4) "Python hatası?" 7 düzeltildi: ortam gizlisi iki tarafta da dosya üretimini engellemez.
+    std::fs::remove_file(&sec).unwrap();
+    let o = sb
+        .cmd(std::path::Path::new("/usr/bin/python3"))
+        .env("CLAUDEOPS_FRONT_SECRET", "ortam")
+        .arg("-c")
+        .arg(format!(
+            "import sys; sys.path.insert(0, {:?}); from claudeops import front\nprint(front.ensure_secret())",
+            repo().join("py").display()
+        ))
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let pv = String::from_utf8(o.stdout).unwrap().trim().to_string();
+    assert_eq!(pv.len(), 64);
+    assert_eq!(read_secret(None, &sec), pv);
 }
 
 #[test]

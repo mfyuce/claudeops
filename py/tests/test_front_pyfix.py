@@ -266,5 +266,26 @@ class P6Quoting(Env):
         self.assertIn("durum dizini yolu denetim karakteri içeriyor", out)
 
 
+class P7SecretEnv(Env):
+    """7: `CLAUDEOPS_FRONT_SECRET` doluyken `ensure_secret` dosya üretmiyordu; ortam yalnız CLI kabuğunda olduğundan copsd ve
+    web birimleri gizlisiz kalıyordu. Dosya ortamdan bağımsız üretilir; okumada ortam yine önce gelir."""
+
+    def test_env_does_not_prevent_the_file(self):
+        with mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": "ortam"}):
+            v = f.front_mod.ensure_secret()
+            self.assertEqual(len(v), 64)
+            p = self.state / "front.secret"
+            self.assertEqual(p.read_text(), v + "\n")
+            self.assertEqual(f.front_mod.ensure_secret(), v)
+            self.assertEqual(f.front_mod.read_secret(), "ortam")
+        self.assertEqual(f.front_mod.read_secret(), v)
+
+    def test_front_on_writes_the_file_even_with_env(self):
+        self.w.owners[L] = unit(f.WEB_UNIT_NAME)
+        with mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": "ortam"}):
+            self.run_front("on", True)
+        self.assertTrue((self.state / "front.secret").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
