@@ -2,8 +2,13 @@
 //! `forced` = `force_proxy` yüzünden, `upstream_error` = Python'a ulaşılamadı). Mount istekleri sayılmaz.
 //!
 //! Anahtarlar istemci denetiminde olduğu için sınırlıdır: sır taşıyabilen yollar (`/q/`, `/readfile/`) ve API dışı yollar ilk
-//! parçaya indirgenir, kimlik benzeri parçalar `*` olur, yeni anahtar yalnız 401/403/404 DIŞI yanıtla açılır ve en çok
-//! [`MAX_KEYS`] tanedir; gerisi `other` sayacına gider.
+//! parçaya indirgenir, kimlik benzeri parçalar `*` olur. Yeni anahtarı yalnız Rust'ın cevapladığı (yerel) ya da panel kimliği
+//! taşıyan (web.token / ön kapı gizlisi) bir istek açar, 401/403/404 yanıtı hiç açmaz, en çok [`MAX_KEYS`] tanedir; gerisi `other`
+//! sayacına gider. Böylece kimliksiz 200 yanıtları tabloyu dolduramaz. Sınır: yalnız eklenti çerezi taşıyan (çok kullanıcı) aktarım
+//! istekleri, anahtarı henüz açılmamışsa `other`da kalır.
+//!
+//! `/api/front/stats` `force_proxy`den ÖNCE cevaplanır (`*` dahil): Python'da karşılığı yoktur ve geri almanın etkisi buradan
+//! doğrulanır.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -132,12 +137,14 @@ impl Stats {
             .or_default();
     }
 
-    /// `key`: tablo deseni ya da [`normalize`] çıktısı.
-    pub fn record(&self, method: &str, key: String, status: u16, o: Outcome) {
+    /// `key`: tablo deseni ya da [`normalize`] çıktısı. `authed`: istek panel kimliği taşıyordu (yerel yanıtta gereksiz).
+    pub fn record(&self, method: &str, key: String, status: u16, o: Outcome, authed: bool) {
         let mut g = self.lock();
         g.totals.add(o);
         let k = (method_name(method), key);
-        let room = g.keys.len() < MAX_KEYS && !matches!(status, 401 | 403 | 404);
+        let room = g.keys.len() < MAX_KEYS
+            && !matches!(status, 401 | 403 | 404)
+            && (authed || o == Outcome::Local);
         if let Some(c) = g.keys.get_mut(&k) {
             c.add(o);
         } else if room {
@@ -206,13 +213,13 @@ mod tests {
             upstream_error: false,
         };
         for i in 0..50 {
-            s.record("GET", format!("/api/junk{i}"), 404, py);
+            s.record("GET", format!("/api/junk{i}"), 404, py, true);
         }
         for i in 0..MAX_KEYS + 10 {
-            s.record("GET", format!("/api/ok{i}"), 200, py);
+            s.record("GET", format!("/api/ok{i}"), 200, py, true);
         }
         // Açılmış anahtar sonradan 404 alsa da kendi sayacına yazar.
-        s.record("GET", "/api/ok0".into(), 404, py);
+        s.record("GET", "/api/ok0".into(), 404, py, true);
         let v = s.snapshot(vec![], vec![]);
         assert_eq!(v["endpoints"].as_array().unwrap().len(), MAX_KEYS);
         assert_eq!(v["other"]["fallback"], 60);
@@ -222,5 +229,29 @@ mod tests {
             (first["path"].as_str(), first["fallback"].as_u64()),
             (Some("/api/ok0"), Some(2))
         );
+    }
+
+    #[test]
+    fn unauthenticated_forwards_cannot_open_keys() {
+        let s = Stats::default();
+        let py = Outcome::Python {
+            forced: false,
+            upstream_error: false,
+        };
+        for i in 0..MAX_KEYS + 10 {
+            s.record("GET", format!("/api/anon{i}"), 200, py, false);
+        }
+        assert!(s.snapshot(vec![], vec![])["endpoints"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        s.record("GET", "/api/mine".into(), 200, py, true);
+        s.record("GET", "/api/local".into(), 200, Outcome::Local, false);
+        // Açılmış anahtara kimliksiz istek de yazılır.
+        s.record("GET", "/api/mine".into(), 200, py, false);
+        let v = s.snapshot(vec![], vec![]);
+        assert_eq!(v["endpoints"].as_array().unwrap().len(), 2);
+        assert_eq!(v["endpoints"][1]["fallback"], 2);
+        assert_eq!(v["other"]["fallback"], MAX_KEYS as u64 + 10);
     }
 }

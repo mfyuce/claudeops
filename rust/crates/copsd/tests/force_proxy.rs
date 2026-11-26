@@ -88,7 +88,14 @@ fn sighup_reloads_force_proxy_and_stats_count_it() {
     until("copsd açılmadı", || {
         TcpStream::connect(("127.0.0.1", port)).is_ok()
     });
-    let asset = || get(port, "/assets/a.js", "X-Cops-Parity: 1\r\n");
+    // Panel kimliği: aktarılan istek de sayaç anahtarı açabilsin.
+    let asset = || {
+        get(
+            port,
+            "/assets/a.js",
+            "X-Cops-Parity: 1\r\nAuthorization: Bearer tok-NOT-REAL\r\n",
+        )
+    };
     let hup = |pid: u32| {
         assert!(Command::new("kill")
             .args(["-HUP", &pid.to_string()])

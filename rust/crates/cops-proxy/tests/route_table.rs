@@ -272,9 +272,11 @@ async fn stats_count_local_and_fallback_per_endpoint() {
     let addr = serve(proxy(upstream().await)).await;
     call(addr, "GET", "/api/files/list", &auth()).await;
     call(addr, "GET", "/api/files/list", "").await;
-    call(addr, "GET", "/api/status", "").await;
-    call(addr, "GET", "/readfile/SECRETTICKET/a.md", "").await;
-    call(addr, "POST", "/api/files/list", "").await;
+    // Kimliksiz 200 aktarım anahtar AÇMAZ (`other`); kimlikli açar.
+    call(addr, "GET", "/api/anonymous", "").await;
+    call(addr, "GET", "/api/status", &auth()).await;
+    call(addr, "GET", "/readfile/SECRETTICKET/a.md", &auth()).await;
+    call(addr, "POST", "/api/files/list", &auth()).await;
 
     let r = call(addr, "GET", "/api/front/stats", "").await;
     assert!(r.starts_with("HTTP/1.1 401"), "{r}");
@@ -298,7 +300,9 @@ async fn stats_count_local_and_fallback_per_endpoint() {
     // kayıtlı ama hiç istenmemiş uç da listede
     assert_eq!(row("GET", "/api/files/deep/*")["local"], 0);
     assert_eq!(v["totals"]["local"], 2);
-    assert_eq!(v["totals"]["fallback"], 3);
+    assert_eq!(v["totals"]["fallback"], 4);
+    assert_eq!(v["other"]["fallback"], 1);
+    assert!(!r.contains("/api/anonymous"), "{r}");
     assert_eq!(v["routes"].as_array().unwrap().len(), 5);
 }
 

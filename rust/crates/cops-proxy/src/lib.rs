@@ -882,6 +882,22 @@ impl Proxy {
         }
     }
 
+    /// İstek `/api/front/stats` kimliğini taşıyor mu (web.token `?token=`/Bearer ya da ön kapı gizlisi). Uç kapalıysa `false`.
+    fn has_panel_identity<B>(&self, req: &Request<B>, peer: SocketAddr) -> bool {
+        let Some(cfg) = &self.stats_cfg else {
+            return false;
+        };
+        let query = req.uri().query().unwrap_or("");
+        let auth = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok());
+        // Aday yoksa token dosyası okunmaz.
+        ((auth.is_some() || query.contains("token=")) && cfg.token.authorized(query, auth))
+            || (req.headers().contains_key("x-cops-front")
+                && self.front_trusted(req, peer, &cfg.front_secret))
+    }
+
     /// Sayaç anahtarı aktarılan istekte: kayıtlı desene uyuyorsa o (yerel ve aktarım aynı satırda toplansın), yoksa yolun
     /// indirgenmiş hali.
     fn stats_key(&self, method: &str, path: &str) -> String {
@@ -1309,13 +1325,20 @@ impl Proxy {
             match self.answer_locally(req, peer).await {
                 Ok((mut r, key)) => {
                     harden(r.headers_mut());
-                    self.stats
-                        .record(&method, key, r.status().as_u16(), stats::Outcome::Local);
+                    self.stats.record(
+                        &method,
+                        key,
+                        r.status().as_u16(),
+                        stats::Outcome::Local,
+                        false,
+                    );
                     return Ok(mark_served(r, asked, "local"));
                 }
                 Err(r) => r,
             }
         };
+        // Sayaç anahtarı açma hakkı: ön süzgeç kimlik bilgisini silmeden ÖNCE bakılır.
+        let authed = self.has_panel_identity(&req, peer);
         if let Some(f) = &self.forward_filter {
             let strip = gate::forward_check(f.clone(), request_view(&req, peer)).await;
             strip_credentials(req.headers_mut(), &strip);
@@ -1338,7 +1361,7 @@ impl Proxy {
         };
         let key = self.stats_key(&method, &path);
         self.stats
-            .record(&method, key, r.status().as_u16(), outcome);
+            .record(&method, key, r.status().as_u16(), outcome, authed);
         Ok(mark_served(r, asked, "python"))
     }
 
