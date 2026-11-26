@@ -334,7 +334,7 @@ impl Store {
                 // boş dosya "hiç eşitlenmemiş" ile karışmasın
                 ins.execute(params![file, 0i64, "empty", none, none, none, none, none, none, none, ""])?;
             }
-            Ok(lines.len().max(1))
+            Ok(lines.len()) // "empty" satırı sayılmaz (Python `n_rows`)
         })
     }
 

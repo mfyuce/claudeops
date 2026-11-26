@@ -391,3 +391,60 @@ fn atomic_write_text_matches_python() {
     };
     assert_eq!(names(&a), names(&b), "geçici dosya kalmadı");
 }
+
+/// K1: `replace_tsv` dönüş değeri Python ile aynı (boş metin 0; boş metin yine "empty" satırıyla saklanır).
+#[test]
+fn replace_tsv_count_matches_python() {
+    let (a, b) = (Env::new(), Env::new());
+    a.py("db", STORE);
+    b.py("db", STORE);
+    let texts = [
+        "",
+        "x\ty\n",
+        "",
+        "\n",
+        "# y\n\na\tb",
+        "a\u{2028}b\r\nc",
+        "   ",
+    ];
+    let py = a.py_in(
+        "db",
+        &format!(
+            "{STORE}for t in json.load(sys.stdin):\n    print(json.dumps([st.replace_tsv('a.tsv', t), st.tsv_text('a.tsv'), st.tsv_rows('a.tsv')], ensure_ascii=False))"
+        ),
+        &Json::Array(texts.iter().map(|t| Json::from(*t)).collect()).to_compact(),
+    );
+    let s = Store::open(&b.dir().db()).unwrap();
+    assert_eq!(s.tsv_text("a.tsv").unwrap(), None);
+    let py: Vec<&str> = py.split_terminator('\n').collect();
+    assert_eq!(py.len(), texts.len());
+    for (t, want) in texts.iter().zip(py) {
+        let n = s.replace_tsv("a.tsv", t).unwrap();
+        let rows = s.tsv_rows("a.tsv", None).unwrap();
+        let rows = rows
+            .into_iter()
+            .map(|r| {
+                Json::Object(
+                    [
+                        ("seq".to_string(), Json::Int(r.seq)),
+                        ("active".to_string(), Json::Bool(r.active)),
+                        ("name".to_string(), Json::from(r.name)),
+                        (
+                            "rest".to_string(),
+                            Json::Array(r.rest.into_iter().map(Json::from).collect()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+            })
+            .collect();
+        let got = Json::Array(vec![
+            Json::Int(n as i64),
+            s.tsv_text("a.tsv").unwrap().map_or(Json::Null, Json::from),
+            Json::Array(rows),
+        ]);
+        assert_eq!(got.to_compact(), want, "{t:?}");
+    }
+    assert_eq!(dump(&a), dump(&b));
+}

@@ -431,8 +431,10 @@ pub fn blueprint_cwds(fleet: &IndexMap<String, Project>) -> IndexMap<String, Str
         .collect()
 }
 
-/// Roster'daki (yorumlu dahil) ve instance kaydındaki tüm adlar (`_all_known_names`in süreç taraması dışındaki kısmı).
-pub fn known_names(docs: &StateDocs) -> io::Result<HashSet<String>> {
+/// `_all_known_names`: roster'daki (yorumlu dahil, `name` başlığı hariç) ve instance kaydındaki tüm adlar + çalışan
+/// süreçlerin ad ve taban adları. `running`: canlı süreçlerin `(ad, taban ad)` listesi (tarama çağıranın işi,
+/// [`Roster::register_project`] ile aynı biçim).
+pub fn known_names(docs: &StateDocs, running: &[(String, String)]) -> io::Result<HashSet<String>> {
     let mut s: HashSet<String> = Roster::new(docs)
         .raw_rows(Tsv::Roster)?
         .into_iter()
@@ -440,5 +442,9 @@ pub fn known_names(docs: &StateDocs) -> io::Result<HashSet<String>> {
         .filter(|n| n != "name")
         .collect();
     s.extend(Instances::new(docs).load().into_keys());
+    for (name, base) in running {
+        s.insert(name.clone());
+        s.insert(base.clone());
+    }
     Ok(s)
 }
