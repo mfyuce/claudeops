@@ -88,7 +88,7 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 | `~kullanici` | `pwd` ile genişletilir | AYNI (`d438cd1`, `paths::expanduser_with`; `HOME` yoksa passwd) | Python gibi. `parity_settings::expanduser_and_proc_match_python` |
 | Eşlenmemiş vekil (`"\ud800"`) | okunur, yazılamaz | AYNI: `Read::Lossy` (U+FFFD ile okunur, DB'ye aktarılmaz), yazıcı hata | Python gibi; U+FFFD yalnız Rust dizesinde tutulamadığı için. `parity_instances::lone_surrogate_readable_not_writable` |
 | Bozuk / UTF-8 olmayan `settings.json` | varsayılanlar, `store_backend` son iyi değer | AYNI (`SettingsReader`, `StateDocs::backend`); durumsuz `settings::load` son değer tutmaz | EŞİT (S2). `parity_settings::settings_corrupt_keeps_store_backend_like_python`, `backend_tests` |
-| `Instances::load` önbelleği | `files`/`dual`: dosya anahtarlı; `db`: önbelleksiz | AYNI | EŞİT (S4). `parity_instances::load_cache_semantics` |
+| `Instances::load` önbelleği | `files`/`dual`: dosya anahtarlı; `db`: DB satır damgası (yol, sürüm, yazım anı, dosyaya düşme sayısı) | AYNI | EŞİT (S4). `parity_instances::{load_cache_semantics, load_db_cache_follows_row_stamp}`, `statedocs::backend_tests::db_stamp_refused_when_dirty_or_not_db` |
 | `load_settings` G/Ç hatası | varsayılanlar, önbelleğe girmez, `store_backend` son iyi değer | AYNI (ek: `last_good()` son iyi belgeyi tutar) | EŞİT (S7). `parity_settings::settings_io_error_keeps_last_good` |
 | `Store::backup` meşgul DB | süresiz bekler (0,25 sn aralık) | 30 sn sonra hata | Sınırlı bekleme dersi (H8); tek tutamaç |
 | `add_missing` kayıt değeri liste çiftleri (`dict([[k, v]])`) | sözlüğe çevrilir | hata | Önemsiz (yalnız göç aracı); kayıtlar her zaman nesne |
@@ -151,7 +151,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | 3 | Belirsiz/kurulamayan durum "başarı" ya da "yok" olmuyor (H13, H10, H9) | karşılandı | `Read` dört değer; kalıcı DB hatası `WriteError::Db` (`parity.rs::schema_mismatch_never_writes`); bozuk instances yazılmaz (`parity_instances::bad_records_fail_like_python`); `Store::open` DB yoksa `Missing` (oluşturmaz) |
 | 4 | Eylem sonucu doğrulanıyor; NEGATİF test (H9) | karşılandı | `WriteOutcome::{Written, DbDeferred}`; negatif testler: `db_transient_failure_defers_and_recovers`, `schema_mismatch_never_writes`, `bad_records_fail_like_python`, `bad_encoding_files_not_overwritten`, `guard.rs` |
 | 5 | `let _`, `.ok()`, `unwrap_or_default()`, `expect` taraması; yutulan hata gerekçeli (H9, H20) | karşılandı | `tests/scan.rs::swallow_patterns_match_allowlist` (dosya başına sayı); gerekçeler aşağıda "Hata yutma taraması". `unwrap`/`expect` test dışı kodda yok |
-| 6 | Önbellek/ayar bayatlamıyor; hata `last_good`u ezmiyor (H3) | karşılandı | `SettingsReader` imza (mtime, boyut, inode) anahtarlı, G/Ç hatası önbelleğe girmez (`settings_io_error_keeps_last_good`); instances önbelleği dosya anahtarlı, db kipte yok (`load_cache_semantics`); kip ortamı her çağrıda (`env_backend.rs`) |
+| 6 | Önbellek/ayar bayatlamıyor; hata `last_good`u ezmiyor (H3) | karşılandı | `SettingsReader` imza (mtime, boyut, inode) anahtarlı, G/Ç hatası önbelleğe girmez (`settings_io_error_keeps_last_good`); instances önbelleği dosya anahtarlı, db kipte DB satır damgalı (`load_cache_semantics`, `load_db_cache_follows_row_stamp`); kip ortamı her çağrıda (`env_backend.rs`) |
 | 7 | Her döngü/bekleme sınırlı (H8) | karşılandı | `FileLock` 30 sn (`reentrant_...`, `lock_e2e::python_lock_blocks_rust_and_back` 300 ms), `Store::backup` 30 sn (`BACKUP_RETRIES`), `create_unique` 100 deneme, `realpath` 40 bağ, `getpw` 4 tampon; `FileLock::exclusive` 30 sn (S6, `exclusive_lock_is_bounded`) |
 | 8 | Dış CLI/TUI davranışı fixture'lı (H4) | kapsam dışı | bu crate CLI/TUI sürmez; rs/tmux (W0-b), rs/prov |
 | 9 | Alt süreç/bağlantı sahibi belli; fd sızıntı testi (H1) | karşılandı | crate alt süreç açmaz; DB bağlantısı `Store` ile düşer; `tests/fd_leak.rs` (ayrı ikili, 60 tur tüm yollar + hata yolları; bilerek eklenen 1 sızıntıyla kırmızıya döndüğü doğrulandı) |
@@ -189,6 +189,8 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | `settings.rs` imza, `backup_if_corrupt` (2) | `.ok()` | `stat` hatası = imza yok (önbellek yok); okunamayan dosya yedeklenmez (Python `OSError` -> dön) |
 | `settings_read.rs` port | `.ok()` | 1024..65535 aralığı zaten süzüldü |
 | `statedocs.rs` `sig`, `read_file` (3) | `.ok()` | Python `_sig` `OSError` -> `None`; `_file_read` UTF-8/JSON hatası -> `Corrupt` |
+| `statedocs.rs` `db_stamp` (2) | `.ok()` | DB açılamıyor/okunamıyor = damga yok, önbellek yok; okuma asıl yoldan yapılır ve hatayı orada loglar (Python `_db_stamp` `except` -> `None`) |
+| `instances.rs` `load` (2) | `unwrap_or_default()` | bozuk belge okuyucuda boş (Python `InstancesCorrupt` -> `{}`); yazıcılar `try_mutate` ile hata alır |
 | `statedocs.rs` `new` | `unwrap_or_default()` | `CLAUDEOPS_DB_URL` yok = SQLite (Python `""`); UTF-8 olmayan değer de SQLite'a düşer (Python `DbError`; önemsiz) |
 | `statedocs.rs` `shadow_tsv_inner` | `unwrap_or_default()` | gölge yok = `""` (Python `or ""`) |
 | `statedocs.rs` `mirror_log` | `let _ = st.trim_log(..)` | Python `mirror_log` tüm hataları yutar (günlük -> log döngüsü olmasın); sonraki eşikte yeniden |
@@ -985,6 +987,6 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 | `test_steward_tbd370.py` kalan 3 metot | | | kapsam dışı: rs/stew |
 | `test_state_settings_unreadable.py` (2) | | | kapsam dışı: ayar yazımı (T7) |
 | `test_ucli_approval_lock_error.py` (3), `test_cli_lock_error.py` (1) | | | kapsam dışı: ucli istemcisi / CLI (T6) |
-| `_db_stamp`, `_FALLBACKS` (statedocs.py), `Store._doc_stamp`, `_db_cache` (instances.py) | | | EKSİK: Rust eşitlemesi açık |
+| `_db_stamp`, `_FALLBACKS` (statedocs.py), `Store._doc_stamp`, `_db_cache` (instances.py) | statedocs.rs::{db_stamp, DbStamp, State.fallbacks}, store.rs::doc_stamp, instances.rs::load_db | parity_instances.rs::load_db_cache_follows_row_stamp; statedocs.rs::db_stamp_refused_when_dirty_or_not_db | tamam |
 | `_consumed_path`, `_consumed`, `_mark_consumed` (ucli_approval.py), `_run_resume` (ucli_client.py), `test_ucli_approval_consumed.py` (3) | | | kapsam dışı: ucli onay kaydı bu izin modülü değil |
-| `test_state_instances_db_version_cache.py` (5) | | | EKSİK: Rust eşitlemesi açık |
+| `test_state_instances_db_version_cache.py` (5) | instances.rs::load_db | isabet, değişim, sil+yaz, düşen okuma, kopya: load_db_cache_follows_row_stamp; kirli ayna: db_stamp_refused_when_dirty_or_not_db | tamam |

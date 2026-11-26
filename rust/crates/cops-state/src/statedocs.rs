@@ -149,7 +149,15 @@ struct State {
     mirror_n: HashMap<String, u64>,
     /// Okuyucu önbellekleri (ör. `instances`): ad -> (dosya anahtarı, değer).
     reader_cache: HashMap<&'static str, (FileKey, Json)>,
+    /// db kipi okuyucu önbellekleri: ad -> (DB damgası, değer).
+    db_cache: HashMap<&'static str, (DbStamp, Json)>,
+    /// ad -> db okuması hata verip dosyaya düşme sayısı (düşen okuma önbelleğe girmesin).
+    fallbacks: HashMap<String, u64>,
 }
+
+/// Python `_db_stamp`: (DB yolu, (satır sürümü, yazım anı), dosyaya düşme sayısı).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DbStamp(PathBuf, (i64, u64), u64);
 
 /// Python `(st_ino, st_mtime_ns, st_size)`.
 pub(crate) type FileKey = (u64, i128, u64);
@@ -332,6 +340,30 @@ impl StateDocs {
             }
         }
     }
+    /// db kipinde okuyucu önbelleğinin damgası. `None` = önbelleğe ALMA: kip db değil, yol durum dizini dışında,
+    /// son DB yazımı başarısız (dosya daha yeni), satır yok ya da DB okunamıyor.
+    pub(crate) fn db_stamp(&self, name: &str, path: &Path) -> Option<DbStamp> {
+        if self.effective(name) != Backend::Db
+            || !self.db_ok(path)
+            || self.lock().dirty.contains(name)
+        {
+            return None;
+        }
+        let st = self.store().ok()?;
+        let row = st.doc_stamp(name).ok()??;
+        let fallbacks = self.lock().fallbacks.get(name).copied().unwrap_or(0);
+        Some(DbStamp(st.path().to_path_buf(), row, fallbacks))
+    }
+    pub(crate) fn db_cache_get(&self, name: &'static str, stamp: &DbStamp) -> Option<Json> {
+        self.lock()
+            .db_cache
+            .get(name)
+            .filter(|(s, _)| s == stamp)
+            .map(|(_, v)| v.clone())
+    }
+    pub(crate) fn db_cache_put(&self, name: &'static str, stamp: DbStamp, v: &Json) {
+        self.lock().db_cache.insert(name, (stamp, v.clone()));
+    }
     /// Belgenin bu süreçteki etkin kipi (`db` istenip belge db-hazır değilse `dual`).
     pub fn effective_backend(&self, name: &str) -> Backend {
         self.effective(name)
@@ -393,6 +425,7 @@ impl StateDocs {
         match self.read_db(name, path, mode == Backend::Dual && file_truth, &rf) {
             Ok(r) => r,
             Err(e) => {
+                *self.lock().fallbacks.entry(name.to_string()).or_insert(0) += 1;
                 self.log(&format!("read {name}: {e} -> dosya"));
                 rf(path)
             }
@@ -580,6 +613,34 @@ impl StateDocs {
 #[cfg(test)]
 mod backend_tests {
     use super::*;
+
+    /// Son DB yazımı başarısız belge (dosya daha yeni) ve db dışı kip damga vermez.
+    #[test]
+    fn db_stamp_refused_when_dirty_or_not_db() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let db = env.dir().db();
+        let c = rusqlite::Connection::open(&db).unwrap();
+        c.execute_batch(
+            "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);
+             INSERT INTO docs VALUES('instances', '{}', 1, 2.5);",
+        )
+        .unwrap();
+        c.pragma_update(None, "user_version", crate::store::SCHEMA_VERSION)
+            .unwrap();
+        let path = env.dir().instances_json();
+        let docs = StateDocs::isolated(env.dir().clone(), Some(Backend::Db), "");
+        assert!(docs.db_stamp("instances", &path).is_some());
+        assert!(docs
+            .db_stamp("instances", Path::new("/etc/hosts"))
+            .is_none());
+        assert!(docs
+            .db_stamp("hosts", &env.dir().join("hosts.json"))
+            .is_none());
+        docs.lock().dirty.insert("instances".into());
+        assert!(docs.db_stamp("instances", &path).is_none());
+        let dual = StateDocs::isolated(env.dir().clone(), Some(Backend::Dual), "");
+        assert!(dual.db_stamp("instances", &path).is_none());
+    }
 
     /// TBD#374 S2/S7: bozuk ayar dosyası son iyi kipi korur; silinen dosya `files`.
     #[test]

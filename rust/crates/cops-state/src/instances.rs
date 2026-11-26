@@ -222,34 +222,56 @@ impl<'a> Instances<'a> {
         }
     }
 
-    /// `load_instances`: {ad: kayıt}; bozuk belgede boş (okuyucular için). `files`/`dual` kipte dosya anahtarına
-    /// (inode, mtime_ns, boyut) bağlı önbellek (Python gibi); `db` kipte ÖNBELLEKSİZ (sahibe soruldu: ayna dosya
-    /// yazılamazsa anahtar değişmez, önbellek bayat kalırdı; `docs/rs-state.md`).
+    /// `load_instances`: {ad: kayıt}; bozuk belgede boş (okuyucular için). Python gibi önbellekli: `files`/`dual`
+    /// kipte anahtar dosya (inode, mtime_ns, boyut), `db` kipte DB satır damgası (ayna dosya yazılamasa da değişiklik
+    /// görülür, TBD#374 S4).
     pub fn load(&self) -> Map {
         let path = self.docs.dir().instances_json();
+        if self.docs.effective_backend(DOC) == crate::Backend::Db {
+            self.docs.cache_put(DOC, None, &Json::Null);
+            return self.load_db(&path);
+        }
         let key = match crate::statedocs::file_key(&path) {
-            Ok(Some(k)) if self.docs.effective_backend(DOC) != crate::Backend::Db => k,
+            Ok(Some(k)) => k,
             _ => {
                 self.docs.cache_put(DOC, None, &Json::Null);
-                return self.load_uncached();
+                return self.load_uncached().unwrap_or_default();
             }
         };
         if let Some(Json::Object(m)) = self.docs.cache_get(DOC, key) {
             return m;
         }
-        let m = self.load_uncached();
+        let m = self.load_uncached().unwrap_or_default();
         self.docs
             .cache_put(DOC, Some(key), &Json::Object(m.clone()));
         m
     }
 
-    fn load_uncached(&self) -> Map {
+    fn load_db(&self, path: &std::path::Path) -> Map {
+        let stamp = self.docs.db_stamp(DOC, path);
+        if let Some(Json::Object(m)) = stamp.as_ref().and_then(|s| self.docs.db_cache_get(DOC, s)) {
+            return m;
+        }
+        let Some(m) = self.load_uncached() else {
+            return Map::new();
+        };
+        // damga okumadan ÖNCE alındı: arada yazım olursa sonraki çağrı yeniden okur; okuma dosyaya düştüyse saklanmaz
+        if let Some(s) = stamp {
+            if self.docs.db_stamp(DOC, path).as_ref() == Some(&s) {
+                self.docs.db_cache_put(DOC, s, &Json::Object(m.clone()));
+            }
+        }
+        m
+    }
+
+    /// `None` = belge bozuk.
+    fn load_uncached(&self) -> Option<Map> {
         match self.read_strict() {
             Ok(Json::Object(mut d)) => match d.swap_remove("instances") {
-                Some(Json::Object(m)) => m,
-                _ => Map::new(),
+                Some(Json::Object(m)) => Some(m),
+                _ => None,
             },
-            _ => Map::new(),
+            _ => None,
         }
     }
 
