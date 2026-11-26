@@ -14,6 +14,13 @@ Kalan (birleştirmeyi tutan) maddeler:
   testinde "bilinen fark" olarak kilitli. Karar Rust'ta değişiklik gerektirirse parity listesi düşer, unutulmaz.
 - Prober'ın kendi takılma yeniden başlatması testsiz (iş 3 gerekçesi; davranış Python'da hiç yok).
 
+## Birleştirme notu (26 Kas gece)
+
+`origin/main` (`1ad764dc`) dala birleştirildi; tek çakışma `rust/Cargo.toml` members satırıydı. Birleşik ağaçta
+`cargo test -p cops-hosts -p cops-auth -p cops-proxy -p cops-parity` 238/238, `py/cops test --base origin/main` 3126
+test OK (1 atlanan; seçilmiş alt küme, tam paket değil). `mapping.py --check` satır numarasına duyarlıdır: `main` ya
+da Python ilerleyince betik `--check` olmadan yeniden koşulup tablo commit'lenir.
+
 ## Sıradaki işler (sırayla)
 
 1. BİTTİ (26 Kas): `tests/support/mod.rs` (hyper `Fake` + çıplak TCP `Raw`, sunucu tarafı sayaçlar, sayan sahte
