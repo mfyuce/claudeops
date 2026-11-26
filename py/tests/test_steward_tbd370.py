@@ -93,5 +93,34 @@ class ConfirmedMentionTest(unittest.TestCase):
             self.assertEqual(self.confirmed(text), body, text)
 
 
+class TourPromptTest(unittest.TestCase):
+    NOW = 1_000_000.0      # gerçek saatten çok eski: yaş gerçek saatten hesaplanırsa belli olur
+
+    def prompt(self, lang="tr", **item):
+        return sw.build_tour_prompt([dict({"kind": "idle", "name": "p"}, **item)], lang, now=self.NOW)
+
+    def test_card_age_uses_given_now(self):
+        card = {"updated_at": self.NOW - 3 * 3600}
+        self.assertIn("kart (3 sa önce):", self.prompt(card=card))
+        self.assertIn("card (3h ago):", self.prompt("en", card=card))
+
+    def test_phase_line_kind_label_follows_language(self):
+        self.assertIn("faz: planned  tür: kitap", self.prompt(phase="planned", kindp="kitap").splitlines())
+        self.assertIn("phase: planned  kind: book", self.prompt("en", phase="planned", kindp="book").splitlines())
+
+
+class ClipTest(unittest.TestCase):
+    def test_never_exceeds_limit(self):
+        for text in ("", "a", "abc", "ab cd ef", "  x  "):
+            for n in (-1, 0, 1, 2, 3, 20):
+                self.assertLessEqual(len(sw._clip(text, n)), max(n, 0), (text, n))
+
+    def test_zero_is_empty_and_positive_unchanged(self):
+        self.assertEqual(sw._clip("abc", 0), "")
+        self.assertEqual(sw._clip("abc", 1), "…")
+        self.assertEqual(sw._clip("abc", 3), "abc")
+        self.assertEqual(sw._clip("abcd", 3), "ab…")
+
+
 if __name__ == "__main__":
     unittest.main()

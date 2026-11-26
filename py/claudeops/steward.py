@@ -2623,7 +2623,9 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
 
 def _clip(text: str, n: int) -> str:
     text = (text or "").strip()
-    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+    if len(text) <= n:
+        return text
+    return text[: n - 1].rstrip() + "…" if n > 0 else ""      # n=0'da `text[:-1]` sınırı aşıyordu
 
 
 def card_lines(card: Dict[str, Any], tr: bool = True, now: Optional[float] = None) -> List[str]:
@@ -2702,7 +2704,8 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             lines.append(f"id={it.get('id')}  {_clip(it.get('text', ''), 600)}")
             continue
         if it.get("phase"):
-            lines.append(("faz: " if tr else "phase: ") + str(it["phase"]) + (f"  tür: {it['kindp']}" if it.get("kindp") else ""))
+            kindp = ("  tür: " if tr else "  kind: ") + str(it["kindp"]) if it.get("kindp") else ""
+            lines.append(("faz: " if tr else "phase: ") + str(it["phase"]) + kindp)
         if it.get("goal"):
             lines.append(("amaç: " if tr else "goal: ") + _clip(it["goal"], 300))
         if it.get("idle_minutes") is not None:
@@ -2722,7 +2725,7 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
                          + _clip(it["stated_next"], 300))
         card = it.get("card")
         if card:
-            lines += card_lines(card, tr)
+            lines += card_lines(card, tr, now)
         else:
             for doc, body in (it.get("docs") or {}).items():
                 if body:
