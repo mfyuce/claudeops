@@ -19,5 +19,16 @@ class NonFiniteClockTest(unittest.TestCase):
         self.assertTrue(out["ok"])
 
 
+class KidsShapeTest(unittest.TestCase):
+    def test_non_list_kids_drop_fwd(self):
+        for kids in ("abc", {"a": 1}, 5, True):
+            self.assertIsNone(wh._fwd_brief({"mode": "accept", "kids": kids}, 0.0), kids)
+
+    def test_empty_and_list_kids_pass(self):
+        for kids in (None, "", {}, 0, []):
+            self.assertEqual(wh._fwd_brief({"kids": kids}, 0.0)["kids"], [], kids)
+        self.assertEqual(wh._fwd_brief({"kids": ["a", 1]}, 0.0)["kids"], ["a", "1"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -548,7 +548,10 @@ def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
         skew = round(float(v["now"]) - local_now, 1) if v.get("now") is not None else None
         if skew is not None and not math.isfinite(skew):      # NaN/Infinity JSON degil: tarayici tum yaniti reddeder
             return None
-        kids = [str(k) for k in (v.get("kids") or [])][:4]
+        raw_kids = v.get("kids") or []
+        if not isinstance(raw_kids, list):
+            return None
+        kids = [str(k) for k in raw_kids][:4]
         return {"mode": str(v.get("mode") or ""), "kids": kids, "skew": skew}
     except (TypeError, ValueError):
         return None
