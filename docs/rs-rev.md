@@ -1,6 +1,16 @@
 # İz rs/rev: review çekirdeği (`py/claudeops/review.py` -> `rust/crates/cops-review-core`)
 
-## Durum (26 Kas 2026 akşam): BİRLEŞTİRMEYE HAZIR (önce `rs/state` birleşmeli)
+## Durum (27 Kas 2026 gece): BİRLEŞTİRMEYE HAZIR
+
+`origin/main` (`a5c11054`; rs/state, rs/hosts, rs/cli, rs/proc dahil) bu dala birleştirildi. Çakışma yalnız
+`rust/Cargo.toml` (main üyeleri taban, `cops-review-core` eklendi); `rust/Cargo.lock` güncellendi ve commit'li.
+Birleşik ağaçta: `cargo clippy --workspace --all-targets --locked -D warnings` temiz; `cargo test --workspace --locked`
+585 geçti, 0 kaldı, 1 atlandı; review paritesi 123.985 çağrı / 103 işlev / 0 fark; eşleme denetimleri (review, hosts, proc)
+temiz (`rs-proc` denetimi `main`de de 38 hata veriyordu: rs/state'in yeni testleri eklendi, `4d031264`);
+Python tam paket 5904 test OK (23 atlandı). Kapıda cops'a kalan: bağımsız gözden geçirme, birleştirme, web restart.
+Aşağıdaki ölçümler 26 Kas'ındır.
+
+## Durum (26 Kas 2026 akşam)
 
 TBD#368 (b) UYGULANDI (26 Kas): bozuk kayıt iki tarafta atlanıp loglanır (`_log_bad` / `badrec`), bozuk depoya yazım
 `StoreCorrupt` ile reddedilir, aynı bozuk içerik için tek `.corrupt-` yedeği alınır (`steward.py`; Rust `backed_up`).
@@ -49,7 +59,7 @@ Aşağıdaki 1. maddedeki farklar `c5a666a`de kapandı.
    ya da gerekçeyle karşılandı: "Python dersleri" bölümü (boş satır yok). Sahipte açık soru yok (5 korunuyor, 6-7 düzeldi).
 6. Parite kancasının atladığı (review işlevi taklit edilmiş) çağrılar: **kontrol edildi**, tablonun "Kancanın atladığı
    çağrılar" bölümü (her işlev başka çağrılarda karşılaştırılıyor; `register_lens` dize olmayan girdi Rust tipinde yok).
-7. `rust/Cargo.lock` commit'siz (izin verilen yollar dışında); cops birleştirmede üretir.
+7. `rust/Cargo.lock`: 27 Kas birleştirmesinden beri commit'li.
 
 ## Kararlar
 
