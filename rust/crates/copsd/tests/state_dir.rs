@@ -71,7 +71,6 @@ fn spawn(home: &Path, env_dir: Option<&Path>, extra: &[&str]) -> (Proc, u16) {
         "--upstream",
         &format!("127.0.0.1:{up}"),
     ])
-    .args(["--metrics-db", home.join("m.db").to_str().unwrap()])
     .args(extra)
     .env("HOME", home)
     .env_remove("CLAUDEOPS_DIR")
@@ -130,4 +129,25 @@ fn token_file_defaults_to_state_dir() {
         &["--token-file", tf.to_str().unwrap()],
     );
     assert_eq!(status(port, &names("home-token-NOT-REAL")), Some(200));
+}
+
+/// Diğer varsayılan yollar da (DB, metrik deposu, mount tablosu) durum dizininden okunur; `$HOME` altında dosya yaratılmaz.
+#[test]
+fn other_default_paths_follow_the_state_dir() {
+    let home = tmp("home2");
+    let state = tmp("state2");
+    token(&state.0, "state-token-NOT-REAL\n");
+    std::fs::File::create(state.0.join("claudeops.db")).unwrap();
+    std::fs::create_dir_all(state.0.join("derbent")).unwrap();
+    let mounts = state.0.join("derbent/mounts.json");
+    std::fs::write(&mounts, r#"[{"path":"/uyg/","upstream":"127.0.0.1:1"}]"#).unwrap();
+    std::fs::set_permissions(&mounts, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    let (_p, port) = spawn(&home.0, Some(&state.0), &[]);
+    // mount yüklendi: kimliksiz istek copsd'de 401 (yüklenmese kapalı upstream'e gider, 502)
+    assert_eq!(status(port, "/uyg/"), Some(401));
+    // DB durum dizininde bulundu: yerel uç açık (kapalı olsa 502)
+    assert_eq!(status(port, "/api/steward/questions?all=1"), Some(401));
+    assert!(state.0.join("metrics.db").exists());
+    assert!(!home.0.join(".claude").exists());
 }

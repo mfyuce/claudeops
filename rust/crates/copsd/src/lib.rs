@@ -1,7 +1,7 @@
 //! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan 127.0.0.1:18765).
 //! Ön kapı gizlisi: `--secret-file` (varsayılan ~/.claude/claudeops/front.secret; 0600 değilse REDDEDİLİR) ya da `CLAUDEOPS_FRONT_SECRET`.
 //! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
-//! `--mounts-file` (varsayılan ~/.claude/claudeops/derbent/mounts.json): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
+//! `--mounts-file` (varsayılan [`state_dir`]`/derbent/mounts.json`): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
 //! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
 //! `web.token` açılışta yalnız uçları açmak için denetlenir; değeri her istekte dosyadan okunur (silme/döndürme anında geçerli).
 //! `--token-file` verilmezse `web.token` durum dizininden okunur ([`state_dir`]: `--state-dir`, `CLAUDEOPS_DIR`, `~/.claude/claudeops`).
@@ -48,12 +48,17 @@ pub fn state_dir() -> std::path::PathBuf {
     }
 }
 
+/// `flag` verildiyse o yol, yoksa [`state_dir`] altındaki `name`.
+fn state_path(flag: &str, name: &str) -> std::path::PathBuf {
+    arg(flag)
+        .map(Into::into)
+        .unwrap_or_else(|| state_dir().join(name))
+}
+
 /// `web.token` yolu: `--token-file`, yoksa [`state_dir`]`/web.token` (R1-10: Python token'ı durum dizininden okur; yalnız
 /// `$HOME` kullanmak durum dizini farklıyken ikinci bir acil token kabul ettiriyordu).
 pub fn token_file() -> std::path::PathBuf {
-    arg("--token-file")
-        .map(Into::into)
-        .unwrap_or_else(|| state_dir().join("web.token"))
+    state_path("--token-file", "web.token")
 }
 
 fn read_secret() -> Result<Option<String>, String> {
@@ -154,11 +159,8 @@ where
         None => proxy,
     };
     // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
-    let home = std::env::var("HOME").unwrap_or_default();
     let tok_path = token_file();
-    let db_path = std::path::PathBuf::from(
-        arg("--db").unwrap_or_else(|| format!("{home}/.claude/claudeops/claudeops.db")),
-    );
+    let db_path = state_path("--db", "claudeops.db");
     let proxy = match std::fs::metadata(&tok_path) {
         Ok(m) if m.permissions().mode() & 0o077 == 0 && db_path.exists() => {
             let t = cops_auth::Token::from_file(&tok_path);
@@ -174,11 +176,9 @@ where
         }
         _ => proxy,
     };
-    // Metrik deposu (cops-metrics): `--metrics-db` (varsayılan ~/.claude/claudeops/metrics.db). Uçlar: POST /api/metrics/points
+    // Metrik deposu (cops-metrics): `--metrics-db` (varsayılan [`state_dir`]`/metrics.db`). Uçlar: POST /api/metrics/points
     // (web.token ya da loopback + ön kapı gizlisi), GET /api/metrics/series|names (web.token). Token yoksa uçlar AÇILMAZ (Python'a gider).
-    let mdb = std::path::PathBuf::from(
-        arg("--metrics-db").unwrap_or_else(|| format!("{home}/.claude/claudeops/metrics.db")),
-    );
+    let mdb = state_path("--metrics-db", "metrics.db");
     let store = match cops_metrics::Store::open(&mdb) {
         Ok(s) => Some(std::sync::Arc::new(s)),
         Err(e) => {
@@ -186,9 +186,7 @@ where
             None
         }
     };
-    let instances = std::path::PathBuf::from(
-        arg("--instances").unwrap_or_else(|| format!("{home}/.claude/claudeops/instances.json")),
-    );
+    let instances = state_path("--instances", "instances.json");
     // Günlük proje ilerleme işi (model YOK). `--once`: bir kez koş ve çık (elle/sınama). Aksi halde açılışta son nokta 20 saatten eskiyse koşar, sonra saatte bir bakar.
     if let Some(st) = store.clone() {
         let (db, inst) = (db_path.clone(), instances.clone());
@@ -244,10 +242,7 @@ where
         _ => proxy,
     };
     // Uygulama mount'ları: kimlik web.token (0600) + `cops_ext` çerezi; token yoksa mount AÇILMAZ (istek Python'a gider).
-    let mounts_file = std::path::PathBuf::from(
-        arg("--mounts-file")
-            .unwrap_or_else(|| format!("{home}/.claude/claudeops/derbent/mounts.json")),
-    );
+    let mounts_file = state_path("--mounts-file", "derbent/mounts.json");
     let proxy = match std::fs::metadata(&tok_path) {
         Ok(m)
             if m.permissions().mode() & 0o077 == 0
