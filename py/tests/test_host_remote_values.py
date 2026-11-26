@@ -51,5 +51,17 @@ class PrivateLanTest(unittest.TestCase):
             self.assertFalse(wh._is_private_lan_http(f"http://{bad}"), bad)
 
 
+class CandidateSchemeTest(unittest.TestCase):
+    def test_uppercase_https_base_still_blocks_plain_http(self):
+        self.assertFalse(wh._candidate_allowed("HTTPS://a.example", "http://b.example"))
+        self.assertFalse(wh._candidate_allowed("https://a.example", "HTTP://b.example"))
+
+    def test_https_base_allows_only_https_or_lan(self):
+        self.assertFalse(wh._candidate_allowed("https://a.example", "ftp://x"))
+        self.assertTrue(wh._candidate_allowed("https://a.example", "HTTPS://b.example"))
+        self.assertTrue(wh._candidate_allowed("https://a.example", "http://10.0.0.1"))
+        self.assertTrue(wh._candidate_allowed("http://a.example", "http://b.example"))
+
+
 if __name__ == "__main__":
     unittest.main()
