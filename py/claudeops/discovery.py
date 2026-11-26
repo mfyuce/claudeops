@@ -64,11 +64,17 @@ def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
             pid = int(pid)
         except (ValueError, TypeError):
             continue
+        except OverflowError:
+            _skipped["session_file"] += 1       # `Infinity`/`1e400`: int(inf) tüm taramayı düşürüyordu (TBD#365)
+            continue
         if pid <= 0:
             continue                            # os.kill(<=0, 0) süreç GRUBUNU yoklar, canlı sanılırdı (TBD#365)
         # Liveness: proc yaşıyor mu?
         try:
             os.kill(pid, 0)
+        except OverflowError:
+            _skipped["session_file"] += 1       # pid_t'ye sığmayan pid (2**32 vb.): tüm taramayı düşürüyordu (TBD#365)
+            continue
         except OSError:
             continue  # ölü proc → atla
         # procStart doğrulaması: OOM sonrası pid-reuse koruması (bash mantığı)

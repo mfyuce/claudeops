@@ -39,7 +39,7 @@ _skipped: Counter = Counter()
 def _int(v: Any) -> int:
     try:
         return max(0, int(v))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # `1e400`/`Infinity`: int(inf) toplamı None yapıyordu (TBD#365)
         return 0
 
 

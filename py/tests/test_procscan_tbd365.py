@@ -26,6 +26,7 @@ from claudeops.providers import claude_provider as cp  # noqa: E402
 
 UIDS = namedtuple("UIDS", "real effective saved")
 ME = os.getuid()
+_REAL_KILL = os.kill       # setUp sahtesinden önce
 OTHER = ME + 4242
 
 
@@ -75,6 +76,24 @@ class SessionFilesTest(unittest.TestCase):
             self._write(f"n{i}.json", {"pid": pid, "name": f"neg{i}", "cwd": "/tmp"})
         self.assertEqual(discovery._sessions_from_json(), {})
         self.assertEqual([p for p in self.killed if p <= 0], [])
+
+    def test_overflowing_pid_is_skipped_and_counted(self):
+        """Birleştirme kapısı: `os.kill(2**32, 0)` / `int(inf)` OverflowError ile tüm taramayı (/api/status, cops list) düşürüyordu."""
+        def kill(pid, sig):
+            if not -2**31 <= pid < 2**31:
+                return _REAL_KILL(pid, sig)          # C int'e sığmayan pid: sinyal gönderilmeden OverflowError
+            self.killed.append(pid)
+
+        me = os.getpid()
+        for i, pid in enumerate([2**32, 2**31, 2**63, 2**64 + 5, "99999999999999999999999"]):
+            self._write(f"o{i}.json", {"pid": pid, "name": f"taşan{i}", "cwd": "/tmp"})
+        (self.sess / "inf.json").write_text('{"pid": Infinity, "name": "sonsuz", "cwd": "/tmp"}')
+        (self.sess / "big.json").write_text('{"pid": 1e400, "name": "dev", "cwd": "/tmp"}')
+        self._write("ok.json", {"pid": me, "name": "iyi", "cwd": "/tmp"})
+        with mock.patch.object(discovery.os, "kill", kill):
+            got = discovery._sessions_from_json()
+        self.assertEqual(list(got), [("iyi", me)])
+        self.assertEqual(discovery._skipped["session_file"], 7)
 
 
 class _P:
@@ -273,6 +292,14 @@ class UsageRowsTest(unittest.TestCase):
                 self.assertEqual(u["turns"], turns)
                 self.assertEqual(su.usage_for_path(self.main)["turns"], turns)
         self.assertEqual(su._skipped["usage_row"], 4)
+
+    def test_overflowing_token_count_does_not_blank_total(self):
+        """Birleştirme kapısı (aynı taşma sınıfı): `int(inf)` OverflowError `usage_for_path`i tümden `None` yapıyordu."""
+        self._main(_urow("m1", out=3) + _urow("m2").replace('"output_tokens": 5', '"output_tokens": 1e400')
+                   + _urow("m3").replace('"output_tokens": 5', '"output_tokens": Infinity'))
+        u = su.usage_for_path(self.main)
+        self.assertIsNotNone(u)
+        self.assertEqual((u["turns"], u["out"]), (3, 3))
 
     def test_bad_subagent_row_does_not_blank_total(self):
         self._main(_urow("m1"))
