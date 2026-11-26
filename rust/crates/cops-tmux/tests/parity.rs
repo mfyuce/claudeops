@@ -987,7 +987,7 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
             &|x| as_json(x.outer_bash_via_list_clients("m")),
         );
     }
-    // Yedek tarama: istemci yokken tüm süreçlerin `bash -c` betiği (P7: kullanıcı süzgeci iki tarafta da yok).
+    // Yedek tarama: istemci yokken bu kullanıcının tüm `bash -c` betikleri (P7, TBD#366: iki taraf da kullanıcıya göre süzer).
     let name = format!("cxrs-fake we'ird {me}");
     let attach = f.tmux.attach_shell_fragment("/x.conf", &name).unwrap();
     let scanned = [

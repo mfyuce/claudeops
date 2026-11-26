@@ -207,22 +207,40 @@ impl Tmux {
             format!("attach-session -t {};", shell_quote(session)),
             format!("attach-session -t {};", shell_quote(&exact)),
         ];
-        all_pids()
-            .into_iter()
-            .filter_map(|pid| {
-                let st = stat(pid)?;
-                if name(pid, &st) != "bash" {
-                    return None;
-                }
-                let script = bash_script(pid)?;
-                needles
-                    .iter()
-                    .any(|n| script.contains(n.as_str()))
-                    .then(|| create_time(&st))?
-                    .map(|created| (pid, created))
-            })
-            .collect()
+        // SAFETY: yan etkisiz sistem sorgusu.
+        scan_outer_bash(&needles, unsafe { libc::getuid() })
     }
+}
+
+/// Süreçin GERÇEK kullanıcısı (`/proc/<pid>/status` `Uid:` ilk alanı; psutil `uids().real`). `None` = okunamadı.
+fn real_uid(pid: u32) -> Option<u32> {
+    let raw = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    raw.lines()
+        .find_map(|l| l.strip_prefix("Uid:"))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Yedek tarama: `uid` kullanıcısının, betiği iğnelerden birini içeren `bash -c` süreçleri. Başka kullanıcının aynı
+/// adlı penceresi sayılmaz (TBD#366 P7; çok kullanıcılı makine).
+fn scan_outer_bash(needles: &[String], uid: u32) -> Vec<OuterBash> {
+    all_pids()
+        .into_iter()
+        .filter_map(|pid| {
+            let st = stat(pid)?;
+            if name(pid, &st) != "bash" || real_uid(pid)? != uid {
+                return None;
+            }
+            let script = bash_script(pid)?;
+            needles
+                .iter()
+                .any(|n| script.contains(n.as_str()))
+                .then(|| create_time(&st))?
+                .map(|created| (pid, created))
+        })
+        .collect()
 }
 
 /// Python `push_ctx` / `_CTX_PUSHED`: değişmeyen etiketi yeniden yazmaz. Yeni pid (oturum yeniden başladı) seçeneği
@@ -287,6 +305,37 @@ mod tests {
         assert_eq!(split_cmdline("a\0\0"), ["a", ""]);
         assert_eq!(split_cmdline("chrome --x y"), ["chrome", "--x", "y"]);
         assert_eq!(split_cmdline("chrome --x\0"), ["chrome", "--x"]);
+    }
+
+    #[test]
+    fn fallback_scan_counts_only_this_users_windows() {
+        let needle = format!("cxrs-p7-{} -c ", std::process::id());
+        let mut child = std::process::Command::new("bash")
+            .args(["-c", &format!("cat # -s {needle}/x\ntrue")])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        // SAFETY: yan etkisiz sistem sorgusu.
+        let me = unsafe { libc::getuid() };
+        let needles = [format!("-s {needle}")];
+        let mut found = Vec::new();
+        for _ in 0..200 {
+            found = scan_outer_bash(&needles, me);
+            if !found.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let other = scan_outer_bash(&needles, me.wrapping_add(4242));
+        drop(child.stdin.take());
+        child.wait().unwrap();
+        assert_eq!(
+            found.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+            [child.id()]
+        );
+        assert!(other.is_empty(), "{other:?}");
+        assert_eq!(real_uid(child.id()), None, "süreç bitti");
     }
 
     #[test]

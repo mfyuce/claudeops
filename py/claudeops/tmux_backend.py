@@ -789,9 +789,13 @@ def find_outer_bash_pids(name: str) -> List[tuple]:
         f"attach-session -t {shlex.quote(_exact(name))};",   # güncel biçim: `-t =NAME` (tmux_attach_shell_fragment)
     )
     found: List[tuple] = []
-    for proc in psutil.process_iter(["pid", "name"]):
+    me = os.getuid()     # TBD#366 P7: çok kullanıcılı makinede başka kullanıcının aynı adlı penceresi sayılmaz
+    for proc in psutil.process_iter(["pid", "name", "uids"]):
         try:
             if proc.info["name"] != "bash":
+                continue
+            uids = proc.info["uids"]
+            if uids is None or uids.real != me:
                 continue
             cmdline = proc.cmdline()
             if len(cmdline) < 3 or cmdline[1] != "-c":
