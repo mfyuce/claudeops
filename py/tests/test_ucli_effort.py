@@ -141,7 +141,7 @@ class CatalogTests(unittest.TestCase):
             self.addCleanup(p.stop)
 
     def fetch(self, payload):
-        with mock.patch.object(up.urllib.request, "urlopen", lambda req, timeout=None: FakeResponse(payload)):
+        with mock.patch.object(up, "_open_no_redirect", lambda req, timeout=None: FakeResponse(payload)):
             return up._fetch_live_models()
 
     def test_only_chat_models_are_listed_and_their_capabilities_kept(self):
@@ -157,13 +157,13 @@ class CatalogTests(unittest.TestCase):
         before = dict(up._LIVE_CAPS)
         self.assertIsNone(self.fetch({"data": []}))
         self.assertEqual(up._LIVE_CAPS, before)
-        with mock.patch.object(up.urllib.request, "urlopen", side_effect=OSError("ağ yok")):
+        with mock.patch.object(up, "_open_no_redirect", side_effect=OSError("ağ yok")):
             self.assertIsNone(up._fetch_live_models())
         self.assertEqual(up._LIVE_CAPS, before)
 
     def test_without_a_key_nothing_is_fetched(self):
         with mock.patch.object(up, "byok_env_for", lambda cli: {}), \
-                mock.patch.object(up.urllib.request, "urlopen", side_effect=AssertionError("ağa çıkmamalı")):
+                mock.patch.object(up, "_open_no_redirect", side_effect=AssertionError("ağa çıkmamalı")):
             self.assertIsNone(up._fetch_live_models())
         self.assertEqual(up._LIVE_CAPS, {})
 
@@ -174,7 +174,7 @@ class CatalogTests(unittest.TestCase):
             calls.append(req.full_url)
             return FakeResponse(models_payload())
 
-        with mock.patch.object(up.urllib.request, "urlopen", urlopen):
+        with mock.patch.object(up, "_open_no_redirect", urlopen):
             ids = up.UcliProvider().model_choices()
             self.assertEqual(up.reasoning_effort_for("deepseek-v4-flash", "high"), "high")
             self.assertIsNone(up.reasoning_effort_for("gemma-4-31b", "high"))

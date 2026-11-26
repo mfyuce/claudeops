@@ -13,7 +13,7 @@ class ModelsPayloadTest(unittest.TestCase):
     def _fetch(self, body: bytes):
         with mock.patch.object(up, "byok_env_for", return_value={"UCLI_API_KEY": "k"}), \
                 mock.patch.object(up, "endpoint", return_value="http://127.0.0.1:1/v1"), \
-                mock.patch.object(up.urllib.request, "urlopen", return_value=io.BytesIO(body)):
+                mock.patch.object(up, "_open_no_redirect", return_value=io.BytesIO(body)):
             return up._fetch_live_models()
 
     def test_non_object_or_non_list_payload_returns_none(self):

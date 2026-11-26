@@ -100,6 +100,7 @@ from ..diaglog import diag_log
 from ..paths import ucli_key_file
 from .. import ucli_cost
 from ..settings import ucli_cost_config
+from ..ucli_session_opts import _open_no_redirect
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (ucli_show_reasoning_enabled, byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
@@ -242,7 +243,7 @@ def _fetch_live_models() -> Optional[List[str]]:
         headers={"X-API-Key": key},
     )
     try:
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
+        with _open_no_redirect(req, timeout=5.0) as resp:
             payload = json.loads(resp.read())
     except (urllib.error.URLError, OSError, ValueError):
         return None

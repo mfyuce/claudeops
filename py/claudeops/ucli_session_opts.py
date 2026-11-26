@@ -447,6 +447,16 @@ _MODELS_CACHE: Dict[str, Tuple[float, List[str]]] = {}
 _MODELS_TTL = 86400.0   # sn (24 sa, TBD#146); başarısızlık 60 sn tutulur (tekrar denemeden önce)
 
 
+class _NoRedirect(_urlreq.HTTPRedirectHandler):
+    def redirect_request(self, *a, **kw):   # API anahtarı başlığı başka adrese taşınmasın (TBD#389)
+        return None
+
+
+def _open_no_redirect(req, timeout):
+    """`urlopen` gibi (proxy ortamı dahil) ama 3xx HİÇ izlenmez: `HTTPError` olarak döner."""
+    return _urlreq.build_opener(_NoRedirect).open(req, timeout=timeout)
+
+
 def service_models(service: str, key: str, *, opener=None, now=None) -> List[str]:
     """`SERVICES[service]` uç noktasının `/models` listesi (model kimlikleri, sıralı). Anahtar yoksa/ağ hatasında [].
     Anthropic `x-api-key` + `anthropic-version`, diğerleri `Authorization: Bearer`. Anahtar ASLA loglanmaz."""
@@ -461,7 +471,7 @@ def service_models(service: str, key: str, *, opener=None, now=None) -> List[str
     ids: List[str] = []
     try:
         req = _urlreq.Request(ep.rstrip("/") + "/models?limit=200", headers=hdr)
-        with (opener or _urlreq.urlopen)(req, timeout=8) as r:
+        with (opener or _open_no_redirect)(req, timeout=8) as r:
             data = _json.loads(r.read().decode("utf-8", "replace"))
         rows = data.get("data") if isinstance(data, dict) else data
         ids = sorted({str(m.get("id")) for m in (rows or []) if isinstance(m, dict) and m.get("id")})

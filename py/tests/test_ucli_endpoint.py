@@ -56,7 +56,7 @@ class UcliEndpointTest(unittest.TestCase):
             return _Resp()
 
         with mock.patch.object(up, "byok_env_for", lambda cli: {"UCLI_API_KEY": "k"}), \
-                mock.patch.object(up.urllib.request, "urlopen", fake_open):
+                mock.patch.object(up, "_open_no_redirect", fake_open):
             up._fetch_live_models()
         self.assertEqual(seen, ["http://localhost:8000/v1/models"])
 
