@@ -2312,7 +2312,11 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
                                             push_check=None)
+    # Bekleme uzundur: sonradan ikinci adaş çıktıysa ya da host okunamıyorsa istek de `/api/stop` da GİTMEZ (TBD#372).
     if reply is None:
+        if not web_steward._remote_running_row(host, name)[0]:
+            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask")
+            return _ho_stop_fail(lang, "", "handover_unreadable")
         diag_log("ho_stop_reask", name=name, host=host)
         res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
         if res2.get("ok"):
@@ -2322,6 +2326,9 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
+    if not web_steward._remote_running_row(host, name)[0]:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop")
+        return _ho_stop_fail(lang, "", "handover_unreadable")
     out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
     return dict(out, handover=True) if isinstance(out, dict) else out
 
@@ -3144,19 +3151,24 @@ def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force
     `require_running=False` + `focus=False`: snapshot geri yüklemesi (`_snapshot_resume`). Uzak
     session henüz çalışmıyor olabilir (yerel snapshot uzak session'ı BAŞLATMAZ); görüntüleyici
     "bekliyor" durumunda onu bekler, o yüzden varlık kontrolü atlanır (host kayıtlı mı, karakter
-    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur."""
+    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur.
+
+    Önbellekte aynı adlı iki ÇALIŞAN satır varsa hedef belirsizdir: iki durumda da (`force` dahil) pencere
+    açılmaz ya da öne getirilmez (`ambiguous_name`, TBD#380)."""
     if not host or host == LOCAL_HOST_NAME:
         return _err(lang, "mirror_local", name=name)
     if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
         return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
     if get_host(host) is None:
         return _err(lang, "unknown_host", name=host)
+    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+    hits = [r for r in rows if isinstance(r, dict) and r.get("name") == name and r.get("running")]
+    if len(hits) > 1:
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join([f"{host}:{name}"] * len(hits)))
     if require_running:
-        rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
-        row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
-        if row is None or not row.get("running"):
+        if not hits:
             return _err(lang, "not_running", name=name)
-        if not row.get("tmux"):
+        if not hits[0].get("tmux"):
             return _err(lang, "not_tmux_backed", name=name)
     display = detect_display()
     if not _x11_display_ok(display):
