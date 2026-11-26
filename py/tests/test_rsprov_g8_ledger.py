@@ -50,5 +50,15 @@ class CrossProcessLock(_Registry):
             self.assertFalse(t.is_alive())
 
 
+class BadParentRecord(_Registry):
+    def test_the_spawn_still_fails_and_no_token_is_written(self):
+        body = json.dumps({"parents": {"p": 5}, "children": {}})
+        self.put(body)
+        with self.assertRaises(TypeError):
+            ua.issue_token("p")
+        self.assertFalse(os.path.exists(ua.token_file("p")))
+        self.assertEqual(self.text(self.state), body)
+
+
 if __name__ == "__main__":
     unittest.main()

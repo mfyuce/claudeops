@@ -176,8 +176,10 @@ def issue_token(session_name: str) -> str:
         return token_file(session_name)
     token = secrets.token_hex(32)
     with _writing():     # dosya + özet TEK kilitte: eşzamanlı iki çağrıda dosyadaki token ile kayıtlı özet ayrışmasın
-        path = _write_token_file(session_name, token)
         data = _load()
+        if not isinstance(data["parents"].get(session_name, {}), dict):      # token yazılmadan ÖNCE reddet
+            raise TypeError("ucli_agents: üst oturum kaydı nesne değil; defteri düzelt")
+        path = _write_token_file(session_name, token)
         rec = data["parents"].setdefault(session_name, {})
         rec.update(sha256=_digest(token), issued=time.time())
         rec.setdefault("seq", 0)
