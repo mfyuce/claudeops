@@ -272,6 +272,52 @@ fn bad_session_files_are_skipped_and_counted() {
     assert_eq!(scan.diag.session_files_invalid, 0);
 }
 
+/// Birleştirme kapısı (TBD#365): Python `os.kill(2**32, 0)`/`int(inf)` OverflowError ile taramayı düşürüyordu; şimdi
+/// iki dilde de `pid_t`ye (i32) sığmayan pid atlanır ve sayılır. JSON'da `Infinity`/`1e400` serde'de geçersiz dosyadır
+/// (`session_files_invalid`; Python `session_file`). Taşan pid'in `/proc` girdisi olsa bile kabul edilmez.
+#[test]
+fn overflowing_pids_are_skipped_and_counted() {
+    let f = Fake::new();
+    f.add(P {
+        pid: 50,
+        cmd: "claude",
+        cwd: "/work/ok",
+        ..Default::default()
+    });
+    f.add(P {
+        pid: 2_147_483_648,
+        cwd: "/work/tasan",
+        ..Default::default()
+    });
+    f.session_json("50.json", r#"{"pid":50,"name":"iyi"}"#);
+    for (i, pid) in [
+        "2147483648",
+        "4294967296",
+        "9223372036854775808",
+        "18446744073709551621",
+        "1e30",
+        "\"99999999999999999999999\"",
+        "\"2147483648\"",
+    ]
+    .iter()
+    .enumerate()
+    {
+        f.session_json(
+            &format!("o{i}.json"),
+            &format!(r#"{{"pid":{pid},"name":"tasan{i}","cwd":"/tmp"}}"#),
+        );
+    }
+    f.session_json("inf.json", r#"{"pid":Infinity,"name":"sonsuz","cwd":"/tmp"}"#);
+    f.session_json("big.json", r#"{"pid":1e400,"name":"dev","cwd":"/tmp"}"#);
+    // C int'in alt ucu: Python'da `pid <= 0` önce gelir, sayılmaz
+    f.session_json("neg.json", r#"{"pid":-9223372036854775809,"name":"eksi","cwd":"/tmp"}"#);
+    let scan = find_sessions(&f.cfg, CpuMode::Skip);
+    let names: Vec<&str> = scan.sessions.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["iyi"]);
+    assert_eq!(scan.diag.session_files_bad, 7);
+    assert_eq!(scan.diag.session_files_invalid, 2);
+}
+
 #[test]
 fn background_session_folds() {
     let f = Fake::new();

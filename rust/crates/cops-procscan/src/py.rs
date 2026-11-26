@@ -64,8 +64,15 @@ pub fn truthy_str(v: Option<&Value>) -> Option<String> {
     v.filter(|v| truthy(v)).map(to_str)
 }
 
-/// `int("...")`: baştaki/sondaki boşluk, işaret ve rakamlar arası tek `_`.
+/// `int("...")`: baştaki/sondaki boşluk, işaret ve rakamlar arası tek `_`. i64'e sığmayan değer `None`
+/// (taşmayı ayırmak için [`int_saturating`]).
 pub fn int(s: &str) -> Option<i64> {
+    int_saturating(s).and_then(|n| i64::try_from(n).ok())
+}
+
+/// [`int`] ama sözdizimi geçerli her sayı döner: i128'e sığmayan değer `i128::MIN`/`MAX`e doyurulur
+/// (Python `int` sınırsızdır; çağıran taşmayı "geçersiz"den ayırabilsin).
+pub fn int_saturating(s: &str) -> Option<i128> {
     let s = strip(s);
     let digits = s.strip_prefix(['+', '-']).unwrap_or(s);
     if digits.is_empty()
@@ -75,7 +82,8 @@ pub fn int(s: &str) -> Option<i64> {
     {
         return None;
     }
-    s.replace('_', "").parse().ok()
+    let neg = s.starts_with('-');
+    Some(s.replace('_', "").parse().unwrap_or(if neg { i128::MIN } else { i128::MAX }))
 }
 
 /// `float("...")` (ASCII): baştaki/sondaki boşluk, rakamlar arası tek `_` (PEP 515), `inf`/`nan` yazımları.
@@ -149,6 +157,11 @@ mod tests {
             (int(" +1_000 "), int("1__0"), int("_1"), int("1.5"), int("-3")),
             (Some(1000), None, None, None, Some(-3))
         );
+        assert_eq!(int("99999999999999999999"), None);
+        assert_eq!(int_saturating("99999999999999999999"), Some(99_999_999_999_999_999_999));
+        assert_eq!(int_saturating(&"9".repeat(60)), Some(i128::MAX));
+        assert_eq!(int_saturating(&format!("-{}", "9".repeat(60))), Some(i128::MIN));
+        assert_eq!(int_saturating("1x"), None);
         assert_eq!(to_str(&Value::Null), "None");
         for (v, want) in [
             ("1_0", Some(10.0)),

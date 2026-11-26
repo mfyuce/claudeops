@@ -68,14 +68,41 @@ impl ScanDiag {
     }
 }
 
-fn json_pid(v: Option<&Value>) -> Option<u32> {
-    let n = match v? {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64))?,
-        Value::String(s) => py::int(s)?,
-        Value::Bool(b) => i64::from(*b),
-        _ => return None,
+/// Oturum dosyasındaki `pid`in sınıfı.
+#[derive(Debug, PartialEq, Eq)]
+enum JsonPid {
+    Pid(u32),
+    /// Yok, geçersiz ya da sıfır/negatif (Python `os.kill(<=0, 0)` süreç grubunu yoklardı): sayılmadan atlanır.
+    Skip,
+    /// `pid_t`ye (i32) sığmıyor: Python `os.kill`/`int(inf)` OverflowError ile taramayı düşürüyordu (TBD#365
+    /// birleştirme kapısı). Atlanır ve `session_files_bad`a girer.
+    Overflow,
+}
+
+fn json_pid(v: Option<&Value>) -> JsonPid {
+    let n: i128 = match v {
+        Some(Value::Number(n)) => match (n.as_i64(), n.as_u64(), n.as_f64()) {
+            (Some(i), _, _) => i.into(),
+            (_, Some(u), _) => u.into(),
+            // `as` i128'e doyurur; sonsuz serde'de zaten ayrıştırılamaz
+            (_, _, Some(f)) if f.is_finite() => f.trunc() as i128,
+            _ => return JsonPid::Overflow,
+        },
+        Some(Value::String(s)) => match py::int_saturating(s) {
+            Some(n) => n,
+            None => return JsonPid::Skip,
+        },
+        Some(Value::Bool(b)) => i128::from(*b),
+        _ => return JsonPid::Skip,
     };
-    u32::try_from(n).ok().filter(|p| *p > 0)
+    if n <= 0 {
+        JsonPid::Skip
+    } else {
+        u32::try_from(n)
+            .ok()
+            .filter(|p| i32::try_from(*p).is_ok())
+            .map_or(JsonPid::Overflow, JsonPid::Pid)
+    }
 }
 
 /// `~/.claude/sessions/*.json`: canlı (ve bize ait), `procStart`ı tutan kayıtlar. Pid sıfır/negatif olan atlanır.
@@ -121,8 +148,14 @@ fn sessions_from_json(cfg: &Config, proc: &ProcFs, diag: &mut ScanDiag) -> Vec<S
             },
             _ => None,
         };
-        let (Some(pid), Some(name)) = (json_pid(d.get("pid")), name) else {
-            continue;
+        let Some(name) = name else { continue };
+        let pid = match json_pid(d.get("pid")) {
+            JsonPid::Pid(pid) => pid,
+            JsonPid::Skip => continue,
+            JsonPid::Overflow => {
+                diag.session_files_bad += 1;
+                continue;
+            }
         };
         // Python `os.kill(pid, 0)`: ölü ya da başkasının süreci atlanır.
         let Some(own) = proc.own(pid) else { continue };
