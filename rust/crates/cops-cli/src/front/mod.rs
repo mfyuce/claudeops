@@ -1,16 +1,16 @@
 //! `cops front status|on|off [--apply]`: Python `commands/front_cmd.py` karşılığı (çıktı metinleri, birim ve drop-in metni,
-//! systemctl sırası aynı) + sahip onaylı düzeltmeler (TBD#371/4; docs/rs-gate-eslik.md "Python hatası?" 4-6):
-//! - (a) adres ayrıştırma [`net::parse_listen`] / [`net::parse_internal`]: geçersiz adres ENGEL olur (Python döküm verir ya da
-//!   bozuk birim yazar);
+//! systemctl sırası aynı) + sahip onaylı düzeltmeler (TBD#371/4). Bu düzeltmeler Python'a da taşındı (docs/rs-cli.md
+//! "Python hatası?" 1-8; iki taraf aynı davranır, `tests/py_parity.rs`):
+//! - (a) adres ayrıştırma [`net::parse_listen`] / [`net::parse_internal`]: geçersiz adres ENGEL olur;
 //! - (b) drop-in varken iç portu başka bir süreç tutuyorsa ENGEL ([`net::port_owner`]: dinleyen soket cgroup'u
-//!   `claudeops-web.service` olmalı); Python bunu "yeniden uygulama" sayıp ön kapıyı yabancı porta vekil yapar;
+//!   `claudeops-web.service` olmalı);
 //! - (c) `on`/`off` yarıda kalırsa (dosya yazımı, systemctl hatası, ön kapının dinlemeye başlamaması, web'in dış porta
 //!   dönmemesi) önceki dosya ve birim durumuna dönülür; dönüş adımlarının her biri yazılır, başarısız olan açıkça söylenir.
 //!   Ön kapının önceki durumu `systemctl is-active/is-enabled` ile okunur (port sahibi değil: `--listen` değişebilir);
 //!   okunamazsa hiçbir şey değişmez. `on` web'in iç adreste olduğunu da doğrular; `off` web'i kendi adresinde
 //!   ([`web_addr`], ön kapının `--listen`i değil) bekler.
-//! - `on`: zaten çalışan ön kapı (yeniden uygulama dışı yol) `restart` edilir; Python yalnız `enable --now` der, yeni birim
-//!   metni uygulanmaz ("Python hatası?" P6). Göreli `--bin` engeldir (P5).
+//! - `on`: zaten çalışan ön kapı (yeniden uygulama dışı yol) `restart` edilir (`enable --now` yeni birim metnini uygulamaz).
+//!   Göreli `--bin` engeldir.
 
 pub mod fsx;
 pub mod net;
@@ -217,7 +217,7 @@ pub fn sd_quote(s: &str) -> String {
     format!("\"{e}\"")
 }
 
-/// `bin`/`dist`: Python tırnaksız yazar; systemd için anlamlı karakter varsa Rust tırnaklar (sapma S3, P3).
+/// `bin`/`dist`: systemd için anlamlı karakter varsa tırnaklı (Python `_sd_quote_if_needed` ile aynı).
 fn sd_quote_if_needed(s: &str) -> String {
     if s.chars()
         .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | '%' | '$'))
@@ -283,8 +283,7 @@ pub fn plan_on(
     } else if !is_exec_file(binp) {
         blockers.push(format!("ikili çalıştırılabilir dosya değil: {binp}"));
     }
-    // systemd `ExecStart=` göreli yolu reddeder (birim hiç başlamaz). Python göreli `--bin`i `py/` dizinine göre denetler ve
-    // birime göreli yazar ("Python hatası?" P5).
+    // systemd `ExecStart=` göreli yolu reddeder (birim hiç başlamaz); Python da engel sayar.
     if !binp.starts_with('/') {
         blockers.push(format!(
             "ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)"
@@ -671,8 +670,7 @@ fn on(
             &["enable", "--now", "claudeops-front.service"],
         ]
     };
-    // Zaten çalışan ön kapıda `enable --now` yeni birim metnini (ör. yeni `--upstream`) uygulamaz: Python eski ayarla
-    // "açıldı" der ("Python hatası?" P6).
+    // Zaten çalışan ön kapıda `enable --now` yeni birim metnini (ör. yeni `--upstream`) uygulamaz (Python da restart eder).
     if !plan.reapply && prev.active {
         cmds.push(&["restart", "claudeops-front.service"]);
     }

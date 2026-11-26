@@ -949,3 +949,67 @@ fn relative_bin_is_a_blocker() {
     assert_eq!(rc, 1);
     assert!(out.contains("ikili yolu mutlak değil: rel-copsd"), "{out}");
 }
+
+// ---- Python düzeltmeleriyle (docs/rs-cli.md "Python hatası?" 1-8) eşlenen ek testler ----
+
+#[test]
+fn unreadable_web_unit_is_a_blocker() {
+    let e = env();
+    std::fs::write(&e.paths.web_unit, b"[Service]\nExecStart=\xff web\n").unwrap();
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert!(
+        out.contains(&format!(
+            "ENGEL:\n  claudeops-web.service okunamadı: {}: UTF-8 değil\n",
+            e.paths.web_unit
+        )),
+        "{out}"
+    );
+    assert!(e.calls().is_empty());
+}
+
+#[test]
+fn non_executable_bin_is_a_blocker() {
+    use std::os::unix::fs::PermissionsExt;
+    let e = env();
+    std::fs::set_permissions(&e.bin, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let (rc, out) = e.run(Action::On, false, L, I);
+    assert_eq!(rc, 1);
+    assert!(
+        out.contains(&format!("ikili çalıştırılabilir dosya değil: {}\n", e.bin)),
+        "{out}"
+    );
+}
+
+#[test]
+fn off_falls_back_to_front_listen_when_web_unit_is_missing() {
+    let e = env();
+    e.front_on();
+    std::fs::remove_file(&e.paths.web_unit).unwrap();
+    let alt: SocketAddr = "127.0.0.1:9000".parse().unwrap();
+    std::fs::write(
+        &e.paths.front_unit,
+        "ExecStart=\"/x y/copsd\" --listen 127.0.0.1:9000 --upstream y\n",
+    )
+    .unwrap();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.owners.remove(&la());
+        w.owners.insert(alt, unit(FRONT_UNIT_NAME));
+        w.effects = vec![
+            (
+                "disable --now claudeops-front.service".into(),
+                alt,
+                PortOwner::NoListener,
+            ),
+            (
+                "restart claudeops-web.service".into(),
+                alt,
+                unit(WEB_UNIT_NAME),
+            ),
+        ];
+    }
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    assert!(out.ends_with("kapandı\n"), "{out}");
+}

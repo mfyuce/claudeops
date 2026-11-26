@@ -248,7 +248,11 @@ mod tests {
             "CLAUDEOPS_DIR göreli (rel): mutlak yol verin"
         );
         let r = Roots::from_values(Some("h".into()), None, || None).unwrap();
-        assert!(r.check_absolute().unwrap_err().0.starts_with("HOME göreli (h)"));
+        assert!(r
+            .check_absolute()
+            .unwrap_err()
+            .0
+            .starts_with("HOME göreli (h)"));
     }
 
     #[test]

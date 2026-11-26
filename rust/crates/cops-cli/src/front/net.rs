@@ -1,8 +1,7 @@
 //! Adres ayrıştırma, port yoklaması ve "portu kim dinliyor" (systemd birimi) tespiti.
 //!
-//! Python `front_cmd.port_busy` `rpartition(":")` + `int(port)` + AF_INET soketle `connect_ex` yapar: iki noktasız `--internal
-//! 28765` `("", 28765)` olarak geçer, sayı olmayan port `ValueError` dökümü verir, `[::1]:port` AF_INET'te hata verir
-//! (docs/rs-gate-eslik.md "Python hatası?" 4). Rust ([`parse_listen`], [`parse_internal`]):
+//! Python `front_cmd._parse_listen/_parse_internal/_port_owner` aynı kuralı ve metni uygular (docs/rs-cli.md "Python hatası?"
+//! 1-2 düzeltildi). Kural ([`parse_listen`], [`parse_internal`]):
 //! - biçim `IPv4:port` ya da `[IPv6]:port`; port yalnız ASCII rakam, 1..=65535 (0 = rastgele port, reddedilir);
 //! - ad (`localhost:8765`) REDDEDİLİR: copsd `--listen/--upstream`u `SocketAddr` olarak ayrıştırır, adı kabul etmez;
 //! - `--internal` yalnız IPv4: Python web `ThreadingHTTPServer` AF_INET ile dinler, IPv6 iç adrese bağlanamaz.

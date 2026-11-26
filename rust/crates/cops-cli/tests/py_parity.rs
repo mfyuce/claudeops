@@ -293,7 +293,10 @@ fn parity_relative_state_dir_is_refused() {
         assert_eq!(r.status.code(), Some(1), "{args:?}");
         assert_eq!(p.stdout, r.stdout);
         let pe = String::from_utf8_lossy(&p.stderr);
-        assert_eq!(pe, "CLAUDEOPS_DIR göreli (goreli-durum): mutlak yol verin\n");
+        assert_eq!(
+            pe,
+            "CLAUDEOPS_DIR göreli (goreli-durum): mutlak yol verin\n"
+        );
         assert_eq!(String::from_utf8_lossy(&r.stderr), format!("cops-rs: {pe}"));
     }
     assert!(!sb.t.path().join("goreli-durum").exists());
@@ -352,7 +355,11 @@ fn parity_apply_rollback_on_systemctl_failure() {
     )
     .unwrap();
     let prepare = || {
-        std::fs::write(&front, "ExecStart=/x/copsd --listen 127.0.0.1:1 --upstream y\n").unwrap();
+        std::fs::write(
+            &front,
+            "ExecStart=/x/copsd --listen 127.0.0.1:1 --upstream y\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(dropin.parent().unwrap()).unwrap();
         std::fs::write(&dropin, "eski drop-in\n").unwrap();
     };
@@ -410,7 +417,8 @@ fn parity_on_restarts_running_front_then_rolls_back_unverified() {
          --user restart claudeops-front.service\n--user daemon-reload\n--user restart claudeops-web.service\n\
          --user restart claudeops-front.service\n"
     );
-    assert!(String::from_utf8_lossy(&r.stdout).contains("HATA: ön kapı 127.0.0.1:1 üzerinde dinlemiyor"));
+    assert!(String::from_utf8_lossy(&r.stdout)
+        .contains("HATA: ön kapı 127.0.0.1:1 üzerinde dinlemiyor"));
 }
 
 #[test]

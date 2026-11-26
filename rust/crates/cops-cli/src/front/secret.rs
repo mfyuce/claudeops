@@ -8,9 +8,8 @@
 //! - yeni değer aynı dizinde `.front.secret.*` geçici dosyaya (0600, `O_EXCL`) yazılır, `rename` ile yerine konur; okuyan
 //!   yarım dosya görmez. Rust ayrıca dosya + dizin `fsync` yapar (ders H2) ve kilidi süre sınırıyla bekler (Python süresiz).
 //!
-//! Sapma (docs/rs-cli.md "Python hatası?" P1): Python `ensure_secret` `CLAUDEOPS_FRONT_SECRET` doluysa DOSYA ÜRETMEZ; o
-//! ortam yalnız CLI kabuğunda olduğundan copsd ve web birimleri gizlisiz kalır. [`ensure_secret_file`] ortamı yok sayar,
-//! yalnız dosyaya bakar.
+//! [`ensure_secret_file`] `CLAUDEOPS_FRONT_SECRET`i yok sayar, yalnız dosyaya bakar (o ortam yalnız CLI kabuğundadır; copsd
+//! ve web birimleri dosyayı okur). Python `ensure_secret` de aynı (docs/rs-cli.md "Python hatası?" 7 düzeltildi).
 
 use cops_proxy::front::{read_secret_file, SecretFile};
 use std::io::Write;
@@ -131,7 +130,7 @@ fn write_new(dir: &Path, target: &Path, val: &str) -> std::io::Result<()> {
     r
 }
 
-/// Python `ensure_secret` (bkz. modül belgesi, P1 sapması). Geçerli dosya varsa onun değeri; yoksa (yok, boş, bozuk, izni
+/// Python `ensure_secret` (bkz. modül belgesi). Geçerli dosya varsa onun değeri; yoksa (yok, boş, bozuk, izni
 /// gevşek = sızmış) kilit altında yeni gizli.
 pub fn ensure_secret_file(claudeops_dir: &str, lock_timeout: Duration) -> std::io::Result<String> {
     let p = PathBuf::from(secret_path(claudeops_dir));

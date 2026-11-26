@@ -5,7 +5,7 @@
 //! 3. `~/.claude/sessions/<pid>.json` alanları bash ile aynı biçimde yazılır (Python `print(etiket, değer)`).
 //!
 //! Yalnız KENDİ uid'imizin süreçleri: eşleşen kayıttaki pid canlı ve bizim değilse o kayıt atlanır (bash, ölü pid'li bayat
-//! kaydı ilk sıradaysa onu seçer: docs/rs-cli.md "Python hatası?" P4); ata zincirinde başka uid'in `claude`u seçilmez.
+//! kaydı ilk sıradaysa onu seçer: docs/rs-cli.md "Python hatası?" 9, düzeltilmedi); ata zincirinde başka uid'in `claude`u seçilmez.
 //! Kökler ([`SelfCfg`]) enjekte edilir.
 
 use serde_json::Value;

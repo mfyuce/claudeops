@@ -531,6 +531,19 @@ class P3Rollback(Env):
         self.assertEqual(rc, 0, out)
         self.assertTrue(out.endswith("kapandı\n"), out)
 
+    def test_off_falls_back_to_front_listen_when_web_unit_is_missing(self):
+        self.front_on()
+        self.web.unlink()
+        alt = "127.0.0.1:9000"
+        self.front.write_text('ExecStart="/x y/copsd" --listen 127.0.0.1:9000 --upstream y\n')
+        del self.w.owners[L]
+        self.w.owners[alt] = unit(f.FRONT_UNIT_NAME)
+        self.w.effects = [("disable --now claudeops-front.service", alt, ("none",)),
+                          ("restart claudeops-web.service", alt, unit(f.WEB_UNIT_NAME))]
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.endswith("kapandı\n"), out)
+
     def test_web_addr_follows_web_unit_flags(self):
         a = lambda t: (lambda r: f._fmt(r) if r else None)(f._web_addr(t))      # noqa: E731
         self.assertEqual(a(LIVE), "127.0.0.1:8765")

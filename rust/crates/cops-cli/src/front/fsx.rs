@@ -1,6 +1,6 @@
 //! Birim dosyası yazımı: atomik (aynı dizinde `O_EXCL` geçici dosya, dosya + dizin `fsync`, `rename`) ve geri alınabilir
-//! (yazmadan önce eski durum [`Prev`] olarak saklanır). Python `Path.write_text` yerinde keser-yazar; yarıda kalırsa yarım birim
-//! dosyası kalır (ders H2).
+//! (yazmadan önce eski durum [`Prev`] olarak saklanır). Python `front_cmd._atomic_write/_snapshot/_restore` aynı yolu izler
+//! (ders H2).
 
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};

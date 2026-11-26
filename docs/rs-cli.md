@@ -1,12 +1,16 @@
 # rs/cli (İz T6: Rust `cops` CLI)
 
-**Durum (26 Kas 2026 gece): BİRLEŞTİRMEYE HAZIR** (kod + eşlik tablosu + ders listesi). Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list` `cops-procscan` birleşince bağlanır.
+**Durum (26 Kas 2026 gece): BİRLEŞTİRMEYE HAZIR** (kod + eşlik tablosu + ders listesi). **py/ değişti** ("Python hatası?"
+1-8 Python'da düzeltildi): birleşince web restart + uzak deploy (yuhem, ulak_31) gerekir. Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list` `cops-procscan` birleşince bağlanır.
 
-## Doğrulama (26 Kas, `22348088`; gözden geçiren alt ajanın koşusu)
+## Doğrulama (26 Kas gece, "Python hatası?" 1-8 sonrası)
 
-`cargo test -p cops-cli` 80 geçti 0 kaldı (son test eklendikten sonra); önceki uçta workspace `cargo test` 225 geçti 0 kaldı; `cargo clippy --all-targets -- -D warnings`
-(workspace) ve `cargo fmt -p cops-cli --check` temiz. Python dosyası değişmedi, Python tam paketi koşulmadı. Testler yalıtık
-HOME/CLAUDEOPS_DIR ve sahte systemctl ile; canlı birimlere ve `front.secret`e dokunulmadı.
+`cargo test -p cops-cli`: birim 68, `argparse_parity` 1, `e2e_bin` 7, `py_parity` 13 = 89 geçti 0 kaldı (birim testlerin son
+3'ü eklendikten sonra yalnız `--lib` yeniden koşuldu); `cargo clippy -p cops-cli --all-targets -- -D warnings` ve
+`cargo fmt -p cops-cli --check` temiz. Python tam paket (`cd py && python3 -m unittest discover -s tests`) 5716 test OK
+(23 atlandı); son test eki (`test_off_falls_back_to_front_listen_when_web_unit_is_missing`) sonrası `test_front*.py` 69 OK.
+Testler yalıtık HOME/CLAUDEOPS_DIR ve sahte systemctl ile; canlı birimlere ve `front.secret`e dokunulmadı. Önceki koşu
+(`22348088`): `cargo test -p cops-cli` 80, workspace 225.
 
 ## Crate (`rust/crates/cops-cli`, ikili `cops-rs`)
 
@@ -21,7 +25,8 @@ HOME/CLAUDEOPS_DIR ve sahte systemctl ile; canlı birimlere ve `front.secret`e d
 
 ## İşlevce eşlik tablosu
 
-Taban `22348088`. Python yolları depo köküne, Rust yolları `rust/crates/cops-cli/` altına görelidir (başka crate adıyla
+Taban `22348088`; Python satırları "Python hatası?" 1-8 düzeltmelerinden sonraki koddan (`f2d1fc02` + belge commit'inin
+test eki). Python yolları depo köküne, Rust yolları `rust/crates/cops-cli/` altına görelidir (başka crate adıyla
 yazılır). Satır numaraları Python'da `ast`, bash'te `grep` ile alındı. Durum: `karşılandı` = Rust karşılığı var ve adı verilen
 test sınıyor (bilinçli fark hücrede); `kapsam dışı` = neden ve iz; `EKSİK` = karşılık ya da onu sınayan test yok. Eşlik
 koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kaydı "Doğrulama").
@@ -33,38 +38,88 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | `LOOPBACK` (18) | `cops-cli` kullanmıyor; `cops-proxy` `src/front.rs` `LOOPBACK` (docs/rs-gate-eslik.md 1.1) | `cops-proxy`: `trusted_front_needs_secret_loopback_and_exact_header` | kapsam dışı: CLI kullanmaz, rs/gate'te |
 | `secret_path` (21) | `src/front/secret.rs` `secret_path` | `paths_follow_python_pathlib`, `applied_unit_passes_the_secret_state_dir` | karşılandı |
 | `read_secret` (25) | `src/front/secret.rs` `read_secret` (dosya kuralı `cops-proxy` `read_secret_file`) | `env_is_ignored_for_the_file_but_wins_for_reading`, `creates_0600_stable_and_replaces_leaked_or_corrupt`, `parity_front_status_variants` | karşılandı |
-| `ensure_secret` (40) | `src/front/secret.rs` `ensure_secret_file` (fark: ortam gizlisi dosya üretimini engellemez, P1; kilit süreli; `fsync`) | `creates_0600_stable_and_replaces_leaked_or_corrupt`, `concurrent_threads_agree_on_disk_value`, `lock_wait_is_bounded`, `secret_lock_contract_with_python` | karşılandı |
-| `trusted_front` (66) | `cops-cli` kullanmıyor; `cops-proxy` `FrontSecret::trusted` (rs-gate 1.1) | `cops-proxy`: `trusted_front_needs_secret_loopback_and_exact_header` | kapsam dışı: CLI kullanmaz, rs/gate'te |
-| `internal_authz` (77) | yok (rs-gate 1.1: karar Python'da) | yok | kapsam dışı: iç uç Python'da, T9 |
-| `internal_authz._H` (91) | yok | yok | kapsam dışı: `internal_authz` iç yardımcısı, T9 |
-| `internal_authz._H.get` (92) | yok | yok | kapsam dışı: `internal_authz` iç yardımcısı, T9 |
-| `ws_ticket_consume` (127) | yok (rs-gate 1.1: bilet deposu Python'da) | yok | kapsam dışı: T2 |
+| `_file_secret` (33) | `src/front/secret.rs` `file_value` (`cops-proxy` `read_secret_file`) | `env_is_ignored_for_the_file_but_wins_for_reading`, `secret_lock_contract_with_python` | karşılandı |
+| `ensure_secret` (45) | `src/front/secret.rs` `ensure_secret_file` (ortam yok sayılır, iki tarafta aynı; fark: kilit süreli, `fsync`) | `creates_0600_stable_and_replaces_leaked_or_corrupt`, `concurrent_threads_agree_on_disk_value`, `lock_wait_is_bounded`, `secret_lock_contract_with_python` | karşılandı |
+| `trusted_front` (72) | `cops-cli` kullanmıyor; `cops-proxy` `FrontSecret::trusted` (rs-gate 1.1) | `cops-proxy`: `trusted_front_needs_secret_loopback_and_exact_header` | kapsam dışı: CLI kullanmaz, rs/gate'te |
+| `internal_authz` (83) | yok (rs-gate 1.1: karar Python'da) | yok | kapsam dışı: iç uç Python'da, T9 |
+| `internal_authz._H` (97) | yok | yok | kapsam dışı: `internal_authz` iç yardımcısı, T9 |
+| `internal_authz._H.get` (98) | yok | yok | kapsam dışı: `internal_authz` iç yardımcısı, T9 |
+| `ws_ticket_consume` (133) | yok (rs-gate 1.1: bilet deposu Python'da) | yok | kapsam dışı: T2 |
 
 ### `py/claudeops/commands/front_cmd.py`
 
 | Python adı (satır) | Rust karşılığı | Rust testi | durum |
 |---|---|---|---|
-| `UNIT_DIR` (26) | `src/front/mod.rs` `Paths.unit_dir` | `paths_follow_python_pathlib` | karşılandı |
-| `FRONT_UNIT` (27) | `Paths.front_unit` | `parity_front_status_variants`, `parity_front_on_plans` | karşılandı |
-| `WEB_UNIT` (28) | `Paths.web_unit` | `parity_front_on_plans` | karşılandı |
-| `DROPIN` (29) | `Paths.dropin` | `parity_front_status_variants`, `parity_front_on_plans` | karşılandı |
-| `DEFAULT_BIN` (30) | `Paths.default_bin` | `paths_follow_python_pathlib`, `parity_front_status_variants` (`--bin`siz koşu) | karşılandı |
-| `DEFAULT_LISTEN` (31) | `src/front/mod.rs` `DEFAULT_LISTEN` | `default_addresses_match_python_front_cmd` | karşılandı |
-| `DEFAULT_INTERNAL` (32) | `src/front/mod.rs` `DEFAULT_INTERNAL` | `default_addresses_match_python_front_cmd` | karşılandı |
-| `FRONT_UNIT_TEMPLATE` (34) | `src/front/mod.rs` `FRONT_UNIT_TEMPLATE` | `unit_template_has_no_secret_and_passes_state_dir_quoted` | karşılandı |
-| `register` (49) | `src/argp.rs` `parse_front`, `FrontArgs`, `OPTS`; `src/lib.rs` `route` (yardım ve hata Python'a devredilir) | `rust_parse_agrees_with_python_argparse`, `accepted_forms`, `errors_and_help_are_delegated`, `routing`, `parity_delegated_commands_and_argparse_errors` | karşılandı |
-| `_unit_text` (59) | `src/front/mod.rs` `unit_text`, `sd_quote` (fark: `bin`/`dist` gerekirse tırnaklı) | `unit_template_has_no_secret_and_passes_state_dir_quoted`, `bin_and_dist_with_spaces_are_quoted` | karşılandı |
-| `web_execstart` (66) | `src/front/mod.rs` `web_execstart` | `execstart_patch` | karşılandı |
-| `regex ^ExecStart=(.*)$` (67) | `web_execstart` (regex yerine satır bölme + `strip_prefix`, `py_strip`) | `execstart_patch` (ilk satır, `\r`, satır başı) | karşılandı |
-| `with_internal_port` (71) | `src/front/mod.rs` `with_internal_port` | `execstart_patch` | karşılandı |
-| `dropin_text` (82) | `src/front/mod.rs` `dropin_text` | `dropin_resets_execstart`, `applied_unit_passes_the_secret_state_dir` | karşılandı |
-| `port_busy` (86) | `src/front/net.rs` `Net::busy` / `RealNet` (adres ayrıştırma `parse_listen`, `parse_internal`; fark: geçersiz adres engel) | `parity_front_status_variants`, `parity_front_on_plans`, `listen_and_internal_parsing`, `fix_a_status_reports_bad_address_without_crashing` | karşılandı |
-| `plan_on` (93) | `src/front/mod.rs` `plan_on`, `Plan` (ekler: yabancı port, adres, `bin` engelleri) | `plan_blockers`, `internal_busy_without_dropin_keeps_python_blocker`, `parity_front_on_plans`, `fix_a_bad_internal_addresses_are_blockers_not_crashes`, `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `relative_bin_is_a_blocker`, `control_characters_in_paths_block` | karşılandı |
-| `_sc` (113) | `src/front/systemctl.rs` `Systemctl`, `RealSystemctl` | `on_apply_with_failing_systemctl_rolls_back_files` (gerçek çalıştırıcı, `PATH`te sahte `systemctl`) | karşılandı |
-| `run` (117) | `src/front/mod.rs` `run`, `status`, `on`, `off`; `src/main.rs` `run_front` (fark: geri alma, doğrulama) | status: `parity_front_status_variants`; on: `plan_only_changes_nothing`, `applied_unit_passes_the_secret_state_dir`, `fix_b_our_web_on_internal_port_is_a_reapply`, `fix_c_on_rolls_back_at_every_systemctl_step`; off: `off_success_sequence_matches_python_and_verifies_web`, `off_without_front_unit_ignores_disable_error_like_python`, `fix_c_off_web_restart_failure_returns_to_front` | karşılandı |
+| `UNIT_DIR` (30) | `src/front/mod.rs` `Paths.unit_dir` | `paths_follow_python_pathlib` | karşılandı |
+| `FRONT_UNIT` (31) | `Paths.front_unit` | `parity_front_status_variants`, `parity_front_on_plans` | karşılandı |
+| `WEB_UNIT` (32) | `Paths.web_unit` | `parity_front_on_plans` | karşılandı |
+| `DROPIN` (33) | `Paths.dropin` | `parity_front_status_variants`, `parity_front_on_plans` | karşılandı |
+| `DEFAULT_BIN` (34) | `Paths.default_bin` | `paths_follow_python_pathlib`, `parity_front_status_variants` (`--bin`siz koşu) | karşılandı |
+| `DEFAULT_LISTEN` (35) | `src/front/mod.rs` `DEFAULT_LISTEN` | `default_addresses_match_python_front_cmd` | karşılandı |
+| `DEFAULT_INTERNAL` (36) | `src/front/mod.rs` `DEFAULT_INTERNAL` | `default_addresses_match_python_front_cmd` | karşılandı |
+| `FRONT_UNIT_TEMPLATE` (38) | `src/front/mod.rs` `FRONT_UNIT_TEMPLATE` | `unit_template_has_no_secret_and_passes_state_dir_quoted` | karşılandı |
+| `register` (53) | `src/argp.rs` `parse_front`, `FrontArgs`, `OPTS`; `src/lib.rs` `route` (yardım ve hata Python'a devredilir) | `rust_parse_agrees_with_python_argparse`, `accepted_forms`, `errors_and_help_are_delegated`, `routing`, `parity_delegated_commands_and_argparse_errors` | karşılandı |
+| `_sd_quote` (63) | `src/front/mod.rs` `sd_quote` | `unit_template_has_no_secret_and_passes_state_dir_quoted`, `bin_and_dist_with_spaces_are_quoted` | karşılandı |
+| `_sd_quote_if_needed` (68) | `src/front/mod.rs` `sd_quote_if_needed` | `bin_and_dist_with_spaces_are_quoted` | karşılandı |
+| `_unit_text` (73) | `src/front/mod.rs` `unit_text` | `unit_template_has_no_secret_and_passes_state_dir_quoted`, `bin_and_dist_with_spaces_are_quoted` | karşılandı |
+| `web_execstart` (80) | `src/front/mod.rs` `web_execstart` | `execstart_patch` | karşılandı |
+| `regex ^ExecStart=(.*)$` (81) | `web_execstart` (regex yerine satır bölme + `strip_prefix`, `py_strip`) | `execstart_patch` (ilk satır, `\r`, satır başı) | karşılandı |
+| `with_internal_port` (85) | `src/front/mod.rs` `with_internal_port` | `execstart_patch` | karşılandı |
+| `dropin_text` (96) | `src/front/mod.rs` `dropin_text` | `dropin_resets_execstart`, `applied_unit_passes_the_secret_state_dir` | karşılandı |
+| `_rdbg` (100) | std `Debug` (`{:?}`) biçimi (hata metinlerinde) | `parity_bad_addresses_are_blockers_on_both_sides`, `parity_control_characters_in_bin_block` | karşılandı |
+| `_parse_port` (115) | `src/front/net.rs` `parse_port` | `listen_and_internal_parsing` | karşılandı |
+| `_parse_listen` (124) | `src/front/net.rs` `parse_listen` | `listen_and_internal_parsing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
+| `_parse_internal` (150) | `src/front/net.rs` `parse_internal` | `listen_and_internal_parsing`, `fix_a_bad_internal_addresses_are_blockers_not_crashes`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
+| `_fmt` (158) | std `SocketAddr` `Display` | `fix_c_off_web_not_back_outside_is_rolled_back`, `fix_c_off_port_not_released_stops_before_touching_web` | karşılandı |
+| `port_busy` (164) | `src/front/net.rs` `Net::busy` / `RealNet` | `parity_front_status_variants`, `parity_front_on_plans`, `fix_a_status_reports_bad_address_without_crashing` | karşılandı |
+| `FRONT_UNIT_NAME` (171) | `src/front/net.rs` `FRONT_UNIT_NAME` | `fake_proc_tree_unit_detection` | karşılandı |
+| `WEB_UNIT_NAME` (172) | `src/front/net.rs` `WEB_UNIT_NAME` | `fake_proc_tree_unit_detection` | karşılandı |
+| `_PROC` (173) | `RealNet.proc_root` (`src/main.rs` `/proc`) | `fake_proc_tree_unit_detection` | karşılandı |
+| `_hex_addr` (176) | `src/front/net.rs` `parse_hex_addr` | `proc_net_hex_addresses` | karşılandı |
+| `_canon` (194) | std `IpAddr::to_canonical` (`accepts` içinde) | `proc_net_hex_addresses` | karşılandı |
+| `_accepts` (198) | `src/front/net.rs` `accepts` | `proc_net_hex_addresses` | karşılandı |
+| `_unit_of` (204) | `src/front/net.rs` `unit_of` | `fake_proc_tree_unit_detection` | karşılandı |
+| `_unit_of._path_of` (216) | `unit_of` içindeki `path_of` kapanışı | `fake_proc_tree_unit_detection` | karşılandı |
+| `_port_owner` (233) | `src/front/net.rs` `port_owner`, `PortOwner`, `Net::owner` | `real_listener_is_found_with_our_pid`, `fake_proc_tree_unit_detection`, `parity_foreign_internal_port_blocks_on_both_sides` | karşılandı |
+| `_is_unit` (292) | `PortOwner::is_unit` | `fake_proc_tree_unit_detection` | karşılandı |
+| `_describe` (297) | `PortOwner::describe` | `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `parity_foreign_internal_port_blocks_on_both_sides` | karşılandı |
+| `plan_on` (307) | `src/front/mod.rs` `plan_on` (`Plan.steps`, `Plan.blockers`) | `plan_blockers`, `parity_front_on_plans` | karşılandı |
+| `_plan_on` (313) | `src/front/mod.rs` `plan_on`, `Plan` (aynı engel sırası ve metni) | `plan_blockers`, `internal_busy_without_dropin_keeps_python_blocker`, `fix_a_bad_listen_is_a_blocker_and_ipv6_listen_is_fine`, `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `relative_bin_is_a_blocker`, `non_executable_bin_is_a_blocker`, `control_characters_in_paths_block`, `unreadable_web_unit_is_a_blocker`, `parity_relative_or_non_executable_bin_is_a_blocker` | karşılandı |
+| `_TIMING` (364) | `src/front/mod.rs` `Timing` (`lock` yok: Python kilidi süresiz, sapma) | `fix_c_front_not_listening_is_rolled_back` (testte `fast()`) | karşılandı |
+| `_ScError` (367) | `Systemctl::run` `Err` | `unknown_front_state_changes_nothing` | karşılandı |
+| `_sc` (371) | `src/front/systemctl.rs` `Systemctl`, `RealSystemctl` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_show` (380) | `src/front/systemctl.rs` `show` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_run_sc` (384) | `src/front/mod.rs` `run_sc` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_read_web_unit` (393) | `src/front/mod.rs` `read_web_unit` | `unreadable_web_unit_is_a_blocker` | karşılandı |
+| `_snapshot` (407) | `src/front/fsx.rs` `snapshot`, `Prev` | `write_snapshot_restore_roundtrip` | karşılandı |
+| `_atomic_write` (418) | `src/front/fsx.rs` `atomic_write` | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
+| `_restore` (453) | `src/front/fsx.rs` `restore` | `write_snapshot_restore_roundtrip` | karşılandı |
+| `_Undo` (463) | `src/front/mod.rs` `Undo` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_Undo.__init__` (466) | `Undo::new` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_Undo.file` (470) | `Undo::file` | `fix_c_write_failure_restores_files_without_systemctl` | karşılandı |
+| `_Undo.sc` (479) | `Undo::sc` | `fix_c_reapply_failure_restores_previous_unit_and_restarts_old_front` | karşılandı |
+| `_Undo.front_stop` (492) | `Undo::front_stop` | `fix_c_on_rollback_keeps_previous_enablement` | karşılandı |
+| `_Undo.front_back` (499) | `Undo::front_back` | `fix_c_off_disable_failure_changes_nothing`, `fix_c_off_disable_failure_keeps_stopped_front_stopped` | karşılandı |
+| `_Undo.report` (509) | `Undo::report` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_wait_for` (519) | `src/front/mod.rs` `wait_for` | `fix_c_front_not_listening_is_rolled_back` | karşılandı |
+| `_front_state` (529) | `src/front/mod.rs` `front_state`, `UnitState` | `unknown_front_state_changes_nothing` | karşılandı |
+| `_front_listen` (536) | `src/front/mod.rs` `front_listen` | `off_falls_back_to_front_listen_when_web_unit_is_missing` | karşılandı |
+| `_web_addr` (553) | `src/front/mod.rs` `web_addr` | `web_addr_follows_web_unit_flags`, `off_verifies_web_on_its_own_port_when_front_listen_differs` | karşılandı |
+| `run` (590) | `src/front/mod.rs` `run`, `status`; `src/main.rs` `run_front` | `parity_front_status_variants`, `fix_a_status_reports_bad_address_without_crashing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
+| `_on` (611) | `src/front/mod.rs` `on` | `plan_only_changes_nothing`, `applied_unit_passes_the_secret_state_dir`, `fix_b_our_web_on_internal_port_is_a_reapply`, `fix_c_on_rolls_back_at_every_systemctl_step`, `on_restarts_an_already_running_front_so_the_new_unit_applies`, `parity_apply_rollback_on_systemctl_failure`, `parity_on_restarts_running_front_then_rolls_back_unverified` | karşılandı |
+| `_on.ok` (676) | `on` içindeki `ok` kapanışı | `fix_c_front_not_listening_is_rolled_back`, `fix_c_on_web_not_on_internal_is_rolled_back` | karşılandı |
+| `_off` (711) | `src/front/mod.rs` `off` | `off_success_sequence_matches_python_and_verifies_web`, `off_without_front_unit_ignores_disable_error_like_python`, `fix_c_off_web_restart_failure_returns_to_front`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_off.freed` (751) | `off` içindeki `wait_for` kapanışı | `fix_c_off_port_not_released_stops_before_touching_web` | karşılandı |
+| `_off.full_undo` (761) | `off` içindeki `full_undo` kapanışı | `fix_c_off_web_restart_failure_returns_to_front`, `fix_c_off_web_not_back_outside_is_rolled_back` | karşılandı |
 
 İçe aktarılan sabitler (bu modüllerin adı değil, sayıma girmez): `DIST_DIR` -> `dist_dir` (`dist_dir_resolves_from_python_repo`,
 `parity_front_on_plans`); `HOME`, `CLAUDEOPS_DIR` -> `src/pyenv.rs` `Roots` (`roots_follow_paths_py`).
+
+### `py/claudeops/paths.py` (yalnız "Python hatası?" 8 satırı)
+
+| Python adı (satır) | Rust karşılığı | Rust testi | durum |
+|---|---|---|---|
+| göreli `CLAUDEOPS_DIR` reddi (49) | `src/pyenv.rs` `Roots::check_absolute` (aynı metin; Rust `cops-rs: ` önekli) | `roots_follow_paths_py`, `parity_relative_state_dir_is_refused` | karşılandı |
 
 ### `self` (bash `claudeops`; Python'da yok)
 
@@ -154,17 +209,88 @@ Rust atlar; UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET`i Python dolu sayar, `cops-rs`
 | `XFF.test_route_request_uses_trusted_ip.Fake._client_ip` (36) | test sahtesi | yok | kapsam dışı: T9 |
 | `XFF.test_valid_secret_uses_last_xff` (40) | aynı vektör | `cops-proxy`: `trusted_client_ip_matches_python_test_front_xff` | kapsam dışı: CLI kullanmaz, rs/gate'te |
 
+### Python testleri: `py/tests/test_front_pyfix.py` ("Python hatası?" 1-8)
+
+| Python adı (satır) | Rust karşılığı / neden | Rust testi | durum |
+|---|---|---|---|
+| `LIVE` (12) | `src/front/tests.rs` `LIVE` | `execstart_patch` | karşılandı |
+| `L` (13) | `src/front/tests.rs` `L` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `I` (13) | `src/front/tests.rs` `I` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `REAL_OWNER` (14) | gerçek `net::port_owner` çağrısı | `real_listener_is_found_with_our_pid` | karşılandı |
+| `World` (17) | `src/front/tests.rs` `World`, `Fake` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `World.__init__` (20) | `World` `Default` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `World.busy` (30) | `impl Net for Fake` `busy` | `internal_busy_without_dropin_keeps_python_blocker` | karşılandı |
+| `World.owner` (33) | `impl Net for Fake` `owner` | `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin` | karşılandı |
+| `World.sc` (36) | `impl Systemctl for Fake` `run` | `unknown_front_state_changes_nothing` | karşılandı |
+| `unit` (53) | `src/front/tests.rs` `unit` | `fix_b_our_web_on_internal_port_is_a_reapply` | karşılandı |
+| `Env` (57) | `src/front/tests.rs` `Env`, `env` | alttaki satırlar | karşılandı |
+| `Env.setUp` (58) | `env`, `fast` | `plan_only_changes_nothing` | karşılandı |
+| `Env.run_front` (79) | `Env::run` | `plan_only_changes_nothing` | karşılandı |
+| `Env.web_outside` (87) | `Env::web_outside` | `applied_unit_passes_the_secret_state_dir` | karşılandı |
+| `Env.front_on` (94) | `Env::front_on` | `fix_b_our_web_on_internal_port_is_a_reapply` | karşılandı |
+| `P1Addresses` (108) | (a) testleri | alttaki satırlar | karşılandı |
+| `P1Addresses.test_bad_internal_addresses_are_blockers_not_crashes` (111) | aynı vektörler | `fix_a_bad_internal_addresses_are_blockers_not_crashes`, `bad_internal_is_blocked_before_any_side_effect` | karşılandı |
+| `P1Addresses.test_bad_listen_is_a_blocker_and_ipv6_listen_is_fine` (120) | aynı | `fix_a_bad_listen_is_a_blocker_and_ipv6_listen_is_fine` | karşılandı |
+| `P1Addresses.test_status_reports_bad_address_without_crashing` (130) | aynı | `fix_a_status_reports_bad_address_without_crashing` | karşılandı |
+| `P1Addresses.test_parse_rules_match_rust` (136) | aynı vektörler | `listen_and_internal_parsing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
+| `P2ForeignInternalPort` (152) | (b) testleri | alttaki satırlar | karşılandı |
+| `P2ForeignInternalPort.test_foreign_process_on_internal_port_blocks_even_with_dropin` (155) | aynı | `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `parity_foreign_internal_port_blocks_on_both_sides` | karşılandı |
+| `P2ForeignInternalPort.test_our_web_on_internal_port_is_a_reapply` (171) | aynı | `fix_b_our_web_on_internal_port_is_a_reapply` | karşılandı |
+| `P2ForeignInternalPort.test_real_listener_is_found_with_our_pid` (178) | aynı | `real_listener_is_found_with_our_pid` | karşılandı |
+| `P2ForeignInternalPort.test_fake_proc_tree_unit_detection` (189) | aynı sahte `/proc` | `fake_proc_tree_unit_detection` | karşılandı |
+| `P5RelativeBin` (222) | ikili engelleri | alttaki satırlar | karşılandı |
+| `P5RelativeBin.test_relative_bin_is_a_blocker` (225) | aynı | `relative_bin_is_a_blocker`, `parity_relative_or_non_executable_bin_is_a_blocker` | karşılandı |
+| `P5RelativeBin.test_non_executable_bin_is_a_blocker` (236) | aynı | `non_executable_bin_is_a_blocker`, `parity_relative_or_non_executable_bin_is_a_blocker` | karşılandı |
+| `P6Quoting` (245) | tırnak ve denetim karakteri | alttaki satırlar | karşılandı |
+| `P6Quoting.test_bin_and_dist_with_spaces_are_quoted` (248) | aynı | `bin_and_dist_with_spaces_are_quoted` | karşılandı |
+| `P6Quoting.test_applied_unit_with_spaced_bin_has_one_execstart_word` (257) | `unit_text` üzerinden | `bin_and_dist_with_spaces_are_quoted` | karşılandı |
+| `P6Quoting.test_control_characters_in_paths_block` (266) | aynı | `control_characters_in_paths_block`, `parity_control_characters_in_bin_block` | karşılandı |
+| `P7SecretEnv` (279) | gizli testleri | alttaki satırlar | karşılandı |
+| `P7SecretEnv.test_env_does_not_prevent_the_file` (283) | `ensure_secret_file`, `read_secret` | `env_is_ignored_for_the_file_but_wins_for_reading`, `secret_lock_contract_with_python` | karşılandı |
+| `P7SecretEnv.test_front_on_writes_the_file_even_with_env` (293) | `on` gizliyi ortamdan bağımsız üretir | `applied_unit_passes_the_secret_state_dir` | karşılandı |
+| `P8RelativeStateDir` (300) | kök denetimi | alttaki satırlar | karşılandı |
+| `P8RelativeStateDir.PY` (304) | `tests/common` `repo` | `parity_relative_state_dir_is_refused` | karşılandı |
+| `P8RelativeStateDir._env` (306) | `Sandbox::cmd` | `parity_relative_state_dir_is_refused` | karşılandı |
+| `P8RelativeStateDir.test_relative_state_dir_is_refused_before_anything_is_written` (311) | `Roots::check_absolute` | `roots_follow_paths_py`, `parity_relative_state_dir_is_refused` | karşılandı |
+| `P8RelativeStateDir.test_absolute_state_dir_still_works` (325) | `Roots::from_values` | `roots_follow_paths_py` | karşılandı |
+| `P3Rollback` (333) | (c) testleri | alttaki satırlar | karşılandı |
+| `P3Rollback.test_applied_on_succeeds_and_verifies` (337) | aynı | `applied_unit_passes_the_secret_state_dir` | karşılandı |
+| `P3Rollback.test_on_rolls_back_at_every_systemctl_step` (348) | aynı | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `P3Rollback.test_front_not_listening_is_rolled_back` (365) | aynı | `fix_c_front_not_listening_is_rolled_back` | karşılandı |
+| `P3Rollback.test_on_web_not_on_internal_is_rolled_back` (377) | aynı | `fix_c_on_web_not_on_internal_is_rolled_back` | karşılandı |
+| `P3Rollback.test_reapply_failure_restores_previous_unit_and_restarts_old_front` (386) | aynı | `fix_c_reapply_failure_restores_previous_unit_and_restarts_old_front` | karşılandı |
+| `P3Rollback.test_write_failure_restores_files_without_systemctl` (396) | aynı | `fix_c_write_failure_restores_files_without_systemctl` | karşılandı |
+| `P3Rollback.test_on_listen_change_failure_restarts_old_front_instead_of_stopping_it` (411) | aynı | `fix_c_on_listen_change_failure_restarts_old_front_instead_of_stopping_it` | karşılandı |
+| `P3Rollback.test_on_rollback_keeps_previous_enablement` (423) | aynı | `fix_c_on_rollback_keeps_previous_enablement` | karşılandı |
+| `P3Rollback.test_unknown_front_state_changes_nothing` (439) | aynı | `unknown_front_state_changes_nothing` | karşılandı |
+| `P3Rollback.test_unreadable_web_unit_is_a_blocker` (452) | aynı | `unreadable_web_unit_is_a_blocker` | karşılandı |
+| `P3Rollback.test_off_success_sequence_and_verifies_web` (459) | aynı | `off_success_sequence_matches_python_and_verifies_web` | karşılandı |
+| `P3Rollback.test_off_disable_failure_changes_nothing` (468) | aynı | `fix_c_off_disable_failure_changes_nothing`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `P3Rollback.test_off_disable_failure_keeps_stopped_front_stopped` (477) | aynı | `fix_c_off_disable_failure_keeps_stopped_front_stopped` | karşılandı |
+| `P3Rollback.test_off_web_restart_failure_returns_to_front` (486) | aynı | `fix_c_off_web_restart_failure_returns_to_front`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `P3Rollback.test_off_web_not_back_outside_is_rolled_back` (497) | aynı | `fix_c_off_web_not_back_outside_is_rolled_back` | karşılandı |
+| `P3Rollback.test_off_port_not_released_stops_before_touching_web` (506) | aynı | `fix_c_off_port_not_released_stops_before_touching_web` | karşılandı |
+| `P3Rollback.test_off_without_front_unit_ignores_disable_error` (515) | aynı | `off_without_front_unit_ignores_disable_error_like_python` | karşılandı |
+| `P3Rollback.test_off_verifies_web_on_its_own_port_when_front_listen_differs` (522) | aynı | `off_verifies_web_on_its_own_port_when_front_listen_differs` | karşılandı |
+| `P3Rollback.test_off_falls_back_to_front_listen_when_web_unit_is_missing` (534) | aynı | `off_falls_back_to_front_listen_when_web_unit_is_missing` | karşılandı |
+| `P3Rollback.test_web_addr_follows_web_unit_flags` (547) | aynı vektörler | `web_addr_follows_web_unit_flags` | karşılandı |
+| `P3Rollback.test_atomic_write_snapshot_restore_roundtrip` (555) | `fsx` testleri | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
+| `P4RestartRunningFront` (574) | çalışan ön kapı | alttaki satırlar | karşılandı |
+| `P4RestartRunningFront.test_on_restarts_an_already_running_front_so_the_new_unit_applies` (577) | aynı | `on_restarts_an_already_running_front_so_the_new_unit_applies` | karşılandı |
+| `P4RestartRunningFront.test_restart_failure_is_rolled_back_with_old_unit` (585) | geri almada eski birimle `restart` | `parity_on_restarts_running_front_then_rolls_back_unverified`, `fix_c_on_listen_change_failure_restarts_old_front_instead_of_stopping_it` | karşılandı |
+
 ### Sayım ve denetim
 
 | satır kümesi | toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| `ast` öğeleri (`front.py` 9, `front_cmd.py` 18, `test_front_cmd.py` 8, `test_front_internal.py` 29, `test_front_xff.py` 13) | 77 | 40 | 37 | 0 |
+| `ast` öğeleri (`front.py` 10, `front_cmd.py` 61, `test_front_cmd.py` 8, `test_front_internal.py` 29, `test_front_xff.py` 13, `test_front_pyfix.py` 65) | 186 | 149 | 37 | 0 |
+| `paths.py` (yalnız değişen satır) | 1 | 1 | 0 | 0 |
 | `self` (bash) | 6 | 5 | 1 | 0 |
 | `list` (tek satır) | 1 | 0 | 1 | 0 |
-| **toplam** | **84** | **45** | **39** | **0** |
+| **toplam** | **194** | **155** | **39** | **0** |
 
 `ast` öğesi = işlev, sınıf, metot, iç içe tanım, modül/sınıf düzeyi atama ve sabit metinli `re.*` çağrısı. Denetim betiği
-(oturum scratchpad'inde, repoya girmedi): 77 öğenin her biri ad ve satır numarasıyla kendi dosyasının tablosunda bulundu
+(oturum scratchpad'inde, repoya girmedi): 186 öğenin her biri ad ve satır numarasıyla kendi dosyasının tablosunda bulundu
 (eksik 0, fazla 0); `ls.py` adları ve bash adları tabloda; "Rust testi" sütunundaki her ad `rust/crates` altında `#[test]` /
 `#[tokio::test]` olarak bulundu.
 
@@ -191,30 +317,43 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `web_addr` argparse kısaltmalarını (`--po`) ve ExecStart'ı ezen başka drop-in'leri görmez (ön kapı listen'ine düşer).
 - `list` yalnız arayüz (`cops-procscan` birleşince bağlanacak).
 - `cops-rs --version` Python'a devrediliyor, GIT_SHA yok (ders H11).
+- py/ değişti (`front_cmd.py`, `front.py`, `paths.py`): birleşince `systemctl --user restart claudeops-web.service` + uzak deploy
+  (yuhem, ulak_31; CLAUDE.md "Federasyon"). `paths.py` her süreçte yüklenir: göreli `CLAUDEOPS_DIR` artık açılışta hata.
 
 ## Bilinçli sapmalar
 
-- Geçersiz adres engel olur (ad ör. `localhost:` reddedilir, `--internal` yalnız IPv4); `status` "geçersiz adres" + rc 1.
-- Ek engeller: `listen`/`internal` çakışması, ikili çalıştırılamaz, yolda denetim karakteri, web birimi okunamaz/UTF-8 değil,
-  göreli `--bin`, drop-in varken iç port başkasında.
-- Geri alma, doğrulama beklemeleri, `is-active/is-enabled` sorguları, çalışan ön kapıya `restart`.
-- Birim dosyaları atomik; boşluklu/özel karakterli `bin` ve `dist` tırnaklı.
-- Gizli: ortam değişkeni dosya üretimini engellemez; kilit 30 sn ile sınırlı; 64 KiB üstü kullanılamaz.
-- Göreli `HOME`/`CLAUDEOPS_DIR` açık hata; göreli `--bin` `status`ta çağıranın dizinine göre.
+"Python hatası?" 1-8 Python'da düzeltildikten sonra kalanlar:
+
+- Gizli: kilit 30 sn ile sınırlı (Python süresiz bekler); dosya + dizin `fsync`; 64 KiB üstü dosya kullanılamaz (okuma kuralı
+  `cops-proxy`de).
+- Göreli `HOME` Rust'ta açık hata (Python `py/cops`un `cd py/` adımıyla `py/`ye göre çözer; görev kapsamı dışında bırakıldı);
+  göreli `--bin` `status`ta çağıranın dizinine göre (Python `py/`ye göre; yalnız "ikili: var/YOK" satırı).
+- Hata metinlerinin içindeki işletim sistemi hata metni dile göre farklı (`io::Error` / `OSError`); `{:?}` taklidi (`_rdbg`)
+  yazdırılamaz karakteri Unicode kategorisiyle seçer (Rust'ın tablosunun yaklaşığı).
 - `self` Rust'ta (karşılığı bash `cmd_self`, Python'da yok); kendi uid'imizde canlı olmayan pid kaydı atlanır.
 - `front on` planı Python deposunu bulamazsa 125.
 
-## Python hatası? (Python değiştirilmedi; sahip sorusu TBD#393)
+## Python hatası? (sahip sorusu TBD#393; 1-8 Python'da düzeltildi, iki taraf aynı davranır)
 
-1. `front_cmd.py:71-90`: `--internal 28765` bozuk birim yazar; sayı olmayan port döküm verir; `[::1]` hata.
-2. `front_cmd.py:102,136`: drop-in varken yabancı süreç iç portta ise ön kapı ona vekil olur.
-3. `front_cmd.py:143-163`: geri alma yok; `off` `disable --now` sonucunu yok sayıyor.
-4. `front_cmd.py:141-142`: çalışan ön kapıda yalnız `enable --now`; değişen birim uygulanmaz.
-5. `front_cmd.py:96,138`: göreli `--bin` birime göreli yazılır, systemd reddeder.
-6. `front_cmd.py:63`: `bin`/`dist` tırnaksız; boşluklu yol ExecStart'ı böler.
-7. `front.py:44`: `CLAUDEOPS_FRONT_SECRET` doluyken `ensure_secret` dosya üretmez; servisler gizlisiz kalır.
-8. `paths.py:45` + `py/cops:5`: göreli `CLAUDEOPS_DIR` `py/` altına çözülür.
-9. bash `claudeops:57-66` (silinecek araç): `self` ölü pid'li bayat kaydı seçebilir; düzeltme önerilmiyor.
+Python testleri `py/tests/test_front_pyfix.py`; Rust eşlik testleri `tests/py_parity.rs` (aynı girdiyle iki taraf, aynı
+stdout/stderr/çıkış kodu ve systemctl sırası).
+
+| # | hata | fix commit'i | Python testi | Rust eşliği |
+|---|---|---|---|---|
+| 1 | `front_cmd.py`: `--internal 28765` bozuk birim yazar; sayı olmayan port döküm verir; `[::1]` hata | `b754e820` | `P1Addresses` (4 test) | `parity_bad_addresses_are_blockers_on_both_sides` |
+| 2 | drop-in varken yabancı süreç iç portta ise ön kapı ona vekil olur | `ec557213` | `P2ForeignInternalPort` (4 test) | `parity_foreign_internal_port_blocks_on_both_sides` (eski `fix_b_diverges_from_python_on_foreign_internal_port`) |
+| 3 | geri alma yok; `off` `disable --now` sonucunu yok sayıyor (ek: atomik yazım, doğrulama, okunamayan web birimi engel) | `f25c78cb` | `P3Rollback` (21 test), `test_front_cmd.T.test_applied_unit_passes_the_secret_state_dir` (sahte port sahibi) | `parity_apply_rollback_on_systemctl_failure` |
+| 4 | çalışan ön kapıda yalnız `enable --now`; değişen birim uygulanmaz | `f2d1fc02` | `P4RestartRunningFront` (2 test) | `parity_on_restarts_running_front_then_rolls_back_unverified` |
+| 5 | göreli `--bin` birime göreli yazılır, systemd reddeder (ek: çalıştırılamaz ikili engel) | `026b2045` | `P5RelativeBin` (2 test) | `parity_relative_or_non_executable_bin_is_a_blocker` |
+| 6 | `bin`/`dist` tırnaksız; boşluklu yol ExecStart'ı böler (ek: denetim karakterli yol engel) | `5a4f67f5` | `P6Quoting` (3 test) | `parity_control_characters_in_bin_block` |
+| 7 | `front.py`: `CLAUDEOPS_FRONT_SECRET` doluyken `ensure_secret` dosya üretmez | `9ca1bcb9` | `P7SecretEnv` (2 test) | `secret_lock_contract_with_python` (4. adım) |
+| 8 | `paths.py` + `py/cops`: göreli `CLAUDEOPS_DIR` `py/` altına çözülür; artık `paths.py` açık hata (`SystemExit`, hiçbir şey yazılmadan; yalnız ortam değeri, göreli `HOME` dokunulmadı); canlı birimlerde, çalışan süreçlerde ve testlerde göreli değer yok (grep + `/proc/<pid>/environ`) | `3e7eb872` | `P8RelativeStateDir` (2 test) | `parity_relative_state_dir_is_refused`, `roots_follow_paths_py` (Rust metni Python'unkiyle eşitlendi) |
+| 9 | bash `claudeops:57-66` (silinecek araç): `self` ölü pid'li bayat kaydı seçebilir | düzeltilmedi (TBD#12) | yok | yok |
+
+Commit sırası 1, 2, 5, 6, 7, 8, 3, 4 (3'ün doğrulaması 2'nin port sahibi taramasını kullanır). Her testin önceki kodda
+kırıldığı denendi (1, 4, 5, 6, 7, 8: davranış farkı; 2, 3: yeni yardımcılar yokken test modülü/`setUp` kırılır; 2'nin davranış
+farkı eski `fix_b_diverges_*` testinin "Python 0 döner" iddiasıyla belgeli). Rust ürün kodunda yalnız `Roots::check_absolute`
+metni değişti (Python artık çözmüyor); gerisi belge yorumu ve test.
 
 ## Ders listesi (bölüm 3) karşılığı
 
