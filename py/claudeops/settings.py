@@ -266,7 +266,7 @@ def load_settings() -> Dict[str, Any]:
 
 
 def _load_settings_uncached() -> Dict[str, Any]:
-    out: Dict[str, Any] = dict(DEFAULT_SETTINGS)
+    out: Dict[str, Any] = copy.deepcopy(DEFAULT_SETTINGS)     # çağıran iç sözlüğü değiştirirse varsayılan bozulmasın
     try:
         with open(SETTINGS_JSON, encoding="utf-8") as f:
             stored = json.load(f)

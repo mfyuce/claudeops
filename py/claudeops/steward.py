@@ -1846,7 +1846,7 @@ def _log_dedup(log: str, event: str, data: Dict[str, Any], now: float) -> Option
             extra["repeated" if rec[0] == h else "repeated_prev"] = int(rec[2])
     _LOG_SEEN[key] = [h, now, 0]
     if len(_LOG_SEEN) > 4000:      # bellek sınırı: pencereyi geçmiş kayıtlar düşer
-        for k in [k for k, v in _LOG_SEEN.items() if now - v[1] >= LOG_DEDUP_SECONDS]:
+        for k in [k for k, v in list(_LOG_SEEN.items()) if now - v[1] >= LOG_DEDUP_SECONDS]:   # list(): başka iş parçacığı eklerken dolaşma
             _LOG_SEEN.pop(k, None)
     return extra
 

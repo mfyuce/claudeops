@@ -51,6 +51,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 import psutil
 
+from ..atomic_json import file_lock
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..envnames import is_safe_env_name
@@ -353,26 +354,28 @@ def _load_or_create_token() -> str:
                 os.chmod(TOKEN_FILE, 0o600)
     except FileNotFoundError:
         pass
-    try:
-        with open(TOKEN_FILE, encoding="utf-8") as f:
-            tok = f.read().strip()
-            if tok:
-                return tok
-    except FileNotFoundError:
-        pass
-    try:    # review R-10: boş/yarım token dosyası O_EXCL'i FileExistsError ile kırıp paneli kalıcı açılamaz yapıyordu
-        if os.path.isfile(TOKEN_FILE) and not os.path.islink(TOKEN_FILE) and os.path.getsize(TOKEN_FILE) == 0:
-            os.unlink(TOKEN_FILE)
-            diag_log("token_file_empty_recreated", path=str(TOKEN_FILE))
-    except OSError:
-        pass
-    tok = secrets.token_hex(24)
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
-    # review R-3: O_NOFOLLOW + O_EXCL, so a (dangling) symlink planted at TOKEN_FILE is never written through
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(tok)
-    return tok
+    # kilit: ikinci üretici, ilkinin açtığı henüz boş dosyayı "bayat" sanıp silmesin (iki farklı token)
+    with file_lock(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, encoding="utf-8") as f:
+                tok = f.read().strip()
+                if tok:
+                    return tok
+        except FileNotFoundError:
+            pass
+        try:    # review R-10: boş/yarım token dosyası O_EXCL'i FileExistsError ile kırıp paneli kalıcı açılamaz yapıyordu
+            if os.path.isfile(TOKEN_FILE) and not os.path.islink(TOKEN_FILE) and os.path.getsize(TOKEN_FILE) == 0:
+                os.unlink(TOKEN_FILE)
+                diag_log("token_file_empty_recreated", path=str(TOKEN_FILE))
+        except OSError:
+            pass
+        tok = secrets.token_hex(24)
+        # review R-3: O_NOFOLLOW + O_EXCL, so a (dangling) symlink planted at TOKEN_FILE is never written through
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(tok)
+        return tok
 
 
 _CLOUDFLARED_API = "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
