@@ -160,8 +160,9 @@ impl Tmux {
     /// CLI'si çıkmış, `exec bash` ile canlı kalan oturum mu: TÜM pane'ler çıplak (alt süreçsiz) kabuk VE oturum
     /// [`GHOST_MIN_AGE_SECONDS`]ten eski. Her belirsizlik `false` (dokunma). `now` verilmezse şimdi.
     pub fn ghost_session(&self, name: &str, now: Option<f64>) -> bool {
+        // `-u`: C yerelinde sekme `_` olurdu (TBD#366 P5).
         let Ok(out) = exact_target(name).and_then(|target| {
-            self.text(&[
+            self.text_utf8(&[
                 "list-panes",
                 "-s",
                 "-t",

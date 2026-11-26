@@ -154,9 +154,9 @@ impl Tmux {
         self.run(args)?.text()
     }
 
-    /// Yalnız Python karşılığı OLMAYAN liste sorguları için `-u`: UTF-8 olmayan yerelde `-F` çıktısındaki sekme ve
-    /// Türkçe harfler `_` olur. `-u` ASLA sunucu başlatan komuta verilmez (sunucu argv'sini [`Tmux::is_tmux_backed`]
-    /// okur).
+    /// `-F` çıktısını sekmeyle bölen sorgular için `-u` (Python `_base_argv_utf8`): UTF-8 olmayan yerelde sekme ve
+    /// Türkçe harfler `_` olur (TBD#366 P5). `-u` ASLA sunucu başlatan komuta verilmez (sunucu argv'sini
+    /// [`Tmux::is_tmux_backed`] okur).
     pub(crate) fn text_utf8(&self, args: &[&str]) -> Result<String, TmuxError> {
         self.exec(
             Call {

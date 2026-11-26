@@ -252,7 +252,8 @@ impl Tmux {
         if client.is_empty() || client.starts_with('-') {
             return Ok(None);
         }
-        let out = self.text(&["list-clients", "-F", "#{client_name}\t#{client_session}"])?;
+        // `-u`: C yerelinde sekme `_` olurdu (TBD#366 P5).
+        let out = self.text_utf8(&["list-clients", "-F", "#{client_name}\t#{client_session}"])?;
         Ok(py_splitlines(&out)
             .into_iter()
             .find_map(|line| match line.split_once('\t') {

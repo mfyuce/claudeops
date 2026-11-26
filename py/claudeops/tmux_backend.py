@@ -36,6 +36,14 @@ def _base_argv() -> List[str]:
     return ["tmux", "-L", TMUX_SOCKET]
 
 
+def _base_argv_utf8() -> List[str]:
+    """`tmux -u -L <soket>`: `-F` çıktısını SEKMEYLE bölen sorgular için. UTF-8 olmayan yerelde (`LC_ALL=C`) tmux sekmeyi
+    ve ASCII dışı harfleri `_` yapar, bölme hiç eşleşmez (TBD#366 P5). `-u` ASLA sunucu başlatan komuta verilmez
+    (`is_tmux_backed` sunucu argv'sine bakar)."""
+    argv = _base_argv()
+    return argv[:1] + ["-u"] + argv[1:]
+
+
 def _exact(name: str) -> str:
     """Force tmux's `-t` target to EXACT-match `name`, never its unique-prefix
     fallback. Without this, a bare name that no longer has a live session
@@ -396,7 +404,7 @@ def tmux_client_session(client: str) -> Optional[str]:
     if not client or client.startswith("-"):
         return None
     try:
-        r = subprocess.run(_base_argv() + ["list-clients", "-F", "#{client_name}\t#{client_session}"],
+        r = subprocess.run(_base_argv_utf8() + ["list-clients", "-F", "#{client_name}\t#{client_session}"],
                            capture_output=True, text=True, timeout=_TIMEOUT)
         if r.returncode != 0:
             return None
@@ -674,7 +682,7 @@ def tmux_ghost_session(name: str, now: Optional[float] = None) -> bool:
     rehin). True = oturum var, TÜM pane'lerin ön plan süreci yalnız kabuk VE oturum `GHOST_MIN_AGE_SECONDS`ten eski
     (yeni açılmış oturumun CLI'yi başlatmadan önceki anı hayalet sayılmasın). Hata/bilinmiyor = False (dokunma)."""
     try:
-        r = subprocess.run(_base_argv() + ["list-panes", "-s", "-t", _exact(name), "-F",
+        r = subprocess.run(_base_argv_utf8() + ["list-panes", "-s", "-t", _exact(name), "-F",
                                            "#{pane_current_command}\t#{session_created}\t#{pane_pid}"],
                            capture_output=True, text=True, timeout=_TIMEOUT)
     except Exception:

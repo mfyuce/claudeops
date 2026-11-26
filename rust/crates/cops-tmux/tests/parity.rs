@@ -1533,7 +1533,8 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
     }
     assert_eq!(sessions(&b), ["düz", "ok", "semi;"]);
 
-    // P5: C yerelinde `-F` sekmesi `_` olur: `client_session` ve `ghost_session` iki tarafta da bulamaz.
+    // P5: C yerelinde `-F` sekmesi `_` olur; `client_session` ve `ghost_session` `tmux -u` ile iki tarafta da bulur
+    // (TBD#366).
     let s = Server::new();
     let outer = Server::new();
     let env = spawn_env(&s);
@@ -1568,8 +1569,21 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
         "C yereli",
     );
     let c_ghost = c_tmux.ghost_session("g", Some(later));
-    // P5 gerçekten oluştu: C yerelinde ikisi de bulamaz.
-    assert_eq!((&c_session, c_ghost), (&Some(None), false));
+    // Önemsiz değil: bu yerelde `-u`suz tmux sekmeyi gerçekten `_` yapar.
+    let plain = Command::new(&wrapper)
+        .args([
+            "-L",
+            s.tmux.socket(),
+            "list-clients",
+            "-F",
+            "#{client_name}\t#{client_session}",
+        ])
+        .env("TMUX_TMPDIR", s.path())
+        .output()
+        .unwrap();
+    let plain = String::from_utf8(plain.stdout).unwrap();
+    assert!(!plain.is_empty() && !plain.contains('\t'), "{plain:?}");
+    assert_eq!((&c_session, c_ghost), (&Some(Some("m".to_string())), true));
     let c_env = [("LC_ALL", "C".to_string()), ("LANG", "C".to_string())];
     let calls = [
         json!(["tmux_client_session", client]),
@@ -1579,7 +1593,7 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
         run_python(s.tmux.socket(), s.path(), &c_env, &calls),
         [json!(c_session.unwrap()), json!(c_ghost)]
     );
-    // UTF-8 yerelinde ikisi de bulur: C yerelindeki boş sonuç P5'in kendisi.
+    // UTF-8 yerelinde de aynı.
     assert_eq!(
         python(&s, &calls),
         [json!("m"), json!(true)],
