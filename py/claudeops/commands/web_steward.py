@@ -587,7 +587,8 @@ _CAPS_LOCK = threading.Lock()
 
 
 def _caps_put(host: str, api: int, capabilities: Any, now: float) -> Dict[str, Any]:
-    caps = {"api": int(api), "capabilities": [str(c) for c in (capabilities or [])]}
+    items = capabilities if isinstance(capabilities, list) else []      # uzak alan güvenilmez: metin karakterlere bölünmesin
+    caps = {"api": int(api), "capabilities": [c for c in items if isinstance(c, str)]}
     with _CAPS_LOCK:
         _CAPS[host] = (now, caps)
     return caps
