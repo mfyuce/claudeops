@@ -15,7 +15,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-use support::{mode, spawn_guard, Tmp};
+use support::{mkfifo, mode, spawn_guard, Tmp};
 
 const KEY: &str = "sk-g10-gizli-anahtar-0002";
 
@@ -173,6 +173,27 @@ fn a_live_run_key_is_refused_before_the_binary_starts() {
     assert!(c.with(|s| s.chat_once(&req)).is_err());
     assert!(!std::path::Path::new(&mark).exists());
     assert_eq!(fs::read(c.approvals.index_path()).unwrap(), before);
+}
+
+#[test]
+fn a_fifo_key_file_or_index_is_refused_without_blocking() {
+    let _g = spawn_guard();
+    let c = Ctx::new("{}");
+    let bin = c.ucli("echo '{\"answer\":\"x\"}'");
+    let c = Ctx { settings: Settings::from_json(&format!(r#"{{"provider_bin": {{"ucli": "{bin}"}}}}"#)), ..c };
+    let key = c.paths.ucli_key_file("");
+    fs::create_dir_all(std::path::Path::new(&key).parent().unwrap()).unwrap();
+    mkfifo(&key);
+    let start = Instant::now();
+    let error = c.with(|s| s.oneshot(Cli::Ucli, "p", None, &c.t.path("work/notr"), 5.0)).unwrap_err().0;
+    assert_eq!(error, "ucli: anahtar dosyası okunamadı (normal dosya değil)");
+    fs::create_dir(c.paths.ucli_approval_root()).unwrap();
+    mkfifo(&c.approvals.index_path());
+    let argv = vec!["a".to_string()];
+    let run = NewRun { cwd: "/w", session: "", argv_resume: &argv, owner: "" };
+    assert!(c.approvals.register("r1", run).unwrap_err().text.contains("normal dosya değil"));
+    assert!(!c.approvals.set_state("r1", "done").unwrap());
+    assert!(start.elapsed() < Duration::from_secs(10));
 }
 
 #[test]
