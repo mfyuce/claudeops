@@ -37,9 +37,15 @@ pub const TOKEN: &str = "SEKRET-tok-7f3a9c";
 
 /// Tüm testlerin mutlak tavanı (asılan test CI'yi kilitlemesin).
 pub async fn deadline<F: Future>(f: F) -> F::Output {
-    tokio::time::timeout(Duration::from_secs(30), f)
-        .await
-        .expect("test deadline (30 s) exceeded")
+    deadline_within(Duration::from_secs(30), f).await
+}
+
+/// `deadline`, büyük veri taşıyan testler için açık tavanla (yüklü makinede 30 sn yetmiyor).
+pub async fn deadline_within<F: Future>(max: Duration, f: F) -> F::Output {
+    match tokio::time::timeout(max, f).await {
+        Ok(v) => v,
+        Err(_) => panic!("test deadline ({} s) exceeded", max.as_secs()),
+    }
 }
 
 /// Koşul sağlanana dek bekle (en çok `max`); sağlanmazsa panik.

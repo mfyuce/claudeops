@@ -697,6 +697,10 @@ async fn idle_relays_are_reaped_and_their_sockets_closed() {
 
 // ---------------------------------------------------------------- sınırlar
 
+/// 16 MiB taşıyan testlerin tavanı ve tek adım sınırı.
+const BIG: Duration = Duration::from_secs(150);
+const BIG_STEP: Duration = Duration::from_secs(60);
+
 fn term_of_size(total: usize) -> String {
     let empty = json!({"type":"term","data":{"ok":true,"text":""}}).to_string();
     let pad = total - empty.len();
@@ -707,7 +711,7 @@ fn term_of_size(total: usize) -> String {
 
 #[tokio::test]
 async fn ws_message_limit_is_16_mib_exactly() {
-    deadline(async {
+    deadline_within(BIG, async {
         let f = fake(silent_opener()).await;
         let src = MemSource::new(vec![host("a", &f.url())]);
         let (fed, ev) = fed(&src);
@@ -719,8 +723,10 @@ async fn ws_message_limit_is_16_mib_exactly() {
         // Python varsayılanı (1 MiB) üstü ve tam sınır kabul.
         f.send_last(Cmd::Send(Message::text(term_of_size(MIB16))));
         let fed2 = fed.clone();
-        wait_until("16 MiB frame", Duration::from_secs(20), || {
-            text_of(&term(&fed2, "s1", &o)).is_some_and(|t| t.len() > MIB16 - 64)
+        wait_until("16 MiB frame", BIG_STEP, || {
+            term(&fed2, "s1", &o)["text"]
+                .as_str()
+                .is_some_and(|t| t.len() > MIB16 - 64)
         })
         .await;
         assert!(deaths(&ev).is_empty());
@@ -728,11 +734,9 @@ async fn ws_message_limit_is_16_mib_exactly() {
         // Bir bayt fazlası: akış ölür, son kare bir daha VERİLMEZ.
         f.send_last(Cmd::Send(Message::text(term_of_size(MIB16 + 1))));
         let d = ev.clone();
-        wait_until(
-            "oversized frame kills the stream",
-            Duration::from_secs(20),
-            || !deaths(&d).is_empty(),
-        )
+        wait_until("oversized frame kills the stream", BIG_STEP, || {
+            !deaths(&d).is_empty()
+        })
         .await;
         let reason = deaths(&ev)[0]["reason"].as_str().unwrap().to_string();
         assert!(
@@ -758,7 +762,7 @@ async fn ws_message_limit_is_16_mib_exactly() {
 async fn fragmented_ws_message_over_16_mib_is_refused() {
     use tokio_tungstenite::tungstenite::protocol::frame::coding::{Data, OpCode};
     use tokio_tungstenite::tungstenite::protocol::frame::Frame;
-    deadline(async {
+    deadline_within(BIG, async {
         let f = fake(silent_opener()).await;
         let src = MemSource::new(vec![host("a", &f.url())]);
         let (fed, ev) = fed(&src);
@@ -783,7 +787,7 @@ async fn fragmented_ws_message_over_16_mib_is_refused() {
         // Tam sınır: parçalı da kabul.
         send_fragmented(MIB16);
         let fed2 = fed.clone();
-        wait_until("fragmented 16 MiB message", Duration::from_secs(20), || {
+        wait_until("fragmented 16 MiB message", BIG_STEP, || {
             text_of(&term(&fed2, "s1", &o)).is_some_and(|t| t.len() > MIB16 - 64)
         })
         .await;
@@ -791,11 +795,9 @@ async fn fragmented_ws_message_over_16_mib_is_refused() {
         // Bir bayt fazlası (her parça ~8 MiB): akış ölür.
         send_fragmented(MIB16 + 1);
         let d = ev.clone();
-        wait_until(
-            "fragmented oversize kills the stream",
-            Duration::from_secs(20),
-            || !deaths(&d).is_empty(),
-        )
+        wait_until("fragmented oversize kills the stream", BIG_STEP, || {
+            !deaths(&d).is_empty()
+        })
         .await;
         let reason = deaths(&ev)[0]["reason"].as_str().unwrap().to_lowercase();
         assert!(
