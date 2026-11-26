@@ -490,3 +490,29 @@ fn the_default_cost_gate_fails_closed_when_a_cap_is_set() {
     let capped = t.probe_with(t.env(&[]), Default::default(), 1.0);
     assert!(capped.claude_cost_gate("s").unwrap_err().contains("reddedildi"));
 }
+
+#[test]
+fn sqlite_reads_a_wal_database_while_the_writer_is_open_and_after_it_closes() {
+    let t = Tmp::new();
+    let db = t.path("work/wal.db");
+    let p = t.probe();
+    let sql = "SELECT sum(v) FROM t WHERE ? IS NOT NULL";
+    let writer = rusqlite::Connection::open(&db).unwrap();
+    writer
+        .execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE t(v INTEGER); INSERT INTO t VALUES(5);")
+        .unwrap();
+    assert_eq!(p.sqlite_cell(&db, sql, "x"), Some(SqlCell::Int(5)));
+    writer.execute_batch("INSERT INTO t VALUES(6)").unwrap();
+    assert_eq!(p.sqlite_cell(&db, sql, "x"), Some(SqlCell::Int(11)));
+    drop(writer);
+    assert_eq!(p.sqlite_cell(&db, sql, "x"), Some(SqlCell::Int(11)));
+}
+
+#[test]
+fn failed_turn_records_over_the_read_limit_are_ignored_by_the_real_reader() {
+    let t = Tmp::new();
+    let path = t.write("work/buyuk", b"", 0o600);
+    fs::OpenOptions::new().write(true).open(&path).unwrap().set_len((64 << 20) + 1).unwrap();
+    assert_eq!(t.probe().read_bytes(&path, 64 << 20), None);
+    assert_eq!(t.probe().read_tail(&path, 16).map(|d| d.len()), Some(16));
+}

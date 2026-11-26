@@ -128,6 +128,13 @@ pub struct Env {
     py: Option<Py>,
 }
 
+impl Drop for Env {
+    /// İzinsiz bırakılan fixture dizinleri geçici ağacın silinmesini engellemesin.
+    fn drop(&mut self) {
+        make_writable(Path::new(&self.root));
+    }
+}
+
 impl Env {
     pub fn new() -> Env {
         Env::with_prefix("cops-parity-")
