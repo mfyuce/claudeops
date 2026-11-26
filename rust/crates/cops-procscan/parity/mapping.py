@@ -55,7 +55,10 @@ T1, T2, T3 = "T1 (durum)", "T2 (terminal)", "T3 (dosya)"
 T4, T5, T6 = "T4 (yaşam döngüsü)", "T5 (federasyon)", "T6 (CLI)"
 T7, T9, T10 = "T7 (periyodik+kullanım)", "T9 (enterprise)", "T10 (değnekçi)"
 T8 = "T8 (reviewer)"
-CHAT = "T1 (/api/status ve sohbet okuma; cops onayı bekler)"
+# sağlayıcı kodunu üstlenen iz rs/prov (dal `rs/prov` `docs/rs-prov.md` grupları); canlı uca bağlama T1/T4
+CHAT = "rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1"
+LIVE = "rs/prov (G3 transkript okuma); canlı bağlantı T1"
+RESUME = "rs/prov (G1, açık); canlı bağlantı T4"
 
 
 def ok(names, rust, tests, note=""):
@@ -330,17 +333,18 @@ DEFS["providers/claude_provider.py"] = [
                    "model_choices refresh_stored_model permission_modes effort_levels".split()),
         "açılış argv'si, MCP, model/effort/izin kuralları", SAG),
     oos("_META_HEAD_LINES _RESUME_SCAN_LIMIT _jsonl_meta _same_path _META_CACHE _META_CACHE_MAX _jsonl_meta_cached "
-        "_STUB_MAX_BYTES _has_chat_rows session_file_sid "
+        "_STUB_MAX_BYTES _has_chat_rows "
         + " ".join(C + n for n in
-                   "resolve_resume_id compact_command handover_model_downgrade _MODEL_SWITCH_TIMEOUT_SECONDS "
+                   "compact_command handover_model_downgrade _MODEL_SWITCH_TIMEOUT_SECONDS "
                    "_MODEL_SWITCH_POLL_SECONDS apply_live_model_switch handover_effort_downgrade "
                    "effort_switch_keeps_cache _EFFORT_SWITCH_TIMEOUT_SECONDS _EFFORT_SWITCH_POLL_SECONDS "
                    "_EFFORT_SWITCH_DONE_MARKERS apply_live_effort_switch".split()),
         "devam kimliği, devir ve canlı model/effort değiştirme", T4),
+    oos("session_file_sid " + C + "resolve_resume_id", "oturum kimliği ve devam kimliği", RESUME),
     oos("_LAST_MODEL_CHUNK_BYTES _LAST_MODEL_MAX_BYTES _row_epoch _last_assistant_value last_assistant_model "
         "last_assistant_effort PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
         "live_or_spawn_model live_or_spawn_effort " + C + "prompt_cache_ttl_seconds " + C + "last_request_epoch",
-        "transkriptten canlı model/effort ve önbellek yaşı", T1),
+        "transkriptten canlı model/effort ve önbellek yaşı", LIVE),
     oos("_extract_text _is_real_user_text "
         + " ".join(C + n for n in "_transcript_lines last_exchange full_history sid_for_stopped_session".split()),
         "sohbet geçmişi okuma", CHAT),

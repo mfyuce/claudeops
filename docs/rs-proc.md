@@ -1,6 +1,6 @@
 # rs/proc: cops-procscan (Rust sprinti W1-pre, süreç taraması)
 
-Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). TBD#365 uygulandı: "Python hataları" listesindeki maddeler hem Python'da (ayrı `fix:` commit'i, kırmızı-sonra-yeşil test) hem Rust'ta düzeltildi; Rust bozuk kaydı atlayıp sayar. Birleştirme kapısının (cops) sekiz bulgusu da kapandı ("Birleştirme kapısı bulguları" bölümü). Birleştirme için açık: sohbet geçmişi okumanın izi bir VARSAYIM (cops onayı bekler, aşağıda); parite koşucusunun `cops-parity`ye geçişi (Açık işler).
+Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). TBD#365 uygulandı: "Python hataları" listesindeki maddeler hem Python'da (ayrı `fix:` commit'i, kırmızı-sonra-yeşil test) hem Rust'ta düzeltildi; Rust bozuk kaydı atlayıp sayar. Birleştirme kapısının (cops) sekiz bulgusu da kapandı ("Birleştirme kapısı bulguları" bölümü). Açık: parite koşucusunun `cops-parity`ye geçişi (Açık işler, TBD#388).
 
 ## Kapsam (taşınan)
 | Python | Rust (`rust/crates/cops-procscan/src`) |
@@ -16,7 +16,7 @@ Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, alt
 | `claude_provider._encode_cwd/jsonl_path_for` | `transcript.rs` |
 | `paths.parse_proc_stat/proc_ppid` | `procfs.rs` |
 
-**Varsayım (cops onayı bekler):** sohbet geçmişi okuma işlevleri (`last_exchange`, `full_history`, `sid_for_stopped_session` ve yardımcıları, testleriyle) bu crate'in kapsamı DIŞINDA sayıldı ve T1'e (`/api/status` ve sohbet okuma) yazıldı. Sprint planında bunlar için ayrı satır yok; cops başka iz verirse tablo verisi (`mapping.py` `CHAT`) değişmeli.
+**Sağlayıcı satırları (`mapping.py` `CHAT`, `LIVE`, `RESUME`):** sohbet geçmişi okuma, transkriptten model/effort ve önbellek yaşı, `session_file_sid`/`resolve_resume_id` bu crate'in kapsamı dışında; izi `rs/prov` (dal `rs/prov` `docs/rs-prov.md` G2, G3 taşındı; G1 açık, 26 Kas `7ce46ef9`), canlı uca bağlama T1/T4. Eski "T1, cops onayı bekler" varsayımı bununla kalktı. Tabloda T2/T4/T7 yazan başka sağlayıcı satırlarının saf kısmını da `rs/prov` sahipleniyor olabilir: orada onun tablosu geçerli, buradaki iz canlı bağlantıyı gösterir.
 
 İkili (salt okur): `cops-procscan list|ls [--json] [--no-cpu] [--base AD]`, `scan [--no-cpu]` (çıktıda ayrıca `diag`, `agy_learned`), `usage DOSYA`, `needs-ho DURUM_DIZINI CWD [JSONL]` (tek yazımı yok; git'i yalnız okur).
 
@@ -115,14 +115,14 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 | test_ucli_web (ayrıştırma yönü) | `providers::tests::ucli_effort_presets`, `ucli_effort_unknown_when_any_limit_changed_or_missing`, `ucli_every_preset_without_context_flag`, altın `detect_info`; argv üretimi kapsam dışı |
 
 ## Açık işler
-- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. 536 tanım (144 karşılandı, 392 kapsam dışı, 0 EKSİK); 115 test dosyasında 1552 test durumu (93 karşılandı, 1459 kapsam dışı, 0 EKSİK).
+- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. 549 tanım (153 karşılandı, 396 kapsam dışı, 0 EKSİK); 116 test dosyasında 1578 test durumu (115 karşılandı, 1463 kapsam dışı, 0 EKSİK).
   - Koşum (repo kökünden): `python3 -I rust/crates/cops-procscan/parity/mapping.py` yazar; `--check` tabloyu `ast` ve Rust kaynağıyla karşılaştırır (eksik/fazla/boş satır, uydurma Rust adı, bayat tablo ya da veri = çıkış 1); `--check --strict` EKSİK varken de 1 döner. `py/` modülleri içe aktarılmaz.
   - Sınır: betik adların varlığını sınar, testin davranışı kapsadığını sınamaz ve testleri koşturmaz. Crate davranışını sınamayan test dosyaları dosya başına gerekçe/izle girildi (adet + ad özeti; dosya değişince betik durur, `--pins` yeni özeti basar).
 - [x] Eşleme tablosundaki 13 EKSİK kapandı: Rust testleri yazıldı; iki davranış Python'a eşitlendi (önbellek tahliye sırası; `ucli_flags` `cmdline`ı okunamayan süreçte artık "bütün bayraklar kapalı" yerine `None`).
-- [ ] Sohbet geçmişi okumanın izi: T1 varsayıldı ("Kapsam" bölümü), cops onayı bekliyor.
+- [x] Sohbet geçmişi okumanın izi: `rs/prov` ("Kapsam" bölümü).
 - [x] TBD#365: "Python hataları" maddeleri iki dilde düzeltildi (yukarıda; Python `fix:` commit'i 6ae5da3).
 - [x] Parite koşucusu: büyüyen transkriptte `scan` `usage_total` yanlış farkı kapatıldı (pencere içinde değişen dosya sayılıp atlanır).
-- [ ] Parite koşucusu: rsgate'in `cops-parity`si main'e birleşti (26 Kas gece, bu dala merge edildi); `parity/run.py`nin ona taşınması açık (sahip, TBD#365 cevabı). Taşınana dek kapı `parity/run.py`.
+- Parite koşucusunun `cops-parity`ye taşınması (sahip, TBD#365 cevabı) bugün yapılamıyor: `cops-parity` yalnız iki HTTP ucunun yanıtını kıyaslıyor, bu crate'in HTTP ucu yok (T1'de gelecek). Karar sahipte (TBD#388); kapı `parity/run.py`.
 - [ ] `ProcId` doğrulamasını kullanan kill yolu T4'te (crate yalnız tipi ve `verify`ı sağlar).
 - [ ] Tick içi tarama maliyeti T1'de `/api/status`a bağlanınca ölçülmeli (CPU kipi +0,3 sn bekler).
 - [ ] `Config::from_env` `$HOME`/`$CLAUDEOPS_DIR`i doğrudan okur; `cops-state` birleşince `state_dir()` oradan alınmalı (H14).

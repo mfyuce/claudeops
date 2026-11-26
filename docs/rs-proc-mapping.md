@@ -184,10 +184,10 @@ Yok.
 | `providers/base.py::CliProvider.has_conversation` | işlev:113 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/base.py::CliProvider.wants_handover_wrapup` | işlev:121 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/base.py::CliProvider.wants_stuck_recovery` | işlev:125 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.last_exchange` | işlev:129 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/base.py::CliProvider.full_history` | işlev:138 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/base.py::CliProvider.sid_for_stopped_session` | işlev:147 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/base.py::CliProvider.last_message_role` | işlev:162 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/base.py::CliProvider.last_exchange` | işlev:129 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.full_history` | işlev:138 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.sid_for_stopped_session` | işlev:147 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.last_message_role` | işlev:162 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/base.py::CliProvider.handover_model_downgrade` | işlev:175 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/base.py::CliProvider.apply_live_model_switch` | işlev:185 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/base.py::CliProvider.handover_effort_downgrade` | işlev:193 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
@@ -264,19 +264,19 @@ Yok.
 | `providers/claude_provider.py::_safe_mtime` | işlev:102 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::jsonl_path_for` | işlev:110 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid`<br>`run.py:scan_sessions` | sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3. Sid VARKEN Python da yalnız tam dosya, yoksa None (sözleşme: None = transkript yok). Python düzeltildi: 43753998. Kalan kasıtlı fark: sid YOKKEN Python tahmini (koşucu `KNOWN_DEVIATIONS`, `python_guess_without_sid`) |
 | `providers/claude_provider.py::find_latest_jsonl` | işlev:131 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:149 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:150 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_row_epoch` | işlev:153 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_last_assistant_value` | işlev:164 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_assistant_model` | işlev:214 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_assistant_effort` | işlev:220 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:234 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_real_request_epoch` | işlev:237 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_real_request_epoch` | işlev:260 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::session_file_sid` | işlev:266 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:149 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:150 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_row_epoch` | işlev:153 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_last_assistant_value` | işlev:164 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_assistant_model` | işlev:214 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_assistant_effort` | işlev:220 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:234 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_real_request_epoch` | işlev:237 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_real_request_epoch` | işlev:260 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::session_file_sid` | işlev:266 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
 | `providers/claude_provider.py::_EFFORT_BUSTS_CACHE_RE` | sabit:299 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::live_or_spawn_model` | işlev:302 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::live_or_spawn_effort` | işlev:321 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::live_or_spawn_model` | işlev:302 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::live_or_spawn_effort` | işlev:321 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::_META_HEAD_LINES` | sabit:337 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::_RESUME_SCAN_LIMIT` | sabit:340 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::_jsonl_meta` | işlev:343 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
@@ -289,8 +289,8 @@ Yok.
 | `providers/claude_provider.py::MCP_CONFIG_PATH` | sabit:420 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::_mcp_config_path` | işlev:423 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::_write_mcp_config_file` | işlev:437 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_extract_text` | işlev:446 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::_is_real_user_text` | işlev:458 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::_extract_text` | işlev:446 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::_is_real_user_text` | işlev:458 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/claude_provider.py::_HELP_CACHE` | sabit:472 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::_HELP_TIMEOUT_SECONDS` | sabit:473 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::claude_help_text` | işlev:476 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
@@ -298,7 +298,7 @@ Yok.
 | `providers/claude_provider.py::claude_supports_flag::re1` | regex:501 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::ClaudeProvider` | sınıf:504 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma; kalan metotlar kendi satırında |
 | `providers/claude_provider.py::ClaudeProvider.name` | sabit:505 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:507 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:507 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
 | `providers/claude_provider.py::ClaudeProvider.build_inner_command` | işlev:551 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::ClaudeProvider.oneshot_argv` | işlev:592 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::ClaudeProvider.mcp_launch_args` | işlev:608 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
@@ -316,8 +316,8 @@ Yok.
 | `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` | sabit:768 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::ClaudeProvider.apply_live_model_switch` | işlev:770 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::ClaudeProvider.handover_effort_downgrade` | işlev:830 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:843 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:846 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:843 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:846 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::ClaudeProvider.effort_switch_keeps_cache` | işlev:865 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` | sabit:868 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
 | `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` | sabit:869 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
@@ -339,18 +339,18 @@ Yok.
 | `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1044 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1054 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1057 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1060 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1086 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1060 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1086 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1116 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
-| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1121 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1150 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1121 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1150 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/codex_provider.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
 | `providers/codex_provider.py::CODEX_HOME` | sabit:42 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::SESSIONS_DIR` | sabit:43 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::SESSIONS_DIR` | sabit:43 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::MODELS_CACHE` | sabit:44 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/codex_provider.py::PERMISSION_MODES` | sabit:46 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/codex_provider.py::EFFORT_LEVELS` | sabit:47 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
@@ -359,13 +359,13 @@ Yok.
 | `providers/codex_provider.py::_NON_SESSION_SUBCOMMANDS` | sabit:77 | karşılandı | `providers.rs::CODEX_NON_SESSION` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | iki liste 25 öğeyle eşit (elle karşılaştırıldı); testler yalnız birkaç öğeyi sınar |
 | `providers/codex_provider.py::_PERMISSION_FLAGS` | sabit:84 | karşılandı | `providers.rs::codex_mode` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yalnız ters eşleme (argv -> mod); açılış yönü W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/codex_provider.py::_MODELS_TTL` | sabit:91 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::_ROLLOUT_UUID_RE` | sabit:92 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/codex_provider.py::_MAX_ROLLOUT_SCAN` | sabit:93 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::_ROLLOUT_UUID_RE` | sabit:92 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::_MAX_ROLLOUT_SCAN` | sabit:93 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::_config_value` | işlev:96 | karşılandı | `providers.rs::codex_config` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yok |
-| `providers/codex_provider.py::_safe_mtime` | işlev:104 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::_safe_mtime` | işlev:104 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::_session_meta` | işlev:111 | kapsam dışı | yok | yok | devam kimliği. İz: T4 (yaşam döngüsü) |
-| `providers/codex_provider.py::_codex_text` | işlev:125 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/codex_provider.py::_is_real_codex_user_text` | işlev:139 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::_codex_text` | işlev:125 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::_is_real_codex_user_text` | işlev:139 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::CodexProvider` | sınıf:148 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
 | `providers/codex_provider.py::CodexProvider.name` | sabit:149 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
 | `providers/codex_provider.py::CodexProvider.__init__` | işlev:151 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
@@ -383,17 +383,17 @@ Yok.
 | `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:292 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:295 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/codex_provider.py::CodexProvider.background_work` | işlev:306 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:317 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:336 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:317 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:336 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::CodexProvider.live_context` | işlev:358 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:385 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/codex_provider.py::CodexProvider.full_history` | işlev:410 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:385 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.full_history` | işlev:410 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/copilot_provider.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `providers/copilot_provider.py::SESSION_STORE_DB` | sabit:107 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/copilot_provider.py::SESSION_STORE_DB` | sabit:107 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/copilot_provider.py::_BYOK_ENV_FILE` | sabit:119 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/copilot_provider.py::_BYOK_ENV_MANAGED_MARKER` | sabit:120 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/copilot_provider.py::_sync_byok_env_file` | işlev:123 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
@@ -409,7 +409,7 @@ Yok.
 | `providers/copilot_provider.py::_USAGE_RESET_RE` | sabit:207 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
 | `providers/copilot_provider.py::trust_folder` | işlev:210 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
 | `providers/copilot_provider.py::trust_folder::re1` | regex:220 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `providers/copilot_provider.py::_connect_ro` | işlev:232 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/copilot_provider.py::_connect_ro` | işlev:232 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/copilot_provider.py::CopilotProvider` | sınıf:239 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
 | `providers/copilot_provider.py::CopilotProvider.name` | sabit:240 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
 | `providers/copilot_provider.py::CopilotProvider.resolve_resume_id` | işlev:242 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
@@ -426,28 +426,28 @@ Yok.
 | `providers/copilot_provider.py::CopilotProvider.usage_command` | işlev:360 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
 | `providers/copilot_provider.py::CopilotProvider.parse_usage_text` | işlev:369 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
 | `providers/copilot_provider.py::CopilotProvider.usage_fresh_tui_argv` | işlev:380 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:384 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:384 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/copilot_provider.py::CopilotProvider.live_context` | işlev:407 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:425 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:434 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:425 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:434 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/agy_provider.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
 | `providers/agy_provider.py::CONVERSATIONS_CACHE` | sabit:84 | karşılandı | `lib.rs::Config.agy_cache`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_sessions` | yok |
-| `providers/agy_provider.py::CONVERSATIONS_DIR` | sabit:85 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/agy_provider.py::CONVERSATIONS_DIR` | sabit:85 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/agy_provider.py::AGY_SIDS_JSON` | sabit:94 | karşılandı | `lib.rs::Config.agy_sids`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | yok |
-| `providers/agy_provider.py::_STEP_TYPE_USER` | sabit:98 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_STEP_TYPE_ASSISTANT` | sabit:99 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_STEP_TYPE_CHECKPOINT` | sabit:101 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_read_varint` | işlev:104 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_iter_fields` | işlev:116 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_get_bytes_field` | işlev:144 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_get_text_field` | işlev:160 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_step_user_text` | işlev:165 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_step_assistant_text` | işlev:172 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::_conversation_ids` | işlev:179 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/agy_provider.py::_STEP_TYPE_USER` | sabit:98 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_STEP_TYPE_ASSISTANT` | sabit:99 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_STEP_TYPE_CHECKPOINT` | sabit:101 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_read_varint` | işlev:104 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_iter_fields` | işlev:116 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_get_bytes_field` | işlev:144 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_get_text_field` | işlev:160 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_step_user_text` | işlev:165 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_step_assistant_text` | işlev:172 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_conversation_ids` | işlev:179 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/agy_provider.py::PERMISSION_MODES` | sabit:187 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/agy_provider.py::EFFORT_LEVELS` | sabit:188 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/agy_provider.py::BUSY_STATUS_PATTERN` | sabit:195 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
@@ -478,11 +478,11 @@ Yok.
 | `providers/agy_provider.py::AgyProvider.parse_fresh_usage` | işlev:454 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
 | `providers/agy_provider.py::AgyProvider.usage_needs_dismiss` | işlev:457 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/agy_provider.py::AgyProvider.parse_usage_text` | işlev:467 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:498 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:528 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:554 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::AgyProvider.full_history` | işlev:573 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:591 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:498 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:528 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:554 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.full_history` | işlev:573 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:591 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/agy_provider.py::AgyProvider.snapshot_for_live_sid` | işlev:601 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
 | `providers/agy_provider.py::AgyProvider.discover_live_sid` | işlev:611 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
 
@@ -581,8 +581,8 @@ Yok.
 | `providers/ucli_provider.py::UcliProvider.default_permission_mode` | işlev:1075 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/ucli_provider.py::UcliProvider.permission_modes` | işlev:1080 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/ucli_provider.py::UcliProvider.effort_levels` | işlev:1083 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.full_history` | işlev:1086 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/ucli_provider.py::UcliProvider.sid_for_stopped_session` | işlev:1091 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/ucli_provider.py::UcliProvider.full_history` | işlev:1086 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/ucli_provider.py::UcliProvider.sid_for_stopped_session` | işlev:1091 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/ucli_provider.py::UcliProvider.live_busy` | işlev:1097 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
 | `providers/ucli_provider.py::UcliProvider.background_work` | işlev:1112 | kapsam dışı | yok | yok | tmux girişi ve arka plan işi. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/ucli_provider.py::UcliProvider.live_tools` | işlev:1127 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
@@ -590,7 +590,7 @@ Yok.
 | `providers/ucli_provider.py::UcliProvider.live_usage` | işlev:1156 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
 | `providers/ucli_provider.py::UcliProvider.live_failed_turns` | işlev:1173 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
 | `providers/ucli_provider.py::UcliProvider.live_phase` | işlev:1196 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.last_exchange` | işlev:1226 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/ucli_provider.py::UcliProvider.last_exchange` | işlev:1226 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/commands/usage.py`
 
@@ -705,16 +705,16 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_agy_compaction_view.py::AgyCompactionViewTests.test_checkpoint_becomes_boundary_and_plain_type23_is_ignored` | 21 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `test_agy_compaction_view.py::AgyCompactionViewTests.test_checkpoint_becomes_boundary_and_plain_type23_is_ignored` | 21 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_agy_last_exchange.py`
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_agy_last_exchange.py::AgyLastExchange.test_last_pair_skips_empty_assistant_steps` | 33 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_agy_last_exchange.py::AgyLastExchange.test_empty_conversation_and_no_assistant` | 37 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_agy_last_exchange.py::AgyLastExchange.test_checkpoint_between_does_not_break_pairing` | 41 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_agy_last_exchange.py::AgyLastExchange.test_missing_db_is_empty` | 45 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `test_agy_last_exchange.py::AgyLastExchange.test_last_pair_skips_empty_assistant_steps` | 33 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_agy_last_exchange.py::AgyLastExchange.test_empty_conversation_and_no_assistant` | 37 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_agy_last_exchange.py::AgyLastExchange.test_checkpoint_between_does_not_break_pairing` | 41 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_agy_last_exchange.py::AgyLastExchange.test_missing_db_is_empty` | 45 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_agy_models_swr.py`
 
@@ -777,9 +777,9 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_chat_compaction_view.py::CompactionViewTests.test_boundary_and_summary_roles_keep_pre_compaction_messages` | 21 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_chat_compaction_view.py::CompactionViewTests.test_no_boundary_unchanged` | 34 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_chat_compaction_view.py::CompactionViewTests.test_sidechain_summary_ignored` | 38 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `test_chat_compaction_view.py::CompactionViewTests.test_boundary_and_summary_roles_keep_pre_compaction_messages` | 21 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_chat_compaction_view.py::CompactionViewTests.test_no_boundary_unchanged` | 34 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_chat_compaction_view.py::CompactionViewTests.test_sidechain_summary_ignored` | 38 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_check_cmd.py`
 
@@ -2056,35 +2056,35 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_own_conversation_wins_over_a_newer_sibling_stub` | 80 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_each_sibling_resolves_to_its_own_file` | 86 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_same_title_prefers_the_real_conversation_over_a_newer_stub` | 95 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_same_title_picks_the_newest_real_conversation_even_when_it_is_the_smaller_one` | 101 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_all_stubs_returns_the_newest_one` | 107 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_a_large_file_counts_as_real_without_being_scanned` | 112 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_no_title_match_returns_none` | 119 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_title_is_an_exact_match_not_a_prefix` | 123 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_untitled_files_never_match` | 127 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_missing_project_dir_and_empty_name_return_none` | 131 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_file_recording_a_different_cwd_is_ignored` | 136 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_finds_a_file_older_than_the_resume_scan_limit` | 141 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_unchanged_files_are_not_reread_but_changed_ones_are` | 149 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_stopped_session_shows_its_own_full_history_not_the_newest_stub` | 177 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_stopped_session_last_exchange_is_its_own` | 182 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_incremental_since_still_works_on_the_resolved_conversation` | 186 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_unmatched_stopped_session_keeps_the_old_newest_in_cwd_behavior` | 192 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_live_session_never_consults_the_name_lookup` | 200 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_live_session_without_sid_is_left_alone_too` | 207 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::TermChatWiringTests.test_unsupported_cli_still_reports_supported_false` | 214 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::OtherProvidersTests.test_default_providers_do_not_guess` | 220 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::OtherProvidersTests.test_agy_uses_the_learned_name_to_sid_map_when_the_db_exists` | 224 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::OtherProvidersTests.test_ucli_sid_is_the_session_name` | 237 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_schema_header_row_is_skipped` | 258 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_header_only_file_means_no_messages_yet_not_unsupported` | 263 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_old_files_without_a_header_still_parse` | 267 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_corrupt_files_are_still_reported_as_unreadable` | 271 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_missing_file_is_an_empty_history` | 277 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_stopped_session_chat.py::UcliChatTests.test_stopped_ucli_instance_chat_is_served_through_term_chat` | 280 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_own_conversation_wins_over_a_newer_sibling_stub` | 80 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_each_sibling_resolves_to_its_own_file` | 86 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_same_title_prefers_the_real_conversation_over_a_newer_stub` | 95 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_same_title_picks_the_newest_real_conversation_even_when_it_is_the_smaller_one` | 101 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_all_stubs_returns_the_newest_one` | 107 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_a_large_file_counts_as_real_without_being_scanned` | 112 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_no_title_match_returns_none` | 119 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_title_is_an_exact_match_not_a_prefix` | 123 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_untitled_files_never_match` | 127 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_missing_project_dir_and_empty_name_return_none` | 131 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_file_recording_a_different_cwd_is_ignored` | 136 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_finds_a_file_older_than_the_resume_scan_limit` | 141 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::ClaudeSidForStoppedSessionTests.test_unchanged_files_are_not_reread_but_changed_ones_are` | 149 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_stopped_session_shows_its_own_full_history_not_the_newest_stub` | 177 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_stopped_session_last_exchange_is_its_own` | 182 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_incremental_since_still_works_on_the_resolved_conversation` | 186 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_unmatched_stopped_session_keeps_the_old_newest_in_cwd_behavior` | 192 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_live_session_never_consults_the_name_lookup` | 200 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_live_session_without_sid_is_left_alone_too` | 207 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::TermChatWiringTests.test_unsupported_cli_still_reports_supported_false` | 214 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::OtherProvidersTests.test_default_providers_do_not_guess` | 220 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::OtherProvidersTests.test_agy_uses_the_learned_name_to_sid_map_when_the_db_exists` | 224 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::OtherProvidersTests.test_ucli_sid_is_the_session_name` | 237 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_schema_header_row_is_skipped` | 258 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_header_only_file_means_no_messages_yet_not_unsupported` | 263 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_old_files_without_a_header_still_parse` | 267 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_corrupt_files_are_still_reported_as_unreadable` | 271 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_missing_file_is_an_empty_history` | 277 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_stopped_session_chat.py::UcliChatTests.test_stopped_ucli_instance_chat_is_served_through_term_chat` | 280 | kapsam dışı | yok | durmuş oturumun sohbeti. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_store_tsv.py`
 
@@ -2378,9 +2378,9 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_pending_user_turn_has_empty_assistant` | 17 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_answered_turn_pairs_normally` | 22 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_assistant_only_and_empty` | 26 | kapsam dışı | yok | sohbet geçmişi. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_pending_user_turn_has_empty_assistant` | 17 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_answered_turn_pairs_normally` | 22 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_ucli_last_exchange_pairing.py::LastExchangePairingTest.test_assistant_only_and_empty` | 26 | kapsam dışı | yok | sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_ucli_limit_flags.py`
 
