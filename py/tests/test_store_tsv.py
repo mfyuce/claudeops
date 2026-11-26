@@ -1,6 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import tempfile, unittest
+import shutil, tempfile, unittest
 from unittest import mock
 from claudeops import statedocs as sd, store as S
 
@@ -10,6 +10,7 @@ ROSTER = "name\tcwd\tmodel\tcli\n# yorum satiri\n\ncops\t/home/x/cops\tclaude-so
 class TsvTests(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-tsv-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.ps = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d),
                    mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "dual", "CLAUDEOPS_DIAG_LOG": os.path.join(self.d, "diag.log")})]
@@ -58,7 +59,7 @@ class TsvTests(unittest.TestCase):
         open(self.p, "w").write(ROSTER)
         with mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "files"}):
             sd.shadow_tsv(self.p, force=True)
-        other = tempfile.mkdtemp(prefix="cops-tsv-o-"); q = os.path.join(other, "roster.tsv"); open(q, "w").write(ROSTER)
+        other = tempfile.mkdtemp(prefix="cops-tsv-o-"); self.addCleanup(shutil.rmtree, other, True); q = os.path.join(other, "roster.tsv"); open(q, "w").write(ROSTER)
         sd.shadow_tsv(q, force=True)
         r = os.path.join(self.d, "other.tsv"); open(r, "w").write(ROSTER); sd.shadow_tsv(r, force=True)
         self.assertIsNone(self.st.tsv_text("roster.tsv")); self.assertIsNone(self.st.tsv_text("other.tsv"))

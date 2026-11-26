@@ -11,6 +11,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tmp_tracking  # noqa: E402,F401  (ilk modül: sonraki tüm mkdtemp'ler süreç sonunda silinir)
 
 _REAL = os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "diag.log")
 

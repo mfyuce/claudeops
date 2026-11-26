@@ -3,6 +3,7 @@ import io
 import json
 import os
 import sys
+import shutil
 import tempfile
 import unittest
 
@@ -160,7 +161,9 @@ class HttpLevel(unittest.TestCase):
     def setUp(self):
         import http.server
         import threading
-        self.d = tempfile.mkdtemp()
+        base = tempfile.mkdtemp(prefix="cops-rd-")                  # `out.png` belge kökünün DIŞINDA ama bu dizinin içinde kalır
+        self.addCleanup(shutil.rmtree, base, True)
+        self.d = os.path.join(base, "kok")
         os.makedirs(os.path.join(self.d, "figs"))
         self.doc = os.path.join(self.d, "doc.tex")
         open(self.doc, "w").write("\\includegraphics{figs/a.png}")

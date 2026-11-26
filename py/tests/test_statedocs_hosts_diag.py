@@ -1,6 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import json, tempfile, unittest
+import json, shutil, tempfile, unittest
 from unittest import mock
 from claudeops import hosts as H, diaglog, statedocs as sd, store as S
 
@@ -8,6 +8,7 @@ from claudeops import hosts as H, diaglog, statedocs as sd, store as S
 class HostsDiagDual(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-hd-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.ps = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d),
                    mock.patch.object(H, "HOSTS_JSON", os.path.join(self.d, "hosts.json")),

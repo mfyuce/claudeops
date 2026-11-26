@@ -2,7 +2,9 @@
 
 `_Tmp`: her test için geçici bir `CLAUDEOPS_DIR` benzeri dizin; `settings.SETTINGS_JSON` ve değnekçi modül sabitleri
 oraya yönlendirilir, gerçek `~/.claude/claudeops/` ve `settings.json`'a dokunulmaz."""
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -11,7 +13,10 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-os.environ.setdefault("CLAUDEOPS_DIAG_LOG", os.path.join(tempfile.mkdtemp(prefix="cops-test-diag-"), "diag.log"))
+if not os.environ.get("CLAUDEOPS_DIAG_LOG"):
+    _diag = tempfile.mkdtemp(prefix="cops-test-diag-")
+    atexit.register(shutil.rmtree, _diag, True)
+    os.environ["CLAUDEOPS_DIAG_LOG"] = os.path.join(_diag, "diag.log")
 from claudeops import question_detail, settings, steward as sw  # noqa: E402
 from claudeops.commands import web_steward  # noqa: E402
 

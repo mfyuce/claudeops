@@ -1,12 +1,17 @@
 """Guard: testler gerçek ~/.claude/claudeops/diag.log'a yazmaz (sahte stop_end name=cops olayları sızmasın)."""
+import atexit
 import hashlib
 import os
+import shutil
 import sys
 import tempfile
 import unittest
 
 # claudeops içe aktarılmadan ÖNCE yönlendir (tek başına unittest ile koşulsa da).
-os.environ.setdefault("CLAUDEOPS_DIAG_LOG", os.path.join(tempfile.mkdtemp(prefix="cops-test-diag-"), "diag.log"))
+if not os.environ.get("CLAUDEOPS_DIAG_LOG"):
+    _diag = tempfile.mkdtemp(prefix="cops-test-diag-")
+    atexit.register(shutil.rmtree, _diag, True)
+    os.environ["CLAUDEOPS_DIAG_LOG"] = os.path.join(_diag, "diag.log")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from claudeops import diaglog  # noqa: E402
 from claudeops.paths import CLAUDEOPS_DIR  # noqa: E402

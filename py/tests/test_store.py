@@ -1,6 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import json, os, sqlite3, stat, subprocess, sys, tempfile, threading, unittest
+import json, os, sqlite3, stat, subprocess, sys, shutil, tempfile, threading, unittest
 
 from claudeops import store as S
 
@@ -8,6 +8,7 @@ from claudeops import store as S
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-store-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.p = os.path.join(self.d, "t.db")
         self.s = S.Store(self.p)
 

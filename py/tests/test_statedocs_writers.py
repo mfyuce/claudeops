@@ -1,6 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import json, tempfile, unittest
+import json, shutil, tempfile, unittest
 from unittest import mock
 from claudeops import statedocs as sd, store as S, steward as sw, instances as ins
 
@@ -8,6 +8,7 @@ from claudeops import statedocs as sd, store as S, steward as sw, instances as i
 class WritersShadowTests(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-wr-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.ps = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d),
                    mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": "dual", "CLAUDEOPS_DIAG_LOG": os.path.join(self.d, "diag.log")})]

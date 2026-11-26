@@ -1,14 +1,16 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import json, tempfile, unittest
+import json, shutil, tempfile, unittest
 from unittest import mock
 from claudeops import statedocs as sd, store as S
 
 
 class StateDocsTests(unittest.TestCase):
     def setUp(self):
-        self._env = mock.patch.dict(os.environ, {"CLAUDEOPS_DIAG_LOG": os.path.join(tempfile.mkdtemp(prefix="cops-sd-diag-"), "diag.log")}); self._env.start()
+        diag = tempfile.mkdtemp(prefix="cops-sd-diag-"); self.addCleanup(shutil.rmtree, diag, True)
+        self._env = mock.patch.dict(os.environ, {"CLAUDEOPS_DIAG_LOG": os.path.join(diag, "diag.log")}); self._env.start()
         self.d = tempfile.mkdtemp(prefix="cops-sd-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.path = os.path.join(self.d, "q.json")
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.p = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d), mock.patch.object(sd, "DB_READY", {"q", "x", "h", "hosts"})]
@@ -96,7 +98,7 @@ class StateDocsTests(unittest.TestCase):
         sd._CACHE.update(at=0.0); self.assertEqual(sd.backend(), "dual")
 
     def test_outside_claudeops_dir_is_files_only(self):
-        other = tempfile.mkdtemp(prefix="cops-sd-other-"); path = os.path.join(other, "x.json")
+        other = tempfile.mkdtemp(prefix="cops-sd-other-"); self.addCleanup(shutil.rmtree, other, True); path = os.path.join(other, "x.json")
         self.mode("db"); sd.write_json("x", path, {"a": 1})
         self.assertEqual(json.load(open(path)), {"a": 1}); self.assertEqual(self.st.list_docs(), [])
         sd.mirror_log("s", path, {"e": 1}); self.assertEqual(self.st.tail_log("s"), [])

@@ -1,4 +1,4 @@
-import os, sys, tempfile, unittest
+import os, sys, shutil, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import related_tests as rt
 
@@ -12,6 +12,7 @@ def _w(path, text=""):
 class RelatedTestsTests(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="cops-rt-")
+        self.addCleanup(shutil.rmtree, self.root, True)
         r = self.root
         _w(f"{r}/claudeops/__init__.py")
         _w(f"{r}/claudeops/a.py", "X = 1\n")

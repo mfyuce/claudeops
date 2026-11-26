@@ -3,7 +3,7 @@ model_choices yedeği (hardcoded) korunur."""
 import json
 import os
 import sys
-import tempfile
+import shutil, tempfile
 import unittest
 from unittest import mock
 
@@ -15,6 +15,7 @@ from claudeops.providers import claude_provider as cp  # noqa: E402
 class ClaudeModelsStoreTest(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-cm-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.p = os.path.join(self.d, "claude_models.json")
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.ps = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d),

@@ -568,7 +568,8 @@ class OneshotProviderTest(unittest.TestCase):
 
         with mock.patch.object(ucli_provider, "ucli_chat_once", fake_once), \
                 mock.patch.object(ucli_provider, "byok_env_for", lambda cli: {"UCLI_API_KEY": "sk-gizli"}):
-            self.assertEqual(prov.oneshot("özetle", "m1", os.path.join(tempfile.gettempdir(), "cops-oneshot-test")), '{"goal": "x"}')
+            with tempfile.TemporaryDirectory(prefix="cops-oneshot-") as one:
+                self.assertEqual(prov.oneshot("özetle", "m1", os.path.join(one, "cwd")), '{"goal": "x"}')
         self.assertEqual((seen["model"], seen["endpoint"], seen["api_key"]), ("m1", ucli_provider._ENDPOINT, "sk-gizli"))
         with mock.patch.object(ucli_provider, "ucli_chat_once", lambda *a, **k: {"answer": ""}), \
                 mock.patch.object(ucli_provider, "byok_env_for", lambda cli: {}):

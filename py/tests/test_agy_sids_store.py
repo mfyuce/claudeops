@@ -1,7 +1,7 @@
 """agy_sids DB-doğruluk kaynağı (SQL göçü Adım C): kilitli oku-değiştir-yaz (eşzamanlı yazım kayıp vermez), DB kipinde okuma."""
 import os
 import sys
-import tempfile
+import shutil, tempfile
 import threading
 import unittest
 from unittest import mock
@@ -14,6 +14,7 @@ from claudeops.providers import agy_provider as ap  # noqa: E402
 class AgySidsStoreTest(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="cops-agy-")
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.p = os.path.join(self.d, "agy_sids.json")
         self.st = S.Store(os.path.join(self.d, "t.db"))
         self.ps = [mock.patch.object(S, "default_store", lambda: self.st), mock.patch("claudeops.paths.CLAUDEOPS_DIR", self.d),
