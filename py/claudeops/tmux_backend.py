@@ -16,6 +16,7 @@ import subprocess
 import termios
 import threading
 import time
+import unicodedata
 from pathlib import Path
 from typing import List, Optional
 
@@ -72,8 +73,19 @@ def _addressable(name: str) -> bool:
     """`=ad:` hedefi tmux'ta YALNIZ bu oturuma çözülür mü (tmux 3.2a, yalıtılmış sunucuda ölçüldü, TBD#366):
     boş ad (`=:` en son oturuma), `$` ile başlayan ad (`=$0:` oturum KİMLİĞİ $0'a) ve `:` içeren ad (`=zeta:0:`
     display-message'ta zeta'ya; tmux zaten adlarda `:` bırakmaz, `_` yapar) başka oturumu hedefler. `=`, `@`, `%`, `.`
-    ile başlayan/içeren ad doğru çözülür."""
-    return isinstance(name, str) and bool(name) and not name.startswith("$") and ":" not in name
+    ile başlayan/içeren ad doğru çözülür.
+
+    `#` ve denetim karakteri de reddedilir: tmux `new-session -s` değerini BİÇİM olarak genişletir; `#(komut)` kabukta
+    ÇALIŞIR, `victim#{?0,x,}` VAR OLAN `victim` oturumuna bağlanır (tmux 3.2a, yalıtılmış sunucuda ölçüldü)."""
+    return (isinstance(name, str) and bool(name) and not name.startswith("$") and ":" not in name and "#" not in name
+            and not any(unicodedata.category(c) == "Cc" for c in name))
+
+
+def _tmux_format_literal(value: str) -> str:
+    """tmux'un BİÇİM genişlettiği argv değeri (`new-session -c`) için literal metin: `#` ikilenir. İstisna: `[` ile
+    biten `#` dizisi AYNEN kalır; tmux 3.2a onu zaten olduğu gibi bırakır (stil işareti), ikilemek yolu bozardı
+    (ölçüldü: `a#[x]` ikilenince oturum ev dizininde açıldı). `#[` komut çalıştırmaz."""
+    return re.sub(r"(#+)(\[?)", lambda m: m.group(0) if m.group(2) else m.group(1) * 2, value)
 
 
 def _tmux_arg(arg: str) -> str:
@@ -97,7 +109,7 @@ def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
         raise ValueError("tmux hedefi olamayan oturum adı")
     return (
         f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} "
-        f"new-session -A -s {shlex.quote(_tmux_arg(name))} -c {shlex.quote(_tmux_arg(cwd))} "
+        f"new-session -A -s {shlex.quote(_tmux_arg(name))} -c {shlex.quote(_tmux_arg(_tmux_format_literal(cwd)))} "
         f"-x 100 -y 30 {shlex.quote(_tmux_arg(inner))}"
     )
 
@@ -127,7 +139,7 @@ def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
         return False
     cmd = _base_argv() + [
         "-f", tmux_conf_path(), "new-session", "-d", "-A",
-        "-s", _tmux_arg(name), "-c", _tmux_arg(cwd), "-x", "100", "-y", "30",
+        "-s", _tmux_arg(name), "-c", _tmux_arg(_tmux_format_literal(cwd)), "-x", "100", "-y", "30",
         f"{inner}; exec bash",
     ]
     try:
