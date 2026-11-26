@@ -72,6 +72,7 @@ class Env(unittest.TestCase):
                   mock.patch.object(f, "DROPIN", self.dropin), mock.patch.object(f, "DIST_DIR", "/repo/py/webui/dist"),
                   mock.patch.object(f, "port_busy", self.w.busy), mock.patch.object(f, "_port_owner", self.w.owner),
                   mock.patch.object(f, "_sc", self.w.sc),
+                  mock.patch.dict(f._TIMING, {"front_up": 0.05, "port_free": 0.05, "web_up": 0.05, "poll": 0.005}),
                   mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": ""})):
             p.start(); self.addCleanup(p.stop)
 
@@ -82,6 +83,13 @@ class Env(unittest.TestCase):
             rc = f.run(args)
         return rc, out.getvalue()
 
+
+    def web_outside(self):
+        """Canlıdaki "kapalı" durum: web dış portta, ön kapı yok (Rust `Env::web_outside`)."""
+        self.w.owners[L] = unit(f.WEB_UNIT_NAME)
+        self.w.effects = [("restart claudeops-web.service", L, ("none",)),
+                          ("restart claudeops-web.service", I, unit(f.WEB_UNIT_NAME)),
+                          ("enable --now claudeops-front.service", L, unit(f.FRONT_UNIT_NAME))]
 
     def front_on(self):
         """"Açık" durum: ön kapı dışta, web içte, drop-in yazılı (Rust `Env::front_on`)."""
@@ -249,7 +257,9 @@ class P6Quoting(Env):
     def test_applied_unit_with_spaced_bin_has_one_execstart_word(self):
         b = self.root / "ikili dizini" / "copsd"
         b.parent.mkdir(); b.write_text("#!/bin/sh\n"); b.chmod(0o755)
-        self.run_front("on", True, binp=str(b))
+        self.web_outside()
+        rc, out = self.run_front("on", True, binp=str(b))
+        self.assertEqual(rc, 0, out)
         line = [x for x in self.front.read_text().splitlines() if x.startswith("ExecStart=")][0]
         self.assertTrue(line.startswith(f'ExecStart="{b}" --listen '), line)
 
@@ -318,6 +328,234 @@ class P8RelativeStateDir(unittest.TestCase):
             r = subprocess.run(["python3", "-c", "from claudeops import paths; print(paths.CLAUDEOPS_DIR)"], cwd=self.PY,
                                env=self._env(d), capture_output=True, text=True, timeout=120)
             self.assertEqual((r.returncode, r.stdout), (0, d + "\n"), r.stderr)
+
+
+class P3Rollback(Env):
+    """3: `on`/`off` yarıda kalınca geri alma yoktu, `off` `disable --now` sonucunu yok sayıyordu, birim dosyaları yerinde
+    kesilip yazılıyordu, ön kapının dinlediği / web'in döndüğü doğrulanmıyordu. Rust `front::on/off` ile aynı."""
+
+    def test_applied_on_succeeds_and_verifies(self):
+        self.web_outside()
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.endswith("açıldı: dış 127.0.0.1:8765 -> iç 127.0.0.1:28765\n"), out)
+        self.assertEqual(self.dropin.read_text(), "[Service]\nExecStart=\nExecStart=/bin/bash -ic '/usr/bin/python3 -m "
+                                                  "claudeops web --host 127.0.0.1 --port 28765'\n")
+        self.assertEqual(self.w.calls, ["daemon-reload", "restart claudeops-web.service",
+                                        "enable --now claudeops-front.service"])
+        self.assertEqual([x for x in os.listdir(self.front.parent) if x.startswith(".")], [])
+
+    def test_on_rolls_back_at_every_systemctl_step(self):
+        steps = ["daemon-reload", "restart claudeops-web.service", "enable --now claudeops-front.service"]
+        undo = [["daemon-reload"], ["daemon-reload", "restart claudeops-web.service"],
+                ["disable --now claudeops-front.service", "daemon-reload", "restart claudeops-web.service"]]
+        for i, step in enumerate(steps):
+            with self.subTest(step=step):
+                self.setUp()
+                self.web_outside()
+                self.w.fail[step] = 5
+                rc, out = self.run_front("on", True)
+                self.assertEqual(rc, 1, out)
+                self.assertIn(f"HATA: systemctl --user {step}\n  neden: çıkış 5\nGERİ ALMA:\n", out)
+                self.assertIn("geri alındı: birim dosyaları ve servisler önceki durumda\n", out)
+                self.assertFalse(self.front.exists())
+                self.assertFalse(self.dropin.exists())
+                self.assertEqual(self.w.calls[i + 1:], undo[i])
+
+    def test_front_not_listening_is_rolled_back(self):
+        self.web_outside()
+        self.w.effects = [e for e in self.w.effects if e[0] != "enable --now claudeops-front.service"
+                          and not (e[0] == "restart claudeops-web.service" and e[1] == L)]
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1)
+        self.assertIn("HATA: ön kapı 127.0.0.1:8765 üzerinde dinlemiyor (0 sn içinde claudeops-front.service görülmedi: "
+                      "pid 10 (claudeops-web.service))", out)
+        self.assertIn("geri alındı", out)
+        self.assertEqual(self.w.calls[3:], ["disable --now claudeops-front.service", "daemon-reload",
+                                            "restart claudeops-web.service"])
+
+    def test_on_web_not_on_internal_is_rolled_back(self):
+        self.web_outside()
+        self.w.effects = [e for e in self.w.effects if not (e[0] == "restart claudeops-web.service" and e[1] == I)]
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("HATA: web iç adreste 127.0.0.1:28765 doğrulanamadı", out)
+        self.assertIn("geri alındı", out)
+        self.assertFalse(self.dropin.exists())
+
+    def test_reapply_failure_restores_previous_unit_and_restarts_old_front(self):
+        self.front_on()
+        self.w.fail_always["restart claudeops-front.service"] = 1
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(self.front.read_text().startswith("eski birim"))
+        self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+        self.assertIn("  systemctl --user restart claudeops-front.service: HATA (çıkış 1)\n", out)
+        self.assertIn("GERİ ALMA BAŞARISIZ: yukarıda HATA yazan adımları elle tamamlayın", out)
+
+    def test_write_failure_restores_files_without_systemctl(self):
+        self.dropin.parent.mkdir(parents=True)
+        self.dropin.parent.chmod(0o500)
+        self.addCleanup(self.dropin.parent.chmod, 0o700)
+        self.front.write_text("onceki")
+        self.front.chmod(0o640)
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1)
+        self.assertIn(f"HATA: yazılamadı: {self.dropin}: ", out)
+        self.assertEqual(self.front.read_text(), "onceki")
+        self.assertEqual(self.front.stat().st_mode & 0o777, 0o640)
+        self.assertIn(f"  geri yaz: {self.front} (önceki içerik): tamam\n  sil: {self.dropin} (önceden yoktu): tamam\n", out)
+        self.assertIn("geri alındı", out)
+        self.assertEqual(self.w.calls, [])
+
+    def test_on_listen_change_failure_restarts_old_front_instead_of_stopping_it(self):
+        self.front_on()
+        self.w.effects = []
+        rc, out = self.run_front("on", True, "127.0.0.1:9000", I)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ön kapı 127.0.0.1:9000 üzerinde dinlemiyor", out)
+        self.assertIn("geri alındı", out)
+        self.assertEqual(self.w.calls, ["daemon-reload", "enable --now claudeops-front.service",
+                                        "restart claudeops-front.service", "daemon-reload",
+                                        "restart claudeops-front.service"])
+        self.assertTrue(self.front.read_text().startswith("eski birim"))
+
+    def test_on_rollback_keeps_previous_enablement(self):
+        self.front_on()
+        self.w.front_enabled = False
+        self.w.fail["restart claudeops-front.service"] = 1
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(self.w.calls[3:], ["daemon-reload", "restart claudeops-front.service",
+                                            "disable claudeops-front.service"])
+        self.setUp()
+        self.web_outside()
+        self.w.front_enabled = True
+        self.w.fail["enable --now claudeops-front.service"] = 1
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(self.w.calls[3:], ["stop claudeops-front.service", "daemon-reload", "restart claudeops-web.service"])
+
+    def test_unknown_front_state_changes_nothing(self):
+        for action in ("on", "off"):
+            with self.subTest(action=action):
+                self.setUp()
+                self.front_on()
+                self.w.query_err = True
+                rc, out = self.run_front(action, True)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("HATA: claudeops-front.service durumu okunamadı: systemctl başlatılamadı (hiçbir şey değişmedi)", out)
+                self.assertEqual(self.w.calls, [])
+                self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+                self.assertFalse((self.state / "front.secret").exists())
+
+    def test_unreadable_web_unit_is_a_blocker(self):
+        self.web.write_bytes(b"[Service]\nExecStart=\xff web\n")
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn(f"ENGEL:\n  claudeops-web.service okunamadı: {self.web}: UTF-8 değil\n", out)
+        self.assertEqual(self.w.calls, [])
+
+    def test_off_success_sequence_and_verifies_web(self):
+        self.front_on()
+        rc, out = self.run_front("off", True, "9.9.9.9:1", I)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.endswith("kapandı\n"))
+        self.assertFalse(self.dropin.exists())
+        self.assertEqual(self.w.calls, ["disable --now claudeops-front.service", "daemon-reload",
+                                        "restart claudeops-web.service"])
+
+    def test_off_disable_failure_changes_nothing(self):
+        self.front_on()
+        self.w.fail["disable --now claudeops-front.service"] = 1
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 1)
+        self.assertIn("HATA: systemctl --user disable --now claudeops-front.service\n  neden: çıkış 1\n", out)
+        self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+        self.assertEqual(self.w.calls, ["disable --now claudeops-front.service", "enable --now claudeops-front.service"])
+
+    def test_off_disable_failure_keeps_stopped_front_stopped(self):
+        self.front_on()
+        self.w.front_active = self.w.front_enabled = False
+        self.w.fail["disable --now claudeops-front.service"] = 1
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(self.w.calls, ["disable --now claudeops-front.service"])
+        self.assertIn("geri alındı", out)
+
+    def test_off_web_restart_failure_returns_to_front(self):
+        self.front_on()
+        self.w.fail_always["restart claudeops-web.service"] = 3
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 3, "Python'un eski davranışı gibi restart'ın kodu")
+        self.assertIn("HATA: web restart\n", out)
+        self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+        self.assertEqual(self.w.calls[3:], ["daemon-reload", "restart claudeops-web.service",
+                                            "enable --now claudeops-front.service"])
+        self.assertIn("GERİ ALMA BAŞARISIZ", out)
+
+    def test_off_web_not_back_outside_is_rolled_back(self):
+        self.front_on()
+        self.w.effects = [e for e in self.w.effects if not (e[0] == "restart claudeops-web.service" and e[1] == L)]
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 1)
+        self.assertIn("HATA: web 127.0.0.1:8765 üzerinde doğrulanamadı (0 sn: dinleyen soket bulunamadı)", out)
+        self.assertIn("geri alındı", out)
+        self.assertEqual(self.dropin.read_text(), "eski drop-in\n")
+
+    def test_off_port_not_released_stops_before_touching_web(self):
+        self.front_on()
+        self.w.effects = []
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 1)
+        self.assertIn("HATA: dış port 127.0.0.1:8765 boşalmadı (pid 10 (claudeops-front.service)); web oraya dönemez", out)
+        self.assertTrue(self.dropin.exists())
+        self.assertEqual(self.w.calls, ["disable --now claudeops-front.service", "enable --now claudeops-front.service"])
+
+    def test_off_without_front_unit_ignores_disable_error(self):
+        self.w.owners[L] = unit(f.WEB_UNIT_NAME)
+        self.w.fail["disable --now claudeops-front.service"] = 5
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("(not: claudeops-front.service birimi yok; durdurma hatası yok sayıldı)\n", out)
+
+    def test_off_verifies_web_on_its_own_port_when_front_listen_differs(self):
+        self.front_on()
+        alt = "127.0.0.1:9000"
+        self.front.write_text("ExecStart=/x/copsd --listen 127.0.0.1:9000 --upstream y\n")
+        del self.w.owners[L]
+        self.w.owners[alt] = unit(f.FRONT_UNIT_NAME)
+        self.w.effects = [("disable --now claudeops-front.service", alt, ("none",)),
+                          ("restart claudeops-web.service", L, unit(f.WEB_UNIT_NAME))]
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.endswith("kapandı\n"), out)
+
+    def test_web_addr_follows_web_unit_flags(self):
+        a = lambda t: (lambda r: f._fmt(r) if r else None)(f._web_addr(t))      # noqa: E731
+        self.assertEqual(a(LIVE), "127.0.0.1:8765")
+        self.assertEqual(a("ExecStart=/x -m claudeops web --port 9001 --host 0.0.0.0"), "127.0.0.1:9001")
+        self.assertEqual(a("ExecStart=/bin/bash -ic 'python3 -m claudeops web --host=127.0.0.2 --port=9002'"), "127.0.0.2:9002")
+        self.assertIsNone(a("ExecStart=/x web --port abc"))
+        self.assertIsNone(a("[Service]\n"))
+
+    def test_atomic_write_snapshot_restore_roundtrip(self):
+        p = self.root / "u.service"
+        self.assertIsNone(f._snapshot(p))
+        f._atomic_write(p, b"a")
+        p.chmod(0o640)
+        snap = f._snapshot(p)
+        self.assertEqual(snap, (b"a", 0o640))
+        f._atomic_write(p, b"b")
+        f._restore(p, snap)
+        self.assertEqual((p.read_bytes(), p.stat().st_mode & 0o777), (b"a", 0o640))
+        f._restore(p, None)
+        self.assertFalse(p.exists())
+        f._restore(p, None)
+        d = self.root / "d"; d.mkdir(); (d / "x").write_text("1")
+        with self.assertRaises(OSError):
+            f._atomic_write(d, b"z")
+        self.assertEqual(sorted(x for x in os.listdir(self.root) if x.startswith(".")), [])
 
 
 if __name__ == "__main__":

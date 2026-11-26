@@ -1,6 +1,7 @@
-//! Python ile PARİTE: aynı girdiyle `py/cops` (Python) ve `cops-rs` koşar; stdout, stderr, çıkış kodu karşılaştırılır. Yalnız
-//! salt okuma yolları (status, planlar, devredilen komutlar, self). Python hiçbir zaman `--apply` ile koşmaz; portlar testin
-//! kendi açtığı loopback dinleyicileridir (canlı 8765/28765'e bağlanılmaz).
+//! Python ile PARİTE: aynı girdiyle `py/cops` (Python) ve `cops-rs` koşar; stdout, stderr, çıkış kodu karşılaştırılır. Salt
+//! okuma yolları (status, planlar, devredilen komutlar, self) ve "Python hatası?" 1-8 düzeltmelerinden sonra engel ve geri alma
+//! yolları. `--apply` yalnız yalıtık HOME/CLAUDEOPS_DIR ve PATH başındaki sahte `systemctl` ile; portlar testin kendi açtığı
+//! loopback dinleyicileridir (canlı 8765/28765'e bağlanılmaz).
 
 mod common;
 use common::*;
@@ -298,6 +299,77 @@ fn parity_relative_state_dir_is_refused() {
     assert!(!sb.t.path().join("goreli-durum").exists());
     assert!(!repo().join("py/goreli-durum").exists());
     assert!(!sb.sc_log().exists());
+}
+
+#[test]
+fn parity_apply_rollback_on_systemctl_failure() {
+    // "Python hatası?" 3 düzeltildi: `on`/`off --apply` yarıda kalınca iki taraf aynı geri almayı yapar (sahte systemctl,
+    // yalıtık HOME; canlı porta bağlanılmaz: web birimi testin boş portunu söyler). Aynı sandbox sırayla: önce Python,
+    // sonra Rust; her koşu öncesi birim dosyaları ve systemctl günlüğü sıfırlanır.
+    let sb = Sandbox::new();
+    let (_l, _busy, free) = ports();
+    std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
+    sb.exe(&sb.state().join("bin/copsd"));
+    let front = sb.unit_dir().join("claudeops-front.service");
+    let dropin = sb.unit_dir().join("claudeops-web.service.d/front.conf");
+    let run = |prog: &Path, args: &[&str], fail: &str, prepare: &dyn Fn()| {
+        let _ = std::fs::remove_file(sb.sc_log());
+        prepare();
+        let o = sb
+            .cmd(prog)
+            .args(args)
+            .env("FAKE_SC_FAIL", fail)
+            .output()
+            .unwrap();
+        let log = std::fs::read_to_string(sb.sc_log()).unwrap_or_default();
+        (o, log)
+    };
+    let on = [
+        "front",
+        "on",
+        "--apply",
+        "--listen",
+        "127.0.0.1:1",
+        "--internal",
+        free.as_str(),
+    ];
+    let none = || {};
+    let (p, plog) = run(&py_cops(), &on, "restart", &none);
+    assert!(!front.exists() && !dropin.exists(), "Python geri aldı");
+    let (r, rlog) = run(&bin(), &on, "restart", &none);
+    same(&p, &r, "on geri alma");
+    assert_eq!(plog, rlog, "on systemctl sırası");
+    assert_eq!(r.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&r.stdout).contains("GERİ ALMA BAŞARISIZ"));
+    // off: ön kapı birimi ve drop-in var; web restart başarısız -> drop-in geri, web restart (yine başarısız). Web birimi
+    // boş portu söyler (`off` web'i kendi adresinde bekler; canlı 8765'e bakılmasın).
+    std::fs::write(
+        sb.unit_dir().join("claudeops-web.service"),
+        format!(
+            "[Service]\nExecStart=/bin/bash -ic '/usr/bin/python3 -m claudeops web --port {}'\n",
+            free.rsplit(':').next().unwrap()
+        ),
+    )
+    .unwrap();
+    let prepare = || {
+        std::fs::write(&front, "ExecStart=/x/copsd --listen 127.0.0.1:1 --upstream y\n").unwrap();
+        std::fs::create_dir_all(dropin.parent().unwrap()).unwrap();
+        std::fs::write(&dropin, "eski drop-in\n").unwrap();
+    };
+    let off = ["front", "off", "--apply"];
+    let (p, plog) = run(&py_cops(), &off, "restart", &prepare);
+    assert_eq!(std::fs::read_to_string(&dropin).unwrap(), "eski drop-in\n");
+    let (r, rlog) = run(&bin(), &off, "restart", &prepare);
+    same(&p, &r, "off geri alma");
+    assert_eq!(plog, rlog, "off systemctl sırası");
+    assert_eq!(r.status.code(), Some(1));
+    // off: disable başarısız (birim var) -> hiçbir şey değişmez
+    let (p, plog) = run(&py_cops(), &off, "disable", &prepare);
+    let (r, rlog) = run(&bin(), &off, "disable", &prepare);
+    same(&p, &r, "off disable hatası");
+    assert_eq!(plog, rlog);
+    assert!(String::from_utf8_lossy(&r.stdout).contains("neden: çıkış 1"));
+    assert_eq!(std::fs::read_to_string(&dropin).unwrap(), "eski drop-in\n");
 }
 
 #[test]

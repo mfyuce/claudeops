@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -309,7 +310,7 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     return p["steps"], p["blockers"]
 
 
-def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
+def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err: Optional[str] = None) -> dict:
     """Plan kararı (Rust `plan_on` ile aynı engel sırası ve metni): steps, blockers, reapply (drop-in var ve iç portu
     bizim web birimimiz tutuyor), new_execstart, la, ia. Geçersiz/çakışan adres ENGEL; drop-in varken iç portu başka bir
     süreç tutuyorsa ENGEL (eskiden "yeniden uygulama" sayılıp ön kapı yabancı porta vekil oluyordu)."""
@@ -322,7 +323,9 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
         blockers.append(f"ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)")
     es = web_execstart(web_unit_text)
     new = with_internal_port(es, internal) if es else None
-    if new is None:
+    if read_err is not None:
+        blockers.append(f"claudeops-web.service okunamadı: {read_err}")
+    elif new is None:
         blockers.append("claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir")
     for what, v in (("ikili", binp), ("dist", str(DIST_DIR)), ("durum dizini", front_mod.paths.CLAUDEOPS_DIR)):
         if any(unicodedata.category(c) == "Cc" for c in v):
@@ -358,8 +361,230 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
     return {"steps": steps, "blockers": blockers, "reapply": reapply, "new_execstart": new, "la": la, "ia": ia}
 
 
+_TIMING = {"front_up": 15.0, "port_free": 10.0, "web_up": 30.0, "poll": 0.2}    # sn (Rust `Timing`; testler kısaltır)
+
+
+class _ScError(Exception):
+    """systemctl başlatılamadı (çıkış kodu yok)."""
+
+
 def _sc(*a: str) -> int:
-    return subprocess.run(["systemctl", "--user", *a]).returncode
+    """`systemctl --user ...` çıkış kodu (sinyalle biterse 128+sinyal); başlatılamazsa `_ScError`."""
+    try:
+        rc = subprocess.run(["systemctl", "--user", *a]).returncode
+    except OSError as e:
+        raise _ScError(f"systemctl başlatılamadı: {e}") from None
+    return 128 - rc if rc < 0 else rc
+
+
+def _show(cmd) -> str:
+    return "systemctl --user " + " ".join(cmd)
+
+
+def _run_sc(cmd) -> Optional[str]:
+    """Başarıda None, yoksa neden."""
+    try:
+        rc = _sc(*cmd)
+    except _ScError as e:
+        return str(e)
+    return None if rc == 0 else f"çıkış {rc}"
+
+
+def _read_web_unit() -> Tuple[str, Optional[str]]:
+    """(metin, okuma hatası): yoksa ("", None); okunamaz ya da UTF-8 değilse hata metni (Rust `read_web_unit`)."""
+    try:
+        b = WEB_UNIT.read_bytes()
+    except FileNotFoundError:
+        return "", None
+    except OSError as e:
+        return "", f"{WEB_UNIT}: {e}"
+    try:
+        return b.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return "", f"{WEB_UNIT}: UTF-8 değil"
+
+
+def _snapshot(p: Path):
+    """Yazmadan önceki durum: yoksa None, varsa (içerik, izin bitleri); okunamazsa OSError (geri alınamayacak dosyaya yazılmaz)."""
+    try:
+        with open(p, "rb") as fh:
+            data = fh.read()
+            mode = os.fstat(fh.fileno()).st_mode & 0o7777
+    except FileNotFoundError:
+        return None
+    return data, mode
+
+
+def _atomic_write(p: Path, data: bytes, mode: Optional[int] = None) -> None:
+    """Aynı dizinde O_EXCL geçici dosya, dosya + dizin fsync, rename (yarıda kalırsa yarım birim kalmaz). `mode` None ise
+    yeni dosya umask'e göre (eski `write_text` gibi)."""
+    d = os.path.dirname(str(p)) or "."
+    n = 0
+    while True:
+        tmp = os.path.join(d, f".cops-py.{os.getpid()}.{n}.tmp")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            break
+        except FileExistsError:
+            if n >= 64:
+                raise
+            n += 1
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            if mode is not None:
+                os.fchmod(fh.fileno(), mode)
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.rename(tmp, p)
+        dfd = os.open(d, os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _restore(p: Path, prev) -> None:
+    if prev is None:
+        try:
+            os.unlink(p)
+        except FileNotFoundError:
+            pass
+    else:
+        _atomic_write(p, prev[0], prev[1])
+
+
+class _Undo:
+    """Geri alma günlüğü (Rust `Undo`; metinler aynı)."""
+
+    def __init__(self):
+        self.lines: List[str] = []
+        self.failed = False
+
+    def file(self, p: Path, prev) -> None:
+        what = f"sil: {p} (önceden yoktu)" if prev is None else f"geri yaz: {p} (önceki içerik)"
+        try:
+            _restore(p, prev)
+            self.lines.append(f"  {what}: tamam")
+        except OSError as e:
+            self.failed = True
+            self.lines.append(f"  {what}: HATA ({e})")
+
+    def sc(self, *cmd: str) -> None:
+        try:
+            rc = _sc(*cmd)
+        except _ScError as e:
+            self.failed = True
+            self.lines.append(f"  {_show(cmd)}: HATA ({e})")
+            return
+        if rc == 0:
+            self.lines.append(f"  {_show(cmd)}: tamam")
+        else:
+            self.failed = True
+            self.lines.append(f"  {_show(cmd)}: HATA (çıkış {rc})")
+
+    def front_stop(self, prev) -> None:
+        """Önceden çalışmayan ön kapıyı durdurur; etkinlik önceki gibi kalır."""
+        if prev["enabled"]:
+            self.sc("stop", FRONT_UNIT_NAME)
+        else:
+            self.sc("disable", "--now", FRONT_UNIT_NAME)
+
+    def front_back(self, prev) -> None:
+        """Durdurulmuş ön kapının önceki etkin/çalışır durumunu geri kurar."""
+        en, ac = prev["enabled"], prev["active"]
+        if en and ac:
+            self.sc("enable", "--now", FRONT_UNIT_NAME)
+        elif ac:
+            self.sc("start", FRONT_UNIT_NAME)
+        elif en:
+            self.sc("enable", FRONT_UNIT_NAME)
+
+    def report(self) -> None:
+        print("GERİ ALMA:")
+        for x in self.lines:
+            print(x)
+        if self.failed:
+            print("GERİ ALMA BAŞARISIZ: yukarıda HATA yazan adımları elle tamamlayın (`py/cops front status` ile denetleyin)")
+        else:
+            print("geri alındı: birim dosyaları ve servisler önceki durumda")
+
+
+def _wait_for(limit: float, cond) -> bool:
+    start = time.monotonic()
+    while True:
+        if cond():
+            return True
+        if time.monotonic() - start >= limit:
+            return False
+        time.sleep(_TIMING["poll"])
+
+
+def _front_state():
+    """Ön kapının değişiklikten önceki durumu (`is-active/is-enabled --quiet`, 0 = evet). Port sahibine bakılmaz (`--listen`
+    değişebilir). Okunamazsa `_ScError`: durum bilinmeden hiçbir şey değiştirilmez."""
+    return {"active": _sc("is-active", "--quiet", FRONT_UNIT_NAME) == 0,
+            "enabled": _sc("is-enabled", "--quiet", FRONT_UNIT_NAME) == 0}
+
+
+def _front_listen(fallback: str) -> str:
+    """Ön kapı biriminin `--listen` değeri (varsa), yoksa `fallback`."""
+    try:
+        text = FRONT_UNIT.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return fallback
+    es = web_execstart(text)
+    if es is None:
+        return fallback
+    toks = es.split()
+    if "--listen" in toks:
+        i = toks.index("--listen")
+        if i + 1 < len(toks):
+            return toks[i + 1]
+    return fallback
+
+
+def _web_addr(web_unit_text: str):
+    """`off` sonrası web'in döneceği adres: web biriminin ExecStart'ındaki `--host`/`--port` (ya da `=`li), yoksa web
+    varsayılanı 127.0.0.1:8765; joker ya da ad olan host loopback'ten yoklanır. Biçim tanınmazsa None."""
+    es = web_execstart(web_unit_text)
+    if es is None:
+        return None
+    if es.endswith("'"):
+        es = es[:-1]
+    toks = es.split()
+    host, port = "127.0.0.1", "8765"
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t in ("--host", "--port"):
+            if i + 1 < len(toks):
+                if t == "--host":
+                    host = toks[i + 1]
+                else:
+                    port = toks[i + 1]
+                i += 1
+        elif t.startswith("--host="):
+            host = t[len("--host="):]
+        elif t.startswith("--port="):
+            port = t[len("--port="):]
+        i += 1
+    try:
+        ip = ipaddress.IPv4Address(host) if all(c in "0123456789." for c in host) else None
+    except ValueError:
+        ip = None
+    if ip is None or ip.is_unspecified:
+        ip = ipaddress.IPv4Address("127.0.0.1")
+    try:
+        return _parse_listen(f"{ip}:{port}")
+    except ValueError:
+        return None
 
 
 def run(args) -> int:
@@ -379,42 +604,189 @@ def run(args) -> int:
             print(f"port {hp}: {'dolu' if port_busy(_fmt(a)) else 'boş'}")
         return rc
     if args.action == "on":
-        text = WEB_UNIT.read_text() if WEB_UNIT.exists() else ""
-        plan = _plan_on(args.listen, args.internal, args.bin, text)
-        steps, blockers = plan["steps"], plan["blockers"]
-        print("PLAN:\n  " + "\n  ".join(steps))
-        if blockers:
-            print("ENGEL:\n  " + "\n  ".join(blockers))
-            return 1
-        if not args.apply:
-            print("(plan; uygulamak için --apply)")
-            return 0
-        reapply = plan["reapply"]
-        front_mod.ensure_secret()
-        FRONT_UNIT.write_text(_unit_text(args.bin, args.listen, args.internal))
-        DROPIN.parent.mkdir(parents=True, exist_ok=True)
-        DROPIN.write_text(dropin_text(with_internal_port(web_execstart(text) or "", args.internal) or ""))
-        cmds = (("daemon-reload",), ("enable", "--now", "claudeops-front.service"), ("restart", "claudeops-front.service")) if reapply else \
-               (("daemon-reload",), ("restart", "claudeops-web.service"), ("enable", "--now", "claudeops-front.service"))
-        for cmd in cmds:
-            if _sc(*cmd) != 0:
-                print(f"HATA: systemctl --user {' '.join(cmd)}")
-                return 1
-        print("açıldı: dış", args.listen, "-> iç", args.internal)
+        return _on(args)
+    return _off(args)
+
+
+def _on(args) -> int:
+    """`on`: yarıda kalırsa (yazım, systemctl, ön kapının dinlememesi, web'in iç adrese geçmemesi) önceki dosya ve birim
+    durumuna dönülür; her dönüş adımı yazılır (Rust `front::on`)."""
+    text, read_err = _read_web_unit()
+    plan = _plan_on(args.listen, args.internal, args.bin, text, read_err)
+    print("PLAN:\n  " + "\n  ".join(plan["steps"]))
+    if plan["blockers"]:
+        print("ENGEL:\n  " + "\n  ".join(plan["blockers"]))
+        return 1
+    if not args.apply:
+        print("(plan; uygulamak için --apply)")
         return 0
-    # off
-    steps = ["systemctl --user disable --now claudeops-front.service", f"sil: {DROPIN}", "systemctl --user daemon-reload",
-             "systemctl --user restart claudeops-web.service (Python dış porta döner)"]
+    new_es, la, ia = plan["new_execstart"], plan["la"], plan["ia"]
+    if new_es is None or la is None or ia is None:
+        print("HATA: plan eksik (iç hata)")
+        return 1
+    try:
+        prev = _front_state()
+    except _ScError as e:
+        print(f"HATA: {FRONT_UNIT_NAME} durumu okunamadı: {e} (hiçbir şey değişmedi)")
+        return 1
+    try:
+        front_mod.ensure_secret()
+    except OSError as e:
+        print(f"HATA: gizli üretilemedi: {front_mod.secret_path()}: {e}")
+        return 1
+    snaps = []
+    for p in (FRONT_UNIT, DROPIN):
+        try:
+            snaps.append(_snapshot(p))
+        except OSError as e:
+            print(f"HATA: okunamadı: {p}: {e} (hiçbir şey değişmedi)")
+            return 1
+    prev_front, prev_drop = snaps
+    writes = ((FRONT_UNIT, _unit_text(args.bin, args.listen, args.internal)), (DROPIN, dropin_text(new_es)))
+    for i, (p, body) in enumerate(writes):
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write(p, body.encode())
+        except OSError as e:
+            print(f"HATA: yazılamadı: {p}: {e}")
+            u = _Undo()
+            if i == 1:
+                u.file(FRONT_UNIT, prev_front)
+            u.file(DROPIN, prev_drop)
+            u.report()
+            return 1
+    if plan["reapply"]:         # zaten açık: Python'a dokunma, yalnız front birimini yenile
+        cmds = [("daemon-reload",), ("enable", "--now", FRONT_UNIT_NAME), ("restart", FRONT_UNIT_NAME)]
+    else:
+        cmds = [("daemon-reload",), ("restart", WEB_UNIT_NAME), ("enable", "--now", FRONT_UNIT_NAME)]
+    ran, failure = 0, None
+    for cmd in cmds:
+        ran += 1
+        failure = _run_sc(cmd)
+        if failure is not None:
+            print(f"HATA: {_show(cmd)}")
+            print(f"  neden: {failure}")
+            break
+    if failure is None:
+        web_needed = not plan["reapply"]
+        lk, ik = _fmt(la), _fmt(ia)
+
+        def ok():
+            return _is_unit(_port_owner(lk), FRONT_UNIT_NAME) and (not web_needed or _is_unit(_port_owner(ik), WEB_UNIT_NAME))
+        if not _wait_for(_TIMING["front_up"], ok):
+            secs = int(_TIMING["front_up"])
+            if not _is_unit(_port_owner(lk), FRONT_UNIT_NAME):
+                print(f"HATA: ön kapı {args.listen} üzerinde dinlemiyor ({secs} sn içinde {FRONT_UNIT_NAME} görülmedi: "
+                      f"{_describe(_port_owner(lk))})")
+            else:
+                print(f"HATA: web iç adreste {args.internal} doğrulanamadı ({secs} sn içinde {WEB_UNIT_NAME} görülmedi: "
+                      f"{_describe(_port_owner(ik))})")
+            failure = "doğrulama"
+    if failure is None:
+        print(f"açıldı: dış {args.listen} -> iç {args.internal}")
+        return 0
+    # Geri alma: önceden çalışmayan ön kapıyı durdur, dosyaları geri koy, yeniden yükle, web'i eski portuna, önceden çalışan
+    # ön kapıyı eski birimiyle yeniden başlat; etkinlik durumu önceki gibi.
+    done = cmds[:ran]
+    front_touched = any(c[-1] == FRONT_UNIT_NAME for c in done)
+    web_restarted = ("restart", WEB_UNIT_NAME) in done
+    u = _Undo()
+    if front_touched and not prev["active"]:
+        u.front_stop(prev)
+    u.file(FRONT_UNIT, prev_front)
+    u.file(DROPIN, prev_drop)
+    u.sc("daemon-reload")
+    if web_restarted:
+        u.sc("restart", WEB_UNIT_NAME)
+    if front_touched and prev["active"]:
+        u.sc("restart", FRONT_UNIT_NAME)
+        if not prev["enabled"]:
+            u.sc("disable", FRONT_UNIT_NAME)
+    u.report()
+    return 1
+
+
+def _off(args) -> int:
+    """`off`: ön kapı durur ve dış portu bırakır, drop-in silinir, web kendi adresine döner ve orada doğrulanır; yarıda
+    kalırsa önceki duruma dönülür (Rust `front::off`). Ön kapı birimi yoksa durdurma hatası yok sayılır (eski davranış)."""
+    steps = [f"systemctl --user disable --now {FRONT_UNIT_NAME}", f"sil: {DROPIN}", "systemctl --user daemon-reload",
+             f"systemctl --user restart {WEB_UNIT_NAME} (Python dış porta döner)"]
     print("PLAN:\n  " + "\n  ".join(steps))
     if not args.apply:
         print("(plan; uygulamak için --apply)")
         return 0
-    _sc("disable", "--now", "claudeops-front.service")
+    text, read_err = _read_web_unit()
+    wa = _web_addr(text) if read_err is None else None
+    if wa is None:
+        try:
+            wa = _parse_listen(_front_listen(args.listen))
+        except ValueError as e:
+            print(f"HATA: geçersiz dış adres: {e} (hiçbir şey değişmedi)")
+            return 1
+    wk = _fmt(wa)
     try:
-        DROPIN.unlink()
-    except FileNotFoundError:
-        pass
-    _sc("daemon-reload")
-    rc = _sc("restart", "claudeops-web.service")
-    print("kapandı" if rc == 0 else "HATA: web restart")
-    return rc
+        prev = _front_state()
+    except _ScError as e:
+        print(f"HATA: {FRONT_UNIT_NAME} durumu okunamadı: {e} (hiçbir şey değişmedi)")
+        return 1
+    try:
+        prev_drop = _snapshot(DROPIN)
+    except OSError as e:
+        print(f"HATA: okunamadı: {DROPIN}: {e} (hiçbir şey değişmedi)")
+        return 1
+    unit_exists = FRONT_UNIT.exists()
+    disable = ("disable", "--now", FRONT_UNIT_NAME)
+    err = _run_sc(disable)
+    if err is not None:
+        if unit_exists:
+            print(f"HATA: {_show(disable)}\n  neden: {err}")
+            u = _Undo()
+            u.front_back(prev)
+            u.report()
+            return 1
+        print(f"(not: {FRONT_UNIT_NAME} birimi yok; durdurma hatası yok sayıldı)")
+
+    def freed():
+        o = _port_owner(wk)
+        return not _is_unit(o, FRONT_UNIT_NAME) and (_is_unit(o, WEB_UNIT_NAME) or not port_busy(wk))
+    if not _wait_for(_TIMING["port_free"], freed):
+        print(f"HATA: dış port {wk} boşalmadı ({_describe(_port_owner(wk))}); web oraya dönemez")
+        u = _Undo()
+        u.front_back(prev)
+        u.report()
+        return 1
+
+    def full_undo(web: bool) -> None:
+        u = _Undo()
+        u.file(DROPIN, prev_drop)
+        u.sc("daemon-reload")
+        if web:
+            u.sc("restart", WEB_UNIT_NAME)
+        u.front_back(prev)
+        u.report()
+    try:
+        _restore(DROPIN, None)
+    except OSError as e:
+        print(f"HATA: silinemedi: {DROPIN}: {e}")
+        full_undo(False)
+        return 1
+    err = _run_sc(("daemon-reload",))
+    if err is not None:
+        print(f"HATA: systemctl --user daemon-reload\n  neden: {err}")
+        full_undo(False)
+        return 1
+    try:
+        rc = _sc("restart", WEB_UNIT_NAME)
+    except _ScError as e:
+        print(f"  neden: {e}")
+        rc = 127
+    if rc != 0:
+        print("HATA: web restart")
+        full_undo(True)
+        return rc
+    if not _wait_for(_TIMING["web_up"], lambda: _is_unit(_port_owner(wk), WEB_UNIT_NAME)):
+        print(f"HATA: web {wk} üzerinde doğrulanamadı ({int(_TIMING['web_up'])} sn: {_describe(_port_owner(wk))})")
+        full_undo(True)
+        return 1
+    print("kapandı")
+    return 0
