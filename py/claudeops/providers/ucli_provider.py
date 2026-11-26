@@ -252,8 +252,11 @@ def _fetch_live_models() -> Optional[List[str]]:
     # alanı yoksa/tanınmayan bir değerse (ileride yeni bir kategori eklenirse)
     # temkinli davranıp DIŞARIDA bırakılıyor — sessizce yanlış bir modeli
     # sunmaktansa listeden eksik kalması daha güvenli.
+    data = payload.get("data", []) if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return None
     chat = [
-        m for m in payload.get("data", [])
+        m for m in data
         if isinstance(m, dict) and m.get("id") and m.get("task") == "chat"
     ]
     if chat:
