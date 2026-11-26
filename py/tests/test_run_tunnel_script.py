@@ -191,7 +191,7 @@ class TunnelEnv:
         else:
             path.write_text(content if isinstance(content, str) else json.dumps(content))
 
-    def wait_for(self, condition, what, timeout=10):
+    def wait_for(self, condition, what, timeout=60):     # yalnız düşüşte beklenir; yükte kabuk betiği yavaşlar
         deadline = time.time() + timeout
         while time.time() < deadline:
             if condition():
@@ -297,19 +297,24 @@ class WatchdogTests(unittest.TestCase):
     veriyordu ve systemd yalnız süreç ÖLÜNCE yeniden başlatır. Bekçi art arda 530 görürse cloudflared'ı
     sonlandırır, script çıkar, systemd yeni tüneli açar."""
 
+    def wait_exit_logged(self, env, proc, line):
+        """Betik bitince `line` günlükte olmalı. Günlük eşzamansız redaksiyon `sed`inden geçer: süreç çıktıktan
+        SONRA yazılabilir, hemen okumak yükte düşer."""
+        proc.wait(timeout=90)
+        env.wait_for(lambda: line in env.log_text(), line)
+
     def alive_after(self, env, proc, probes, seconds=3.0):
-        env.wait_for(lambda: len(env.probe_calls()) >= probes, f"{probes} yoklama", timeout=30)   # yük altında (paralel paket) kabuk betiği yavaşlar
+        env.wait_for(lambda: len(env.probe_calls()) >= probes, f"{probes} yoklama", timeout=90)
         time.sleep(seconds / 10)  # kısa pay: yanlışlıkla sonlandırma varsa yakalansın
         return proc.poll() is None
 
     def test_three_consecutive_530_terminate_cloudflared_and_the_script_exits(self):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530"])  # dizi bitince son kod (530) tekrarlanır
-        proc.wait(timeout=30)
+        self.wait_exit_logged(env, proc, "3 yoklamadır HTTP 530, cloudflared sonlandırılıyor")
         self.assertNotEqual(proc.returncode, 0, "systemd yeniden başlatsın diye sıfırdan farklı çıkış")
         log = env.log_text()
         self.assertEqual(log.count("HTTP 530 veriyor"), 1, "ilk 530'da TEK uyarı satırı")
-        self.assertIn("3 yoklamadır HTTP 530, cloudflared sonlandırılıyor", log)
         self.assertEqual(len(env.probe_calls()), 3)
 
     def test_the_probe_hits_the_tunnel_url_with_no_credentials(self):
@@ -351,7 +356,7 @@ class WatchdogTests(unittest.TestCase):
         proc = env.boot(watch=True, probes=["530", "401"] * 4)
         env.wait_for(lambda: len(env.probe_calls()) >= 9, "9 yoklama")
         # Bildirici arka planda: uyarı probe sayısından geç düşebilir (yük altında flake kökü).
-        env.wait_for(lambda: self.down_alerts(env) and "kararsız" in env.log_text(), "kararsızlık uyarısı", timeout=30)
+        env.wait_for(lambda: self.down_alerts(env) and "kararsız" in env.log_text(), "kararsızlık uyarısı")
         self.assertEqual(len(self.down_alerts(env)), 1)
         self.assertIn("kararsız", env.log_text())
         self.assertNotIn("sonlandırılıyor", env.log_text())
@@ -376,7 +381,7 @@ class WatchdogTests(unittest.TestCase):
         proc = env.boot(watch=True, probes=["530", "530", "401", "530", "530", "401"])
         self.assertTrue(self.alive_after(env, proc, probes=7))
         # Log satırı yoklama kaydından geç düşebilir: ikinci "yeniden yanıt veriyor" satırını bekle.
-        env.wait_for(lambda: env.log_text().count("yeniden yanıt veriyor (HTTP 401)") >= 2, "2. toparlanma satırı", timeout=30)
+        env.wait_for(lambda: env.log_text().count("yeniden yanıt veriyor (HTTP 401)") >= 2, "2. toparlanma satırı")
         log = env.log_text()
         self.assertEqual(log.count("HTTP 530 veriyor"), 2)
         self.assertEqual(log.count("yeniden yanıt veriyor (HTTP 401)"), 2)
@@ -387,8 +392,7 @@ class WatchdogTests(unittest.TestCase):
         """Kopuk tünel + dalgalı DNS: 000'lar teşhisi geciktirmemeli (sayaç korunur), kendileri de sayılmamalı."""
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530", "000", "530", "000", "530"])
-        proc.wait(timeout=30)
-        self.assertIn("3 yoklamadır HTTP 530", env.log_text())
+        self.wait_exit_logged(env, proc, "3 yoklamadır HTTP 530")
         self.assertEqual(len(env.probe_calls()), 5)
 
     def test_only_a_run_of_000_never_restarts_the_tunnel(self):
@@ -409,8 +413,7 @@ class WatchdogTests(unittest.TestCase):
     def test_the_failure_threshold_is_configurable(self):
         env = TunnelEnv(self)
         proc = env.boot(watch=True, probes=["530"], watch_fails=2)
-        proc.wait(timeout=30)
-        self.assertIn("2 yoklamadır HTTP 530", env.log_text())
+        self.wait_exit_logged(env, proc, "2 yoklamadır HTTP 530")
         self.assertEqual(len(env.probe_calls()), 2)
 
     def test_it_can_be_switched_off(self):
