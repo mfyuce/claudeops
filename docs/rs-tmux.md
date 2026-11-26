@@ -1,6 +1,6 @@
 # İz W0-b: `cops-tmux` (dal `rs/tmux`)
 
-Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 iki tarafta işlendi, "Birleştirme kapısı"). Açık: TBD 385 ve "Açık işler" 1, 2, 4 (birleştirme sonrası / canlıya alma).
+Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 iki tarafta işlendi, "Birleştirme kapısı"). Açık: "Açık işler" 1-3 (birleştirme sonrası / canlıya alma). TBD 385 YAPILDI ("Ham tuş yolu").
 
 Kapı öncesi doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` dalın içinde, geride 0): Python tam paket 5715 test OK (23 atlanan, 1036 sn), `cargo test -p cops-tmux` 92/92, `clippy --all-targets -D warnings` temiz.
 
@@ -18,7 +18,7 @@ Kapı öncesi doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` da
 | `shell.rs` | `shlex.quote`, kabuk parçaları, `spawn_direct`, `kill_session`, `ghost_session` |
 | `proc.rs` | `/proc` üstünden `is_tmux_backed`, `pid_childless`, `find_outer_bash_pids`, `CtxPusher` |
 
-Testler (92): 29 birim, 23 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 8 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
+Testler (94): 29 birim, 25 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 8 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
 
 Testin gerçekten yakaladığı elle sınandı (mutasyon, geri alındı): `mask.rs`ten `O_NOCTTY` çıkarılınca `probing_a_pty_never_makes_it_the_controlling_terminal` kırmızı ("pty'yi denetim terminali edindi"); eski (iş parçacıklı) `runner.rs` ile `no_fd_thread_or_zombie_survives_any_outcome` kırmızı (fd 6 -> 12: torun sürecin tuttuğu borular okuyucu iş parçacıklarıyla birlikte yaşıyordu).
 
@@ -54,7 +54,7 @@ Parite: P1-P5 PB'de (`python_bug_fixes_p1_to_p7_behave_the_same_in_rust`: ikiz s
 
 Canlıya alınırken: hedeflenemeyen adla (boş, `$`, `:`) açılış artık yapılmaz; `spawn.py` kabuk parçası yolunda `ValueError` yükselir (eskiden `-A` başka oturuma bağlanırdı). Üretilen oturum adları (`<proje><tarih>[_N]`) bu sınıfta değil. P5 `winact` (şerit menüsü) ve PROC-03 hayalet geri almayı C yerelinde de çalışır yapar; P7 kapatma yolunda (`kill.py`) başka kullanıcının penceresini aday listesinden çıkarır.
 
-TBD 369 ile sorulan iki aday. Sahip (a) dedi; İKİ TARAFTA DÜZELTİLDİ (`e835c0f1` Python, `747c6319` Rust): her metin stdin'den tampona yüklenir, yapıştırma başarısızsa (zaman aşımı dahil) tampon silinir. Ham tuş yolu (`send_raw`) argv'de kaldı (açık soru TBD 385). Düzeltme öncesi hal:
+TBD 369 ile sorulan iki aday. Sahip (a) dedi; İKİ TARAFTA DÜZELTİLDİ (`e835c0f1` Python, `747c6319` Rust): her metin stdin'den tampona yüklenir, yapıştırma başarısızsa (zaman aşımı dahil) tampon silinir. Ham tuş yolu (`send_raw`) o turda argv'de kalmıştı; TBD 385 ile o da stdin'e alındı ("Ham tuş yolu" bölümü). Düzeltme öncesi hal:
 
 | # | Davranış | Etki |
 |---|---|---|
@@ -68,7 +68,7 @@ TBD 369 ile sorulan iki aday. Sahip (a) dedi; İKİ TARAFTA DÜZELTİLDİ (`e835
 | 1 | ad/cwd tmux biçim genişletmesinden geçiyor (`#(...)` komut koşturur) | YAPILDI: `#` ve denetim karakterli ad reddedilir; cwd'de `#` ikilenir. Sapma (ölçüldü, 3.2a): `[` ile biten `#` dizisi AYNEN kalır, ikilenirse `a#[x]` ev dizininde açılıyor. tmux 3.0a'da (yuhem) `##[` içeren dizin adı farklı çözülebilir (komut koşturmaz; ölçülmedi) |
 | 2 | maske denetimi yalnız `_context`te | Python YAPILDI: `tmux_send_keys(guard=True)` varsayılan; `tmux_send_raw(guard=True)` değnekçinin yalın Enter/boşluk denemelerinde; `/api/term/input` gövdesinde `auto` (uzak otomatik göndericiler ve ajan `send`). `guard=False`: yalnız insanın panel girdisi |
 | 3 | panel `mask_unknown` metni | YAPILDI: `contextMaskUnknown` (tr/en, `TerminalView.tsx` + `strings.ts`); `UrlBanner.tsx` ve `TerminalView.tsx` `stripAnsi` ST ile biten OSC'yi de siler; `dist` yeniden derlendi |
-| 4 | TBD#369 (a): her metin tampondan, zaman aşımında sil | YAPILDI iki tarafta; `send_raw` argv'de kaldı (TBD notu) |
+| 4 | TBD#369 (a): her metin tampondan, zaman aşımında sil | YAPILDI iki tarafta; `send_raw` sonra TBD 385 ile |
 | 5 | denetim ile gönderim arası yarış | belgelendi (Python docstring, `keys.rs`) |
 | 6 | `;` ile biten adda yedek tarama iğnesi | YAPILDI iki tarafta (`lifecycle::outer_bash_scan_finds_a_name_ending_with_a_semicolon`) |
 | 7 | `spawn.py` ValueError | YAPILDI |
@@ -145,7 +145,7 @@ Canlıya alınırken: Python tarafında yalnız `/api/context` etkilenir (ölç�
 | Madde | H | Durum | Kanıt / gerekçe |
 |---|---|---|---|
 | Hedef hep `=ad`, önek yok, tam ad yoksa işlem yok | H7 | karşılandı | `prefix_name_never_matches_another_session` (her çağrı), `resize_release_and_kill_use_the_exact_target`, `ghost_is_only_an_old_childless_shell`. P1-P3 (boş ad, `$N`, `:`'lı ad) iki tarafta düzeltildi (TBD 366): `exact_target_refuses_names_tmux_resolves_to_another_session`, PB (ikiz sunucularda red, oturumlar yerinde; `=eq`/`@1`/`%1` doğru hedeflenir) |
-| `send-keys` tek kurucu, `-l --`, `;` kaçışı, `-help`, `--- a/f`, `abc;` | H4 | karşılandı | `literal_text_raw_and_special_keys_arrive_unchanged` (gerçek tmux), `single_line_is_literal_send_then_enter`, `raw_escapes_only_a_trailing_semicolon`, `writes_match_python` |
+| `send-keys` tek kurucu, `-l --`, `;` kaçışı, `-help`, `--- a/f`, `abc;` | H4 | karşılandı | `literal_text_raw_and_special_keys_arrive_unchanged` (gerçek tmux), `single_line_is_literal_send_then_enter`, `raw_goes_through_stdin_in_one_process_never_argv`, `writes_match_python` |
 | ANSI ayıklama + ayrı ANSI'li kopya, gri öneri | H4 | karşılandı | `capture_plain_strips_colour`, `strips_sgr_and_osc`, `typed_vs_suggestion`, `pure_functions_match_python_on_random_screens` |
 | Enjeksiyon öncesi maske; diyalog sınıflandırması; `Unknown` = gönderme | H4 | karşılandı (maske); diyalog başka iz | maske: `masked_pane_refuses_injection_but_accepts_user_typing`, `masked_guard_asks_for_the_tty_before_sending`; durum bilinmiyorken gönderim yok (TBD 367, iki tarafta): `unknown_mask_state_blocks_every_automatic_send_but_not_user_typing`, `unknown_mask_state_refuses_injection_on_a_real_server`. Diyalog sınıflandırması bu modülde yok: `trust_dialog`/sağlayıcılar (T4) |
 | Diyalog yalnız pane sonunda | H4 | başka iz | `trust_dialog` (T4); bu crate ekranı sınıflandırmaz |
@@ -162,13 +162,13 @@ Canlıya alınırken: Python tarafında yalnız `/api/context` etkilenir (ölç�
 | 1 Hedef `Unique`, önek/"en yeni" yok | H7 | karşılandı | 2.2 ilk satır. Yıkıcı tek ilkel `kill_session` (exact; hedeflenemeyen adda `BadArgument`, P1-P3 TBD 366). "En yeni" tahmini yok |
 | 2 `atomic_write` / kilit sözleşmesi | H2 | geçerli değil + test | crate dosya yazmaz; `no_state_dir_home_file_writes_or_signals_outside_the_runner` (`fs::write`, `File::create`, `create_dir`, `remove_file` yok). tmux tampon adı süreç+sıra ile benzersiz (`multiline_uses_load_paste_then_single_enter`) |
 | 3 Belirsiz/okunamayan ≠ başarı/yok | H13, H10, H9 | karşılandı | `has_session`: tmux yok/zaman aşımı `Err`, "oturum yok" `Ok(false)` (`no_server_is_an_error_not_a_panic`); `client_count` `Err` ≠ 0, `client_session` `Err` ≠ `None` (`broken_output_is_unknown_not_a_panic`); maske `None` (`prefix_name_...`); hayalet belirsizlikte `false` (`empty_or_garbage_is_not_ghost`); yarım stdin başarı değil (`input_cut_short_by_a_failing_tmux_is_counted_and_failure_returned`, `leak.rs` `deaf`); maske `None` iken otomatik gönderim yok, `MaskUnknown` (`unknown_mask_state_blocks_every_automatic_send_but_not_user_typing`, TBD 367) |
-| 4 Eylem sonucu doğrulanıyor; NEGATİF test | H9 | kısmen | tmux düzeyi olumsuzlar: `paste_failure_deletes_the_buffer_and_sends_no_enter`, `load_failure_stops_before_paste`, `raw_is_split_into_chunks_and_stops_at_the_first_failure`, `message_falls_back_to_no_duration_and_reports_total_failure`, maske/önek testleri. `Delivery{Confirmed,...}` ekran doğrulaması T4/T10'da (bu crate `Ok` = "tmux kabul etti" der, teslim demez) |
+| 4 Eylem sonucu doğrulanıyor; NEGATİF test | H9 | kısmen | tmux düzeyi olumsuzlar: `paste_failure_deletes_the_buffer_and_sends_no_enter`, `load_failure_stops_before_paste`, `raw_failure_deletes_the_buffer_and_probes_again`, `message_falls_back_to_no_duration_and_reports_total_failure`, maske/önek testleri. `Delivery{Confirmed,...}` ekran doğrulaması T4/T10'da (bu crate `Ok` = "tmux kabul etti" der, teslim demez) |
 | 5 `let _`/`.ok()`/`unwrap_or_default`/`expect` yok; yutulan hata sayaç+log | H9, H20 | karşılandı | `no_swallowed_result_or_panic_in_production_code` (`let _ =`, `unwrap_or_default`, `.unwrap()`, `panic!` sıfır; tek `expect` sabit regex; `.ok()` yalnız "bilinmiyor = None" okuyucularında), `failed_buffer_cleanup_is_counted_logged_and_the_paste_error_returned`, `input_cut_short_...`, `every_kind_has_a_distinct_code`. `KillChild`/`ReapChild`: `unreapable_child_is_counted_and_waited_in_background` (sahte süreç) |
 | 6 Açılışta bir kez okunan önbellek/ayar yok; hata `last_good`'u ezmez | H3 | karşılandı | tek önbellek `CtxPusher` (pid anahtarlı, başarısız yazım not edilmez): `ctx_push_skips_unchanged_and_rewrites_on_new_pid_or_value`, `failed_ctx_push_is_retried`, `ctx_push_cache_is_bounded_and_thread_safe`. Conf yolu her çağrıda çözülür. Bilinen (Python eşi): dışarıdan silinen `@cops_ctx` aynı pid'de yeniden yazılmaz |
 | 7 Her döngü/bekleme sınırlı; bildirim durumu kalıcı | H8 | karşılandı | `exec` döngüsü `deadline`a bağlı (`hung_program_times_out`, `leak.rs` `hang`/`grandchild`), `MAX_TIMEOUT` (`huge_timeout_is_clamped_not_a_panic`), toplama `REAP_GRACE`; test beklemeleri `common::wait_until` 10 sn, ETXTBSY yeniden denemesi 200 kez. Kalıcı bildirim: geçerli değil (crate bildirim/yeniden deneme politikası üretmez) |
 | 8 Dış TUI davranışı fixture'lı; `Unknown`'da gönderim yok | H4 | kısmen | giriş kutusu/gri öneri: `typed_vs_suggestion`, Python ile rastgele ekran diferansiyeli (`pure_functions_match_python_on_random_screens`). Gerçek CLI sürümlü ekran fixture'ları diyalog sınıflandırmasıyla T4'te (kısmen bunun için). `Unknown`'da gönderim yok: karşılandı (`unknown_mask_state_refuses_injection_on_a_real_server`, TBD 367) |
 | 9 Süreç/bağlantı sahibi, kill+wait, boşaltılan stderr, fd sızıntı testi | H1 | karşılandı | `no_fd_thread_or_zombie_survives_any_outcome` (başarı, hata, zaman aşımı, boruyu tutan torun, 3 MB çıktı, 1,4 MB girdi; fd ve iş parçacığı sayısı aynı, zombi yok), `probing_a_pty_...` (100 yoklamada fd sabit), `hung_program_times_out`. `REAP_GRACE` aşımı ve arka plan toplayıcısı: `unreapable_child_is_counted_and_waited_in_background` |
-| 10 Girdi sınırları | H5 | karşılandı | `disallowed_key_and_bad_size_spawn_nothing`, `resize_applies_and_release_restores_auto_size` (sınırlar), NUL (`raw_escapes_only_a_trailing_semicolon`), bozuk UTF-8/biçim (`broken_output_is_unknown_not_a_panic`, `universal_newlines_like_python_text_mode`, `malformed_snapshot_is_an_error`, `parsers_keep_free_text_last_and_reject_garbage`, `outer_bash_with_garbage_client_pids_is_empty`), `Duration::MAX`/sıfır (`huge_timeout_is_clamped_not_a_panic`). Token/NaN: geçerli değil (süreler `Duration`). Boş/`$`/`:`'lı ad (P1-P3): `exact_target_refuses_names_tmux_resolves_to_another_session`; `;` ile biten argüman (P4, P6): PB, PCL |
+| 10 Girdi sınırları | H5 | karşılandı | `disallowed_key_and_bad_size_spawn_nothing`, `resize_applies_and_release_restores_auto_size` (sınırlar), NUL (`raw_goes_through_stdin_in_one_process_never_argv`), bozuk UTF-8/biçim (`broken_output_is_unknown_not_a_panic`, `universal_newlines_like_python_text_mode`, `malformed_snapshot_is_an_error`, `parsers_keep_free_text_last_and_reject_garbage`, `outer_bash_with_garbage_client_pids_is_empty`), `Duration::MAX`/sıfır (`huge_timeout_is_clamped_not_a_panic`). Token/NaN: geçerli değil (süreler `Duration`). Boş/`$`/`:`'lı ad (P1-P3): `exact_target_refuses_names_tmux_resolves_to_another_session`; `;` ile biten argüman (P4, P6): PB, PCL |
 | 11 Metin ayrıştırma tek modül, corpus, Python vektörleri | H6, H14 | karşılandı | `text.rs` tek modül; `pure_functions_match_python_on_random_screens`, `ctx_label_rounds_like_python`, `stat_line_with_spaces_and_parens_in_name`, `cmdline_split_like_psutil`. İşaretçi (STEWARD-*) ayrıştırma bu crate'te yok |
 | 12 Python'la paylaşılan kural altın vektör + diferansiyel; `$HOME` yok | H14 | karşılandı | `tests/parity.rs` 9 test: her `tmux_backend` tanımı en az bir parite testinde ("Eşleme tablosu"); sahte tmux'ta argv + sonuç diferansiyeli, gerçek tmux'ta yaşam döngüsü/istemci/mesaj, P1-P7 düzeltmelerinin iki taraftaki eşliği; Python alt süreci geçici `HOME`/`CLAUDEOPS_DIR`/`TMUX_TMPDIR` ve rastgele soketle; `$HOME` yok: `no_state_dir_home_file_writes_...` |
 | 13 Sır `Secret<T>`; log/argv/URL'de sızıntı yok | H12, H13 | kısmen | crate sır tutmaz; günlük/hata metni gönderilen metni içermez (`failed_buffer_cleanup_...`, `input_cut_short_...` SECRET arar). Mesaj metni argv'ye girmez (TBD 369, `argv::single_line_goes_through_stdin_never_argv`); zaman aşımında tampon silinir. AÇIK: ham tuş yolu `send_raw` (TBD 385) |
@@ -186,9 +186,9 @@ Bölüm 1'deki ilgili sınıflar: H1 (madde 9), H4 (2.2, madde 8), H5 (madde 10)
 Üretim: satırların adları elle yazılmadı; `ast` ile çıkarıldı (`tmux_backend.py` üst düzey tanımları, ilgili test metotları), karşılık sütunları iz oturumunun değerlendirmesi. Doğrulama betiği tabloyu yeniden `ast` çıktısıyla karşılaştırır: tanım farkı 0, test metodu farkı 0, boş ya da "sonra" satırı 0, tabloda anılan her Rust test adı crate'te var.
 
 Kapsam:
-- Tanımlar: `py/claudeops/tmux_backend.py`nin TÜM üst düzey tanımları: 63 (43 işlev, 16 sabit, 4 regex; sınıf/yöntem yok).
-- Test metotları (481): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 54 dosya.
-- Sonuç: 481 test metodundan 101'i bu crate'te karşılandı (82 parite, 18 yalnız Rust testi, 1 tür denetimi), 380'i kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
+- Tanımlar: `py/claudeops/tmux_backend.py`nin TÜM üst düzey tanımları: 68 (47 işlev, 17 sabit, 4 regex; sınıf/yöntem yok).
+- Test metotları (488): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 54 dosya.
+- Sonuç: 488 test metodundan 108'i bu crate'te karşılandı (87 parite, 19 yalnız Rust testi, 2 tür denetimi), 380'i kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
 
 Parite testleri (`rust/crates/cops-tmux/tests/parity.rs`, köprü `tests/parity.py`):
 - PR `reads_match_python`: gerçek tmux'ta okuma işlevleri (has_session, capture, capture_range, pane_size, snapshot, maske, client_count).
@@ -238,46 +238,51 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `py/claudeops/tmux_backend.py:208` `tmux_send_keys` (işlev) | `keys::Tmux::send_text` (+`send_text_timeout`) | PW, PF (argv + `load-buffer` girdisi) | eş (her metin stdin'den tampona; tampon adı `cops-rs-*`; P8, P9 TBD 369 ile düzeltildi) |
 | `py/claudeops/tmux_backend.py:248` `_mask_allows` (işlev) | `keys::Tmux::guard` (`MaskGuard::RefuseMasked`) | Rust testi + PF (maske argv) | eş (kapı 2; Python varsayılan açık, Rust'ta her çağrıda açık seçim; ret günlüğü Rust'ta hata türü: `Masked`/`MaskUnknown`) |
 | `py/claudeops/tmux_backend.py:262` `_PASTE_SETTLE` (sabit) | `keys::PASTE_SETTLE` | yok (süre argv'de görünmez) | eş (150 ms) |
-| `py/claudeops/tmux_backend.py:263` `_BUFFER_SEQ` (sabit) | `keys::Tmux::paste_text` içindeki `SEQ` | PF (tampon adı normalleştirilir) | eş (ad öneki Python/Rust'ta ayrı) |
-| `py/claudeops/tmux_backend.py:266` `_paste_text` (işlev) | `keys::Tmux::paste_text` | PW, PF | eş (kapı 4; TBD#369) |
-| `py/claudeops/tmux_backend.py:285` `_delete_buffer` (işlev) | `keys::Tmux::paste_text` hata dalı (`delete-buffer`, `Swallowed::DeleteBuffer`) | PF | eş (zaman aşımında da siler) |
-| `py/claudeops/tmux_backend.py:294` `ALLOWED_SPECIAL_KEYS` (sabit) | `keys::ALLOWED_SPECIAL_KEYS` | PC | eş |
-| `py/claudeops/tmux_backend.py:297` `RESIZE_COLS` (sabit) | `keys::RESIZE_COLS` | PC | eş |
-| `py/claudeops/tmux_backend.py:298` `RESIZE_ROWS` (sabit) | `keys::RESIZE_ROWS` | PC | eş |
-| `py/claudeops/tmux_backend.py:301` `tmux_resize_window` (işlev) | `keys::Tmux::resize_window` | PW, PF | eş |
-| `py/claudeops/tmux_backend.py:315` `ctx_label` (işlev) | `text::ctx_label` | PP | eş |
-| `py/claudeops/tmux_backend.py:325` `tmux_set_ctx` (işlev) | `query::Tmux::set_ctx` | PF, PCL (P6) | eş (P6 düzeltildi iki tarafta, TBD 366) |
-| `py/claudeops/tmux_backend.py:336` `_CTX_PUSHED` (sabit) | `proc::CtxPusher` (alan `pushed`, sınır `CTX_CACHE_LIMIT` 512) | PC (başlangıçta boş), PF, PCL (dizi) | eş (önbellek nesne başına, Python'da modül geneli) |
-| `py/claudeops/tmux_backend.py:339` `push_ctx` (işlev) | `proc::CtxPusher::push` | PF (3 hata dizisi), PCL | eş |
-| `py/claudeops/tmux_backend.py:353` `tmux_release_size` (işlev) | `keys::Tmux::release_size` | PF, PCL | eş |
-| `py/claudeops/tmux_backend.py:365` `tmux_send_special_key` (işlev) | `keys::Tmux::send_special_key` | PW, PF | eş |
-| `py/claudeops/tmux_backend.py:380` `_RAW_CHUNK_CHARS` (sabit) | `keys::RAW_CHUNK_CHARS` | PC | eş |
-| `py/claudeops/tmux_backend.py:383` `tmux_send_raw` (işlev) | `keys::Tmux::send_raw` | PW, PF | eş |
-| `py/claudeops/tmux_backend.py:423` `tmux_client_count` (işlev) | `query::Tmux::client_count` | PR, PF, PCL | eş (satır bölme bu turda Python `splitlines`e eşitlendi) |
-| `py/claudeops/tmux_backend.py:444` `tmux_client_session` (işlev) | `query::Tmux::client_session` | PF, PCL, PB (P5) | eş (`Err`/`Ok(None)` ayrımı, Python ikisine `None`; satır bölme eşitlendi; P5 düzeltildi iki tarafta, TBD 366) |
-| `py/claudeops/tmux_backend.py:468` `tmux_message` (işlev) | `keys::Tmux::message` (+`safe_message`) | PF, PCL (durum satırındaki metin) | eş |
-| `py/claudeops/tmux_backend.py:501` `HISTORY_LIMIT` (sabit) | `query::HISTORY_LIMIT` | PC | eş |
-| `py/claudeops/tmux_backend.py:504` `tmux_pane_size` (işlev) | `query::Tmux::pane_size` | PR, PF, PW, PB | eş (bu turda `strip/splitlines/split` ve `bool(int())` Python'a eşitlendi; eksi/Unicode rakamlı bozuk çıktıda Rust hata döner) |
-| `py/claudeops/tmux_backend.py:540` `pane_is_masked_input` (işlev) | `query::Tmux::pane_is_masked_input` | PR, PF, PCL, PB | eş (`None` iken otomatik gönderim yok: Rust `MaskGuard::RefuseMasked` -> `MaskUnknown`, Python `web._context`, TBD 367) |
-| `py/claudeops/tmux_backend.py:562` `tty_is_masked` (işlev) | `mask::tty_is_masked` | PL, PCL | eş |
-| `py/claudeops/tmux_backend.py:589` `_SNAPSHOT_FORMAT` (sabit) | `query::SNAPSHOT_FORMAT` | PC | eş |
-| `py/claudeops/tmux_backend.py:592` `_SGR_RE` (regex) | `text::SGR_RE` (`patterns()`) | PC, PP | eş |
-| `py/claudeops/tmux_backend.py:593` `_ANSI_ANY_RE` (regex) | `text::ANSI_ANY_RE` (`patterns()`) | PC, PP | eş |
-| `py/claudeops/tmux_backend.py:594` `_BOX_RULE_CHARS` (sabit) | `text::BOX_RULE_CHAR` | PC | eş |
-| `py/claudeops/tmux_backend.py:595` `_PROMPT_CHAR` (sabit) | `text::PROMPT` | PC | eş |
-| `py/claudeops/tmux_backend.py:598` `_is_dim_fg` (işlev) | `text::dim_fg` | PD, PP | eş (kullanılmayan `cur_dim` parametresi yok) |
-| `py/claudeops/tmux_backend.py:625` `typed_input_in_box` (işlev) | `text::typed_input_in_box` | PP, PR | eş |
-| `py/claudeops/tmux_backend.py:653` `input_box` (işlev) | `text::input_box` (`InputBox`) | PP, PR | eş |
-| `py/claudeops/tmux_backend.py:679` `_seg_typed` (işlev) | `text::segment_typed` | PD, PP | eş |
-| `py/claudeops/tmux_backend.py:691` `tmux_pane_snapshot` (işlev) | `query::Tmux::snapshot` (`Snapshot`) | PR, PF, PB | eş |
-| `py/claudeops/tmux_backend.py:723` `_GHOST_SHELLS` (sabit) | `shell::GHOST_SHELLS` | PC | eş |
-| `py/claudeops/tmux_backend.py:724` `GHOST_MIN_AGE_SECONDS` (sabit) | `shell::GHOST_MIN_AGE_SECONDS` | PC | eş |
-| `py/claudeops/tmux_backend.py:727` `tmux_ghost_session` (işlev) | `shell::Tmux::ghost_session` | PF, PL, PB (P5) | eş (satır bölme eşitlendi; P5 düzeltildi iki tarafta, TBD 366) |
-| `py/claudeops/tmux_backend.py:753` `_pid_childless` (işlev) | `proc::pid_childless` | PF, PL | eş |
-| `py/claudeops/tmux_backend.py:762` `tmux_kill_session` (işlev) | `shell::Tmux::kill_session` | PF, PL, PB | eş (Python `None`, Rust `Result`) |
-| `py/claudeops/tmux_backend.py:770` `_outer_bash_via_list_clients` (işlev) | `proc::Tmux::outer_bash_via_list_clients` | PF, PCL | eş |
-| `py/claudeops/tmux_backend.py:798` `find_outer_bash_pids` (işlev) | `proc::Tmux::find_outer_bash_pids` | PF (yedek tarama, P7), PCL | eş (P7 düzeltildi iki tarafta, TBD 366: yalnız bu kullanıcının süreçleri) |
-| `py/claudeops/tmux_backend.py:860` `is_tmux_backed` (işlev) | `proc::Tmux::is_tmux_backed` | PF, PL | eş |
+| `py/claudeops/tmux_backend.py:263` `_BUFFER_SEQ` (sabit) | `keys::next_buffer` içindeki `SEQ` | PF (tampon adı normalleştirilir) | eş (ad öneki Python/Rust'ta ayrı) |
+| `py/claudeops/tmux_backend.py:266` `_next_buffer` (işlev) | `keys::next_buffer` | PF | eş (TBD#385) |
+| `py/claudeops/tmux_backend.py:270` `_paste_text` (işlev) | `keys::Tmux::paste_text` | PW, PF | eş (kapı 4; TBD#369) |
+| `py/claudeops/tmux_backend.py:294` `_delete_buffer` (işlev) | `keys::Tmux::paste_buffered` hata dalı (`delete-buffer`, `Swallowed::DeleteBuffer`) | PF | eş (zaman aşımında da siler) |
+| `py/claudeops/tmux_backend.py:277` `_paste_buffered` (işlev) | `keys::Tmux::paste_buffered` | PW, PF | eş (TBD#385) |
+| `py/claudeops/tmux_backend.py:303` `ALLOWED_SPECIAL_KEYS` (sabit) | `keys::ALLOWED_SPECIAL_KEYS` | PC | eş |
+| `py/claudeops/tmux_backend.py:306` `RESIZE_COLS` (sabit) | `keys::RESIZE_COLS` | PC | eş |
+| `py/claudeops/tmux_backend.py:307` `RESIZE_ROWS` (sabit) | `keys::RESIZE_ROWS` | PC | eş |
+| `py/claudeops/tmux_backend.py:310` `tmux_resize_window` (işlev) | `keys::Tmux::resize_window` | PW, PF | eş |
+| `py/claudeops/tmux_backend.py:324` `ctx_label` (işlev) | `text::ctx_label` | PP | eş |
+| `py/claudeops/tmux_backend.py:334` `tmux_set_ctx` (işlev) | `query::Tmux::set_ctx` | PF, PCL (P6) | eş (P6 düzeltildi iki tarafta, TBD 366) |
+| `py/claudeops/tmux_backend.py:345` `_CTX_PUSHED` (sabit) | `proc::CtxPusher` (alan `pushed`, sınır `CTX_CACHE_LIMIT` 512) | PC (başlangıçta boş), PF, PCL (dizi) | eş (önbellek nesne başına, Python'da modül geneli) |
+| `py/claudeops/tmux_backend.py:348` `push_ctx` (işlev) | `proc::CtxPusher::push` | PF (3 hata dizisi), PCL | eş |
+| `py/claudeops/tmux_backend.py:362` `tmux_release_size` (işlev) | `keys::Tmux::release_size` | PF, PCL | eş |
+| `py/claudeops/tmux_backend.py:374` `tmux_send_special_key` (işlev) | `keys::Tmux::send_special_key` | PW, PF | eş |
+| `py/claudeops/tmux_backend.py:386` `_RAW_PROBE_TTL` (sabit) | `keys::RAW_PROBE_TTL` | PC | eş (TBD#385) |
+| `py/claudeops/tmux_backend.py:387` `_raw_probe` (sabit) | `Tmux::raw_probe` alanı | PF | eş (Python süreç geneli, Rust `Tmux` örneği başına) |
+| `py/claudeops/tmux_backend.py:390` `_reset_raw_paste_probe` (işlev) | `keys::Tmux::reset_raw_paste_probe` | PF | eş |
+| `py/claudeops/tmux_backend.py:395` `_raw_paste_flags` (işlev) | `keys::Tmux::raw_needs_no_vis` | PF | eş (TBD#385) |
+| `py/claudeops/tmux_backend.py:414` `tmux_send_raw` (işlev) | `keys::Tmux::send_raw` | PW, PF | eş |
+| `py/claudeops/tmux_backend.py:455` `tmux_client_count` (işlev) | `query::Tmux::client_count` | PR, PF, PCL | eş (satır bölme bu turda Python `splitlines`e eşitlendi) |
+| `py/claudeops/tmux_backend.py:476` `tmux_client_session` (işlev) | `query::Tmux::client_session` | PF, PCL, PB (P5) | eş (`Err`/`Ok(None)` ayrımı, Python ikisine `None`; satır bölme eşitlendi; P5 düzeltildi iki tarafta, TBD 366) |
+| `py/claudeops/tmux_backend.py:500` `tmux_message` (işlev) | `keys::Tmux::message` (+`safe_message`) | PF, PCL (durum satırındaki metin) | eş |
+| `py/claudeops/tmux_backend.py:533` `HISTORY_LIMIT` (sabit) | `query::HISTORY_LIMIT` | PC | eş |
+| `py/claudeops/tmux_backend.py:536` `tmux_pane_size` (işlev) | `query::Tmux::pane_size` | PR, PF, PW, PB | eş (bu turda `strip/splitlines/split` ve `bool(int())` Python'a eşitlendi; eksi/Unicode rakamlı bozuk çıktıda Rust hata döner) |
+| `py/claudeops/tmux_backend.py:572` `pane_is_masked_input` (işlev) | `query::Tmux::pane_is_masked_input` | PR, PF, PCL, PB | eş (`None` iken otomatik gönderim yok: Rust `MaskGuard::RefuseMasked` -> `MaskUnknown`, Python `web._context`, TBD 367) |
+| `py/claudeops/tmux_backend.py:594` `tty_is_masked` (işlev) | `mask::tty_is_masked` | PL, PCL | eş |
+| `py/claudeops/tmux_backend.py:621` `_SNAPSHOT_FORMAT` (sabit) | `query::SNAPSHOT_FORMAT` | PC | eş |
+| `py/claudeops/tmux_backend.py:624` `_SGR_RE` (regex) | `text::SGR_RE` (`patterns()`) | PC, PP | eş |
+| `py/claudeops/tmux_backend.py:625` `_ANSI_ANY_RE` (regex) | `text::ANSI_ANY_RE` (`patterns()`) | PC, PP | eş |
+| `py/claudeops/tmux_backend.py:626` `_BOX_RULE_CHARS` (sabit) | `text::BOX_RULE_CHAR` | PC | eş |
+| `py/claudeops/tmux_backend.py:627` `_PROMPT_CHAR` (sabit) | `text::PROMPT` | PC | eş |
+| `py/claudeops/tmux_backend.py:630` `_is_dim_fg` (işlev) | `text::dim_fg` | PD, PP | eş (kullanılmayan `cur_dim` parametresi yok) |
+| `py/claudeops/tmux_backend.py:657` `typed_input_in_box` (işlev) | `text::typed_input_in_box` | PP, PR | eş |
+| `py/claudeops/tmux_backend.py:685` `input_box` (işlev) | `text::input_box` (`InputBox`) | PP, PR | eş |
+| `py/claudeops/tmux_backend.py:711` `_seg_typed` (işlev) | `text::segment_typed` | PD, PP | eş |
+| `py/claudeops/tmux_backend.py:723` `tmux_pane_snapshot` (işlev) | `query::Tmux::snapshot` (`Snapshot`) | PR, PF, PB | eş |
+| `py/claudeops/tmux_backend.py:755` `_GHOST_SHELLS` (sabit) | `shell::GHOST_SHELLS` | PC | eş |
+| `py/claudeops/tmux_backend.py:756` `GHOST_MIN_AGE_SECONDS` (sabit) | `shell::GHOST_MIN_AGE_SECONDS` | PC | eş |
+| `py/claudeops/tmux_backend.py:759` `tmux_ghost_session` (işlev) | `shell::Tmux::ghost_session` | PF, PL, PB (P5) | eş (satır bölme eşitlendi; P5 düzeltildi iki tarafta, TBD 366) |
+| `py/claudeops/tmux_backend.py:785` `_pid_childless` (işlev) | `proc::pid_childless` | PF, PL | eş |
+| `py/claudeops/tmux_backend.py:794` `tmux_kill_session` (işlev) | `shell::Tmux::kill_session` | PF, PL, PB | eş (Python `None`, Rust `Result`) |
+| `py/claudeops/tmux_backend.py:802` `_outer_bash_via_list_clients` (işlev) | `proc::Tmux::outer_bash_via_list_clients` | PF, PCL | eş |
+| `py/claudeops/tmux_backend.py:830` `find_outer_bash_pids` (işlev) | `proc::Tmux::find_outer_bash_pids` | PF (yedek tarama, P7), PCL | eş (P7 düzeltildi iki tarafta, TBD 366: yalnız bu kullanıcının süreçleri) |
+| `py/claudeops/tmux_backend.py:892` `is_tmux_backed` (işlev) | `proc::Tmux::is_tmux_backed` | PF, PL | eş |
 
 | Python test metodu (`py/tests/` dosya::sınıf::metot) | Rust karşılığı / parite testi | Durum |
 |---|---|---|
@@ -521,7 +526,7 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_term_viewport.py::RouteTests::test_rest_viewport_returns_the_screen_only_frame` | yok: `/api/term/output`, `/ws/term` rotaları (T2) | kapsam dışı |
 | `test_term_viewport.py::RouteTests::test_rest_without_viewport_is_untouched` | yok: `/api/term/output`, `/ws/term` rotaları (T2) | kapsam dışı |
 | `test_term_viewport.py::RouteTests::test_ws_term_route_parses_viewport_and_passes_it_on` | yok: `/api/term/output`, `/ws/term` rotaları (T2) | kapsam dışı |
-| `test_tmux_arg_semicolon.py::EscapeTests::test_only_a_trailing_semicolon_is_escaped` | `argv::raw_escapes_only_a_trailing_semicolon`; PC (`_tmux_arg` = `escape_arg`) | karşılandı (parite) |
+| `test_tmux_arg_semicolon.py::EscapeTests::test_only_a_trailing_semicolon_is_escaped` | `runner::tests` `escape_arg` vakaları; PC (`_tmux_arg` = `escape_arg`) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_spawn_direct_argv_escapes_name_and_cwd` | PB (P4: `semi;` adı ve `w;` dizini iki tarafta da açılır) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_shell_fragment_escapes_name_cwd_and_inner` | PC (ad `semi;`, cwd `/t;`, iç komut `x;`) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_set_ctx_argv_escapes_the_label` | PCL (`a;` etiketi: yazılan değer eşit ve `a;`) | karşılandı (parite) |
@@ -550,10 +555,17 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_tmux_send_multiline.py::MultilineSendTest::test_multiline_uses_bracketed_paste_then_single_enter` | `argv::multiline_uses_load_paste_then_single_enter`, `real_tmux::multiline_goes_as_one_bracketed_paste`; PW, PF | karşılandı (parite) |
 | `test_tmux_send_multiline.py::MultilineSendTest::test_single_line_uses_the_same_buffer_path` | `argv::single_line_goes_through_stdin_never_argv`; PF | karşılandı (parite) |
 | `test_tmux_send_multiline.py::MultilineSendTest::test_paste_failure_returns_false_and_cleans_buffer` | `argv::paste_failure_deletes_the_buffer_and_sends_no_enter`, `swallow::failed_buffer_cleanup_is_counted_logged_and_the_paste_error_returned`; PF (paste rc 1, delete rc 1) | karşılandı (parite) |
-| `test_tmux_send_raw_semicolon.py::SemicolonArgv::test_trailing_semicolon_escaped` | `argv::raw_escapes_only_a_trailing_semicolon`; PF (`foo;`, `;`, `bar\;`), PW | karşılandı (parite) |
-| `test_tmux_send_raw_semicolon.py::SemicolonArgv::test_whole_semicolon_chunk` | `argv::raw_escapes_only_a_trailing_semicolon`; PF (`foo;`, `;`, `bar\;`), PW | karşılandı (parite) |
 | `test_tmux_send_raw_semicolon.py::RealTmux::test_literal_roundtrip` | `real_tmux::literal_text_raw_and_special_keys_arrive_unchanged`; PW | karşılandı (parite) |
 | `test_tmux_send_raw_semicolon.py::JobAttemptsResetOnStateChange::test_state_change_resets_attempts` | yok: `steward_jobs` teslim sayacı (T10) | kapsam dışı |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_data_goes_through_stdin_never_argv` | `argv::raw_goes_through_stdin_in_one_process_never_argv`; PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_one_process_raw_paste_without_bracket_or_enter` | `argv::raw_goes_through_stdin_in_one_process_never_argv`; PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_new_tmux_gets_no_sanitize_flag` | `argv::raw_disables_sanitizing_only_where_the_server_knows_the_flag`; PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_probe_is_cached_then_expires` | `argv::raw_goes_through_stdin_in_one_process_never_argv` (yalnız önbellek; süre dolumu Rust'ta sınanmadı) | karşılandı (yalnız Rust, kısmi) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_failed_probe_sends_nothing` | `argv::raw_sends_nothing_when_the_probe_fails`; PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_failure_and_timeout_delete_the_buffer_and_reprobe` | `argv::raw_failure_deletes_the_buffer_and_probes_again` (ham yolda zaman aşımı Rust'ta ayrıca sınanmadı); PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_empty_is_a_no_op` | `argv::raw_goes_through_stdin_in_one_process_never_argv`; PF | karşılandı (parite) |
+| `test_tmux_send_raw_stdin.py::RawViaStdin::test_unencodable_text_sends_nothing` | tür: `&str` eşsiz vekil kod taşıyamaz | karşılandı (tür) |
+| `test_tmux_send_raw_stdin.py::RealTmux::test_bytes_arrive_untouched_and_no_buffer_remains` | `real_tmux::literal_text_raw_and_special_keys_arrive_unchanged`; PW | karşılandı (parite) |
 | `test_tmux_send_timeout.py::SendTimeoutTest::test_short_text_keeps_base_timeout_long_text_gets_more` | `keys::tests::timeout_grows_with_text` (süre argv'de görünmez, parite ölçemez) | karşılandı (yalnız Rust testi) |
 | `test_tmux_strip.py::ConfigLoadTests::test_base_options_still_apply_when_the_strip_file_is_missing` | yok: `data/tmux-strip.conf`un tmux'taki davranışı (veri dosyası Python paketinde kalır, Rust aynı dosyayı yükler); şerit eylemleri `winact` (T6) | kapsam dışı |
 | `test_tmux_strip.py::ConfigLoadTests::test_strip_file_turns_the_status_line_on_and_locates_the_launcher` | yok: `data/tmux-strip.conf`un tmux'taki davranışı (veri dosyası Python paketinde kalır, Rust aynı dosyayı yükler); şerit eylemleri `winact` (T6) | kapsam dışı |
@@ -763,8 +775,40 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_winact.py::LockTests::test_a_second_action_on_the_same_session_is_refused_without_running` | yok: `cops winact` (şerit menüsü komutu); tmux_backend adları (yardımcı üzerinden) sahte ya da dolaylı (T6) | kapsam dışı |
 | `test_winact.py::LockTests::test_begin_and_end_are_logged` | yok: `cops winact` (şerit menüsü komutu); tmux_backend adları (yardımcı üzerinden) sahte ya da dolaylı (T6) | kapsam dışı |
 
+## Ham tuş yolu stdin'den (TBD 385: sahip (a), 26 Kas gece)
+
+`tmux_send_raw` / `Tmux::send_raw`: veri `load-buffer -` stdin'ine gider ve AYNI tmux sürecinde `paste-buffer -r -d` ile yazılır (`-p` yok). `send-keys -l`, 2000 karakterlik bölme ve `;` kaçışı kalktı. Yazım olmazsa (hata, zaman aşımı) tampon silinir.
+
+- **tmux 3.7+** `paste-buffer`, `-S` verilmezse kontrol karakterlerini görünür metne çevirir (`cmd-paste-buffer.c`, `utf8_stravisx`; 3.6'da yok): Esc/Ctrl-C/Backspace bozulurdu. Sunucunun `list-commands` çıktısında `paste-buffer` bayraklarında `S` varsa `-S` eklenir (60 sn önbellek, hata sonrası yeniden yoklanır; yoklanamazsa gönderilmez). 3.0a/3.6/3.7 yalnız kaynaktan okundu; çalıştırılan sürüm 3.2a. 3.7+'da mesaj yolu (`paste-buffer -p`) `-S` ALMAZ: mesajdaki kontrol karakteri görünür metne döner (bilinçli, değiştirilmedi).
+- **Baytlar** (3.2a, yalıtılmış sunucu): 0-127'nin tamamı, UTF-8, kaçış dizileri, 200 000 bayt aynen. NUL (Ctrl+Space) artık geçiyor (eskiden atılıyordu). Olmayan hedefte tampon kalıyordu: silme bunu kapatıyor.
+- **Davranış farkı:** pane copy-mode'dayken `send-keys` tuşu copy-mode'a veriyordu, yeni yol doğrudan uygulamaya yazar (ölçüldü). copy-mode'a bağlı bir panel özelliği yok (grep).
+
+### Gecikme (Python, 26 Kas 22:36, 8 çekirdek, yük ~30, eski/yeni dönüşümlü; pane'e varışa dek, ms)
+
+| Veri | n (yol başına) | eski medyan / p95 | yeni medyan / p95 |
+|---|---|---|---|
+| 1 karakter | 300 | 13,3 / 31,8 | 14,6 / 32,7 |
+| ok tuşu | 200 | 16,4 / 40,5 | 16,7 / 44,3 |
+| 8192 karakter | 60 | 20,8 / 38,0 | 12,0 / 22,5 |
+
+Sürüm yoklaması ek 16,9 ms (ortalama, en çok 60 sn'de bir). Rust için ayrı gecikme ölçümü yapılmadı (aynı tmux komutları).
+
+### Özel tuşlar, gerçek CLI ekranları (yeni ve eski yol yan yana, eş iki örnek, her adımdan sonra ekran kıyası)
+
+Adımlar: harf harf yazma, Backspace x2, sol x2 + harf, sağ + harf, Ctrl-C, `/hel` + Tab, `/help` + Enter, Esc, yukarı, aşağı, Ctrl-C (shell'de `echo`). Python yolu.
+
+| CLI | Nasıl | Sonuç |
+|---|---|---|
+| bash | ağsız | her adım aynı |
+| claude 2.1.332 | ağsız, sahte anahtar | her adım aynı (betiğin iki "farklı" işareti kendi metin değiştirmesindendi) |
+| codex 0.166.0 | ağsız, sahte anahtar | giriş satırı her adımda aynı; iki işaret yalnız uyarı satırının çizim anı |
+| ucli | ağsız | her adım aynı; Ctrl-C ucli'yi kapattığı için ara temizlik Backspace ile, Ctrl-C yalnız sonda |
+| copilot | gerçek oturum, araçsız | aynı; ilk dört adımdaki fark açılış yüklemesi sırasında çizim gecikmesi (2. adımdan itibaren giriş satırı eşit) |
+| agy 1.5.18 | gerçek oturum, plan + sandbox | güven diyaloğunda aşağı/yukarı/Enter dahil her adımda son 4 satır aynı |
+
+Denenmeyen: Rust yolu canlı CLI ekranında; Ctrl+Space; panelden uçtan uca (`/api/term/raw`) deneme.
+
 ## Açık işler
 1. Birleştirme SONRASI (copsd bu crate'i kullanınca, bu dalda yapılamaz): `set_swallow_hook` copsd günlüğüne bağlanmalı (yoksa yutulan hatalar stderr'e, yani servis günlüğüne gider).
 2. Rust'a taşınan otomatik göndericiler (değnekçi `_send`, devir, compact, orkestrasyon) `MaskUnknown`u "send failed"ten ayrı göstermeli (T10/T4).
-3. TBD 385 (ham tuş yolu argv'de): sahibin cevabı bekleniyor.
-4. Canlıya alırken: web restart + uzak deploy (eski sürümdeki uzak panel `auto` alanını yok sayar).
+3. Canlıya alırken: web restart + uzak deploy (eski sürümdeki uzak panel `auto` alanını yok sayar). yuhem tmux 3.0a'da ham tuş yolu canlı denenmedi (yalnız kaynak okundu): deploy sonrası panelden o host'ta bir oturuma yazıp Backspace/Esc/ok/Ctrl-C bak.
