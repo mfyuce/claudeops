@@ -148,6 +148,8 @@ MARK_DONE_CONFIRMED = "STEWARD-DONE-CONFIRMED"   # kanıtlı teyit ("<kısa hash
 DONE_CONFIRM_TTL = 6 * 3600.0          # aynı projeye bu süre içinde ikinci teyit direktifi gitmez
 _CONFIRM_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 _CONFIRM_ZERO_RE = re.compile(r"(?<![\w.])0(?![\w.])")
+_CONFIRM_COLON_RE = re.compile(r"[`*_\s]*[:：]")      # işaretin hemen ardında `:` (biçimlendirme arada olabilir)
+_CONFIRM_LEAD_HASH_RE = re.compile(r"[`*_\s]*(?:[(\[,;=→>\-–—][`*_\s]*)*[0-9a-f]{7,40}\b")   # `:`siz biçim: doğrudan commit hash'i
 NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 from .needs_ho import rfh_marker_in
@@ -2332,6 +2334,19 @@ def _bare_marker(line: str, mark: str) -> bool:
     return not rest or rest.startswith(":")    # işaret tek başına ya da `:` ile gövde alır; "… yazmıyorum" düzyazısı değil
 
 
+def _is_confirm_line(prefix: str, tail: str) -> bool:
+    """`STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda ANMA mı ("… yazmıyorum", "… geldi ama")? `_bare_marker`ın eşi,
+    bilinçli olarak ondan gevşek (canlı motor: gerçek teyit kaybolmasın). İşaretin ardında `:` varsa satırın neresinde
+    olursa olsun teyit; `:` yoksa işaret satır başında (ya da `…:` ardında) olmalı ve ardından commit hash'i gelmeli
+    ya da hiçbir şey gelmemeli (boş teyit denemesi)."""
+    if _CONFIRM_COLON_RE.match(tail):
+        return True
+    head = prefix.strip("`*_#.) 0123456789✅✔")     # başlık/kalın/numaralı madde/onay imi düzyazı değil
+    if head and not head.endswith(":"):
+        return False
+    return bool(_CONFIRM_LEAD_HASH_RE.match(tail)) or not tail.strip("`*_ .!")
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
@@ -2388,8 +2403,10 @@ def scan_markers(text: str) -> Dict[str, Any]:
                 out["plan_ready"] = True
             elif MARK_DONE_CONFIRMED in line:      # `STEWARD-DONE` alt dizgesini içerir: önce bakılır, düz DONE sayılmaz
                 idx = line.find(MARK_DONE_CONFIRMED)
-                body = _unwrap_ticks(line[:idx], line[idx + len(MARK_DONE_CONFIRMED):].lstrip(":").strip())
-                if not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body and line[:idx].count("`") % 2 == 0:
+                tail = line[idx + len(MARK_DONE_CONFIRMED):]
+                body = _unwrap_ticks(line[:idx], tail.lstrip(":").strip())
+                if (_is_confirm_line(line[:idx], tail) and not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body
+                        and line[:idx].count("`") % 2 == 0):
                     out["confirmed"] = body       # boş gövde de bir teyit denemesi (kanıtsız: geçersiz sayılır)
             elif _bare_marker(line, MARK_DONE) and MARK_END not in line:
                 out["done"] = True
