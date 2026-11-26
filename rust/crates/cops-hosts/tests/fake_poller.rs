@@ -434,6 +434,33 @@ async fn malformed_remote_status_is_an_error_or_reduced_to_empty_fields() {
     .await
 }
 
+/// Sonsuz sayı serde için JSON değil: Rust o host'un TÜM yanıtını hata sayar (Python yalnız `orphan_watch`ı atar,
+/// `docs/rs-hosts.md`); iki tarafta da tur sürer ve sonraki host yoklanır.
+#[tokio::test]
+async fn non_finite_orphan_count_fails_only_that_host() {
+    deadline(async {
+        for number in ["1e999", "-1e999", "Infinity"] {
+            let bad = Mode::new();
+            bad.raw(
+                200,
+                &format!(r#"{{"sessions":[],"orphan_watch":{{"servers":{number}}}}}"#),
+            );
+            let first = status_fake(&bad).await;
+            let second = status_fake(&Mode::new()).await;
+            let src = MemSource::new(vec![host("a", &first.url()), host("b", &second.url())]);
+            let fed = fed_with(&src);
+            fed.clone().poll_once().await;
+            assert_eq!(
+                fed.book.cached("a").unwrap(),
+                HostStatus::failed("bad response (not JSON)"),
+                "{number}"
+            );
+            assert!(fed.book.cached("b").unwrap().ok, "{number}");
+        }
+    })
+    .await
+}
+
 #[tokio::test]
 async fn irregular_host_records_are_skipped_by_the_poller() {
     deadline(async {

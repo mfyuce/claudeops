@@ -235,8 +235,8 @@ DEFS["commands/web_hosts.py"] = [
        f"{_STALE_GET} {_STALE_POST} {FT}non_json_non_object_and_error_statuses {_DEDUP}"),
     ok("_CLI_OPTIONS_FIELDS", "status.rs::CLI_OPTION_FIELDS", P_RED),
     ok("_normalize_cli_options", "status.rs::normalize_cli_options", f"{P_RED} {_MAL}"),
-    ok("_orphan_brief", "status.rs::orphan_brief", P_RED,
-       "Python `int(x or 0)` kuralı; Python'da `Infinity` yakalanmayan OverflowError (Python bulgusu)"),
+    ok("_orphan_brief", "status.rs::orphan_brief", f"{P_RED} {FP}non_finite_orphan_count_fails_only_that_host",
+       "Python `int(x or 0)` kuralı; sonsuz sayıda Python yalnız alanı atar, Rust tüm yanıtı reddeder (serde)"),
     ok("_build_running", "status.rs::build_running", P_RED),
     ok("_fwd_brief", "status.rs::fwd_brief", P_RED,
        "metin/nesne `kids` Python'da karaktere/anahtara bölünür, Rust `fwd`i yok sayar (Python bulgusu, parity bilinen fark)"),
@@ -558,6 +558,9 @@ CASES["test_http_json_post_no_retry.py"] = [
     t_ok("PostRetryTest.test_get_still_retried_after_send", _STALE_GET),
 ]
 CASES["test_orphan_brief.py"] = [
+    t_ok(cls("InfiniteOrphanTest", "test_infinite_counts_are_dropped_like_any_other_bad_shape "
+             "test_rest_and_ws_results_survive_an_infinite_count"), f"{FP}non_finite_orphan_count_fails_only_that_host",
+         "belgeli fark: Rust tüm yanıtı reddeder, Python yalnız `orphan_watch`ı atar"),
     t_ok(cls("OrphanBriefTest", "test_brief") + " " + cls("FwdBriefTest", "test_brief") + " " +
          cls("BuildRunningTest", "test_build_running"), P_RED),
     t_ok("WsFrameTest.test_ws_frame_keeps_host_badges", f"{P_WS} {P_RED}"),
@@ -681,6 +684,18 @@ CASES["test_remote_duplicate_name.py"] = [
               "test_single_review_session_still_gets_stop_and_send"), "uzak review sürücüsü", T8),
     t_oos(cls("TestTwinAppearsDuringHandover", "test_no_second_handover_request test_no_stop_after_reply"),
           "panel devirli durdurma (`web.py`)", T4),
+    t_ok("TestRemoteRefTwins.test_one_running_and_one_closed_row_still_resolves",
+         f"U:health.rs::running_row_is_exact_truthy_and_ambiguous_is_unknown {P_STEW}",
+         "satır sayımı kuralı; uzak klasör seçimi T10"),
+    t_oos(cls("TestRemoteRefTwins", "test_remote_ref_refuses test_closed_row_of_the_same_name_does_not_rescue_twins "
+              "test_tracked_session_twins_are_refused test_context_and_file_views_read_nothing "
+              "test_card_is_not_read_or_overwritten test_advance_todo_status_is_unknown "
+              "test_idea_export_writes_nothing_and_keeps_the_idea test_owner_answer_stays_queued_for_retry "
+              "test_directive_reports_the_unwritten_todo_line"), "uzak dosya hedefi ve çağıranları", T10),
+    t_oos(cls("TestRemoteRefTwins", "test_review_driver_has_no_folder_and_keeps_findings "
+              "test_review_cwd_fallback_refuses_dated_twins"), "uzak review sürücüsü", T8),
+    t_oos(cls("TestMirrorWindowTwins", "test_twins_are_refused_whatever_their_folder_or_tmux_state "
+              "test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one"), "masaüstü yansı penceresi", T2),
 ]
 CASES["test_steward_remote_actions.py"] = [
     t_ok(cls("TestRemoteResilience", "test_breaker_stops_after_first_transport_error_in_a_tick "

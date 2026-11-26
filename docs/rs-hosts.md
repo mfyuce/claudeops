@@ -2,10 +2,10 @@
 
 ## Durum (26 Kas 2026 akşam, iş 4-5 sonrası): BİRLEŞTİRMEYE HAZIR DEĞİL (kalan maddeler aşağıda)
 
-`cargo test -p cops-hosts` 122/122 geçiyor (22 birim + 100 entegrasyon, `tests/parity.rs` 12 dahil);
+`cargo test -p cops-hosts` 123/123 geçiyor (22 birim + 101 entegrasyon, `tests/parity.rs` 12 dahil);
 `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz. Eşleme tablosu `docs/rs-hosts-mapping.md` (üreteç ve
 denetim `rust/crates/cops-hosts/tools/mapping.py`, `--check` temiz): tanım 358 (243 karşılandı, 115 kapsam dışı, 0 AÇIK),
-Python test durumu 857 / 61 dosya (148 karşılandı, 709 kapsam dışı, 0 AÇIK).
+Python test durumu 873 / 61 dosya (151 karşılandı, 722 kapsam dışı, 0 AÇIK).
 Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
 
 Kalan (birleştirmeyi tutan) maddeler:
@@ -248,11 +248,20 @@ düşer.
 - `guard::host_is_blocked_via` (çözümleyici + süre parametreli; asılı DNS testi), `relay` ölüm etiketi testi,
   gRPC çözülemeyen ad testi, `capabilities` metin/nesne testi.
 
+Aynı adlı oturum ve sonsuz sayı (TBD#380, sahip kararı: iki tarafta düzelsin):
+- Python düzeltildi: `27772e9`. `web_steward._remote_ref` ve `RemoteReviewDriver._project_cwd_remote` aynı adlı iki
+  çalışan uzak satırda ilkinin klasörünü alıyordu (uzak okuma/yazma yanlış dizine gidebilirdi). Artık klasör bilinmiyor
+  (`("", "")` / `""`), `_remote_read_context` son konuşmayı da okumaz. Bu crate'te uzak dosya hedefi yok (T10/T8);
+  satır kuralı `health::running_row` / `named_running_rows` ile aynı.
+- Python düzeltildi: `af10181`. `web._open_mirror_window` adı eşleşen ilk satırı alıyordu; iki çalışan adaş artık
+  `ambiguous_name` (geri yükleme ve `force` dahil). Rust karşılığı yok (masaüstü yansı penceresi, T2).
+- Python düzeltildi: `6ae44d5`. `web_hosts._orphan_brief`: `servers`/`procs` sonsuz (`Infinity`, `1e999`) ise `int(inf)`
+  OverflowError yakalanmıyordu: `_finalize_remote_result` düşüyor, REST turu o host'tan sonrakiler için bitiyor, WS'te
+  tüketici ölüyordu. Python artık yalnız `orphan_watch`ı atar (`None`), host `ok` kalır. Rust davranışı değişmedi: serde
+  sonsuz sayıyı JSON saymaz, o host'un yanıtı "bad response (not JSON)"; iki tarafta da tur sürer
+  (`fake_poller::non_finite_orphan_count_fails_only_that_host`). Kalan bu fark "Python'dan bilinçli farklar"da.
+
 İş 4'te bulunan Python hataları (Python'a YAZILMADI; sahip kararı gerekir, Rust güvenli davranışta, parity bilinen fark):
-- `web_hosts._orphan_brief`: `servers`/`procs` `Infinity` (Python `json.loads` kabul eder) ise `int(inf)` OverflowError
-  YAKALANMAZ (yalnız TypeError/ValueError): `_finalize_remote_result` düşer, REST'te `_poll_once` turu o host'tan
-  sonraki host'lar için biter, WS'te tüketici ölür (doğrulandı, geçici dizinde). Rust: serde `Infinity`yi JSON saymaz,
-  yanıt "bad response (not JSON)" (host hatası).
 - `web_hosts._fwd_brief`: `now` `NaN` ise `skew: nan` üretir; `/api/status` JSON'unda geçersiz `NaN` (tarayıcı
   `JSON.parse` reddeder). Rust: girdi JSON değil sayılır.
 - `web_hosts._fwd_brief`: metin `kids` karakterlere, nesne `kids` anahtarlarına bölünür (TBD#372 `capabilities`
@@ -312,7 +321,8 @@ Python ile aynı indirgeme). `map_err(|_| ...)` yalnız URL/token taşıyan iç 
 - `remote_post` yıkıcı yolları (`/api/stop` vb.) reddeder; yalnız `remote_stop` (Python `_remote_post` gönderir) ve gövdede
   `host` istisna değil hata değeri. `exact_target` yeteneği yalnız önbellekten okur (çağıran önce `host_capabilities`);
   yetenek ve `blocked` denetim sırası farklı (ikisi de istek göndermez).
-- `finalize`, kahin dışı girdide (JSON'da `NaN`/`Infinity`) Python'dan önce reddeder (serde).
+- `finalize`, kahin dışı girdide (JSON'da `NaN`/`Infinity`/`1e999`) Python'dan önce reddeder (serde): Rust o host'u
+  hata sayar, Python yanıtı kabul eder (`orphan_watch`ta sonsuz sayı yalnız o alanı düşürür).
 - Python `str()` yalnız skalerlerde birebir; dizi/nesne değer JSON metni olarak kalır (`build.running`, `fwd.kids` öğesi).
 - Bilinen eşit davranış (düzeltilmedi): gRPC çağrıları imzalanmaz.
 
