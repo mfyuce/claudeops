@@ -182,6 +182,31 @@ impl<'a> Instances<'a> {
         Instances { docs }
     }
 
+    /// db kipinde bozuk olan yalnız ayna ise DB satırı; aynanın ham hali (aynı içerik bir kez, o zaman diag.log)
+    /// `.corrupt-<sha8>` olarak saklanır (Python `_keep_corrupt_mirror`, hata yutulur).
+    fn recover_mirror(&self, path: &std::path::Path) -> Option<Json> {
+        let data = self.docs.db_truth(DOC, path)?;
+        data.get("instances")?.as_object()?;
+        if let Ok(raw) = std::fs::read(path) {
+            let mut known = path.as_os_str().to_owned();
+            known.push(format!(
+                ".corrupt-{}",
+                &crate::sha256::sha256_hex(&raw)[..8]
+            ));
+            if !std::path::Path::new(&known).exists() {
+                match crate::fsutil::write_corrupt_copy(path, &raw) {
+                    Ok(dest) => self
+                        .docs
+                        .diag_log(&format!("instances_mirror_corrupt {}", dest.display())),
+                    Err(e) => self
+                        .docs
+                        .diag_log(&format!("instances_mirror_corrupt yedek: {e}")),
+                }
+            }
+        }
+        Some(data)
+    }
+
     /// Belgenin tamamı; yoksa boş şekil, bozuksa hata.
     pub fn read_strict(&self) -> Result<Json, InstancesError> {
         self.read_checked().map(|(d, _)| d)
@@ -199,8 +224,18 @@ impl<'a> Instances<'a> {
                 lossy = true;
                 v
             }
-            Read::Corrupt => return Err(corrupt("okunamadı")),
-            Read::Missing if path.exists() => return Err(corrupt("okunamadı")),
+            Read::Corrupt => {
+                return self
+                    .recover_mirror(&path)
+                    .map(|d| (d, false))
+                    .ok_or_else(|| corrupt("okunamadı"))
+            }
+            Read::Missing if path.exists() => {
+                return self
+                    .recover_mirror(&path)
+                    .map(|d| (d, false))
+                    .ok_or_else(|| corrupt("okunamadı"))
+            }
             Read::Missing => {
                 let mut m = Map::new();
                 m.insert("version".into(), Json::Int(VERSION));
