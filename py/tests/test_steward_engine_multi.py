@@ -196,22 +196,24 @@ class TestTwoIdentityTick(_Engine):
         self.settings()
         sw.upsert_project("a", phase="planned", cadence_minutes=0)
         entered, release = threading.Event(), threading.Event()
+        gave_up = []
 
         def views(cfg):
             if cfg.sid == "kitap":
                 entered.set()
-                release.wait(10)
+                if not release.wait(60):      # eylemler bu tick'i bekleseydi ancak burada ilerlerdi
+                    gave_up.append(True)
             return []
         with mock.patch.object(ws, "_collect_views", views):
             th = threading.Thread(target=lambda: ws.tick_once("timer", "kitap"), daemon=True)
             th.start()
             try:
                 self.assertTrue(entered.wait(5))
-                t0 = time.monotonic()
                 self.assertTrue(ws.http_post("/api/steward/stop", {"name": "a", "force": True})["ok"])          # insan, default
                 self.assertTrue(ws.http_post("/api/steward/handover", {"name": "a", "actor": "brain"})["ok"])
                 self.assertTrue(ws.tick_once("manual")["ok"])                                  # default tick'i
-                self.assertLess(time.monotonic() - t0, 3.0)
+                # süre eşiği YOK (yük altında 6,7 sn ölçüldü): ölçüt, eylemler bittiğinde kitap'ın hâlâ tick'te olması
+                self.assertFalse(gave_up)
                 self.assertFalse(ws._ctx("kitap").lock.acquire(blocking=False))               # kitap hâlâ tick'te
             finally:
                 release.set()

@@ -58,6 +58,10 @@ case "$*" in
         # Sağlık bekçisinin yoklaması: ntfy çağrılarından AYRI günlük ve yanıt dizisi. PROBE_CODES'taki
         # kodlar sırayla verilir; dizi bitince SON kod tekrarlanır (hiç kod yoksa 401: panel kimlik doğrulaması).
         printf '%s\n' "$*" >> "$PROBE_LOG"
+        # PROBE_HOLD (içinde yoklama sırası): o yoklama, dosya silinene dek yanıt vermez (en çok ~120 sn).
+        if [ "$(cat "$PROBE_HOLD" 2>/dev/null)" = "$(grep -c '' "$PROBE_LOG")" ]; then
+            for _ in $(seq 1 2400); do [ -e "$PROBE_HOLD" ] || break; /bin/sleep 0.05; done
+        fi
         code=$(head -n 1 "$PROBE_CODES" 2>/dev/null)
         if [ -n "$code" ]; then sed -i 1d "$PROBE_CODES"; else code=$(cat "$PROBE_LAST" 2>/dev/null || echo 401); fi
         echo "$code" > "$PROBE_LAST"
@@ -112,6 +116,7 @@ class TunnelEnv:
         self.probe_log = self.root / "probe.log"
         self.probe_codes = self.root / "probe_codes"
         self.probe_last = self.root / "probe_last"
+        self.probe_hold = self.root / "probe_hold"
         if topic:
             (self.state / "ntfy_topic.txt").write_text(topic + "\n")
         self.procs = []
@@ -145,6 +150,7 @@ class TunnelEnv:
             PROBE_LOG=str(self.probe_log),
             PROBE_CODES=str(self.probe_codes),
             PROBE_LAST=str(self.probe_last),
+            PROBE_HOLD=str(self.probe_hold),
             CLAUDEOPS_TUNNEL_WATCH="0",  # eski testler bekçiden etkilenmesin (curl günlüğü sayılıyor)
         )
         if watch:
@@ -492,14 +498,16 @@ class WatchdogTests(unittest.TestCase):
     def test_turning_it_off_forgets_a_half_counted_run_of_530(self):
         env = TunnelEnv(self)
         env.write_settings({"tunnel_watch": "on"})
+        env.probe_hold.write_text("2")      # "off" yazılana dek 2. yoklama bekler: 3. 530 testin önüne geçemez
         proc = env.boot(watch=True, probes=["530", "530"], watch_fails=3)
         env.wait_for(lambda: len(env.probe_calls()) >= 2, "iki 530")
         env.write_settings({"tunnel_watch": "off"})
+        env.probe_hold.unlink()
         env.wait_for(lambda: "KAPATILDI" in env.log_text(), "kapatma satırı")
         env.write_settings({"tunnel_watch": "on"})
         env.wait_for(lambda: "AÇILDI" in env.log_text(), "açma satırı")
         # Dizi bitti, son kod (530) tekrarlanır: sayaç SIFIRDAN sayılır, yeniden 3 yoklama gerekir.
-        proc.wait(timeout=30)
+        proc.wait(timeout=90)
         self.assertGreaterEqual(len(env.probe_calls()), 5, "kapatma sayacı sıfırlamadı")
 
     def test_missing_unreadable_or_odd_settings_mean_on(self):
