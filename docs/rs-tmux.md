@@ -2,6 +2,8 @@
 
 Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 iki tarafta işlendi, "Birleştirme kapısı"). Açık: TBD 385 ve "Açık işler" 1, 2, 4 (birleştirme sonrası / canlıya alma).
 
+Kapı öncesi doğrulama (26 Kas ~22:15, `34429a14`; `origin/main` `1ad764dc` dalın içinde, geride 0): Python tam paket 5715 test OK (23 atlanan, 1036 sn), `cargo test -p cops-tmux` 92/92, `clippy --all-targets -D warnings` temiz.
+
 ## Yapılan
 `rust/crates/cops-tmux`, `py/claudeops/tmux_backend.py` karşılığı. `ast` listesindeki her tanımın Rust karşılığı var; satır satır tablo "Eşleme tablosu" bölümünde.
 
@@ -16,7 +18,7 @@ Durum (26 Kas 2026 gece): **BİRLEŞTİRMEYE HAZIR** (cops kapı bulguları 1-8 
 | `shell.rs` | `shlex.quote`, kabuk parçaları, `spawn_direct`, `kill_session`, `ghost_session` |
 | `proc.rs` | `/proc` üstünden `is_tmux_backed`, `pid_childless`, `find_outer_bash_pids`, `CtxPusher` |
 
-Testler (87): 29 birim, 20 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 6 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
+Testler (92): 29 birim, 23 argv (`tests/fake_tmux.sh`), 11 gerçek tmux, 8 yaşam döngüsü, 9 Python paritesi, 1 sızıntı (`leak.rs`), 2 `O_NOCTTY` (`mask_noctty.rs`, biri ayrı süreçte koşan yardımcı), 3 yutulan hata (`swallow.rs`), 3 kaynak denetimi (`hygiene.rs`), 3 `tmux.conf` kuralı (`conf.rs`). `cargo test -p cops-tmux` ve `cargo clippy -p cops-tmux --all-targets -- -D warnings` temiz; 5 ardışık tam koşuda 74/74 (genişletme sonrası 3 ardışık koşuda 82/82), oynaklık yok. Gerçek tmux testleri geçici `TMUX_TMPDIR` + rastgele soket + `-f /dev/null` (ya da paketli conf) kullanır; `-L cops` sunucusuna dokunmaz (`tests_never_touch_the_live_socket` denetler).
 
 Testin gerçekten yakaladığı elle sınandı (mutasyon, geri alındı): `mask.rs`ten `O_NOCTTY` çıkarılınca `probing_a_pty_never_makes_it_the_controlling_terminal` kırmızı ("pty'yi denetim terminali edindi"); eski (iş parçacıklı) `runner.rs` ile `no_fd_thread_or_zombie_survives_any_outcome` kırmızı (fd 6 -> 12: torun sürecin tuttuğu borular okuyucu iş parçacıklarıyla birlikte yaşıyordu).
 
