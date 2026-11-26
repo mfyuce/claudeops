@@ -1,7 +1,22 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026, devir): **BİRLEŞTİRMEYE HAZIR DEĞİL.** Kod derleniyor, `cargo clippy -p cops-providers --all-targets -- -D warnings`
-temiz, `cargo test -p cops-providers` 2/2 (yalnız `pyfmt`). **Python paritesi HİÇ sınanmadı.**
+Durum (26 Kas 2026, `87f8811`): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosu ve ders listesi açık). `cargo clippy -p cops-providers
+--all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 8/8.
+
+## Parite (`tests/parity.rs`)
+- Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
+  başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
+- 1646 vaka: model/effort 105, settings/pyfmt 84, build 315, ucli 324, spawn 392, misc 426.
+- 26 "bilinen ayrışma" testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer): Python hatası 8, Python repr/JSON metni 5, sınırsız int 2,
+  dize olmayan kimlik 2, NaN 1, Unicode kategorisi 2, urlsplit NFKC 1, daha sıkı regex 3, doğrulanmamış `exec_cmds` 2, Effect sözleşmesi 1.
+- Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
+- Kapsanmayan: süreç başlatma, tmux parçası, resume taraması, hayalet oturum temizliği; gerçek `Effect` uygulayıcısı; eşzamanlı yazım ve
+  zaman aşımı; `--help` önbellek tazelemesi.
+- Rust'ta henüz yok: `rust_toolchain`, `_rustup_default_toolchain`, `path_executables` (`_CMD_RE`); `_sync_one` dosya adımları;
+  `normalize_ucli_services` `label`/`models`, `service_models`, `ucli_cost_config` tavan/kredi; diag `ucli_web_searxng_error`,
+  `ucli_usage_log_dir_failed`; model listesi TTL önbellekleri.
+- Python hatası şüpheleri: TBD#373 (Rust şimdilik Python gibi ya da kayıtlı ayrışma).
+- API değişikliği: `plan_spawn(p, req, &mut BuildOutput)` (hata durumunda da biriken Effect/diag korunur).
 
 ## Kapsam (ilk görev metni)
 - Yazılabilir yollar: `rust/crates/cops-providers/**`, `rust/Cargo.toml` members satırı, `docs/rs-prov.md` (`rust/Cargo.lock` yeni bağımlılıklarla değişti).
