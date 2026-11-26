@@ -1,14 +1,15 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G4, G8 ikinci parça, G9, G10 ve ders listesi açık; G1,
-G2, G3, G5, G6, G7, G11 ve G8 birinci parça (dosya ve süreç tarafı) taşındı). `cargo clippy -p cops-providers --all-targets --
--D warnings` temiz, `cargo test -p cops-providers` 113/113 (birim 11, transkript sözleşmesi 7, model kaynakları 14, devam
-sözleşmesi 12, parite 15; G8 gerçek uygulayıcı: dosya 26, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1).
+Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G4, G9, G10 ve ders listesi açık; G1, G2, G3,
+G5, G6, G7, G8 (iki parça) ve G11 taşındı). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
+`cargo test -p cops-providers` 140/140 (birim 11, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 17;
+gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16, SearXNG 8).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 5428 vaka: gerçek uygulayıcı 124 (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1177 (G2), bg_work 73 ve live 653 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 5804 vaka: maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
+  (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1177 (G2), bg_work 73 ve live 653 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 56 "bilinen ayrışma" (14ü G1, 7si G7, 9u G3, 2si G2, 5i G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
@@ -18,10 +19,11 @@ sözleşmesi 12, parite 15; G8 gerçek uygulayıcı: dosya 26, süreç 10, HTTP 
 - Dosya, dizin, `stat`, SQLite, yol çözümü ve `Effect` uygulaması paritede GERÇEK uygulayıcıyla (`real`) koşar; yalnız
   süreç/ağ olguları sahtedir (`parity_real` hariç: orada iki tarafta da gerçek alt süreç, yalnız geçici ağaçtaki betikler).
 - Koşucu ağa çıkmaz: `harness.py` soket bağlantısını ve ad çözümünü kapatır; `/models` istekleri `_open_no_redirect`
-  sahtesinden geçer.
-- Kapsanmayan: oturum başlatma, tmux parçası, hayalet oturum temizliği (G9); maliyet defteri ve SearXNG (G8 ikinci parça);
-  `db` kipindeki belge deposu (rs/state).
-- Rust'ta henüz yok: `_sync_one` dosya adımları (G9); diag `ucli_web_searxng_error` (G8 ikinci parça).
+  sahtesinden geçer; engelin tuttuğu ayrı vakayla sınanır (`arama-ag-engeli`: altı çıkış yolu). Docker yok: `searxng`
+  ailesi iki tarafta vaka ağacındaki sahte `docker` betiğini çalıştırır (`PATH`teki `docker` ağaç dışındaysa vaka düşer).
+- Kapsanmayan: oturum başlatma, tmux parçası, hayalet oturum temizliği (G9); `db` kipindeki belge deposu (rs/state).
+- Rust'ta henüz yok: `_sync_one` dosya adımları (G9). `ucli_web_searxng_error` diag'ı BİLEREK yok: Rust arama yöneticisi
+  istisna üretemez (her hata kendi içinde `None` + `searxng_*` olayı).
 - TBD#386, TBD#389 ve G2/G6 Python hataları (TBD#383 kalıcı kuralı) iki tarafta düzeltildi; ayrıntı ilgili grup bölümünde.
   Eklenen özel yardımcılar (Rust karşılığı): `claude_provider._row_model` (`claude_transcript::assistant_model`),
   `_row_content`, `codex_provider._codex_item` (`chat.rs`), `copilot_provider._cell_value` (`chat.rs::cell_or_empty`),
@@ -68,7 +70,7 @@ Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G8 ikinci parça (maliyet defteri, SearXNG), G4, G10, G9.
+1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G4, G10, G9.
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
@@ -106,7 +108,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo`: `real/modelio.rs` (G8) |
-| G8 `Probe` ve `Effect` gerçek uygulayıcısı | birinci parça bitti: `real/` (dosya, süreç, HTTP, belge, günlük, token, MCP, checks, `agy_sids`). KALAN (ikinci parça): maliyet defteri (`ucli_cost`), `searxng.ensure_search_url` | 22 (31 TAŞINDI) | 26 (21 TAŞINDI, 5 kapsam dışı) | kalan: maliyet defteri eşzamanlı ayırma; SearXNG docker yönetimi |
+| G8 `Probe` ve `Effect` gerçek uygulayıcısı | `real/` (dosya, süreç, HTTP, belge, günlük, token, MCP, checks, `agy_sids`), maliyet defteri (`cost.rs`, `real/ledger.rs`), SearXNG spawn yolu (`real/searxng.rs`) | 0 (53 TAŞINDI) | 0 (47 TAŞINDI, 5 kapsam dışı) | bitti: parite `parity_real`, `parity_ledger`, `parity_searxng`; `tests/real_{fs,process,http,ledger,searxng,fd,agy_store}.rs` |
 | G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 14 | zor: rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` kullanılan kısım), bütçe notu | 19 | 19 | orta: alt süreç, zaman aşımı, sır ortamda |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
@@ -441,9 +443,8 @@ bu ize yönlendirilmeli.
   `lock`, `docs` (`DocStore`, `FileDocs`, `DocAgySidStore`), `diaglog`, `agents`, `checks`, `modelio`, `http`, `proxy`, `env`,
   `oserr`.
 - Dışarıdan verilen sınırlar (`RealDeps`): `DocStore`, `ProjectDirs` (rs/proc `encode_cwd`), `CostGate`, `SearchUrl`, paylaşılan
-  `HelpCache`, panel portu. `CostGate` için hazır olan yalnız `FailClosedCostGate`: günlük tavan 0 ise geçirir, tavan AÇIKSA
-  claude hizmetli başlatmayı REDDEDER. Ayarı kurulduğu anda okur: spawn başına yeniden kurulmalı. `SearchUrl` için yalnız
-  `NoSearch` (oturum aramasız açılır, Python'daki "hazır değil" yolu).
+  `HelpCache`, panel portu. Gerçek `CostGate` = `ledger::CostLedger`, gerçek `SearchUrl` = `searxng::ManagedSearch` (ikinci
+  parça); yer tutucular (`FailClosedCostGate`, `NoSearch`) kaldırıldı.
 - Yazım güvenliği: sır dosyası baştan 0600, `O_NOFOLLOW`, `O_NONBLOCK` + normal dosya denetimi; var olan dosyanın izni içerik
   yazılmadan 0600'e çekilir. Atomik yazım: benzersiz geçici dosya `O_EXCL|O_NOFOLLOW`, dosya + dizin fsync.
 - Okuma: yalnız normal dosya (açılış `O_NONBLOCK`, tür tanıtıcı üzerinden). Sınırlar: metin 64 MiB, belge 16 MiB, yardım çıktısı
@@ -472,8 +473,8 @@ bu ize yönlendirilmeli.
   kendi çocuk grubunu öldürür) ya da `ProcFs` yoluna alınmalı.
 - rs/hosts: TLS yapılandırması ve sürümler ortaklaştırılabilir. `rust/Cargo.lock` bu dalda büyüdü: birleşimde yeniden çözülmeli.
 - G9: `RealProbe` panel portuyla kurulur; süreç başına TEK `HelpCache`, `ModelSources` ve `MetaCache`; `BuildOutput::diags`
-  `DiagLog::write_all`a, `effects` `apply_all`a verilir (hata = spawn düşer); gerçek `CostGate` bağlanmadan tavanlı kurulumda
-  Claude (API) oturumu açılamaz.
+  `DiagLog::write_all`a, `effects` `apply_all`a verilir (hata = spawn düşer); süreç başına TEK `CostLedger` ve `ManagedSearch`;
+  başarısız ya da kuru başlatmada `CostGate::release(ad)`; ayar kaydında `CostLedger::invalidate()`.
 
 ### Bilinen ayrışmalar (bilinçli; `parity_real`da kayıtlı ayrışma yok: bunlar ya yalnız Rust testinde ya da testsiz)
 - HTTP: yönlendirme iki tarafta da izlenmez (TBD#389; `redirects_are_never_followed_*`). Fark:
@@ -482,54 +483,109 @@ bu ize yönlendirilmeli.
 - Süreç: zaman aşımında torunlar da öldürülür; `ucli chat --help` stdin'i boş (Python miras verir); UTF-8 olmayan yardım çıktısı
   "" (Python istisna), `mcp add` çıktısı U+FFFD (Python istisna); çıktı sınırlı; `agy models` stderr'i atılır.
 - Kilit alınamazsa yazım hata döner (Python iş parçacığı kilidiyle sürer).
-- `ucli_agents`: ek `ucli_agents.json.lock`; nesne olmayan üst kayıtta istisna yerine `Err("AttributeError")` (spawn ajansız
-  açılır, Python'da spawn düşer).
 - Belge `db` kipinde `agy_sids`/`claude_models` okunmaz ve yazılmaz (rs/state bağlanana dek).
-- Maliyet tavanı açıkken başlatma reddi; SearXNG yok.
-- Sır/damga açılışı FIFO'da bloklamadan hata (Python bloklanır); `checks` kaydı `O_NOFOLLOW`; `realpath` 256 farklı bağlantıda
-  durur (Python `RecursionError`); metin/belge okuma sınırları.
+- `realpath` 256 farklı bağlantıda durur (Python `RecursionError`); metin/belge okuma sınırları (16 MiB üstü ajan defteri
+  Rust'ta üzerine yazılmaz).
 - Eşlenmemiş vekil içeren belge yeniden yazılırsa U+FFFD olur (`pyjson`; Python vekili korur ya da yazımda düşer).
 - Göreli yollar Python gibi sürecin dizinine göredir; `RealProbe::with_cwd` yalnız `realpath` ve `current_dir`i etkiler.
 
-### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı; Rust aksi yukarıda yazılmadıkça Python gibi)
-1. `ucli_agents` defteri yalnız süreç içi kilitli: CLI ve panel aynı anda token üretirse bir kayıt kaybolabilir (token dosyası
-   yeni, özet eski). Kod okuması.
-2. `issue_token`: `parents[ad]` nesne değilse `AttributeError` (sağlayıcı yalnız `OSError`/`ValueError` yakalar: spawn düşer),
-   token dosyası yazılmış kalır. Parite `ajan-belge8`/`9` ile yeniden üretildi.
-3. Bozuk `ucli_agents.json` boş sayılıp üzerine yazılır: öteki oturumların özetleri yedeksiz kaybolur (parite `ajan-belge1`).
-4. `ucli_checks.check_shape`: `Infinity`/`NaN` adı (`str` "inf"/"nan") ve sondaki satır sonu kabul edilir (parite
-   `kayit-inf-*`, `kayit-ad11`, `ad13`); `_OWNER` de satır sonunu kabul eder.
-5. `load_registry` çok derin JSON'da `RecursionError` yakalamaz; `lstat` ile `open` arasında dosya bağlantıya çevrilebilir. Kod
-   okuması.
-6. `claude_help_text`/`chat_help_text`/`register_mcp`: UTF-8 olmayan çıktı `UnicodeDecodeError` olarak çıkar. Kod okuması.
-7. `chat_help_text` stdin vermez: ikili girdi beklerse 10 sn asılır ve çağıranın girdisini okuyabilir. Kod okuması.
-8. `subprocess.run` zaman aşımında torun süreçler yetim kalır (yardım yoklaması, `mcp add`). Kod okuması.
-9. `_rustup_default_toolchain` UTF-8 olmayan `settings.toml`da istisna. Kod okuması.
-10. `file_lock` kilit alamazsa süreçler arası koruma olmadan yazmayı sürdürür (`agy_sids`). Kod okuması (bilinçli tasarım
-    olabilir).
-11. Anahtar/damga yolunda FIFO varsa `os.open` bloklanır (spawn asılır). Kod okuması.
-12. `path_executables` `_CMD_RE` sondaki satır sonlu dosya adını listeye alır (parite `yol-`).
+### Python hatası adayları (27 Kas: kalıcı kural uygulandı; her düzeltme ayrı `fix:` + `py/tests/test_rsprov_g8_*.py`)
+| # | Aday | Sonuç |
+|---|---|---|
+| 1 | `ucli_agents` defteri yalnız süreç içi kilitli | DÜZELDİ (`file_lock`; iki dil aynı `ucli_agents.json.lock`) |
+| 2 | nesne olmayan üst kayıtta istisna, token dosyası yazılmış kalıyor | DÜZELDİ: token yazılmadan `TypeError`; spawn Python'daki gibi düşer, Rust eşitlendi |
+| 3 | bozuk defter boş sayılıp yedeksiz eziliyor | DÜZELDİ: `.corrupt-<özet>` kopyası (0600); okunamayan defter ezilmez (oturum ajansız açılır) |
+| 4 | `check_shape`/`_OWNER` `Infinity`/`NaN` adı ve sondaki satır sonunu kabul ediyor | DÜZELDİ (tam eşleşme, ad dize olmalı) |
+| 5 | `load_registry` derin JSON ve bağlantı yarışı | DÜZELDİ (`O_NOFOLLOW` + tanıtıcıdan tür/izin; `RecursionError` hata metni) |
+| 6 | yardım yoklaması/`mcp add` UTF-8 olmayan çıktıda istisna | DOKUNULMADI, sahibe: bugün spawn reddi; düzeltme oturum açılmasını değiştirir |
+| 7 | `ucli chat --help` stdin'i miras alıyor | DÜZELDİ (`DEVNULL`) |
+| 8 | zaman aşımında torun süreç yetim | DOKUNULMADI, sahibe: süreç grubu öldürmek "yalnız `kill.py`" kuralına dokunur |
+| 9 | UTF-8 olmayan rustup ayarı istisna | DÜZELDİ (varsayılan bilinmiyor; birden çok adayda "belirsiz" reddi) |
+| 10 | `file_lock` kilit alamazsa kilitsiz yazıyor | DOKUNULMADI, sahibe: bütün durum yazımlarını etkiler (Rust reddediyor) |
+| 11 | anahtar/damga yolunda FIFO spawn'ı bloklar | DÜZELDİ (`base._open_private_target`: bloklamadan `OSError`, boruya sır yazılmaz) |
+| 12 | `path_executables` satır sonlu dosya adını listeliyor | DÜZELDİ |
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G8 koduna düşen maddeler
 | Madde | Durum / test |
 |---|---|
 | H1, 3.9 süreç/fd sahipliği, zaman aşımı, kill+wait, boru boşaltma | `a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_*`, `closed_pipes_with_a_running_child_*`, `bounded_capture_overflows_*`; fd ve çocuk sayımı `a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child` (100 tur) |
-| H2, 3.2 atomik/kilitli yazım | `concurrent_atomic_writes_never_expose_a_partial_file`, `rust_and_python_writers_across_processes_lose_nothing` (4+4 süreç, 320 kayıt), `the_lock_is_the_one_python_takes_*`, `concurrent_issue_keeps_file_and_digest_consistent`, `concurrent_diag_writers_never_interleave_lines`. AÇIK: Python `ucli_agents` ortak kilidi almıyor (şüphe 1) |
-| H2/H5 bozuk belge yedeği (`.corrupt-<sha>`) | AÇIK: `agy_sids` ve `ucli_agents` Python gibi üzerine yazar (şüphe 3, G1 şüphe 7) |
-| H3, 3.6 bayat durum | önbellek yalnız yardım çıktısı (yol, argüman, mtime, boyut): `help_probe_runs_once_per_binary_version_*`; belge kipi her çağrıda yeniden okunur. KISMİ: `FailClosedCostGate` tavanı kurulurken okur |
+| H2, 3.2 atomik/kilitli yazım | `concurrent_atomic_writes_never_expose_a_partial_file`, `rust_and_python_writers_across_processes_lose_nothing` (4+4 süreç, 320 kayıt), `the_lock_is_the_one_python_takes_*`, `concurrent_issue_keeps_file_and_digest_consistent`, `concurrent_diag_writers_never_interleave_lines`; `ucli_agents` kilidi artık ortak (Python `test_every_writer_waits_for_the_file_lock`) |
+| H2/H5 bozuk belge yedeği (`.corrupt-<sha>`) | `ucli_agents`: `a_corrupt_agent_registry_is_copied_aside_*`. AÇIK: `agy_sids` Python gibi üzerine yazar (G1 şüphe 7) |
+| H3, 3.6 bayat durum | önbellek yalnız yardım çıktısı (yol, argüman, mtime, boyut): `help_probe_runs_once_per_binary_version_*`; belge kipi her çağrıda yeniden okunur; maliyet ayarı her kapı çağrısında okunur (`settings_are_read_on_every_call_*`) |
 | H4, 2.5 `--help` yoklaması | gerçek yoklama + önbellek; sürümün günlüğe yazılması YOK (Python'da da yok) |
 | H5, 3.10 girdi sınırları, panik yok | `reading_takes_only_regular_files_*`, `bounded_reads_*`, `checks_registry_*`, `empty_failed_slow_huge_or_non_utf8_help_*`, `unusable_addresses_send_nothing`, `error_statuses_broken_and_truncated_*`; `real/`de `expect` yalnız sabit desenlerde, `unwrap` yok |
 | H8, 3.7 sınırlı bekleme | süreç, HTTP, `flock` (30 sn), SQLite (2 sn) süre sınırlı; testlerdeki bekleme döngüleri de süreli |
 | H9, 3.3, 3.5 başarı/hata yutma | yazım ve kilit hatası döner (`apply_all_stops_at_the_first_failure_*`); yutulanlar Python gibi: `Remove`, `DiagLog` (bool döner), `ModelIo` her hatayı `None` yapar (`HttpError` nedeni loglanmıyor: H20 AÇIK) |
 | H12, 3.13 sır | `secret_files_are_private_from_creation_*`, `agent_token_is_0600_*`, `a_dry_run_build_issues_no_token_*` (token argv ve diag'da yok), `HttpError`/`EffectError` içerik ve adres taşımaz, başlık `sensitive`, `Env` Debug maskeli, TLS doğrulaması düşünce anahtar gönderilmez, yönlendirmede taşınmaz |
-| H13 kapalı yön | maliyet tavanı (`the_default_cost_gate_fails_closed_*`), `db` kipi (`db_backend_documents_are_neither_read_*`), kilit, TLS, kullanılamayan proxy (doğrudan gidilmez) |
+| H13 kapalı yön | maliyet tavanı (`an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`), `db` kipi (`db_backend_documents_are_neither_read_*`), kilit, TLS, kullanılamayan proxy (doğrudan gidilmez) |
 | H14, 3.12 diferansiyel test | `parity_real` 124 vaka (yol, zincir, checks, token, günlük, `agy_sids`, yardım, MCP, proxy); tüm eski aileler gerçek dosya uygulayıcısıyla |
 | H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR/PATH, yalnız sahte betikler ve loopback; gerçek `claude`/`agy`/ucli/docker/ağ yok |
 | H17, 3.14 yol/adres girdisi | `O_NOFOLLOW` yazımlar (`*_links_are_not_followed`, `a_symlinked_lock_file_is_refused_*`), token adı deseni (`agent_children_get_no_token_*`), SQLite yolu olduğu gibi. AÇIK: okuma bağlantı izler (Python gibi); iç ağ adresine istek engeli yok |
 | H20 gözlemlenebilirlik | AÇIK (yukarıda) |
 | H21 performans | ölçülmedi (HTTP istemcisi istek başına iş parçacığı + çalışma zamanı kurar) |
-| 2.5 spawn env beyaz listesi, başarısız spawn temizliği, kota sayımı | G9 / G8 ikinci parça (AÇIK) |
+| 2.5 spawn env beyaz listesi, başarısız spawn temizliği, kota sayımı | kota sayımı ve eşzamanlı pay `concurrent_starts_cannot_oversubscribe_the_cap`; env beyaz listesi ve başarısız spawn'da `release` G9 (AÇIK) |
 | Uygulanmaz | H6, H7, H10, H11, H15, H18, H19 |
+
+## G8 (ikinci parça): maliyet defteri ve SearXNG
+
+### Sahiplik
+`rs/rev` fiyat tablosunu ve `usage_cost_usd`i de taşıyor (o dal bu dalda yok): birleşimde `cost.rs::{anthropic_price,
+UsageScan}` ile tek kopya kalmalı. Eşitleme kaynağı Python'un 27 Kas düzeltmeli hâli.
+
+### Maliyet defteri (`cost.rs` saf, `real/ledger.rs` G/Ç)
+- Defterin yazarı claudeops değil: `<durum>/ucli_usage/<oturum>.jsonl` dosyalarına yalnız `ucli` ekler; Python ve Rust yalnız
+  okur. **Paylaşılan yazım yok, bu yüzden dosya kilidi ve atomik yazım da yok**; yarım yazılmış satır atlanır
+  (`reading_while_another_process_appends_never_flags_or_loses_records`: ayrı süreç satırları iki parçada eklerken okuma).
+- **Dil/süreç uyumu:** başlatma payı iki dilde de süreç belleğinde (`_RESERVED` / `CostLedger::reserved`). Aynı anda Python ve
+  Rust süreci Claude oturumu açarsa birbirlerinin payını görmez (Python'da panel ile CLI arasında da böyle): tavan en çok
+  eşzamanlı başlatma sayısı kadar aşılabilir. Birleşimde spawn tek süreçte kalmalı. Ortak pay dosyası Python'a yeni
+  davranış olacağından eklenmedi (sahibe).
+- Para sınırı kapalı yön (iki dilde): tavan açıkken okunamayan dizin/dosya, normal olmayan dosya, geçersiz sayaç ya da zaman
+  damgası başlatmayı reddeder (`claude: günlük USD tavanı denetlenemiyor (...)`; `code` YOK). Geçersiz sayaç toplamaya girmez.
+  Ayrıştırılamayan satır eskisi gibi atlanır (yarım yazım ile bozukluk ayrılamaz).
+- Kapı: `CostGate::check_and_reserve` = `cap_exceeded` + `reserve`; ret `BuildOutput::cost_refusal`a yazılır,
+  `cost::refusal` web sonucunu (`code`, tutarlar) kurar. `SpawnRefused` dalı G9/kanca katmanında.
+- Ayar: `CostSettings` her çağrıda; `file_cost_settings` dosya yoksa varsayılan, var ama okunamıyor/ayrıştırılamıyorsa ret.
+
+### SearXNG (`real/searxng.rs`; TBD#88 geçici, dar)
+- Yalnız spawn yolu: kayıtlı portta `/healthz`; kuru çalıştırma; docker kapalı önbelleği 60 sn; `inspect`, gerekirse `start`;
+  kurulum gerekiyorsa AYRIK süreç (`Provision`: `<python> -m claudeops searxng provision`, yeni oturum, çıktı `provision.log`).
+  İmaj çekme, `run`, `rm`, `status`, `stop` Rust'ta YOK (Python'da kalır).
+- Ortak dosyalar: `searxng/state.json` (yazım `state.json.lock` `flock`ı + atomik, 0600; iki dil aynı kilidi alır,
+  `the_state_write_waits_for_the_lock_python_takes_*`), kurulum kilidi `searxng/.lock`.
+- Sağlık yoklaması std soketle yalnız `127.0.0.1`: proxy yok, yönlendirme yok, toplam süre. Yeni bağımlılık yok.
+
+### Bilinen ayrışmalar (testte kayıtlı olan yok: yalnız Rust testinde ya da testsiz)
+- Defter: 512'den derin ya da 16 MiB'tan uzun satır Rust'ta "sayılamıyor" reddi (Python 1000'e dek okur / sınırsız); var ama
+  ayrıştırılamayan `settings.json`da Rust reddeder, Python varsayılana düşer (tavan kapanır; sahibe); `credit_window`
+  sonlu olmayan girdiyi `null` yazar.
+- SearXNG: docker çıktısı 4 MiB sınırlı; zaman aşımında docker süreç grubu öldürülür; sağlık yoklaması yalnız durum satırına
+  bakar, `User-Agent: claudeops`; kilit alınamazsa durum yazılmaz; hata metinleri (`repr(OSError)`) testsiz köşelerde
+  farklı olabilir; docker zaman aşımı metni yalnız Rust testinde.
+
+### Python hataları (27 Kas iki tarafta DÜZELDİ; `py/tests/test_rsprov_{cost_ledger,searxng}.py`)
+- Defter: tek bozuk bayt / dev sayı / derin satır `/api/status` ve spawn'ı düşürüyordu; NaN ya da negatif sayaç tavanı
+  aşırıyordu; okunamayan günlük 0 harcama sayılıyor, FIFO blokluyordu; `invalidate()` yarışı harcamayı 0 gösterebiliyordu.
+- SearXNG: yoklama yönlendirme izliyordu; HTTP olmayan dinleyici ve sonsuz port kurtarmayı kalıcı durduruyordu; durum
+  dosyasında kayıp güncelleme; beklenmeyen `inspect` yapısı istisna veriyordu.
+
+### Sahibe bırakılanlar (uygulanmadı)
+1. Bozuk/okunamayan `settings.json` ya da geçersiz `daily_cap_usd` ("abc", negatif) tavanı sessizce KAPATIYOR.
+2. Başlatma payı süreçler arası paylaşılmıyor (panel + CLI; ileride Python + Rust).
+3. Ayrıştırılamayan günlük satırı 0 harcama sayılıyor (yarım yazım ile kalıcı bozukluk ayrılmıyor).
+4. SearXNG hızlı yolu kayıtlı portta `/healthz` 200 veren HERHANGİ bir süreci kabul ediyor (çok kullanıcılı makine).
+
+### Ders listesi, ikinci parça koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| H1, 3.9 süreç sahipliği | docker: `a_hanging_docker_is_killed_marked_down_and_not_asked_again`; ayrık kurulum bekleyen iş parçacığıyla toplanır |
+| H2, 3.2 kilitli/atomik yazım | `the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`, `a_held_provision_lock_prevents_a_second_process`, eşzamanlı pay `concurrent_starts_cannot_oversubscribe_the_cap` |
+| H5, 3.10 girdi sınırları | satır 16 MiB, docker çıktısı 4 MiB, durum belgesi 16 MiB; `an_unreadable_or_invalid_ledger_closes_an_open_cap`, parite 260 rastgele günlük |
+| H8, 3.7 sınırlı bekleme | docker 5/15 sn, sağlık 1,5 sn toplam, hazır bekleme 8 sn, `flock` 30 sn; AÇIK: günlük taraması dosya boyutuyla sınırsız (Python gibi) |
+| H12, 3.13 sır | ret metninde yalnız dosya adı ve tutar; `a_claude_service_build_is_refused_over_the_cap` anahtar metne girmiyor |
+| H13 kapalı yön | yukarıdaki kapı kuralları |
+| H16, 3.17 test yalıtımı | sahte docker, loopback, geçici dizin; ağ engeli vakayla sınanır |
+| H21 performans | ölçülmedi (kapı bir çağrıda günlükleri birkaç kez tarar, Python gibi) |
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
@@ -883,7 +939,7 @@ bu ize yönlendirilmeli.
 | `_API_KEY_FILE` (py/claudeops/providers/ucli_provider.py:307) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
 | `_API_KEY_MANAGED_MARKER` (py/claudeops/providers/ucli_provider.py:313) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
 | `_sync_api_key_file` (py/claudeops/providers/ucli_provider.py:316) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
-| `_web_args` (py/claudeops/providers/ucli_provider.py:345) | `ucli.rs::Ctx::web_args` | `parity.rs::parity_ucli` `web-` `eksik`; `ucli_web_searxng_error` diag yok (G8) | TAŞINDI |
+| `_web_args` (py/claudeops/providers/ucli_provider.py:345) | `ucli.rs::Ctx::web_args` | `parity.rs::parity_ucli` `web-` `eksik`; `ucli_web_searxng_error` diag bilerek yok (Rust yöneticisi istisna üretmez) | TAŞINDI |
 | `_script_args` (py/claudeops/providers/ucli_provider.py:383) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
 | `_stream_args` (py/claudeops/providers/ucli_provider.py:397) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
 | `_reasoning_display_args` (py/claudeops/providers/ucli_provider.py:409) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
@@ -1133,30 +1189,30 @@ bu ize yönlendirilmeli.
 | `mark_budget_exhausted` (py/claudeops/ucli_client.py:434) | yok | - | EKSİK(G10) |
 | `ucli_chat_once` (py/claudeops/ucli_client.py:460) | yok | - | EKSİK(G10) |
 | `USAGE_DIR` (py/claudeops/ucli_cost.py:16) | `probe.rs::Paths::ucli_usage_dir` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_CACHE` (py/claudeops/ucli_cost.py:17) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `_TTL` (py/claudeops/ucli_cost.py:18) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `DailyCapExceeded` (py/claudeops/ucli_cost.py:22) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `DailyCapExceeded.__init__` (py/claudeops/ucli_cost.py:25) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
+| `_CACHE` (py/claudeops/ucli_cost.py:17) | `real/ledger.rs::{CostLedger::cache, Snapshot}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_TTL` (py/claudeops/ucli_cost.py:18) | `cost.rs::TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `DailyCapExceeded` (py/claudeops/ucli_cost.py:22) | `cost.rs::CostRefusal::CapExceeded` (+ `cost::refusal`, `CAP_CODE`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `DailyCapExceeded.__init__` (py/claudeops/ucli_cost.py:25) | `cost.rs::CostRefusal` `Display` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
 | `log_path` (py/claudeops/ucli_cost.py:42) | `ucli.rs::usage_log_path` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
 | `OTHER_DIR` (py/claudeops/ucli_cost.py:47) | `ucli.rs::Ctx::apply_cli_opts` (`<usage>/other`) | `parity.rs::parity_ucli` `hizmet-` | TAŞINDI |
 | `other_log_path` (py/claudeops/ucli_cost.py:50) | `ucli.rs::usage_log_path` + `/other` | `parity.rs::parity_ucli` `hizmet-grok` `opts-` | TAŞINDI |
-| `CACHE_1H_WRITE_MULT` (py/claudeops/ucli_cost.py:57) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `write_mult` (py/claudeops/ucli_cost.py:60) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `_day_start_ms` (py/claudeops/ucli_cost.py:66) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `per_session_usd` (py/claudeops/ucli_cost.py:71) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `rate_by_session` (py/claudeops/ucli_cost.py:91) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `total_usd` (py/claudeops/ucli_cost.py:127) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `_date_ms` (py/claudeops/ucli_cost.py:147) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `credit_window` (py/claudeops/ucli_cost.py:157) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `today_usd` (py/claudeops/ucli_cost.py:174) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `BY_SESSION_TOP` (py/claudeops/ucli_cost.py:179) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `state` (py/claudeops/ucli_cost.py:182) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `cap_exceeded` (py/claudeops/ucli_cost.py:215) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `RESERVE_USD` (py/claudeops/ucli_cost.py:223) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `RESERVE_TTL` (py/claudeops/ucli_cost.py:224) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `_RESERVE_LOCK` (py/claudeops/ucli_cost.py:225) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `_RESERVED` (py/claudeops/ucli_cost.py:226) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
-| `reserve` (py/claudeops/ucli_cost.py:229) | yok: yalnız `Probe::claude_cost_gate` arayüzü | - | EKSİK(G8) |
+| `CACHE_1H_WRITE_MULT` (py/claudeops/ucli_cost.py:57) | `cost.rs::CACHE_1H_WRITE_MULT` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `write_mult` (py/claudeops/ucli_cost.py:60) | `cost.rs::write_mult` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_day_start_ms` (py/claudeops/ucli_cost.py:66) | `real/ledger.rs::day_start_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `per_session_usd` (py/claudeops/ucli_cost.py:71) | `real/ledger.rs::per_session_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `rate_by_session` (py/claudeops/ucli_cost.py:91) | `real/ledger.rs::{rate_by_session, rate_usd_per_hour}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `total_usd` (py/claudeops/ucli_cost.py:127) | `real/ledger.rs::total_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_date_ms` (py/claudeops/ucli_cost.py:147) | `real/ledger.rs::date_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `credit_window` (py/claudeops/ucli_cost.py:157) | `cost.rs::credit_window` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `today_usd` (py/claudeops/ucli_cost.py:174) | `real/ledger.rs::today_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `BY_SESSION_TOP` (py/claudeops/ucli_cost.py:179) | `cost.rs::BY_SESSION_TOP` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `state` (py/claudeops/ucli_cost.py:182) | `real/ledger.rs::CostLedger::{state, invalidate}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `cap_exceeded` (py/claudeops/ucli_cost.py:215) | `real/ledger.rs::CostLedger::cap_exceeded` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `RESERVE_USD` (py/claudeops/ucli_cost.py:223) | `cost.rs::RESERVE_USD` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `RESERVE_TTL` (py/claudeops/ucli_cost.py:224) | `cost.rs::RESERVE_TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_RESERVE_LOCK` (py/claudeops/ucli_cost.py:225) | `real/ledger.rs::CostLedger::reserved` (`Mutex`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_RESERVED` (py/claudeops/ucli_cost.py:226) | `real/ledger.rs::CostLedger::{reserved, reserved_sessions}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `reserve` (py/claudeops/ucli_cost.py:229) | `real/ledger.rs::CostLedger::{reserve, release, check_and_reserve_at}` (`_ledger_problem` = `ledger_problem`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
 | `DEFAULTS` (py/claudeops/ucli_metrics.py:26) | `settings.rs::METRICS_DEFAULTS` | `parity.rs::parity_panel` `metrics-*` | TAŞINDI |
 | `_num` (py/claudeops/ucli_metrics.py:41) | `settings.rs::metrics_num` (NaN sınırlanmaz, Python gibi) | `parity.rs::parity_panel` `metrics-*` `metrics-nan` | TAŞINDI |
 | `get_config` (py/claudeops/ucli_metrics.py:49) | `settings.rs::{metrics_config, Settings::ucli_metrics_config}` | `parity.rs::parity_panel` `metrics-raw*` `metrics-ayar*` | TAŞINDI |
@@ -1177,7 +1233,7 @@ bu ize yönlendirilmeli.
 | `diag_log` (py/claudeops/diaglog.py:39) | `real/diaglog.rs::DiagLog` (DB aynası `Mirror` kancası; bağlama rs/state) | `parity.rs::parity_real` `gunluk-`; `tests/real_fs.rs::diag_log_appends_ordered_json_lines_rotates_and_never_fails_the_caller` | TAŞINDI |
 | `find_sessions` (py/claudeops/discovery.py:200) | `rs/proc` `discovery.rs::find_sessions` | rs/proc: `fake_proc::discovers_each_cli_and_names` | KAPSAM DIŞI |
 | `session_mcp_spec` (py/claudeops/extensions.py:440) | yok: `SpawnRequest::extension_mcp` girdisi | - | EKSİK(G9) |
-| `ensure_search_url` (py/claudeops/searxng.py:526) | yok: `Probe::searxng_url` arayüzü | - | EKSİK(G8) |
+| `ensure_search_url` (py/claudeops/searxng.py:526) | `real/searxng.rs::ManagedSearch::search_url` (yalnız spawn yolu bağımlılıklarıyla) | `parity.rs::parity_searxng`; `tests/real_searxng.rs` | TAŞINDI |
 | `read_json` (py/claudeops/statedocs.py:130) | `rs/state` `statedocs.rs::StateDocs::read` | rs/state | KAPSAM DIŞI |
 | `write_json` (py/claudeops/statedocs.py:175) | `rs/state` `statedocs.rs::StateDocs::write` | rs/state | KAPSAM DIŞI |
 | `strip_ansi` (py/claudeops/tmux_backend.py:156) | `rs/tmux` `text.rs::strip_ansi` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
@@ -1194,7 +1250,7 @@ bu ize yönlendirilmeli.
 
 ## TEST EŞLEME TABLOSU
 
-1349 satır: TAŞINDI 498, TAŞINDI-TESTSİZ 22, KAPSAM DIŞI 753, EKSİK 76.
+1349 satır: TAŞINDI 527, TAŞINDI-TESTSİZ 19, KAPSAM DIŞI 753, EKSİK 50.
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -1981,9 +2037,9 @@ bu ize yönlendirilmeli.
 | `Apply.test_full_refused_when_binary_only_knows_restricted` (py/tests/test_ucli_checks_opts.py:101) | `parity.rs::parity_ucli` `checks-deger-tanimsiz` | TAŞINDI |
 | `Apply.test_unsupported_binary_refused` (py/tests/test_ucli_checks_opts.py:111) | `parity.rs::parity_ucli` `eksik-checks` | TAŞINDI |
 | `Apply.test_needs_state_dir_and_registry` (py/tests/test_ucli_checks_opts.py:115) | `parity.rs::parity_ucli` `checks-statedir-yok` `checks-kayit-hata` | TAŞINDI |
-| `RefusalTests.test_cap_refusal_has_code_and_amounts` (py/tests/test_ucli_cost_cap_refusal.py:13) | yok: `DailyCapExceeded` ve ret biçimi yok | EKSİK(G8) |
-| `RefusalTests.test_plain_value_error_has_no_code` (py/tests/test_ucli_cost_cap_refusal.py:18) | yok: `DailyCapExceeded` ve ret biçimi yok | EKSİK(G8) |
-| `ProviderRaisesTests.test_claude_service_flags_raises_over_cap` (py/tests/test_ucli_cost_cap_refusal.py:25) | yok: `DailyCapExceeded` ve ret biçimi yok | EKSİK(G8) |
+| `RefusalTests.test_cap_refusal_has_code_and_amounts` (py/tests/test_ucli_cost_cap_refusal.py:13) | `real_ledger.rs::a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not` | TAŞINDI |
+| `RefusalTests.test_plain_value_error_has_no_code` (py/tests/test_ucli_cost_cap_refusal.py:18) | `real_ledger.rs::a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not` | TAŞINDI |
+| `ProviderRaisesTests.test_claude_service_flags_raises_over_cap` (py/tests/test_ucli_cost_cap_refusal.py:25) | `real_ledger.rs::a_claude_service_build_is_refused_over_the_cap` | TAŞINDI |
 | `DefaultPermissionMode.test_ucli_panel_default_is_allow_edit_and_listed` (py/tests/test_ucli_default_permission_mode.py:12) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
 | `DefaultPermissionMode.test_ucli_server_internal_default_stays_read_only` (py/tests/test_ucli_default_permission_mode.py:17) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
 | `DefaultPermissionMode.test_other_providers_keep_auto` (py/tests/test_ucli_default_permission_mode.py:21) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
@@ -2184,7 +2240,7 @@ bu ize yönlendirilmeli.
 | `BuildTests.test_no_opts_is_identical_to_before` (py/tests/test_ucli_start_opts.py:80) | `parity.rs::parity_ucli` `opts-bos` | TAŞINDI |
 | `BuildTests.test_max_history_kib_is_passed_only_when_the_binary_knows_it_and_the_setting_wins` (py/tests/test_ucli_start_opts.py:84) | `parity.rs::parity_ucli` `ayar-limit` `eksik` | TAŞINDI |
 | `BuildTests.test_claude_service_swaps_endpoint_once_and_key_stays_out_of_argv` (py/tests/test_ucli_start_opts.py:98) | `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
-| `BuildTests.test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap` (py/tests/test_ucli_start_opts.py:116) | yok: gerçek günlük tavan yok; bayraklar `parity_ucli` `hizmet-claude` | EKSİK(G8) |
+| `BuildTests.test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap` (py/tests/test_ucli_start_opts.py:116) | `real_ledger.rs::a_claude_service_build_is_refused_over_the_cap`; bayraklar `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
 | `BuildTests.test_groq_service_uses_groq_endpoint_and_key_env` (py/tests/test_ucli_start_opts.py:145) | `parity.rs::parity_ucli` `hizmet-grok`; aynı hizmet yolu | TAŞINDI |
 | `BuildTests.test_service_models_fetches_live_list_with_correct_auth` (py/tests/test_ucli_start_opts.py:153) | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` `src-svc-istek-yok` (URL ve başlık karşılaştırılır) | TAŞINDI |
 | `BuildTests.test_claude_service_skips_instructions_auto_when_file_over_16kib` (py/tests/test_ucli_start_opts.py:177) | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` | TAŞINDI |
@@ -2203,8 +2259,8 @@ bu ize yönlendirilmeli.
 | `WiringTests.test_new_chat_lock_timeout_forgets_instance` (py/tests/test_ucli_start_opts.py:328) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
 | `WiringTests.test_new_chat_timeout_after_spawn_keeps_instance` (py/tests/test_ucli_start_opts.py:334) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
 | `WiringTests.test_new_chat_unexpected_error_before_spawn_forgets_instance` (py/tests/test_ucli_start_opts.py:340) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `CostCapTests.test_today_sums_only_today_and_uses_the_task_model` (py/tests/test_ucli_start_opts.py:370) | yok | EKSİK(G8) |
-| `CostCapTests.test_cap_zero_means_off_and_cap_blocks_when_reached` (py/tests/test_ucli_start_opts.py:380) | yok | EKSİK(G8) |
+| `CostCapTests.test_today_sums_only_today_and_uses_the_task_model` (py/tests/test_ucli_start_opts.py:370) | `real_ledger.rs::today_sums_only_todays_logs_and_uses_the_task_model` | TAŞINDI |
+| `CostCapTests.test_cap_zero_means_off_and_cap_blocks_when_reached` (py/tests/test_ucli_start_opts.py:380) | `real_ledger.rs::cap_zero_is_off_and_a_reached_cap_blocks` | TAŞINDI |
 | `CostCapTests.test_config_parsing_is_safe` (py/tests/test_ucli_start_opts.py:391) | `parity.rs::parity_panel` `cost0`..`cost7` | TAŞINDI |
 | `CostCapTests.test_credit_total_parsing_is_safe` (py/tests/test_ucli_start_opts.py:403) | `parity.rs::parity_panel` `cost8`..`cost15` | TAŞINDI |
 | `TokioThreadsEnvTests.test_env_overrides_limits_tokio_workers` (py/tests/test_ucli_start_opts.py:414) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
@@ -2275,12 +2331,12 @@ bu ize yönlendirilmeli.
 | `BinaryFlagProbeTests.test_empty_help_output_is_not_cached` (py/tests/test_ucli_web.py:262) | `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
 | `BinaryFlagProbeTests.test_the_real_delivered_binary_knows_the_web_flags_when_it_is_new_enough` (py/tests/test_ucli_web.py:267) | rs/prov: gereksiz: teslim edilen gerçek ucli ikilisini sınar | KAPSAM DIŞI |
 | `WebArgsTests.test_everything_switched_off_adds_nothing_and_never_probes` (py/tests/test_ucli_web.py:292) | `parity.rs::parity_ucli` `web-docker-kapali` | TAŞINDI |
-| `WebArgsTests.test_auto_search_uses_the_managed_searxng_address_and_names_the_session` (py/tests/test_ucli_web.py:300) | `ucli.rs::Ctx::web_args`; sınanmayan senaryo: `Probe::searxng_url` çağrılıp çağrılmadığı/oturum adı denetlenmiyor | TAŞINDI-TESTSİZ |
+| `WebArgsTests.test_auto_search_uses_the_managed_searxng_address_and_names_the_session` (py/tests/test_ucli_web.py:300) | `real_searxng.rs::a_build_asks_for_the_managed_address_only_when_it_should_use_it` | TAŞINDI |
 | `WebArgsTests.test_auto_search_not_ready_opens_the_session_without_search_and_without_error` (py/tests/test_ucli_web.py:307) | `parity.rs::parity_ucli` `web-docker-bos-url` `temel-` | TAŞINDI |
-| `WebArgsTests.test_auto_search_with_an_old_binary_never_touches_docker` (py/tests/test_ucli_web.py:313) | `ucli.rs::Ctx::web_args`; sınanmayan senaryo: `Probe::searxng_url` çağrılıp çağrılmadığı/oturum adı denetlenmiyor | TAŞINDI-TESTSİZ |
-| `WebArgsTests.test_an_explicit_address_never_starts_the_managed_one` (py/tests/test_ucli_web.py:321) | `ucli.rs::Ctx::web_args`; sınanmayan senaryo: `Probe::searxng_url` çağrılıp çağrılmadığı/oturum adı denetlenmiyor | TAŞINDI-TESTSİZ |
+| `WebArgsTests.test_auto_search_with_an_old_binary_never_touches_docker` (py/tests/test_ucli_web.py:313) | `real_searxng.rs::a_build_asks_for_the_managed_address_only_when_it_should_use_it` | TAŞINDI |
+| `WebArgsTests.test_an_explicit_address_never_starts_the_managed_one` (py/tests/test_ucli_web.py:321) | `real_searxng.rs::a_build_asks_for_the_managed_address_only_when_it_should_use_it` | TAŞINDI |
 | `WebArgsTests.test_a_filled_invalid_address_neither_searches_nor_starts_docker` (py/tests/test_ucli_web.py:325) | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
-| `WebArgsTests.test_a_crash_in_the_managed_searxng_never_breaks_the_spawn` (py/tests/test_ucli_web.py:329) | yok: gerçek searxng uygulaması yok | EKSİK(G8) |
+| `WebArgsTests.test_a_crash_in_the_managed_searxng_never_breaks_the_spawn` (py/tests/test_ucli_web.py:329) | `real_searxng.rs::a_provision_command_that_cannot_start_is_logged_and_never_reaches_the_caller`; Rust yöneticisi istisna üretemez (`parity_searxng` `durum-dizini-dosya`) | TAŞINDI |
 | `WebArgsTests.test_auto_search_and_fetch_domains_combine` (py/tests/test_ucli_web.py:335) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
 | `WebArgsTests.test_both_capabilities_on_a_new_binary` (py/tests/test_ucli_web.py:341) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
 | `WebArgsTests.test_search_only_adds_no_fetch_flags` (py/tests/test_ucli_web.py:348) | `parity.rs::parity_ucli` `web-docker-hazir` `web-url` | TAŞINDI |
@@ -2394,8 +2450,8 @@ bu ize yönlendirilmeli.
 | `TestBrainCliConfig.test_set_brain_cli_service_cost` (py/tests/test_quota_scoped_api_credit.py:64) | T10: kota kapsamı ve beyin ayarı (`steward`, `steward_quota`) | KAPSAM DIŞI |
 | `TestBrainCliConfig.test_rejects_bad` (py/tests/test_quota_scoped_api_credit.py:71) | T10: kota kapsamı ve beyin ayarı (`steward`, `steward_quota`) | KAPSAM DIŞI |
 | `TestCreditWindow.test_config_dates_validated` (py/tests/test_quota_scoped_api_credit.py:84) | `parity.rs::parity_panel` `cost16` (ve `cost29`..`cost36`) | TAŞINDI |
-| `TestCreditWindow.test_spent_counts_only_since` (py/tests/test_quota_scoped_api_credit.py:89) | yok | EKSİK(G8) |
-| `TestCreditWindow.test_window_days_and_budget` (py/tests/test_quota_scoped_api_credit.py:102) | yok | EKSİK(G8) |
+| `TestCreditWindow.test_spent_counts_only_since` (py/tests/test_quota_scoped_api_credit.py:89) | `real_ledger.rs::credit_is_hidden_when_empty_counts_old_days_and_never_goes_negative` | TAŞINDI |
+| `TestCreditWindow.test_window_days_and_budget` (py/tests/test_quota_scoped_api_credit.py:102) | `real_ledger.rs::the_credit_window_gives_days_left_and_a_daily_budget` | TAŞINDI |
 | `ResolvedBinaryOverrideTest.test_valid_executable_override_wins` (py/tests/test_resolved_binary_override.py:16) | `parity.rs::parity_build` `-override` `-override-calismaz` `-override-tilde-kullanici` | TAŞINDI |
 | `ResolvedBinaryOverrideTest.test_tilde_expanded` (py/tests/test_resolved_binary_override.py:23) | `parity.rs::parity_build` `-override` `-override-calismaz` `-override-tilde-kullanici` | TAŞINDI |
 | `ResolvedBinaryOverrideTest.test_missing_or_non_executable_falls_back_to_path` (py/tests/test_resolved_binary_override.py:30) | `parity.rs::parity_build` `-override` `-override-calismaz` `-override-tilde-kullanici` | TAŞINDI |
@@ -2459,24 +2515,24 @@ bu ize yönlendirilmeli.
 | `RealBinary.test_save_adds_version_and_real_validation_rejects_bad` (py/tests/test_ucli_checks_real_binary.py:29) | T7: kayıt yazımı ve gerçek ikili doğrulaması | KAPSAM DIŞI |
 | `Unit.test_version_defaults_to_1_without_binary` (py/tests/test_ucli_checks_real_binary.py:38) | T7: kayıt yazımı ve gerçek ikili doğrulaması | KAPSAM DIŞI |
 | `Unit.test_validation_failure_blocks_write` (py/tests/test_ucli_checks_real_binary.py:42) | T7: kayıt yazımı ve gerçek ikili doğrulaması | KAPSAM DIŞI |
-| `TestBySession.test_breakdown_sorted_and_total_matches` (py/tests/test_ucli_cost_by_session.py:18) | yok: maliyet defteri yok | EKSİK(G8) |
-| `TestBySession.test_top_n_limit` (py/tests/test_ucli_cost_by_session.py:29) | yok: maliyet defteri yok | EKSİK(G8) |
-| `TestBySession.test_per_session_reads_files` (py/tests/test_ucli_cost_by_session.py:39) | yok: maliyet defteri yok | EKSİK(G8) |
+| `TestBySession.test_breakdown_sorted_and_total_matches` (py/tests/test_ucli_cost_by_session.py:18) | `real_ledger.rs::state_lists_the_top_sessions_by_spend_and_totals_all` | TAŞINDI |
+| `TestBySession.test_top_n_limit` (py/tests/test_ucli_cost_by_session.py:29) | `real_ledger.rs::state_lists_the_top_sessions_by_spend_and_totals_all` | TAŞINDI |
+| `TestBySession.test_per_session_reads_files` (py/tests/test_ucli_cost_by_session.py:39) | `real_ledger.rs::today_sums_only_todays_logs_and_uses_the_task_model` | TAŞINDI |
 | `CreditTest.test_config_parse` (py/tests/test_ucli_cost_credit.py:25) | `parity.rs::parity_panel` `cost8`..`cost13` | TAŞINDI |
-| `CreditTest.test_hidden_when_empty` (py/tests/test_ucli_cost_credit.py:32) | yok: maliyet defteri yok | EKSİK(G8) |
-| `CreditTest.test_left_counts_old_days_too` (py/tests/test_ucli_cost_credit.py:37) | yok: maliyet defteri yok | EKSİK(G8) |
-| `CreditTest.test_left_never_negative` (py/tests/test_ucli_cost_credit.py:48) | yok: maliyet defteri yok | EKSİK(G8) |
-| `TestInvalidate.test_invalidate_forces_rescan` (py/tests/test_ucli_cost_invalidate.py:17) | yok: maliyet defteri yok | EKSİK(G8) |
-| `RateTest.test_window_scales_rate` (py/tests/test_ucli_cost_rate.py:27) | yok: maliyet defteri yok | EKSİK(G8) |
-| `RateTest.test_per_session_sums_to_total` (py/tests/test_ucli_cost_rate.py:33) | yok: maliyet defteri yok | EKSİK(G8) |
-| `RateTest.test_corrupt_lines_are_skipped` (py/tests/test_ucli_cost_rate.py:40) | yok: maliyet defteri yok | EKSİK(G8) |
-| `RateTest.test_missing_dir_and_bad_window` (py/tests/test_ucli_cost_rate.py:47) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReleaseOnFailedStart.test_release_returns_the_reserved_share_immediately` (py/tests/test_ucli_cost_release.py:12) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReserveTests.test_two_sessions_cap_two` (py/tests/test_ucli_cost_reserve.py:25) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReserveTests.test_same_name_replaces` (py/tests/test_ucli_cost_reserve.py:32) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReserveTests.test_release_frees_slot` (py/tests/test_ucli_cost_reserve.py:38) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReserveTests.test_ttl_expiry` (py/tests/test_ucli_cost_reserve.py:46) | yok: maliyet defteri yok | EKSİK(G8) |
-| `ReserveTests.test_no_cap_keeps_nothing` (py/tests/test_ucli_cost_reserve.py:51) | yok: maliyet defteri yok | EKSİK(G8) |
+| `CreditTest.test_hidden_when_empty` (py/tests/test_ucli_cost_credit.py:32) | `real_ledger.rs::credit_is_hidden_when_empty_counts_old_days_and_never_goes_negative` | TAŞINDI |
+| `CreditTest.test_left_counts_old_days_too` (py/tests/test_ucli_cost_credit.py:37) | `real_ledger.rs::credit_is_hidden_when_empty_counts_old_days_and_never_goes_negative` | TAŞINDI |
+| `CreditTest.test_left_never_negative` (py/tests/test_ucli_cost_credit.py:48) | `real_ledger.rs::credit_is_hidden_when_empty_counts_old_days_and_never_goes_negative` | TAŞINDI |
+| `TestInvalidate.test_invalidate_forces_rescan` (py/tests/test_ucli_cost_invalidate.py:17) | `real_ledger.rs::the_state_is_cached_until_ttl_or_invalidate` | TAŞINDI |
+| `RateTest.test_window_scales_rate` (py/tests/test_ucli_cost_rate.py:27) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
+| `RateTest.test_per_session_sums_to_total` (py/tests/test_ucli_cost_rate.py:33) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
+| `RateTest.test_corrupt_lines_are_skipped` (py/tests/test_ucli_cost_rate.py:40) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
+| `RateTest.test_missing_dir_and_bad_window` (py/tests/test_ucli_cost_rate.py:47) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
+| `ReleaseOnFailedStart.test_release_returns_the_reserved_share_immediately` (py/tests/test_ucli_cost_release.py:12) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_two_sessions_cap_two` (py/tests/test_ucli_cost_reserve.py:25) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_same_name_replaces` (py/tests/test_ucli_cost_reserve.py:32) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_release_frees_slot` (py/tests/test_ucli_cost_reserve.py:38) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_ttl_expiry` (py/tests/test_ucli_cost_reserve.py:46) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_no_cap_keeps_nothing` (py/tests/test_ucli_cost_reserve.py:51) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
 | `Compute.test_rss_io_children_cpu` (py/tests/test_ucli_metrics.py:44) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
 | `Compute.test_stat_comm_with_parens` (py/tests/test_ucli_metrics.py:67) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
 | `Compute.test_disk_limits` (py/tests/test_ucli_metrics.py:70) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
