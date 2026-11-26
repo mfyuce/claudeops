@@ -12,12 +12,12 @@ use cops_state::json::{Json, Map};
 use cops_state::statedocs::Read;
 use cops_state::{Backend, StateDocs};
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use unicode_normalization::char::canonical_combining_class;
 use unicode_normalization::UnicodeNormalization;
@@ -112,11 +112,13 @@ pub struct ReviewStore {
     docs: Arc<StateDocs>,
     pub paths: ReviewPaths,
     pub lock_timeout: Duration,
+    /// Son okuması `Read::Lossy` olan depolar: U+FFFD'li değer geri yazılmaz (Python da yazamaz).
+    lossy: Mutex<HashSet<PathBuf>>,
 }
 
 impl ReviewStore {
     pub fn new(docs: Arc<StateDocs>, paths: ReviewPaths) -> ReviewStore {
-        ReviewStore { docs, paths, lock_timeout: LOCK_TIMEOUT }
+        ReviewStore { docs, paths, lock_timeout: LOCK_TIMEOUT, lossy: Mutex::default() }
     }
 
     pub fn lock(&self) -> Result<StewardLock> {
@@ -130,7 +132,11 @@ impl ReviewStore {
             // Python dosya kipinde UTF-8 olmayan içerikte istisna fırlatır (yalnız JSON hatasında yedek alır).
             match std::fs::read(path) {
                 Ok(b) => match String::from_utf8(b) {
-                    Ok(t) => Json::parse(&t).map(Read::Value).unwrap_or(Read::Corrupt),
+                    Ok(t) => match Json::parse_lossy(&t) {
+                        Ok((v, false)) => Read::Value(v),
+                        Ok((v, true)) => Read::Lossy(v),
+                        Err(_) => Read::Corrupt,
+                    },
                     Err(_) => return Err(Error::Value(format!("{}: utf-8 değil", path.display()))),
                 },
                 Err(_) => Read::Missing,
@@ -146,8 +152,14 @@ impl ReviewStore {
             }
             r
         };
+        let mut lossy = self.lossy.lock().unwrap_or_else(PoisonError::into_inner);
+        if matches!(r, Read::Lossy(_)) {
+            lossy.insert(path.to_path_buf());
+        } else {
+            lossy.remove(path);
+        }
         Ok(match r {
-            Read::Value(v) => Some(v),
+            Read::Value(v) | Read::Lossy(v) => Some(v),
             Read::Missing => None,
             Read::Corrupt => {
                 corrupt_backup(path);
@@ -158,6 +170,9 @@ impl ReviewStore {
 
     /// `sw._save_json` (0600).
     fn save_json(&self, path: &Path, obj: &Json) -> Result<()> {
+        if self.lossy.lock().unwrap_or_else(PoisonError::into_inner).contains(path) {
+            return Err(Error::Value(format!("{}: eşlenmemiş vekil, geri yazılmaz", path.display())));
+        }
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }

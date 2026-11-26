@@ -228,6 +228,12 @@ fn broken_inputs_fail_loud_or_backup() {
         .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with("findings.json.corrupt-"))
         .count();
     assert_eq!(backups, 1, "kanıt yedeği");
+    // Eşlenmemiş vekil: okunur (Python gibi), geri yazılmaz, bozuk yedeği alınmaz.
+    let raw = br#"{"projects": {}, "not": "\ud800"}"#;
+    std::fs::write(&st.paths.review_pool, raw).unwrap();
+    let pool = st.load_pool().unwrap();
+    assert!(st.save_pool(&pool).is_err());
+    assert_eq!(std::fs::read(&st.paths.review_pool).unwrap(), raw);
     std::fs::write(&st.paths.review_history, b"\xff\xfe{}").unwrap();
     assert!(st.load_history().is_err());
     std::fs::write(&st.paths.review_pool, b"[]").unwrap();

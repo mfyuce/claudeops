@@ -2,7 +2,7 @@
 
 ## Durum (26 Kas 2026 akşam): BİRLEŞTİRMEYE HAZIR (önce `rs/state` birleşmeli)
 
-Kapı için cops'a kalanlar: `rs/state` (`da8cee6`; kendi notunda henüz hazır değil), `rust/Cargo.lock` üretimi, `main` ile
+Kapı için cops'a kalanlar: `rs/state` (ikinci tur `e5a684e` bu dala birleştirildi; kendi eşleme tablosu henüz açık), `rust/Cargo.lock` üretimi, `main` ile
 birleşik ağaçta testler, bağımsız gözden geçirme. `main`deki yeni 5 commit `review.py` ve testlerine dokunmuyor (deneme
 birleştirmesinde çakışma yok). Çekirdek hiçbir yere bağlı değil: canlıya alınacak uç yok (koşucu T8).
 
@@ -34,7 +34,7 @@ Aşağıdaki 1. maddedeki farklar `c5a666a`de kapandı.
 
 ## Kararlar
 
-- Dal `rs/state` üstüne ileri sarıldı (`da8cee6`): `cops-state` (`Json`, `py_float_repr`, `StateDocs`) kullanılır.
+- Dal `rs/state` üstünde (`da8cee6`, sonra `e5a684e` birleştirildi): `cops-state` (`Json`, `py_float_repr`, `StateDocs`) kullanılır.
   `rs/rev` birleşmeden önce `rs/state` birleşmeli.
 - Kayıtlar tipli struct değil `cops_state::Json` nesnesi: anahtar sırası ve bilinmeyen alanlar bayt düzeyinde korunur.
 - `serde_json preserve_order` açılmaz (workspace geneline yayılır).
@@ -47,7 +47,8 @@ Aşağıdaki 1. maddedeki farklar `c5a666a`de kapandı.
 - Regex `\b`/`\w` Unicode tanımı iki motorda birleşik işaretlerde ayrışabilir (redaksiyon sınırı).
 - `casefold` yerine küçük harf + `ß` -> `ss` (yalnız `finding_key`/`report_bodyless`).
 - `cops-state` db kipinde kalıcı DB hatasında hiçbir yere yazmaz ve hata döner (Python dosyaya düşer); eşlenmemiş vekil
-  karakterli JSON "bozuk" sayılır.
+  karakterli JSON Python gibi okunur (`Read::Lossy`), o okumadan sonraki depo yazımı hata döner
+  (`tests/lessons.rs::broken_inputs_fail_loud_or_backup`).
 
 ## "Python hatası?" (davranış aynen korundu, sahibe soruldu: TOBEDECIDED rs/rev maddesi)
 
