@@ -21,7 +21,7 @@ parity!("card_path", card_path_vectors, |c| {
     };
     card_path(base, &name, arg).expect("kimlik")
 });
-parity!("raw_card_from_docs", raw_card_from_docs_vectors, |c| raw_card_from_docs(&c.arg("docs")));
+parity!("raw_card_from_docs", raw_card_from_docs_vectors, |c| { raw_card_from_docs(&c.arg("docs")) });
 parity!("_short", p_short, |c| short(c.args.get("text").expect("text"), c.opt("n")));
 parity!("_str_list", p_str_list, |c| str_list(c.args.get("v").expect("v")));
 parity!("_tbd_lines", p_tbd_lines, |c| tbd_lines(&c.opt::<String>("text").unwrap_or_default()));

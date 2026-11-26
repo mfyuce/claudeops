@@ -345,6 +345,63 @@ pub fn card_refresh_reason(
     Ok("")
 }
 
+/// Ham + (varsa) model özeti -> yazılacak kart. Özetin boş alanı ham değerde kalır.
+///
+/// py: make_card
+pub fn make_card(
+    raw: &RawCard,
+    parsed: Option<&Map<String, Value>>,
+    project: Option<&Project>,
+    now: f64,
+    meta: Option<&Map<String, Value>>,
+) -> Map<String, Value> {
+    let base = raw_card_fields(raw, project);
+    let mut card = Map::new();
+    card.insert("goal".into(), Value::from(base.goal));
+    card.insert("phase_guess".into(), Value::from(base.phase_guess));
+    card.insert("next_step".into(), Value::from(base.next_step));
+    card.insert("open_tbds".into(), Value::from(base.open_tbds));
+    card.insert("blockers".into(), Value::from(base.blockers));
+    card.insert("recent_done".into(), Value::from(base.recent_done));
+    for (k, v) in parsed.into_iter().flatten().filter(|(_, v)| pyc::truthy(v)) {
+        card.insert(k.clone(), v.clone());
+    }
+    card.insert("last_activity".into(), Value::from(raw.last_commit));
+    card.insert("source_hash".into(), Value::from(raw.source_hash.clone()));
+    card.insert("updated_at".into(), Value::from(now));
+    card.insert("summarized".into(), Value::from(parsed.is_some_and(|p| !p.is_empty())));
+    for (k, v) in meta.into_iter().flatten() {
+        card.insert(k.clone(), v.clone());
+    }
+    card
+}
+
+/// Kart bir sonraki fırsatta yenilensin. Kart yoksa ya da zaten bayatsa `false` (kaydetme).
+///
+/// py: mark_card_stale
+pub fn mark_card_stale(card: Option<&mut Map<String, Value>>) -> bool {
+    match card {
+        Some(c) if !c.get("stale").is_some_and(pyc::truthy) => {
+            c.insert("stale".into(), Value::Bool(true));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Var olan kartı bozmadan başarısız denemeyi kaydet. Kart yoksa `false` (kaydetme).
+///
+/// py: note_card_failure
+pub fn note_card_failure(card: Option<&mut Map<String, Value>>, source_hash: &str, error: &str, now: f64) -> bool {
+    let Some(c) = card else {
+        return false;
+    };
+    c.insert("attempt_hash".into(), Value::from(source_hash));
+    c.insert("attempt_at".into(), Value::from(now));
+    c.insert("last_error".into(), Value::from(short_str(error, 300)));
+    true
+}
+
 /// py: card_one_liner
 pub fn card_one_liner(card: Option<&Map<String, Value>>) -> String {
     str_or_empty(card.and_then(|c| c.get("next_step")))

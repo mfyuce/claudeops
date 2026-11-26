@@ -5,19 +5,18 @@ use cops_steward_core::pyc::collapse_ws;
 use cops_steward_core::types::*;
 use serde_json::{json, Map, Value};
 
-parity!("needs_ho.rfh_marker_in", needs_ho_rfh_marker_in, |c| rfh_marker_in(
-    &c.opt::<String>("text").unwrap_or_default()
-));
+parity!("needs_ho.rfh_marker_in", needs_ho_rfh_marker_in, |c| {
+    rfh_marker_in(&c.opt::<String>("text").unwrap_or_default())
+});
 parity!("_unwrap_ticks", p_unwrap_ticks, |c| unwrap_ticks(&c.str("prefix"), &c.str("body")).to_string());
 parity!("count_open_tbd", count_open_tbd_vectors, |c| count_open_tbd(&c.opt::<String>("text").unwrap_or_default()));
 parity!("done_blocked", done_blocked_vectors, |c| done_blocked(c.opt::<Project>("project").as_ref()));
 parity!("_bare_marker", p_bare_marker, |c| bare_marker(&c.str("line"), &c.str("mark")));
 parity!("scan_markers", scan_markers_vectors, |c| scan_markers(&c.opt::<String>("text").unwrap_or_default()));
-parity!("reply_language_line", reply_language_line_vectors, |c| reply_language_line(&c.str("lang")));
-parity!("text_lang_mismatch", text_lang_mismatch_vectors, |c| text_lang_mismatch(
-    &c.opt::<String>("text").unwrap_or_default(),
-    &c.str("lang")
-));
+parity!("reply_language_line", reply_language_line_vectors, |c| { reply_language_line(&c.str("lang")) });
+parity!("text_lang_mismatch", text_lang_mismatch_vectors, |c| {
+    text_lang_mismatch(&c.opt::<String>("text").unwrap_or_default(), &c.str("lang"))
+});
 parity!("marker_texts", marker_texts_vectors, |c| marker_texts(&c.arg("m")));
 parity!("lang_fix_action", lang_fix_action_vectors, |c| {
     let before: Map<String, Value> = c.arg("state");

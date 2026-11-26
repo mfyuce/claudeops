@@ -72,7 +72,9 @@ pub fn same(a: &Value, b: &Value) -> bool {
 /// Kaydedilmiş vektörler + (varsa) elle yazılmış girdiler (`fixtures/hand`, parity/hand_cases.py).
 pub fn cases(function: &str) -> Vec<Case> {
     let name = format!("{function}.jsonl.gz");
-    let mut all = cases_in(&vectors_dir().join(&name));
+    // hiçbir Python testinin çağırmadığı işlevde yalnız elle girdiler vardır (`run` boş kümeyi reddeder)
+    let recorded = vectors_dir().join(&name);
+    let mut all = if recorded.exists() { cases_in(&recorded) } else { Vec::new() };
     let hand = vectors_dir().with_file_name("hand").join(name);
     if hand.exists() {
         all.extend(cases_in(&hand));
@@ -86,7 +88,9 @@ fn cases_in(path: &std::path::Path) -> Vec<Case> {
         .lines()
         .map(|l| {
             let mut v: Value = serde_json::from_str(&l.expect("satır")).expect("vektör JSON");
-            let map = |v: &mut Value, k: &str| v.get_mut(k).and_then(|x| x.as_object_mut()).map(std::mem::take).unwrap_or_default();
+            let map = |v: &mut Value, k: &str| {
+                v.get_mut(k).and_then(|x| x.as_object_mut()).map(std::mem::take).unwrap_or_default()
+            };
             Case {
                 args: map(&mut v, "args"),
                 callbacks: map(&mut v, "callbacks"),
@@ -117,7 +121,13 @@ pub fn run(function: &str, call: impl Fn(&Case) -> Value) {
             ));
         }
     }
-    assert!(bad.is_empty(), "{function}: {}/{} fark\n{}", bad.len(), all.len(), bad.iter().take(3).cloned().collect::<Vec<_>>().join("\n"));
+    assert!(
+        bad.is_empty(),
+        "{function}: {}/{} fark\n{}",
+        bad.len(),
+        all.len(),
+        bad.iter().take(3).cloned().collect::<Vec<_>>().join("\n")
+    );
 }
 
 fn clip(s: &str) -> String {
@@ -136,3 +146,16 @@ macro_rules! parity {
 }
 #[allow(unused_imports)]
 pub(crate) use parity;
+
+/// Python kümesi (vektörde `repr` sırasıyla dizi) ile Rust kümesini sıradan bağımsız karşılaştırır.
+pub fn as_set<T: serde::Serialize + DeserializeOwned + Ord>(c: &Case, got: std::collections::BTreeSet<T>) -> Value {
+    match serde_json::from_value::<std::collections::BTreeSet<T>>(c.ret.clone()) {
+        Ok(want) if want == got => c.ret.clone(),
+        _ => serde_json::to_value(got).expect("küme"),
+    }
+}
+
+/// Python istisnasının vektördeki biçimi.
+pub fn py_error(class: &str, msg: impl std::fmt::Display) -> Value {
+    serde_json::json!({"__error__": class, "msg": msg.to_string()})
+}

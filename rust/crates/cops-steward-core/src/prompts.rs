@@ -5,6 +5,7 @@ use crate::cards::{str_or_empty, BadValue};
 use crate::consts_gen::*;
 use crate::markers::reply_language_line;
 use crate::pyc;
+use crate::questions::{recent_answers, undelivered_answers};
 use crate::types::{Config, Project, Question, SessionView};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -14,7 +15,6 @@ use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 static OK_ONLY_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"(?i)\A(?:ok\.?|tamam\.?)\z").ok());
-static DECIMAL_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^\p{Nd}$").ok());
 
 fn tr_en(tr: bool, t: &'static str, e: &'static str) -> &'static str {
     if tr {
@@ -24,24 +24,8 @@ fn tr_en(tr: bool, t: &'static str, e: &'static str) -> &'static str {
     }
 }
 
-// ── depodan okunan cevapların saf süzgeçleri ──────────────────────────────────
-
-/// `recent_answers`ın süzme kısmı: projenin en son `limit` cevaplanmış sorusu (eskiden yeniye); `exclude_id` hariç.
-fn recent_answered<'a>(project: &str, exclude_id: &str, limit: usize, questions: &'a [Question]) -> Vec<&'a Question> {
-    let mut qs: Vec<&Question> = questions
-        .iter()
-        .filter(|q| {
-            q.status == "answered" && q.project == project && q.id != exclude_id && !pyc::strip(&q.answer).is_empty()
-        })
-        .collect();
-    qs.sort_by(|a, b| a.answered_at.partial_cmp(&b.answered_at).unwrap_or(std::cmp::Ordering::Equal));
-    // Python `qs[-limit:]`: limit 0 hepsini verir
-    let from = if limit == 0 { 0 } else { qs.len().saturating_sub(limit) };
-    qs.split_off(from)
-}
-
 /// `recent_answers`ın Python varsayılan `limit`i.
-const RECENT_ANSWERS_LIMIT: usize = 5;
+const RECENT_ANSWERS_LIMIT: i64 = 5;
 
 // ── faz direktifi ─────────────────────────────────────────────────────────────
 
@@ -93,7 +77,7 @@ pub fn build_directive(
         let mut prior = if compact {
             Vec::new()
         } else {
-            recent_answered(&project.name, &answer.id, RECENT_ANSWERS_LIMIT, questions)
+            recent_answers(&project.name, &answer.id, RECENT_ANSWERS_LIMIT, questions)
         };
         prior.retain(|q| !more.iter().any(|m| m.id == q.id));
         if !prior.is_empty() {
@@ -689,10 +673,8 @@ pub fn stale_answers<'a>(
     live: &BTreeSet<String>,
 ) -> Vec<&'a Question> {
     let brain_live = !cfg.brain_name.is_empty() && live.contains(&cfg.brain_name);
-    questions
-        .iter()
-        // `undelivered_answers` süzgeci
-        .filter(|q| q.status == "answered" && q.delivered_at == 0.0)
+    undelivered_answers(questions)
+        .into_iter()
         .filter(|q| {
             let at = if q.answered_at != 0.0 { q.answered_at } else { q.created_at };
             let brainish = q.project.is_empty() || q.project == cfg.brain_name;
@@ -713,14 +695,6 @@ pub struct NoteClaims {
     pub gate: bool,
 }
 
-/// `int(c)` tek Unicode onluk rakam için: bloklar 10'ar ardışık kod noktasıdır ve sıfırla başlar.
-fn decimal_value(c: char) -> i64 {
-    let is_decimal = |c: char| DECIMAL_RE.as_ref().is_some_and(|r| r.is_match(c.encode_utf8(&mut [0u8; 4])));
-    let before =
-        (1..u32::from(c)).map_while(|back| char::from_u32(u32::from(c) - back).filter(|p| is_decimal(*p))).count();
-    (before % 10) as i64
-}
-
 /// "koşu sürüyor, PID 1234" (`pids`) ve "kapıda bekliyor" (`gate`).
 ///
 /// py: note_claims
@@ -730,7 +704,7 @@ pub fn note_claims(notes: &str) -> NoteClaims {
     let pids: BTreeSet<i64> = NOTE_PID_RE
         .captures_iter(&t)
         .filter_map(|c| c.get(1))
-        .map(|m| m.as_str().chars().fold(0, |acc, c| acc * 10 + decimal_value(c)))
+        .map(|m| m.as_str().chars().fold(0, |acc, c| acc * 10 + pyc::decimal_value(c)))
         .collect();
     NoteClaims { pids: pids.into_iter().collect(), gate: NOTE_GATE_RE.is_match(&t) }
 }

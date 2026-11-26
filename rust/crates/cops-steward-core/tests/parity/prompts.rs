@@ -80,8 +80,8 @@ parity!("build_workspace_claude_md", build_workspace_claude_md_vectors, |c| buil
     c.or("remote", false),
     &c.or("role", "steward".to_string())
 ));
-parity!("_is_project_session", p_is_project_session, |c| is_project_session(&c.arg("v"), &c.arg("projects")));
-parity!("phase_model_effort", phase_model_effort_vectors, |c| phase_model_effort(&c.arg("project"), &c.arg("cfg")));
+parity!("_is_project_session", p_is_project_session, |c| { is_project_session(&c.arg("v"), &c.arg("projects")) });
+parity!("phase_model_effort", phase_model_effort_vectors, |c| { phase_model_effort(&c.arg("project"), &c.arg("cfg")) });
 parity!("main_session_model_effort", main_session_model_effort_vectors, |c| main_session_model_effort(
     &c.opt::<String>("model").unwrap_or_default(),
     &c.str("effort"),

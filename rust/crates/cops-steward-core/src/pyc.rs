@@ -1,6 +1,7 @@
 //! Python davranış uyumu: `str.strip/split/splitlines`, kod noktası dilimleme, yuvarlama, yerel zaman.
 //! Rust'ın karşılıkları (`trim`, `lines`, bayt dilimi) Python'dan farklıdır; taşınan kod bunları kullanır.
 
+use crate::unicode_gen::{CASEFOLD, DIGIT_ONLY};
 use chrono::{DateTime, Local, TimeZone};
 use regex::Regex;
 use serde_json::Value;
@@ -110,6 +111,7 @@ pub fn localtime(ts: f64) -> DateTime<Local> {
 static ALPHA_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^\p{L}$").ok());
 static ALNUM_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^[\p{L}\p{N}]$").ok());
 static UNPRINTABLE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^[\p{C}\p{Z}]$").ok());
+static DECIMAL_RE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"^\p{Nd}$").ok());
 
 fn char_matches(re: &Option<Regex>, c: char) -> bool {
     re.as_ref().is_some_and(|r| r.is_match(c.encode_utf8(&mut [0u8; 4])))
@@ -123,6 +125,100 @@ pub fn is_alpha(c: char) -> bool {
 /// `c.isalnum()`
 pub fn is_alnum(c: char) -> bool {
     char_matches(&ALNUM_RE, c)
+}
+
+/// `c.isdecimal()`
+pub fn is_decimal(c: char) -> bool {
+    char_matches(&DECIMAL_RE, c)
+}
+
+/// `c.isdigit()`: onluk rakamlar + üst simge, daire içi vb.
+pub fn is_digit(c: char) -> bool {
+    let n = u32::from(c);
+    is_decimal(c) || DIGIT_ONLY.iter().any(|&(a, b)| (a..=b).contains(&n))
+}
+
+/// `s.isdigit()` (boş dizge yanlış)
+pub fn str_is_digit(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(is_digit)
+}
+
+/// `int(c)`, tek Unicode onluk rakam (`is_decimal`) için: bloklar 10'ar ardışık kod noktasıdır ve sıfırla başlar.
+pub fn decimal_value(c: char) -> i64 {
+    let before =
+        (1..u32::from(c)).map_while(|back| char::from_u32(u32::from(c) - back).filter(|p| is_decimal(*p))).count();
+    (before % 10) as i64
+}
+
+/// `s.casefold()` (tam büyük/küçük harf katlama; Python tablosu `unicode_gen`).
+pub fn casefold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match CASEFOLD.binary_search_by_key(&c, |&(k, _)| k) {
+            Ok(i) => out.push_str(CASEFOLD.get(i).map_or("", |&(_, v)| v)),
+            Err(_) => out.extend(c.to_lowercase()),
+        }
+    }
+    out
+}
+
+/// Python `re.I` eşleşmesi için girdi hazırlığı: Python'da `i`, `I`, `İ`, `ı` birbirine denktir, Rust `(?i)`de `İ`/`ı` değil.
+/// Karakter sayısı korunur (bayt konumları DEĞİŞİR).
+pub fn ci_input(s: &str) -> String {
+    s.replace(['İ', 'ı'], "i")
+}
+
+const WORD_CLASS: &str = r"\p{L}\p{N}_";
+const SPACE_CLASS: &str = r"\s\x1c-\x1f";
+
+/// Python `re` desenini aynı anlama gelen `fancy_regex` desenine çevirir: `\w \W \s \S \b` Python tanımıyla (birleşen
+/// işaret sözcük değil, U+001C..U+001F boşluk). `(?i)` ile başlayan desende `ı` -> `i`; girdiyi `ci_input`tan geçirin.
+/// Yalnız bu crate'in taşıdığı desenlerin kullandığı sözdizimi desteklenir (sınıf içinde `\W`/`\S`/`\b` yok).
+pub fn py_pattern(pattern: &str) -> String {
+    let ci = pattern.starts_with("(?i)");
+    let word = format!("(?-i:[{WORD_CLASS}])");
+    let mut out = String::new();
+    let mut in_class = false;
+    let mut it = pattern.chars();
+    while let Some(c) = it.next() {
+        if c == '\\' {
+            let Some(e) = it.next() else {
+                out.push(c);
+                break;
+            };
+            match (e, in_class) {
+                ('w', true) => out.push_str(WORD_CLASS),
+                ('w', false) => out.push_str(&word),
+                ('W', false) => out.push_str(&format!("(?-i:[^{WORD_CLASS}])")),
+                ('s', true) => out.push_str(SPACE_CLASS),
+                ('s', false) => out.push_str(&format!("[{SPACE_CLASS}]")),
+                ('S', false) => out.push_str(&format!("[^{SPACE_CLASS}]")),
+                ('b', false) => out.push_str(&format!("(?:(?<={word})(?!{word})|(?<!{word})(?={word}))")),
+                _ => {
+                    out.push('\\');
+                    out.push(e);
+                }
+            }
+            continue;
+        }
+        match c {
+            '[' => in_class = true,
+            ']' => in_class = false,
+            _ => {}
+        }
+        out.push(if ci && c == 'ı' { 'i' } else { c });
+    }
+    out
+}
+
+/// `py_pattern` + derleme. Hata yalnız desteklenmeyen desende olur (testler her kullanılan deseni derler).
+pub fn py_regex(pattern: &str) -> Option<fancy_regex::Regex> {
+    fancy_regex::Regex::new(&py_pattern(pattern)).ok()
+}
+
+/// `re.search(...)` var mı (derlenememiş desen ya da geri izleme sınırı = yok).
+pub fn is_match(re: &Option<fancy_regex::Regex>, s: &str) -> bool {
+    re.as_ref().is_some_and(|r| r.is_match(s).unwrap_or(false))
 }
 
 /// `re.search(r"\bWORD\b", s)`: Python `\w` = `isalnum()` ya da `_` (Rust `\b` birleşen işaretleri de sözcük sayar).
@@ -206,10 +302,15 @@ pub fn to_int(v: &Value) -> Option<i64> {
             let t = strip(s);
             let body = t.strip_prefix(['+', '-']).unwrap_or(t);
             let bad = body.is_empty() || body.starts_with('_') || body.ends_with('_') || body.contains("__");
-            if bad || !body.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            if bad || !body.chars().all(|c| is_decimal(c) || c == '_') {
                 return None;
             }
-            t.replace('_', "").parse().ok()
+            let ascii: String = t
+                .chars()
+                .filter(|&c| c != '_')
+                .map(|c| if is_decimal(c) { char::from(b'0' + decimal_value(c) as u8) } else { c })
+                .collect();
+            ascii.parse().ok()
         }
         _ => None,
     }
@@ -387,6 +488,24 @@ mod tests {
                 && !contains_word("_KARAR", "KARAR")
                 && contains_word("KARARKARAR KARAR", "KARAR")
         );
+    }
+
+    #[test]
+    fn digits_and_casefold_follow_python() {
+        use serde_json::json;
+        assert!(is_digit('²') && !is_decimal('²') && is_decimal('٣') && !is_digit('½') && !str_is_digit(""));
+        assert_eq!((decimal_value('7'), decimal_value('٣'), decimal_value('𝟗')), (7, 3, 9));
+        assert_eq!(to_int(&json!("١_٢")), Some(12));
+        assert_eq!(casefold("Straße İ ΣΣ ﬁ ſ"), "strasse i\u{307} σσ fi s");
+        assert_eq!(ci_input("İı"), "ii");
+    }
+
+    #[test]
+    fn python_regex_classes() {
+        let re = py_regex(r"(?i)\bsonra\b|^\W*x\s\S[\w#]$");
+        assert!(is_match(&re, "bir SONRA.") && !is_match(&re, "sonrası") && is_match(&re, "sonra\u{307}"));
+        assert!(is_match(&re, "\u{307}x\u{1c}y#"));
+        assert_eq!(py_pattern(r"(?i)ı[\s\w]"), r"(?i)i[\s\x1c-\x1f\p{L}\p{N}_]");
     }
 
     #[test]

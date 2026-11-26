@@ -218,17 +218,24 @@ fn badge(role: &str, sid: &str, session: &str) -> StewardBadge {
     }
 }
 
-/// `_project_key` + `derived_of` kuralının sahiplik sözlüğüne uygulanışı (o işlevlerin kendisi bu grupta değil).
-fn owner_key<'a>(name: &str, owners: &'a IndexMap<String, String>) -> Option<&'a str> {
+/// Oturum adı `key` projesinin oturumu mu: tam ad ya da `key` + [tarih soneki] + [`_N`].
+///
+/// py: derived_of
+pub fn derived_of(name: &str, key: &str) -> bool {
+    !key.is_empty() && name.strip_prefix(key).is_some_and(|tail| full_match(&DERIVED_TAIL_RE, tail))
+}
+
+/// Oturum adı -> kayıtlı proje adı (`derived_of`; birden çok aday tutarsa en uzunu); yoksa "".
+///
+/// py: _project_key
+pub fn project_key<'a>(name: &str, projects: impl IntoIterator<Item = &'a str>) -> &'a str {
     let mut best = "";
-    for p in owners.keys() {
-        let derived =
-            !p.is_empty() && name.strip_prefix(p.as_str()).is_some_and(|tail| full_match(&DERIVED_TAIL_RE, tail));
-        if derived && pyc::len(p) > pyc::len(best) {
+    for p in projects {
+        if derived_of(name, p) && pyc::len(p) > pyc::len(best) {
             best = p;
         }
     }
-    (!best.is_empty()).then_some(best)
+    best
 }
 
 /// Oturum/instance adı için History rozeti: beyin ya da bir değnekçinin sahip olduğu proje oturumu; değilse `None`.
@@ -245,7 +252,7 @@ pub fn steward_badge(name: &str, index: &OwnershipIndex) -> Option<StewardBadge>
     if !sid.is_empty() {
         return Some(badge("brain", sid, ""));
     }
-    let owner = owner_key(name, &index.owners).and_then(|k| index.owners.get(k))?;
+    let owner = index.owners.get(project_key(name, index.owners.keys().map(String::as_str)))?;
     (!owner.is_empty()).then(|| badge("project", owner, name))
 }
 

@@ -7,7 +7,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import env  # noqa: E402
 env.isolate()
-from claudeops import steward as sw  # noqa: E402
+from claudeops import review_remote, steward as sw  # noqa: E402
 
 # Yol ya da çalışma zamanı nesnesi: bu crate'e ait değil (G/Ç).
 SKIP = {"CLAUDEOPS_DIR", "STEWARD_DIR", "PROJECTS_JSON", "IDEAS_JSON", "QUESTIONS_JSON", "STATE_JSON", "LOG_JSONL",
@@ -86,6 +86,32 @@ def consts():
             import json
             js = json.dumps(v, ensure_ascii=False)
             L.append(f"pub static {r}: LazyLock<Value> = LazyLock::new(|| serde_json::from_str({rs(js)}).expect({rs(n)}));")
+    # steward.py'nin başka modülden okuduğu sabitler
+    L.append(f"pub const REVIEW_WHERE_VALUES: &[&str] = &[{', '.join(map(rs, review_remote.WHERE_VALUES))}];")
+    L.append(f"pub const REVIEW_ASK_SOURCE: &str = {rs(review_remote.ASK_SOURCE)};")
+    return "\n".join(L) + "\n"
+
+
+def unicode_tables():
+    """Rust std'de olmayan `str.casefold` ve `str.isdigit` farkları (koşan Python'un Unicode sürümüyle)."""
+    chars = [chr(o) for o in range(0x110000) if not 0xD800 <= o <= 0xDFFF]
+    L = ["// ÜRETİLDİ: parity/gen.py (Python `str.casefold` / `str.isdigit`). Elle düzenleme.", "",
+         "/// `c.casefold() != c.lower()` olan karakterler (sıralı)."]
+    L.append("pub(crate) const CASEFOLD: &[(char, &str)] = &[")
+    for c in chars:
+        if c.casefold() != c.lower():
+            L.append("    ('\\u{%x}', \"%s\")," % (ord(c), "".join("\\u{%x}" % ord(x) for x in c.casefold())))
+    L += ["];", "", "/// `isdigit()` ama `isdecimal()` olmayan kod noktası aralıkları (sıralı, uçlar dahil)."]
+    L.append("pub(crate) const DIGIT_ONLY: &[(u32, u32)] = &[")
+    ranges = []
+    for c in chars:
+        if c.isdigit() and not c.isdecimal():
+            if ranges and ranges[-1][1] == ord(c) - 1:
+                ranges[-1][1] = ord(c)
+            else:
+                ranges.append([ord(c), ord(c)])
+    L += [f"    ({a:#x}, {b:#x})," for a, b in ranges]
+    L += ["];"]
     return "\n".join(L) + "\n"
 
 
@@ -130,7 +156,7 @@ def structs():
 
 
 def main():
-    out = {"src/consts_gen.rs": consts(), "src/types_gen.rs": structs()}
+    out = {"src/consts_gen.rs": consts(), "src/types_gen.rs": structs(), "src/unicode_gen.rs": unicode_tables()}
     bad = []
     for rel, text in out.items():
         p = os.path.join(env.CRATE, rel)

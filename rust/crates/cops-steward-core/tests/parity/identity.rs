@@ -44,7 +44,12 @@ parity!("build_ownership_index", build_ownership_index_vectors, |c| build_owners
     c.opt("services").as_ref(),
     c.opt("hosts").as_ref()
 ));
-parity!("reserved_reason", reserved_reason_vectors, |c| reserved_reason(&c.str("name"), &c.arg("index")));
+parity!("derived_of", derived_of_vectors, |c| derived_of(&c.str("name"), &c.str("key")));
+parity!("_project_key", p_project_key, |c| {
+    let projects: IndexMap<String, Value> = c.arg("projects");
+    project_key(&c.str("name"), projects.keys().map(String::as_str)).to_string()
+});
+parity!("reserved_reason", reserved_reason_vectors, |c| { reserved_reason(&c.str("name"), &c.arg("index")) });
 
 /// py: StewardPaths, paths_for
 #[test]
