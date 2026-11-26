@@ -307,4 +307,14 @@ mod tests {
         assert!(t.join().unwrap().is_ok(), "son tutamaç düşünce bırakılır");
         assert!(HELD.with(|h| h.borrow().is_empty()));
     }
+
+    /// H17: kilit dosyası sembolik bağ ya da başkasının dosyasıysa kullanılmaz (bağ izlenmez, hedef oluşturulmaz).
+    #[test]
+    fn lock_symlink_refused() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let target = env.root().join("hedef");
+        std::os::unix::fs::symlink(&target, env.dir().join("b.lock")).unwrap();
+        assert!(FileLock::acquire(&env.dir().join("b")).is_err());
+        assert!(!target.exists(), "bağın hedefi oluşturulmadı");
+    }
 }

@@ -215,4 +215,14 @@ mod tests {
         assert!(s.flag_default_on("routing_guidance"));
         assert_eq!(Settings::from_text(Some("[1]")), Settings::from_text(None));
     }
+
+    /// H12: sır taşıyan ayar nesnesi `Debug`ta içerik göstermez.
+    #[test]
+    fn debug_hides_secrets() {
+        let s = Settings::from_text(Some(
+            r#"{"byok": {"claude": {"ANTHROPIC_API_KEY": "sk-gizli"}}}"#,
+        ));
+        let d = format!("{s:?} {:?}", std::sync::Arc::new(s.clone()));
+        assert!(!d.contains("sk-gizli"), "{d}");
+    }
 }

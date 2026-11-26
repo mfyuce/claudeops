@@ -63,6 +63,16 @@ fn home_only_in_paths() {
     }
 }
 
+/// H2: dosya yazımı yalnız `fsutil` (geçici dosya + fsync + rename) üzerinden; doğrudan `fs::write`/`File::create` yok.
+#[test]
+fn no_direct_file_writes() {
+    for (f, body) in sources() {
+        for pat in ["fs::write(", "File::create("] {
+            assert!(!body.contains(pat), "{f}: `{pat}` (atomik yazıcı kullan)");
+        }
+    }
+}
+
 #[test]
 fn swallow_patterns_match_allowlist() {
     let mut got: BTreeMap<(String, &str), usize> = BTreeMap::new();

@@ -336,3 +336,149 @@ fn lone_surrogate_readable_not_writable() {
     );
     assert_eq!(py.trim(), "dark");
 }
+
+/// UTF-8 olmayan durum dosyaları (Python `test_bad_encoding_state_files`): okuyucu çökmez, yazıcı üstüne YAZMAZ.
+#[test]
+fn bad_encoding_files_not_overwritten() {
+    let (a, b) = (Env::new(), Env::new());
+    let bad: &[u8] = b"alfa\t/a\tm\n\xff\xfe\n";
+    for e in [&a, &b] {
+        std::fs::write(e.state.join("roster.tsv"), bad).unwrap();
+        std::fs::write(
+            e.state.join("instances.json"),
+            b"{\"version\": 1, \"instances\": {\"a\": \"\xff\"}}",
+        )
+        .unwrap();
+    }
+    let py = a.py(
+        "files",
+        "from claudeops.commands import web as w\nfrom claudeops import instances as i\n\
+         def t(f):\n    try:\n        f(); return 'ok'\n    except Exception as ex:\n        return 'hata'\n\
+         print(t(lambda: w._read_tsv_raw(w.ROSTER_TSV)), t(lambda: w._append_tsv_line(w.ROSTER_TSV, ['x', '/x', 'm'])), \
+         len(i.load_instances()), t(lambda: i.forget_instance('a')))",
+    );
+    let docs = b.docs(Backend::Files);
+    let r = Roster::new(&docs);
+    let t = |ok: bool| if ok { "ok" } else { "hata" };
+    let append = r
+        .lock()
+        .and_then(|g| g.append(cops_state::roster::Tsv::Roster, &["x", "/x", "m"]));
+    let i = Instances::new(&docs);
+    let rs = format!(
+        "{} {} {} {}",
+        t(r.raw_rows(cops_state::roster::Tsv::Roster).is_ok()),
+        t(append.is_ok()),
+        i.load().len(),
+        t(i.forget("a").is_ok())
+    );
+    assert_eq!(rs, py.trim());
+    for e in [&a, &b] {
+        assert_eq!(std::fs::read(e.state.join("roster.tsv")).unwrap(), bad);
+    }
+}
+
+/// R2-3/R2-4: kip geçişleri ve "kapalı dönemde" (files kipindeki eski yazar) yazılan veri: iki dil aynı değeri görür.
+#[test]
+fn mode_transitions_match_python() {
+    let e = Env::new();
+    e.py(
+        "db",
+        "from claudeops.store import default_store\ndefault_store()",
+    );
+    let call = |name: &str| {
+        format!("from claudeops import statedocs\nfrom claudeops.paths import CLAUDEOPS_DIR as D\np = os.path.join(D, '{name}.json')\n")
+    };
+    let py_read = |mode: &str, name: &str| {
+        e.py(
+            mode,
+            &format!(
+                "{}print(json.dumps(statedocs.read_json('{name}', p, None)))",
+                call(name)
+            ),
+        )
+        .trim()
+        .to_string()
+    };
+    let py_write = |mode: &str, name: &str, v: &str| {
+        e.py(
+            mode,
+            &format!(
+                "{}statedocs.write_json('{name}', p, json.loads('{v}'))",
+                call(name)
+            ),
+        );
+    };
+    let rs_read = |b: Backend, name: &str| {
+        e.docs(b)
+            .read(name, &e.dir().doc_path(name))
+            .into_option()
+            .map_or("null".to_string(), |v| v.to_compact())
+    };
+    for name in ["hosts", "orchdraft"] {
+        py_write("files", name, "[\"A\"]"); // yalnız dosya
+        assert_eq!(
+            rs_read(Backend::Db, name),
+            "[\"A\"]",
+            "{name}: tembel içe aktarma"
+        );
+        assert_eq!(py_read("db", name), "[\"A\"]");
+        e.docs(Backend::Db)
+            .write(name, &e.dir().doc_path(name), &j("[\"B\"]"), None)
+            .unwrap();
+        assert_eq!(py_read("db", name), "[\"B\"]");
+        py_write("files", name, "[\"C\"]"); // kapalı dönem: eski yazar yalnız dosyaya
+        let want_db = if name == "hosts" {
+            "[\"B\"]"
+        } else {
+            "[\"C\"]"
+        };
+        assert_eq!(
+            rs_read(Backend::Db, name),
+            want_db,
+            "{name}: db kipinde DB doğruluk kaynağı"
+        );
+        assert_eq!(py_read("db", name), want_db, "{name}");
+        assert_eq!(
+            rs_read(Backend::Dual, name),
+            "[\"C\"]",
+            "{name}: dual dosya kaynağı"
+        );
+        assert_eq!(
+            rs_read(Backend::Db, name),
+            "[\"C\"]",
+            "{name}: dual okuma DB'yi uydurdu"
+        );
+        assert_eq!(py_read("db", name), "[\"C\"]", "{name}");
+        assert_eq!(rs_read(Backend::Files, name), py_read("files", name));
+    }
+}
+
+/// Sahibe soruldu S3: `model` içinde satır sonu. Python kabul eder ve roster'a FAZLA satır yazar; Rust reddeder.
+#[test]
+fn register_model_newline_documented_divergence() {
+    let (a, b) = (Env::new(), Env::new());
+    let cwd = a.root.display().to_string();
+    let py = a.py(
+        "files",
+        &format!("from claudeops.commands import web as w\nprint(w._register_project('zza', '{cwd}', 'm\\nsahte\\t/etc')['ok'])"),
+    );
+    assert_eq!(py.trim(), "True");
+    assert_eq!(
+        a.read("models.tsv"),
+        "zza\tm\nsahte\t/etc\n",
+        "Python: satır enjeksiyonu"
+    );
+    let docs = b.docs(Backend::Files);
+    let r = Roster::new(&docs)
+        .register_project(
+            "zza",
+            &b.root.display().to_string(),
+            "m\nsahte\t/etc",
+            "",
+            &[],
+            |_| String::new(),
+        )
+        .map_err(|e| e.code());
+    assert_eq!(r, Err("io"));
+    assert!(!b.state.join("roster.tsv").exists() && !b.state.join("models.tsv").exists());
+}

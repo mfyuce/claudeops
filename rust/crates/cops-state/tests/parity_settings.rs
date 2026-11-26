@@ -596,3 +596,19 @@ fn settings_io_error_keeps_last_good() {
         "Rust: hata geçince yeni içerik"
     );
 }
+
+/// Sahibe soruldu S2: UTF-8 olmayan settings.json. Python `load_settings` istisna fırlatır; Rust varsayılanlara düşer.
+#[test]
+fn settings_non_utf8_documented_divergence() {
+    let e = Env::new();
+    std::fs::write(e.dir().settings_json(), b"{\"theme\": \"dark\xff\"}").unwrap();
+    let py = e.py(
+        "files",
+        "from claudeops.settings import load_settings\ntry:\n    load_settings(); print('ok')\nexcept Exception as ex:\n    print(type(ex).__name__)",
+    );
+    assert_eq!(py.trim(), "UnicodeDecodeError");
+    assert_eq!(
+        cops_state::settings::load(&e.dir()).str_of("theme"),
+        "system"
+    );
+}
