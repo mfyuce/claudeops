@@ -237,6 +237,10 @@ async fn junk_frames_keep_the_stream_alive_but_rest_polling_continues() {
                 Message::text(r#"{"type":"term","data":{"ok":true}}"#),
                 Message::text(r#"{"type":"status","data":[1]}"#),
                 Message::text(r#"{"type":"status"}"#),
+                // Dizi olmayan `sessions`: boş oturum listesi gibi kaydedilmez.
+                Message::text(r#"{"type":"status","data":{}}"#),
+                Message::text(r#"{"type":"status","data":{"sessions":5}}"#),
+                Message::text(r#"{"type":"status","data":{"sessions":null}}"#),
                 Message::binary(vec![0xff, 0x00]),
             ]
         });

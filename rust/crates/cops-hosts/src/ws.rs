@@ -20,11 +20,13 @@ const MAX_MESSAGE: usize = 16 * 1024 * 1024;
 
 pub type Parser = fn(&Value) -> Option<Value>;
 
-/// `{"type":"status","data":{...}}` -> `finalize`ın beklediği ham şekil.
+/// `{"type":"status","data":{...}}` -> `finalize`ın beklediği ham şekil. `sessions` dizi değilse kare atlanır
+/// (boş oturum listesi gibi kaydedilmez).
 pub fn parse_status_frame(v: &Value) -> Option<Value> {
     let data = (v.get("type")? == "status")
         .then(|| v.get("data"))??
         .as_object()?;
+    data.get("sessions")?.as_array()?;
     let mut out: serde_json::Map<String, Value> = [
         "sessions",
         "closed",
