@@ -134,14 +134,43 @@ fn load_failure_stops_before_paste() {
 #[test]
 fn masked_guard_asks_for_the_tty_before_sending() {
     let f = Fake::new();
-    // pty okunamazsa durum bilinmez: Python gibi gönderilir.
+    // pty okunamazsa durum bilinmez: otomatik gönderim YOK (TBD#367, kapalı yön).
     f.set("display-message.out", "/dev/yok\n");
-    f.tmux.send_raw("x", "a", MaskGuard::RefuseMasked).unwrap();
-    assert_eq!(f.subcommands(), ["display-message", "send-keys"]);
+    assert!(matches!(
+        f.tmux.send_raw("x", "a", MaskGuard::RefuseMasked),
+        Err(TmuxError::MaskUnknown)
+    ));
+    assert_eq!(f.subcommands(), ["display-message"]);
     assert_eq!(
         f.calls()[0],
         ["display-message", "-p", "-t", "=x:", "#{pane_tty}"]
     );
+}
+
+#[test]
+fn unknown_mask_state_blocks_every_automatic_send_but_not_user_typing() {
+    for (out, rc) in [("/dev/yok\n", "0"), ("", "0"), ("/dev/pts/1\n", "1")] {
+        let f = Fake::new();
+        f.set("display-message.out", out)
+            .set("display-message.rc", rc);
+        let guard = MaskGuard::RefuseMasked;
+        for r in [
+            f.tmux.send_text("x", "metin", NOW, guard),
+            f.tmux.send_text("x", "iki\nsatır", NOW, guard),
+            f.tmux.send_raw("x", "a", guard),
+            f.tmux.send_special_key("x", "Enter", guard),
+        ] {
+            assert!(matches!(r, Err(TmuxError::MaskUnknown)), "{out:?} {r:?}");
+        }
+        assert!(
+            f.subcommands().iter().all(|c| c == "display-message"),
+            "{:?}",
+            f.subcommands()
+        );
+        // Kullanıcının kendi yazdığı girdi maske yoklamasına hiç uğramaz.
+        f.tmux.send_raw("x", "a", USER).unwrap();
+        assert_eq!(f.subcommands().last().unwrap(), "send-keys");
+    }
 }
 
 #[test]

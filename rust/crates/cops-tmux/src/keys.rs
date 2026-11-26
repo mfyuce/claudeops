@@ -26,8 +26,9 @@ const PASTE_SETTLE: Duration = Duration::from_millis(150);
 /// Parola istemine karşı tutum. Her gönderimde AÇIKÇA seçilir.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaskGuard {
-    /// Otomatik enjeksiyon (komut, devir, yönerge): pane gizli girdi bekliyorsa gönderme. Durum bilinmiyorsa
-    /// (Python gibi) gönderilir; oturum yoksa gönderim zaten başarısız olur.
+    /// Otomatik enjeksiyon (komut, devir, yönerge): pane gizli girdi bekliyorsa ([`TmuxError::Masked`]) YA DA durum
+    /// bilinmiyorsa ([`TmuxError::MaskUnknown`]: pty okunamadı, tmux cevap vermedi, oturum yok/pane ölü) gönderme
+    /// (TBD#367, sahip kararı: kapalı yön).
     RefuseMasked,
     /// İnsanın panelden kendi yazdığı girdi: parola yazmak meşrudur.
     UserTyped,
@@ -40,10 +41,14 @@ pub fn send_text_timeout(chars: usize) -> Duration {
 
 impl Tmux {
     fn guard(&self, name: &str, guard: MaskGuard) -> Result<(), TmuxError> {
-        if guard == MaskGuard::RefuseMasked && self.pane_is_masked_input(name) == Some(true) {
-            return Err(TmuxError::Masked);
+        if guard == MaskGuard::UserTyped {
+            return Ok(());
         }
-        Ok(())
+        match self.pane_is_masked_input(name) {
+            Some(false) => Ok(()),
+            Some(true) => Err(TmuxError::Masked),
+            None => Err(TmuxError::MaskUnknown),
+        }
     }
 
     fn enter(&self, target: &str) -> Result<(), TmuxError> {

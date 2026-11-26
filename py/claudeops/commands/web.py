@@ -3855,8 +3855,13 @@ def _context(name: str, lang: str = "tr") -> dict:
         return {"ok": True, "available": False, "reason": "no_tmux"}
     if _is_busy_cached(s):
         return {"ok": True, "available": False, "reason": "busy"}
-    if pane_is_masked_input(s.name):
+    masked = pane_is_masked_input(s.name)
+    if masked:
         return {"ok": True, "available": False, "reason": "masked"}
+    if masked is None:
+        # TBD#367 (sahip, 26 Kas): parola durumu BİLİNMİYORSA (pty okunamadı, tmux cevap vermedi, oturum gitti)
+        # otomatik enjeksiyon YOK (kapalı yön); gönderildi sayılmaz, neden ayrı döner.
+        return {"ok": True, "available": False, "reason": "mask_unknown"}
     if not tmux_send_keys(s.name, command, settle_delay=provider.input_settle_delay()):
         return {"ok": True, "available": False, "reason": "send_failed"}
     time.sleep(CONTEXT_SETTLE_SECONDS)

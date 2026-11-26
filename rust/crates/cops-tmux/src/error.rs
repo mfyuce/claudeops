@@ -14,6 +14,9 @@ pub enum TmuxError {
     BadArgument(&'static str),
     /// Pane gizli girdi (parola) bekliyor; [`crate::MaskGuard::RefuseMasked`] gönderimi engelledi.
     Masked,
+    /// Pane'in parola durumu bilinmiyor (pty okunamadı, tmux cevap vermedi, oturum yok);
+    /// [`crate::MaskGuard::RefuseMasked`] gönderimi engelledi (TBD#367, kapalı yön).
+    MaskUnknown,
 }
 
 impl fmt::Display for TmuxError {
@@ -27,6 +30,7 @@ impl fmt::Display for TmuxError {
             Self::BadOutput => f.write_str("tmux çıktısı okunamadı"),
             Self::BadArgument(what) => write!(f, "geçersiz argüman: {what}"),
             Self::Masked => f.write_str("pane gizli girdi bekliyor"),
+            Self::MaskUnknown => f.write_str("pane'in gizli girdi durumu bilinmiyor"),
         }
     }
 }

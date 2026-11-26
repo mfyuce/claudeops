@@ -154,6 +154,33 @@ fn masked_pane_refuses_injection_but_accepts_user_typing() {
 }
 
 #[test]
+fn unknown_mask_state_refuses_injection_on_a_real_server() {
+    // "Bilinmiyor" (TBD#367): tmux pane'i bulamadı. (Ölçüm: `remain-on-exit` ile ölmüş pane'in pty'si de silinir ve
+    // `None` verir; ama numara başka bir pty'ye yeniden verilmişse o pty'yi okur, paralel testte belirlenimsiz.)
+    let s = Server::new();
+    let t = &s.tmux;
+    let out = sink(&s, "k");
+    assert_eq!(t.pane_is_masked_input("yok"), None);
+    let guard = MaskGuard::RefuseMasked;
+    assert!(matches!(
+        t.send_text("yok", "komut", NOW, guard),
+        Err(TmuxError::MaskUnknown)
+    ));
+    assert!(matches!(
+        t.send_raw("yok", "komut", guard),
+        Err(TmuxError::MaskUnknown)
+    ));
+    assert!(matches!(
+        t.send_special_key("yok", "Enter", guard),
+        Err(TmuxError::MaskUnknown)
+    ));
+    // Durumu bilinen (ham kipli, maskesiz) pane otomatik gönderimi alır.
+    assert_eq!(t.pane_is_masked_input("k"), Some(false));
+    t.send_raw("k", "ok", guard).unwrap();
+    assert_eq!(read_at_least(&out, 2), b"ok");
+}
+
+#[test]
 fn history_read_never_enters_copy_mode() {
     let s = Server::new();
     let t = &s.tmux;
