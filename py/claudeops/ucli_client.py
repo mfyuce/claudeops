@@ -164,7 +164,8 @@ def chat_help_text(binary: str) -> str:
     if hit is not None:
         return hit
     try:
-        res = subprocess.run([binary, "chat", "--help"], capture_output=True, text=True,
+        # stdin verilmezse girdi bekleyen ikili 10 sn asılır ve çağıranın girdisini (CLI terminali) tüketir
+        res = subprocess.run([binary, "chat", "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
                              timeout=_HELP_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError):
         return ""
