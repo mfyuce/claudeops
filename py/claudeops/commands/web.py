@@ -51,7 +51,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 import psutil
 
-from ..atomic_json import file_lock
+from ..atomic_json import LockError, file_lock
 from ..config import validate_config
 from ..diaglog import diag_log, diag_log_tail, diag_log_recent_fallback_count
 from ..envnames import is_safe_env_name
@@ -147,6 +147,7 @@ ERR = {
                                  "pick a different name, or adopt/rename that session first"},
     "dir_not_found": {"tr": "{cwd}: dizin bulunamadı", "en": "{cwd}: directory not found"},
     "cwd_bad_chars": {"tr": "cwd geçersiz karakter içeriyor", "en": "cwd contains invalid characters"},
+    "model_bad_chars": {"tr": "model geçersiz karakter içeriyor", "en": "model contains invalid characters"},
     "base_not_in_roster": {"tr": "{base}: roster'da yok — önce ana ismi ekleyin",
                             "en": "{base}: not in roster — register the base name first"},
     "newchat_start_failed": {"tr": "{new_name}: instance olarak kaydedildi ama başlatılamadı "
@@ -777,6 +778,11 @@ def _append_tsv_line_unlocked(path: str, fields: list) -> None:
 _NAME_VALID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
+def _tsv_unsafe(value: str) -> bool:
+    """roster.tsv/models.tsv alanında sekme ya da satır sonu: sahte satır/sütun yazar (TBD#374 S3)."""
+    return any(c in value for c in "\t\n\r")
+
+
 def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang: str = "tr") -> dict:
     """UI'den yeni proje kaydı — roster.tsv+models.tsv'ye ekler, SPAWN ETMEZ.
 
@@ -802,10 +808,12 @@ def _register_project(name: str, cwd: str, model: str = "", cli: str = "", lang:
     cwd = os.path.expanduser(cwd.strip())
     if not cwd or not os.path.isdir(cwd):
         return _err(lang, "dir_not_found", cwd=cwd or ("(boş)" if lang != "en" else "(empty)"))
-    if "\t" in cwd or "\n" in cwd:
+    if _tsv_unsafe(cwd):
         return _err(lang, "cwd_bad_chars")
     chosen_cli = cli.strip() if cli.strip() in PROVIDERS else DEFAULT_CLI
     chosen_model = model.strip() or default_model_for(get_provider(chosen_cli))
+    if _tsv_unsafe(chosen_model):
+        return _err(lang, "model_bad_chars")
     with _roster_lock(ROSTER_TSV):      # denetim + iki ekleme tek kilitte: eşzamanlı iki kayıt aynı adı iki kez yazmasın
         if any(r["name"] == name for r in _read_tsv_raw(ROSTER_TSV)):
             return _err(lang, "already_registered", name=name)
@@ -851,13 +859,15 @@ def _edit_project(name: str, new_name: str, new_cwd: str, new_model: str = "",
     new_cwd = os.path.expanduser(new_cwd.strip())
     if not new_cwd:
         return _err(lang, "dir_not_found", cwd="(boş)" if lang != "en" else "(empty)")
-    if "\t" in new_cwd or "\n" in new_cwd:
+    if _tsv_unsafe(new_cwd):
         return _err(lang, "cwd_bad_chars")
 
     old_cwd = old["rest"][0] if old["rest"] else ""
     old_cli = old["rest"][2] if len(old["rest"]) >= 3 and old["rest"][2] in PROVIDERS else DEFAULT_CLI
     chosen_cli = new_cli.strip() if new_cli.strip() in PROVIDERS else old_cli
     chosen_model = new_model.strip() or default_model_for(get_provider(chosen_cli))
+    if _tsv_unsafe(chosen_model):
+        return _err(lang, "model_bad_chars")
 
     warnings = []
     if not os.path.isdir(new_cwd):
@@ -1116,17 +1126,17 @@ FALLBACK_ALERT_WINDOW_MINUTES = 15.0
 
 
 def _find_gnome_terminal_server() -> Optional[psutil.Process]:
-    for p in psutil.process_iter(["cmdline"]):
+    me = os.getuid()
+    for p in psutil.process_iter(["pid", "uids"]):
+        # review R-15 + TBD#365 birleştirme kapısı: uid ÖNCE; başka kullanıcının cmdline'ı hiç okunmaz
         try:
-            cmdline = p.info.get("cmdline") or []
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            uids = p.info.get("uids")
+            if uids is None or uids.real != me:
+                continue
+            cmdline = p.cmdline() or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
             continue
         if any("gnome-terminal-server" in part for part in cmdline):
-            try:    # review R-15: başka kullanıcının gnome-terminal-server'ı bizimki sayılmasın
-                if p.uids().real != os.getuid():
-                    continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-                continue
             return p
     return None
 
@@ -1174,9 +1184,20 @@ def _diag_status(live: Optional[list] = None) -> dict:
     except Exception:
         orphans = None
 
+    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; burada görünür.
+    # Anahtarlar modüller arasında çakışmaz (discovery.session_file, needs_ho.transcript_*, session_usage.usage_*).
+    skipped: Dict[str, int] = {}
+    try:
+        from .. import discovery as _disc, needs_ho as _nho, session_usage as _su
+        for counter in (_disc._skipped, _nho._skipped, _su._skipped):
+            skipped.update({k: int(v) for k, v in counter.items() if v})
+    except Exception:
+        skipped = {}
+
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
         "orphans": orphans,
+        "skipped": skipped,
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,
@@ -2289,7 +2310,11 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
                                             push_check=None)
+    # Bekleme uzundur: sonradan ikinci adaş çıktıysa ya da host okunamıyorsa istek de `/api/stop` da GİTMEZ (TBD#372).
     if reply is None:
+        if not web_steward._remote_running_row(host, name)[0]:
+            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask")
+            return _ho_stop_fail(lang, "", "handover_unreadable")
         diag_log("ho_stop_reask", name=name, host=host)
         res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
         if res2.get("ok"):
@@ -2299,6 +2324,9 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
+    if not web_steward._remote_running_row(host, name)[0]:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop")
+        return _ho_stop_fail(lang, "", "handover_unreadable")
     out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
     return dict(out, handover=True) if isinstance(out, dict) else out
 
@@ -3115,19 +3143,24 @@ def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force
     `require_running=False` + `focus=False`: snapshot geri yüklemesi (`_snapshot_resume`). Uzak
     session henüz çalışmıyor olabilir (yerel snapshot uzak session'ı BAŞLATMAZ); görüntüleyici
     "bekliyor" durumunda onu bekler, o yüzden varlık kontrolü atlanır (host kayıtlı mı, karakter
-    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur."""
+    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur.
+
+    Önbellekte aynı adlı iki ÇALIŞAN satır varsa hedef belirsizdir: iki durumda da (`force` dahil) pencere
+    açılmaz ya da öne getirilmez (`ambiguous_name`, TBD#380)."""
     if not host or host == LOCAL_HOST_NAME:
         return _err(lang, "mirror_local", name=name)
     if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
         return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
     if get_host(host) is None:
         return _err(lang, "unknown_host", name=host)
+    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+    hits = [r for r in rows if isinstance(r, dict) and r.get("name") == name and r.get("running")]
+    if len(hits) > 1:
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join([f"{host}:{name}"] * len(hits)))
     if require_running:
-        rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
-        row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
-        if row is None or not row.get("running"):
+        if not hits:
             return _err(lang, "not_running", name=name)
-        if not row.get("tmux"):
+        if not hits[0].get("tmux"):
             return _err(lang, "not_tmux_backed", name=name)
     display = detect_display()
     if not _x11_display_ok(display):
@@ -5456,12 +5489,23 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._json({"ok": True, "path": dest}, status=200)
 
+    def _lock_busy(self, event: str, e: LockError) -> None:
+        """Durum dosyası kilidi alınamadı: hiçbir şey yazılmadı, istemci yeniden deneyebilir (503, bağlantı kapanır)."""
+        diag_log(event, path=urlparse(self.path).path, error=str(e)[:200])
+        self.close_connection = True
+        try:
+            self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
+        except Exception:
+            pass
+
     def do_GET(self):
         from .. import authz as _az
         try:
             self._do_get_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("get_lock_busy", e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
 
@@ -5979,6 +6023,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("post_lock_busy", e)
         except (TypeError, ValueError, AttributeError, KeyError) as e:
             # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
             diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])

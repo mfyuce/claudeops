@@ -110,13 +110,11 @@ fn take_chars(s: &str, n: usize) -> String {
 
 /// `normalize_ucli_services` `models` alanı: dize ise `\n` ve `,` ile bölünür; liste ögeleri (sözlükte anahtarlar)
 /// `str()` + `strip()`, boşlar atılır, en çok 80 karakter, ilk görülen sırayla tekrarsız, en çok 60.
-/// Python HATASI?: sıfır olmayan sayı ya da `true` Python'da `TypeError` (yinelenemez) ile `ucli_services()`ı düşürür;
-/// burada boş liste sayılır (parite `servis-models-sayi` kayıtlı ayrışma).
+/// Liste ya da metin olmayan değer (elle düzenlenmiş sayı/sözlük) yok sayılır (TBD#374 S8).
 fn service_models(raw: Option<&OValue>) -> Vec<String> {
     let items: Vec<String> = match raw {
         Some(OValue::String(s)) => s.replace('\n', ",").split(',').map(String::from).collect(),
         Some(OValue::Array(a)) => a.iter().map(|v| str_of(&v.to_value())).collect(),
-        Some(OValue::Object(o)) => o.iter().map(|(k, _)| k.clone()).collect(),
         _ => Vec::new(),
     };
     let mut out: Vec<String> = Vec::new();

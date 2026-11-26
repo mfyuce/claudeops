@@ -204,9 +204,12 @@ def _seed_claude_tui_default(lang: str = "tr") -> None:
     zaten AÇIKÇA bir `tui` tercihi yazmışsa (ör. bilerek "fullscreen" seçmişse)
     dokunulmaz -- sadece anahtar YOKSA eklenir."""
     path = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
-    from .atomic_json import atomic_write_json, file_lock
-    with file_lock(path):       # oku-değiştir-yaz kendi eşzamanlı çağrılarımıza karşı kilitli (review 4 Kas R-10; Claude'un kendi yazımını kilitlemez)
-        _ensure_tui_default_locked(path, atomic_write_json)
+    from .atomic_json import LockError, atomic_write_json, file_lock
+    try:
+        with file_lock(path):   # oku-değiştir-yaz kendi eşzamanlı çağrılarımıza karşı kilitli (review 4 Kas R-10; Claude'un kendi yazımını kilitlemez)
+            _ensure_tui_default_locked(path, atomic_write_json)
+    except LockError:
+        return                  # kurulumu bu yüzden başarısız ETME; dosyaya dokunulmaz
 
 
 def _ensure_tui_default_locked(path: str, atomic_write_json: Any) -> None:

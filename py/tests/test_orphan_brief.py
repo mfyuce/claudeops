@@ -1,3 +1,4 @@
+import json
 import unittest
 from claudeops.commands import web_hosts
 
@@ -12,6 +13,21 @@ class OrphanBriefTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InfiniteOrphanTest(unittest.TestCase):
+    """Uzak `servers`/`procs` sonsuz (`json.loads` `1e999` ve `Infinity`yi kabul eder): yoklama turu ve WS karesi düşmez."""
+
+    def test_infinite_counts_are_dropped_like_any_other_bad_shape(self):
+        for raw in ("Infinity", "-Infinity", "1e999", "NaN"):
+            for field in ("servers", "procs"):
+                self.assertIsNone(web_hosts._orphan_brief(json.loads('{"%s": %s}' % (field, raw))), (field, raw))
+
+    def test_rest_and_ws_results_survive_an_infinite_count(self):
+        frame = '{"type": "status", "data": {"sessions": [{"name": "n"}], "orphan_watch": {"servers": 1e999}}}'
+        for result in (web_hosts._parse_ws_status_frame(frame), dict(json.loads(frame)["data"], ok=True)):
+            r = web_hosts._finalize_remote_result("h", result)
+            self.assertEqual((r["ok"], r["orphan_watch"], [x["name"] for x in r["sessions"]]), (True, None, ["n"]))
 
 
 class FwdBriefTest(unittest.TestCase):

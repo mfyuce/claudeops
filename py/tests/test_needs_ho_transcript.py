@@ -3,7 +3,7 @@
 Hata (TODO.md 2026-10-16 (6), son madde): `web._needs_ho_cached` ve `handover.handover_faz1` (batch) `needs_ho`ya
 `find_latest_jsonl(cwd)` veriyordu; aynı cwd'yi paylaşan iki claude oturumunda (ör. handover çakışması) "ho gerekir
 /gerekmez" kararı başkasının transkriptine göre çıkabiliyordu. `needs_ho` `sid`'i kullanmaz, yalnız verilen jsonl
-yoluna bakar; sid'i çözmek çağıranın işi: `jsonl_path_for(cwd, sid)` (sid yoksa ya da dosya yoksa eski tahmine düşer).
+yoluna bakar; sid'i çözmek çağıranın işi: `jsonl_path_for(cwd, sid)` (yalnız sid yoksa eski tahmine düşer; sid var dosya yoksa `None`).
 
 Çalıştırma:  python3 py/tests/test_needs_ho_transcript.py -v
 
@@ -65,11 +65,12 @@ class WebNeedsHoCachedTests(SharedCwdCase):
         s = Session(name="a", pid=1, cwd=CWD, sid="sid-mine")
         self.assertEqual(self.seen_path(s), self.mine)
 
-    def test_without_a_sid_or_a_matching_file_it_falls_back_to_the_newest_file(self):
-        for sid in (None, "sid-gone"):
+    def test_only_without_a_sid_it_falls_back_to_the_newest_file(self):
+        """Sid var ama dosyası yok: tahmin YOK, `None` (TBD#365 birleştirme kapısı; komşunun transkripti karar vermesin)."""
+        for sid, want in ((None, self.sibling), ("sid-gone", None)):
             web._NEEDSHO_CACHE.clear()
             s = Session(name="a", pid=1, cwd=CWD, sid=sid)
-            self.assertEqual(self.seen_path(s), self.sibling, msg=str(sid))
+            self.assertEqual(self.seen_path(s), want, msg=str(sid))
 
 
 class HandoverBatchTests(SharedCwdCase):

@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "## READY FOR HANDOVER"}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result"}, {"type": "text", "text": "x"}]}}

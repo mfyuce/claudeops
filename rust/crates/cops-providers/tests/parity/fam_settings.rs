@@ -222,8 +222,7 @@ fn settings_cases() -> Vec<Case> {
     );
     v.push(
         Case::new("servis-models-sayi", "settings", json!({}))
-            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": 5}]}))
-            .known("Python HATASI? `models` sıfır olmayan sayı/true: `for m in models` TypeError, `ucli_services()` düşer (başlat penceresi ve spawn); Rust boş liste"),
+            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": 5}]})),
     );
     v.push(
         Case::new("servis-models-ic-liste", "settings", json!({}))

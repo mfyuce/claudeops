@@ -167,12 +167,15 @@ fn titled(title: &str) -> String {
 }
 
 #[test]
-fn sidless_or_missing_transcript_falls_back_to_the_newest() {
+fn only_a_sidless_lookup_guesses_the_newest_transcript() {
     let mem = Mem::with(&[("/p/mine.jsonl", 1, "{}"), ("/p/sibling.jsonl", 2, "{}")]);
     with(&mem, |l| {
         assert_eq!(l.jsonl_path_for("/w", Some("mine")).as_deref(), Some("/p/mine.jsonl"));
-        for sid in [None, Some(""), Some("gone")] {
+        for sid in [None, Some("")] {
             assert_eq!(l.jsonl_path_for("/w", sid).as_deref(), Some("/p/sibling.jsonl"), "{sid:?}");
+        }
+        for sid in ["gone", "../p/mine", "mine\0"] {
+            assert_eq!(l.jsonl_path_for("/w", Some(sid)), None, "{sid:?}");
         }
     });
 }

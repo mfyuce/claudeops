@@ -101,11 +101,29 @@ def _is_app_server(cmd: str) -> bool:
     return "app-server" in cmd.split()
 
 
-def _ancestor_cmd(q: Any) -> str:
-    """Ata sürecin komut satırı. `process_iter` yalnız döngüdeki nesnelere `.info` ekler; `parent()` düz `psutil.Process` döner."""
+def _own(p: Any, info: Dict[str, Any]) -> bool:
+    """Süreç bu kullanıcının mı (gerçek uid). İÇERİK (cmdline/cwd/ad) YALNIZ bunu geçen süreçte okunur (TBD#365 birleştirme
+    kapısı: başka kullanıcının eski claude süreci yetim listesine pid+cmdline ile düşebiliyordu). Bilinmiyorsa False."""
     try:
-        info = getattr(q, "info", None)
-        return " ".join((info.get("cmdline") if info is not None else q.cmdline()) or [])
+        uids = info.get("uids") if info.get("uids") is not None else p.uids()
+        return uids.real == os.getuid()
+    except Exception:  # noqa: BLE001 — erişim yok / süreç öldü
+        return False
+
+
+def _attr(p: Any, info: Dict[str, Any], key: str) -> Any:
+    """`.info`te varsa oradan, yoksa yöntemden (`process_iter` yalnız pid/uids ister; içerik uid süzgecinden SONRA)."""
+    return info[key] if key in info else getattr(p, key)()
+
+
+def _ancestor_cmd(q: Any) -> str:
+    """Ata sürecin komut satırı. `process_iter` yalnız döngüdeki nesnelere `.info` ekler; `parent()` düz `psutil.Process` döner.
+    Başka kullanıcının atası (ör. root sshd) okunmaz: boş döner."""
+    try:
+        info = getattr(q, "info", None) or {}
+        if not _own(q, info):
+            return ""
+        return " ".join(_attr(q, info, "cmdline") or [])
     except Exception:  # noqa: BLE001 — erişim yok / süreç öldü: bilinmiyor
         return ""
 
@@ -117,7 +135,7 @@ def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Op
     known = set(known_pids)
     try:
         import psutil
-        it = procs if procs is not None else psutil.process_iter(["pid", "name", "create_time", "cwd", "cmdline"])
+        it = procs if procs is not None else psutil.process_iter(["pid", "uids"])     # içerik uid süzgecinden SONRA
     except Exception:  # noqa: BLE001
         return []
     panes = pane_pids if pane_pids is not None else _pane_pids()
@@ -126,14 +144,16 @@ def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Op
     for p in it:
         try:
             info = p.info if hasattr(p, "info") else {}
-            name = str(info.get("name") or "")
             pid = int(info.get("pid") or 0)
-            if name not in CLI_NAMES or not pid or pid in known:
+            if not pid or pid in known or not _own(p, info):
                 continue
-            age = t - float(info.get("create_time") or t)
+            name = str(_attr(p, info, "name") or "")
+            if name not in CLI_NAMES:
+                continue
+            age = t - float(_attr(p, info, "create_time") or t)
             if age <= MIN_AGE_S:
                 continue
-            cmd = " ".join(info.get("cmdline") or [])
+            cmd = " ".join(_attr(p, info, "cmdline") or [])
             if "native-host" in cmd or "--chrome" in cmd:       # Chrome eklentisinin köprü süreci, CLI oturumu değil
                 continue
             if _is_app_server(cmd):                             # codex app-server: systemd altında kalıcı yardımcı daemon
@@ -152,7 +172,7 @@ def scan_procs(known_pids: Iterable[int], now: Optional[float] = None, procs: Op
                 continue
             if me in chain or any(c in known or c in panes for c in chain):
                 continue
-            out.append({"pid": pid, "name": name, "age_s": int(age), "cwd": str(info.get("cwd") or "")})
+            out.append({"pid": pid, "name": name, "age_s": int(age), "cwd": str(_attr(p, info, "cwd") or "")})
         except Exception:  # noqa: BLE001 — süreç taramada ölebilir
             continue
     return out
@@ -187,7 +207,7 @@ def scan_cpu_hogs(prev: Optional[Dict[str, Any]], now: Optional[float] = None, p
     hogs: List[Dict[str, Any]] = []
     try:
         import psutil
-        it = procs if procs is not None else psutil.process_iter(["pid", "name", "create_time", "cmdline", "cpu_times"])
+        it = procs if procs is not None else psutil.process_iter(["pid", "uids"])     # içerik uid süzgecinden SONRA
     except Exception:  # noqa: BLE001
         return [], {}
     me = os.getpid()
@@ -195,11 +215,13 @@ def scan_cpu_hogs(prev: Optional[Dict[str, Any]], now: Optional[float] = None, p
         try:
             info = p.info if hasattr(p, "info") else {}
             pid = int(info.get("pid") or 0)
-            ct = info.get("cpu_times")
-            if not pid or pid == me or ct is None:
+            if not pid or pid == me or not _own(p, info):
+                continue
+            ct = _attr(p, info, "cpu_times")
+            if ct is None:
                 continue
             cpu_s = float(getattr(ct, "user", 0.0)) + float(getattr(ct, "system", 0.0))
-            created = float(info.get("create_time") or 0.0)
+            created = float(_attr(p, info, "create_time") or 0.0)
             old = prev.get(str(pid))
             if old and abs(float(old[2]) - created) < 1.0 and t - float(old[1]) < HOG_MIN_SPAN_S:
                 cur[str(pid)] = old               # pencere henüz kısa: eski örneği koru
@@ -209,8 +231,8 @@ def scan_cpu_hogs(prev: Optional[Dict[str, Any]], now: Optional[float] = None, p
                 span = t - float(old[1])
                 pct = (cpu_s - float(old[0])) / span * 100.0 if span > 0 else 0.0
                 if pct > threshold:
-                    cmd = " ".join(info.get("cmdline") or [])[:160]
-                    hogs.append({"pid": pid, "name": str(info.get("name") or ""), "cmd": cmd, "pct": round(pct), "span_s": int(span)})
+                    cmd = " ".join(_attr(p, info, "cmdline") or [])[:160]
+                    hogs.append({"pid": pid, "name": str(_attr(p, info, "name") or ""), "cmd": cmd, "pct": round(pct), "span_s": int(span)})
         except Exception:  # noqa: BLE001
             continue
     hogs.sort(key=lambda h: -h["pct"])

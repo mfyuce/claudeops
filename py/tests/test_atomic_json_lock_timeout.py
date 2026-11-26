@@ -1,4 +1,4 @@
-"""file_lock: süreçler-arası flock zaman aşımına uğrar (süresiz asılmaz), uyarıyla thread-kilidine düşer (review cliops 3 Kas)."""
+"""file_lock: süreçler-arası flock zaman aşımına uğrar (süresiz asılmaz) ve `LockError` verir (review cliops 3 Kas; TBD#374 S1)."""
 import fcntl
 import os
 import tempfile
@@ -18,8 +18,9 @@ class LockTimeout(unittest.TestCase):
         try:
             with mock.patch.object(aj, "LOCK_TIMEOUT_SECONDS", 0.3):
                 t0 = time.monotonic()
-                with aj.file_lock(path):
-                    pass
+                with self.assertRaises(aj.LockError):
+                    with aj.file_lock(path):
+                        self.fail("kilitsiz gövde çalıştı")
                 self.assertLess(time.monotonic() - t0, 5)
         finally:
             os.close(holder)

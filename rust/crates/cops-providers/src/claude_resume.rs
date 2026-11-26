@@ -97,15 +97,16 @@ fn json_line(raw: &[u8]) -> Option<Py> {
 }
 
 impl Live<'_> {
-    /// `sid`in KENDİ transkripti; `sid` yoksa ya da dosyası yoksa cwd'deki en yeni transkript ([`Live::find_latest_jsonl`]).
-    /// Düşüş kardeş oturumun dosyasını verebilir (Python gibi); kesin eşleşme gereken yer (önbellek sıcaklığı) bunu
-    /// kullanmaz.
+    /// `sid` verildiyse YALNIZ `<sid>.jsonl`; geçersiz (`/`, NUL) ya da dosyası olmayan sid `None` (TBD#365: tahmin ortak
+    /// cwd'de kardeş oturumun transkriptini verirdi). Yalnız `sid` hiç yoksa cwd'deki en yeni transkript
+    /// ([`Live::find_latest_jsonl`]).
     pub fn jsonl_path_for(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
         if let Some(sid) = sid.filter(|s| !s.is_empty()) {
-            let path = path_join(&self.probe.claude_project_dir(cwd), &format!("{sid}.jsonl"));
-            if self.probe.is_file(&path) {
-                return Some(path);
+            if sid.contains(['/', '\0']) {
+                return None;
             }
+            let path = path_join(&self.probe.claude_project_dir(cwd), &format!("{sid}.jsonl"));
+            return self.probe.is_file(&path).then_some(path);
         }
         self.find_latest_jsonl(cwd)
     }

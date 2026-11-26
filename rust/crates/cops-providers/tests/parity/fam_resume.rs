@@ -697,8 +697,7 @@ fn divergences(b: &mut Build<'_>) {
         .q(json!({"f": "latest", "cwd": cwd}));
     b.diverges(c, "proje dizini yerinde dosya: Python `NotADirectoryError`, Rust 'yok'", json!([null, null]));
     let c = B::new("sapma-claude-uzun-sid").at(format!("{dir}/z.jsonl"), "", T0).q(json!({"f": "jsonl", "cwd": cwd, "sid": "s".repeat(300)}));
-    let newest = b.abs(&format!("{dir}/z.jsonl"));
-    b.diverges(c, "dosya adı sınırını aşan sid: Python `is_file` `OSError`, Rust en yeniye düşer", json!([newest]));
+    b.diverges(c, "dosya adı sınırını aşan sid: Python `is_file` `OSError`, Rust 'yok' (TBD#365: tahmin yok)", json!([null]));
     let c = B::new("sapma-kayit-sonsuz-pid")
         .raw("home/.claude/sessions/42.json", r#"{"pid":Infinity,"sessionId":"s","procStart":"777"}"#)
         .q(json!({"f": "session_sid", "pid": 42}));

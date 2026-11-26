@@ -292,7 +292,7 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
 @contextlib.contextmanager
 def _write_txn():
     """oku-değiştir-yaz döngüsünün TAMAMI tek kilit altında: iş parçacıkları arası kilit + süreçler arası `flock`
-    (`hosts.json.lock`; `atomic_json.file_lock`: O_NOFOLLOW + sahiplik denetimi, olmazsa yalnız iş parçacığı kilidi)."""
+    (`hosts.json.lock`; `atomic_json.file_lock`: O_NOFOLLOW + sahiplik denetimi, olmazsa `LockError`, yazım yok)."""
     with file_lock(HOSTS_JSON):
         yield
 

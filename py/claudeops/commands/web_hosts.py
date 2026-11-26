@@ -29,6 +29,7 @@ disiplin, iki farklı stdlib HTTP arayüzü.
 from __future__ import annotations
 import http.client
 import json
+import math
 import select
 import threading
 import time
@@ -39,6 +40,7 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Tuple
 from websockets.sync.client import connect as ws_connect
 
 from . import web_grpc
+from ..atomic_json import LockError
 from .. import hosts as hosts_mod
 from ..diaglog import diag_log
 from ..hosts import LOCAL_HOST_NAME
@@ -528,7 +530,7 @@ def _orphan_brief(v: Any) -> Optional[Dict[str, Any]]:
         return None
     try:
         return {"servers": int(v.get("servers") or 0), "procs": int(v.get("procs") or 0), "last_end": v.get("last_end")}
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # sonsuz (`1e999`/`Infinity`): `int()` OverflowError verir
         return None
 
 
@@ -545,18 +547,26 @@ def _fwd_brief(v: Any, local_now: float) -> Optional[Dict[str, Any]]:
         return None
     try:
         skew = round(float(v["now"]) - local_now, 1) if v.get("now") is not None else None
-        kids = [str(k) for k in (v.get("kids") or [])][:4]
+        if skew is not None and not math.isfinite(skew):      # NaN/Infinity JSON degil: tarayici tum yaniti reddeder
+            return None
+        raw_kids = v.get("kids") or []
+        if not isinstance(raw_kids, list):
+            return None
+        kids = [str(k) for k in raw_kids][:4]
         return {"mode": str(v.get("mode") or ""), "kids": kids, "skew": skew}
     except (TypeError, ValueError):
         return None
 
 
-def _tag_rows(rows: Optional[list], host_name: str) -> list:
+def _tag_rows(rows: Any, host_name: str) -> list:
     """Uzak tarafın kendi "local" etiketini BİZİM bildiğimiz host adıyla EZ —
     hem REST (`fetch_remote_status`) hem WS/gRPC push-consumer'ları (aşağıda,
-    capability-tier bölümü) kullanıyor, tek yerden."""
+    capability-tier bölümü) kullanıyor, tek yerden. Uzak veri güvenilmez: dizi
+    olmayan liste boş sayılır, nesne olmayan satır atlanır."""
     tagged = []
-    for r in (rows or []):
+    for r in (rows if isinstance(rows, list) else []):
+        if not isinstance(r, dict):
+            continue
         r2 = dict(r)
         r2["host"] = host_name
         tagged.append(r2)
@@ -576,9 +586,9 @@ def _finalize_remote_result(host_name: str, result: Dict[str, Any]) -> Dict[str,
         "sessions": _tag_rows(result.get("sessions"), host_name),
         "closed": _tag_rows(result.get("closed"), host_name),
         "retired": _tag_rows(result.get("retired"), host_name),
-        "cli_list": result.get("cli_list") or [],
+        "cli_list": result["cli_list"] if isinstance(result.get("cli_list"), list) else [],
         "cli_options": _normalize_cli_options(result.get("cli_options")),
-        "dups": result.get("dups") or [],
+        "dups": result["dups"] if isinstance(result.get("dups"), list) else [],
         "disk_clean": result.get("disk_clean") if isinstance(result.get("disk_clean"), dict) else None,
         "orphan_watch": _orphan_brief(result.get("orphan_watch")),
         "fwd": _fwd_brief(result.get("fwd"), time.time()),
@@ -593,7 +603,7 @@ def _fetch_status_from(base_url: str, token: str, timeout: float, dedup: bool = 
     status, parsed, err = _http_json("GET", url, None, timeout, dedup=dedup)
     if err is not None or parsed is None:
         return None, err or f"http {status}"
-    if "sessions" not in parsed:
+    if not isinstance(parsed.get("sessions"), list):
         return None, "unexpected response shape"
     # Uzak `/api/status` yanıtında üst-düzey `ok` YOK (WS/gRPC çerçevelerinin
     # parse'ı `ok:True`'yu kendisi koyuyor, bkz. `_parse_ws_status_frame`), oysa
@@ -640,13 +650,17 @@ def _is_private_lan_http(url: str) -> bool:
         ip = ipaddress.ip_address(u.hostname)
     except ValueError:
         return False
-    return ip.is_private and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
+    if "%" in u.hostname:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    # `is_private` genis (198.18/15, 192.0.2/24, 2001:db8::/32 de "ozel"): yalniz gercek yerel ag araliklari
+    return any(ip in ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"))
 
 
 def _candidate_allowed(base_url: str, candidate: str) -> bool:
     """TBD#53 (b): kayıtlı `base_url` https:// ise http:// aday token'ı şifresiz göndereceği için DENENMEZ. İSTİSNA
     (19 Kas, sahip isteği: ulak_31 LAN'dan hızlı erişim): aday özel-ağ IP literali ise (`_is_private_lan_http`) izinli."""
-    if base_url.startswith("https://") and candidate.startswith("http://"):
+    if base_url.lower().startswith("https://") and not candidate.lower().startswith("https://"):
         return _is_private_lan_http(candidate) or hosts_mod._is_reach_loopback(candidate)   # reach dinleyicisi: loopback, menzil kendisi şifreler
     return True
 
@@ -700,7 +714,10 @@ def _try_fallback_urls(host_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             continue
         parsed, err = _fetch_status_from(candidate, token, FALLBACK_TIMEOUT_SECONDS)
         if err is None:
-            hosts_mod.promote_base_url(name, candidate)
+            try:
+                hosts_mod.promote_base_url(name, candidate)
+            except LockError as e:      # yoklama turu düşmesin: sonuç kullanılır, kalıcı geçiş sonraki turda
+                diag_log("host_promote_lock_busy", name=name, error=str(e)[:200])
             return _finalize_remote_result(name, parsed)
     return None
 
@@ -754,12 +771,20 @@ CONSECUTIVE_FAILURES_BEFORE_ERROR = 5
 STATUS_PUSH_SILENCE_SECONDS = 45.0
 _last_try_at: Dict[str, float] = {}      # host adı -> son yoklama denemesi (başarılı ya da değil; `steward status` gösterir)
 _fail_streak: Dict[str, int] = {}  # host adı -> ardışık başarısız poll sayısı
+# host adı -> işlenen push karesi sayısı. REST yoklaması istek ÖNCESİ değeri saklar; arada kare geldiyse sonucu eskidir (H3).
+_push_seq: Dict[str, int] = {}
 # host adı -> son GERÇEKTEN başarılı sonucun zamanı (epoch). Değnekçinin "host kapalı" tazelik kuralı buna bakar
 # (`last_ok_at`): `_apply_stale_while_error`'ın koruduğu bayat satırlarla karar vermesin (TODO 2026-10-20 (14)).
 _last_ok_at: Dict[str, float] = {}
 
 
-def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
+def _push_mark(name: str) -> int:
+    with _cache_lock:
+        return _push_seq.get(name, 0)
+
+
+def _record_poll_result(name: str, result: Dict[str, Any], *, pushed: bool = False,
+                        since: Optional[int] = None) -> None:
     """`_apply_stale_while_error`'ın ÜSTÜNE, ardışık-hata toleransı ekler:
     eşiğin ALTINDA bir başarısızlık (önceki cache zaten `ok:true` olduğu
     sürece) `_cache`'e HİÇ yazılmaz — o tick sanki hiç olmamış gibi, önceki
@@ -773,6 +798,10 @@ def _record_poll_result(name: str, result: Dict[str, Any]) -> None:
     arkasına gizlenmemeli, sadece PAYLAŞILAN arka-plan sayacını besler."""
     with _cache_lock:
         _last_try_at[name] = time.time()
+        if pushed:
+            _push_seq[name] = _push_seq.get(name, 0) + 1
+        elif since is not None and _push_seq.get(name, 0) != since:
+            return      # istek sürerken push karesi geldi: bu REST sonucu (başarı ya da hata) ondan eski
         if result["ok"]:
             _fail_streak[name] = 0
             _cache[name] = result
@@ -800,6 +829,7 @@ def _poll_once() -> None:
         # görünmez (bkz. _ensure_status_consumer'ın kendi docstring'i).
         if _ensure_status_consumer(h):
             continue
+        mark = _push_mark(h["name"])
         result = fetch_remote_status(h)
         if not result["ok"] and h.get("extra_urls"):
             # Sağlıklı host bu bloğa hiç girmiyor (result["ok"] zaten True) --
@@ -812,7 +842,7 @@ def _poll_once() -> None:
                 fallback = _try_fallback_urls(h)
                 if fallback is not None:
                     result = fallback
-        _record_poll_result(h["name"], result)
+        _record_poll_result(h["name"], result, since=mark)
     # Silinmiş host'ları cache'ten temizle (merge_status zaten load_hosts()'a
     # göre iterate ediyor, bu sadece belleğin büyümemesi için).
     with _cache_lock:
@@ -823,6 +853,7 @@ def _poll_once() -> None:
                 _last_good.pop(stale, None)
                 _last_ok_at.pop(stale, None)
                 _last_try_at.pop(stale, None)
+                _push_seq.pop(stale, None)
     _reap_status_consumers(current_names)
 
 
@@ -922,8 +953,9 @@ def probe_host(name: str, now: Optional[float] = None) -> Optional[bool]:
         rec = next((h for h in hosts_mod.load_hosts() if h["name"] == name), None)
         if rec is None:
             return None
+        mark = _push_mark(name)
         result = fetch_remote_status(rec)
-        _record_poll_result(name, result)
+        _record_poll_result(name, result, since=mark)
         return bool(result.get("ok"))
     except Exception:
         return False
@@ -966,8 +998,9 @@ def test_now(name: str) -> Optional[Dict[str, Any]]:
     host_record = hosts_mod.get_host(name)
     if host_record is None:
         return None
+    mark = _push_mark(name)
     result = fetch_remote_status(host_record)
-    _record_poll_result(name, result)
+    _record_poll_result(name, result, since=mark)
     # Hysteresis'i BYPASS eden taze bir probe — paylaşılan tier state'i
     # besler (arka plan prober'ıyla AYNI ilke `ok`/`error` için zaten
     # uygulanıyordu) ama dönüş değeri HER ZAMAN bu çağrının kendi taze
@@ -1030,8 +1063,11 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
     # (bkz. o fonksiyondaki 2026-09-23 notu).
     fleet_sort = load_settings().get("fleet_sort") or "name"
 
+    def _text(v: Any) -> str:
+        return v.lower() if isinstance(v, str) else ""      # uzak satır güvenilmez: alan yok/null/metin değil = boş
+
     def _row_key(r: Dict[str, Any]) -> Any:
-        cwd, nm = r["cwd"].lower(), r["name"].lower()
+        cwd, nm = _text(r.get("cwd")), _text(r.get("name"))
         return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
     local_payload["sessions"].sort(key=_row_key)
     local_payload["closed"].sort(key=_row_key)
@@ -1466,19 +1502,39 @@ _status_consumer_lock = threading.Lock()
 _status_consumers: Dict[str, _PushConsumer] = {}
 
 
+_bad_frame_log_last: Dict[str, float] = {}  # kare türü -> son log'un monotonic zamanı
+
+
+def _ws_envelope(raw: Any, kind: str) -> Optional[dict]:
+    """Uzaktan gelen WS karesini nesne olarak çözer; okunamayan ya da nesne olmayan kare `None` (atlanır, akış sürer)
+    ve dakikada en fazla bir kez loglanır."""
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    now = time.monotonic()
+    last = _bad_frame_log_last.get(kind)
+    if last is None or now - last >= _CONSUMER_DEATH_LOG_MIN_INTERVAL_SECONDS:
+        _bad_frame_log_last[kind] = now
+        diag_log("push_frame_skipped", kind=kind)
+    return None
+
+
 def _parse_ws_status_frame(raw: Any) -> Optional[dict]:
     """`/ws`'in `{"type":"status","data":{...}}` zarfını (`web_ws._encode()`)
     `_finalize_remote_result()`'un beklediği ham şekle indirger — tag/
     normalize BURADA YAPILMIYOR, `_finalize_remote_result` (tüm tier'ler için
-    ortak) yapıyor. `type != "status"` ya da bozuk JSON → sessizce `None`
-    (bu frame atlanır, `_PushConsumer` devam eder)."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
+    ortak) yapıyor. `type != "status"`, bozuk JSON ya da `sessions` dizi değil →
+    sessizce `None` (bu frame atlanır, `_PushConsumer` devam eder; boş oturum
+    listesi gibi kaydedilmez)."""
+    parsed = _ws_envelope(raw, "status")
+    if parsed is None or parsed.get("type") != "status" or not isinstance(parsed.get("data"), dict):
         return None
     data = parsed["data"]
+    if not isinstance(data.get("sessions"), list):
+        return None
     return {
         "ok": True,
         "sessions": data.get("sessions"), "closed": data.get("closed"), "retired": data.get("retired"),
@@ -1501,7 +1557,7 @@ def _start_status_consumer(host: Dict[str, str], tier: str) -> _PushConsumer:
         parse_item = _parse_ws_status_frame
 
     def on_item(parsed: dict) -> None:
-        _record_poll_result(name, _finalize_remote_result(name, parsed))
+        _record_poll_result(name, _finalize_remote_result(name, parsed), pushed=True)
 
     return _PushConsumer(tier, make_call, parse_item, on_item, label=f"status:{name}")
 
@@ -1638,11 +1694,8 @@ def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
     """`/ws/term`'ün `{"type":"term","data":{...}}` zarfını çözer — `data`
     zaten `_term_output()`'un TAM şekli (tag/normalize gerekmiyor, term-output
     host-etiketleme kavramı taşımıyor status'un aksine)."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if parsed.get("type") != "term" or not isinstance(parsed.get("data"), dict):
+    parsed = _ws_envelope(raw, "term")
+    if parsed is None or parsed.get("type") != "term" or not isinstance(parsed.get("data"), dict):
         return None
     return parsed["data"]
 

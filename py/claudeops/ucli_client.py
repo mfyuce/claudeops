@@ -533,8 +533,12 @@ def ucli_chat_once(
         from . import ucli_approval
         susp = ucli_approval.parse_suspended(result.stdout)
         if susp:
-            ucli_approval.register(approval_run_key, root, session or "", argv_resume, owner=approval_owner)
-            ucli_approval.set_state(approval_run_key, "suspended")
+            try:
+                ucli_approval.register(approval_run_key, root, session or "", argv_resume, owner=approval_owner)
+                ucli_approval.set_state(approval_run_key, "suspended")
+            except OSError as e:        # kayıt yoksa koşu sürdürülemez: sessizce düşmesin (TBD#383)
+                _diag_approval(approval_run_key, e)
+                raise UcliError(f"ucli koşusu onay bekliyor (onay {susp['id']}) ama kayıt yazılamadı: {e}") from e
             return {"ok": True, "status": "suspended", "run_key": approval_run_key, "approval_id": susp["id"]}
     if result.returncode != 0:
         raise UcliError(result.stderr.strip() or f"ucli exit={result.returncode}")
@@ -676,11 +680,33 @@ class UcliReplSession:
 def ucli_resume_approval(run_key: str, approval_id: str, *, timeout: float = 1800.0, api_key: Optional[str] = None) -> Dict[str, Any]:
     """Cevabı yazılmış askıdaki koşuyu sürdürür (docs/ucli-approval-design.md S3). Argv KAYITTAN (`begin_resume`), istekten değil.
     Sonuç kayda yazılır: bitti -> `done`, yine 75 + suspended -> `suspended` (yeni kimlik; zincir), hata -> `done` + error.
-    Hiçbir yolda istisna fırlatmaz."""
+    Hiçbir yolda istisna fırlatmaz (onay kaydı kilitlenemez/yazılamazsa da `ok: False`)."""
+    try:
+        return _resume_approval(run_key, approval_id, timeout, api_key)
+    except OSError as e:
+        _diag_approval(run_key, e)
+        return {"ok": False, "error": f"approval record not written: {e}"[:300]}
+
+
+def _diag_approval(run_key: str, e: BaseException) -> None:
+    from .diaglog import diag_log
+    diag_log("ucli_approval_record_failed", run_key=run_key, error=f"{type(e).__name__}: {e}"[:200])
+
+
+def _resume_approval(run_key: str, approval_id: str, timeout: float, api_key: Optional[str]) -> Dict[str, Any]:
     from . import ucli_approval
     argv = ucli_approval.begin_resume(run_key)
     if argv is None:
         return {"ok": False, "error": "run is not suspended"}
+    try:
+        return _run_resume(run_key, approval_id, argv, timeout, api_key)
+    except OSError:         # yalnız sonuç yazımı fırlatır: süreç çalıştı, aynı onay yeniden sürdürülmesin
+        ucli_approval._mark_consumed(run_key)
+        raise
+
+
+def _run_resume(run_key: str, approval_id: str, argv: List[str], timeout: float, api_key: Optional[str]) -> Dict[str, Any]:
+    from . import ucli_approval
     try:
         api_key_env = argv[argv.index("--api-key-env") + 1] if "--api-key-env" in argv else "UCLI_API_KEY"
         result = subprocess.run(argv + ["--resume-approval", approval_id], capture_output=True, text=True, timeout=timeout,

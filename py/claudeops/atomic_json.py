@@ -22,8 +22,8 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
-import logging
 import os
+import stat
 import threading
 import time
 from typing import Any, Iterator, Optional
@@ -125,14 +125,46 @@ LOCK_TIMEOUT_SECONDS = 30.0     # süreçler-arası flock bekleme sınırı
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}
 _HELD = threading.local()       # iş parçacığı başına {path: iç içe derinlik}
-_WARNED_LOCKS: set = set()      # path başına tek uyarı (log taşmasın)
+
+
+class LockError(OSError):
+    """Süreçler arası kilit alınamadı: oku-değiştir-yaz YAPILMAZ (TBD#374 S1/S5/S6)."""
+
+
+def flock_bounded(fd: int) -> None:
+    """`LOCK_EX`, en çok `LOCK_TIMEOUT_SECONDS` beklenir (sahip süreç asılırsa web isteği süresiz bloklanmasın);
+    süre dolarsa `LockError`."""
+    deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise LockError("flock zaman aşımı") from None
+            time.sleep(0.02)
+
+
+def _open_lock_file(lock_path: str) -> int:
+    """Kilit dosyasını açar (yoksa 0600 yaratır): sembolik bağ izlenmez, içerik boşaltılmaz; bize ait normal dosya
+    değilse ya da açılamazsa `LockError`. Dönen fd'yi çağıran kapatır."""
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        raise LockError(f"{lock_path} alınamadı: {e}") from e
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid():
+        os.close(fd)
+        raise LockError(f"{lock_path}: kilit dosyası bize ait değil")
+    return fd
 
 
 @contextlib.contextmanager
 def file_lock(path: str) -> Iterator[None]:
     """`path + ".lock"` üzerinde oku-değiştir-yaz döngüsü için kilit: süreç içi (path başına `RLock`) + süreçler arası
-    `flock`. Kilit dosyası `O_NOFOLLOW` ile açılır ve çağıranın kendisine ait normal dosya olmalı (symlink/başkasının
-    dosyası = kilit dosyası KULLANILMAZ, yalnız iş parçacığı kilidiyle devam; bir hedefi sessizce yaratmaz/kilitlemez).
+    `flock`. Kilit dosyası `O_NOFOLLOW` ile açılır ve çağıranın kendisine ait normal dosya olmalı; symlink, başkasının
+    dosyası ya da `LOCK_TIMEOUT_SECONDS` içinde alınamayan kilit `LockError` fırlatır, gövde ÇALIŞMAZ (bir hedefi sessizce
+    yaratmaz/kilitlemez; korumasız yazım yok).
     Yol mutlak+normalize edilir: aynı dosyanın farklı yazımları (`a/../b`, göreli/mutlak) AYNI kilidi alır (review 4 Kas R-9)."""
     path = os.path.normpath(os.path.abspath(path))
     with _LOCKS_GUARD:
@@ -177,31 +209,17 @@ def roster_lock(tsv_path: str):
 def _file_lock_outer(path: str) -> Iterator[None]:
     fd = None
     try:
-        d = os.path.dirname(path)
-        if d:
-            os.makedirs(d, exist_ok=True)
-        fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        st = os.fstat(fd)
-        if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
-            raise OSError("lock file not ours")
-        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
-        while True:             # zaman aşımlı: sahip süreç asılırsa web isteği SÜRESİZ bloklanmasın (review cliops 3 Kas)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise OSError("flock zaman aşımı")
-                time.sleep(0.02)
-    except OSError as e:
-        if fd is not None:
-            os.close(fd)
-        fd = None
-        if path not in _WARNED_LOCKS:       # sessiz değil: süreçler arası koruma yok, yalnız iş parçacığı kilidi
-            _WARNED_LOCKS.add(path)
-            logging.getLogger(__name__).warning("file_lock: %s.lock alınamadı (%s); yalnız iş parçacığı kilidiyle devam", path, e)
-    try:
-        yield
+        try:
+            d = os.path.dirname(path)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            fd = _open_lock_file(path + ".lock")
+            flock_bounded(fd)
+        except LockError:
+            raise
+        except OSError as e:
+            raise LockError(f"{path}.lock alınamadı: {e}") from e
+        yield                   # gövdenin hatası LockError'a çevrilmez (yukarıdaki try'ın dışında)
     finally:
         if fd is not None:
             os.close(fd)        # kapatmak flock'u bırakır
