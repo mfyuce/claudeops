@@ -1068,6 +1068,35 @@ async fn mount_root_is_served_unchanged_when_base_href_is_not_a_safe_foreign_roo
 }
 
 #[tokio::test]
+async fn deep_page_under_the_mount_whose_base_href_is_its_own_segment_moves_to_that_root() {
+    // Grafana: `/gw/grafana/d/x` açılır ama `<base href="/grafana/">`; SPA `/gw/...` adresinde "not found" der.
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let h = format!("Cookie: cops_ext={COOKIE}\r\nAccept: text/html,*/*\r\nx-fake-ct: text/html\r\nx-fake-base: /grafana/\r\n");
+    for (from, to) in [
+        ("/gw/grafana/", "/grafana/"),
+        ("/gw/grafana/d/x?orgId=1", "/grafana/d/x?orgId=1"),
+    ] {
+        let r = raw(p, &get(from, &h)).await;
+        assert!(r.starts_with("HTTP/1.1 302"), "{from}: {r}");
+        assert_eq!(header(&r, "location"), Some(to), "{r}");
+    }
+    let r = raw(p, &get("/grafana/d/x", &h)).await;
+    assert!(
+        r.starts_with("HTTP/1.1 200") && r.contains("GET /gw/grafana/d/x "),
+        "{r}"
+    );
+    // Başka kökün altındaki sayfa ve belge olmayan istek (Accept'te text/html yok) olduğu gibi kalır.
+    for (path, hh) in [
+        ("/gw/other/x", h.clone()),
+        ("/gw/grafanax/", h.clone()),
+        ("/gw/grafana/", h.replace("Accept: text/html,*/*\r\n", "")),
+    ] {
+        let r = raw(p, &get(path, &hh)).await;
+        assert!(r.starts_with("HTTP/1.1 200"), "{path}: {r}");
+    }
+}
+
+#[tokio::test]
 async fn query_token_on_a_learned_root_keeps_the_public_path() {
     let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
     let r = raw(

@@ -128,3 +128,13 @@ pub(crate) fn foreign_root(href: String, id: &str) -> Option<(String, String)> {
     let seg = href[1..].split('/').next()?.to_string();
     (seg != id && crate::mount::learnable(&seg)).then_some((href, seg))
 }
+
+/// Mount `id` altındaki `path` için yönlendirme yolu: mount kökü `href`e gider; `href`in (sonu `/`) altındaki sayfa kendi
+/// öneksiz yoluna. Başka sayfa None.
+pub(crate) fn target(path: &str, id: &str, href: &str) -> Option<String> {
+    let rest = path.strip_prefix('/')?.strip_prefix(id)?;
+    if rest == "/" {
+        return Some(href.to_string());
+    }
+    (href.ends_with('/') && rest.to_ascii_lowercase().starts_with(href)).then(|| rest.to_string())
+}

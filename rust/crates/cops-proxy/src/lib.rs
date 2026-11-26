@@ -1174,37 +1174,46 @@ impl Proxy {
         } else {
             None
         };
-        // Rootrel mount KÖKÜ (`/<id>/`): upstream `<base href>`i başka bir köke bakıyorsa (Maya: `/maya-ui/`) SPA bu adreste açılmaz;
-        // aşağıda oraya yönlendirilir. Gövdeyi okuyabilmek için sıkıştırma istenmez.
-        let root_id = app_id
+        // Rootrel mount belgesi: upstream `<base href>`i mount DIŞINDA bir köke bakıyorsa (Maya `/maya-ui/`, Grafana `/grafana/`)
+        // SPA `/<id>/...` adresinde açılmaz. Mount kökü (`/<id>/`) o köke, o kökün altındaki sayfa (`/<id>/grafana/d/x`, yalnız belge
+        // gezintisi) öneksiz adresine yönlendirilir. Gövdeyi okuyabilmek için sıkıştırma istenmez.
+        let doc_id = app_id
             .as_deref()
             .filter(|id| {
+                let path = req.uri().path();
                 !prefixed
                     && req.method() == hyper::Method::GET
                     && !is_upgrade(req.headers())
                     && cfg.mounts.rootrel_upstream(id).is_some()
-                    && req.uri().path() == format!("/{id}/")
+                    && (path == format!("/{id}/") || accepts_html(req.headers()))
             })
             .map(str::to_string);
-        if root_id.is_some() {
+        if doc_id.is_some() {
             req.headers_mut().remove(ACCEPT_ENCODING);
         }
+        let public = req.uri().path().to_string();
         let mut resp = self.forward(req, target, &pq).await;
-        if let Some(id) = root_id {
+        if let Some(id) = doc_id {
             let (r, href) = base_href::inspect(resp).await;
             resp = r;
             if let Some((href, seg)) = href.and_then(|h| base_href::foreign_root(h, &id)) {
-                cfg.mounts.learn(&seg, &id);
-                let loc = if q.is_empty() {
-                    href
-                } else {
-                    format!("{href}?{q}")
-                };
-                let mut to = redirect(StatusCode::FOUND, &loc, None);
-                for c in resp.headers().get_all(SET_COOKIE) {
-                    to.headers_mut().append(SET_COOKIE, c.clone());
+                if let Some(to_path) = base_href::target(&public, &id, &href) {
+                    // Hedef başka bir mount'un yoluysa oraya düşer: derin sayfa yönlendirilmez.
+                    let root = public == format!("/{id}/");
+                    if root || cfg.mounts.lookup(&to_path).is_none() {
+                        cfg.mounts.learn(&seg, &id);
+                        let loc = if q.is_empty() {
+                            to_path
+                        } else {
+                            format!("{to_path}?{q}")
+                        };
+                        let mut to = redirect(StatusCode::FOUND, &loc, None);
+                        for c in resp.headers().get_all(SET_COOKIE) {
+                            to.headers_mut().append(SET_COOKIE, c.clone());
+                        }
+                        resp = to;
+                    }
                 }
-                resp = to;
             }
         }
         if let Some((seg, id)) = learn {
@@ -1237,6 +1246,14 @@ impl Proxy {
         }
         resp
     }
+}
+
+/// Tarayıcının belge gezintisi (`Accept` içinde `text/html`).
+fn accepts_html(h: &hyper::HeaderMap) -> bool {
+    h.get_all(hyper::header::ACCEPT)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .any(|v| v.to_ascii_lowercase().contains("text/html"))
 }
 
 /// 502'nin kök nedeni (yalnız günlük için yanıt uzantısında taşınır).
