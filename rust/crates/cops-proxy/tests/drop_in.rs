@@ -104,11 +104,10 @@ async fn websocket_upgrade_is_tunnelled() {
 
 #[tokio::test]
 async fn upstream_down_gives_502() {
-    let dead = {
-        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        l.local_addr().unwrap()
-    };
-    let p = start_proxy(dead).await;
+    // Bağlı ama dinlemeyen soket: bağlantı reddedilir ve port test boyunca BİZDE kalır (bırakılan port paralel teste verilebiliyordu).
+    let holder = tokio::net::TcpSocket::new_v4().unwrap();
+    holder.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let p = start_proxy(holder.local_addr().unwrap()).await;
     let r = raw(p, "GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n").await;
     assert!(r.starts_with("HTTP/1.1 502"), "{r}");
 }

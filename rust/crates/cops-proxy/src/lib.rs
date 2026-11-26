@@ -1017,6 +1017,26 @@ impl Proxy {
         &self,
         cfg: &MountCfg,
         hit: mount::Hit,
+        req: Request<Incoming>,
+        peer: SocketAddr,
+        learn_any_type: bool,
+        prefixed: bool,
+    ) -> Response<Body> {
+        let method = req.method().clone();
+        let path = req.uri().path().to_string();
+        let resp = self
+            .mount_response(cfg, hit, req, peer, learn_any_type, prefixed)
+            .await;
+        if let Some(line) = mount_error_line(method.as_str(), &path, resp.status()) {
+            eprintln!("{line}");
+        }
+        resp
+    }
+
+    async fn mount_response(
+        &self,
+        cfg: &MountCfg,
+        hit: mount::Hit,
         mut req: Request<Incoming>,
         peer: SocketAddr,
         learn_any_type: bool,
@@ -1208,6 +1228,65 @@ impl Proxy {
             resp.headers_mut().append(SET_COOKIE, c);
         }
         resp
+    }
+}
+
+/// Mount yanıtı >=400 ise günlük satırı: yöntem, mount kimliği, mount altındaki İLK yol parçası, durum. Yolun gerisi, sorgu, başlık
+/// ve çerez YAZILMAZ (token/oturum sızmasın); parçalar istemci denetiminde olduğu için kırpılır.
+fn mount_error_line(method: &str, path: &str, status: StatusCode) -> Option<String> {
+    if status.as_u16() < 400 {
+        return None;
+    }
+    let clip = |s: &str| -> String {
+        s.split([';', '?', '#'])
+            .next()
+            .unwrap_or("")
+            .chars()
+            .filter(char::is_ascii_graphic)
+            .take(40)
+            .collect()
+    };
+    let mut parts = path.trim_start_matches('/').splitn(3, '/');
+    let id = clip(parts.next().unwrap_or(""));
+    let seg = clip(parts.next().unwrap_or(""));
+    Some(format!(
+        "copsd: mount hata: {} /{id}/{seg} -> {}",
+        clip(method),
+        status.as_u16()
+    ))
+}
+
+#[cfg(test)]
+mod mount_log_tests {
+    use super::*;
+
+    #[test]
+    fn only_errors_are_logged() {
+        for ok in [101, 200, 302, 308, 399] {
+            let st = StatusCode::from_u16(ok).unwrap();
+            assert_eq!(mount_error_line("GET", "/gw/x", st), None, "{ok}");
+        }
+    }
+
+    #[test]
+    fn line_carries_method_mount_first_segment_and_status_only() {
+        let l = mount_error_line(
+            "POST",
+            "/gw/grafana/api/sekret-yol?token=sekret",
+            StatusCode::BAD_GATEWAY,
+        )
+        .unwrap();
+        assert_eq!(l, "copsd: mount hata: POST /gw/grafana -> 502");
+        let l = mount_error_line("GET", "/gw", StatusCode::UNAUTHORIZED).unwrap();
+        assert_eq!(l, "copsd: mount hata: GET /gw/ -> 401");
+    }
+
+    #[test]
+    fn matrix_params_are_cut_and_long_segments_clipped() {
+        let long = format!("/gw/{};jsessionid=sekret/x", "a".repeat(100));
+        let l = mount_error_line("GET", &long, StatusCode::NOT_FOUND).unwrap();
+        assert!(!l.contains("sekret"), "{l}");
+        assert!(l.contains(&format!("/gw/{} ->", "a".repeat(40))), "{l}");
     }
 }
 
