@@ -1768,6 +1768,31 @@
 "test_review.TestUncountedAttempts.test_restart_cancel_spawn_do_not_consume_attempt": [],
 "test_review.TestUncountedAttempts.test_single_word_denetlenmemistir_is_not_incomplete": [],
 "test_review.TestUsageSummary.test_sums_per_project_and_target": [],
+"test_review_bad_records.BadRecordTest.test_blocked_modes_skips_bad_until": [],
+"test_review_bad_records.BadRecordTest.test_migrate_skips_bad_started_at": [],
+"test_review_bad_records.BadRecordTest.test_non_object_pair_record_is_not_an_attempt": [],
+"test_review_bad_records.BadRecordTest.test_reconcile_blocks_with_bad_until": [],
+"test_review_bad_records.BadRecordTest.test_requeue_skips_bad_numbers": [],
+"test_review_bad_records.BadRecordTest.test_same_bad_record_logged_once": [],
+"test_review_bad_records.BadRecordTest.test_update_pair_replaces_non_object_record": [
+"_pp",
+"paths_for"
+],
+"test_review_bad_records.BadRecordTest.test_usage_cost_skips_non_utf8_line": [],
+"test_review_bad_records.BadRecordTest.test_usage_summary_skips_bad_seconds": [],
+"test_review_bad_records.CorruptStoreTest.test_corrupt_backup_not_repeated": [],
+"test_review_bad_records.CorruptStoreTest.test_missing_and_healthy_stores_are_written": [
+"_pp",
+"paths_for"
+],
+"test_review_bad_records.CorruptStoreTest.test_update_pair_refused_on_corrupt_history": [
+"_pp",
+"paths_for"
+],
+"test_review_bad_records.CorruptStoreTest.test_write_refused_and_file_untouched": [
+"_pp",
+"paths_for"
+],
 "test_review_cleanup_fixes.ConditionalNoteTest.test_turkish_conditions": [
 "is_conditional_note"
 ],
