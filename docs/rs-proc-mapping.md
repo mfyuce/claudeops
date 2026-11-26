@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 549 | 153 | 396 | 0 |
-| test durumu (116 dosya) | 1578 | 115 | 1463 | 0 |
+| test durumu (116 dosya) | 1579 | 115 | 1464 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -678,11 +678,11 @@ Yok.
 |---|---|---|---|---|---|
 | `commands/web.py::_find_gnome_terminal_server` | işlev:1118 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
 | `commands/web.py::_diag_status` | işlev:1134 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1624 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1676 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1683 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1686 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1715 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1625 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1677 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1684 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1687 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1716 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
@@ -1264,6 +1264,7 @@ Yok.
 | `test_procscan_tbd365.py::LongLineTest.test_usage_memory_is_bounded` | 503 | karşılandı | `usage.rs::long_lines_are_skipped_and_counted` | Python düzeltildi: 66b47a37 |
 | `test_procscan_tbd365.py::LongLineTest.test_needs_ho_long_line_skipped_and_counted` | 532 | karşılandı | `needs_ho.rs::long_lines_are_skipped_and_counted` | Python düzeltildi: 66b47a37 |
 | `test_procscan_tbd365.py::DiagSkippedTest.test_diag_carries_all_skip_counters` | 556 | karşılandı | `usage.rs::bad_row_is_skipped_and_counted`<br>`tests/fake_proc.rs::bad_session_files_are_skipped_and_counted` | Rust sayaçları JSON'da (`Usage.skipped_rows`, `ScanDiag`); Tanılama yükü T1. Python düzeltildi: 1af088ef |
+| `test_procscan_tbd365.py::DiagSkippedTest.test_diag_survives_counter_growing_while_read` | 574 | kapsam dışı | yok | Python'a özgü: iplikler arası paylaşılan `Counter` dolaşımı; Rust sayaçları çağrı/tarama başına değer, paylaşılmaz. İz: T1 |
 
 ### `py/tests/test_provider_live_context.py`
 

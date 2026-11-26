@@ -1174,13 +1174,14 @@ def _diag_status(live: Optional[list] = None) -> dict:
     except Exception:
         orphans = None
 
-    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; burada görünür.
+    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; yalnız bu yükte (`diag.skipped`) görünür, panel göstermez.
     # Anahtarlar modüller arasında çakışmaz (discovery.session_file, needs_ho.transcript_*, session_usage.usage_*).
     skipped: Dict[str, int] = {}
     try:
         from .. import discovery as _disc, needs_ho as _nho, session_usage as _su
         for counter in (_disc._skipped, _nho._skipped, _su._skipped):
-            skipped.update({k: int(v) for k, v in counter.items() if v})
+            # `dict(counter)`: kopya üzerinde dolaş; arka plan iplikleri sayaca yeni anahtar eklerken `items()` düşerdi.
+            skipped.update({k: int(v) for k, v in dict(counter).items() if v})
     except Exception:
         skipped = {}
 
