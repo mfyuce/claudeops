@@ -23,6 +23,7 @@ import contextlib
 import fcntl
 import json
 import os
+import stat
 import threading
 import time
 from typing import Any, Iterator, Optional
@@ -144,6 +145,20 @@ def flock_bounded(fd: int) -> None:
             time.sleep(0.02)
 
 
+def _open_lock_file(lock_path: str) -> int:
+    """Kilit dosyasını açar (yoksa 0600 yaratır): sembolik bağ izlenmez, içerik boşaltılmaz; bize ait normal dosya
+    değilse ya da açılamazsa `LockError`. Dönen fd'yi çağıran kapatır."""
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        raise LockError(f"{lock_path} alınamadı: {e}") from e
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid():
+        os.close(fd)
+        raise LockError(f"{lock_path}: kilit dosyası bize ait değil")
+    return fd
+
+
 @contextlib.contextmanager
 def file_lock(path: str) -> Iterator[None]:
     """`path + ".lock"` üzerinde oku-değiştir-yaz döngüsü için kilit: süreç içi (path başına `RLock`) + süreçler arası
@@ -198,11 +213,10 @@ def _file_lock_outer(path: str) -> Iterator[None]:
             d = os.path.dirname(path)
             if d:
                 os.makedirs(d, exist_ok=True)
-            fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-            st = os.fstat(fd)
-            if not os.path.isfile(path + ".lock") or st.st_uid != os.getuid():
-                raise LockError("kilit dosyası bize ait değil")
+            fd = _open_lock_file(path + ".lock")
             flock_bounded(fd)
+        except LockError:
+            raise
         except OSError as e:
             raise LockError(f"{path}.lock alınamadı: {e}") from e
         yield                   # gövdenin hatası LockError'a çevrilmez (yukarıdaki try'ın dışında)

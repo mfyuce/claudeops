@@ -8,7 +8,6 @@ silmez, `forgotten` işaretiyle Geçmiş'ten gizler.
 """
 from __future__ import annotations
 import datetime
-import fcntl
 import json
 import os
 import re
@@ -16,7 +15,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
-from .atomic_json import atomic_write_json, flock_bounded
+from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file
 from .paths import CLAUDEOPS_DIR
 
 INSTANCES_JSON = os.path.join(CLAUDEOPS_DIR, "instances.json")
@@ -90,12 +89,12 @@ def get_instance(name: str) -> Optional[dict]:
 @contextmanager
 def _locked():
     os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
-    with open(_LOCK_PATH, "w") as fd:
-        flock_bounded(fd.fileno())      # süresiz bekleme yok: `LockError` (TBD#374 S6)
-        try:
-            yield
-        finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+    fd = _open_lock_file(_LOCK_PATH)     # sembolik bağ/yabancı dosya reddedilir (TBD#383)
+    try:
+        flock_bounded(fd)               # süresiz bekleme yok: `LockError` (TBD#374 S6)
+        yield
+    finally:
+        os.close(fd)                    # kapatmak flock'u bırakır
 
 
 def _mutate(fn: Callable[[Dict[str, dict]], object]) -> object:
