@@ -5,7 +5,6 @@
 //! anahtarda son değer + ilk konum, dizede ham denetim karakteri hata); 64 bite sığmayan tam sayı metin olarak korunur.
 //! Tek fark: eşlenmemiş vekil (`"\ud800"`) HATA (Rust dizesinde tutulamaz; fail closed).
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
-use std::fmt::Write as _;
 
 pub type Map = indexmap::IndexMap<String, Json>;
 
@@ -294,7 +293,7 @@ fn write_str(out: &mut String, s: &str) {
             '\u{08}' => out.push_str("\\b"),
             '\u{0c}' => out.push_str("\\f"),
             c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
+                out.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => out.push(c),
         }
@@ -322,7 +321,7 @@ fn write_val(out: &mut String, v: &Json, indent: bool, depth: usize) {
         Json::Null => out.push_str("null"),
         Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Json::Int(i) => {
-            let _ = write!(out, "{i}");
+            out.push_str(&i.to_string());
         }
         Json::BigInt(t) => out.push_str(t),
         Json::Float(f) => out.push_str(&py_float_repr(*f)),

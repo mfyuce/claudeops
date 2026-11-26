@@ -121,6 +121,10 @@ impl SettingsReader {
             cache: Mutex::new(None),
         }
     }
+    /// İmza aynıysa önbellek; değilse okunur. OKUNAMAYAN dosya (yok dışındaki G/Ç hatası: EACCES, EMFILE, EIO...)
+    /// varsayılanları döndürür (Python gibi) ama önbelleğe ALINMAZ: son iyi değer önbellekte kalır, hata geçince yeni
+    /// içerik okunur (Python `_LOAD_CACHE` bu durumda varsayılanları imzaya bağlayıp dosya değişene dek döndürür;
+    /// belge "okunamazsa önbellek yok" diyor; sahibe soruldu, `docs/rs-state.md`).
     pub fn load(&self) -> Arc<Settings> {
         let path = self.dir.settings_json();
         let sig = || {
@@ -135,13 +139,34 @@ impl SettingsReader {
                 return v.clone();
             }
         }
-        let val = Arc::new(load(&self.dir));
-        if let Some(b) = before {
+        let (val, cacheable) = read(&self.dir);
+        let val = Arc::new(val);
+        if let (Some(b), true) = (before, cacheable) {
             if sig() == Some(b) {
                 *cache = Some((b, val.clone()));
             }
         }
         val
+    }
+
+    /// Önbellekteki son iyi değer (tanı/test).
+    pub fn last_good(&self) -> Option<Arc<Settings>> {
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|(_, v)| v.clone())
+    }
+}
+
+/// (ayarlar, önbelleğe alınabilir mi): içerik okunduysa (bozuk/UTF-8 değil dahil: içerikten belirlenir) evet; G/Ç
+/// hatasıysa hayır.
+fn read(dir: &StateDir) -> (Settings, bool) {
+    match std::fs::read_to_string(dir.settings_json()) {
+        Ok(t) => (Settings::from_text(Some(&t)), true),
+        // UTF-8 değil: Python istisna fırlatır; Rust varsayılanlar (sahibe soruldu)
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => (Settings::from_text(None), true),
+        Err(_) => (Settings::from_text(None), false),
     }
 }
 
@@ -164,8 +189,7 @@ pub fn backup_if_corrupt(dir: &StateDir) -> Option<std::io::Result<std::path::Pa
 
 /// Önbelleksiz tek okuma.
 pub fn load(dir: &StateDir) -> Settings {
-    let text = std::fs::read_to_string(dir.settings_json()).ok();
-    Settings::from_text(text.as_deref())
+    read(dir).0
 }
 
 #[cfg(test)]

@@ -554,3 +554,45 @@ print(json.dumps([res, [ps_(r) for r in stats], paths.ucli_key_file(''), paths.u
     // ucli_key_file kendi işlevi: süreç HOME'u ile aynı kural
     assert!(cops_state::paths::ucli_key_file("x").ends_with("/.claude/claudeops/ucli_key_x"));
 }
+
+/// H3: okunamayan (G/Ç hatası) settings.json varsayılanları döndürür (Python gibi) ama önbelleği EZMEZ: son iyi değer
+/// korunur, N+1. hatada da varsayılan döner, hata geçince yeni içerik okunur (Python bu imzada varsayılanda kalır).
+#[test]
+fn settings_io_error_keeps_last_good() {
+    let e = Env::new();
+    let p = e.dir().settings_json();
+    std::fs::write(&p, r#"{"theme": "dark"}"#).unwrap();
+    let r = cops_state::settings::SettingsReader::new(e.dir());
+    assert_eq!(r.load().str_of("theme"), "dark");
+    std::fs::write(&p, r#"{"theme": "light", "x": 1}"#).unwrap(); // yeni imza
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&p).is_ok() {
+        return; // root: izin hatası üretilemez
+    }
+    for _ in 0..5 {
+        assert_eq!(
+            r.load().str_of("theme"),
+            "system",
+            "hata: varsayılan (Python ile aynı)"
+        );
+        assert_eq!(
+            r.last_good().unwrap().str_of("theme"),
+            "dark",
+            "son iyi değer ezilmedi"
+        );
+    }
+    let py = e.py(
+        "files",
+        "from claudeops import settings as s\na = s.load_settings()['theme']\nos.chmod(s.SETTINGS_JSON, 0o644)\nprint(a, s.load_settings()['theme'])",
+    );
+    assert_eq!(
+        py.trim(),
+        "system system",
+        "Python: hata imzası önbellekte kalır"
+    );
+    assert_eq!(
+        r.load().str_of("theme"),
+        "light",
+        "Rust: hata geçince yeni içerik"
+    );
+}

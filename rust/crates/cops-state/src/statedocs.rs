@@ -369,7 +369,9 @@ impl StateDocs {
                         _ => false,
                     };
                     if !same {
-                        let v = for_db(&r, name)?.unwrap_or_default();
+                        let Some(v) = for_db(&r, name)? else {
+                            return Ok(r); // erişilmez: r Value ya da Lossy (Lossy for_db'de hata)
+                        };
                         self.log(&if have.is_none() {
                             format!("import {name}: DB'de yoktu, dosyadan alındı")
                         } else {

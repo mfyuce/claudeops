@@ -179,6 +179,7 @@ pub struct Store {
 impl Store {
     /// Var olan DB'yi aç (oluşturmaz, göç yapmaz).
     pub fn open(path: &Path) -> Result<Store> {
+        crate::paths::guard_write(path); // açılış -wal/-shm yazar
         if !path.is_file() {
             return Err(StoreError::Missing(path.to_path_buf()));
         }

@@ -4,7 +4,6 @@
 //! Unicode tabloları Python 3.10'dan üretildi (`unicode_tables.rs`); parite testleri her işlevi Python'a karşı sınar.
 use crate::json::{py_float_repr, Json};
 use crate::unicode_tables::{DECIMAL_ZEROS, NFKC_NETLOC_BAD, NONPRINTABLE};
-use std::fmt::Write as _;
 
 /// `str.isspace()` (Python `Py_UNICODE_ISSPACE`): Unicode boşlukları + U+001C..U+001F.
 pub fn is_space(c: char) -> bool {
@@ -76,17 +75,17 @@ pub fn repr_str(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                let _ = write!(out, "\\x{:02x}", c as u32);
+                out.push_str(&format!("\\x{:02x}", c as u32));
             }
             c if (c as u32) < 0x7f || is_printable(c) => out.push(c),
             c if (c as u32) <= 0xff => {
-                let _ = write!(out, "\\x{:02x}", c as u32);
+                out.push_str(&format!("\\x{:02x}", c as u32));
             }
             c if (c as u32) <= 0xffff => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
+                out.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => {
-                let _ = write!(out, "\\U{:08x}", c as u32);
+                out.push_str(&format!("\\U{:08x}", c as u32));
             }
         }
     }
