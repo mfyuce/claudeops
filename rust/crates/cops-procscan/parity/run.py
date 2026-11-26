@@ -145,12 +145,26 @@ def py_scan():
             "orphans": orphans, "agy_learned": sorted(AGY_WOULD_WRITE), "fallback": fallback}
 
 
+def changed_since(path, since_ns):
+    """Transkript ya da alt ajan dosyası pencere içinde yazıldı mı (usage_total anlık görüntüleri o zaman kıyaslanamaz)."""
+    files = [Path(path), *Path(path[: -len(".jsonl")], "subagents").glob("*.jsonl")]
+    return any(f.is_file() and f.stat().st_mtime_ns >= since_ns for f in files)
+
+
+# dosya sistemi zaman damgası kaba taneli olabilir: pencere 1 sn geriden başlar
+window = time.time_ns() - 1_000_000_000
 s1 = json.loads(rust("scan", "--no-cpu"))
 ps = py_scan()
 s2 = json.loads(rust("scan", "--no-cpu"))
+growing = {(r["name"], r["pid"]) for r in ps["sessions"] if r["transcript"] and changed_since(r["transcript"], window)}
+for snap in (ps, s1, s2):
+    for r in snap["sessions"]:
+        if (r["name"], r["pid"]) in growing:
+            r["usage_total"] = None
 REPORT["scan_sessions"] = cmp_rows(ps["sessions"], [s1["sessions"], s2["sessions"]], lambda r: (r["name"], r["pid"]),
                                    SESSION_FIELDS + DERIVED)
 REPORT["scan_sessions"]["python_newest_file_fallback"] = ps["fallback"]
+REPORT["scan_sessions"]["usage_total_skipped_growing"] = len(growing)
 for k in ("duplicates", "mirrors", "orphans", "agy_learned"):
     norm = lambda v: json.dumps(v, sort_keys=True)  # noqa: E731
     py_v = [list(x) for x in ps[k]] if k == "agy_learned" else ps[k]
