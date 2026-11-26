@@ -1602,6 +1602,12 @@ def mark_verify_sent(paths: Any, fids: Sequence[str], session: str, baseline: st
     return done
 
 
+def _keep_verdict_state(rec: Dict[str, Any]) -> None:
+    """Karar/dışa aktarma `state`i ezmeden ÖNCE doğrulama sonucunu `verdict_state`e alır (TBD#375 b)."""
+    if rec.get("state") in VERDICTS:
+        rec["verdict_state"] = rec["state"]
+
+
 def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "owner") -> Dict[str, Any]:
     """Sahibin bulgu kararı: approve (yalnız verified|unclear) | reject (dışa aktarılmamış ve kararsız bulgu) |
     undup (yanlışlıkla `dup` olmuş bulguyu `new`e döndürür, `dup_of` silinir)."""
@@ -1625,6 +1631,7 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
         if st not in allowed:
             return {"ok": False, "error": f"cannot {action} a finding in state {st!r} (allowed: {', '.join(allowed)})",
                     "state": st}
+        _keep_verdict_state(rec)
         rec.update(state="approved" if action == "approve" else "rejected", decided_by=by, decided_at=now)
         save_findings(p, data)
     return {"ok": True, "id": fid, "state": rec["state"]}

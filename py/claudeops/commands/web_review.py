@@ -3560,6 +3560,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
                 data = rv.load_findings(p)
                 for fid, why in stale.items():
                     if fid in data and data[fid].get("state") in states:
+                        rv._keep_verdict_state(data[fid])
                         data[fid].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rv.save_findings(p, data)
             rows = [r for r in rows if r["id"] not in stale]
@@ -3581,6 +3582,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
         data = rv.load_findings(p)
         for fid in ids:
             if fid in data and data[fid].get("state") in states:
+                rv._keep_verdict_state(data[fid])
                 data[fid].update(state="exported", exported_to=target, exported_at=t)
                 if by:
                     data[fid]["exported_by"] = by
@@ -3628,6 +3630,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
             chk, chk_root = rv.row_in_repo(r, rv.export_root(r, project, cwd, project_cwd), cwd)
             why = rv.stale_reason(chk, chk_root)
             if why:
+                rv._keep_verdict_state(data[r["id"]])
                 data[r["id"]].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rows.remove(r)
                 dropped = True
@@ -3675,6 +3678,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 fid = r["id"]
                 if fid not in w:
                     already.append(fid)
+                rv._keep_verdict_state(data[fid])
                 data[fid].update(state="exported", exported_to=target, exported_at=t)
                 if by:
                     data[fid]["exported_by"] = by
