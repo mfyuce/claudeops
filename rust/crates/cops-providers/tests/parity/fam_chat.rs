@@ -277,8 +277,8 @@ fn claude_divergences(b: &mut Build<'_>) {
         ("sayi-satir", "5".to_string()),
         ("null-satir", "null".to_string()),
     ] {
-        let c = b.claude(&format!("sapma-{id}"), lines(&[q.as_str(), r.as_str(), bad.as_str()]));
-        b.diverges(c, "nesne olmayan satır: Python `d.get` istisnası tüm geçmişi düşürür, Rust satırı atlar", ok.clone());
+        let c = b.claude(&format!("sekil-{id}"), lines(&[q.as_str(), r.as_str(), bad.as_str()]));
+        b.agrees(c, ok.clone());
     }
     for (id, bad) in [
         ("mesaj-null", r#"{"type":"user","message":null}"#),
@@ -286,37 +286,35 @@ fn claude_divergences(b: &mut Build<'_>) {
         ("mesaj-dizi", r#"{"type":"user","message":[1]}"#),
         ("ozet-mesaj-null", r#"{"type":"user","isCompactSummary":true,"message":null}"#),
     ] {
-        let c = b.claude(&format!("sapma-{id}"), lines(&[q.as_str(), bad, r.as_str()]));
-        b.diverges(c, "nesne olmayan `message`: Python istisnası, Rust satırı atlar", ok.clone());
+        let c = b.claude(&format!("sekil-{id}"), lines(&[q.as_str(), bad, r.as_str()]));
+        b.agrees(c, ok.clone());
     }
     for (id, v) in [("sayi", "5"), ("sozluk", r#"{"a":1}"#), ("true", "true")] {
         let bad = format!(r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":{v}}},{{"type":"text","text":"cevap"}}]}}}}"#);
-        let c = b.claude(&format!("sapma-metin-degil-{id}"), lines(&[q.as_str(), bad.as_str()]));
-        b.diverges(c, "metin olmayan `text`: Python `join` TypeError, Rust bloğu atlar", ok.clone());
+        let c = b.claude(&format!("sekil-metin-degil-{id}"), lines(&[q.as_str(), bad.as_str()]));
+        b.agrees(c, ok.clone());
     }
     let meta = r#"{"type":"system","subtype":"compact_boundary","compactMetadata":"x"}"#;
-    let c = b.claude("sapma-meta-metin", lines(&[q.as_str(), r.as_str(), meta]));
-    b.diverges(
-        c,
-        "nesne olmayan `compactMetadata`: Python istisnası, Rust boş meta",
-        json!({"full_history": turns(&[("user", "soru"), ("assistant", "cevap"), ("boundary", ", ")])}),
-    );
+    let c = b.claude("sekil-meta-metin", lines(&[q.as_str(), r.as_str(), meta]));
+    b.agrees(c, json!({"full_history": turns(&[("user", "soru"), ("assistant", "cevap"), ("boundary", ", ")])}));
     // bozuk UTF-8: yazım sürerken çok baytlı karakterin ortasında kesilen dosya
     let mut cut = lines(&[q.as_str(), r.as_str()]).into_bytes();
     cut.extend_from_slice(b"{\"type\":\"assistant\",\"message\":{\"content\":\"\xc4");
-    let c = b.claude("sapma-utf8-kesik", cut);
+    let c = b.claude("sekil-utf8-kesik", cut);
     b.agrees(c, ok.clone());
     let mut mid = format!("{q}\n").into_bytes();
     mid.extend_from_slice(b"\xff\xfe\n");
     mid.extend_from_slice(format!("{r}\n").as_bytes());
-    let c = b.claude("sapma-utf8-orta", mid);
+    let c = b.claude("sekil-utf8-orta", mid);
     b.agrees(c, ok.clone());
     let deep = format!("{{\"type\":\"x\",\"d\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
-    let c = b.claude("sapma-derin", lines(&[q.as_str(), r.as_str(), deep.as_str()]));
-    b.diverges(c, "çok derin satır: Python `RecursionError`, Rust satırı atlar", ok.clone());
+    let c = b.claude("sekil-derin", lines(&[q.as_str(), r.as_str(), deep.as_str()]));
+    b.agrees(c, ok.clone());
     let huge = format!("{{\"type\":\"x\",\"n\":{}}}", "9".repeat(5000));
-    let c = b.claude("sapma-dev-sayi", lines(&[q.as_str(), r.as_str(), huge.as_str()]));
-    b.diverges(c, "4300+ basamaklı sayı: Python `ValueError`, Rust satırı atlar", ok);
+    let c = b.claude("sekil-dev-sayi", lines(&[q.as_str(), r.as_str(), huge.as_str()]));
+    b.agrees(c, ok.clone());
+    let c = b.claude("mesaj-son-asistan", lines(&[q.as_str(), r.as_str(), r#"{"type":"assistant","message":5}"#]));
+    b.agrees(c, json!({"last_exchange": {"user": "soru", "assistant": ""}}));
     let lone = r#"{"type":"assistant","message":{"content":"yarım \ud83d"}}"#;
     let c = b.claude("sapma-vekil", lines(&[q.as_str(), lone]));
     b.diverges(
@@ -423,15 +421,15 @@ fn codex_cases(b: &mut Build<'_>) {
         ("payload-null", r#"{"type":"response_item","payload":null}"#),
         ("payload-metin", r#"{"type":"response_item","payload":"x"}"#),
     ] {
-        let c = b.codex(&format!("sapma-{id}"), lines(&[q.as_str(), r.as_str(), bad]));
-        b.diverges(c, "nesne olmayan satır/`payload`: Python istisnası, Rust satırı atlar", ok.clone());
+        let c = b.codex(&format!("sekil-{id}"), lines(&[q.as_str(), r.as_str(), bad]));
+        b.agrees(c, ok.clone());
     }
     let bad = r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":7},{"type":"output_text","text":"cevap"}]}}"#;
-    let c = b.codex("sapma-metin-degil", lines(&[q.as_str(), bad]));
-    b.diverges(c, "metin olmayan `text`: Python `join` TypeError, Rust bloğu atlar", ok.clone());
+    let c = b.codex("sekil-metin-degil", lines(&[q.as_str(), bad]));
+    b.agrees(c, ok.clone());
     let mut cut = body.clone().into_bytes();
     cut.extend_from_slice(b"{\"x\":\"\xe2\x82");
-    let c = b.codex("sapma-utf8", cut);
+    let c = b.codex("utf8", cut);
     b.agrees(c, ok);
     // okunamayan son satır: son rol bilinmiyor; geride kalan okunamayan satır rolü gizlemez
     for (id, tail, role) in [
@@ -575,8 +573,8 @@ fn ucli_cases(b: &mut Build<'_>) {
     let c = b.ucli("utf8", bad);
     b.agrees(c, json!({"full_history": null, "last_exchange": null, "read_chat_history": null}));
     let deep = format!("{{\"role\":\"x\",\"content\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
-    let c = b.ucli("sapma-derin", lines(&[user("a"), deep]));
-    b.diverges(c, "çok derin satır: Python `RecursionError`, Rust None", json!({"full_history": null}));
+    let c = b.ucli("derin", lines(&[user("a"), deep]));
+    b.agrees(c, json!({"full_history": null}));
     let huge = format!("{{\"role\":\"x\",\"content\":{}}}", "9".repeat(5000));
     let c = b.ucli("dev-sayi", lines(&[user("a"), huge]));
     b.agrees(c, json!({"full_history": null}));

@@ -133,7 +133,13 @@ def _codex_text(content) -> str:
         return ""
     parts = [b.get("text", "") for b in content
              if isinstance(b, dict) and b.get("type") in ("input_text", "output_text")]
-    return "\n\n".join(p for p in parts if p)
+    return "\n\n".join(p for p in parts if isinstance(p, str) and p)
+
+
+def _codex_item(row: dict) -> dict:
+    """`response_item` satırının `payload` nesnesi; başka satırda ya da nesne olmayan `payload`da boş sözlük."""
+    payload = row.get("payload") if row.get("type") == "response_item" else None
+    return payload if isinstance(payload, dict) else {}
 
 
 def _is_real_codex_user_text(text: str) -> bool:
@@ -354,9 +360,10 @@ class CodexProvider(CliProvider):
                         out.append({})          # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
-                        out.append(json.loads(raw))
-                    except json.JSONDecodeError:
+                        row = json.loads(raw)
+                    except (ValueError, RecursionError):
                         continue
+                    out.append(row if isinstance(row, dict) else {})
         except OSError:
             return []
         return out
@@ -403,7 +410,7 @@ class CodexProvider(CliProvider):
         ai_text = ""
         ai_idx: Optional[int] = None
         for i in range(len(lines) - 1, -1, -1):
-            p = lines[i].get("payload", {}) if lines[i].get("type") == "response_item" else {}
+            p = _codex_item(lines[i])
             if p.get("type") == "message" and p.get("role") == "assistant":
                 ai_text = _codex_text(p.get("content"))
                 ai_idx = i
@@ -412,7 +419,7 @@ class CodexProvider(CliProvider):
             return empty
         user_text = ""
         for i in range(ai_idx - 1, -1, -1):
-            p = lines[i].get("payload", {}) if lines[i].get("type") == "response_item" else {}
+            p = _codex_item(lines[i])
             if p.get("type") == "message" and p.get("role") == "user":
                 text = _codex_text(p.get("content"))
                 if _is_real_codex_user_text(text):
@@ -425,9 +432,7 @@ class CodexProvider(CliProvider):
         # boş-metin hariç) — SADECE SONUNCUYU almak yerine sırayla HEPSİNİ biriktirir.
         out: List[Dict[str, str]] = []
         for d in self._transcript_lines(cwd, sid):
-            if d.get("type") != "response_item":
-                continue
-            p = d.get("payload", {})
+            p = _codex_item(d)
             if p.get("type") != "message":
                 continue
             role = p.get("role")

@@ -5,9 +5,8 @@
 //! Sözleşme (Python gibi): `None` = bu CLI'da sohbet görünümü yok ya da dosya okunamaz (ucli); boş liste / boş çift =
 //! destekleniyor ama henüz mesaj yok.
 //!
-//! İki tarafta da claude/codex'te bozuk UTF-8 yalnız o satırı atlatır; ucli'de dosya okunamaz (`None`) sayılır.
-//! Python'dan bilinen sapmalar (parite `chat-sapma-`): claude/codex'te nesne olmayan satır ya da alan ve metin olmayan
-//! `text` Python'da istisnadır; burada yalnız o satır/blok atlanır.
+//! İki tarafta da claude/codex'te bozuk UTF-8, nesne olmayan satır ya da alan ve metin olmayan `text` yalnız o
+//! satırı/bloğu atlatır; ucli'de bozuk bayt ya da ayrışmayan satır dosyayı okunamaz (`None`) yapar.
 //! Eşlenmemiş vekil kaçışı U+FFFD olur. Dosya okumasına boyut sınırı YOKTUR (Python gibi).
 
 use crate::live::{Live, SqlCell};

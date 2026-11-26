@@ -122,6 +122,62 @@ class UcliHalfLineTest(Base):
         self.assertEqual(p.full_history(str(self.root), "s")[-1], {"role": "user", "text": "yeni"})
         self.assertEqual(p.last_message_role(str(self.root), "s"), "user")
 
+class BadShapeTest(Base):
+    DEEP = '{"type":"x","d":' + "[" * 100000 + "]" * 100000 + "}"
+    HUGE = '{"type":"x","n":' + "9" * 5000 + "}"
+
+    def check(self, make, *rows, history=PAIR, exchange=EXCHANGE):
+        p = make(*rows)
+        self.assertEqual(p.full_history("/x", "s"), history)
+        self.assertEqual(p.last_exchange("/x", "s"), exchange)
+
+    def test_unexpected_lines_are_skipped(self):
+        for make, q, a in self.pairs():
+            for bad in ("[1,2]", '"x"', "5", "null", "true", self.DEEP, self.HUGE):
+                with self.subTest(cli=make.__name__, bad=bad[:30]):
+                    self.check(make, q, a, bad)
+
+    def test_non_object_tail_leaves_the_last_role_unknown(self):
+        for make, q, _a in self.pairs():
+            with self.subTest(cli=make.__name__):
+                self.assertIsNone(make(q, "[1]").last_message_role("/x", "s"))
+                self.assertEqual(make("[1]", q).last_message_role("/x", "s"), "user")
+
+    def test_claude_non_object_message_is_skipped(self):
+        q, a = c_row("user", "soru"), c_row("assistant", [{"type": "text", "text": "cevap"}])
+        for bad in ('{"type":"user","message":null}', '{"type":"user","message":"x"}', '{"type":"user","message":[1]}',
+                    '{"type":"user","isCompactSummary":true,"message":null}'):
+            with self.subTest(bad=bad):
+                self.check(self.claude, q, bad, a)
+        # son asistan satırının `message`i bozuksa yanıt boş: önceki yanıt güncel yanıt diye sunulmaz
+        self.check(self.claude, q, a, '{"type":"assistant","message":5}',
+                   exchange={"user": "soru", "assistant": ""})
+
+    def test_non_text_block_is_skipped(self):
+        for value in (5, {"a": 1}, True, ["x"]):
+            with self.subTest(value=value):
+                blocks = [{"type": "text", "text": value}, {"type": "text", "text": "cevap"}]
+                self.check(self.claude, c_row("user", "soru"), c_row("assistant", blocks))
+                row = json.dumps({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [
+                    {"type": "output_text", "text": value}, {"type": "output_text", "text": "cevap"}]}})
+                self.check(self.codex, x_row("user", "soru"), row)
+
+    def test_claude_non_object_compact_metadata(self):
+        meta = '{"type":"system","subtype":"compact_boundary","compactMetadata":"x"}'
+        p = self.claude(c_row("user", "soru"), meta)
+        self.assertEqual(p.full_history("/x", "s")[-1], {"role": "boundary", "text": ", "})
+
+    def test_codex_non_object_payload_is_skipped(self):
+        for bad in ('{"type":"response_item","payload":null}', '{"type":"response_item","payload":"x"}',
+                    '{"type":"response_item","payload":[1]}'):
+            with self.subTest(bad=bad):
+                self.check(self.codex, x_row("user", "soru"), bad, x_row("assistant", "cevap"), bad)
+
+    def test_ucli_deep_or_huge_line_means_unreadable(self):
+        for bad in (self.DEEP, self.HUGE):
+            with self.subTest(bad=bad[:30]):
+                self.assertIsNone(self.ucli((bad + "\n").encode()).full_history(str(self.root), "s"))
+
 
 if __name__ == "__main__":
     unittest.main()

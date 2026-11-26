@@ -427,7 +427,7 @@ def _read_turns(cwd: str, session: str):
                     if not line:
                         continue
                     turn = json.loads(line)
-                except ValueError:
+                except (ValueError, RecursionError):
                     return (None, False) if raw.endswith("\n") else (turns, True)
                 if not isinstance(turn, dict) or "role" not in turn:
                     continue

@@ -457,8 +457,14 @@ def _extract_text(content) -> str:
         return content
     if isinstance(content, list):
         parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-        return "\n\n".join(p for p in parts if p)
+        return "\n\n".join(p for p in parts if isinstance(p, str) and p)
     return ""
+
+
+def _row_content(row: Dict[str, Any]):
+    """Satırın `message.content`i; `message` nesne değilse None."""
+    msg = row.get("message")
+    return msg.get("content") if isinstance(msg, dict) else None
 
 
 def _is_real_user_text(content) -> bool:
@@ -1088,9 +1094,10 @@ class ClaudeProvider(CliProvider):
                         lines.append({})        # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
-                        lines.append(json.loads(raw))
-                    except json.JSONDecodeError:
+                        row = json.loads(raw)
+                    except (ValueError, RecursionError):     # bozuk, aşırı derin ya da dev sayılı satır
                         continue
+                    lines.append(row if isinstance(row, dict) else {})
             return lines
         except OSError:
             return []
@@ -1120,13 +1127,13 @@ class ClaudeProvider(CliProvider):
                 break
         if ai is None:
             return empty
-        assistant_text = _extract_text(lines[ai].get("message", {}).get("content"))
+        assistant_text = _extract_text(_row_content(lines[ai]))
         user_text = ""
         for i in range(ai - 1, -1, -1):
             d = lines[i]
             if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta"):
                 continue
-            content = d.get("message", {}).get("content")
+            content = _row_content(d)
             if _is_real_user_text(content):
                 user_text = _extract_text(content)
                 break
@@ -1147,19 +1154,21 @@ class ClaudeProvider(CliProvider):
             if t == "system" and d.get("subtype") == "compact_boundary":
                 # Compaction öncesi mesajlar dosyada durur (arşiv yok, TBD#89): sınır yalnız
                 # bir işaret; "text" = "tetikleyen, öncesi token" (arayüz etiketi kendi diliyle).
-                meta = d.get("compactMetadata") or {}
+                meta = d.get("compactMetadata")
+                if not isinstance(meta, dict):
+                    meta = {}
                 out.append({"role": "boundary",
                             "text": f"{meta.get('trigger', '')}, {meta.get('preTokens', '')}"})
             elif t == "user" and d.get("isCompactSummary") and not d.get("isSidechain"):
-                text = _extract_text(d.get("message", {}).get("content"))
+                text = _extract_text(_row_content(d))
                 if text:
                     out.append({"role": "summary", "text": text})
             elif t == "assistant" and not d.get("isSidechain"):
-                text = _extract_text(d.get("message", {}).get("content"))
+                text = _extract_text(_row_content(d))
                 if text:
                     out.append({"role": "assistant", "text": text})
             elif t == "user" and not d.get("isSidechain") and not d.get("isMeta"):
-                content = d.get("message", {}).get("content")
+                content = _row_content(d)
                 if _is_real_user_text(content):
                     text = _extract_text(content)
                     if text:
