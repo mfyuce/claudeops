@@ -549,5 +549,28 @@ class LongLineTest(unittest.TestCase):
         self.assertTrue(needs_ho.handover_done(str(p)))
 
 
+class DiagSkippedTest(unittest.TestCase):
+    """Birleştirme kapısı: `_skipped` sayaçları hiçbir yerde görünmüyordu. Tanılama (`/api/status` `diag`) tek bir `skipped`
+    sözlüğü taşır (yeni uç yok; anahtarlar modüller arasında çakışmaz)."""
+
+    def test_diag_carries_all_skip_counters(self):
+        from claudeops.commands import web
+        for mod in (discovery, needs_ho, su):
+            _reset(mod)
+            self.addCleanup(_reset, mod)
+        discovery._skipped["session_file"] += 2
+        needs_ho._skipped["transcript_row"] += 3
+        needs_ho._skipped["transcript_line_too_long"] += 1
+        su._skipped["usage_row"] += 4
+        with mock.patch.object(web, "find_sessions", return_value=[]):
+            got = web._diag_status([])["skipped"]
+        self.assertEqual(got, {"session_file": 2, "transcript_row": 3, "transcript_line_too_long": 1, "usage_row": 4})
+        _reset(discovery)
+        _reset(needs_ho)
+        _reset(su)
+        with mock.patch.object(web, "find_sessions", return_value=[]):
+            self.assertEqual(web._diag_status([])["skipped"], {})
+
+
 if __name__ == "__main__":
     unittest.main()

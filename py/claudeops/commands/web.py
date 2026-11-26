@@ -1174,9 +1174,20 @@ def _diag_status(live: Optional[list] = None) -> dict:
     except Exception:
         orphans = None
 
+    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; burada görünür.
+    # Anahtarlar modüller arasında çakışmaz (discovery.session_file, needs_ho.transcript_*, session_usage.usage_*).
+    skipped: Dict[str, int] = {}
+    try:
+        from .. import discovery as _disc, needs_ho as _nho, session_usage as _su
+        for counter in (_disc._skipped, _nho._skipped, _su._skipped):
+            skipped.update({k: int(v) for k, v in counter.items() if v})
+    except Exception:
+        skipped = {}
+
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
         "orphans": orphans,
+        "skipped": skipped,
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,
