@@ -86,10 +86,10 @@ Düzeltilmeyen: yok. Not: Python `_ancestors` (alt kabuk katlama) başka kullan�
 - Kod okuması (yazım yolları): `discovery`/`providers` keşif yolunda tek yazım `agy_provider._remember_agy_sid` (koşucuda yazmayan kayıtçıyla değişir, Rust `agy_learned` ile karşılaştırılır); `session_usage` yalnız bellek önbelleği; `needs_ho` yalnız `repo_baseline_set` (fikstürde geçici dizine bilerek çağrılır); `statedocs.read_json` `dual` kipte DB'ye yazabilir: DB geçici dizindedir.
 - `gen_golden.py`: altın vektörleri üretir (`tests/golden/`, `.gitattributes` `-text`: CRLF ve bozuk UTF-8 fikstürleri bayt bayt korunur).
 - `run.py` (geçici dizin her çıkışta `finally` ile silinir; `KNOWN_DEVIATIONS` raporda listelenir): `list` (JSON + tablo), `scan` (oturum alanları + türetilmiş alanlar + mirrors/duplicates/orphans/agy_learned), gerçek transkriptlerde usage ve transkript işaretleri, fikstür depolarında ve canlı oturum cwd'lerinde needs_ho. Rust Python'dan önce ve sonra koşar; fark iki görüntüde de varsa kalıcı. Çıktı yalnız sayı ve alan adı. Koşum: `python3 -I rust/crates/cops-procscan/parity/run.py`.
-- Son koşu (26 Kas gece, TBD#365 sonrası): çıkış 0, `fail` boş. Önceki iki koşuda tek kalıcı fark `scan` `usage_total` idi: Python kullanımı iki Rust görüntüsünün arasında okur, o sırada yazılan transkript büyürse değer ikisinden de farklı çıkar. Koşucu artık pencere içinde değişen transkriptlerde yalnız `usage_total`ı kıyaslamıyor ve sayısını yazıyor (`usage_total_skipped_growing`, bu koşuda 6); değişmeyen satırlar ve `usage_real` kıyaslanmaya devam ediyor.
-  - `list --json --no-cpu`: Python 29, Rust 29/29 satır, kalıcı fark 0; tablo bir Rust görüntüsüyle aynı (33 satır).
-  - `scan`: mirrors (5), duplicates, orphans, agy_learned eşit; Python en-yeni-dosya düşüşü 0; Python'un engellenen yazımı 0.
-  - transkript işaretleri: 123 x 3 fark 0. needs_ho: 1276 fikstür durumu x 4 sinyal fark 0 (14 bilinen `nan_line`), canlı 29 cwd x 4 sinyal fark 0.
+- Son koşu (26 Kas 21:00, birleştirme kapısı turu ve origin/main merge'ü sonrası): çıkış 0, `fail` boş. Büyüyen transkriptte `usage_total` kıyaslanmaz, sayılır (`usage_total_skipped_growing` 4). `usage_total`/`usage` artık `skipped_rows`u da kıyaslar (Python: önbellek temizlendiğinden beri sayaç artışı).
+  - `list --json --no-cpu`: Python 30, Rust 30/30 satır, kalıcı fark 0; tablo bir Rust görüntüsüyle aynı (34 satır).
+  - `scan`: oturum alanları kalıcı fark 0; mirrors (5), duplicates, orphans, agy_learned eşit; `python_newest_file_fallback` 0 (sid varken tahmin yok), `python_guess_without_sid` 0; Python'un engellenen yazımı 0.
+  - usage: 123 gerçek transkript fark 0. Transkript işaretleri 123 x 3 fark 0. needs_ho: 1276 fikstür durumu x 4 sinyal fark 0 (14 bilinen `nan_line`), canlı 30 cwd x 4 sinyal fark 0.
   - Koşucu değişikliği: fikstür baseline'ı artık Python ad/içerik kuralıyla (`_repo_key`, `rev-parse HEAD`) düz yazılıyor; `repo_baseline_set`in `atomic_write_text`i (`os.fdopen`) pyenv korumasına takılıyordu, koruma gevşetilmedi.
 
 ## Test eşlemesi (Python testi -> Rust)
@@ -108,7 +108,7 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 | test_triage_fixes_20261107 (needs_ho) | `needs_ho::tests::only_assistant_rows_carry_the_marker`, altın `transcripts` |
 | test_review_fixes_2026_11_04 (committed_since) | `needs_ho::tests::iso_times_compare_as_instants`, altın `committed_after`, `needs_ho_git` |
 | test_session_usage | `fake_proc::usage_dedups_subagents_and_increments`, `usage::tests::*` (UsageCache, tahliye sırası, bozuk satır sayacı, anahtar eşitliği, fmt_tokens), altın `usage` |
-| test_procscan_tbd365 (TBD#365) | `fake_proc::bad_session_files_are_skipped_and_counted`, `other_users_processes_are_never_read`, `transcript_requires_exact_sid`, `needs_ho::tests::broken_input_is_skipped_and_counted`, `needs_ho_decides_with_bad_rows`, `baseline_is_written_atomically`, `usage::tests::bad_row_is_skipped_and_counted`, `spawn_failure_does_not_lock_the_path`, `file_cache_evicts_in_insertion_order`, altın `transcripts`/`usage`; `day_usage` kapsam dışı (T7) |
+| test_procscan_tbd365 (TBD#365 + birleştirme kapısı) | `fake_proc::overflowing_pids_are_skipped_and_counted`, `own_proc_never_returns_content_of_a_replaced_or_foreign_process`, `usage::tests::long_lines_are_skipped_and_counted`, `overflowing_count_row_does_not_blank_total`, `needs_ho::tests::long_lines_are_skipped_and_counted`, `fake_proc::bad_session_files_are_skipped_and_counted`, `other_users_processes_are_never_read`, `transcript_requires_exact_sid`, `needs_ho::tests::broken_input_is_skipped_and_counted`, `needs_ho_decides_with_bad_rows`, `baseline_is_written_atomically`, `usage::tests::bad_row_is_skipped_and_counted`, `spawn_failure_does_not_lock_the_path`, `file_cache_evicts_in_insertion_order`, altın `transcripts`/`usage`; `day_usage` kapsam dışı (T7) |
 | test_usage_cli | `usage_for_path`/`fmt_tokens` (yukarıda), `fake_proc::probe_usage_total_claude_exact_sid_without_blocking`; CLI tablosu kapsam dışı (T6) |
 | test_proc07_io_ucli_not_fleet (matches_proc) | `providers::tests::detect`, altın `detect_info`; `_io_ask` kapsam dışı (web) |
 | test_web_ucli_flags | `fake_proc::ucli_flags`, `ucli_flags_all_set`, `ucli_flags_lost_process_is_none_and_not_cached`, `mirrors_terminal_and_ucli_flag_edges`, `py::tests::python_string_rules` (`float`); `tools` alanı ve pid önbelleği kapsam dışı (T1) |
@@ -122,7 +122,7 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 - [ ] Sohbet geçmişi okumanın izi: T1 varsayıldı ("Kapsam" bölümü), cops onayı bekliyor.
 - [x] TBD#365: "Python hataları" maddeleri iki dilde düzeltildi (yukarıda; Python `fix:` commit'i 6ae5da3).
 - [x] Parite koşucusu: büyüyen transkriptte `scan` `usage_total` yanlış farkı kapatıldı (pencere içinde değişen dosya sayılıp atlanır).
-- [ ] Parite koşucusu: rsgate'in `cops-parity`si (`rs/gate`) main'e birleşince `parity/run.py` yerine ona geçilecek (sahip, TBD#365 cevabı). O zamana dek kapı `parity/run.py`.
+- [ ] Parite koşucusu: rsgate'in `cops-parity`si main'e birleşti (26 Kas gece, bu dala merge edildi); `parity/run.py`nin ona taşınması açık (sahip, TBD#365 cevabı). Taşınana dek kapı `parity/run.py`.
 - [ ] `ProcId` doğrulamasını kullanan kill yolu T4'te (crate yalnız tipi ve `verify`ı sağlar).
 - [ ] Tick içi tarama maliyeti T1'de `/api/status`a bağlanınca ölçülmeli (CPU kipi +0,3 sn bekler).
 - [ ] `Config::from_env` `$HOME`/`$CLAUDEOPS_DIR`i doğrudan okur; `cops-state` birleşince `state_dir()` oradan alınmalı (H14).
