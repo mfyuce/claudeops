@@ -211,9 +211,13 @@ pub fn py_pattern(pattern: &str) -> String {
     out
 }
 
+/// Python `re`de geri izleme sınırı yoktur; `\b` çevirisi her konumda geri izleme harcadığından `fancy_regex`in
+/// varsayılanı (1e6) birkaç on bin karakterlik metinde aşılırdı. Sınır yalnız patolojik girdiye karşı tutulur.
+const BACKTRACK_LIMIT: usize = 1 << 28;
+
 /// `py_pattern` + derleme. Hata yalnız desteklenmeyen desende olur (testler her kullanılan deseni derler).
 pub fn py_regex(pattern: &str) -> Option<fancy_regex::Regex> {
-    fancy_regex::Regex::new(&py_pattern(pattern)).ok()
+    fancy_regex::RegexBuilder::new(&py_pattern(pattern)).backtrack_limit(BACKTRACK_LIMIT).build().ok()
 }
 
 /// `re.search(...)` var mı (derlenememiş desen ya da geri izleme sınırı = yok).
@@ -313,6 +317,53 @@ pub fn to_int(v: &Value) -> Option<i64> {
             ascii.parse().ok()
         }
         _ => None,
+    }
+}
+
+/// `a // b` (float, `b != 0`): CPython `float_divmod` ile aynı yuvarlama.
+pub fn floor_div(a: f64, b: f64) -> f64 {
+    let m = a % b;
+    let mut div = (a - m) / b;
+    if m != 0.0 && ((b < 0.0) != (m < 0.0)) {
+        div -= 1.0;
+    }
+    if div == 0.0 {
+        return 0.0 * (a / b);
+    }
+    let floor = div.floor();
+    if div - floor > 0.5 {
+        floor + 1.0
+    } else {
+        floor
+    }
+}
+
+/// `format(x, "g")` (6 anlamlı basamak, sondaki sıfırlar atılır).
+pub fn format_g(x: f64) -> String {
+    if x.is_nan() {
+        return "nan".to_string();
+    }
+    if x.is_infinite() {
+        return if x < 0.0 { "-inf" } else { "inf" }.to_string();
+    }
+    let sci = format!("{x:.5e}");
+    let Some((mantissa, exp)) = sci.split_once('e') else {
+        return sci;
+    };
+    let exp: i32 = exp.parse().unwrap_or(0);
+    let trim = |s: &str| {
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    if (-4..6).contains(&exp) {
+        let digits = usize::try_from(5 - exp).unwrap_or(0);
+        trim(&format!("{x:.digits$}"))
+    } else {
+        let sign = if exp < 0 { '-' } else { '+' };
+        format!("{}e{sign}{:02}", trim(mantissa), exp.unsigned_abs())
     }
 }
 
@@ -535,5 +586,40 @@ mod tests {
         assert!(!truthy(&json!(0.0)) && !truthy(&json!({})) && truthy(&json!("0")));
         assert_eq!(path_join("/a/", "b"), "/a/b");
         assert_eq!(path_join("/a", "/b"), "/b");
+    }
+
+    #[test]
+    fn float_format_and_floor_division_follow_python() {
+        for (x, want) in [
+            (0.0, "0"),
+            (1.3, "1.3"),
+            (2.0, "2"),
+            (1.0, "1"),
+            (100000.0, "100000"),
+            (999999.0, "999999"),
+            (999999.5, "1e+06"),
+            (1000000.0, "1e+06"),
+            (1234567.0, "1.23457e+06"),
+            (0.0001, "0.0001"),
+            (1.0e-05, "1e-05"),
+            (1.0e-07, "1e-07"),
+            (0.30000000000000004, "0.3"),
+            (123456.5, "123456"),
+            (2.5e+20, "2.5e+20"),
+            (-1.5, "-1.5"),
+        ] {
+            assert_eq!(format_g(x), want, "{x}");
+        }
+        for (a, b, want) in [
+            (7.0, 60.0, 0.0),
+            (1800.0, 60.0, 30.0),
+            (3599.9999999, 60.0, 59.0),
+            (-1.0, 60.0, -1.0),
+            (0.0, 60.0, 0.0),
+            (1.0e+17, 60.0, 1666666666666666.0),
+            (5.5, -2.0, -3.0),
+        ] {
+            assert_eq!(floor_div(a, b), want, "{a} // {b}");
+        }
     }
 }

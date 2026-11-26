@@ -8,7 +8,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import env  # noqa: E402
 env.isolate()
-from claudeops import steward as sw  # noqa: E402
+from claudeops import steward as sw, steward_ask  # noqa: E402
 
 NOW = 1_795_700_000.5
 REAL_LOAD_QUESTIONS = sw.load_questions     # aşağıda bazı bölümler sahtesiyle değiştirir
@@ -196,7 +196,7 @@ for tok in ["", "a", "a1", "a.b", "a_b", "a-b", "²", "½", "x"]:
     add("_strong_topic", {"tok": tok})
 for _ in range(60):
     a, b = (set(sw.topic_tokens(rnd.choice(texts))) for _ in range(2))
-    b |= set(list(a)[:rnd.randint(0, 5)])
+    b |= set(sorted(a)[:rnd.randint(0, 5)])      # küme sırası süreçten sürece değişir: sıralı al
     add("topic_match", {"a": a, "b": b})
 
 
@@ -365,6 +365,278 @@ for name in ["a", "pr", "yok", "a2026"]:
     ret = sw._clear_project_state(name, st_projects)
     OUT.setdefault("_clear_project_state", []).append(json.dumps({"args": {"name": name, "projects": enc(st_projects), "state": before}, "ret": ret, "now": NOW,
         "after": {"state": enc(sw.load_state())}}, ensure_ascii=False, separators=(",", ":")))
+
+# ── grup 2: World, devir/kapatma, iş kapıları, tur maddeleri ──
+rnd = random.Random(2)
+sw._now = lambda: NOW
+G2 = ["token", "Token", "TOKENS", "token'ı", "tokenı", "bütçe", "BÜTÇE", "limit", "eşik", "bağlam", "BAĞLAM", "baglam", "context", "5", "٣", "sil", "SİL", "sıl", "silin", "silsile",
+      "silindi", "silme", "silecek", "delete", "force", "force-push", "force push", "enforce", "workforce", "install", "kurulum", "KURULUM", "kurulsun", "kuruldu", "kurulacak", "apt", "chapter",
+      "sudo", "harca", "spend", "parola", "password", "yetki", "credential", "bu oturumda", "BU OTURUMDA", "this session", "devir", "DEVİR", "devır", "yeni oturum", "handover", "new session",
+      "commit", "committed", "push", "merge", "deploy", "toparla", "wrap up", "wrap-up", "wrapup", "READY FOR HANDOVER", "ready  for\nhandover", "bitti", "BİTTİ", "bitmedi", "bitmiş", "tamam",
+      "tamamdır", "kapat", "evet", "EVET", "done", "yes", "no", "not", "değil", "hayır", "HAYIR", "hayir", "devam", "sürdür", "ama", "ancak", "fakat", "hariç", "kaldı", "KALDI", "kalan", "eksik",
+      "henüz", "but", "except", "remaining", "still", "unless", "only", "?", "araçlar yok", "araçlarım mevcut değil", "ARAÇLAR YOK", "steward_answer aracı yok", "steward_directive bulunamadı",
+      "no tools", "no matching deferred tool", "tools are unavailable", "cops-steward mcp server is not connected", "karar veremedim", "KARAR VEREMEDİM", "sürüyor", "SÜRÜYOR", "çalışıyor",
+      "bitince", "döneceğim", "hazır olunca", "arka planda", "in progress", "when it's done", "when done", "will report", "yok", "none", "n/a", "na", "sormuyorum", "soru yok", "bekliyorum",
+      "olursa", "gelirse", "yaparsa", "geçerse", "bitmezse", "varsa", "eğer", "if", "once", "after", "koşullu", "bekle", "sıradaki:", "şifre", "kimlik", "API key", "api_anahtar", "secret",
+      "giriş yap", "log in", "signup", "hesap aç", "oturum açar mısın", "2FA", "captcha", "kredi", "ücretli", "satın", "buy", "paid", "lisans", "licence", "abonelik", "ödeme", "usd", "$ 5", "€",
+      "10 TL", "fatura", "sıfırla", "wipe", "drop", "reset --hard", "geri alınamaz", "form", "formu", "formlarını", "format", "e-posta", "email", "mail", "yayın", "yayımla", "publish", "public",
+      "submit", "arxiv", "zenodo", "başvur", "editöre", "yazara", "dener misin", "sen dene", "elle dene", "telefonda", "okur musun", "okuyup", "bakar mısın", "can you test", "sahibe sor",
+      "SAHİBİNE SOR", "ask the owner", "opus", "x\u001cy", "\u001c", "é", "İ", "ı", "ſil", "toKen", "_sil", "sil_", "sil̇", ".", ":", ",", "\n", "-", "`", "  ", "STEWARD-NEXT: raporu yaz",
+      "STEWARD-NEXT: yok", "çğışöü"]
+G2S = lambda n: " ".join(rnd.choice(G2) for _ in range(rnd.randint(0, n)))
+for t in G2 + [G2S(7) for _ in range(900)]:
+    for fn in ("is_context_question", "is_wrap_up_directive", "brain_tools_missing_text", "is_conditional_note", "marker_next_work", "_ask_is_status_line", "is_readonly_job_request"):
+        key = "q" if fn == "_ask_is_status_line" else "text"
+        add(fn, {key: t})
+    add("brain_may_answer", {"q": Q("q", "p", t, routine=rnd.random() < 0.85)})
+    add("clip_words", {"text": t, "limit": rnd.choice([0, 1, 3, 8, 20, 200])})
+for t in G2:
+    for w in ("yok", "hayır", "no", "n/a", "bitti", "soru yok"):
+        add("_ask_is_status_line", {"q": f"{w} {t}"})
+for n in (69, 70, 71):
+    add("_ask_is_status_line", {"q": "yok " + "x" * (n - 4)})
+for t in ["STEWARD-NEXT: " + G2S(5) for _ in range(250)] + ["STEWARD-NEXT: " + "uzun kelime " * 40, "STEWARD-NEXT: `Yok.`"]:
+    add("marker_next_work", {"text": t})
+for t in ["İŞ İSTEĞİ (STEWARD-JOB): sql_readonly x sil", "İŞ İSTEĞİ (STEWARD-JOB): SQL_READONLY\u001cx", "İŞ İSTEĞİ (STEWARD-JOB): embed sil", "İŞ İSTEĞİ (STEWARD-JOB): ", "iş sql_readonly"]:
+    add("is_readonly_job_request", {"text": t})
+    add("brain_may_answer", {"q": Q("q", "p", t, routine=True)})
+for _ in range(500):
+    qs = [Q(f"q{i}", rnd.choice(["p", "p", "z"]), rnd.choice(["STEWARD-DONE-CONFIRMED çelişti", "başka"]), status=rnd.choice(["answered", "answered", "open"]),
+            answer=G2S(4), answered_at=rnd.choice([0.0, NOW - 5, NOW - 86399, NOW - 86400, NOW - 100]), ) for i in range(rnd.randint(0, 3))]
+    for q in qs:
+        q.created_at = rnd.choice([0.0, NOW - 50, NOW - 90000])
+    add("done_conflict_answer", {"questions": qs, "proj": "p", "now": NOW})
+for body in ["", "  ", "embed a.txt", "`embed` a", "embed", "Embed a", "a b sürüyor", "a ARKA PLANDA", "a bitince", "a when its done", "a\u001cb", "a\n\nbitince dönerim", "x" * 64, "x" * 65,
+             "e_1.2-3 f", "yok", "1a b", "embed\tdosya (in progress)"] + [rnd.choice(["embed", "ocr", "A", "`x`"]) + " " + G2S(4) for _ in range(200)]:
+    add("job_marker_verdict", {"body": body, "known_kinds": rnd.choice([None, [], ["embed"], ["ocr", 5]]), "services_registered": rnd.random() < 0.9})
+jt = sw.JOB_REQUEST_PREFIX
+for text, ans, jobs in itertools.product([jt + "embed a", "başka"], ["", "devam", "RED: kısa", "red - dosya yok çünkü silinmiş", "  Red:  on iki karakter! ", "REDDEDİLDİ uzun uzun uzun", "RED\nçok satırlı\ngerekçe burada", "RED— gerekçe yeterince uzun"],
+                                         [[], [{"project": "p", "created_at": 100.0}], [{"project": "p", "created_at": 94.9}], [{"project": "p", "created_at": "95"}], [{"project": "z", "created_at": "x"}], [{"project": None}]]):
+    add("job_request_gate", {"q": Q("q", "p", text, created_at=100.0), "answer": ans, "jobs": jobs})
+for busy, last, gap in itertools.product([None, True, False], [0.0, NOW - 89.9, NOW - 90, NOW], [90.0, 0.0, 5.0]):
+    add("directive_defer_reason", {"busy": busy, "last_directive_at": last, "now": NOW, "gap": gap})
+for _ in range(120):
+    qs = [Q(f"q{i}", rnd.choice(["", "p", "z"]), "t", source=rnd.choice(["", "p1", "z1"]), status=rnd.choice(["open", "open", "answered"])) for i in range(rnd.randint(0, 4))]
+    add("owner_pending_block", {"keys": set(rnd.sample(["", "p", "p1", "z"], rnd.randint(0, 3))), "questions": qs, "denied": {f"q{i}": 1.0 for i in rnd.sample(range(4), rnd.randint(0, 4))}})
+for prev, call, text, n, tours in itertools.product([0.0, NOW - 179, NOW - 180, NOW - 600], [None, 0.0, NOW - 600, NOW - 601], ["", "karar veremedim", "tamam"], [0, 2], [0, 1, 3]):
+    add("brain_notools_verdict", {"prev_tour": prev, "mcp": {} if call is None else {"call_at": call}, "last_text": text, "nocall": n, "cfg": C(brain_nocall_tours=tours), "now": NOW})
+
+# generic
+for m, e in itertools.product(["", "claude-opus-4", " Claude-FABLE ", "OPUS", "claude-sonnet-5-5", "gpt", "claude-", "xclaude-opus"], ["", "medium", " HIGH ", "xhigh", "max", "maxx", "hıgh"]):
+    add("is_upper_tier", {"model": m, "effort": e})
+    add("is_claude_model", {"model": m})
+    for lang in ("tr", "en"):
+        add("upper_main_text", {"project": "p", "model": m, "effort": e, "lang": lang})
+        add("upper_tier_question_text", {"project": "p", "model": m, "effort": e, "lang": lang})
+    tag = sw.upper_tier_tag("p", m, e)
+    for ans, st, src in [(" Onayla! ", "answered", "upper_model"), ("EVET..!", "answered", "upper_model"), ("onaylıyorum", "open", "upper_model"), ("yes", "answered", "x"),
+                         ("ONAYLIYORUM", "answered", "upper_model"), ("evet.\n", "answered", "upper_model"), ("evet tamam", "answered", "upper_model")]:
+        add("upper_tier_approved", {"questions": [Q("q", "p", tag + " ?", answer=ans, status=st, source=src)], "project": "p", "model": m, "effort": e})
+for role in ["", "generic", "reviewer"]:
+    add("is_generic", {"cfg": C(role=role)})
+marks = ["- ", "* ", "+ ", "1. ", "12) ", "٣. ", "-", "", "  - ", "1.", "# ", "• ", "-\t"]
+boxes = ["", "[ ] ", "[x] ", "[X]", "[✓] ", "[  ] ", "[ ]", "~~eski~~ "]
+for _ in range(250):
+    todo = rnd.choice(["\n", "\r\n", "\u001c"]).join(rnd.choice(marks) + rnd.choice(boxes) + G2S(4) + rnd.choice(["", " DONE", " BİTTİ", " bitti", " Done", "x" * 400]) for _ in range(rnd.randint(0, 12)))
+    tbd = "\n".join(rnd.choice(["", "# ", "  ## ", "- ", "• ", "-*+ "]) + rnd.choice(["TBD#1 ", "TBD ", "tbd ", ""]) + G2S(3) + rnd.choice(["", " Karar: A", " KARAR = b", " cevap : x", " ✓", " kapandı:", " KAPANDI:", " decision no"]) for _ in range(rnd.randint(0, 9)))
+    card = rnd.choice([None, {}, {"open_tbds": None}, {"open_tbds": "ab"}, {"open_tbds": [G2S(3), 5, "TBD#9 karar: evet"]}, {"open_tbds": {"k": 1}}])
+    add("generic_backlog", {"todo_text": todo, "tbd_text": tbd, "card": card})
+
+# World ve izlenen oturumlar
+PN = ["a", "ab", "mkt", "ncs", "ncs2", "kitap"]
+SN = ["", "a", "ab", "a20261126", "a20261126_2", "a_3", "ab20260101", "mkt", "mkt2", "mkt20261301", "ncs20261019", "ncs2x", "ncs2", "degnekci", "degnekci_kitap", "degnekci_x", "varaka", "varaka2", "zed", "zed1", "adhoc", "kitap"]
+
+
+def rworld(sid=None):
+    sid = sid or rnd.choice(["default", "ab"])
+    owners = {p: rnd.choice(["default", "ab", "cd", ""]) for p in rnd.sample(PN, rnd.randint(0, 5))}
+    conflicts = frozenset(rnd.sample(PN, rnd.choice([0, 0, 1, 2])))
+    return sw.World(sid=sid, owners=owners, conflicts=conflicts, brains={"degnekci": "default", **rnd.choice([{}, {"degnekci_kitap": "ab"}, {"a": "ab"}])},
+                    services=rnd.choice([{}, {"varaka": {"match": "prefix"}, "zed": {"match": "exact"}}, {"ncs": None, "mkt": {}}]), is_adhoc_owner=sid == "default",
+                    hosts={p: rnd.choice(["h1", "h2", ""]) for p in rnd.sample(PN, rnd.randint(0, 2))}, owned={p: rnd.choice(SN) for p in rnd.sample(PN, rnd.randint(0, 3))},
+                    unavailable=frozenset(rnd.sample(PN, rnd.choice([0, 0, 1]))), quota_held=frozenset(rnd.sample(PN, rnd.choice([0, 1]))))
+
+
+for _ in range(600):
+    w = rworld()
+    name, p, bp = rnd.choice(SN), rnd.choice(PN + [""]), rnd.choice([None, "", *PN, "degnekci", "varaka", "a"])
+    for meth in ("start_held", "host_of", "owner_of", "owns", "_owner_tag"):
+        add(f"World.{meth}", {"self": w, "project": p}, call=lambda: getattr(w, meth)(p))
+    for meth in ("resolve", "name_class", "project_key"):
+        add(f"World.{meth}", {"self": w, "name": name}, call=lambda: getattr(w, meth)(name))
+    for meth in ("session_class", "owned_key", "is_manual"):
+        add(f"World.{meth}", {"self": w, "name": name, "blueprint": bp}, call=lambda: getattr(w, meth)(name, bp))
+
+
+def rview(names=SN):
+    return V(rnd.choice(names), rnd.random() < 0.85, blueprint=rnd.choice([None, None, "", "a", "mkt"]), busy=rnd.choice([None, True, False, False]),
+             subagent_active=rnd.random() < 0.15, subagent_unknown=rnd.random() < 0.1,
+             last_activity=rnd.choice([0.0, NOW - 30, NOW - 59.9, NOW - 60, NOW - 599, NOW - 600, NOW - 5400, NOW + 5]),
+             started_at=rnd.choice([0.0, NOW - 299, NOW - 300, NOW - 7000]),
+             last_assistant=rnd.choice(["", "iş", "READY FOR HANDOVER", "# READY FOR HANDOVER x", "READY FOR HANDOVER demiyorum`", "a READY FOR HANDOVER", "bitti\nSTEWARD-NEXT: raporu yaz",
+                                        "STEWARD-NEXT: yok", "STEWARD-NEXT: veri gelirse çiz", "soru\nSTEWARD-ASK: hangisi?\nSTEWARD-DETAIL: d", "STEWARD-ASK: yok\nSTEWARD-ROUTINE: x?\nSTEWARD-IDEA: f",
+                                        "STEWARD-BLOCKED: pdf\nSTEWARD-JOB: embed a\nSTEWARD-LESSON: abc", "ok"]),
+             live_model=rnd.choice(["", "claude-opus-4", "claude-sonnet-5-5", "deepseek"]), live_effort=rnd.choice(["", "high", "medium"]))
+
+
+def rproj():
+    return {p: P(p, phase=rnd.choice(["planned", "planned", "planning", "done", "paused", "idea"]), model=rnd.choice(["", "", "claude-opus-4"]), effort=rnd.choice(["", "high"]),
+                 notes=rnd.choice(["", "", "sahibe sor", "BEKLEME"])) for p in rnd.sample(PN, rnd.randint(0, 5))}
+
+
+for _ in range(400):
+    w = rworld()
+    views = [rview() for _ in range(rnd.randint(0, 6))]
+    projects = rproj()
+    cfg = C(brain_name=rnd.choice(["degnekci", "a", ""]))
+    name = rnd.choice(SN)
+    wo = rnd.choice([None, w])
+    add("_sibling_running", {"views": views, "name": name, "projects": projects, "cfg": cfg, "world": wo})
+    add("update_owned", {"owned": {p: rnd.choice(SN) for p in rnd.sample(PN, rnd.randint(0, 2))}, "views": views, "world": w, "projects": projects, "now": NOW, "seeding": rnd.random() < 0.5})
+    add("upper_main_views", {"views": views, "projects": projects, "cfg": C(role=rnd.choice(["", "reviewer"]), planned_effort=rnd.choice(["", "max"])), "world": wo})
+    add("pick_delivery_view", {"views": views, "project": rnd.choice(PN), "source": rnd.choice(["", "a", "a20261126"])})
+    if views:
+        add("holds_total_slot", {"v": views[0], "now": NOW, "last_directive_at": rnd.choice([0.0, NOW - 10, NOW - 300])})
+    rows = [{k: v for k, v in {"name": rnd.choice(SN + [None, 5]), "cli": rnd.choice(["claude", "shell", None]), "host": rnd.choice([None, "", "local", " h1 ", "h2", "h3", 0]),
+                               "instance": rnd.choice([True, False, None, 1]), "blueprint": rnd.choice([None, "a", "mkt", "ncs", "", 3])}.items() if rnd.random() < 0.85} for _ in range(rnd.randint(0, 6))]
+    add("select_rows", {"rows": rows, "world": w, "fresh_hosts": rnd.choice([[], ["h1"], ["h1", "h2"]])})
+    entries = [[rnd.choice(PN), rnd.choice(["directive", "nudge"])] for _ in range(rnd.randint(0, 4))]
+    taken = set(rnd.sample(SN, rnd.choice([0, 2])))
+    state = rnd.choice([{}, {"last_directive_at": None, "x": 1}, {"x": 1, "last_directive_at": {"a": 1.0}, "z": 2}])
+    limit = rnd.choice([0, 1, 2, 9])
+    mine = views + [V(p, True, busy=False) for p in rnd.sample(PN, 2)]
+    add("plan_deliveries", {"entries": entries, "mine": mine, "taken": taken, "state": state, "now": NOW, "limit": limit},
+        call=lambda: sw.plan_deliveries([(p, lambda v, p=p, k=k: sw.Action(k, v.name, p)) for p, k in entries], mine, taken, state, NOW, limit))
+
+for ts in ["2026-11-10T13:19:29", "2026-1-5T1:2:3", "2026-02-30T00:00:00", "2024-02-29T00:00:00", "2026-11-10t13:19:29", "2026-11-10T13:19:60", "2026-11-10T13:19:61", "2026-11-10T13:19:62",
+           "0000-01-01T00:00:00", "2026-11- 5T13:19:29", "2026-13-01T00:00:00", "2026-11-10T24:00:00", "2026-11-10 13:19:29", "2026-11-10T13:19:29.5+03:00", "2026-11-10T13:19",
+           "２０２６-11-10T13:19:29", "2026-11-1٠T13:19:29", "", "x", None, 5]:
+    for started in (0.0, 1.0, 1767578523.0, 1794316769.0, 1794316770.0, 1794316771.0, 1794316830.0):
+        ev = [{"event": "directive", "name": "p", "ts": ts}]
+        add("owned_evidence", {"events": ev, "name": "p20261110", "project": "p", "started_at": started})
+for _ in range(300):
+    ev = [{k: v for k, v in {"event": rnd.choice(["action", "directive", "outcome", "stop", "restart", "would:keepwarm", None]), "name": rnd.choice(["p", "p1", "", None]),
+                             "ok": rnd.choice([True, False, 0, None]), "kind": rnd.choice(["start", "nudge", "keepwarm", None]), "result": rnd.choice(["changed", "same", None]),
+                             "ts": "2026-11-10T13:19:29"}.items() if rnd.random() < 0.85} for _ in range(rnd.randint(0, 3))]
+    add("owned_evidence", {"events": ev, "name": "p1", "project": "p", "started_at": rnd.choice([0.0, 1.0, 2e9])})
+
+# devir / kapatma
+for model, f, a in itertools.product(["", "claude-FABLE-5", "claude-opus"], [0, 150000, 400000], [0, 300000]):
+    add("context_threshold", {"cfg": C(context_warn_tokens_fable=f, context_warn_tokens=a), "model": model})
+for busy, sa, su, mx, ratio, since, tokens, warn in itertools.product([None, True, False], [False, True], [False, True], [0, 30], [0.0, 1.3, 2.0, 1e-7, 1234567.0, 0.30000000000000004],
+                                                                      [None, NOW - 1799.5, NOW - 1800, NOW - 3600.0001], [None, 0, 390000, 10 ** 13], [0, 300000]):
+    if rnd.random() < 0.12:
+        add("handover_defer_decision", {"v": V("a", True, busy=busy, subagent_active=sa, subagent_unknown=su), "cfg": C(handover_defer_max_minutes=mx, handover_force_ratio=ratio),
+                                        "now": NOW, "since": since, "tokens": tokens, "warn": warn})
+for tokens, warn, ratio, lang in itertools.product([-1500, -1, 0, 25, 35, 999, 1000, 209999, 210000, 305000], [0, 200, 1000, 300000], [0.0, 0.7, 1.0], ["tr", "en"]):
+    add("context_answer", {"tokens": tokens, "warn": warn, "ratio": ratio, "lang": lang})
+for kind, res, fails in itertools.product(["handover", "stop"], [{}, {"ok": True}, {"ok": 0}, {"code": "destructive_budget"}, {"error": "e" * 300}, {"error": None, "ok": False}], [None, 0, 3, 4, "4", 7.9]):
+    add("shutdown_note_result", {"it": {"stage": "closed", "fails": fails, "at": 1.0, "z": 2}, "kind": kind, "res": res, "now": NOW})
+for _ in range(1200):
+    names = ["a", "ab", "mkt", "degnekci", "a20261126"]
+    views = [rview(names) for _ in range(rnd.randint(0, 5))]
+    sd = {}
+    if rnd.random() < 0.8:
+        items = {n: {k: v for k, v in {"stage": rnd.choice(["wait", "wait", "ho", "ho", "closed", "kept", "gone", "busy_left", "ho_timeout", "ho_failed"]),
+                                       "at": rnd.choice([NOW - 1, NOW - 599, NOW - 600, NOW - 6000]), "ho_at": rnd.choice([NOW - 700, NOW - 40, NOW]), "blocked": "eski",
+                                       "fails": 1}.items() if k in ("stage", "at") or rnd.random() < 0.5} for n in rnd.sample(names, rnd.randint(0, 4))}
+        sd = {k: v for k, v in {"started": rnd.choice([NOW - 10, NOW - 2699, NOW - 2700, NOW - 9000]), "init": rnd.random() < 0.6, "items": items,
+                                "modes": rnd.choice([None, {}, {"a": "keep", "mkt": "stop"}]), "only": rnd.choice([None, [], ["a"], ["mkt", "ab"]]), "other": 1}.items() if rnd.random() < 0.85}
+    add("plan_shutdown", {"views": views, "projects": rproj(), "sd": sd, "cfg": C(brain_name=rnd.choice(["degnekci", "degnekci", ""])), "now": NOW,
+                          "world": rnd.choice([None, None, rworld("default")]), "blockers": rnd.choice([None, {}, {"a": "iş açık", "degnekci": "x"}])})
+
+# tur maddeleri ve kayıt eylemleri
+for name in ["", "a", "abc1", "mecdtfl20261031_3", "a-b2026_1_2", "a_b1", "1abc", "abc\n", "abc1\n", "abc\n\n", "abç1", "x٣", "x_", "x_1x", "-a", "a-", "A2B"]:
+    add("_ask_base", {"name": name})
+for _ in range(400):
+    last = rview().last_assistant
+    if rnd.random() < 0.5:
+        last = "\n".join(f"STEWARD-{rnd.choice(['ASK', 'ROUTINE', 'DETAIL', 'IDEA', 'BLOCKED', 'JOB', 'LESSON', 'NEXT'])}: {G2S(4)}{rnd.choice(['', '?'])}" for _ in range(rnd.randint(0, 6)))
+    m = sw.scan_markers(last)
+    name, proj = rnd.choice(SN), rnd.choice(["", "a"])
+    add("marker_record_actions", {"name": name, "proj": proj, "m": m})
+    add("note_project_next", {"st": rnd.choice([{}, {"project_next": None}, {"x": 1, "project_next": {"a": {"text": "e"}}, "z": 2}]), "proj": proj, "session": name, "m": m, "now": NOW})
+for allowed, sb in itertools.product([[], [("start", "b", "due"), ("start", "a", "due"), ("start", "a", "due"), ("start", "c", "answer"), ("stop", "d", "due")]],
+                                     [None, {}, {"projects": ["z", "a"], "reason": "r", "active": 1, "max_active_total": None, "x": 2}, {"projects": [], "reason": "r", "active": 1},
+                                      {"projects": ["q"], "reason": 0, "bekleme_projects": []}]):
+    add("start_decision_event", {"actions": [sw.Action(*a) for a in allowed], "state": {"start_blocked": sb}})
+
+
+def rq2(i):
+    return Q(f"q{i}", rnd.choice(["", *PN, "degnekci", "gone"]), rnd.choice(["", "Bölümleri sırayla mı yazayım?", sw.JOB_REQUEST_PREFIX + "x", G2S(5)]),
+             created_at=rnd.choice([0.0, NOW - 60, NOW - 1199, NOW - 1200, NOW - 30000, NOW + 100]), status=rnd.choice(["open", "open", "answered"]),
+             routine=rnd.random() < 0.25, source=rnd.choice(["", "", "a", "mkt", "upper_model", "job-red"]), answer=rnd.choice(["", "evet"]),
+             answered_at=rnd.choice([0.0, NOW - 60, NOW - 90000]), delivered_at=rnd.choice([0.0, 0.0, 5.0]),
+             options=rnd.choice([[], [], ["a", "b"], ["x" * 100, "y" * 100], [G2S(2)]]), detail=rnd.choice(["", "", "", G2S(3)]), prev_texts=rnd.choice([[], [], [], [G2S(3)]]),
+             extra_texts=rnd.choice([[], [], [], [], ["e"]]), deferred_until=rnd.choice([0.0, 0.0, 0.0, NOW - 1, NOW, NOW + 1]))
+
+
+for _ in range(900):
+    q = rq2(0)
+    q.status, q.routine = rnd.choice([("open", False)] * 8 + [("answered", False), ("open", True)])
+    if rnd.random() < 0.6:
+        q.project, q.source, q.extra_texts, q.deferred_until = rnd.choice(["a", "mkt"]), "", [], 0.0
+        q.text, q.options, q.detail, q.prev_texts = "Soru " + (G2S(2) if rnd.random() < 0.8 else ""), [], "", []
+    owners = rnd.choice(["", "", "a", " mkt , a ", ",,", "zz"])
+    projects = {p: P(p, phase=rnd.choice(["planned", "planned", "planned", "done", "paused"]), notes=rnd.choice(["", "", "", G2S(3), "Sahibine sor."])) for p in ["a", "mkt", "ncs"]}
+    note = rnd.choice(["", "", G2S(3), "SAHİBE SOR"])
+    cfg = C(ask_gate="shadow", ask_gate_owner_projects=owners)
+    add("owner_class", {"q": q, "owner_projects": owners, "note": note, "now": NOW}, call=lambda: steward_ask.owner_class(q, owners, note, NOW))
+    add("blocked_reason", {"q": q, "projects": projects, "cfg": cfg, "now": NOW}, call=lambda: steward_ask.blocked_reason(q, projects, cfg, NOW))
+    state = rnd.choice([{}, {}, {"ask_gated": None, "ask_seen": None}, {"ask_gated": {q.id: 1}}, {"ask_gated": [q.id]}, {"ask_gated": {"z": 1}},
+                        {"ask_seen": {q.id: {"n": 1, "at": NOW - 1800}}}, {"ask_seen": {q.id: {"n": 1, "at": NOW - 1799}}}, {"ask_seen": {q.id: {"n": 2, "at": 0}}},
+                        {"ask_seen": {q.id: {"n": "1", "at": None}}}, {"ask_seen": {q.id: {}}}, {"ask_seen": {q.id: None}}])
+    add("tour_eligible", {"q": q, "projects": projects, "cfg": cfg, "state": state, "now": NOW}, call=lambda: steward_ask.tour_eligible(q, projects, cfg, state, NOW))
+for t in G2:
+    q = Q("q", "a", t)
+    add("owner_class", {"q": q, "owner_projects": "", "note": "", "now": NOW}, call=lambda: steward_ask.owner_class(q, "", "", NOW))
+for _ in range(700):
+    views = [rview() for _ in range(rnd.randint(0, 5))]
+    qs = [rq2(i) for i in range(rnd.choice([0, 0, 1, 3, 6]))]
+    ideas = [sw.Idea(f"i{i}", G2S(3), NOW, status=rnd.choice(["new", "done"])) for i in range(rnd.randint(0, 2))]
+    cfg = C(brain_name=rnd.choice(["degnekci", "a"]), idle_minutes=rnd.choice([0, 10]), review_minutes=rnd.choice([0, 90]), ask_gate=rnd.choice(["off", "shadow", "on"]))
+    projects = {p: P(p, phase=rnd.choice(["planned", "planned", "planned", "done", "paused"])) for p in rnd.sample(PN + ["a20261126"], rnd.randint(2, 6))}
+    world = rnd.choice([None, None, None, rworld("default")])
+    skip_seen = {}
+    for v in views:
+        if rnd.random() < 0.35:
+            sig = sw.item_signature(v, world.own_projects(projects) if world else projects, qs)
+            skip_seen[v.name] = rnd.choice([{"sig": sig, "at": NOW - 10}, {"sig": sig, "at": NOW - 21600}, {"sig": "x", "at": NOW}, {"sig": sig}, "bozuk"])
+    sigs = rnd.choice([None, {}, {"önce": "1"}])
+    add("review_items", {"views": views, "projects": projects, "cfg": cfg, "now": NOW, "questions": qs, "ideas": ideas,
+                         "skip": set(rnd.sample(SN, rnd.choice([0, 0, 4]))), "last_directive_at": {n: rnd.choice([NOW - 10, NOW - 9000]) for n in rnd.sample(SN, 3)},
+                         "reviewed_at": {n: rnd.choice([NOW - 10, NOW - 9000]) for n in rnd.sample(SN, 3)}, "world": world, "skip_seen": skip_seen, "sigs_out": sigs,
+                         "state": rnd.choice([None, {}, {"ask_seen": {"q0": {"n": 2}}}])})
+real_time = sw.time.time
+sw.time.time = lambda: NOW
+try:
+    for _ in range(300):
+        views = [rview() for _ in range(rnd.randint(0, 5))]
+        seen = {v.name: hashlib.sha1(v.last_assistant.encode()).hexdigest()[:16] for v in views if rnd.random() < 0.2}
+        state = rnd.choice([{}, {"seen_assistant": seen, "x": 1}, {"seen_assistant": None, "project_next": {}}])
+        add("plan_markers", {"views": views, "projects": rproj(), "state": state, "cfg": C(brain_name=rnd.choice(["degnekci", "a"])), "world": rnd.choice([None, rworld(), rworld("default")])})
+finally:
+    sw.time.time = real_time
+
+# nadir dalları yoğunlaştır
+CTX = (["bu oturum", "BU OTURUMDA", "this session", "bu  oturum"], ["devir", "DEVİR", "devır", "yeni oturum", "Handover", "NEW SESSION", "x"], ["", "mi?", "commit", "PUSH", "sil", "asil", "_sil", "DELETE", "enforce", "deploy"])
+WRAP = (["READY FOR HANDOVER", "ready\tfor\nhandover", "Ready For Handover", "ready for hand over"], ["commit", "COMMIT", "committed", "push", "pushed", "toparla", "TOPARLAYIN", "wrap up", "wrapup", "wrap\u001cup", "x", "commıt"])
+for a, b, c in itertools.product(*CTX):
+    add("is_context_question", {"text": f"{a} {b} {c}"})
+for a, b in itertools.product(*WRAP):
+    add("is_wrap_up_directive", {"text": f"{a}; {b}"})
+    for data in (None, {}, {"keep_phase": True}, {"keep_phase": 1}, {"keep_phase": "true"}):
+        add("directive_keeps_phase", {"text": rnd.choice([f"{a} {b}", "yeni iş"]), "data": data})
+YES = ["bitti", "BİTTİ", "bıttı", "bitmiş", "tamam", "tamamdır", "tamamladım", "kapatın", "Evet", "done", "finished", "yes", "devam", "x"]
+for a, b in itertools.product(YES, ["", "ama X", "değil", "kaldı", "kalanlar", "?", "not", "only", "onlyx", "noted", "eksik", "still"]):
+    add("done_conflict_answer", {"questions": [Q("q", "p", "STEWARD-DONE-CONFIRMED", status="answered", answer=f"{a} {b}", answered_at=NOW - 1)], "proj": "p", "now": NOW})
+for kind, tail in itertools.product(["sql_readonly", "SQL_Readonly", "`sql_readonly`", "sql_readonlyx"], ["", " a", "\nsil", "\u001csil"]):
+    add("is_readonly_job_request", {"text": sw.JOB_REQUEST_PREFIX + kind + tail})
+for busy, act, ho_at, last, mode, at in itertools.product([None, True, False], [0.0, NOW - 100, NOW - 10], [None, NOW - 100, NOW - 50], ["", "READY FOR HANDOVER"], [None, "keep", "stop"], [NOW - 100, NOW - 700]):
+    it = {"stage": "ho", "at": at, **({} if ho_at is None else {"ho_at": ho_at})}
+    add("plan_shutdown", {"views": [V("a", True, busy=busy, last_activity=act, last_assistant=last)], "projects": {"a": P("a")},
+                          "sd": {"started": NOW - 800, "init": True, "items": {"a": it}, "modes": {} if mode is None else {"a": mode}},
+                          "cfg": C(brain_name="degnekci"), "now": NOW, "world": None, "blockers": None})
 
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)

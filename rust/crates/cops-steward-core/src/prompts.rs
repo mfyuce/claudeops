@@ -176,7 +176,7 @@ pub fn clip(text: &str, n: usize) -> String {
     format!("{}…", pyc::rstrip(pyc::head(text, keep)))
 }
 
-fn bad(v: &Value) -> BadValue {
+pub(crate) fn bad(v: &Value) -> BadValue {
     BadValue(v.to_string())
 }
 
@@ -190,7 +190,7 @@ fn clip_value(v: Option<&Value>, n: usize) -> Result<String, BadValue> {
 }
 
 /// `for x in (v or [])`: liste öğeleri, dizgenin karakterleri ya da sözlüğün anahtarları.
-fn items_of(v: Option<&Value>) -> Result<Vec<Value>, BadValue> {
+pub(crate) fn items_of(v: Option<&Value>) -> Result<Vec<Value>, BadValue> {
     match v.filter(|v| pyc::truthy(v)) {
         None => Ok(Vec::new()),
         Some(Value::Array(a)) => Ok(a.clone()),
@@ -201,7 +201,7 @@ fn items_of(v: Option<&Value>) -> Result<Vec<Value>, BadValue> {
 }
 
 /// `v or {}` sonrasında `.get`/`.items` çağrılan değer.
-fn object_of(v: Option<&Value>) -> Result<Option<&Map<String, Value>>, BadValue> {
+pub(crate) fn object_of(v: Option<&Value>) -> Result<Option<&Map<String, Value>>, BadValue> {
     match v.filter(|v| pyc::truthy(v)) {
         None => Ok(None),
         Some(Value::Object(o)) => Ok(Some(o)),

@@ -2,6 +2,8 @@
 #![allow(unused_braces)] // rustfmt uzun `parity!` kapanışlarını bloğa sarıyor
 mod basics;
 mod cards;
+mod closing;
+mod gates;
 mod generated;
 mod harness;
 mod identity;
@@ -12,3 +14,5 @@ mod notify;
 mod prompts;
 mod questions;
 mod store;
+mod tour;
+mod world;

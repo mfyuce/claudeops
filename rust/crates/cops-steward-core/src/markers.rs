@@ -10,6 +10,8 @@ use serde_json::{Map, Value};
 use std::fmt;
 use std::sync::LazyLock;
 
+type Fancy = LazyLock<Option<fancy_regex::Regex>>;
+
 /// `needs_ho._RFH`
 const RFH: &str = "READY FOR HANDOVER";
 
@@ -381,4 +383,52 @@ pub fn lang_fix_action(
         reason: if en { "STEWARD-* text not in panel language" } else { "STEWARD-* metni panel dilinde değil" }.into(),
         payload,
     }))
+}
+
+// ── sıradaki iş bildirimi (tur maddeleri ve `project_next` kaydı) ─────────────
+
+static COND_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_COND_RE.as_str()));
+
+/// Metni tek satıra katlar; `limit` kod noktasını aşıyorsa son TAM kelimede keser (sonuna `…`).
+///
+/// py: clip_words
+pub fn clip_words(text: &str, limit: usize) -> String {
+    let t = pyc::collapse_ws(text);
+    if pyc::len(&t) <= limit {
+        return t;
+    }
+    let mut cut = pyc::head(&t, limit);
+    if !pyc::skip(&t, limit).starts_with(' ') {
+        if let Some((before, _)) = cut.rsplit_once(' ') {
+            cut = before;
+        }
+    }
+    format!("{}…", cut.trim_end_matches([' ', ',', ';', ':', '.', '-']))
+}
+
+/// Not "X olursa Y" gibi koşullu mu.
+///
+/// py: is_conditional_note
+pub fn is_conditional_note(text: &str) -> bool {
+    pyc::is_match(&COND_RE, &pyc::ci_input(text))
+}
+
+/// `STEWARD-NEXT` gövdesi "yok/bitti" anlamında mı.
+pub(crate) fn is_no_work(value: &str) -> bool {
+    P_NO_WORK_VALUES.contains(&pyc::strip_chars(value, " .`").to_lowercase().as_str())
+}
+
+/// Son yanıttaki `STEWARD-NEXT: <iş>` gerçek (koşulsuz) bir işse o iş, değilse "".
+///
+/// py: marker_next_work
+pub fn marker_next_work(text: &str) -> String {
+    if !text.contains("STEWARD-NEXT") {
+        return String::new();
+    }
+    let next = scan_markers(text).next.unwrap_or_default();
+    let val = pyc::strip(&next);
+    if val.is_empty() || is_no_work(val) || is_conditional_note(val) {
+        return String::new();
+    }
+    clip_words(val, 200)
 }

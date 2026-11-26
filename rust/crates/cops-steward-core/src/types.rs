@@ -12,3 +12,15 @@ impl SessionView {
         }
     }
 }
+
+impl Action {
+    /// `Action(kind, name, reason, payload)`.
+    pub fn new(
+        kind: &str,
+        name: &str,
+        reason: impl Into<String>,
+        payload: serde_json::Map<String, serde_json::Value>,
+    ) -> Self {
+        Action { kind: kind.into(), name: name.into(), reason: reason.into(), payload }
+    }
+}
