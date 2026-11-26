@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/cops-proxy", "crates/copsd", "crates/cops-auth", "crates/cops-local", "crates/cops-metrics", "crates/cops-progress", "crates/commit-gate", "crates/cops-hosts", "crates/cops-state", "crates/cops-parity", "crates/cops-procscan", "crates/cops-cli", "crates/cops-steward-core"]
+members = ["crates/cops-proxy", "crates/copsd", "crates/cops-auth", "crates/cops-local", "crates/cops-metrics", "crates/cops-progress", "crates/commit-gate", "crates/cops-hosts", "crates/cops-state", "crates/cops-parity", "crates/cops-procscan", "crates/cops-cli", "crates/cops-review-core", "crates/cops-steward-core"]
 
 [workspace.package]
 edition = "2021"

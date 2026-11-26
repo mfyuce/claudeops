@@ -493,6 +493,11 @@ def valid_name(name: str) -> bool:
 def _corrupt_backup(path: str) -> None:
     try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
         import shutil
+        st = os.stat(path)
+        for old in glob.glob(glob.escape(path) + ".corrupt-*"):     # aynı içerik zaten yedekli (copy2 mtime korur): her okumada yeni kopya yok
+            o = os.stat(old)
+            if (o.st_size, o.st_mtime_ns) == (st.st_size, st.st_mtime_ns):
+                return
         shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
     except OSError:
         pass
