@@ -3,6 +3,7 @@
 //! İstisnalar: Rust yerel uçları ve uygulama mount'ları (`mount.rs`, `/<id>/` -> derbent): bunlarda kimliği copsd kendisi denetler.
 //! Takılabilir ön süzgeç ([`gate::ForwardFilter`], enterprise) aktarılan istekteki GEÇERSİZ kimlik bilgisini siler (karar yine Python'da).
 
+mod base_href;
 pub mod gate;
 pub mod mount;
 pub mod resources;
@@ -11,8 +12,8 @@ use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt};
 use hyper::body::Incoming;
 use hyper::header::{
-    HeaderName, HeaderValue, ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONNECTION, CONTENT_LENGTH,
-    CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE, UPGRADE,
+    HeaderName, HeaderValue, ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CACHE_CONTROL, CONNECTION,
+    CONTENT_LENGTH, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE, UPGRADE,
 };
 use hyper::{Request, Response, StatusCode};
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
@@ -824,7 +825,7 @@ impl Proxy {
         }
         if let Some(cfg) = &self.mounts {
             if let Some(hit) = cfg.mounts.lookup(req.uri().path()) {
-                return Ok(self.handle_mount(cfg, hit, req, peer, false).await);
+                return Ok(self.handle_mount(cfg, hit, req, peer, false, false).await);
             }
             // Köke göre yazılan istek (`/api/x`, `/maya-ui/...`): Referer'ı bir `rootrel` mount'unun altındaysa o uygulamaya
             // (`/<id>` + yol) gider; panelin kendi yollarını (`/api`) da kapsar, çünkü sayfa o uygulamanın sayfasıdır.
@@ -847,7 +848,7 @@ impl Proxy {
                     if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                         *req.uri_mut() = uri;
                         return Ok(self
-                            .handle_mount(cfg, mount::Hit::Under(addr), req, peer, true)
+                            .handle_mount(cfg, mount::Hit::Under(addr), req, peer, true, true)
                             .await);
                     }
                 }
@@ -881,7 +882,7 @@ impl Proxy {
                 if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                     *req.uri_mut() = uri;
                     return Ok(self
-                        .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false)
+                        .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false, true)
                         .await);
                 }
             }
@@ -921,7 +922,7 @@ impl Proxy {
                         if let Ok(uri) = format!("/{id}{pq}").parse::<hyper::Uri>() {
                             *req.uri_mut() = uri;
                             return Ok(self
-                                .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false)
+                                .handle_mount(cfg, mount::Hit::Under(addr), req, peer, false, true)
                                 .await);
                         }
                     }
@@ -1019,6 +1020,7 @@ impl Proxy {
         mut req: Request<Incoming>,
         peer: SocketAddr,
         learn_any_type: bool,
+        prefixed: bool,
     ) -> Response<Body> {
         let (target, bare) = match hit {
             mount::Hit::Under(a) => (a, false),
@@ -1066,7 +1068,12 @@ impl Proxy {
         let get_like = (req.method() == hyper::Method::GET || req.method() == hyper::Method::HEAD)
             && !is_upgrade(req.headers());
         if bare || (has_qtoken && get_like) {
-            let loc_path = if bare { format!("{path}/") } else { path };
+            // `prefixed`: `/<id>` önekini vekil ekledi; tarayıcı kendi (öneksiz) adresinde kalmalı, yoksa SPA'nın `base href`i tutmaz.
+            let public = match path_id(&path) {
+                Some(id) if prefixed => path[id.len() + 1..].to_string(),
+                _ => path.clone(),
+            };
+            let loc_path = if bare { format!("{path}/") } else { public };
             let loc = if q.is_empty() {
                 loc_path
             } else {
@@ -1139,7 +1146,39 @@ impl Proxy {
         } else {
             None
         };
+        // Rootrel mount KÖKÜ (`/<id>/`): upstream `<base href>`i başka bir köke bakıyorsa (Maya: `/maya-ui/`) SPA bu adreste açılmaz;
+        // aşağıda oraya yönlendirilir. Gövdeyi okuyabilmek için sıkıştırma istenmez.
+        let root_id = app_id
+            .as_deref()
+            .filter(|id| {
+                !prefixed
+                    && req.method() == hyper::Method::GET
+                    && !is_upgrade(req.headers())
+                    && cfg.mounts.rootrel_upstream(id).is_some()
+                    && req.uri().path() == format!("/{id}/")
+            })
+            .map(str::to_string);
+        if root_id.is_some() {
+            req.headers_mut().remove(ACCEPT_ENCODING);
+        }
         let mut resp = self.forward(req, target, &pq).await;
+        if let Some(id) = root_id {
+            let (r, href) = base_href::inspect(resp).await;
+            resp = r;
+            if let Some((href, seg)) = href.and_then(|h| base_href::foreign_root(h, &id)) {
+                cfg.mounts.learn(&seg, &id);
+                let loc = if q.is_empty() {
+                    href
+                } else {
+                    format!("{href}?{q}")
+                };
+                let mut to = redirect(StatusCode::FOUND, &loc, None);
+                for c in resp.headers().get_all(SET_COOKIE) {
+                    to.headers_mut().append(SET_COOKIE, c.clone());
+                }
+                resp = to;
+            }
+        }
         if let Some((seg, id)) = learn {
             // Referer mount YOLUNUN altındaki (b) alt kaynak: yanıt türüne bakılmaz, 2xx/3xx yeter (SPA pushState sonrası HTML isteği olmaz).
             // Diğer yönlenmeler (a, b2, b3, çerez) yalnız 2xx `text/html` belge ile öğretir: yanlış öğrenme zinciri olmasın.

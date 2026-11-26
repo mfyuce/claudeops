@@ -86,7 +86,13 @@ async fn fake_app() -> SocketAddr {
                         .find_map(|l| l.strip_prefix("x-fake-status: "))
                         .map(|v| v.trim().to_string())
                         .unwrap_or_else(|| "200 OK".into());
-                    let r = format!("HTTP/1.1 {st}\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\n{ct}Content-Length: {}\r\nConnection: close\r\n\r\nAPP\n{}", head.len() + 4, head);
+                    // `x-fake-base: /x/` -> HTML gövdesinde `<base href="/x/">`.
+                    let base = low
+                        .lines()
+                        .find_map(|l| l.strip_prefix("x-fake-base: "))
+                        .map(|v| format!("<head><base href=\"{}\"></head>", v.trim()))
+                        .unwrap_or_default();
+                    let r = format!("HTTP/1.1 {st}\r\nSet-Cookie: grafana_session=new; Path=/grafana/\r\n{ct}Content-Length: {}\r\nConnection: close\r\n\r\n{base}APP\n{}", base.len() + head.len() + 4, head);
                     c.write_all(r.as_bytes()).await.unwrap();
                 }
             });
@@ -987,4 +993,101 @@ fn learned_sqlite_migrates_json_and_persists() {
     let t = cops_local::learned::load(&db).unwrap();
     assert_eq!(t["site"], "rancher");
     assert_eq!(t.len(), 2);
+}
+
+const ONE_ROOTREL: &str = r#"[{"path":"/gw/","upstream":"APP","rootrel":true}]"#;
+
+#[tokio::test]
+async fn rootrel_mount_root_with_foreign_base_href_redirects_there_and_routes_it() {
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    let r = raw(
+        p,
+        &get(
+            "/gw/",
+            &format!("{auth}x-fake-ct: text/html\r\nx-fake-base: /maya-ui/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 302"), "{r}");
+    assert_eq!(header(&r, "location"), Some("/maya-ui/"), "{r}");
+    assert!(
+        set_cookies(&r).iter().any(|c| c.contains(": cops_app=gw")),
+        "{r}"
+    );
+    // Yönlendirilen kök artık öğrenilmiş: Referer ve uygulama çerezi olmadan da uygulamaya gider, ikinci kez yönlenmez.
+    let r = raw(
+        p,
+        &get(
+            "/maya-ui/",
+            &format!("{auth}x-fake-ct: text/html\r\nx-fake-base: /maya-ui/\r\n"),
+        ),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 200") && r.contains("APP\n"), "{r}");
+}
+
+#[tokio::test]
+async fn mount_root_is_served_unchanged_when_base_href_is_not_a_safe_foreign_root() {
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let auth = format!("Cookie: cops_ext={COOKIE}\r\n");
+    for base in [
+        "/gw/",
+        "/gw/app/",
+        "/",
+        "./",
+        "app/",
+        "//evil.example/x/",
+        "https://evil.example/",
+        "/api/",
+        "/\\evil.example/",
+    ] {
+        let r = raw(
+            p,
+            &get(
+                "/gw/",
+                &format!("{auth}x-fake-ct: text/html\r\nx-fake-base: {base}\r\n"),
+            ),
+        )
+        .await;
+        assert!(
+            r.starts_with("HTTP/1.1 200") && r.contains("<base href=") && r.contains("APP\n"),
+            "{base}: {r}"
+        );
+    }
+    // HTML olmayan yanıt ve kök dışı yol yönlendirilmez.
+    for (path, ct) in [("/gw/", "application/json"), ("/gw/d/x", "text/html")] {
+        let r = raw(
+            p,
+            &get(
+                path,
+                &format!("{auth}x-fake-ct: {ct}\r\nx-fake-base: /maya-ui/\r\n"),
+            ),
+        )
+        .await;
+        assert!(r.starts_with("HTTP/1.1 200"), "{path} {ct}: {r}");
+    }
+}
+
+#[tokio::test]
+async fn query_token_on_a_learned_root_keeps_the_public_path() {
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let r = raw(
+        p,
+        &get(
+            "/gw/",
+            &format!(
+                "Cookie: cops_ext={COOKIE}\r\nx-fake-ct: text/html\r\nx-fake-base: /maya-ui/\r\n"
+            ),
+        ),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 302"), "{r}");
+    let r = raw(p, &get(&format!("/maya-ui/?a=1&token={TOKEN}"), "")).await;
+    assert!(r.starts_with("HTTP/1.1 302"), "{r}");
+    assert_eq!(header(&r, "location"), Some("/maya-ui/?a=1"), "{r}");
+    assert!(
+        set_cookies(&r).iter().any(|c| c.contains(": cops_ext=")),
+        "{r}"
+    );
 }
