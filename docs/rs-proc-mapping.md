@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 536 | 144 | 392 | 0 |
-| test durumu (115 dosya) | 1552 | 93 | 1459 | 0 |
+| test durumu (115 dosya) | 1554 | 93 | 1461 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -2191,17 +2191,19 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_ucli_checks_opts.py::Validate.test_off_by_default_and_dropped` | 19 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Validate.test_restricted_ok_max_defaults_to_mode` | 24 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Validate.test_errors` | 29 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Validate.test_full_needs_accept_risk` | 33 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Registry.test_missing_loose_mode_and_shape` | 55 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Registry.test_symlink_rejected` | 66 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Apply.test_flags_added` | 90 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Apply.test_full_adds_accept_risk` | 97 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Apply.test_full_refused_when_binary_only_knows_restricted` | 101 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Apply.test_unsupported_binary_refused` | 111 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_checks_opts.py::Apply.test_needs_state_dir_and_registry` | 115 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Validate.test_off_by_default_and_dropped` | 21 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Validate.test_restricted_ok_max_defaults_to_mode` | 26 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Validate.test_errors` | 31 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Validate.test_full_needs_accept_risk` | 35 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Registry.test_missing_loose_mode_and_shape` | 57 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Registry.test_symlink_rejected` | 68 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::ReadModifyWrite.test_set_mode_seq_counts_every_write` | 105 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::ReadModifyWrite.test_two_deletes_both_stick` | 109 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Apply.test_flags_added` | 133 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Apply.test_full_adds_accept_risk` | 140 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Apply.test_full_refused_when_binary_only_knows_restricted` | 144 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Apply.test_unsupported_binary_refused` | 154 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_checks_opts.py::Apply.test_needs_state_dir_and_registry` | 158 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_cost_cap_refusal.py`
 

@@ -1329,7 +1329,7 @@ ucli_broad_glob_and_instr_check:11:ea6a9ab95d
 ucli_capability_flags:10:7f0e89e70c
 ucli_checkpoint_flag:6:5d9d0f9632
 ucli_checks_isolation:3:82e57898d3
-ucli_checks_opts:11:69e36b87ab
+ucli_checks_opts:13:35384bf277
 ucli_cost_cap_refusal:3:a396643893
 ucli_default_permission_mode:3:ae4885e482
 ucli_effort:27:b0ffbae640

@@ -3,6 +3,7 @@
 Sözleşme (ucli istemcisiyle BİREBİR; hata her zaman `{ok:false, error}`):
   GET  /api/agents/models            -> {ok, models:[{id, service, efforts:[low|medium|high...]}]}
   POST /api/agents/start {model, effort, task, mode: read|edit}   -> {ok, name}
+       (modelin desteklemediği `effort` reddedilmez, verilmemiş sayılır; ucli TBD 159 (e))
   POST /api/agents/send  {name, text}                              -> {ok}
   GET  /api/agents/status?name=      -> {ok, state: busy|idle|waiting_input|stopped, cost_usd, turns[, question]}
   GET  /api/agents/result?name=      -> {ok, state, answer}
@@ -223,7 +224,7 @@ def handle_post(path: str, data: Dict[str, Any], caller: Optional[Caller], ops) 
 
 def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
     model = str(data.get("model") or "").strip()
-    effort = str(data.get("effort") or "").strip().lower() or "medium"
+    asked = str(data.get("effort") or "").strip().lower()
     mode = str(data.get("mode") or "").strip().lower()
     task = ag.fold_text(data.get("task"))
     if not model:
@@ -235,8 +236,11 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
     entry = next((m for m in models_catalog() if m["id"] == model), None)
     if entry is None:
         return _err(f"unknown model: {model}")
-    if effort not in entry["efforts"]:
-        return _err(f"effort {effort!r} not supported for {model} (use one of {', '.join(entry['efforts'])})")
+    effort = asked or "medium"
+    if effort not in entry["efforts"]:      # hata değil: verilmemiş sayılır, sağlayıcı kendi varsayılanıyla açar
+        effort = ""
+        if asked:
+            diag_log("ucli_agent_effort_ignored", model=model, effort=asked[:20])
     if caller and caller[0] == "agent":
         parent = caller[1]
     else:
