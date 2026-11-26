@@ -58,6 +58,13 @@ def read_strict() -> dict:
 def load_instances() -> Dict[str, dict]:
     """{isim: kayıt}. Okuyucular için toleranslı: bozuk dosyada boş döner."""
     global _cache_key, _cache
+    from . import statedocs
+    if statedocs.backend() == "db":     # kayıt DB'de: ayna dosyanın imzası değişmese de içerik değişebilir (TBD#374 S4)
+        _cache_key = None
+        try:
+            return dict(read_strict()["instances"])
+        except InstancesCorrupt:
+            return {}
     try:
         st = os.stat(INSTANCES_JSON)
     except FileNotFoundError:       # ayna dosya yok: db kipinde kayıtlar DB'de olabilir (önbelleksiz oku)
