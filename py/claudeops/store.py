@@ -137,6 +137,11 @@ class Store:
         like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         return [r[0] for r in self._conn().execute("SELECT name FROM docs WHERE name LIKE ? ESCAPE '\\' ORDER BY name", (like,))]
 
+    def _doc_stamp(self, name: str) -> Optional[Tuple[int, float]]:
+        """(sürüm, yazım anı); satır yoksa None. Sil + yeniden yaz sürümü 1'den başlatır: yazım anı ayırır."""
+        row = self._conn().execute("SELECT version, updated FROM docs WHERE name=?", (name,)).fetchone()
+        return None if row is None else (row[0], row[1])
+
     def doc_version(self, name: str) -> int:
         row = self._conn().execute("SELECT version FROM docs WHERE name=?", (name,)).fetchone()
         return 0 if row is None else row[0]

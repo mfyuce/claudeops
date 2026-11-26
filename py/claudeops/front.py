@@ -1,21 +1,25 @@
 """Rust ön kapı (copsd) ile Python arasındaki geçiş eki (docs/rust-strangler-plan.md bölüm 3-4, -prv).
 
-- Ön kapı gizlisi: `~/.claude/claudeops/front.secret` (0600) ya da `CLAUDEOPS_FRONT_SECRET`. `X-Cops-Front` başlığı bununla eşleşmeden
+- Ön kapı gizlisi: `<durum dizini>/front.secret` (`CLAUDEOPS_DIR`, yoksa `~/.claude/claudeops`; 0600) ya da `CLAUDEOPS_FRONT_SECRET`. `X-Cops-Front` başlığı bununla eşleşmeden
   ve eş loopback değilken `X-Forwarded-For` ile iç uçlara GÜVENİLMEZ. Gizli commit'e girmez (dosya kullanıcı dizininde).
 - İç uçlar: `/api/_internal/authz` (Rust'un yerel uçları için kimlik + yetki sorusu), `/api/_internal/ws-ticket/consume`.
 """
 from __future__ import annotations
 
+import fcntl
 import hmac
 import os
 import secrets
+import tempfile
 from typing import Any, Dict, Mapping, Optional
+
+from . import paths
 
 LOOPBACK = ("127.0.0.1", "::1")
 
 
 def secret_path() -> str:
-    return os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "front.secret")
+    return os.path.join(paths.CLAUDEOPS_DIR, "front.secret")   # deneme paneli canlı gizliyi kullanmaz (copsd `secret_file` ile aynı)
 
 
 def read_secret() -> str:
@@ -23,34 +27,45 @@ def read_secret() -> str:
     env = os.environ.get("CLAUDEOPS_FRONT_SECRET", "")
     if env:
         return env
+    return _file_secret()
+
+
+def _file_secret() -> str:
+    """Yalnız dosya (0600, UTF-8); kullanılamazsa boş."""
     try:
         st = os.stat(secret_path())
         if st.st_mode & 0o077:          # grup/diğer okuyabiliyorsa güvenme (sızmış sayılır)
             return ""
         with open(secret_path(), encoding="utf-8") as fh:
             return fh.read().strip()
-    except OSError:
+    except (OSError, UnicodeError):     # bozuk (UTF-8 olmayan) dosya = gizli yok (kapalı yön)
         return ""
 
 
 def ensure_secret() -> str:
-    """Yoksa 0600 ile rastgele bir gizli üretir (atomik, O_EXCL); varsa mevcut değeri döner."""
+    """Geçerli gizli varsa onu döner; yoksa (dosya yok, boş, bozuk ya da izni gevşemiş = sızmış sayılır) YENİ gizli üretir.
+    Kilit altında, 0600 geçici dosya + `os.replace`: eşzamanlı çağıranlar diskteki tek değeri döner, okuyan yarım dosya görmez.
+    `CLAUDEOPS_FRONT_SECRET` dosya üretimini ENGELLEMEZ (yalnız çağıranın kabuğunda olur; copsd ve web birimleri dosyayı okur)."""
     p = secret_path()
-    cur = read_secret()
+    cur = _file_secret()
     if cur:
         return cur
-    os.makedirs(os.path.dirname(p), mode=0o700, exist_ok=True)
-    val = secrets.token_hex(32)
-    try:
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        os.chmod(p, 0o600)               # izin gevşemişti: sıkılaştır, içeriği koru (boşsa yeniden yaz)
-        with open(p, encoding="utf-8") as fh:
-            if fh.read().strip():
-                return read_secret()
-        fd = os.open(p, os.O_WRONLY | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(val + "\n")
+    d = os.path.dirname(p)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    with os.fdopen(os.open(p + ".lock", os.O_WRONLY | os.O_CREAT, 0o600), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)          # dosya kapanınca bırakılır
+        cur = _file_secret()
+        if cur:
+            return cur
+        val = secrets.token_hex(32)
+        fd, tmp = tempfile.mkstemp(prefix=".front.secret.", dir=d)    # mkstemp 0600 açar
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(val + "\n")
+            os.replace(tmp, p)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
     return val
 
 

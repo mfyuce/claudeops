@@ -138,6 +138,8 @@ class RemoteTest(unittest.TestCase):
             return (force_stop or {"ok": True, "result": ["clean"]}), 200
         found = lambda h, n: (fresh, {"name": n, "cli": "claude"} if fresh and row else None)
         with mock.patch.object(web.web_steward, "_remote_running_row", found), \
+                mock.patch.object(web.web_steward, "_remote_rows", lambda h, rt=None: None), \
+                mock.patch.object(web, "HO_STOP_REPOLL_SECONDS", 0.0), \
                 mock.patch.object(web, "diag_log", lambda ev, **k: self.logs.append((ev, k))), \
                 mock.patch.object(web, "get_provider", lambda cli: prov or _Prov()), \
                 mock.patch.object(web.web_orch, "_fetch_exchange", lambda *a, **k: {"user": "u", "assistant": "a"} if baseline else None), \
@@ -183,6 +185,51 @@ class RemoteTest(unittest.TestCase):
                           (dict(), "ho_stop_sent")):
             self.run_remote(**kw)
             self.assertIn(event, [e for e, _ in self.logs], kw)
+
+
+class RemoteRepollTest(unittest.TestCase):
+    """Bayat önbellek kısa süre yeniden yoklanır; aynı adlı iki satır beklemeden `ambiguous_sessions` döner."""
+
+    def run_row(self, states, names=0, wait=10.0):
+        clock, sleeps = [0.0], []
+
+        def found(h, n):
+            fresh = states.pop(0) if len(states) > 1 else states[0]
+            return fresh, {"name": n, "cli": "claude"} if fresh else None
+
+        def sleep(sec):
+            sleeps.append(sec)
+            clock[0] += sec
+
+        rows = [{"name": "oiso1", "running": True}] * names
+        with mock.patch.object(web.web_steward, "_remote_running_row", found), \
+                mock.patch.object(web.web_steward, "_remote_rows", lambda h, rt=None: rows if names else None), \
+                mock.patch.object(web, "HO_STOP_REPOLL_SECONDS", wait), \
+                mock.patch.object(web, "time", NS(monotonic=lambda: clock[0], sleep=sleep, time=lambda: clock[0])), \
+                mock.patch.object(web, "diag_log", lambda *a, **k: None):
+            return web._remote_stop_row("ulak31", "oiso1"), sleeps
+
+    def test_stale_cache_recovers_within_the_wait(self):
+        (code, row), sleeps = self.run_row([False, False, True])
+        self.assertEqual((code, row["name"]), ("", "oiso1"))
+        self.assertEqual(len(sleeps), 2)
+
+    def test_stale_cache_gives_up_after_the_wait(self):
+        (code, row), sleeps = self.run_row([False])
+        self.assertEqual((code, row), ("handover_unreadable", None))
+        self.assertEqual(sum(sleeps), 10.0)
+
+    def test_twin_rows_are_ambiguous_without_waiting(self):
+        (code, row), sleeps = self.run_row([False], names=2)
+        self.assertEqual((code, row), ("ambiguous_sessions", None))
+        self.assertEqual(sleeps, [])
+
+    def test_ambiguous_message_in_both_languages(self):
+        for lang in ("tr", "en"):
+            res = web._ho_stop_fail(lang, "", "ambiguous_sessions")
+            self.assertEqual((res["ok"], res["code"]), (False, "ambiguous_sessions"))
+            self.assertTrue(res["error"])
+            self.assertNotIn("suggest", res)
 
 
 class RemoteFallbackTest(unittest.TestCase):

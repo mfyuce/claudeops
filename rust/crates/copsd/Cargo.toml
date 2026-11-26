@@ -10,3 +10,10 @@ cops-auth = { path = "../cops-auth" }
 tokio.workspace = true
 cops-metrics = { path = "../cops-metrics" }
 cops-progress = { path = "../cops-progress" }
+
+[dev-dependencies]
+serde_json = "1"
+
+[[test]]
+name = "ctx_front"
+harness = false

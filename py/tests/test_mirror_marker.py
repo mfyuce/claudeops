@@ -39,6 +39,9 @@ class FakeProc:
     def environ(self):
         return self._env
 
+    def cmdline(self):
+        return self.info["cmdline"]     # TBD#365: cmdline uid süzgecinden sonra okunur
+
     def cpu_percent(self, interval=None):
         return 0.0
 

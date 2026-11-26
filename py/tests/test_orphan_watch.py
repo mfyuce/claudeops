@@ -13,6 +13,7 @@ from claudeops import orphan_watch as ow  # noqa: E402
 from claudeops import periodic  # noqa: E402
 
 NOW = 1_000_000.0
+ME = types.SimpleNamespace(real=os.getuid())     # içerik yalnız kendi sürecimizde okunur (TBD#365)
 
 
 class Sockets(unittest.TestCase):
@@ -78,7 +79,7 @@ class P:
     def __init__(self, pid, name, age, parent=None, cmdline=()):
         assert not hasattr(parent, "info"), "parent() sahtesi .info taşımamalı"
         self.pid = pid
-        self.info = {"pid": pid, "name": name, "create_time": NOW - age, "cwd": "/tmp/x", "cmdline": list(cmdline)}
+        self.info = {"pid": pid, "name": name, "create_time": NOW - age, "cwd": "/tmp/x", "cmdline": list(cmdline), "uids": ME}
         self._parent = parent
 
     def parent(self):
@@ -94,6 +95,9 @@ class Parent:
 
     def cmdline(self):
         return self._cmd
+
+    def uids(self):
+        return ME
 
     def parent(self):
         return None

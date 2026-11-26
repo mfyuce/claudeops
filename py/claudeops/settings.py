@@ -18,7 +18,7 @@ import shutil
 import urllib.parse
 from typing import Any, Dict, Tuple, TYPE_CHECKING
 
-from .atomic_json import atomic_write_json, file_lock
+from .atomic_json import LockError, atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
 
 if TYPE_CHECKING:
@@ -320,6 +320,10 @@ def _keep_backend(out: Dict[str, Any], path: str) -> Dict[str, Any]:
     return out
 
 
+class SettingsReadError(LockError):
+    """`settings.json` var ama okunamıyor: oku-değiştir-yaz yapılmaz (`LockError` ele alan yerler aynen geçerli)."""
+
+
 def save_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
     """`patch`'i mevcut ayarların ÜSTÜNE merge edip diske yaz, YENİ TAM ayarları
     döndür. Bilinmeyen anahtarlar sessizce atlanır (DEFAULT_SETTINGS şemasının
@@ -370,7 +374,9 @@ _DICT_ONLY_KEYS = ("byok", "stewards")
 
 def _save_settings_locked(patch: Dict[str, Any]) -> Dict[str, Any]:
     _backup_if_corrupt()
-    current = load_settings()
+    current, readable = _load_settings_uncached()
+    if not readable:        # varsayılanların üstüne yazmak ayarları/anahtarları silerdi (TBD#383)
+        raise SettingsReadError(f"{SETTINGS_JSON} okunamadı: ayar kaydedilmedi")
     for k, v in patch.items():
         if k not in DEFAULT_SETTINGS:
             continue
@@ -982,7 +988,7 @@ def steward_config(sid: str = "default") -> "Config":
                 continue
     try:
         cfg.history_warn_at = max(100, int(s.get("history_warn_at") or Config.history_warn_at))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # sonsuz değer: varsayılan kalır
         pass
     if cfg.lang not in ("tr", "en"):
         cfg.lang = "tr"

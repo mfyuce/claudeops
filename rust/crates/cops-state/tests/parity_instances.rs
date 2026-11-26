@@ -230,7 +230,7 @@ fn load_cache_semantics() {
     assert_eq!(i.load().len(), 1, "önbellekten");
     e.py("files", "from claudeops import instances as i\ni.record_instance('b', blueprint=None, cwd='/c', cli='claude', model='m', origin='t')");
     assert_eq!(i.load().len(), 2);
-    // db: ayna dosyaya dokunmadan DB değişirse iki dil de yeni değeri görür (önbellek yok, TBD#374 S4)
+    // db: ayna dosyaya dokunmadan DB değişirse yeni değer görülür (TBD#374 S4)
     let e = Env::new();
     e.py("db", "from claudeops import instances as i\ni.record_instance('a', blueprint=None, cwd='/c', cli='claude', model='m', origin='t')");
     let docs = e.docs(Backend::Db);
@@ -241,6 +241,52 @@ fn load_cache_semantics() {
         "from claudeops.store import default_store\nst = default_store()\nd = st.get_doc('instances'); d['instances']['z'] = {'cwd': '/z'}; st.set_doc('instances', d)",
     );
     assert_eq!(i.load().len(), 2, "db kipinde ayna değişmese de DB okunur");
+}
+
+/// db kipi: önbellek anahtarı DB satır damgasıdır (Python `test_state_instances_db_version_cache.py`).
+#[test]
+fn load_db_cache_follows_row_stamp() {
+    let e = Env::new();
+    e.py(
+        "db",
+        "from claudeops.store import default_store\ndefault_store()",
+    );
+    let docs = e.docs(Backend::Db);
+    let i = Instances::new(&docs);
+    let path = e.dir().instances_json();
+    let doc = |n: &str| j(&format!(r#"{{"version":1,"instances":{{"{n}":{{}}}}}}"#));
+    let put = |n: &str| docs.store().unwrap().set_doc("instances", &doc(n)).unwrap();
+    let names = || i.load().keys().cloned().collect::<Vec<_>>();
+    // damgaya dokunmadan gövde: önbellek isabetini ve düşen okumayı gözlemek için
+    let body = |b: &str| {
+        let c = rusqlite::Connection::open(e.dir().db()).unwrap();
+        c.execute("UPDATE docs SET body=?1 WHERE name='instances'", [b])
+            .unwrap();
+    };
+
+    put("a");
+    assert_eq!(names(), ["a"]);
+    body(&doc("gizli").to_compact());
+    assert_eq!(names(), ["a"], "damga aynı: yeniden ayrıştırılmaz");
+    put("b");
+    assert_eq!(names(), ["b"], "sürüm değişti");
+    docs.store().unwrap().delete_doc("instances").unwrap();
+    std::fs::remove_file(&path).ok();
+    assert!(names().is_empty(), "satır yok");
+    put("z");
+    assert_eq!(names(), ["z"], "sil + yeniden yaz: sürüm yine 1");
+
+    // DB okuması düşüp dosyaya dönen sonuç saklanmaz
+    put("c");
+    std::fs::write(&path, doc("eski").to_compact()).unwrap();
+    body("{yarim");
+    assert_eq!(names(), ["eski"]);
+    body(&doc("c").to_compact());
+    assert_eq!(names(), ["c"]);
+
+    // dönen sözlük kopyadır
+    i.load().clear();
+    assert_eq!(names(), ["c"]);
 }
 
 #[test]

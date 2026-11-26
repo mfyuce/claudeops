@@ -4,8 +4,7 @@
 //! `tests/parity_settings.rs::settings_readers_match_python`. Model/effort varsayılanları (`default_model_for` ...)
 //! sağlayıcı bilgisini PARAMETRE alır (bu crate sağlayıcılara bağlı değil); parite: `tests/parity_steward.rs`.
 //!
-//! Python'un İSTİSNA fırlattığı tip hatası (`history_warn_at` sonsuz; `docs/rs-state.md` S12) [`SettingsTypeError`]
-//! döner: sessizce yutulmaz, sessizce düzeltilmez.
+//! Python'un İSTİSNA fırlattığı tip hatası [`SettingsTypeError`] döner: sessizce yutulmaz, sessizce düzeltilmez.
 use crate::json::{Json, Map};
 use crate::paths::{expanduser_with, home_env, is_executable_file, realpath};
 use crate::pycompat::{self as py, PyInt};
@@ -71,7 +70,7 @@ pub fn default_ucli_services() -> &'static [Json] {
 /// Python'un istisna fırlattığı elle bozulmuş değer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsTypeError {
-    /// Hangi alan (ör. `history_warn_at`).
+    /// Hangi alan (ör. `provider_bin`).
     pub field: String,
     /// Python istisna türü.
     pub python: &'static str,

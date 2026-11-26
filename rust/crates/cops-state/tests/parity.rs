@@ -723,7 +723,11 @@ assert i.forget_instance('r')
         // bozuk dosyanın üstüne yazılmaz
         b.write("instances.json", "{yarim");
         assert!(i.forget("p20261126").is_err());
-        assert!(i.load().is_empty());
+        // önbelleksiz okuyucu boş görür; db kipinde damgası değişmemiş önbellek DB verisini vermeyi sürdürür (Python gibi)
+        let fresh = b.docs(backend);
+        assert!(Instances::new(&fresh).load().is_empty());
+        let cached = if backend == Backend::Db { 3 } else { 0 };
+        assert_eq!(i.load().len(), cached);
         assert_eq!(b.read("instances.json"), "{yarim");
     }
 }

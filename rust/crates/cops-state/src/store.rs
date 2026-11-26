@@ -291,6 +291,19 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// `_doc_stamp`: (sürüm, yazım anının bitleri); satır yoksa `None`. Sil + yeniden yaz sürümü 1'den başlatır:
+    /// yazım anı ayırır.
+    pub(crate) fn doc_stamp(&self, name: &str) -> Result<Option<(i64, u64)>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT version, updated FROM docs WHERE name=?1",
+                [name],
+                |r| Ok((r.get(0)?, r.get::<_, f64>(1)?.to_bits())),
+            )
+            .optional()?)
+    }
+
     pub fn doc_version(&self, name: &str) -> Result<i64> {
         Ok(self
             .conn()

@@ -1126,17 +1126,17 @@ FALLBACK_ALERT_WINDOW_MINUTES = 15.0
 
 
 def _find_gnome_terminal_server() -> Optional[psutil.Process]:
-    for p in psutil.process_iter(["cmdline"]):
+    me = os.getuid()
+    for p in psutil.process_iter(["pid", "uids"]):
+        # review R-15 + TBD#365 birleştirme kapısı: uid ÖNCE; başka kullanıcının cmdline'ı hiç okunmaz
         try:
-            cmdline = p.info.get("cmdline") or []
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            uids = p.info.get("uids")
+            if uids is None or uids.real != me:
+                continue
+            cmdline = p.cmdline() or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
             continue
         if any("gnome-terminal-server" in part for part in cmdline):
-            try:    # review R-15: başka kullanıcının gnome-terminal-server'ı bizimki sayılmasın
-                if p.uids().real != os.getuid():
-                    continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-                continue
             return p
     return None
 
@@ -1184,9 +1184,20 @@ def _diag_status(live: Optional[list] = None) -> dict:
     except Exception:
         orphans = None
 
+    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; burada görünür.
+    # Anahtarlar modüller arasında çakışmaz (discovery.session_file, needs_ho.transcript_*, session_usage.usage_*).
+    skipped: Dict[str, int] = {}
+    try:
+        from .. import discovery as _disc, needs_ho as _nho, session_usage as _su
+        for counter in (_disc._skipped, _nho._skipped, _su._skipped):
+            skipped.update({k: int(v) for k, v in counter.items() if v})
+    except Exception:
+        skipped = {}
+
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
         "orphans": orphans,
+        "skipped": skipped,
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,
@@ -2225,17 +2236,41 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
 HO_STOP_TIMEOUT_SECONDS = 900.0     # üst sınır: uzun devirler 5 dk'yı aşıyor (mo 14 Kas 7 dk 44 sn); bekleme READY görününce biter
 HO_STOP_REASK_FRACTION = 2 / 3      # bu orandan sonra READY yoksa devir BİR kez yeniden istenir (done 14 Kas: başka işle cevap verdi)
 HO_STOP_POLL_SECONDS = 2.0
+HO_STOP_REPOLL_SECONDS = 15.0       # uzak durum bayatsa poller önbelleği bu kadar daha yoklanır (poll 3 sn; ağa gitmez)
 
 
 def _ho_stop_fail(lang: str, why: str, code: str) -> dict:
     tr = {"handover_failed": "Devir mesajı gönderilemedi; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
           "handover_timeout": "Devir zamanında tamamlanmadı (READY FOR HANDOVER görünmedi); oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
-          "handover_unreadable": "Oturumun son yanıtı okunamadı, devir doğrulanamaz; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın."}
+          "handover_unreadable": "Oturumun son yanıtı okunamadı, devir doğrulanamaz; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
+          "ambiguous_sessions": "Uzak makinede aynı adlı birden çok çalışan oturum var, hedef belirsiz; oturum KAPATILMADI. Önce adaş oturumlardan birini o makinede kapatın."}
     en = {"handover_failed": "Could not send the handover message; session NOT closed. Use the \"close\" button to close without a handover.",
           "handover_timeout": "Handover did not finish in time (no READY FOR HANDOVER); session NOT closed. Use the \"close\" button to close without a handover.",
-          "handover_unreadable": "The session's last reply could not be read, so the handover cannot be verified; session NOT closed. Use the \"close\" button to close without a handover."}
+          "handover_unreadable": "The session's last reply could not be read, so the handover cannot be verified; session NOT closed. Use the \"close\" button to close without a handover.",
+          "ambiguous_sessions": "More than one running session has this name on the remote host, so the target is ambiguous; session NOT closed. Close one of the twins on that host first."}
     msg = (en if lang == "en" else tr)[code]
-    return {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code, "suggest": "force"}
+    out = {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code}
+    if code != "ambiguous_sessions":      # adaşta devirsiz kapatma önerilmez: hedef yine belirsiz
+        out["suggest"] = "force"
+    return out
+
+
+def _remote_stop_row(host: str, name: str) -> Tuple[str, Optional[dict]]:
+    """Devirli uzak durdurmanın hedef denetimi: ("", satır ya da None) ya da (hata kodu, None). Aynı adlı iki çalışan satır
+    `ambiguous_sessions` (beklemeden); durum bayatsa `HO_STOP_REPOLL_SECONDS` boyunca yeniden yoklanır, sonra
+    `handover_unreadable`."""
+    deadline = time.monotonic() + HO_STOP_REPOLL_SECONDS
+    while True:
+        fresh, row = web_steward._remote_running_row(host, name)
+        if fresh:
+            return "", row
+        rows = web_steward._remote_rows(host)
+        if rows is not None and len(web_steward._remote_named_rows(rows, name)) > 1:
+            return "ambiguous_sessions", None
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return "handover_unreadable", None
+        time.sleep(min(HO_STOP_POLL_SECONDS, left))
 
 
 def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS, exact: bool = False) -> Optional[dict]:
@@ -2278,10 +2313,10 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     """UZAK oturum (tam adı çalışan satır): uzak `/api/handover` -> `/api/term/chat` ile READY FOR HANDOVER -> uzak
     `/api/stop` `force`+`exact` (devir zaten alındı). None = devir uygulanamaz (çalışan satır yok ya da konuşmasız): çağıran
     tam adlı düz durdurmaya düşer. Host durumu OKUNAMAZSA "uygulanamaz" sayılmaz: devir doğrulanamaz, kapatmaz."""
-    fresh, row = web_steward._remote_running_row(host, name)
-    if not fresh:
-        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="status")
-        return _ho_stop_fail(lang, "", "handover_unreadable")
+    code, row = _remote_stop_row(host, name)
+    if code:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="status", code=code)
+        return _ho_stop_fail(lang, "", code)
     provider = None if row is None else get_provider(str(row.get("cli") or DEFAULT_CLI))
     if provider is None or not provider.has_conversation():
         diag_log("ho_stop_remote_skip", name=name, host=host, reason="no_running_row" if row is None else "no_conversation")
@@ -2299,7 +2334,12 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     reply = web_orch._wait_for_reply_remote(host, name, provider, baseline, timeout=first, poll=HO_STOP_POLL_SECONDS,
                                             stable_polls=2, require_marker="READY FOR HANDOVER", cancel=threading.Event(),
                                             push_check=None)
+    # Bekleme uzundur: sonradan ikinci adaş çıktıysa ya da host okunamıyorsa istek de `/api/stop` da GİTMEZ (TBD#372).
     if reply is None:
+        code = _remote_stop_row(host, name)[0]
+        if code:
+            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask", code=code)
+            return _ho_stop_fail(lang, "", code)
         diag_log("ho_stop_reask", name=name, host=host)
         res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
         if res2.get("ok"):
@@ -2309,6 +2349,10 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
+    code = _remote_stop_row(host, name)[0]
+    if code:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop", code=code)
+        return _ho_stop_fail(lang, "", code)
     out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
     return dict(out, handover=True) if isinstance(out, dict) else out
 
@@ -3125,19 +3169,24 @@ def _open_mirror_window(name: str, host: str, port: int, lang: str = "tr", force
     `require_running=False` + `focus=False`: snapshot geri yüklemesi (`_snapshot_resume`). Uzak
     session henüz çalışmıyor olabilir (yerel snapshot uzak session'ı BAŞLATMAZ); görüntüleyici
     "bekliyor" durumunda onu bekler, o yüzden varlık kontrolü atlanır (host kayıtlı mı, karakter
-    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur."""
+    kümesi, X11 yine denetlenir). Toplu geri yüklemede açık pencereleri öne getirmek gürültü olur.
+
+    Önbellekte aynı adlı iki ÇALIŞAN satır varsa hedef belirsizdir: iki durumda da (`force` dahil) pencere
+    açılmaz ya da öne getirilmez (`ambiguous_name`, TBD#380)."""
     if not host or host == LOCAL_HOST_NAME:
         return _err(lang, "mirror_local", name=name)
     if not (_MIRROR_ARG_RE.match(name) and _MIRROR_ARG_RE.match(host)):
         return _err(lang, "mirror_bad_target", name=f"{host}:{name}")
     if get_host(host) is None:
         return _err(lang, "unknown_host", name=host)
+    rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
+    hits = [r for r in rows if isinstance(r, dict) and r.get("name") == name and r.get("running")]
+    if len(hits) > 1:
+        return _err(lang, "ambiguous_name", name=name, candidates=", ".join([f"{host}:{name}"] * len(hits)))
     if require_running:
-        rows = (web_hosts.get_cached(host) or {}).get("sessions") or []
-        row = next((r for r in rows if isinstance(r, dict) and r.get("name") == name), None)
-        if row is None or not row.get("running"):
+        if not hits:
             return _err(lang, "not_running", name=name)
-        if not row.get("tmux"):
+        if not hits[0].get("tmux"):
             return _err(lang, "not_tmux_backed", name=name)
     display = detect_display()
     if not _x11_display_ok(display):
@@ -5466,12 +5515,23 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._json({"ok": True, "path": dest}, status=200)
 
+    def _lock_busy(self, event: str, e: LockError) -> None:
+        """Durum dosyası kilidi alınamadı: hiçbir şey yazılmadı, istemci yeniden deneyebilir (503, bağlantı kapanır)."""
+        diag_log(event, path=urlparse(self.path).path, error=str(e)[:200])
+        self.close_connection = True
+        try:
+            self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
+        except Exception:
+            pass
+
     def do_GET(self):
         from .. import authz as _az
         try:
             self._do_get_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("get_lock_busy", e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
 
@@ -5989,13 +6049,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
-        except LockError as e:      # kilit alınamadı: hiçbir şey yazılmadı, yeniden denenebilir
-            diag_log("post_lock_busy", path=urlparse(self.path).path, error=str(e)[:200])
-            self.close_connection = True
-            try:
-                self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
-            except Exception:
-                pass
+        except LockError as e:
+            self._lock_busy("post_lock_busy", e)
         except (TypeError, ValueError, AttributeError, KeyError) as e:
             # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
             diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])

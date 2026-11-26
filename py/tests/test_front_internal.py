@@ -1,5 +1,5 @@
 """Rust ön kapı geçiş eki: gizli dosyası (0600), iç authz, ws-ticket/consume, uç koruması."""
-import os, stat, sys, tempfile, unittest
+import os, stat, sys, tempfile, threading, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from claudeops import authz, front, ws_ticket  # noqa: E402
@@ -7,10 +7,16 @@ from claudeops import authz, front, ws_ticket  # noqa: E402
 
 class Secret(unittest.TestCase):
     def setUp(self):
-        self.home = tempfile.mkdtemp()
-        p = mock.patch.object(front.os.path, "expanduser", lambda x: x.replace("~", self.home)); p.start(); self.addCleanup(p.stop)
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        self.state = tmp.name
+        p = mock.patch.object(front.paths, "CLAUDEOPS_DIR", self.state); p.start(); self.addCleanup(p.stop)
         p = mock.patch.dict(os.environ, {}, clear=False); p.start(); self.addCleanup(p.stop)
         os.environ.pop("CLAUDEOPS_FRONT_SECRET", None)
+
+    def test_secret_follows_state_dir(self):
+        self.assertEqual(front.secret_path(), os.path.join(self.state, "front.secret"))
+        front.ensure_secret()
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "front.secret")))
 
     def test_ensure_creates_0600_and_is_stable(self):
         v = front.ensure_secret()
@@ -23,6 +29,49 @@ class Secret(unittest.TestCase):
         front.ensure_secret()
         os.chmod(front.secret_path(), 0o644)
         self.assertEqual(front.read_secret(), "")
+
+    def test_leaked_secret_is_replaced_not_reused(self):
+        old = front.ensure_secret()
+        os.chmod(front.secret_path(), 0o644)
+        new = front.ensure_secret()
+        self.assertNotEqual(new, old)
+        self.assertEqual(front.read_secret(), new)
+        self.assertEqual(stat.S_IMODE(os.stat(front.secret_path()).st_mode), 0o600)
+
+    def test_empty_or_corrupt_file_is_replaced(self):
+        front.ensure_secret()
+        for bad in (b"", b" \n", b"\xff\xfe\n"):
+            with open(front.secret_path(), "wb") as fh:
+                fh.write(bad)
+            v = front.ensure_secret()
+            self.assertEqual(len(v), 64)
+            self.assertEqual(front.read_secret(), v)
+
+    def test_concurrent_ensure_returns_the_value_on_disk(self):
+        for _ in range(20):
+            if os.path.exists(front.secret_path()):
+                os.unlink(front.secret_path())
+            gate, got = threading.Barrier(8), []
+
+            def go():
+                gate.wait()
+                got.append(front.ensure_secret())
+
+            ts = [threading.Thread(target=go) for _ in range(8)]
+            for th in ts:
+                th.start()
+            for th in ts:
+                th.join(10)
+            self.assertEqual(got, [front.read_secret()] * 8)
+        left = sorted(os.listdir(os.path.dirname(front.secret_path())))
+        self.assertEqual(left, ["front.secret", "front.secret.lock"])
+
+    def test_non_utf8_file_means_no_secret(self):
+        front.ensure_secret()
+        with open(front.secret_path(), "wb") as fh:
+            fh.write(b"\xff\xfe\n")
+        self.assertEqual(front.read_secret(), "")
+        self.assertFalse(front.trusted_front("127.0.0.1", {"X-Cops-Front": "x"}))
 
     def test_env_wins_and_missing_is_empty(self):
         self.assertEqual(front.read_secret(), "")

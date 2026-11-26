@@ -69,6 +69,9 @@ class FakeProc:
     def __init__(self, pid, cmdline, uid=1000, denied=False):
         self.info = {"pid": pid, "cmdline": cmdline, "uids": None if denied else UIDS(uid, uid, uid)}
 
+    def cmdline(self):
+        return self.info["cmdline"]     # TBD#365: cmdline uid süzgecinden sonra okunur
+
 
 class RunningMirrorsTests(unittest.TestCase):
     def scan(self, procs, uid=1000):

@@ -5,7 +5,6 @@
 use crate::json::{Json, Map};
 use crate::pycompat::{self as py, PyInt};
 use crate::settings::Settings;
-use crate::settings_read::SettingsTypeError;
 use std::sync::OnceLock;
 
 const DEFAULTS: &str = include_str!("default_steward_config.json");
@@ -46,8 +45,7 @@ pub fn defaults() -> &'static Map {
     })
 }
 
-/// `valid_custom_id`: `^[a-z]{2,16}$`, rezerve değil, beyin öneki değil. Python farkı (sahibe soruldu S11): Python `$`
-/// sondaki tek satır sonunu da kabul eder, burada reddedilir.
+/// `valid_custom_id`: `^[a-z]{2,16}$` (tam eşleşme, TBD#379 S11), rezerve değil, beyin öneki değil.
 pub fn valid_custom_id(sid: &str) -> bool {
     (2..=16).contains(&sid.len())
         && sid.bytes().all(|b| b.is_ascii_lowercase())
@@ -73,15 +71,12 @@ pub fn brain_name_for(sid: &str) -> String {
 pub enum StewardConfigError {
     /// Python `ValueError`: geçersiz kimlik (sessizce `default`a düşülmez).
     InvalidSid(String),
-    /// Python'un yakalamadığı tip hatası (`history_warn_at` sonsuz: `OverflowError`; sahibe soruldu S12).
-    Type(SettingsTypeError),
 }
 
 impl std::fmt::Display for StewardConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StewardConfigError::InvalidSid(s) => write!(f, "geçersiz değnekçi kimliği: {s:?}"),
-            StewardConfigError::Type(e) => e.fmt(f),
         }
     }
 }
@@ -168,24 +163,18 @@ impl StewardConfig {
     }
 }
 
-/// `int(x)` (`history_warn_at`): `Ok(None)` = `TypeError`/`ValueError`.
-fn history_int(v: &Json) -> Result<Option<PyInt>, SettingsTypeError> {
-    Ok(match v {
+/// `int(x)` (`history_warn_at`): `None` = `TypeError`/`ValueError`/`OverflowError` (sonsuz, TBD#379 S12).
+fn history_int(v: &Json) -> Option<PyInt> {
+    match v {
         Json::Bool(b) => Some(PyInt::from_i64(i64::from(*b))),
         Json::Int(i) => Some(PyInt::from_i64(*i)),
         Json::BigInt(t) => py::parse_int(t),
-        Json::Float(f) if f.is_nan() => None,
-        Json::Float(f) if f.is_infinite() => {
-            return Err(SettingsTypeError {
-                field: "history_warn_at".into(),
-                python: "OverflowError",
-            })
-        }
+        Json::Float(f) if !f.is_finite() => None,
         // `{:.0}` kayan noktanın tam ondalık açılımını yazar (`int(1e300)` ile aynı)
         Json::Float(f) => py::parse_int(&format!("{:.0}", f.trunc())),
         Json::Str(s) => py::parse_int(s),
         Json::Null | Json::Array(_) | Json::Object(_) => None,
-    })
+    }
 }
 
 impl Settings {
@@ -239,7 +228,7 @@ impl Settings {
             }
         }
         if let Some(raw) = self.get("history_warn_at").filter(|v| v.truthy()) {
-            if let Some(n) = history_int(raw).map_err(StewardConfigError::Type)? {
+            if let Some(n) = history_int(raw) {
                 let small = n.saturating_i64() < 100;
                 cfg.set(
                     "history_warn_at",
