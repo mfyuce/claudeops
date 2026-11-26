@@ -4,7 +4,6 @@
 #![allow(dead_code)]
 
 use std::ffi::OsStr;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -47,12 +46,10 @@ impl Sandbox {
             std::fs::create_dir_all(t.path().join(d)).unwrap();
         }
         let sc = t.path().join("fakebin/systemctl");
-        std::fs::write(
+        write_exe(
             &sc,
             "#!/bin/sh\necho \"$*\" >> \"$FAKE_SC_LOG\"\ncase \"$2\" in is-active|is-enabled) exit \"${FAKE_SC_STATE:-3}\";; esac\ncase \" $FAKE_SC_FAIL \" in *\" $2 \"*) exit 1;; esac\nexit 0\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&sc, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         Sandbox { t }
     }
 
@@ -97,9 +94,25 @@ impl Sandbox {
 
     pub fn exe(&self, p: &Path) {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(p, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_exe(p, "#!/bin/sh\n");
     }
+}
+
+/// Çalıştırılacak betik: yazma tanıtıcısı test sürecinde HİÇ açılmasın diye ayrı süreçle yazılır (paralel bir test iş
+/// parçacığının `fork`u açık tanıtıcıyı kopyalarsa `exec` "Text file busy" ile düşer).
+pub fn write_exe(path: &Path, body: &str) {
+    let mut c = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\" && chmod 755 \"$1\"", "sh"])
+        .arg(path)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut c.stdin.take().unwrap(), body.as_bytes()).unwrap();
+    assert!(
+        c.wait().unwrap().success(),
+        "betik yazılamadı: {}",
+        path.display()
+    );
 }
 
 pub fn same(a: &Output, b: &Output, what: &str) {

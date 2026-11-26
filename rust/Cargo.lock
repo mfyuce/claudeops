@@ -190,6 +190,7 @@ name = "cops-cli"
 version = "0.1.0"
 dependencies = [
  "cops-auth",
+ "cops-procscan",
  "cops-proxy",
  "libc",
  "serde_json",
