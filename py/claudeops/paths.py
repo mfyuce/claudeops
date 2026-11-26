@@ -43,6 +43,11 @@ if not os.environ.get("CLAUDEOPS_DIR") and _under_test_runner():
     os.environ["CLAUDEOPS_DIR"] = tempfile.mkdtemp(prefix="cops-test-state-")
     atexit.register(shutil.rmtree, os.environ["CLAUDEOPS_DIR"], True)    # yalnız oluşturan süreç siler (alt süreç env'den alır)
 CLAUDEOPS_DIR = os.environ.get("CLAUDEOPS_DIR") or os.path.join(CLAUDE_DIR, "claudeops")
+# Göreli değer sürecin dizinine göre çözülür; `py/cops` önce `cd py/` yaptığından gizli, birim `--state-dir`i, DB `py/`
+# altına giderdi. Kapalı yön: açık hata, hiçbir şey yazılmadan (Rust `cops-cli` `Roots::check_absolute` ile aynı metin).
+# Yalnız ortam değeri denetlenir (göreli HOME'dan türeyen varsayılan bu düzeltmenin kapsamı dışında).
+if os.environ.get("CLAUDEOPS_DIR") and not os.path.isabs(CLAUDEOPS_DIR):
+    raise SystemExit(f"CLAUDEOPS_DIR göreli ({CLAUDEOPS_DIR}): mutlak yol verin")
 STATE_DIR = Path(CLAUDEOPS_DIR)   # needs_ho / handover timestamp için Path API
 
 # claudeops repo'nun kendi kökü (bu dosyadan: claudeops/py/claudeops/paths.py → 2 parent yukarı).
