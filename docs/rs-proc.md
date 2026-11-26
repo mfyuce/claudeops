@@ -1,6 +1,6 @@
 # rs/proc: cops-procscan (Rust sprinti W1-pre, süreç taraması)
 
-Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). TBD#365 uygulandı: "Python hataları" listesindeki maddeler hem Python'da (ayrı `fix:` commit'i, kırmızı-sonra-yeşil test) hem Rust'ta düzeltildi; Rust bozuk kaydı atlayıp sayar. Birleştirme kapısının (cops) sekiz bulgusu da kapandı ("Birleştirme kapısı bulguları" bölümü). Açık: parite koşucusunun `cops-parity`ye geçişi (Açık işler, TBD#388).
+Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). TBD#365 uygulandı: "Python hataları" listesindeki maddeler hem Python'da (ayrı `fix:` commit'i, kırmızı-sonra-yeşil test) hem Rust'ta düzeltildi; Rust bozuk kaydı atlayıp sayar. Birleştirme kapısının (cops) sekiz bulgusu da kapandı ("Birleştirme kapısı bulguları" bölümü). Parite koşucusu kararı (TBD#388): `parity/run.py` kalır (Açık işler).
 
 ## Kapsam (taşınan)
 | Python | Rust (`rust/crates/cops-procscan/src`) |
@@ -122,7 +122,7 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 - [x] Sohbet geçmişi okumanın izi: `rs/prov` ("Kapsam" bölümü).
 - [x] TBD#365: "Python hataları" maddeleri iki dilde düzeltildi (yukarıda; Python `fix:` commit'i 6ae5da3).
 - [x] Parite koşucusu: büyüyen transkriptte `scan` `usage_total` yanlış farkı kapatıldı (pencere içinde değişen dosya sayılıp atlanır).
-- Parite koşucusunun `cops-parity`ye taşınması (sahip, TBD#365 cevabı) bugün yapılamıyor: `cops-parity` yalnız iki HTTP ucunun yanıtını kıyaslıyor, bu crate'in HTTP ucu yok (T1'de gelecek). Karar sahipte (TBD#388); kapı `parity/run.py`.
+- [x] Parite koşucusu (TBD#388, karar (a), 26 Kas): `parity/run.py` kalır; `/api/status` Rust'a alınırken (T1) istekler `cops-parity` listesine eklenir, betik yalnız HTTP'den görünmeyen denetimler için durur.
 - [ ] `ProcId` doğrulamasını kullanan kill yolu T4'te (crate yalnız tipi ve `verify`ı sağlar).
 - [ ] Tick içi tarama maliyeti T1'de `/api/status`a bağlanınca ölçülmeli (CPU kipi +0,3 sn bekler).
 - [ ] `Config::from_env` `$HOME`/`$CLAUDEOPS_DIR`i doğrudan okur; `cops-state` birleşince `state_dir()` oradan alınmalı (H14).
