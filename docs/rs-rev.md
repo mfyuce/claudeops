@@ -23,7 +23,8 @@ Aşağıdaki 1. maddedeki farklar `c5a666a`de kapandı.
    Python 3.10 = Unicode 13; Python sürümü yükselirse tablo yeniden üretilmeli, ulak_31/yuhem sürümü ayrıca bakılmadı),
    `counts_as_attempt` artık `Result<bool>`, geri kalanı düzenek hatası.
 2. Python testleri parite koşusunda temiz (rc=0); tüm stderr `<rapor>.stderr` dosyasında.
-3. Gerçek veri paritesi: **koştu** (26 Kas, reviewer deposunun geçici kopyası, 174.853 çağrı, 0 fark; kopya silindi).
+3. Gerçek veri paritesi: **koştu** (26 Kas, reviewer deposunun geçici kopyası; `rs/state` `e5a684e` birleştirmesinden
+   sonra yeniden: 174.871 çağrı, 0 fark; kopya silindi).
 4. Eşleme tablosu (sahip EK 2): **üretildi**, aşağıda "Eşleme tablosu" (`tests/py/map_table.py`; `--check` bayatlığı
    denetler). `review.py` ya da review testleri değişince yeniden üretilir.
 5. **Python dersleri** (`docs/rust-lessons-from-python.md`, bölüm 2.7 ve bölüm 3'ün 20 maddesi): her madde burada test adı
