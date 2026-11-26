@@ -35,6 +35,14 @@ impl Paths {
     pub fn copilot_session_db(&self) -> String {
         format!("{}/.copilot/session-store.db", self.home)
     }
+    /// codex rollout arşivi (`CODEX_HOME`a bakmaz: Python `SESSIONS_DIR`).
+    pub fn codex_sessions_dir(&self) -> String {
+        format!("{}/.codex/sessions", self.home)
+    }
+    /// agy konuşma veritabanları (`CONVERSATIONS_DIR`).
+    pub fn agy_conversations_dir(&self) -> String {
+        format!("{}/.gemini/antigravity-cli/conversations", self.home)
+    }
     pub fn ucli_metrics_dir(&self) -> String {
         format!("{}/ucli_metrics", self.claudeops_dir)
     }

@@ -64,6 +64,15 @@ impl LiveProbe for FsProbe<'_> {
     fn copilot_resume_id(&self, _cwd: &str) -> Option<String> {
         self.case.fact("copilot_resume").and_then(Value::as_str).map(String::from)
     }
+    fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+        sqlite_rows(db, sql, params, row).is_some()
+    }
+    fn claude_project_dir(&self, cwd: &str) -> String {
+        format!("{}/.claude/projects/{}", self.e.home, encode_cwd(cwd))
+    }
+    fn agy_resume_id(&self, _cwd: &str) -> Option<String> {
+        self.case.fact("agy_resume").and_then(Value::as_str).map(String::from)
+    }
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
         let conn = rusqlite::Connection::open_with_flags(db, flags).ok()?;
@@ -80,6 +89,38 @@ impl LiveProbe for FsProbe<'_> {
         .ok()
         .flatten()
     }
+}
+
+/// [`LiveProbe::sqlite_rows`] sözleşmesinin test uygulaması (None = SQLite hatası).
+fn sqlite_rows(db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> Option<()> {
+    let conn = rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    conn.busy_timeout(Duration::from_secs(2)).ok()?;
+    let mut statement = conn.prepare(sql).ok()?;
+    let columns = statement.column_count();
+    let params = params.iter().map(|p| match p {
+        SqlCell::Null => Sql::Null,
+        SqlCell::Int(i) => Sql::Integer(*i),
+        SqlCell::Real(f) => Sql::Real(*f),
+        SqlCell::Text(s) => Sql::Text(s.clone()),
+        SqlCell::Blob(b) => Sql::Blob(b.clone()),
+    });
+    let mut rows = statement.query(rusqlite::params_from_iter(params)).ok()?;
+    while let Some(r) = rows.next().ok()? {
+        let mut cells = Vec::with_capacity(columns);
+        for i in 0..columns {
+            cells.push(match r.get_ref(i).ok()? {
+                ValueRef::Null => SqlCell::Null,
+                ValueRef::Integer(i) => SqlCell::Int(i),
+                ValueRef::Real(f) => SqlCell::Real(f),
+                ValueRef::Text(t) => SqlCell::Text(std::str::from_utf8(t).ok()?.into()),
+                ValueRef::Blob(b) => SqlCell::Blob(b.into()),
+            });
+        }
+        if !row(cells) {
+            break;
+        }
+    }
+    Some(())
 }
 
 fn opt<T: Into<Value>>(v: Option<T>) -> Value {

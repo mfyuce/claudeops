@@ -568,6 +568,40 @@ def op_bg(a):
     }
 
 
+def _chat_out(v):
+    """Eşlenmemiş vekil (UTF-8'e yazılamaz) işaretlenir: Rust U+FFFD verdiği için fark olarak görünür."""
+    if isinstance(v, str):
+        return "<vekil>" if any("\ud800" <= c <= "\udfff" for c in v) else v
+    if isinstance(v, list):
+        return [_chat_out(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _chat_out(x) for k, x in v.items()}
+    return v
+
+
+def op_chat(a):
+    p = _prov(a)
+    cwd, sid = a["cwd"], a.get("sid")
+    classes = (agy_p.AgyProvider, copilot_p.CopilotProvider)
+    saved = [c.resolve_resume_id for c in classes]
+    classes[0].resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("agy_resume")
+    classes[1].resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("copilot_resume")
+    try:
+        out = {
+            "last_exchange": _safe(lambda: p.last_exchange(cwd, sid)),
+            "full_history": _safe(lambda: p.full_history(cwd, sid)),
+            "last_message_role": _safe(lambda: p.last_message_role(cwd, sid)),
+            "extra_file_roots": p.extra_file_roots(cwd),
+        }
+        if a["cli"] == "ucli":
+            out["read_chat_history"] = _safe(lambda: ucli_client.read_chat_history(cwd, sid or ""))
+        out["roots"] = [codex_p.SESSIONS_DIR, agy_p.CONVERSATIONS_DIR, copilot_p.SESSION_STORE_DB]
+        return _chat_out(out)
+    finally:
+        for c, f in zip(classes, saved):
+            c.resolve_resume_id = f
+
+
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}
 
 

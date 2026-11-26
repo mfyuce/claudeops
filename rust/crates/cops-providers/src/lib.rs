@@ -6,6 +6,7 @@
 
 pub mod agy;
 pub mod bg_work;
+pub mod chat;
 pub mod claude;
 pub mod codex;
 pub mod copilot;
@@ -26,6 +27,7 @@ pub mod ucli_opts;
 pub mod ucli_status;
 pub mod usage;
 
+pub use chat::{ChatTurn, Exchange};
 pub use probe::{BuildOutput, Diag, Effect, McpRegisterError, Paths, Probe, SpawnError};
 pub use provider::{BuildArgs, Cli, McpSpec, ModelCatalog, Providers};
 pub use live::{Live, LiveProbe, SqlCell};

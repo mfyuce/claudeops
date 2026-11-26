@@ -1,5 +1,5 @@
-//! Canlı durum okuyucuları (`CliProvider.busy_status_pattern`, `background_work`, `live_*`). Crate yine G/Ç yapmaz:
-//! dosya, dizin ve SQLite okuması [`LiveProbe`] ile çağırandadır.
+//! Canlı durum okuyucuları (`CliProvider.busy_status_pattern`, `background_work`, `live_*`; sohbet geçmişi
+//! `chat`te). Crate yine G/Ç yapmaz: dosya, dizin ve SQLite okuması [`LiveProbe`] ile çağırandadır.
 //!
 //! `None` her yerde "bilinmiyor" demektir; 0, `false` ya da boş listeyle karıştırılmaz.
 
@@ -46,6 +46,14 @@ pub trait LiveProbe: Probe {
     /// `db` SALT OKUNUR (`mode=ro`, 2 sn meşgul beklemesi) açılır, tek parametreli sorgunun ilk satırının ilk hücresi;
     /// satır yoksa ya da SQLite hatasında None.
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell>;
+    /// [`LiveProbe::sqlite_cell`] gibi açılır; sorgunun satırları tek tek (belleğe toplanmadan) `row`a verilir, `row`
+    /// `false` dönerse okuma kesilir (dönüş `true`). SQLite hatasında (açılamayan/bozuk dosya, eksik tablo, UTF-8 olmayan
+    /// metin hücresi) `false`; o ana kadarki satırlar verilmiş kalır. `db` yolu OLDUĞU GİBİ açılır (URI ayrıştırması yok).
+    fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool;
+    /// `~/.claude/projects/<kodlanmış cwd>` (`claude_provider._encode_cwd`: rs/proc `transcript.rs::encode_cwd`).
+    fn claude_project_dir(&self, cwd: &str) -> String;
+    /// `AgyProvider.resolve_resume_id(cwd)` (G1).
+    fn agy_resume_id(&self, cwd: &str) -> Option<String>;
 }
 
 /// Canlı okuma bağlamı.

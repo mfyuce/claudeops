@@ -311,7 +311,8 @@ fn walk(p: &Path, root: &str, out: &mut BTreeMap<String, String>) {
             out.insert(rel, format!("dir {mode:o}"));
             walk(&path, root, out);
         } else {
-            let content = fs::read(&path).unwrap();
+            // izinsiz bırakılan fixture (okuma hatası vakaları) iki görüntüde de aynı işaretle geçer
+            let content = fs::read(&path).unwrap_or_else(|_| b"<okunamaz>".to_vec());
             out.insert(rel, format!("file {mode:o} {:?}", String::from_utf8_lossy(&content)));
         }
     }

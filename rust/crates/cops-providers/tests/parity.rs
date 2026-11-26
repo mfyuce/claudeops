@@ -63,6 +63,13 @@ mod fam_usage;
 fn parity_usage() {
     fam_usage::run();
 }
+#[path = "parity/fam_chat.rs"]
+mod fam_chat;
+
+#[test]
+fn parity_chat() {
+    fam_chat::run();
+}
 #[path = "parity/fam_panel.rs"]
 mod fam_panel;
 
