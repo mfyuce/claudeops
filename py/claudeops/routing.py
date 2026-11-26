@@ -15,6 +15,7 @@ import shutil
 from typing import Dict, Optional
 
 from .atomic_json import atomic_write_text
+from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
 from .settings import load_settings, routing_guidance_enabled
 
@@ -53,6 +54,9 @@ def claude_guidance_path() -> Optional[str]:
             with open(OVERRIDE_PATH, encoding="utf-8") as f:
                 if f.read() == text:
                     return OVERRIDE_PATH
+        except UnicodeError as e:      # elle bozulmuş dosya EZİLMEZ: bayraksız açılır, sessiz değil
+            diag_log("routing_guidance_unreadable", path=OVERRIDE_PATH, error=e.__class__.__name__)
+            return None
         except OSError:
             pass
         os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
@@ -102,6 +106,9 @@ def _sync_one(path: str, create: bool) -> str:
         # symlink'i düz dosyayla DEĞİŞTİRME (dotfiles deposu): asıl hedefe yaz; izin korunur, fsync + benzersiz tmp yardımcıda
         atomic_write_text(os.path.realpath(path), new)
         return "written" if body.strip() else "removed"
+    except UnicodeError as e:      # bozuk UTF-8 kullanıcı dosyasına dokunulmaz; öteki dosya eşitlenmeye devam eder
+        diag_log("routing_guidance_unreadable", path=path, error=e.__class__.__name__)
+        return f"skipped:{e.__class__.__name__}"
     except OSError as e:
         return f"skipped:{e.__class__.__name__}"
 
