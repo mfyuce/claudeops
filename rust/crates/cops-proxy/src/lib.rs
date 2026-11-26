@@ -1129,8 +1129,26 @@ impl Proxy {
             }
             _ => None,
         };
+        // `Authorization` varsayılan olarak silinir. Tek istisna: panel kimliği ÇEREZLE doğrulanmış bir `rootrel` isteğinde
+        // uygulamanın kendi başlığı (Maya API çağrıları) aktarılır; panel token'ı ya da `cpu_` erişim jetonu taşıyorsa yine silinir.
+        let keep_auth = by_cookie
+            && app_id
+                .as_deref()
+                .is_some_and(|id| cfg.mounts.rootrel_upstream(id).is_some())
+            && req.headers().get_all(AUTHORIZATION).iter().all(|v| {
+                v.to_str().is_ok_and(|v| {
+                    v.split([' ', '\t', ','])
+                        .filter(|w| !w.is_empty())
+                        .all(|w| {
+                            !w.starts_with("cpu_")
+                                && !token.authorized("", Some(&format!("Bearer {w}")))
+                        })
+                })
+            });
         let h = req.headers_mut();
-        h.remove(AUTHORIZATION);
+        if !keep_auth {
+            h.remove(AUTHORIZATION);
+        }
         strip_panel_cookies(h);
         let names: Vec<HeaderName> = h
             .keys()

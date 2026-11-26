@@ -1097,6 +1097,50 @@ async fn deep_page_under_the_mount_whose_base_href_is_its_own_segment_moves_to_t
 }
 
 #[tokio::test]
+async fn rootrel_app_keeps_its_own_authorization_but_never_a_panel_credential() {
+    // Maya: giriş sonrası API çağrıları `Authorization: Bearer <uygulama jetonu>` taşır; silinirse liste boş kalır.
+    let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
+    let ck = format!("Cookie: cops_ext={COOKIE}\r\n");
+    let sent = |r: &str| r.split("APP\n").nth(1).unwrap().to_string();
+    let r = raw(
+        p,
+        &get(
+            "/gw/api/sites",
+            &format!("{ck}Authorization: Bearer app.jwt.value\r\n"),
+        ),
+    )
+    .await;
+    assert!(
+        sent(&r)
+            .to_ascii_lowercase()
+            .contains("authorization: bearer app.jwt.value"),
+        "{r}"
+    );
+    for bad in [
+        format!("Authorization: Bearer {TOKEN}\r\n"),
+        format!("Authorization: bearer  {TOKEN}\r\n"),
+        format!("Authorization: Token {TOKEN}\r\n"),
+        format!("Authorization: {TOKEN}\r\n"),
+        "Authorization: Bearer cpu_0123abcd_sirsirsir\r\n".to_string(),
+        format!("Authorization: Bearer app.jwt\r\nAuthorization: Bearer {TOKEN}\r\n"),
+    ] {
+        let r = raw(p, &get("/gw/api/sites", &format!("{ck}{bad}"))).await;
+        assert!(r.starts_with("HTTP/1.1 200"), "{bad}: {r}");
+        let b = sent(&r);
+        assert!(
+            !b.to_ascii_lowercase().contains("authorization") && !b.contains(TOKEN),
+            "{bad}: {b}"
+        );
+    }
+    // Panel çerezi olmadan (yalnız sorgu token'ı) Authorization aktarılmaz.
+    let r = raw(p, &format!("POST /gw/api?token={TOKEN} HTTP/1.1\r\nHost: h\r\nAuthorization: Bearer app.jwt\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")).await;
+    assert!(
+        !sent(&r).to_ascii_lowercase().contains("authorization"),
+        "{r}"
+    );
+}
+
+#[tokio::test]
 async fn query_token_on_a_learned_root_keeps_the_public_path() {
     let (p, _d) = start(fake_app().await, Some((ONE_ROOTREL, 0o600))).await;
     let r = raw(
