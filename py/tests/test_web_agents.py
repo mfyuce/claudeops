@@ -155,9 +155,26 @@ class StartTests(WaBase):
         return start[4]
 
     def test_unsupported_effort_is_ignored_not_rejected(self):
-        self.assertEqual(self._started_effort(effort="low"), "")        # m-evren effort low desteklemiyor
-        self.assertEqual(self._started_effort(effort="max"), "")
+        # m-evren "low" desteklemiyor: verilmemiş sayılır = medium. Boş geçseydi panel ucli'nin EN YÜKSEK ön ayarını uygular.
+        self.assertEqual(self._started_effort(effort="low"), "medium")
+        self.assertEqual(self._started_effort(effort="max"), "medium")
+        only_high = [{"id": "m-high", "service": "x", "efforts": ["high"]}]
+        with mock.patch.object(wa, "models_catalog", lambda: only_high):
+            self.assertEqual(self._started_effort(model="m-high", effort="low"), "")
         self.assertEqual(self._started_effort(model="claude-sonnet-5-5", effort="LOW"), "low")
+
+    def test_ignored_effort_is_reported_to_the_client(self):
+        body, st = self.start(effort="MAX")
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body["effort_ignored"], "max")
+        self.assertIn("m-evren", body["warning"])
+        self.assertIn("medium, high", body["warning"])
+        self.assertTrue(body["warning"].endswith("using medium"), body["warning"])
+        for effort in ("high", ""):                                     # desteklenen / verilmemiş: bildirim yok
+            ag.mark_stopped(body["name"], "stopped")                    # üst başına canlı çocuk sınırı
+            self.ops.live.pop(body["name"], None)
+            body, st = self.start(effort=effort)
+            self.assertEqual(sorted(body), ["name", "ok"], body)
 
     def test_omitted_effort_is_medium_only_when_supported(self):
         self.assertEqual(self._started_effort(effort=""), "medium")

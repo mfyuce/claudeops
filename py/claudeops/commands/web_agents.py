@@ -3,7 +3,8 @@
 Sözleşme (ucli istemcisiyle BİREBİR; hata her zaman `{ok:false, error}`):
   GET  /api/agents/models            -> {ok, models:[{id, service, efforts:[low|medium|high...]}]}
   POST /api/agents/start {model, effort, task, mode: read|edit}   -> {ok, name}
-       (modelin desteklemediği `effort` reddedilmez, verilmemiş sayılır; ucli TBD 159 (e))
+       (modelin desteklemediği `effort` reddedilmez, verilmemiş sayılır; ucli TBD 159 (e). O zaman yanıta
+        `effort_ignored` = istenen değer ve okunur `warning` eklenir.)
   POST /api/agents/send  {name, text}                              -> {ok}
   GET  /api/agents/status?name=      -> {ok, state: busy|idle|waiting_input|stopped, cost_usd, turns[, question]}
   GET  /api/agents/result?name=      -> {ok, state, answer}
@@ -237,10 +238,14 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
     if entry is None:
         return _err(f"unknown model: {model}")
     effort = asked or "medium"
-    if effort not in entry["efforts"]:      # hata değil: verilmemiş sayılır, sağlayıcı kendi varsayılanıyla açar
-        effort = ""
+    notice: Dict[str, str] = {}
+    if effort not in entry["efforts"]:      # hata değil: verilmemiş sayılır (= medium; boş geçerse panel en yüksek ön ayarı uygular)
+        effort = "medium" if "medium" in entry["efforts"] else ""
         if asked:
             diag_log("ucli_agent_effort_ignored", model=model, effort=asked[:20])
+            notice = {"effort_ignored": asked[:20],
+                      "warning": f"effort {asked[:20]!r} not supported by {model} (supported: "
+                                 f"{', '.join(entry['efforts'])}); ignored, using {effort or 'the panel default'}"}
     if caller and caller[0] == "agent":
         parent = caller[1]
     else:
@@ -292,7 +297,7 @@ def _start(data: Dict[str, Any], caller: Optional[Caller], ops) -> Reply:
         ag.mark_stopped(name, "task_not_delivered")
         return _err("agent started but the task could not be delivered", 502)
     diag_log("ucli_agent_started", name=name, parent=parent, model=model, mode=mode)
-    return {"ok": True, "name": name}, 200
+    return {"ok": True, "name": name, **notice}, 200
 
 
 def _discard(name: str, ops) -> None:
