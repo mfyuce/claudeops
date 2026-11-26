@@ -23,8 +23,8 @@ from claudeops.commands import web_steward  # noqa: E402
 
 class _Tmp(unittest.TestCase):
     def _cleanup_dir(self):
-        """Geçici dizini siler; silinemezse (tam pakette bir kez `Directory not empty`, yazan bulunamadı) kalan dosyaları
-        ve canlı iş parçacıklarının yığınını hataya ekler: bir sonraki tekrarda yazan belli olsun."""
+        """Geçici dizini siler; silinemezse kalan dosyaları ve canlı iş parçacıklarının yığınını hataya ekler (yazan belli
+        olsun). Bilinen eski neden: `qdetail` thread'i (aşağıdaki `qd_off`, koruma testi `test_steward_tmp_isolation`)."""
         try:
             self.dir.cleanup()
         except OSError as e:
