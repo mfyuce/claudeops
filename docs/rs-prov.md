@@ -39,7 +39,7 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 
 ## EK (sahip 26 Kas): Python dersleri
 `docs/rust-lessons-from-python.md` genel liste + bu izin kontrol listesi ZORUNLU; her madde burada test adı ya da gerekçeyle karşılanır.
-26 Kas devir anında dosya YOKTU: yeniden bak.
+Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 taşımaları yazdıkları kodda uyguladı; izin tamamı için madde madde karşılama hâlâ açık.
 
 ## EK 2 (sahip 26 Kas): işlevce eşlik
 - Rust'ta Python'dan eksik hiçbir şey kalmayacak. Aşağıdaki EŞLEME TABLOSU: kapsamdaki modüllerin HER işlev/metot/sınıf/modül düzeyi
