@@ -125,7 +125,12 @@ pub struct Env {
 
 impl Env {
     pub fn new() -> Env {
-        let tmp = tempfile::Builder::new().prefix("cops-parity-").tempdir().unwrap();
+        Env::with_prefix("cops-parity-")
+    }
+
+    /// Kök dizin adı `prefix` ile başlar (HOME dahil tüm yollar onu içerir: kabuk tırnaklama vakaları).
+    pub fn with_prefix(prefix: &str) -> Env {
+        let tmp = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
         let root = fs::canonicalize(tmp.path()).unwrap().to_string_lossy().into_owned();
         let mut e = Env {
             home: format!("{root}/home"),
@@ -615,7 +620,11 @@ pub struct Runner {
 
 impl Runner {
     pub fn new() -> Runner {
-        Runner { e: Env::new(), known: Vec::new(), fails: Vec::new(), count: 0 }
+        Runner::with_env(Env::new())
+    }
+
+    pub fn with_env(e: Env) -> Runner {
+        Runner { e, known: Vec::new(), fails: Vec::new(), count: 0 }
     }
 
     /// Python `diags` içinden Rust kapsamı DIŞINDAKİ olayları atar (yalnız `spawn` başlatma kısmının olayları, bkz. çağıran).

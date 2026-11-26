@@ -182,6 +182,8 @@ fn build_cases(e: &Env) -> Vec<Case> {
     {
         v.push(cp(&format!("trust-ayrac{i}")).file(cfg(&text.replace("WORK", &w))));
     }
+    v.push(bcase("copilot-trust-unicode-ham".into(), "copilot", json!({"cwd": format!("{w}/ç")}))
+        .file(cfg(&format!(r#"{{"trustedFolders": ["{w}/ç"]}}"#))));
     v.push(bcase("copilot-trust-ayrac-cwd".into(), "copilot", json!({"cwd": format!("{w}/[q]")}))
         .file(cfg(r#"{"trustedFolders": ["/a]b"]}"#)));
     v.push(cp("trust-bos").file(cfg("{\n  \"trustedFolders\": []\n}\n")));

@@ -441,4 +441,25 @@ pub fn run() {
     let cases = mcp_cases(&r.e);
     r.run(cases, &[], rs_ucli_mcp);
     r.finish("ucli");
+    // Boşluklu ve tek tırnaklı HOME/durum dizini: anahtar ve token yolları kabuk satırında tırnaklı.
+    let mut r = Runner::with_env(Env::with_prefix("cops-parity a b'c-"));
+    let cases = quoting_cases(&r.e);
+    r.run(cases, &[], rs_build);
+    r.finish("ucli-tirnak");
+}
+
+fn quoting_cases(e: &Env) -> Vec<Case> {
+    let byok = json!({"byok": {"ucli": {"UCLI_API_KEY": "k", "ANTHROPIC_API_KEY": "a"}, "copilot": {"X_KEY": "c"}}});
+    let token = json!({"ucli_help": full_help(), "panel_port": 8765,
+                       "agent_token": {"path": format!("{}/ucli_agent_tokens/s1", e.state)}});
+    let mut v = vec![
+        ucase(e, "tirnak-anahtar", json!({})).settings_json(byok.clone()),
+        ucase(e, "tirnak-ajan", json!({})).settings_json(byok.clone()).facts(token),
+        ucase(e, "tirnak-hizmet", json!({"validate": true, "raw_opts": {"service": "claude"}})).settings_json(byok.clone()),
+    ];
+    for cli in ["copilot", "claude"] {
+        let args = json!({"cli": cli, "cwd": format!("{}/p1", e.work), "model": "m", "perm": "auto", "effort": "high", "name": "s1"});
+        v.push(Case::new(format!("tirnak-{cli}"), "build", args).settings_json(byok.clone()));
+    }
+    v
 }
