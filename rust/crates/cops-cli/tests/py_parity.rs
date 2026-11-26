@@ -220,6 +220,35 @@ fn parity_foreign_internal_port_blocks_on_both_sides() {
 }
 
 #[test]
+fn parity_relative_or_non_executable_bin_is_a_blocker() {
+    // "Python hatası?" 5 düzeltildi: göreli `--bin` ve çalıştırılamaz ikili iki tarafta aynı engel.
+    let sb = Sandbox::new();
+    std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
+    let noexec = sb.state().join("bin/copsd");
+    std::fs::create_dir_all(noexec.parent().unwrap()).unwrap();
+    std::fs::write(&noexec, "").unwrap();
+    for b in ["yok-rel-copsd", noexec.to_str().unwrap()] {
+        let (p, r) = both(
+            &sb,
+            &[
+                "front",
+                "on",
+                "--apply",
+                "--listen",
+                "127.0.0.1:1",
+                "--internal",
+                "127.0.0.1:2",
+                "--bin",
+                b,
+            ],
+        );
+        same(&p, &r, b);
+        assert_eq!(r.status.code(), Some(1), "{b}");
+    }
+    assert!(!sb.sc_log().exists());
+}
+
+#[test]
 fn parity_delegated_commands_and_argparse_errors() {
     let sb = Sandbox::new();
     for args in [

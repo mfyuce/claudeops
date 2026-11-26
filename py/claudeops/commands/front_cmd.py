@@ -306,6 +306,10 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> dict:
     blockers: List[str] = []
     if not os.path.exists(binp):
         blockers.append(f"ikili yok: {binp} (rust/ altında `cargo build --release`, sonra kopyala)")
+    elif not (os.path.isfile(binp) and os.stat(binp).st_mode & 0o111):
+        blockers.append(f"ikili çalıştırılabilir dosya değil: {binp}")
+    if not binp.startswith("/"):        # systemd ExecStart= göreli yolu reddeder; py/cops `cd py/` da yolu kaydırır
+        blockers.append(f"ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)")
     es = web_execstart(web_unit_text)
     new = with_internal_port(es, internal) if es else None
     if new is None:

@@ -211,5 +211,28 @@ class P2ForeignInternalPort(Env):
             self.assertEqual(f._describe(("holders", [(1, None), (2, "a.service")])), "pid 1 (birimsiz), pid 2 (a.service)")
 
 
+class P5RelativeBin(Env):
+    """5: göreli `--bin` birime göreli yazılıyordu (systemd reddeder); çalıştırılamaz ikili de engel."""
+
+    def test_relative_bin_is_a_blocker(self):
+        rel = self.root / "rel-copsd"
+        rel.write_text("#!/bin/sh\n"); rel.chmod(0o755)
+        cwd = os.getcwd()
+        os.chdir(self.root); self.addCleanup(os.chdir, cwd)
+        rc, out = self.run_front("on", True, L, I, binp="rel-copsd")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ENGEL:\n  ikili yolu mutlak değil: rel-copsd (systemd ExecStart mutlak yol ister)\n", out)
+        self.assertEqual(self.w.calls, [])
+        self.assertFalse(self.front.exists())
+
+    def test_non_executable_bin_is_a_blocker(self):
+        self.bin.chmod(0o644)
+        rc, out = self.run_front("on", False)
+        self.assertEqual(rc, 1, out)
+        self.assertIn(f"ikili çalıştırılabilir dosya değil: {self.bin}\n", out)
+        rc, out = self.run_front("on", False, binp=str(self.root))
+        self.assertIn(f"ikili çalıştırılabilir dosya değil: {self.root}\n", out)
+
+
 if __name__ == "__main__":
     unittest.main()
