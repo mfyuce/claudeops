@@ -504,6 +504,47 @@ class LightHeavySplitTest(_Tmp):
         P._save_job_state("b", {"last_ok": False})
         self.assertEqual(P.load_state(), {"a": {"last_ok": True}, "b": {"last_ok": False}})
 
+    def test_loop_does_not_count_own_job_time_as_sleep(self):
+        """26 Kas: 18 dk'lık chat_backup turu "uyanış/duraklama (1148 sn)" sanıldı (son tur damgası tick'ten ÖNCE alınıyordu)."""
+        def run(job_s, suspend_s):
+            clock, logs, turns = [1000.0], [], []
+
+            class Stop(BaseException):
+                pass
+
+            def sleep(s):
+                if turns:                                  # döngü içi uyku
+                    clock[0] += s + suspend_s
+                    if len(turns) >= 2:
+                        raise Stop()
+                else:
+                    clock[0] += s
+
+            def tick(kind="heavy"):
+                turns.append(1)
+                clock[0] += job_s if len(turns) == 1 else 0
+            fake = types.SimpleNamespace(time=lambda: clock[0], sleep=sleep)
+            with mock.patch.object(P, "time", fake), mock.patch.object(P, "tick", tick), \
+                    mock.patch.object(P, "stuck_jobs", lambda: {}), mock.patch.object(P, "diag_log", logs.append):
+                with self.assertRaises(Stop):
+                    P._loop("heavy")
+            return [m for m in logs if "uyanış" in m]
+        self.assertEqual(run(job_s=1088, suspend_s=0), [])
+        self.assertEqual(len(run(job_s=0, suspend_s=9 * 3600)), 1)     # gerçek uyku hâlâ görülür
+
+    def test_daily_run_spanning_todays_start_is_not_due_again(self):
+        """25 Kas: 02:04'te elle başlayan koşu 04:21'de bitti, 03:30 penceresi yüzünden 1 dk sonra yeniden koştu."""
+        cfg = {"enabled": "on", "interval_hours": 24, "start": "03:30"}
+        ts = lambda d, h, m: datetime.datetime(2026, 11, d, h, m).timestamp()
+        now = datetime.datetime(2026, 11, 25, 4, 23)
+        spanned = {"last_start": ts(25, 2, 4), "last_end": ts(25, 4, 21), "last_ok": True}
+        self.assertFalse(P.is_due(cfg, spanned, now))
+        self.assertTrue(P.is_due(cfg, spanned, datetime.datetime(2026, 11, 26, 3, 30)))      # ertesi gün yine due
+        before = {"last_start": ts(25, 2, 0), "last_end": ts(25, 2, 30), "last_ok": True}    # pencereden önce bitti: due
+        self.assertTrue(P.is_due(cfg, before, now))
+        stale = {"last_start": ts(25, 4, 0) - 86400 * 2, "last_end": ts(25, 4, 21), "last_ok": False}
+        self.assertTrue(P.is_due(cfg, stale, now))                                          # başarısız koşu pencereyi karşılamaz
+
     def test_wake_gap_detects_suspend_only(self):
         self.assertEqual(P.wake_gap(1000, 1060), 0.0)           # normal tur
         self.assertEqual(P.wake_gap(1000, 1000 + 3 * 60), 0.0)  # sınırda: uyanış değil

@@ -365,7 +365,8 @@ def is_due(cfg: Dict[str, Any], st: Dict[str, Any], now: Optional[datetime.datet
         if now < today_start:
             return False
         if last_dt is None or last_dt < today_start:
-            return True
+            # pencereden önce başlayıp pencere açıldıktan SONRA başarıyla biten koşu bugünü karşılar (25 Kas: bitince hemen yeniden koştu)
+            return not (st.get("last_ok") and float(st.get("last_end") or 0) >= today_start.timestamp())
         # başarısız koşu (örn. açılışta ağ yok -> private doğrulanamadı) ertesi günü beklemesin: retry_hours arayla, en çok RETRY_MAX kez
         retry = float(cfg.get("retry_hours") or 0)
         fails = int(st.get("fail_streak") or 0)
@@ -1327,7 +1328,6 @@ def _loop(kind: str = "heavy") -> None:
         gap = wake_gap(last, now)
         if gap:
             diag_log(f"periodic[{kind}]: uyanış/duraklama algılandı ({int(gap)} sn); zamanı gelen işler hemen koşuluyor")
-        last = now
         try:
             tick(kind=kind)
             for n, age in stuck_jobs().items():
@@ -1336,6 +1336,7 @@ def _loop(kind: str = "heavy") -> None:
                     diag_log(f"periodic: {n} {int(age // 60)} dk'dır koşuyor (takılı olabilir; yeniden başlatma gerekebilir)")
         except Exception as e:  # noqa: BLE001
             diag_log(f"periodic döngü[{kind}]: {type(e).__name__}: {e}")
+        last = time.time()          # damga turdan SONRA: kendi iş süremiz uyku sayılmaz (yalnız uyku/bekleme ölçülür)
         time.sleep(_WAKE_SECONDS)
 
 
