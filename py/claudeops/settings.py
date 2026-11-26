@@ -982,7 +982,7 @@ def steward_config(sid: str = "default") -> "Config":
                 continue
     try:
         cfg.history_warn_at = max(100, int(s.get("history_warn_at") or Config.history_warn_at))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # sonsuz değer: varsayılan kalır
         pass
     if cfg.lang not in ("tr", "en"):
         cfg.lang = "tr"
