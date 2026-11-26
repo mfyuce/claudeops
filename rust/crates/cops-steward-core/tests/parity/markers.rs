@@ -12,6 +12,7 @@ parity!("_unwrap_ticks", p_unwrap_ticks, |c| unwrap_ticks(&c.str("prefix"), &c.s
 parity!("count_open_tbd", count_open_tbd_vectors, |c| count_open_tbd(&c.opt::<String>("text").unwrap_or_default()));
 parity!("done_blocked", done_blocked_vectors, |c| done_blocked(c.opt::<Project>("project").as_ref()));
 parity!("_bare_marker", p_bare_marker, |c| bare_marker(&c.str("line"), &c.str("mark")));
+parity!("_is_no_work_value", p_is_no_work_value, |c| is_no_work(&c.str("value")));
 parity!("scan_markers", scan_markers_vectors, |c| scan_markers(&c.opt::<String>("text").unwrap_or_default()));
 parity!("_is_confirm_line", is_confirm_line_vectors, |c| is_confirm_line(&c.str("prefix"), &c.str("tail")));
 parity!("reply_language_line", reply_language_line_vectors, |c| { reply_language_line(&c.str("lang")) });

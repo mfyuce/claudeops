@@ -184,8 +184,7 @@ pub fn next_work_hint(proj: &Project, open_work: Option<OpenWork<'_>>, real_only
     for line in &lines {
         let Some(value) = ci_group(&NEXT_NOTE_RE, line, 1) else { continue };
         let val = clip_words(value, 160);
-        if P_NO_WORK_VALUES.contains(&pyc::strip_chars(&val, " .").to_lowercase().as_str()) || is_conditional_note(&val)
-        {
+        if is_no_work(&val) || is_conditional_note(&val) {
             return String::new();
         }
         if !is_fable_polish(&val) && !val.is_empty() {
@@ -312,15 +311,27 @@ pub fn without_stale_note<'a>(proj: &'a Project, todo_text: &str, lang: &str, do
     Cow::Owned(copy)
 }
 
-/// Cevaptaki SON "sıradaki: <iş>" satırı: (var_mı, iş). "sıradaki: yok" -> (true, "").
+/// SON "sıradaki:" satırı: (aynı satırdaki değer, sonraki satırlar). Değer satır sonunu GEÇMEZ.
+///
+/// py: _last_next_line
+pub fn last_next_line(text: &str) -> Option<(&str, Vec<&str>)> {
+    let lines = pyc::splitlines(text);
+    let (i, what) =
+        lines.iter().enumerate().rev().find_map(|(i, line)| ci_group(&NEXT_LINE_RE, line, 1).map(|w| (i, w)))?;
+    Some((pyc::strip(what), lines.get(i + 1..).unwrap_or_default().to_vec()))
+}
+
+/// Değer boş mu (yalnız biçim işaretleri dahil).
+fn blank_value(what: &str) -> bool {
+    pyc::strip_chars(what, "`*_ ").is_empty()
+}
+
+/// Cevaptaki SON "sıradaki: <iş>" satırı: (var_mı, iş). "sıradaki: yok" ve boş satır -> (true, "").
 ///
 /// py: next_line
 pub fn next_line(text: &str) -> (bool, String) {
-    let folded = pyc::ci_input(text);
-    let last = NEXT_LINE_RE.as_ref().and_then(|r| r.captures_iter(&folded).map_while(Result::ok).last());
-    let Some(caps) = last else { return (false, String::new()) };
-    let what = pyc::strip(group_of(text, &folded, &caps, 1).unwrap_or(""));
-    if ci_search(&NEXT_NONE_RE, what) {
+    let Some((what, _)) = last_next_line(text) else { return (false, String::new()) };
+    if blank_value(what) || ci_search(&NEXT_NONE_RE, what) || is_no_work(what) {
         return (true, String::new());
     }
     (true, clip_words(what, 220))
@@ -374,6 +385,10 @@ pub fn done_at_line_end(line: &str) -> bool {
 pub fn idle_finish_marker(text: &str) -> (&'static str, bool) {
     let (has, what) = next_line(text);
     if has && !what.is_empty() {
+        return ("", false);
+    }
+    // boş "sıradaki:" ardında metin: iş listesi olabilir (belirsiz), bitti sayılıp oturum kapatılmaz
+    if last_next_line(text).is_some_and(|(w, tail)| blank_value(w) && tail.iter().any(|l| !pyc::strip(l).is_empty())) {
         return ("", false);
     }
     if rfh_marker_in(text) {

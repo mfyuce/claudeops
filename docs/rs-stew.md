@@ -119,8 +119,8 @@ açma yok (`_halted_phase` dalları, `ho_halted`); alt ajan/meşgul oturumda dev
 
 ## Python hatası?
 
-"Python düzeltildi" işaretliler iki tarafta düzeltildi (TBD#370 sahip cevabı (c); TBD#377 (b); TBD#382 (b)); diğerleri aynen
-taşındı:
+"Python düzeltildi" işaretliler iki tarafta düzeltildi (TBD#370 sahip cevabı (c); TBD#377 (b); TBD#382 (b); TBD#387 (b));
+diğerleri aynen taşındı:
 
 - Python düzeltildi: `290f6a3`. `valid_name`, `valid_custom_id`, `valid_steward_id`, `reviewer_ids`: `^...$` + `match` sondaki TEK
   satır sonunu geçiriyordu (`"default\n"` rezerve listesini aşıyordu). Python `fullmatch`; Rust `is_match` (`$` metin sonu).
@@ -163,25 +163,30 @@ taşındı:
 - Python düzeltildi: `57c6de78` (TBD#377/5). `is_defer_answer`: "simdi verecegim", "kararlari simdi/sonra verecegim" erteleme.
 - Python düzeltildi: `bdc2d68`. `_clip(text, 0)` boş döner (eskiden `text[:-1] + "…"`).
 
-Grup 3 (aynen taşındı; ilk üçü yalıtılmış Python koşusuyla doğrulandı):
+Grup 3 (aynen taşınan):
 
 - `is_open_answer`: baştaki olumlu sözcük deseni olumsuz çekimi de yakalar: "Başlamasın", "başlama", "devam etme",
   "start etme" -> `True` (paused/done proje AÇILIR). "ok, ama bekle" de `True` (baştaki olumlu sözcük kazanır; bu
-  belgelenen davranış).
-- `next_line`: `_NEXT_NONE_RE` yalnız `yok|none|nothing|-` tanır ve `-` ardında sözcük karakteri ister: "sıradaki: -",
-  "sıradaki: —", "sıradaki: n/a", "sıradaki: bitti" gerçek iş sayılır (`(True, "bitti")`); `idle_finish_marker` bu
-  satır varken aynı cevaptaki bitti işaretini yok sayar, `stated_next_work` bu metni iş diye döndürür.
-- `next_line`: `\s*` satır sonunu geçer: boş "sıradaki:" satırı sonraki satırı iş sayar.
-- `explain_idle` `idle_wait` ayrıntısı panel dili `en` olsa da "dk" yazar.
-- `loop_guard`: `pause_h` tur (45 dk) ve cevap iletimi (15 dk) kesintisinde 0'dır (`pause_min` ayrıca var; tüketicinin
-  hangisini kullandığı bu izde incelenmedi).
+  belgelenen davranış). Bu madde TBD#387/1'dir: `main`de `e33208ec` ile yalnız
+  Python'da düzeltildi; bu dalda henüz yok, `main` alınınca Rust (`is_open_answer`) eşitlenmeli.
 
-Grup 4 (aynen taşındı):
+Grup 3-4, TBD#387/2-6:
 
-- `daily_summary`: İngilizce özette de skip oranı Türkçe biçimde ("%75") yazılır.
-- `dry_report_text` panel dili ne olursa olsun Türkçedir.
-- `_ask_gate_lines`: hem `applied` hem `mode="shadow"` olan kayıt iki kez sayılır, "kapıdan dönen" eksiye düşebilir
-  (ASK kapısının böyle kayıt yazdığı doğrulanmadı).
+- Python düzeltildi: `ef0e7691` (TBD#387/2). "sıradaki: -", "—", "–", "n/a", "bitti", "done" (noktalama, parantez ya da
+  tireli açıklamayla da) iş sayılmaz: `_is_no_work_value` (`next_line`, `next_work_hint`, `marker_next_work`,
+  `next_none_stated`in `STEWARD-NEXT` kolu, `note_project_next`). "- testleri koş", "bitti mi bak", "done.md düzenle" iş
+  kalır; "bitti, şimdi X" belirsizdir ve iş sayılmaz. Düz "sıradaki: bitti" satırı `_NEXT_NONE_LINE_RE`ye eklenmedi
+  ("yok dendi" sayılmaz).
+- Python düzeltildi: `ef0e7691` (TBD#387/3). `next_line` yalnız aynı satırı okur; boş "sıradaki:" satırı `(True, "")`.
+  Boş satırın ardında metin varsa `idle_finish_marker` bitti DEMEZ (blok biçimli liste olabilir; oturum kapatılmaz).
+  `_NEXT_NONE_LINE_RE` hâlâ satır sonunu geçer (iş metni üretmez, dokunulmadı).
+- Python düzeltildi: `ef0e7691` (TBD#387/4). `explain_idle` `idle_wait` ayrıntısı İngilizcede "min", `daily_summary` skip
+  oranı "75%"; `dry_report_text(rep, hours, lang)` panel dilini izler (CLI `dry-report` ve `maybe_dry_ask` soru metni ile
+  seçenekleri dahil).
+- Python düzeltildi: `ef0e7691` (TBD#387/5). `loop_guard` `pause_h` yukarı yuvarlanır (15 ve 45 dk -> 1).
+- Python düzeltildi: `ef0e7691` (TBD#387/6). `_ask_gate_lines`: `applied` olan kayıt gölge sayılmaz. `web_steward`
+  `_brain_ask_answer` hem `applied` hem `mode="shadow"` kayıt ÜRETMİYOR (kod okundu: `shadow` kipi her zaman
+  `applied=False` yazar); düzeltme yalnız savunmacı.
 
 Grup 5 (aynen taşındı):
 
@@ -247,7 +252,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 
 <!-- MAP:BEGIN (parity/map.py üretir) -->
 
-### Python öğeleri (558 satır)
+### Python öğeleri (561 satır)
 
 | Python adı (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
@@ -717,100 +722,103 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_AJ_CHILD_RE` (steward.py:5156) | `consts_gen::P_AJ_CHILD_RE` | generated::generated_files_are_current | tamam |
 | `_NEXT_NOTE_RE` (steward.py:5157) | `consts_gen::P_NEXT_NOTE_RE` | generated::generated_files_are_current | tamam |
 | `_NO_WORK_VALUES` (steward.py:5158) | `consts_gen::P_NO_WORK_VALUES` | generated::generated_files_are_current | tamam |
-| `marker_next_work` (steward.py:5161) | `markers::marker_next_work` | tour::marker_next_work_vectors | tamam |
-| `_DONE_TEXT_RE` (steward.py:5171) | `consts_gen::P_DONE_TEXT_RE` | generated::generated_files_are_current | tamam |
-| `_NEGATED_TAIL_RE` (steward.py:5172) | `consts_gen::P_NEGATED_TAIL_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NONE_LINE_RE` (steward.py:5174) | `consts_gen::P_NEXT_NONE_LINE_RE` | generated::generated_files_are_current | tamam |
-| `CLAUDE_IDLE_NUDGE_TEXT` (steward.py:5175) | `consts_gen::CLAUDE_IDLE_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `next_none_stated` (steward.py:5179) | `idletext::next_none_stated` | idletext::next_none_stated_vectors | tamam |
-| `_NO_WORK_PHRASES` (steward.py:5186) | `consts_gen::P_NO_WORK_PHRASES` | generated::generated_files_are_current | tamam |
-| `_GATE_WAIT_RE` (steward.py:5192) | `consts_gen::P_GATE_WAIT_RE` | generated::generated_files_are_current | tamam |
-| `IDLE_STALE_NOTE_ESCAPE` (steward.py:5198) | `consts_gen::IDLE_STALE_NOTE_ESCAPE` | generated::generated_files_are_current | tamam |
-| `_TODO_HINT_PREFIX` (steward.py:5199) | `consts_gen::P_TODO_HINT_PREFIX` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_RE` (steward.py:5204) | `consts_gen::P_TURN_FAILED_RE` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_STATUS_RE` (steward.py:5207) | `consts_gen::P_TURN_FAILED_STATUS_RE` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_WORD_RE` (steward.py:5208) | `consts_gen::P_TURN_FAILED_WORD_RE` | generated::generated_files_are_current | tamam |
-| `turn_failed` (steward.py:5211) | `idletext::turn_failed` | idletext::turn_failed_vectors | tamam |
-| `waiting_for_gate` (steward.py:5219) | `idletext::waiting_for_gate` | idletext::waiting_for_gate_vectors | tamam |
-| `one_line` (steward.py:5224) | `idletext::one_line` | idletext::one_line_vectors | tamam |
-| `clip_words` (steward.py:5229) | `markers::clip_words` | tour::clip_words_vectors | tamam |
-| `notes_wait` (steward.py:5240) | `idletext::notes_wait` | idletext::notes_wait_vectors | tamam |
-| `ucli_idle_threshold` (steward.py:5245) | `idletext::ucli_idle_threshold` | idletext::ucli_idle_threshold_vectors | tamam |
-| `_COND_RE` (steward.py:5250) | `consts_gen::P_COND_RE` | generated::generated_files_are_current | tamam |
-| `_NEG_ANSWER_RE` (steward.py:5254) | `consts_gen::P_NEG_ANSWER_RE` | generated::generated_files_are_current | tamam |
-| `NEG_ANSWER_MAX_CHARS` (steward.py:5257) | `consts_gen::NEG_ANSWER_MAX_CHARS` | generated::generated_files_are_current | tamam |
-| `is_negative_answer` (steward.py:5260) | `idletext::is_negative_answer` | idletext::is_negative_answer_vectors | tamam |
-| `_OPEN_LEAD_RE` (steward.py:5267) | `consts_gen::P_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
-| `_OPEN_ANY_RE` (steward.py:5268) | `consts_gen::P_OPEN_ANY_RE` | generated::generated_files_are_current | tamam |
-| `_HOLD_ANY_RE` (steward.py:5269) | `consts_gen::P_HOLD_ANY_RE` | generated::generated_files_are_current | tamam |
-| `_OPT_NUM_RE` (steward.py:5270) | `consts_gen::P_OPT_NUM_RE` | generated::generated_files_are_current | tamam |
-| `is_open_answer` (steward.py:5273) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
-| `_HELD_ANSWER_PREFIX` (steward.py:5288) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
-| `_held_instruction_item` (steward.py:5291) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
-| `CARD_NOTE_MAX_CHARS` (steward.py:5304) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
-| `expired_handover_note` (steward.py:5307) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
-| `is_conditional_note` (steward.py:5320) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
-| `_FABLE_POLISH_RE` (steward.py:5325) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
-| `is_fable_polish` (steward.py:5328) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
-| `next_work_hint` (steward.py:5333) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
-| `_TODO_ITEM_RE` (steward.py:5368) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_WORD_RE` (steward.py:5369) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_STOPWORDS` (steward.py:5370) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MIN_WORDS` (steward.py:5371) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_CLOSED_MIN` (steward.py:5372) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MARGIN` (steward.py:5373) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_DONE_MIN` (steward.py:5374) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
-| `_DONE_BULLET_RE` (steward.py:5375) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
-| `_note_words` (steward.py:5378) | `idletext::note_words` | idletext::p_note_words | tamam |
-| `stale_next_note` (steward.py:5382) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
-| `without_stale_note` (steward.py:5414) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
-| `_OWNER_WAIT_PHRASES` (steward.py:5430) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
-| `_NEXT_LINE_RE` (steward.py:5433) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NONE_RE` (steward.py:5434) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
-| `next_line` (steward.py:5437) | `idletext::next_line` | idletext::next_line_vectors | tamam |
-| `_STATED_NEXT_RE` (steward.py:5448) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
-| `stated_next_work` (steward.py:5454) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
-| `owner_wait` (steward.py:5473) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
-| `_done_at_line_end` (steward.py:5479) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
-| `idle_finish_marker` (steward.py:5485) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
-| `plan_ucli_idle` (steward.py:5513) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
-| `_ASK_MARKERS` (steward.py:5609) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
-| `_forced_open_nudge` (steward.py:5612) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
-| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5625) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
-| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5626) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `plan_claude_idle` (steward.py:5631) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
-| `_WHY_TR` (steward.py:5802) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
-| `_WHY_EN` (steward.py:5821) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
-| `_START_BLOCK_TR` (steward.py:5839) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
-| `_why` (steward.py:5844) | `explain::why` | explain::p_why | tamam |
-| `explain_idle` (steward.py:5850) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
-| `explain_idle_all` (steward.py:5964) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:5991) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
-| `daily_path` (steward.py:6042) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6046) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `DRY_KIPS` (steward.py:6065) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
-| `DRY_REPORT_HOURS` (steward.py:6067) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `dry_report` (steward.py:6070) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `dry_report_text` (steward.py:6100) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
-| `dry_ask_due` (steward.py:6111) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
-| `summary_due` (steward.py:6122) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6129) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `_NO_LOG_DAYS` (steward.py:6153) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
-| `_SUMMARY_TXT` (steward.py:6156) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6180) | `report::names_line` | report::p_names | tamam |
-| `_kind_counts` (steward.py:6185) | `report::kind_counts` | report::p_kind_counts | tamam |
-| `_ask_gate_lines` (steward.py:6190) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
-| `daily_summary` (steward.py:6209) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6292) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `write_daily` (steward.py:6310) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6317) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
+| `_NEXT_DONE_VALUE_RE` (steward.py:5160) | `consts_gen::P_NEXT_DONE_VALUE_RE` | generated::generated_files_are_current | tamam |
+| `_is_no_work_value` (steward.py:5164) | `markers::is_no_work` | markers::p_is_no_work_value | tamam |
+| `marker_next_work` (steward.py:5169) | `markers::marker_next_work` | tour::marker_next_work_vectors | tamam |
+| `_DONE_TEXT_RE` (steward.py:5179) | `consts_gen::P_DONE_TEXT_RE` | generated::generated_files_are_current | tamam |
+| `_NEGATED_TAIL_RE` (steward.py:5180) | `consts_gen::P_NEGATED_TAIL_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NONE_LINE_RE` (steward.py:5182) | `consts_gen::P_NEXT_NONE_LINE_RE` | generated::generated_files_are_current | tamam |
+| `CLAUDE_IDLE_NUDGE_TEXT` (steward.py:5183) | `consts_gen::CLAUDE_IDLE_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `next_none_stated` (steward.py:5187) | `idletext::next_none_stated` | idletext::next_none_stated_vectors | tamam |
+| `_NO_WORK_PHRASES` (steward.py:5194) | `consts_gen::P_NO_WORK_PHRASES` | generated::generated_files_are_current | tamam |
+| `_GATE_WAIT_RE` (steward.py:5200) | `consts_gen::P_GATE_WAIT_RE` | generated::generated_files_are_current | tamam |
+| `IDLE_STALE_NOTE_ESCAPE` (steward.py:5206) | `consts_gen::IDLE_STALE_NOTE_ESCAPE` | generated::generated_files_are_current | tamam |
+| `_TODO_HINT_PREFIX` (steward.py:5207) | `consts_gen::P_TODO_HINT_PREFIX` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_RE` (steward.py:5212) | `consts_gen::P_TURN_FAILED_RE` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_STATUS_RE` (steward.py:5215) | `consts_gen::P_TURN_FAILED_STATUS_RE` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_WORD_RE` (steward.py:5216) | `consts_gen::P_TURN_FAILED_WORD_RE` | generated::generated_files_are_current | tamam |
+| `turn_failed` (steward.py:5219) | `idletext::turn_failed` | idletext::turn_failed_vectors | tamam |
+| `waiting_for_gate` (steward.py:5227) | `idletext::waiting_for_gate` | idletext::waiting_for_gate_vectors | tamam |
+| `one_line` (steward.py:5232) | `idletext::one_line` | idletext::one_line_vectors | tamam |
+| `clip_words` (steward.py:5237) | `markers::clip_words` | tour::clip_words_vectors | tamam |
+| `notes_wait` (steward.py:5248) | `idletext::notes_wait` | idletext::notes_wait_vectors | tamam |
+| `ucli_idle_threshold` (steward.py:5253) | `idletext::ucli_idle_threshold` | idletext::ucli_idle_threshold_vectors | tamam |
+| `_COND_RE` (steward.py:5258) | `consts_gen::P_COND_RE` | generated::generated_files_are_current | tamam |
+| `_NEG_ANSWER_RE` (steward.py:5262) | `consts_gen::P_NEG_ANSWER_RE` | generated::generated_files_are_current | tamam |
+| `NEG_ANSWER_MAX_CHARS` (steward.py:5265) | `consts_gen::NEG_ANSWER_MAX_CHARS` | generated::generated_files_are_current | tamam |
+| `is_negative_answer` (steward.py:5268) | `idletext::is_negative_answer` | idletext::is_negative_answer_vectors | tamam |
+| `_OPEN_LEAD_RE` (steward.py:5275) | `consts_gen::P_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
+| `_OPEN_ANY_RE` (steward.py:5276) | `consts_gen::P_OPEN_ANY_RE` | generated::generated_files_are_current | tamam |
+| `_HOLD_ANY_RE` (steward.py:5277) | `consts_gen::P_HOLD_ANY_RE` | generated::generated_files_are_current | tamam |
+| `_OPT_NUM_RE` (steward.py:5278) | `consts_gen::P_OPT_NUM_RE` | generated::generated_files_are_current | tamam |
+| `is_open_answer` (steward.py:5281) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
+| `_HELD_ANSWER_PREFIX` (steward.py:5296) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
+| `_held_instruction_item` (steward.py:5299) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
+| `CARD_NOTE_MAX_CHARS` (steward.py:5312) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
+| `expired_handover_note` (steward.py:5315) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
+| `is_conditional_note` (steward.py:5328) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
+| `_FABLE_POLISH_RE` (steward.py:5333) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
+| `is_fable_polish` (steward.py:5336) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
+| `next_work_hint` (steward.py:5341) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
+| `_TODO_ITEM_RE` (steward.py:5376) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_WORD_RE` (steward.py:5377) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_STOPWORDS` (steward.py:5378) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MIN_WORDS` (steward.py:5379) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_CLOSED_MIN` (steward.py:5380) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MARGIN` (steward.py:5381) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_DONE_MIN` (steward.py:5382) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
+| `_DONE_BULLET_RE` (steward.py:5383) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
+| `_note_words` (steward.py:5386) | `idletext::note_words` | idletext::p_note_words | tamam |
+| `stale_next_note` (steward.py:5390) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
+| `without_stale_note` (steward.py:5422) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
+| `_OWNER_WAIT_PHRASES` (steward.py:5438) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
+| `_NEXT_LINE_RE` (steward.py:5441) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NONE_RE` (steward.py:5442) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
+| `_last_next_line` (steward.py:5445) | `idletext::last_next_line` | idletext::p_last_next_line | tamam |
+| `next_line` (steward.py:5455) | `idletext::next_line` | idletext::next_line_vectors | tamam |
+| `_STATED_NEXT_RE` (steward.py:5466) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
+| `stated_next_work` (steward.py:5472) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
+| `owner_wait` (steward.py:5491) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
+| `_done_at_line_end` (steward.py:5497) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
+| `idle_finish_marker` (steward.py:5503) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
+| `plan_ucli_idle` (steward.py:5534) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
+| `_ASK_MARKERS` (steward.py:5630) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
+| `_forced_open_nudge` (steward.py:5633) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
+| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5646) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
+| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5647) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `plan_claude_idle` (steward.py:5652) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
+| `_WHY_TR` (steward.py:5823) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
+| `_WHY_EN` (steward.py:5842) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
+| `_START_BLOCK_TR` (steward.py:5860) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
+| `_why` (steward.py:5865) | `explain::why` | explain::p_why | tamam |
+| `explain_idle` (steward.py:5871) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
+| `explain_idle_all` (steward.py:5985) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
+| `observe_filter` (steward.py:6012) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:6063) | `report::daily_path` | report::daily_path_vectors | tamam |
+| `log_entries_for_date` (steward.py:6067) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `DRY_KIPS` (steward.py:6086) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
+| `DRY_REPORT_HOURS` (steward.py:6088) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
+| `dry_report` (steward.py:6091) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `dry_report_text` (steward.py:6121) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6133) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6144) | `report::summary_due` | report::summary_due_vectors | tamam |
+| `missed_summary_dates` (steward.py:6151) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `_NO_LOG_DAYS` (steward.py:6175) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
+| `_SUMMARY_TXT` (steward.py:6178) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
+| `_names` (steward.py:6202) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6207) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6212) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6231) | `report::daily_summary` | report::daily_summary_vectors | tamam |
+| `summary_text` (steward.py:6315) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `write_daily` (steward.py:6333) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summarize_projects` (steward.py:6340) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:135) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1838 satır)
+### Python testleri (1853 satır)
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -873,10 +881,10 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_done_conflict_answer.DoneAnswerTest.test_clear_no_does_not` | closing::done_conflict_answer_vectors |
 | `test_done_conflict_answer.DoneAnswerTest.test_hedged_yes_does_not_close` | closing::done_conflict_answer_vectors |
 | `test_done_conflict_answer.DoneAnswerTest.test_no_answer_or_stale_or_other_project` | closing::done_conflict_answer_vectors |
-| `test_empty_fleet_p0.NoneRejected.test_second_none_with_same_todo_gets_oldest_item_not_silence` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::one_line_vectors (+8) |
-| `test_empty_fleet_p0.NoneRejected.test_without_oldest_callback_old_behaviour` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors (+6) |
-| `test_empty_fleet_p0.NoneRejected.test_zero_open_still_silent` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
-| `test_empty_fleet_p0.NoneRejected.test_loop_guard_caps_repeated_rejection` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::one_line_vectors (+8) |
+| `test_empty_fleet_p0.NoneRejected.test_second_none_with_same_todo_gets_oldest_item_not_silence` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::one_line_vectors (+9) |
+| `test_empty_fleet_p0.NoneRejected.test_without_oldest_callback_old_behaviour` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors (+7) |
+| `test_empty_fleet_p0.NoneRejected.test_zero_open_still_silent` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+13) |
+| `test_empty_fleet_p0.NoneRejected.test_loop_guard_caps_repeated_rejection` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::one_line_vectors (+9) |
 | `test_empty_fleet_p0.QuotaReopen.test_reopen_ready_gate` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_empty_fleet_p0.QuotaReopen.test_alarm_rules` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_empty_fleet_p0.QuotaReopen.test_reopens_recorded_sids_after_two_ok_polls_and_clears` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -935,9 +943,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_owner_answer_persist.Http.test_persist_only_rejects_open_question` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+12) |
 | `test_owner_answer_persist.Http.test_brain_action_answer_persisted` | gates::bad_values_are_errors, gates::brain_may_answer_vectors, gates::job_request_gate_vectors, gates::long_texts_stay_within_regex_limits (+27) |
 | `test_owner_answer_persist.Http.test_brain_short_or_nudge_answer_not_persisted` | gates::bad_values_are_errors, gates::brain_may_answer_vectors, gates::job_request_gate_vectors, gates::long_texts_stay_within_regex_limits (+19) |
-| `test_owner_claim_nudge.OwnerClaim.test_nudges_once_when_no_recorded_question` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+6) |
-| `test_owner_claim_nudge.OwnerClaim.test_no_nudge_when_question_recorded_or_short_idle` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+6) |
-| `test_owner_claim_nudge.OwnerClaim.test_no_nudge_without_owner_phrase` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
+| `test_owner_claim_nudge.OwnerClaim.test_nudges_once_when_no_recorded_question` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+7) |
+| `test_owner_claim_nudge.OwnerClaim.test_no_nudge_when_question_recorded_or_short_idle` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+7) |
+| `test_owner_claim_nudge.OwnerClaim.test_no_nudge_without_owner_phrase` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+8) |
 | `test_owner_claim_nudge.OwnerClaim.test_close_blocked_until_nudged_then_waived` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+5) |
 | `test_owner_claim_nudge.UsageScan.test_counters_not_secret` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_owner_claim_nudge.UsageScan.test_real_secret_in_usage_still_held` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1243,11 +1251,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_review_store.StoreCommitGateTest.test_off_dry_first_then_act_daily` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_review_store.ParseRemotePortTest.test_ssh_port_and_alt_hosts` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_review_store.ParseRemotePortTest.test_unknown_not_cached` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_stated_next.Helper.test_marker_next_work` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors (+3) |
-| `test_stated_next.Keepwarm.test_keepwarm_sends_devam_with_next_not_ok` | idletext::next_work_hint_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+6) |
-| `test_stated_next.IdleNudge.test_nudges_with_stated_next_even_with_empty_todo_and_ask_marker` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+6) |
-| `test_stated_next.IdleNudge.test_no_next_empty_todo_no_nudge_as_before` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+10) |
-| `test_stated_next.IdleNudge.test_chain_limit_still_applies` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+6) |
+| `test_stated_next.Helper.test_marker_next_work` | markers::p_bare_marker, markers::p_is_no_work_value, markers::p_unwrap_ticks, markers::scan_markers_corpus (+4) |
+| `test_stated_next.Keepwarm.test_keepwarm_sends_devam_with_next_not_ok` | idletext::next_work_hint_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+7) |
+| `test_stated_next.IdleNudge.test_nudges_with_stated_next_even_with_empty_todo_and_ask_marker` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+7) |
+| `test_stated_next.IdleNudge.test_no_next_empty_todo_no_nudge_as_before` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+12) |
+| `test_stated_next.IdleNudge.test_chain_limit_still_applies` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::p_bare_marker (+7) |
 | `test_stated_next.TourItem.test_prompt_shows_stated_next_and_contradiction` | prompts::build_tour_prompt_vectors, prompts::p_clip |
 | `test_statedocs_writers.WritersShadowTests.test_name_for` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_statedocs_writers.WritersShadowTests.test_steward_save_load_shadow` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1403,25 +1411,25 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_make_card_without_parse_has_empty_blockers` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+2) |
 | `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_without_blockers_does_not_inherit_old` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+2) |
 | `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_blockers_are_used` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+2) |
-| `test_steward_claude_idle_stated.StatedNextWorkTest.test_extracts_last_stated_next` | idletext::next_line_vectors, idletext::stated_next_work_vectors, tour::clip_words_vectors |
-| `test_steward_claude_idle_stated.StatedNextWorkTest.test_nothing_stated` | idletext::next_line_vectors, idletext::stated_next_work_vectors |
-| `test_steward_claude_idle_stated.StatedNextWorkTest.test_explicit_next_line` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::stated_next_work_vectors, tour::clip_words_vectors |
-| `test_steward_claude_idle_stated.StatedNextWorkTest.test_next_none_is_not_work` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, idletext::stated_next_work_vectors (+2) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_open_ownerless_todo_nudges_with_fixed_text` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+8) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_no_open_work_no_nudge` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+5) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_text_content_does_not_matter` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+10) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_next_none_stops_until_todo_changes` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors (+11) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_steward_next_none_marker_also_stops_and_new_activity_resumes` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_max_consecutive_kept` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+8) |
-| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_owner_wait_and_gate_still_skip` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+6) |
+| `test_steward_claude_idle_stated.StatedNextWorkTest.test_extracts_last_stated_next` | idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors, tour::clip_words_vectors |
+| `test_steward_claude_idle_stated.StatedNextWorkTest.test_nothing_stated` | idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors |
+| `test_steward_claude_idle_stated.StatedNextWorkTest.test_explicit_next_line` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors (+2) |
+| `test_steward_claude_idle_stated.StatedNextWorkTest.test_next_none_is_not_work` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, idletext::p_last_next_line (+3) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_open_ownerless_todo_nudges_with_fixed_text` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+9) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_no_open_work_no_nudge` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_text_content_does_not_matter` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_next_none_stops_until_todo_changes` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors (+12) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_steward_next_none_marker_also_stops_and_new_activity_resumes` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+13) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_max_consecutive_kept` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+9) |
+| `test_steward_claude_idle_work.WorkBasedNudgeTest.test_owner_wait_and_gate_still_skip` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+7) |
 | `test_steward_claude_idle_work.StewardNextMarkerTest.test_scan_next_marker_last_wins_and_ignores_fenced_and_prose` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_claude_idle_work.StewardNextMarkerTest.test_next_creates_no_question_or_decision` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors, tour::marker_record_actions_vectors |
-| `test_steward_claude_idle_work.StewardNextMarkerTest.test_note_project_next_state` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors, tour::bad_state_types_are_errors (+2) |
-| `test_steward_claude_idle_work.StewardNextMarkerTest.test_plan_markers_records_state` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors (+5) |
-| `test_steward_claude_idle_work.StewardNextMarkerTest.test_explain_shows_next_work_and_next_none` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors (+13) |
+| `test_steward_claude_idle_work.StewardNextMarkerTest.test_note_project_next_state` | markers::p_is_no_work_value, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors (+3) |
+| `test_steward_claude_idle_work.StewardNextMarkerTest.test_plan_markers_records_state` | markers::p_bare_marker, markers::p_is_no_work_value, markers::p_unwrap_ticks, markers::scan_markers_corpus (+6) |
+| `test_steward_claude_idle_work.StewardNextMarkerTest.test_explain_shows_next_work_and_next_none` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors (+15) |
 | `test_steward_claude_idle_work.StewardNextMarkerTest.test_protocol_mentions_marker` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_claude_idle_work.FinishMarkerNegationTest.test_negative_phrasings_are_not_finished` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, markers::needs_ho_rfh_marker_in (+1) |
-| `test_steward_claude_idle_work.FinishMarkerNegationTest.test_real_finish_still_detected` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, markers::needs_ho_rfh_marker_in (+1) |
+| `test_steward_claude_idle_work.FinishMarkerNegationTest.test_negative_phrasings_are_not_finished` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, idletext::p_last_next_line (+2) |
+| `test_steward_claude_idle_work.FinishMarkerNegationTest.test_real_finish_still_detected` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, idletext::p_last_next_line (+2) |
 | `test_steward_cli.TestSkipHandoverCommands.test_skip_and_handover_post_to_the_api` | identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors, identity::valid_custom_id_vectors (+1) |
 | `test_steward_cli.TestBrainCommand.test_bare_brain_is_read_only_status` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors (+2) |
 | `test_steward_cli.TestBrainCommand.test_start_and_stop_are_explicit` | identity::name_rules_edges, identity::paths_for_vectors, identity::paths_layout_and_errors, identity::valid_custom_id_vectors (+1) |
@@ -1650,15 +1658,15 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_b.UcliStuckLadderTest.test_ladder` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_b.RemoteRespawnNoteTest.test_note_reaches_directive` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_core_b.RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` | identity::paths_for_vectors, identity::paths_layout_and_errors |
-| `test_steward_ctx.ContextQuestionTest.test_classifier` | closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits |
-| `test_steward_ctx.ContextQuestionTest.test_low_context_continues_without_handover` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+16) |
-| `test_steward_ctx.ContextQuestionTest.test_high_context_hands_over` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors (+16) |
-| `test_steward_ctx.ContextQuestionTest.test_unknown_context_or_disabled_leaves_question` | closing::context_threshold_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits, identity::derived_of_vectors (+15) |
-| `test_steward_ctx.ContextQuestionTest.test_over_threshold_single_handover` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+15) |
+| `test_steward_ctx.ContextQuestionTest.test_classifier` | closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits |
+| `test_steward_ctx.ContextQuestionTest.test_low_context_continues_without_handover` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic (+17) |
+| `test_steward_ctx.ContextQuestionTest.test_high_context_hands_over` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors (+17) |
+| `test_steward_ctx.ContextQuestionTest.test_unknown_context_or_disabled_leaves_question` | closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits (+16) |
+| `test_steward_ctx.ContextQuestionTest.test_over_threshold_single_handover` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic (+16) |
 | `test_steward_ctx.PausedProjectNoContextHandoverTest.test_paused_over_threshold_sends_no_handover_on_any_tick` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+12) |
 | `test_steward_ctx.PausedProjectNoContextHandoverTest.test_done_project_also_gets_no_threshold_handover` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+12) |
 | `test_steward_ctx.PausedProjectNoContextHandoverTest.test_planned_project_still_hands_over_at_threshold` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+13) |
-| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_context_question_on_paused_project_does_not_start_a_handover` | closing::context_threshold_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits, identity::derived_of_vectors (+15) |
+| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_context_question_on_paused_project_does_not_start_a_handover` | closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits (+16) |
 | `test_steward_ctx.HandoverDeferTest.test_pure_decision` | closing::handover_defer_decision_vectors |
 | `test_steward_ctx.HandoverDeferTest.test_subagent_active_defers_then_hands_over_when_quiet` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+13) |
 | `test_steward_ctx.HandoverDeferTest.test_busy_and_unknown_defer` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+13) |
@@ -1669,7 +1677,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ctx.HandoverDeferTest.test_below_threshold_drops_deferral` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+15) |
 | `test_steward_ctx.HandoverDeferTest.test_brain_same_rule` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+14) |
 | `test_steward_ctx.HandoverDeferTest.test_no_second_action_while_deferred` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+14) |
-| `test_steward_ctx.HandoverDeferTest.test_context_question_path_defers` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors (+17) |
+| `test_steward_ctx.HandoverDeferTest.test_context_question_path_defers` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors (+18) |
 | `test_steward_ctx.HandoverDeferTest.test_engine_logs_deferral` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_dialog_stuck.ClassifyTest.test_kinds` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_dialog_stuck.ClassifyTest.test_history_mention_is_not_dialog` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1713,14 +1721,14 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_engine_multi.TestConflictAndRegister.test_ownership_conflict_logged_once_a_day_and_in_status` | cards::card_one_liner_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+55) |
 | `test_steward_engine_multi.TestConflictAndRegister.test_no_conflict_key_without_conflicts` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, gates::panic_path_is_under_default_root (+50) |
 | `test_steward_engine_multi.TestConflictAndRegister.test_register_checks_claim_before_side_effects_and_warns_on_prefix` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+24) |
-| `test_steward_engine_multi.TestEngineGolden.test_default_tick_once_matches_golden` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, explain::explain_idle_all_vectors (+98) |
+| `test_steward_engine_multi.TestEngineGolden.test_default_tick_once_matches_golden` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, explain::explain_idle_all_vectors (+99) |
 | `test_steward_explain_idle.Explain.test_phase` | explain::explain_idle_vectors, explain::p_why |
 | `test_steward_explain_idle.Explain.test_notes_wait_and_cadence` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors, idletext::one_line_vectors |
 | `test_steward_explain_idle.Explain.test_questions` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors, idletext::one_line_vectors |
 | `test_steward_explain_idle.Explain.test_not_running_decisions` | explain::explain_idle_vectors, explain::p_why, identity::derived_of_vectors, identity::p_project_key (+1) |
 | `test_steward_explain_idle.Explain.test_loop_guard` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors |
-| `test_steward_explain_idle.Explain.test_running_session_reasons` | explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors (+16) |
-| `test_steward_explain_idle.Explain.test_matches_engine_nudge_decision` | explain::explain_idle_vectors, explain::p_why, idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors (+14) |
+| `test_steward_explain_idle.Explain.test_running_session_reasons` | explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors (+18) |
+| `test_steward_explain_idle.Explain.test_matches_engine_nudge_decision` | explain::explain_idle_vectors, explain::p_why, idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors (+16) |
 | `test_steward_explain_idle.Explain.test_all_and_lang` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_new_ui_keys` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+3) |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_loop_reset_human_only` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1) |
@@ -1907,23 +1915,23 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_keepwarm.KeepwarmTest.test_not_due_window` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_keepwarm.KeepwarmTest.test_never_definitely_idle` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_keepwarm.KeepwarmTest.test_no_repeat_in_same_window_and_chain_cap` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, markers::scan_markers_corpus (+2) |
-| `test_steward_keepwarm.KeepwarmTest.test_text_default_when_no_work` | idletext::next_work_hint_vectors, tour::clip_words_vectors, tour::marker_next_work_vectors |
-| `test_steward_keepwarm.KeepwarmTest.test_text_continue_when_work_pending` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+9) |
-| `test_steward_keepwarm.KeepwarmTest.test_text_light_ping_when_finished` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+10) |
-| `test_steward_keepwarm.KeepwarmTest.test_empty_last_assistant_is_not_finished` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+9) |
-| `test_steward_keepwarm.KeepwarmTest.test_dry_mode_payload_has_text` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+9) |
+| `test_steward_keepwarm.KeepwarmTest.test_text_default_when_no_work` | idletext::next_work_hint_vectors, markers::p_is_no_work_value, tour::clip_words_vectors, tour::marker_next_work_vectors |
+| `test_steward_keepwarm.KeepwarmTest.test_text_continue_when_work_pending` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
+| `test_steward_keepwarm.KeepwarmTest.test_text_light_ping_when_finished` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+12) |
+| `test_steward_keepwarm.KeepwarmTest.test_empty_last_assistant_is_not_finished` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
+| `test_steward_keepwarm.KeepwarmTest.test_dry_mode_payload_has_text` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
 | `test_steward_keepwarm.ChainCloseTest.test_default_dry_and_max3` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_keepwarm.ChainCloseTest.test_act_hands_over_closes_and_defers_pause` | idletext::owner_wait_vectors |
 | `test_steward_keepwarm.ChainCloseTest.test_dry_writes_no_handover_state_and_does_not_block_act` | idletext::owner_wait_vectors |
 | `test_steward_keepwarm.ChainCloseTest.test_exempt_off_unregistered_and_paused_only_cut` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_keepwarm.ChainCloseTest.test_real_activity_resets_chain_no_close` | idletext::next_none_stated_vectors, idletext::owner_wait_vectors, markers::p_bare_marker, markers::scan_markers_corpus (+2) |
-| `test_steward_keepwarm.NoWorkTest.test_no_work_no_keepwarm` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, markers::p_bare_marker (+5) |
-| `test_steward_keepwarm.NoWorkTest.test_work_gets_keepwarm` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+12) |
+| `test_steward_keepwarm.NoWorkTest.test_no_work_no_keepwarm` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, markers::p_bare_marker (+6) |
+| `test_steward_keepwarm.NoWorkTest.test_work_gets_keepwarm` | idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+14) |
 | `test_steward_keepwarm.NoWorkTest.test_answer_pending_keeps_warm` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, markers::scan_markers_corpus (+2) |
 | `test_steward_keepwarm.NoWorkTest.test_no_work_does_not_burn_chain_counter` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, markers::scan_markers_corpus (+2) |
 | `test_steward_keepwarm.OwnerWaitTest.test_owner_wait` | idletext::owner_wait_vectors |
 | `test_steward_keepwarm.ConditionalNoteTest.test_detect` | tour::is_conditional_note_vectors |
-| `test_steward_keepwarm.ConditionalNoteTest.test_conditional_note_gives_no_hint_and_plain_keepwarm` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, tour::clip_words_vectors, tour::is_conditional_note_vectors (+1) |
+| `test_steward_keepwarm.ConditionalNoteTest.test_conditional_note_gives_no_hint_and_plain_keepwarm` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, markers::p_is_no_work_value, tour::clip_words_vectors (+2) |
 | `test_steward_keepwarm.ChainCloseWarmTest.test_full_chain_closes_while_cache_warm` | idletext::owner_wait_vectors |
 | `test_steward_keepwarm.ChainCloseWarmTest.test_act_sets_handover_state` | idletext::owner_wait_vectors |
 | `test_steward_keepwarm.ChainCloseWarmTest.test_real_activity_after_nudge_no_action_before_due` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2021,22 +2029,22 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_multi.TestSlots.test_local_max_active_still_counts_open_sessions` | closing::context_threshold_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+30) |
 | `test_steward_multi.TestSlots.test_starts_left_budget` | closing::context_threshold_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+33) |
 | `test_steward_multi.TestReviewItems.test_only_own_sessions` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::normalize_host_edges (+23) |
-| `test_steward_nowork.Check.test_closes_when_nothing_pending` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
-| `test_steward_nowork.Check.test_aged_open_question_does_not_block_but_answer_pending_does` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+5) |
-| `test_steward_nowork.Check.test_each_blocker` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+8) |
-| `test_steward_nowork.Check.test_open_todo_means_work_unless_session_says_none` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
-| `test_steward_nowork.Plan.test_dry_lists_and_records_report_without_ho_state` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
-| `test_steward_nowork.Plan.test_act_queues_handover_close_pause_like_keepwarm_chain` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
-| `test_steward_nowork.Plan.test_report_covers_blocked_candidates_too` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
+| `test_steward_nowork.Check.test_closes_when_nothing_pending` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
+| `test_steward_nowork.Check.test_aged_open_question_does_not_block_but_answer_pending_does` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
+| `test_steward_nowork.Check.test_each_blocker` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+9) |
+| `test_steward_nowork.Check.test_open_todo_means_work_unless_session_says_none` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
+| `test_steward_nowork.Plan.test_dry_lists_and_records_report_without_ho_state` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
+| `test_steward_nowork.Plan.test_act_queues_handover_close_pause_like_keepwarm_chain` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
+| `test_steward_nowork.Plan.test_report_covers_blocked_candidates_too` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
 | `test_steward_nowork.Plan.test_off_and_drain_do_nothing` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_nowork.Plan.test_exempt_brain_manual_and_phases` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_nowork.Plan.test_same_idle_period_decided_once` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
+| `test_steward_nowork.Plan.test_same_idle_period_decided_once` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
 | `test_steward_nowork.Plan.test_world_manual_class_skipped` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_nowork.PausedOpen.test_idle_open_session_of_inactive_project_is_closed_without_pause` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+6) |
-| `test_steward_nowork.PausedOpen.test_work_or_review_items_do_not_block_inactive_but_questions_and_subagents_do` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+8) |
+| `test_steward_nowork.PausedOpen.test_idle_open_session_of_inactive_project_is_closed_without_pause` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+7) |
+| `test_steward_nowork.PausedOpen.test_work_or_review_items_do_not_block_inactive_but_questions_and_subagents_do` | idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+9) |
 | `test_steward_nowork.StaleVerified.test_stale_after_two_hours_and_reasons` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_nowork.FablePolish.test_note_next_that_is_fable_polish_is_not_work` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, tour::clip_words_vectors, tour::is_conditional_note_vectors |
-| `test_steward_nowork.FablePolish.test_polish_only_note_lets_session_close` | idletext::is_fable_polish_vectors, idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors (+9) |
+| `test_steward_nowork.FablePolish.test_note_next_that_is_fable_polish_is_not_work` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, markers::p_is_no_work_value, tour::clip_words_vectors (+1) |
+| `test_steward_nowork.FablePolish.test_polish_only_note_lets_session_close` | idletext::is_fable_polish_vectors, idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, idletext::owner_wait_vectors (+10) |
 | `test_steward_nowork.Reopen.test_triggers` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_nowork.Reopen.test_no_trigger_no_reopen` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_nowork.Apply.test_directive_reopens_only_no_work_paused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
@@ -2073,8 +2081,8 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_owner_todo.Counting.test_scan` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_owner_todo.Counting.test_scan_unboxed_todo_not_no_work` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_owner_todo.Counting.test_scan_numbered_checkboxes` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_owner_todo.Move.test_sent_once_per_24h` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
-| `test_steward_owner_todo.Move.test_zero_remote_busy_and_off` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+5) |
+| `test_steward_owner_todo.Move.test_sent_once_per_24h` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
+| `test_steward_owner_todo.Move.test_zero_remote_busy_and_off` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
 | `test_steward_owner_todo.Move.test_done_project_skipped` | idle::plan_claude_idle_vectors |
 | `test_steward_owner_todo.Move.test_dry_mode_does_not_lock_act` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+1) |
 | `test_steward_owner_todo.Move.test_observe_skips_kind` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2217,25 +2225,25 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_cards.TestRemoteRegister.test_adopts_existing_remote_roster_row_without_creating_anything` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+18) |
 | `test_steward_remote_cards.TestRemoteRegister.test_missing_remote_row_or_gate_gives_clear_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_remote_cards.TestRemoteRegister.test_conflicting_host_refused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
-| `test_steward_remote_destructive.TestRemoteStop.test_steward_done_stop_path_body_timeout` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+82) |
-| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_read_from_term_chat_when_facts_last_assistant_is_empty` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+82) |
-| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_on_host_without_facts_closes_a_quiet_idle_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+82) |
+| `test_steward_remote_destructive.TestRemoteStop.test_steward_done_stop_path_body_timeout` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+83) |
+| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_read_from_term_chat_when_facts_last_assistant_is_empty` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+83) |
+| `test_steward_remote_destructive.TestRemoteStop.test_done_confirmed_on_host_without_facts_closes_a_quiet_idle_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+83) |
 | `test_steward_remote_destructive.TestRemoteStop.test_no_exact_target_logs_remote_too_old_once_and_never_posts` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_unknown_capabilities_are_not_treated_as_supported` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_precheck_exact_running_own_row` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+25) |
 | `test_steward_remote_destructive.TestRemoteStop.test_no_exact_match_is_not_applied_and_does_not_open_the_breaker` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteStop.test_transport_error_still_opens_the_breaker` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteStop.test_observe_records_would_and_never_posts` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+83) |
+| `test_steward_remote_destructive.TestRemoteStop.test_observe_records_would_and_never_posts` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+84) |
 | `test_steward_remote_destructive.TestRemoteStop.test_remote_actions_off_and_down_host_are_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+23) |
-| `test_steward_remote_destructive.TestRemoteStop.test_one_destructive_action_per_host_per_tick` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+82) |
+| `test_steward_remote_destructive.TestRemoteStop.test_one_destructive_action_per_host_per_tick` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+83) |
 | `test_steward_remote_destructive.TestRemoteStop.test_human_http_stop_gates` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteRespawn.test_ready_after_handover_respawns_stop_start_directive_in_order` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+87) |
+| `test_steward_remote_destructive.TestRemoteRespawn.test_ready_after_handover_respawns_stop_start_directive_in_order` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+88) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_stop_failure_means_no_start` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_stop_ok_but_row_never_closes_waits_bounded_then_stops` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_start_failure_means_no_directive` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+32) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_session_already_gone_skips_stop` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+34) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_old_host_respawn_is_refused_without_any_post` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
-| `test_steward_remote_destructive.TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+87) |
+| `test_steward_remote_destructive.TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+88) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_stops_waits_then_directs` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_without_confirmed_stop_sends_nothing_more` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_host_mismatch_is_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
@@ -2275,7 +2283,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_handover_uses_the_real_name_and_records_it` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_stop_uses_the_real_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_wait_closed_watches_the_real_name` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+28) |
-| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_respawn_after_handover_stops_real_name_starts_project_directs_new_name` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+86) |
+| `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_respawn_after_handover_stops_real_name_starts_project_directs_new_name` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+87) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_human_restart_stops_real_name_then_starts_the_project` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36) |
 | `test_steward_remote_session_resolve.TestDestructiveAndHandover.test_engine_handover_on_dated_view_name` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors (+62) |
 | `test_steward_remote_session_resolve.TestStartOnceAndReads.test_refresh_after_start_sees_the_new_session` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
@@ -2402,65 +2410,80 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_tbd370.TourPromptTest.test_phase_line_kind_label_follows_language` | prompts::build_tour_prompt_vectors |
 | `test_steward_tbd370.ClipTest.test_never_exceeds_limit` | prompts::p_clip |
 | `test_steward_tbd370.ClipTest.test_zero_is_empty_and_positive_unchanged` | prompts::p_clip |
-| `test_steward_tbd377.OddSingleCharAnswerTest.test_resolve_answer_keeps_free_text` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.OddSingleCharAnswerTest.test_choices_unchanged` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.OddSingleCharAnswerTest.test_answer_is_recorded` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_not_appended_when_cap_is_full` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_ordinary_question_still_appended` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.MarkUnknownQuestionTest.test_no_write_when_missing` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.MarkUnknownQuestionTest.test_found_is_written` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.UpsertTextTypeTest.test_non_string_is_refused_and_nothing_saved` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.UpsertTextTypeTest.test_new_project_not_created` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.UpsertTextTypeTest.test_none_and_str_unchanged_and_notes_still_coerced` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.UpsertTextTypeTest.test_http_endpoint_reports_error` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.AsciiDeferTest.test_ascii_forms` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd377.AsciiDeferTest.test_not_defer` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_owner_topics_are_not_context_questions` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_context_measure_still_auto_answered` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_plain_question_is_answered` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_text_left_open_and_no_handover` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_other_fields_left_open` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_context_measure_in_other_fields_is_fine` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.BrainToolsMissingTest.test_ordinary_sentence_is_not_a_report` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.BrainToolsMissingTest.test_real_reports_still_detected` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.UpperTierApprovedTest.test_space_before_punctuation` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.UpperTierApprovedTest.test_non_approval_stays_non_approval` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.PlanDeliveriesLimitTest.test_non_positive_limit_yields_nothing` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.PlanDeliveriesLimitTest.test_positive_limit_unchanged` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.PlanMarkersClockTest.test_uses_module_clock` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.OwnerClassZeroNowTest.test_zero_now_is_not_replaced_by_the_clock` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.OwnerClassZeroNowTest.test_none_reads_the_clock` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.ReviewItemsLanguageTest.test_english_panel` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_tbd382_small.ReviewItemsLanguageTest.test_turkish_panel_unchanged` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
+| `test_steward_tbd377.OddSingleCharAnswerTest.test_resolve_answer_keeps_free_text` | questions::resolve_answer_vectors |
+| `test_steward_tbd377.OddSingleCharAnswerTest.test_choices_unchanged` | questions::resolve_answer_vectors |
+| `test_steward_tbd377.OddSingleCharAnswerTest.test_answer_is_recorded` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+15) |
+| `test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_not_appended_when_cap_is_full` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+11) |
+| `test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_ordinary_question_still_appended` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+11) |
+| `test_steward_tbd377.MarkUnknownQuestionTest.test_no_write_when_missing` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+13) |
+| `test_steward_tbd377.MarkUnknownQuestionTest.test_found_is_written` | identity::from_dict_drops_unknown_and_requires, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+14) |
+| `test_steward_tbd377.UpsertTextTypeTest.test_non_string_is_refused_and_nothing_saved` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
+| `test_steward_tbd377.UpsertTextTypeTest.test_new_project_not_created` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+10) |
+| `test_steward_tbd377.UpsertTextTypeTest.test_none_and_str_unchanged_and_notes_still_coerced` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
+| `test_steward_tbd377.UpsertTextTypeTest.test_http_endpoint_reports_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13) |
+| `test_steward_tbd377.AsciiDeferTest.test_ascii_forms` | questions::is_defer_answer_vectors |
+| `test_steward_tbd377.AsciiDeferTest.test_not_defer` | questions::is_defer_answer_vectors |
+| `test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_owner_topics_are_not_context_questions` | closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits |
+| `test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_context_measure_still_auto_answered` | closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits |
+| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_plain_question_is_answered` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic (+17) |
+| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_text_left_open_and_no_handover` | closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits (+16) |
+| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_other_fields_left_open` | closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic, gates::long_texts_stay_within_regex_limits (+16) |
+| `test_steward_tbd382_context.OwnerTopicPlanTickTest.test_context_measure_in_other_fields_is_fine` | closing::context_answer_vectors, closing::context_threshold_vectors, closing::is_context_question_vectors, closing::p_context_owner_topic (+17) |
+| `test_steward_tbd382_small.BrainToolsMissingTest.test_ordinary_sentence_is_not_a_report` | gates::brain_tools_missing_text_vectors |
+| `test_steward_tbd382_small.BrainToolsMissingTest.test_real_reports_still_detected` | gates::brain_tools_missing_text_vectors |
+| `test_steward_tbd382_small.UpperTierApprovedTest.test_space_before_punctuation` | gates::upper_tier_approved_vectors, gates::upper_tier_tag_vectors |
+| `test_steward_tbd382_small.UpperTierApprovedTest.test_non_approval_stays_non_approval` | gates::upper_tier_approved_vectors, gates::upper_tier_tag_vectors |
+| `test_steward_tbd382_small.PlanDeliveriesLimitTest.test_non_positive_limit_yields_nothing` | world::plan_deliveries_vectors |
+| `test_steward_tbd382_small.PlanDeliveriesLimitTest.test_positive_limit_unchanged` | world::pick_delivery_view_vectors, world::plan_deliveries_vectors |
+| `test_steward_tbd382_small.PlanMarkersClockTest.test_uses_module_clock` | markers::p_is_no_work_value, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors (+5) |
+| `test_steward_tbd382_small.OwnerClassZeroNowTest.test_zero_now_is_not_replaced_by_the_clock` | gates::steward_ask_owner_class |
+| `test_steward_tbd382_small.OwnerClassZeroNowTest.test_none_reads_the_clock` | gates::steward_ask_owner_class |
+| `test_steward_tbd382_small.ReviewItemsLanguageTest.test_english_panel` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::p_is_no_work_value (+12) |
+| `test_steward_tbd382_small.ReviewItemsLanguageTest.test_turkish_panel_unchanged` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::p_is_no_work_value (+12) |
+| `test_steward_tbd387_small.NoWorkValuesTest.test_next_line` | idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors, markers::p_is_no_work_value |
+| `test_steward_tbd387_small.NoWorkValuesTest.test_finish_marker_not_hidden` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_last_next_line, markers::needs_ho_rfh_marker_in (+2) |
+| `test_steward_tbd387_small.NoWorkValuesTest.test_real_work_stays` | idletext::next_line_vectors, idletext::p_last_next_line, markers::p_is_no_work_value, tour::clip_words_vectors |
+| `test_steward_tbd387_small.NoWorkValuesTest.test_note_hint_and_marker` | idletext::is_fable_polish_vectors, idletext::next_none_stated_vectors, idletext::next_work_hint_vectors, markers::p_is_no_work_value (+8) |
+| `test_steward_tbd387_small.EmptyNextLineTest.test_next_line_is_not_taken_as_work` | idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors |
+| `test_steward_tbd387_small.EmptyNextLineTest.test_last_line_wins_even_when_empty` | idletext::next_line_vectors, idletext::p_last_next_line |
+| `test_steward_tbd387_small.EmptyNextLineTest.test_same_line_still_read` | idletext::next_line_vectors, idletext::p_last_next_line, markers::p_is_no_work_value, tour::clip_words_vectors |
+| `test_steward_tbd387_small.EmptyNextLineTest.test_block_form_does_not_count_as_finished` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_last_next_line, markers::needs_ho_rfh_marker_in (+1) |
+| `test_steward_tbd387_small.EnglishPanelTest.test_idle_wait_detail` | explain::explain_idle_vectors, explain::p_why, idletext::notes_wait_vectors |
+| `test_steward_tbd387_small.EnglishPanelTest.test_skip_ratio` | report::daily_summary_vectors, report::p_ask_gate_lines |
+| `test_steward_tbd387_small.EnglishPanelTest.test_dry_report_text` | report::dry_report_text_vectors |
+| `test_steward_tbd387_small.EnglishPanelTest.test_cli_follows_panel_language` | identity::paths_for_vectors, identity::paths_layout_and_errors, report::dry_report_text_vectors |
+| `test_steward_tbd387_small.DryQuestionLanguageTest.test_dry_question_follows_panel_language` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+3) |
+| `test_steward_tbd387_small.LoopPauseHoursTest.test_short_pauses_never_report_zero_hours` | recovery::loop_guard_vectors, recovery::p_loop_sig |
+| `test_steward_tbd387_small.AskGateSummaryTest.test_applied_shadow_record_counted_once` | prompts::p_clip, report::p_ask_gate_lines |
 | `test_steward_tmp_isolation.DetailThreadIsolationTest.test_ask_starts_no_detail_generation` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+29) |
 | `test_steward_ucli_idle.IdleModeTest.test_off_produces_nothing` | idle::plan_ucli_idle_vectors |
-| `test_steward_ucli_idle.IdleModeTest.test_dry_plans_but_never_writes_handover_state` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
+| `test_steward_ucli_idle.IdleModeTest.test_dry_plans_but_never_writes_handover_state` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+12) |
 | `test_steward_ucli_idle.IdleModeTest.test_default_config_is_dry` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_ucli_idle.FailedTurnChainTest.test_detect` | idletext::turn_failed_vectors |
-| `test_steward_ucli_idle.FailedTurnChainTest.test_failed_turn_does_not_reset_chain` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
-| `test_steward_ucli_idle.FailedTurnChainTest.test_successful_turn_still_resets_chain` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
+| `test_steward_ucli_idle.FailedTurnChainTest.test_failed_turn_does_not_reset_chain` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+12) |
+| `test_steward_ucli_idle.FailedTurnChainTest.test_successful_turn_still_resets_chain` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+12) |
 | `test_steward_ucli_idle.GateWaitTest.test_gate_wait_text_detected` | idletext::waiting_for_gate_vectors |
 | `test_steward_ucli_idle.GateWaitTest.test_no_nudge_no_close_while_waiting_for_gate` | idle::plan_ucli_idle_vectors, idletext::turn_failed_vectors, idletext::ucli_idle_threshold_vectors, idletext::waiting_for_gate_vectors |
-| `test_steward_ucli_idle.GateWaitTest.test_old_gate_text_far_back_does_not_block` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
+| `test_steward_ucli_idle.GateWaitTest.test_old_gate_text_far_back_does_not_block` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+12) |
 | `test_steward_ucli_idle.HelpersTest.test_one_line_folds_newlines` | idletext::one_line_vectors |
 | `test_steward_ucli_idle.HelpersTest.test_threshold_by_cache_ttl` | idletext::ucli_idle_threshold_vectors |
-| `test_steward_ucli_idle.HelpersTest.test_next_work_hint` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, tour::clip_words_vectors, tour::is_conditional_note_vectors |
-| `test_steward_ucli_idle.HelpersTest.test_finish_marker` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, markers::needs_ho_rfh_marker_in (+1) |
-| `test_steward_ucli_idle.PlanTest.test_nudge_with_next_work_single_line` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
+| `test_steward_ucli_idle.HelpersTest.test_next_work_hint` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, markers::p_is_no_work_value, tour::clip_words_vectors (+1) |
+| `test_steward_ucli_idle.HelpersTest.test_finish_marker` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_done_at_line_end, idletext::p_last_next_line (+2) |
+| `test_steward_ucli_idle.PlanTest.test_nudge_with_next_work_single_line` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
 | `test_steward_ucli_idle.PlanTest.test_below_threshold_nothing` | idle::plan_ucli_idle_vectors, idletext::ucli_idle_threshold_vectors |
-| `test_steward_ucli_idle.PlanTest.test_threshold_follows_cache_ttl` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
+| `test_steward_ucli_idle.PlanTest.test_threshold_follows_cache_ttl` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
 | `test_steward_ucli_idle.PlanTest.test_configurable_threshold_and_off` | idle::plan_ucli_idle_vectors, idletext::ucli_idle_threshold_vectors |
-| `test_steward_ucli_idle.PlanTest.test_no_work_no_marker_does_nothing` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+5) |
-| `test_steward_ucli_idle.PlanTest.test_open_todo_alone_sends_no_blind_nudge` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+4) |
-| `test_steward_ucli_idle.PlanTest.test_open_todo_still_counts_for_close_decisions` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
-| `test_steward_ucli_idle.PlanTest.test_close_marker_with_work_requests_handover_then_reopen` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+9) |
-| `test_steward_ucli_idle.PlanTest.test_close_marker_without_work_pauses_and_closes_after_handover` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+6) |
-| `test_steward_ucli_idle.PlanTest.test_ready_for_handover_already_written` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+7) |
-| `test_steward_ucli_idle.PlanTest.test_observe_does_not_touch_handover_state` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
+| `test_steward_ucli_idle.PlanTest.test_no_work_no_marker_does_nothing` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
+| `test_steward_ucli_idle.PlanTest.test_open_todo_alone_sends_no_blind_nudge` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+5) |
+| `test_steward_ucli_idle.PlanTest.test_open_todo_still_counts_for_close_decisions` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
+| `test_steward_ucli_idle.PlanTest.test_close_marker_with_work_requests_handover_then_reopen` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
+| `test_steward_ucli_idle.PlanTest.test_close_marker_without_work_pauses_and_closes_after_handover` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
+| `test_steward_ucli_idle.PlanTest.test_ready_for_handover_already_written` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+9) |
+| `test_steward_ucli_idle.PlanTest.test_observe_does_not_touch_handover_state` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+13) |
 | `test_steward_ucli_idle.PlanTest.test_skips` | idle::plan_ucli_idle_vectors, idletext::ucli_idle_threshold_vectors |
-| `test_steward_ucli_idle.PlanTest.test_chain_limit_and_reset_on_activity` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
-| `test_steward_ucli_idle.PlanTest.test_dry_counts_do_not_block_act` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
-| `test_steward_ucli_idle.PlanTest.test_legacy_record_without_mode_counts_as_dry` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
+| `test_steward_ucli_idle.PlanTest.test_chain_limit_and_reset_on_activity` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
+| `test_steward_ucli_idle.PlanTest.test_dry_counts_do_not_block_act` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
+| `test_steward_ucli_idle.PlanTest.test_legacy_record_without_mode_counts_as_dry` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
 | `test_steward_ucli_idle.ApplyTest.test_nudge_is_sent_as_one_line` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+22) |
 | `test_steward_ucli_idle.ApplyTest.test_nudge_skipped_when_input_box_has_text` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
 | `test_steward_ucli_idle.ApplyTest.test_close_handover_pauses_project_when_no_work` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21) |
@@ -2469,16 +2492,16 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ucli_idle.ApplyTest.test_turn_failed_close_stops_and_asks_owner_once` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+32) |
 | `test_steward_ucli_idle.ApplyTest.test_close_rejects_unknown_mode` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+19) |
 | `test_steward_ucli_idle.DevamTextTest.test_clip_words_never_cuts_mid_word` | tour::clip_words_vectors |
-| `test_steward_ucli_idle.DevamTextTest.test_next_hint_long_note_cut_on_word` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, tour::clip_words_vectors, tour::is_conditional_note_vectors |
-| `test_steward_ucli_idle.DevamTextTest.test_same_devam_text_not_resent_after_answer` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+8) |
+| `test_steward_ucli_idle.DevamTextTest.test_next_hint_long_note_cut_on_word` | idletext::is_fable_polish_vectors, idletext::next_work_hint_vectors, markers::p_is_no_work_value, tour::clip_words_vectors (+1) |
+| `test_steward_ucli_idle.DevamTextTest.test_same_devam_text_not_resent_after_answer` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+10) |
 | `test_steward_ucli_idle.ClaudeIdleTest.test_default_is_dry_and_ucli_untouched` | idle::plan_claude_idle_vectors, idle::plan_ucli_idle_vectors |
-| `test_steward_ucli_idle.ClaudeIdleTest.test_nudges_after_threshold_with_next_work` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
+| `test_steward_ucli_idle.ClaudeIdleTest.test_nudges_after_threshold_with_next_work` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+13) |
 | `test_steward_ucli_idle.ClaudeIdleTest.test_off_and_zero_do_nothing` | idle::plan_claude_idle_vectors |
-| `test_steward_ucli_idle.ClaudeIdleTest.test_skips_busy_subagent_done_questions_no_work_paused` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+7) |
-| `test_steward_ucli_idle.ClaudeIdleTest.test_chain_cap` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
+| `test_steward_ucli_idle.ClaudeIdleTest.test_skips_busy_subagent_done_questions_no_work_paused` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_work_hint_vectors (+8) |
+| `test_steward_ucli_idle.ClaudeIdleTest.test_chain_cap` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+13) |
 | `test_steward_ucli_idle.NotesWaitTest.test_notes_wait_detect` | idletext::notes_wait_vectors |
 | `test_steward_ucli_idle.NotesWaitTest.test_due_project_with_bekleme_note_not_started_and_reason_recorded` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, idletext::notes_wait_vectors (+9) |
-| `test_steward_ucli_idle.ChainPauseFlowTest.test_claude_idle_skips_owner_wait` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+6) |
+| `test_steward_ucli_idle.ChainPauseFlowTest.test_claude_idle_skips_owner_wait` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::owner_wait_vectors (+7) |
 | `test_steward_ucli_idle.ChainPauseFlowTest.test_pause_written_only_after_handover_finishes` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+24) |
 | `test_steward_ucli_send.UcliSendTest.test_ucli_text_folded_not_truncated` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_ucli_send.UcliSendTest.test_non_ucli_untouched_and_no_recheck` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2521,14 +2544,14 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_upper_main.TestPure.test_is_upper_tier_itself_stays_model_family_agnostic` | gates::is_upper_tier_vectors |
 | `test_steward_upper_main.TestPure.test_reviewer_role_is_not_audited` | gates::upper_main_views_vectors |
 | `test_steward_upper_main.TestPure.test_reminder_text_is_a_reminder_not_an_order` | gates::upper_main_text_vectors |
-| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
-| `test_steward_upper_main.TestTick.test_setting_off_disables` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+71) |
-| `test_steward_upper_main.TestTick.test_sonnet_medium_main_is_silent` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+74) |
+| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76) |
+| `test_steward_upper_main.TestTick.test_setting_off_disables` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+72) |
+| `test_steward_upper_main.TestTick.test_sonnet_medium_main_is_silent` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75) |
 | `test_steward_upper_main.TestCollectViews.test_status_row_live_values_reach_the_view` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::normalize_host_edges (+14) |
 | `test_steward_upper_main.TestCollectViews.test_dated_local_session_without_instance_resolves_to_its_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24) |
 | `test_steward_upper_main.TestCollectViews.test_remote_row_live_values_reach_the_view` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2544,16 +2567,16 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_tmux_send_raw_semicolon.SemicolonArgv.test_whole_semicolon_chunk` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_tmux_send_raw_semicolon.RealTmux.test_literal_roundtrip` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_tmux_send_raw_semicolon.JobAttemptsResetOnStateChange.test_state_change_resets_attempts` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_todo_triage.Plan.test_mismatch_sends_one_triage_not_continue` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+5) |
+| `test_todo_triage.Plan.test_mismatch_sends_one_triage_not_continue` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+6) |
 | `test_todo_triage.Plan.test_owner_wait_text_also_triggers` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::owner_wait_vectors, idletext::turn_failed_vectors (+5) |
-| `test_todo_triage.Plan.test_same_sha_never_again_and_no_continue_nudge` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors (+6) |
-| `test_todo_triage.Plan.test_changed_todo_allows_again` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+5) |
-| `test_todo_triage.Plan.test_zero_open_sends_nothing` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
-| `test_todo_triage.Plan.test_no_sha_available_sends_nothing_extra` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
-| `test_todo_triage.Plan.test_dry_and_act_counted_separately` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+5) |
-| `test_todo_triage.Plan.test_session_with_real_work_still_gets_normal_nudge` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+10) |
+| `test_todo_triage.Plan.test_same_sha_never_again_and_no_continue_nudge` | idle::p_forced_open_nudge, idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors (+7) |
+| `test_todo_triage.Plan.test_changed_todo_allows_again` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+6) |
+| `test_todo_triage.Plan.test_zero_open_sends_nothing` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+13) |
+| `test_todo_triage.Plan.test_no_sha_available_sends_nothing_extra` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+13) |
+| `test_todo_triage.Plan.test_dry_and_act_counted_separately` | idle::plan_claude_idle_vectors, idletext::next_none_stated_vectors, idletext::turn_failed_vectors, idletext::waiting_for_gate_vectors (+6) |
+| `test_todo_triage.Plan.test_session_with_real_work_still_gets_normal_nudge` | idle::plan_claude_idle_vectors, idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::next_none_stated_vectors (+11) |
 | `test_todo_triage.Plan.test_busy_or_recent_untouched` | idle::plan_claude_idle_vectors |
-| `test_todo_triage.Plan.test_explain_reason` | explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors, idletext::next_line_vectors (+12) |
+| `test_todo_triage.Plan.test_explain_reason` | explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors, idletext::next_line_vectors (+14) |
 | `test_todo_triage.Plan.test_observe_list_and_preamble_rule` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_todo_triage.Sha.test_sha_changes_with_content_and_unknown_is_empty` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_ucli_brain_mcp.ValidateMaxCostTests.test_valid_values` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |

@@ -47,7 +47,7 @@ parity!("daily_path", daily_path_vectors, |c| {
 
 parity!("dry_report_text", dry_report_text_vectors, |c| result(
     c,
-    dry_report_text(&c.arg::<Doc>("rep"), c.or("hours", 72.0))
+    dry_report_text(&c.arg::<Doc>("rep"), c.or("hours", 72.0), &c.or("lang", "tr".to_string()))
 ));
 
 parity!("dry_ask_due", dry_ask_due_vectors, |c| result(

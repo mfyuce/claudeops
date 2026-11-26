@@ -164,7 +164,7 @@ pub fn loop_guard(
             rec.insert("n".into(), json!(0));
             rec.insert("first".into(), json!(now));
             guard.insert(key, rec);
-            let payload = doc(json!({"kind": a.kind, "n": LOOP_MAX, "pause_h": (pause / 3600.0) as i64,
+            let payload = doc(json!({"kind": a.kind, "n": LOOP_MAX, "pause_h": (pause / 3600.0).ceil() as i64,
                 "pause_min": (pause / 60.0) as i64, "last_reason": pyc::head(&a.reason, 200)}));
             let reason = format!("{}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı", a.kind);
             breaks.push(Action::new("loop_break", &a.name, reason, payload));

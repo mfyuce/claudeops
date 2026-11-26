@@ -12,6 +12,8 @@ use std::sync::LazyLock;
 
 type Fancy = LazyLock<Option<fancy_regex::Regex>>;
 
+static NEXT_DONE_VALUE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_DONE_VALUE_RE.as_str()));
+
 /// `needs_ho._RFH`
 const RFH: &str = "READY FOR HANDOVER";
 
@@ -413,9 +415,12 @@ pub fn is_conditional_note(text: &str) -> bool {
     pyc::is_match(&COND_RE, &pyc::ci_input(text))
 }
 
-/// `STEWARD-NEXT` gövdesi "yok/bitti" anlamında mı.
-pub(crate) fn is_no_work(value: &str) -> bool {
-    P_NO_WORK_VALUES.contains(&pyc::strip_chars(value, " .`").to_lowercase().as_str())
+/// "sıradaki" değeri "iş yok" anlamında mı (yok/none/-/n/a/bitti/done).
+///
+/// py: _is_no_work_value
+pub fn is_no_work(value: &str) -> bool {
+    P_NO_WORK_VALUES.contains(&pyc::strip_chars(value, " .`*_,;:!").to_lowercase().as_str())
+        || pyc::is_match(&NEXT_DONE_VALUE_RE, &pyc::ci_input(value))
 }
 
 /// Son yanıttaki `STEWARD-NEXT: <iş>` gerçek (koşulsuz) bir işse o iş, değilse "".

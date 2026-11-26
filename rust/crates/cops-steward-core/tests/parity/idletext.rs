@@ -54,6 +54,10 @@ parity!("without_stale_note", without_stale_note_vectors, |c| {
 });
 
 parity!("next_line", next_line_vectors, |c| next_line(&text(c, "text")));
+parity!("_last_next_line", p_last_next_line, |c| {
+    let t = text(c, "text");
+    last_next_line(&t).map(|(what, tail)| (what.to_string(), tail.iter().map(ToString::to_string).collect::<Vec<_>>()))
+});
 parity!("stated_next_work", stated_next_work_vectors, |c| stated_next_work(&text(c, "text")));
 parity!("owner_wait", owner_wait_vectors, |c| owner_wait(&text(c, "text")));
 parity!("_done_at_line_end", p_done_at_line_end, |c| done_at_line_end(&text(c, "line")));

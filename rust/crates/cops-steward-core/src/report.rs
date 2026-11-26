@@ -41,12 +41,21 @@ fn by_count(map: &Doc, count: impl Fn(&Value) -> Result<f64, BadValue>) -> Resul
 /// Ölçüm (dry) raporunun metni. `rep`: `{tür: {count, names:{ad:n}, chars, first, last}}`.
 ///
 /// py: dry_report_text
-pub fn dry_report_text(rep: &Doc, hours: f64) -> Result<String, BadValue> {
+pub fn dry_report_text(rep: &Doc, hours: f64, lang: &str) -> Result<String, BadValue> {
     let span = hours.trunc();
+    let en = lang == "en";
     if rep.is_empty() {
-        return Ok(format!("Son {span} saatte `would:*` olayı yok.\n"));
+        return Ok(if en {
+            format!("No `would:*` events in the last {span} hours.\n")
+        } else {
+            format!("Son {span} saatte `would:*` olayı yok.\n")
+        });
     }
-    let mut lines = vec![format!("Ölçüm (dry) kipleri, son {span} saat:")];
+    let mut lines = vec![if en {
+        format!("Measurement (dry) modes, last {span} hours:")
+    } else {
+        format!("Ölçüm (dry) kipleri, son {span} saat:")
+    }];
     for (kind, r) in by_count(rep, |r| number(r, "count"))? {
         let names = required(r, "names")?;
         let names = names.as_object().ok_or_else(|| bad(names))?;
@@ -56,10 +65,11 @@ pub fn dry_report_text(rep: &Doc, hours: f64) -> Result<String, BadValue> {
             .map(|(n, c)| format!("{n}×{}", pyc::str_of(c)))
             .collect();
         let chars = required(r, "chars")?;
-        let extra = if pyc::truthy(chars) { format!(", ~{} karakter", pyc::str_of(chars)) } else { String::new() };
+        let (unit, events) = if en { ("characters", "events") } else { ("karakter", "olay") };
+        let extra = if pyc::truthy(chars) { format!(", ~{} {unit}", pyc::str_of(chars)) } else { String::new() };
         let kip = DRY_KIPS.get(kind).and_then(Value::as_str).map(|k| format!(" [{k}]")).unwrap_or_default();
         let count = pyc::str_of(required(r, "count")?);
-        lines.push(format!("- would:{kind}{kip}: {count} olay{extra} ({})", top.join(", ")));
+        lines.push(format!("- would:{kind}{kip}: {count} {events}{extra} ({})", top.join(", ")));
     }
     Ok(lines.join("\n") + "\n")
 }
@@ -144,7 +154,9 @@ fn ask_gate_rows(events: &[&Doc], answered_by: &IndexMap<String, String>, en: bo
         return Vec::new();
     }
     let applied: Vec<&&Doc> = events.iter().filter(|e| truthy_at(e, "applied")).collect();
-    let shadow: Vec<&&Doc> = events.iter().filter(|e| is_text(e, "mode", "shadow")).collect();
+    // yazılan cevap bir kez (uygulanan) sayılır
+    let shadow: Vec<&&Doc> =
+        events.iter().filter(|e| is_text(e, "mode", "shadow") && !truthy_at(e, "applied")).collect();
     let denied = events.len() as i64 - applied.len() as i64 - shadow.len() as i64;
     let passed = shadow.iter().filter(|e| truthy_at(e, "allow")).count();
     let head = if en {
@@ -338,8 +350,16 @@ pub fn daily_summary(entries: &[Doc], date: &str, lang: &str, extras: SummaryExt
     let (tours, skips) = (event(&day, "tour").len(), event(&day, "skip").len());
     if tours != 0 || skips != 0 {
         // tur başına skip oranı yüksekse maddeler gereksiz turlanıyor demektir
-        let ratio =
-            if tours != 0 { format!("%{}", pyc::round((100 * skips) as f64 / tours as f64)) } else { "-".to_string() };
+        let ratio = if tours != 0 {
+            let pct = pyc::round((100 * skips) as f64 / tours as f64);
+            if en {
+                format!("{pct}%")
+            } else {
+                format!("%{pct}")
+            }
+        } else {
+            "-".to_string()
+        };
         let sent = directives.len();
         lines.push(if en {
             format!("- brain tours: {tours} tours, {skips} skips ({ratio}), {sent} directives")

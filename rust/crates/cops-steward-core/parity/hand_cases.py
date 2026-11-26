@@ -700,6 +700,19 @@ for n in (59, 60, 61):
 for ttl in ["", "1h", " 1H ", "5m", "1 h"]:
     add("ucli_idle_threshold", {"cfg": C(ucli_idle_nudge_secs=7, ucli_idle_nudge_secs_1h=9), "cache_ttl": ttl})
 
+# TBD#387/2-3: "iş yok" değerleri ve boş "sıradaki:" satırı (rastgele üretici KULLANILMAZ: diğer girdiler kaymasın)
+V387 = ["-", "—", "–", "- .", "`-`", "- testleri koş", "- [ ] x", "n/a", "N/A.", "n/a (sahipte)", "n/a değerlerini ayıkla", "bitti", "Bitti.", "**bitti**", "BİTTİ", "bıtti", "bitti (devir)", "bitti, kalan", "bitti - sahipte",
+        "bitti — x", "bitti mi bak", "bitti_listesi", "done", "done.", "done.md düzenle", "done: x", "done!x", "done !", "", "   ", "**", "`", "\nF5", "\n\nSTEWARD-DONE", "\n  ", "\r\nyok", "\u2028x", "**\n- a"]
+for v, head, tail in itertools.product(V387, ["sıradaki:", "SIRADAKİ :", "**next:** ", "sıradaki\t:"], ["", "\nSTEWARD-DONE", "\nREADY FOR HANDOVER"]):
+    t = f"{head} {v}{tail}"
+    for fn in ("next_line", "stated_next_work", "idle_finish_marker", "next_none_stated"):
+        add(fn, {"text": t})
+    add("idle_finish_marker", {"text": f"STEWARD-DONE\nsıradaki: eski\n{t}"})
+for v in V387:
+    add("marker_next_work", {"text": f"STEWARD-NEXT: {v}"})
+    add("next_work_hint", {"proj": P("p", notes=f"sıradaki: {v}"), "real_only": True})
+    add("next_work_hint", {"proj": P("p", notes=f"sıradaki: {v}\nsıradaki: F5"), "real_only": False})
+
 NOTE_BITS = ["sıradaki:", "Sıradaki iş:", "SIRADAKİ:", "next:", "siradaki", "sıradaki", "BEKLEME", "model", "eğitimi", "ölçüm", "betiğini", "yaz", "rapor", "tabloyu", "güncelle", "yok", "YOK.", "none", "-", "fable cila", "veri gelirse", "olursa",
              "çiz", "TODO.md", "632", "için", "next", "neden: eski", ";", ",", ".", "reason :", "İŞ", "ılık", "x", "ab"]
 NOTE = lambda: "\n".join(" ".join(rnd.choice(NOTE_BITS) for _ in range(rnd.randint(0, 9))) for _ in range(rnd.randint(0, 4)))
@@ -1010,6 +1023,7 @@ for _ in range(500):
                      "first": rnd.choice([NOW - 10, NOW - 259200, NOW - 259199, NOW - 900000]), "last": NOW}
     hours = rnd.choice([72, 1, 1.5, 0.0])
     add("dry_report_text", {"rep": rep, "hours": hours})
+    add("dry_report_text", {"rep": rep, "hours": hours, "lang": "en"})
     add("dry_ask_due", {"rep": rep, "asked": rnd.choice([None, [], ["wake_gate"], ["keepwarm", "x"], "keepwarm"]), "now": NOW, "hours": hours})
 for hour, offset, sd in itertools.product([0, 8, 19, 20, 23, 24], [0, 3600 * 5, -3600 * 7, 86400 * 40], [None, "", "x", "bugün"]):
     t = NOW + offset

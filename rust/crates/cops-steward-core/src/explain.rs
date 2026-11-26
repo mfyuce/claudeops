@@ -178,7 +178,8 @@ fn with_session(proj: &Project, v: &SessionView, input: &ExplainInput<'_>) -> Re
     if since <= 0.0 || now - since < secs as f64 {
         let remaining = secs as f64 - (now - since);
         let left = if since > 0.0 && remaining > 0.0 { pyc::floor_div(remaining, 60.0) as i64 } else { 0 };
-        let detail = if since > 0.0 { format!("{left} dk") } else { "?".to_string() };
+        let unit = if lang == "en" { "min" } else { "dk" };
+        let detail = if since > 0.0 { format!("{left} {unit}") } else { "?".to_string() };
         return Ok(why("idle_wait", lang, &detail, doc(json!({"minutes_left": left}))));
     }
     let chains = dict_of(state.get("claude_idle"))?;

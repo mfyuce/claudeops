@@ -312,6 +312,7 @@
 "test_empty_fleet_p0.NoneRejected.test_loop_guard_caps_repeated_rejection": [
 "_bare_marker",
 "_forced_open_nudge",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "marker_next_work",
@@ -325,6 +326,7 @@
 "test_empty_fleet_p0.NoneRejected.test_second_none_with_same_todo_gets_oldest_item_not_silence": [
 "_bare_marker",
 "_forced_open_nudge",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "marker_next_work",
@@ -338,6 +340,7 @@
 "test_empty_fleet_p0.NoneRejected.test_without_oldest_callback_old_behaviour": [
 "_bare_marker",
 "_forced_open_nudge",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -349,6 +352,8 @@
 "test_empty_fleet_p0.NoneRejected.test_zero_open_still_silent": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "idle_finish_marker",
 "marker_next_work",
@@ -796,6 +801,7 @@
 "test_owner_claim_nudge.OwnerClaim.test_no_nudge_when_question_recorded_or_short_idle": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -808,6 +814,7 @@
 "test_owner_claim_nudge.OwnerClaim.test_no_nudge_without_owner_phrase": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -821,6 +828,7 @@
 "test_owner_claim_nudge.OwnerClaim.test_nudges_once_when_no_recorded_question": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -3352,6 +3360,7 @@
 "test_review_store.StoreCommitGateTest.test_visibility_cache_is_bounded": [],
 "test_stated_next.Helper.test_marker_next_work": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -3360,6 +3369,7 @@
 ],
 "test_stated_next.IdleNudge.test_chain_limit_still_applies": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -3372,6 +3382,8 @@
 "test_stated_next.IdleNudge.test_no_next_empty_todo_no_nudge_as_before": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "idle_finish_marker",
 "marker_next_work",
@@ -3386,6 +3398,7 @@
 ],
 "test_stated_next.IdleNudge.test_nudges_with_stated_next_even_with_empty_todo_and_ask_marker": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -3397,6 +3410,7 @@
 ],
 "test_stated_next.Keepwarm.test_keepwarm_sends_devam_with_next_not_ok": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -5928,12 +5942,15 @@
 "raw_card_fields"
 ],
 "test_steward_claude_idle_stated.StatedNextWorkTest.test_explicit_next_line": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "next_line",
 "stated_next_work"
 ],
 "test_steward_claude_idle_stated.StatedNextWorkTest.test_extracts_last_stated_next": [
+"_last_next_line",
 "clip_words",
 "next_line",
 "stated_next_work"
@@ -5941,18 +5958,21 @@
 "test_steward_claude_idle_stated.StatedNextWorkTest.test_next_none_is_not_work": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line",
 "stated_next_work"
 ],
 "test_steward_claude_idle_stated.StatedNextWorkTest.test_nothing_stated": [
+"_last_next_line",
 "next_line",
 "stated_next_work"
 ],
 "test_steward_claude_idle_work.FinishMarkerNegationTest.test_negative_phrasings_are_not_finished": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line"
@@ -5960,6 +5980,7 @@
 "test_steward_claude_idle_work.FinishMarkerNegationTest.test_real_finish_still_detected": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line"
@@ -5967,6 +5988,8 @@
 "test_steward_claude_idle_work.StewardNextMarkerTest.test_explain_shows_next_work_and_next_none": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "_why",
 "explain_idle",
@@ -5988,6 +6011,7 @@
 "scan_markers"
 ],
 "test_steward_claude_idle_work.StewardNextMarkerTest.test_note_project_next_state": [
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "note_project_next",
@@ -5995,6 +6019,7 @@
 ],
 "test_steward_claude_idle_work.StewardNextMarkerTest.test_plan_markers_records_state": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "marker_record_actions",
@@ -6009,6 +6034,7 @@
 "scan_markers"
 ],
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_max_consecutive_kept": [
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -6025,6 +6051,7 @@
 "_bare_marker",
 "_done_at_line_end",
 "_forced_open_nudge",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -6038,6 +6065,7 @@
 "waiting_for_gate"
 ],
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_no_open_work_no_nudge": [
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -6049,6 +6077,7 @@
 "waiting_for_gate"
 ],
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_open_ownerless_todo_nudges_with_fixed_text": [
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -6064,6 +6093,7 @@
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_owner_wait_and_gate_still_skip": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -6076,6 +6106,8 @@
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_steward_next_none_marker_also_stops_and_new_activity_resumes": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "idle_finish_marker",
 "marker_next_work",
@@ -6092,6 +6124,7 @@
 "test_steward_claude_idle_work.WorkBasedNudgeTest.test_text_content_does_not_matter": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -8926,9 +8959,11 @@
 "test_steward_core_b.UcliStuckLadderTest.test_ladder": [],
 "test_steward_core_b.UcliStuckLadderTest.test_shorten_helper": [],
 "test_steward_ctx.ContextQuestionTest.test_classifier": [
+"_context_owner_topic",
 "is_context_question"
 ],
 "test_steward_ctx.ContextQuestionTest.test_high_context_hands_over": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -8945,6 +8980,7 @@
 "undelivered_answers"
 ],
 "test_steward_ctx.ContextQuestionTest.test_low_context_continues_without_handover": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -8961,6 +8997,7 @@
 "undelivered_answers"
 ],
 "test_steward_ctx.ContextQuestionTest.test_over_threshold_single_handover": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -8976,6 +9013,7 @@
 "undelivered_answers"
 ],
 "test_steward_ctx.ContextQuestionTest.test_unknown_context_or_disabled_leaves_question": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -9036,6 +9074,7 @@
 "undelivered_answers"
 ],
 "test_steward_ctx.HandoverDeferTest.test_context_question_path_defers": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -9144,6 +9183,7 @@
 "undelivered_answers"
 ],
 "test_steward_ctx.PausedProjectNoContextHandoverTest.test_context_question_on_paused_project_does_not_start_a_handover": [
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -9420,6 +9460,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_outcome_project",
@@ -10060,6 +10101,8 @@
 "notes_wait"
 ],
 "test_steward_explain_idle.Explain.test_matches_engine_nudge_decision": [
+"_is_no_work_value",
+"_last_next_line",
 "_why",
 "clip_words",
 "explain_idle",
@@ -10104,6 +10147,8 @@
 "test_steward_explain_idle.Explain.test_running_session_reasons": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_why",
 "clip_words",
 "explain_idle",
@@ -22208,6 +22253,7 @@
 "test_steward_keepwarm.ChainCloseWarmTest.test_incomplete_chain_waits_for_due": [],
 "test_steward_keepwarm.ChainCloseWarmTest.test_real_activity_after_nudge_no_action_before_due": [],
 "test_steward_keepwarm.ConditionalNoteTest.test_conditional_note_gives_no_hint_and_plain_keepwarm": [
+"_is_no_work_value",
 "clip_words",
 "is_conditional_note",
 "is_fable_polish",
@@ -22218,6 +22264,8 @@
 "is_conditional_note"
 ],
 "test_steward_keepwarm.KeepwarmTest.test_dry_mode_payload_has_text": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -22232,6 +22280,8 @@
 "scan_markers"
 ],
 "test_steward_keepwarm.KeepwarmTest.test_empty_last_assistant_is_not_finished": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -22269,6 +22319,8 @@
 "scan_markers"
 ],
 "test_steward_keepwarm.KeepwarmTest.test_text_continue_when_work_pending": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -22283,6 +22335,7 @@
 "scan_markers"
 ],
 "test_steward_keepwarm.KeepwarmTest.test_text_default_when_no_work": [
+"_is_no_work_value",
 "clip_words",
 "marker_next_work",
 "next_work_hint"
@@ -22290,6 +22343,8 @@
 "test_steward_keepwarm.KeepwarmTest.test_text_light_ping_when_finished": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -22318,6 +22373,7 @@
 ],
 "test_steward_keepwarm.NoWorkTest.test_no_work_no_keepwarm": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "marker_next_work",
@@ -22328,6 +22384,8 @@
 ],
 "test_steward_keepwarm.NoWorkTest.test_work_gets_keepwarm": [
 "_bare_marker",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "clip_words",
 "idle_finish_marker",
@@ -26695,6 +26753,7 @@
 "valid_name"
 ],
 "test_steward_multi.DefaultWorld_ContextQuestionTest.test_classifier": [
+"_context_owner_topic",
 "is_context_question"
 ],
 "test_steward_multi.DefaultWorld_ContextQuestionTest.test_high_context_hands_over": [
@@ -26708,6 +26767,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -26739,6 +26799,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -26770,6 +26831,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -26800,6 +26862,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -28655,6 +28718,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -31366,6 +31430,7 @@
 "World.project_key",
 "World.resolve",
 "World.session_class",
+"_context_owner_topic",
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -36763,6 +36828,7 @@
 ],
 "test_steward_nowork.Check.test_aged_open_question_does_not_block_but_answer_pending_does": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36773,6 +36839,7 @@
 ],
 "test_steward_nowork.Check.test_closes_when_nothing_pending": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36784,6 +36851,7 @@
 ],
 "test_steward_nowork.Check.test_each_blocker": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -36797,6 +36865,7 @@
 ],
 "test_steward_nowork.Check.test_open_todo_means_work_unless_session_says_none": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36807,6 +36876,7 @@
 "waiting_for_gate"
 ],
 "test_steward_nowork.FablePolish.test_note_next_that_is_fable_polish_is_not_work": [
+"_is_no_work_value",
 "clip_words",
 "is_conditional_note",
 "is_fable_polish",
@@ -36814,6 +36884,7 @@
 ],
 "test_steward_nowork.FablePolish.test_polish_only_note_lets_session_close": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -36828,6 +36899,7 @@
 ],
 "test_steward_nowork.PausedOpen.test_idle_open_session_of_inactive_project_is_closed_without_pause": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36839,6 +36911,7 @@
 ],
 "test_steward_nowork.PausedOpen.test_work_or_review_items_do_not_block_inactive_but_questions_and_subagents_do": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "clip_words",
 "is_conditional_note",
@@ -36852,6 +36925,7 @@
 ],
 "test_steward_nowork.Plan.test_act_queues_handover_close_pause_like_keepwarm_chain": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36863,6 +36937,7 @@
 ],
 "test_steward_nowork.Plan.test_dry_lists_and_records_report_without_ho_state": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36876,6 +36951,7 @@
 "test_steward_nowork.Plan.test_off_and_drain_do_nothing": [],
 "test_steward_nowork.Plan.test_report_covers_blocked_candidates_too": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -36887,6 +36963,7 @@
 ],
 "test_steward_nowork.Plan.test_same_idle_period_decided_once": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -37273,6 +37350,7 @@
 ],
 "test_steward_owner_todo.Move.test_observe_skips_kind": [],
 "test_steward_owner_todo.Move.test_sent_once_per_24h": [
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -37285,6 +37363,7 @@
 "waiting_for_gate"
 ],
 "test_steward_owner_todo.Move.test_zero_remote_busy_and_off": [
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -40315,6 +40394,7 @@
 "_bare_marker",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_outcome_project",
@@ -40607,6 +40687,7 @@
 "_bare_marker",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_outcome_project",
@@ -40688,6 +40769,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_pp",
@@ -40762,6 +40844,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_pp",
@@ -40926,6 +41009,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_observe_cluster",
 "_pp",
@@ -41001,6 +41085,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_pp",
@@ -41123,6 +41208,7 @@
 "_from_dict",
 "_is_confirm_line",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_pp",
@@ -41715,6 +41801,7 @@
 "_bare_marker",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_loop_sig",
 "_outcome_project",
@@ -43657,6 +43744,388 @@
 "valid_custom_id",
 "valid_steward_id"
 ],
+"test_steward_tbd377.AsciiDeferTest.test_ascii_forms": [
+"is_defer_answer"
+],
+"test_steward_tbd377.AsciiDeferTest.test_not_defer": [
+"is_defer_answer"
+],
+"test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_not_appended_when_cap_is_full": [
+"_from_dict",
+"_pp",
+"_question_sentences",
+"_words",
+"add_question",
+"add_question_ex",
+"find_answered_duplicate",
+"find_answered_hold",
+"find_open_same_ask",
+"find_open_similar",
+"find_open_topic",
+"normalize_options",
+"paths_for",
+"topic_tokens"
+],
+"test_steward_tbd377.HeldAnswerRecordStandsAloneTest.test_ordinary_question_still_appended": [
+"_from_dict",
+"_pp",
+"_question_sentences",
+"_words",
+"add_question",
+"add_question_ex",
+"find_answered_duplicate",
+"find_answered_hold",
+"find_open_same_ask",
+"find_open_similar",
+"find_open_topic",
+"normalize_options",
+"paths_for",
+"topic_tokens"
+],
+"test_steward_tbd377.MarkUnknownQuestionTest.test_found_is_written": [
+"_from_dict",
+"_pp",
+"_question_sentences",
+"_words",
+"add_question",
+"add_question_ex",
+"find_answered_duplicate",
+"find_answered_hold",
+"find_open_same_ask",
+"find_open_similar",
+"find_open_topic",
+"find_question",
+"mark_delivered",
+"mark_notified",
+"normalize_options",
+"paths_for",
+"topic_tokens"
+],
+"test_steward_tbd377.MarkUnknownQuestionTest.test_no_write_when_missing": [
+"_from_dict",
+"_pp",
+"_question_sentences",
+"_words",
+"add_question",
+"add_question_ex",
+"find_answered_duplicate",
+"find_answered_hold",
+"find_open_same_ask",
+"find_open_similar",
+"find_open_topic",
+"mark_delivered",
+"mark_notified",
+"normalize_options",
+"paths_for",
+"topic_tokens"
+],
+"test_steward_tbd377.OddSingleCharAnswerTest.test_answer_is_recorded": [
+"_from_dict",
+"_pp",
+"_question_sentences",
+"_words",
+"add_question",
+"add_question_ex",
+"answer_question",
+"find_answered_duplicate",
+"find_answered_hold",
+"find_open_same_ask",
+"find_open_similar",
+"find_open_topic",
+"find_question",
+"is_defer_answer",
+"normalize_options",
+"paths_for",
+"resolve_answer",
+"topic_tokens"
+],
+"test_steward_tbd377.OddSingleCharAnswerTest.test_choices_unchanged": [
+"resolve_answer"
+],
+"test_steward_tbd377.OddSingleCharAnswerTest.test_resolve_answer_keeps_free_text": [
+"resolve_answer"
+],
+"test_steward_tbd377.UpsertTextTypeTest.test_http_endpoint_reports_error": [
+"_from_dict",
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"is_reviewer",
+"normalize_host",
+"paths_for",
+"reserved_reason",
+"reviewer_ids",
+"services_path",
+"upsert_project",
+"valid_name"
+],
+"test_steward_tbd377.UpsertTextTypeTest.test_new_project_not_created": [
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"is_reviewer",
+"paths_for",
+"reserved_reason",
+"reviewer_ids",
+"services_path",
+"upsert_project",
+"valid_name"
+],
+"test_steward_tbd377.UpsertTextTypeTest.test_non_string_is_refused_and_nothing_saved": [
+"_from_dict",
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"is_reviewer",
+"normalize_host",
+"paths_for",
+"reserved_reason",
+"reviewer_ids",
+"services_path",
+"upsert_project",
+"valid_name"
+],
+"test_steward_tbd377.UpsertTextTypeTest.test_none_and_str_unchanged_and_notes_still_coerced": [
+"_from_dict",
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"is_reviewer",
+"normalize_host",
+"paths_for",
+"reserved_reason",
+"reviewer_ids",
+"services_path",
+"upsert_project",
+"valid_name"
+],
+"test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_context_measure_still_auto_answered": [
+"_context_owner_topic",
+"is_context_question"
+],
+"test_steward_tbd382_context.OwnerTopicContextQuestionTest.test_owner_topics_are_not_context_questions": [
+"_context_owner_topic",
+"is_context_question"
+],
+"test_steward_tbd382_context.OwnerTopicPlanTickTest.test_context_measure_in_other_fields_is_fine": [
+"_context_owner_topic",
+"_is_project_session",
+"_pp",
+"_project_key",
+"api_error_kind",
+"context_answer",
+"context_threshold",
+"derived_of",
+"is_context_question",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_other_fields_left_open": [
+"_context_owner_topic",
+"_is_project_session",
+"_pp",
+"_project_key",
+"api_error_kind",
+"context_threshold",
+"derived_of",
+"is_context_question",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_context.OwnerTopicPlanTickTest.test_owner_topic_in_text_left_open_and_no_handover": [
+"_context_owner_topic",
+"_is_project_session",
+"_pp",
+"_project_key",
+"api_error_kind",
+"context_threshold",
+"derived_of",
+"is_context_question",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_context.OwnerTopicPlanTickTest.test_plain_question_is_answered": [
+"_context_owner_topic",
+"_is_project_session",
+"_pp",
+"_project_key",
+"api_error_kind",
+"context_answer",
+"context_threshold",
+"derived_of",
+"is_context_question",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_small.BrainToolsMissingTest.test_ordinary_sentence_is_not_a_report": [
+"brain_tools_missing_text"
+],
+"test_steward_tbd382_small.BrainToolsMissingTest.test_real_reports_still_detected": [
+"brain_tools_missing_text"
+],
+"test_steward_tbd382_small.OwnerClassZeroNowTest.test_none_reads_the_clock": [
+"steward_ask.owner_class"
+],
+"test_steward_tbd382_small.OwnerClassZeroNowTest.test_zero_now_is_not_replaced_by_the_clock": [
+"steward_ask.owner_class"
+],
+"test_steward_tbd382_small.PlanDeliveriesLimitTest.test_non_positive_limit_yields_nothing": [
+"plan_deliveries"
+],
+"test_steward_tbd382_small.PlanDeliveriesLimitTest.test_positive_limit_unchanged": [
+"pick_delivery_view",
+"plan_deliveries"
+],
+"test_steward_tbd382_small.PlanMarkersClockTest.test_uses_module_clock": [
+"_is_no_work_value",
+"_unwrap_ticks",
+"clip_words",
+"marker_record_actions",
+"note_project_next",
+"plan_markers",
+"scan_markers"
+],
+"test_steward_tbd382_small.ReviewItemsLanguageTest.test_english_panel": [
+"_clip",
+"_is_no_work_value",
+"_is_project_session",
+"_pp",
+"_unwrap_ticks",
+"clip_words",
+"is_conditional_note",
+"item_signature",
+"marker_next_work",
+"paths_for",
+"review_items",
+"scan_markers",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_small.ReviewItemsLanguageTest.test_turkish_panel_unchanged": [
+"_clip",
+"_is_no_work_value",
+"_is_project_session",
+"_pp",
+"_unwrap_ticks",
+"clip_words",
+"is_conditional_note",
+"item_signature",
+"marker_next_work",
+"paths_for",
+"review_items",
+"scan_markers",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_tbd382_small.UpperTierApprovedTest.test_non_approval_stays_non_approval": [
+"upper_tier_approved",
+"upper_tier_tag"
+],
+"test_steward_tbd382_small.UpperTierApprovedTest.test_space_before_punctuation": [
+"upper_tier_approved",
+"upper_tier_tag"
+],
+"test_steward_tbd387_small.AskGateSummaryTest.test_applied_shadow_record_counted_once": [
+"_ask_gate_lines",
+"_clip"
+],
+"test_steward_tbd387_small.DryQuestionLanguageTest.test_dry_question_follows_panel_language": [
+"_log_dedup",
+"_pp",
+"dry_ask_due",
+"dry_report_text",
+"paths_for"
+],
+"test_steward_tbd387_small.EmptyNextLineTest.test_block_form_does_not_count_as_finished": [
+"_bare_marker",
+"_last_next_line",
+"idle_finish_marker",
+"needs_ho.rfh_marker_in",
+"next_line"
+],
+"test_steward_tbd387_small.EmptyNextLineTest.test_last_line_wins_even_when_empty": [
+"_last_next_line",
+"next_line"
+],
+"test_steward_tbd387_small.EmptyNextLineTest.test_next_line_is_not_taken_as_work": [
+"_last_next_line",
+"next_line",
+"stated_next_work"
+],
+"test_steward_tbd387_small.EmptyNextLineTest.test_same_line_still_read": [
+"_is_no_work_value",
+"_last_next_line",
+"clip_words",
+"next_line"
+],
+"test_steward_tbd387_small.EnglishPanelTest.test_cli_follows_panel_language": [
+"dry_report_text",
+"paths_for"
+],
+"test_steward_tbd387_small.EnglishPanelTest.test_dry_report_text": [
+"dry_report_text"
+],
+"test_steward_tbd387_small.EnglishPanelTest.test_idle_wait_detail": [
+"_why",
+"explain_idle",
+"notes_wait"
+],
+"test_steward_tbd387_small.EnglishPanelTest.test_skip_ratio": [
+"_ask_gate_lines",
+"daily_summary"
+],
+"test_steward_tbd387_small.LoopPauseHoursTest.test_short_pauses_never_report_zero_hours": [
+"_loop_sig",
+"loop_guard"
+],
+"test_steward_tbd387_small.NoWorkValuesTest.test_finish_marker_not_hidden": [
+"_bare_marker",
+"_is_no_work_value",
+"_last_next_line",
+"idle_finish_marker",
+"needs_ho.rfh_marker_in",
+"next_line"
+],
+"test_steward_tbd387_small.NoWorkValuesTest.test_next_line": [
+"_is_no_work_value",
+"_last_next_line",
+"next_line",
+"stated_next_work"
+],
+"test_steward_tbd387_small.NoWorkValuesTest.test_note_hint_and_marker": [
+"_is_no_work_value",
+"_unwrap_ticks",
+"clip_words",
+"is_conditional_note",
+"is_fable_polish",
+"marker_next_work",
+"next_none_stated",
+"next_work_hint",
+"note_project_next",
+"scan_markers"
+],
+"test_steward_tbd387_small.NoWorkValuesTest.test_real_work_stays": [
+"_is_no_work_value",
+"_last_next_line",
+"clip_words",
+"next_line"
+],
 "test_steward_tmp_isolation.DetailThreadIsolationTest.test_ask_starts_no_detail_generation": [
 "World.resolve",
 "_from_dict",
@@ -43850,6 +44319,7 @@
 "test_steward_ucli_idle.ChainPauseFlowTest.test_claude_idle_skips_owner_wait": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -43881,6 +44351,8 @@
 "undelivered_answers"
 ],
 "test_steward_ucli_idle.ClaudeIdleTest.test_chain_cap": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -43901,6 +44373,8 @@
 "plan_ucli_idle"
 ],
 "test_steward_ucli_idle.ClaudeIdleTest.test_nudges_after_threshold_with_next_work": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -43922,6 +44396,7 @@
 "test_steward_ucli_idle.ClaudeIdleTest.test_skips_busy_subagent_done_questions_no_work_paused": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -43936,12 +44411,15 @@
 "clip_words"
 ],
 "test_steward_ucli_idle.DevamTextTest.test_next_hint_long_note_cut_on_word": [
+"_is_no_work_value",
 "clip_words",
 "is_conditional_note",
 "is_fable_polish",
 "next_work_hint"
 ],
 "test_steward_ucli_idle.DevamTextTest.test_same_devam_text_not_resent_after_answer": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -43961,6 +44439,8 @@
 "test_steward_ucli_idle.FailedTurnChainTest.test_failed_turn_does_not_reset_chain": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -43977,6 +44457,8 @@
 "test_steward_ucli_idle.FailedTurnChainTest.test_successful_turn_still_resets_chain": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44002,6 +44484,8 @@
 "test_steward_ucli_idle.GateWaitTest.test_old_gate_text_far_back_does_not_block": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44018,11 +44502,13 @@
 "test_steward_ucli_idle.HelpersTest.test_finish_marker": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line"
 ],
 "test_steward_ucli_idle.HelpersTest.test_next_work_hint": [
+"_is_no_work_value",
 "clip_words",
 "is_conditional_note",
 "is_fable_polish",
@@ -44038,6 +44524,8 @@
 "test_steward_ucli_idle.IdleModeTest.test_dry_plans_but_never_writes_handover_state": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44072,6 +44560,8 @@
 "ucli_idle_threshold"
 ],
 "test_steward_ucli_idle.PlanTest.test_chain_limit_and_reset_on_activity": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44088,6 +44578,8 @@
 "test_steward_ucli_idle.PlanTest.test_close_marker_with_work_requests_handover_then_reopen": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44103,6 +44595,7 @@
 "test_steward_ucli_idle.PlanTest.test_close_marker_without_work_pauses_and_closes_after_handover": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line",
@@ -44117,6 +44610,8 @@
 "ucli_idle_threshold"
 ],
 "test_steward_ucli_idle.PlanTest.test_dry_counts_do_not_block_act": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44131,6 +44626,8 @@
 "waiting_for_gate"
 ],
 "test_steward_ucli_idle.PlanTest.test_legacy_record_without_mode_counts_as_dry": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44145,6 +44642,8 @@
 "waiting_for_gate"
 ],
 "test_steward_ucli_idle.PlanTest.test_no_work_no_marker_does_nothing": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
@@ -44156,6 +44655,8 @@
 "waiting_for_gate"
 ],
 "test_steward_ucli_idle.PlanTest.test_nudge_with_next_work_single_line": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44171,6 +44672,8 @@
 ],
 "test_steward_ucli_idle.PlanTest.test_observe_does_not_touch_handover_state": [
 "_bare_marker",
+"_is_no_work_value",
+"_last_next_line",
 "_observe_cluster",
 "clip_words",
 "idle_finish_marker",
@@ -44187,6 +44690,7 @@
 "waiting_for_gate"
 ],
 "test_steward_ucli_idle.PlanTest.test_open_todo_alone_sends_no_blind_nudge": [
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line",
@@ -44199,6 +44703,7 @@
 "test_steward_ucli_idle.PlanTest.test_open_todo_still_counts_for_close_decisions": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "needs_ho.rfh_marker_in",
 "next_line",
@@ -44209,6 +44714,8 @@
 "waiting_for_gate"
 ],
 "test_steward_ucli_idle.PlanTest.test_ready_for_handover_already_written": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44226,6 +44733,8 @@
 "ucli_idle_threshold"
 ],
 "test_steward_ucli_idle.PlanTest.test_threshold_follows_cache_ttl": [
+"_is_no_work_value",
+"_last_next_line",
 "clip_words",
 "idle_finish_marker",
 "is_conditional_note",
@@ -44526,6 +45035,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44595,6 +45105,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44664,6 +45175,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44733,6 +45245,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44802,6 +45315,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44867,6 +45381,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -44935,6 +45450,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -45004,6 +45520,7 @@
 "World.session_class",
 "_from_dict",
 "_is_project_session",
+"_last_next_line",
 "_log_dedup",
 "_pp",
 "_project_key",
@@ -45110,6 +45627,7 @@
 ],
 "test_todo_triage.Plan.test_changed_todo_allows_again": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -45120,6 +45638,7 @@
 ],
 "test_todo_triage.Plan.test_dry_and_act_counted_separately": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -45131,6 +45650,8 @@
 "test_todo_triage.Plan.test_explain_reason": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "_why",
 "explain_idle",
@@ -45147,6 +45668,7 @@
 ],
 "test_todo_triage.Plan.test_mismatch_sends_one_triage_not_continue": [
 "_bare_marker",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -45158,6 +45680,8 @@
 "test_todo_triage.Plan.test_no_sha_available_sends_nothing_extra": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "idle_finish_marker",
 "marker_next_work",
@@ -45185,6 +45709,7 @@
 "test_todo_triage.Plan.test_same_sha_never_again_and_no_continue_nudge": [
 "_bare_marker",
 "_forced_open_nudge",
+"_is_no_work_value",
 "_unwrap_ticks",
 "marker_next_work",
 "next_none_stated",
@@ -45196,6 +45721,7 @@
 "test_todo_triage.Plan.test_session_with_real_work_still_gets_normal_nudge": [
 "_bare_marker",
 "_done_at_line_end",
+"_last_next_line",
 "idle_finish_marker",
 "marker_next_work",
 "needs_ho.rfh_marker_in",
@@ -45211,6 +45737,8 @@
 "test_todo_triage.Plan.test_zero_open_sends_nothing": [
 "_bare_marker",
 "_done_at_line_end",
+"_is_no_work_value",
+"_last_next_line",
 "_unwrap_ticks",
 "idle_finish_marker",
 "marker_next_work",
