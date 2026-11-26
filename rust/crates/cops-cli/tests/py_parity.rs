@@ -5,6 +5,7 @@
 mod common;
 use common::*;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 const LIVE: &str = "[Service]\nExecStart=/bin/bash -ic '/usr/bin/python3 -m claudeops web'\n";
 
@@ -313,4 +314,18 @@ fn secret_lock_contract_with_python() {
         std::fs::metadata(&sec).unwrap().permissions().mode() & 0o777,
         0o600
     );
+}
+
+#[test]
+fn default_addresses_match_python_front_cmd() {
+    let src =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../py/claudeops/commands/front_cmd.py");
+    let src = std::fs::read_to_string(src).unwrap();
+    for (name, value) in [
+        ("DEFAULT_LISTEN", cops_cli::front::DEFAULT_LISTEN),
+        ("DEFAULT_INTERNAL", cops_cli::front::DEFAULT_INTERNAL),
+    ] {
+        let line = format!("{name} = \"{value}\"");
+        assert!(src.lines().any(|l| l == line), "{line}");
+    }
 }
