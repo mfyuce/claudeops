@@ -11,7 +11,7 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 3. [x] `cops-parity` gerçek Python iç portuna karşı: 26 Kas, `174c18e`, yalnız GET, 7/7 istek fark 0, üç ardışık koşu; yedi isteğin
    yedisini de Python cevapladı (`X-Cops-Served: python`; yerel uç karşılaştırması bu listede yok). Kayıt: eşlik bölüm 5 iş 9.
 4. [ ] Kalan, bilerek bırakılan: eşlik iş 8 (`RequestView` `body_fn` ve eklenti eylem kaydı) T9 ile; "Ders listesi"ndeki AÇIK
-   satırlar (taze tarayıcı e2e, `Ctx.front_secret` açılış değeri); sahibe sorular aşağıda "Sahip kararı bekleyenler".
+   satırlar (taze tarayıcı e2e, enterprise'ın `Ctx.front`a geçişi); sahibe sorular aşağıda "Sahip kararı bekleyenler".
 5. [x] Commit + push (iki remote).
 
 ## Bu turun işleri (eşlik bölüm 5)
@@ -19,7 +19,7 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 | iş | yapılan | test |
 |---|---|---|
 | 1 varsayılan `--upstream` | `copsd::DEFAULT_UPSTREAM` = `127.0.0.1:28765` (`front_cmd.DEFAULT_INTERNAL`), USAGE ve modül belgesi | `default_upstream_matches_python_front_cmd`, `help_and_version_have_no_side_effects` |
-| 2 gizli yaşam döngüsü | `cops_proxy::front::FrontSecret` (dosya imzası: aygıt, inode, boyut, mtime, ctime, mod; değişince yeniden okuma), `Proxy::with_front_secret`; açılışta kullanılamayan dosya çıkış 2 (KALDI), çalışırken yok/gevşek/bozuk = gizli yok; uzak istemci için `Cf-Connecting-IP` sabitleme (aşağıda gerekçe) | `file_secret_follows_changes_and_fails_closed`, `trusted_front_needs_secret_loopback_and_exact_header`, `front_secret_file_is_reread_and_fails_closed`, `runtime_secret_changes_apply_without_restart`, `startup_refuses_unusable_secret_file`, `pin_client_ip_overwrites_only_for_non_loopback_peers`, `python_sees_real_client_with_or_without_secret` |
+| 2 gizli yaşam döngüsü | `cops_proxy::front::FrontSecret` (dosya imzası: aygıt, inode, boyut, mtime, ctime, mod; değişince yeniden okuma), `Proxy::with_front_secret`; açılışta kullanılamayan dosya uyarı + gizli yok (kapı 3), çalışırken yok/gevşek/bozuk = gizli yok; uzak istemci için `Cf-Connecting-IP` sabitleme (aşağıda gerekçe) | `file_secret_follows_changes_and_fails_closed`, `trusted_front_needs_secret_loopback_and_exact_header`, `front_secret_file_is_reread_and_fails_closed`, `runtime_secret_changes_apply_without_restart`, `startup_ignores_unusable_secret_file_and_warns`, `pin_client_ip_overwrites_only_for_non_loopback_peers`, `python_sees_real_client_with_or_without_secret` |
 | 3 başlık süre sınırı | `serve_on` hyper `TokioTimer` + `header_read_timeout(15 sn)` (`HEADER_READ_TIMEOUT`, Python ile aynı; boşta keep-alive da 15 sn, Python gibi); `serve_on_with` sınama için; metrik POST gövdesi 10 sn (`ROUTE_BODY_TIMEOUT`) ve bildirilen boy sınırı aşarsa okumadan 413 | `slow_headers_are_cut_off`, `short_body_is_408_and_closes`, `security_headers_match_python_end_headers` (413) |
 | 4 güvenlik başlıkları | `harden`: Python `end_headers` kümesi (`nosniff`, `Referrer-Policy`, kendi CSP'si yoksa `X-Frame-Options` + `CSP`); Rust'ın cevapladığı her yanıt, iç uç 404'ü ve Python yolunda copsd'nin ürettiği 502/400; mount ve Python'dan gelen yanıt hariç | `security_headers_match_python_end_headers` |
 | 5 iç uç engeli | `python_path` (3.10 `parse_request` `//` indirgemesi + `urlparse`), `is_internal_target`; 404 gövdesi Python gibi `{"error": "not found"}` | `internal_block_covers_every_form_python_would_route`, `internal_paths_are_never_forwarded` |
@@ -31,8 +31,9 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 ### Gizli yaşam döngüsü ve "gizli yokken uzak istemci loopback görünmesin" kararı
 
 - Açılış: `CLAUDEOPS_FRONT_SECRET` boş değilse o (sabit, kırpılmaz). Yoksa `--secret-file` / `<durum dizini>/front.secret`:
-  yoksa gizlisiz açılır; var ama kullanılamıyorsa (0600 değil, UTF-8 değil, okunamıyor, düzenli dosya değil) çıkış 2 (Python yok
-  sayar, bozuk UTF-8 dahil; Rust daha sıkı, sahibin isteğiyle KALDI).
+  yoksa gizlisiz açılır; var ama kullanılamıyorsa (0600 değil, UTF-8 değil, okunamıyor, düzenli dosya değil) yüksek sesle uyarı
+  yazar ve gizliyi yok sayar (kapı 3: eski çıkış 2, systemd yeniden başlatma döngüsüyle dış portu düşürürdü; çalışma anı ve Python
+  ile aynı). Dosya düzelince yeniden başlatmadan kullanılır.
 - Çalışma: dosya her istekte `stat` edilir; imza değişince yeniden okunur (Python her çağrıda okur). Yok, gevşek, bozuk, 64 KiB
   üstü ya da boş = gizli YOK: aktarılan isteğe `X-Cops-Front` eklenmez (Python da aynı dosyayı okuduğu için zaten güvenmez),
   stats/metrik `X-Cops-Front` denetimi reddeder. Süreç ÇIKMAZ. Bilinen sınır: aynı inode, aynı boy ve çekirdeğin kaba zaman
@@ -45,13 +46,11 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
   (hız sınırı, `session_lock` günlüğü, eklenti `client_addr`), loopback ayrıcalığı almaz. Reddedilen seçenekler: gizlisiz açılışı
   reddetmek (canlıda gizli var ama `cops front on` öncesi/silinme anında paneli düşürürdü); uzak eşli isteği reddetmek (paneli
   kırar).
-- Sınır: enterprise kancalarına verilen `copsd::Ctx.front_secret` açılış değeridir (`Ctx` genel API'si değiştirilmedi); gizli
-  çalışırken değişirse `copsd-ent` `PyAuthz` yeniden başlatmaya dek eski değeri yollar (sahip kararı, aşağıda).
+- Kancalar: `copsd::Ctx.front` (`Arc<FrontSecret>`, vekille aynı nesne) canlı değeri verir; `Ctx.front_secret` açılış kopyası
+  uyumluluk için durur. AÇIK (enterprise): `copsd-ent` bugün `front_secret` okuyor, rev yükselirken `front`a geçmeli.
 
 ## Sahip kararı bekleyenler
 
-- `Ctx.front_secret` için canlı değer: `Ctx`e alan eklemek `copsd-ent`i (yapı ifadesiyle kurmuyor, ama genel API) etkiler; ya
-  enterprise `PyAuthz` gizliyi kendisi `FrontSecret` ile okur ya da `Ctx`e `Arc<FrontSecret>` eklenir (iki repoda rev birlikte).
 - Gövde süre sınırı: Rust yerel uçlarda 10 sn TOPLAM (Python 60 sn, her okuma). Daha sıkı; büyük yükleme alan yerel uç (T3)
   gelince ayrı sınır gerekir.
 - TBD#371 cevaplandı (26 Kas): eşlik "Python hatası?" 1-3 düzeltildi (`f7dedcc`, `5737ae8`, `31ff561`).
@@ -60,7 +59,7 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 
 - [ ] (sahip numarası 4, T6) `cops front on/off`: port ayrıştırma, yabancı porta vekillik, geri sarma yokluğu (eşlik "Python hatası?" 4-6).
 - [ ] (sahip numarası 5, T9) eklentiye giden başlıklar her erişimde harf duyarsız olsun (eşlik "Python hatası?" 7).
-- [ ] (T6/T9) `cops front on` sızmış gizliyi artık YENİLER: çalışan `copsd-ent` eski `Ctx.front_secret`i restart'a dek yollar. Kabukta
+- [ ] (T6/T9) `cops front on` sızmış gizliyi artık YENİLER: bugünkü `copsd-ent` eski `Ctx.front_secret`i restart'a dek yollar (`Ctx.front`a geçince biter). Kabukta
   `CLAUDEOPS_DIR` doluyken `front on`, gizliyi birimlerin okumadığı dizine yazar.
 - Canlı etkisi: iki serviste `CLAUDEOPS_DIR` yok (26 Kas ölçümü), canlı gizli yolu değişmez; canlı `front.secret`e dokunulmadı.
 
@@ -86,8 +85,9 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 ### 2. `force_proxy`
 
 - Dosya `<durum dizini>/front_force_proxy` (`--force-proxy-file`): satır başına yol öneki, `#` yorum, `*` hepsi; yazım
-  `ent_auth_force_proxy` ile aynı. Statik, metrik, tablo, tek kanca ve yerel uca uygulanır; mount'lara ve `/api/front/stats`a DEĞİL.
-- Okuma: açılışta ve SIGHUP'ta. Dosya yok = boş. İlk okumada okunamazsa `*`; SIGHUP'ta okunamazsa eski liste. 512 satır üstü `*`.
+  `ent_auth_force_proxy` ile aynı. Statik, metrik, tablo, tek kanca ve yerel uca uygulanır; mount'lara ve `/api/front/stats`a DEĞİL (belgeli istisna: stats'ın Python karşılığı yok ve geri alma oradan
+  doğrulanır; `*` altında da Rust cevaplar, `sighup_reloads_force_proxy_and_stats_count_it`).
+- Okuma: açılışta ve SIGHUP'ta. Dosya yok = boş. Dosya var ama okunamıyor/bozuksa açılışta da SIGHUP'ta da `*` (kapalı yön). 512 satır üstü `*`.
 - Canlıda uygulama: `systemctl --user kill --kill-who=main -s HUP claudeops-front.service`.
   **DİKKAT:** bugünkü canlı (eski) `copsd` SIGHUP işlemez, sinyal onu ÖLDÜRÜR; komut yalnız yeni ikili konduktan sonra.
   `front.py`/`cops front` birimine `ExecReload` eklenmedi (izin dışı yol).
@@ -100,8 +100,9 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 - `totals`, `endpoints[{method,path,local,fallback,forced,upstream_error}]`, `other`, `routes`, `force_proxy`, `started_at`,
   `version` (`Proxy::with_version`; copsd `GIT_SHA`, `build.rs`: kısa commit + derleme anında `rust/` kirliyse `-dirty`).
   Mount istekleri sayılmaz. Sayaçlar bellekte (yeniden başlatmada sıfır).
-- Anahtar sınırı: `/q/`, `/readfile/` ve API dışı yollar ilk parçaya iner, kimlik benzeri parçalar `*`, yeni anahtar yalnız
-  401/403/404 dışı yanıtla, en çok 512; gerisi `other`.
+- Anahtar sınırı: `/q/`, `/readfile/` ve API dışı yollar ilk parçaya iner, kimlik benzeri parçalar `*`, yeni anahtarı yalnız yerel ya da
+  panel kimlikli (web.token / `X-Cops-Front`) istek açar, 401/403/404 açmaz, en çok 512; gerisi `other`
+  (`unauthenticated_forwards_cannot_open_keys`). Yalnız eklenti çerezli aktarımlar açılmamış anahtarda `other`da kalır.
 
 ### 4. `cops-parity`
 
@@ -118,8 +119,8 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 Kırıcı değişiklik YOK, yalnız ek: modüller `routes`, `force`, `stats`, `front`; `Proxy::with_route_table|with_force_proxy|with_stats|
 with_front_secret|with_version`; `StatsCfg`, `PARITY_HEADER`, `SERVED_HEADER`, `HEADER_READ_TIMEOUT`, `serve_on_with`, `harden`,
 `python_path`, `is_internal_target`, `prepare_forward_headers`, `read_body_limited`; `copsd::routes::{register, RouteCtx}`,
-`copsd::{DEFAULT_UPSTREAM, GIT_SHA, secret_file}`. `copsd::Hooks`, `copsd::Ctx`, `StatsCfg`, `MetricsCfg`, `RequestView` alanları
-değişmedi. `cops-auth`: `py_strip` ve `ct_eq` `pub` oldu (zorunlu küçük ek: çekirdekte tek `strip()` yardımcısı, ders H14; yeni
+`copsd::{DEFAULT_UPSTREAM, GIT_SHA, secret_file}`. `copsd::Ctx`e `front` alanı EKLENDİ (alan okuyan
+tüketici etkilenmez), `ACCEPT_RETRY` eklendi; `copsd::Hooks`, `StatsCfg`, `MetricsCfg`, `RequestView` alanları değişmedi. `cops-auth`: `py_strip` ve `ct_eq` `pub` oldu (zorunlu küçük ek: çekirdekte tek `strip()` yardımcısı, ders H14; yeni
 `front.rs` ikinci kopya yazmasın diye).
 
 Davranış değişiklikleri (genel API imzası aynı): `Proxy::with_secret` artık sabit bir `FrontSecret` takar; takılı `FrontSecret`
@@ -166,7 +167,7 @@ Her test adı `rust/crates` altında grep ile bulundu (betik: eşlik bölüm 7).
 | 9 | Alt süreç/bağlantı/görev sahibi; fd sızıntı testi | karşılandı: `no_fd_leak_after_many_connections` (`/proc/self/fd`, 200 bağlantı: aktarım, iç uç 404, başlık süresi, bozuk uzunluk); üst sunucu havuzu kapalı (`pool_max_idle_per_host(0)`); copsd alt süreç açmaz |
 | 10 | Girdi sınırları: boş token, negatif/dev uzunluk, NaN, bozuk UTF-8, tip hatalı JSON | karşılandı: `query_and_bearer_accept_empty_token_is_closed_non_ascii_rejected`, `bad_content_length_is_rejected_before_python`, `file_secret_follows_changes_and_fails_closed` (UTF-8, 64 KiB, boşluk), `points_series_names_with_auth` (400), `force_proxy_size_limits` |
 | 11 | Metin işaret/ad ayrıştırma tek modül, corpus | uygulanmaz: işaret ayrıştırma yok; mount kimliği `valid_id` (`parse_rejects_bad_paths_collisions_and_upstreams`) |
-| 12 | Python ile paylaşılan kural altın vektörle; `$HOME` doğrudan yok | karşılandı: `trusted_client_ip_matches_python_test_front_xff`, `token_query_matches_python_parse_qs`, `table_is_identical_in_order`, `default_upstream_matches_python_front_cmd`; CSP eşitliği Python `CspParity.test_rust_csp_equals_python_csp`. `$HOME`: yalnız `front.secret` varsayılan yolu (Python `secret_path` ile AYNI, "Python hatası?" 3) ve `state_dir` son yedeği (Python `paths` ile aynı): `startup_refuses_unusable_secret_file`, `token_file_defaults_to_state_dir` |
+| 12 | Python ile paylaşılan kural altın vektörle; `$HOME` doğrudan yok | karşılandı: `trusted_client_ip_matches_python_test_front_xff`, `token_query_matches_python_parse_qs`, `table_is_identical_in_order`, `default_upstream_matches_python_front_cmd`; CSP eşitliği Python `CspParity.test_rust_csp_equals_python_csp`. `$HOME`: yalnız `front.secret` varsayılan yolu (Python `secret_path` ile AYNI, "Python hatası?" 3) ve `state_dir` son yedeği (Python `paths` ile aynı): `startup_ignores_unusable_secret_file_and_warns`, `token_file_defaults_to_state_dir` |
 | 13 | Sırlar sızmıyor; kimlik başına "yetkisinin ötesi" matrisi | karşılandı: gizli/token `Debug`/`Display` türetmez, argv'de değil, günlükte yalnız var/YOK; `cops_ext_cookie_does_not_open_local_api`, `token_cookie_and_authorization_never_reach_app_host_and_other_cookies_kept`, `panel_entries_need_token_own_auth_entries_do_not`, `rootrel_app_keeps_its_own_authorization_but_never_a_panel_credential` |
 | 14 | Yol/adres canonical; symlink/`..`/`::ffff:` | karşılandı: `static_assets_served_from_dist_with_headers_and_no_escape`, `python_loopback_address_table`, `mount_upstream_address_table`, `internal_block_covers_every_form_python_would_route` |
 | 15 | Vekil/WS kullanıcı yolundan e2e | kısmen: keep-alive (`early_reject_then_second_request_on_same_connection`), WS tüneli (`websocket_upgrade_is_tunnelled`, `websocket_through_mount_is_bidirectional_and_clean`); Ping/Pong copsd'de uygulanmaz (çerçeveyi sonlandırmaz, bayt aktarır). AÇIK: taze tarayıcı profiliyle e2e (canlıya alırken cops) |
