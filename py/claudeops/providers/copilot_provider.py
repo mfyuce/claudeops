@@ -252,6 +252,16 @@ def _connect_ro() -> sqlite3.Connection:
     return sqlite3.connect(_ro_sqlite_uri(SESSION_STORE_DB), uri=True, timeout=2.0)
 
 
+def _cell_value(value):
+    """`hücre or ""`; BLOB hücre geçerli UTF-8 ise metin, değilse boş (`bytes` panel yanıtını JSON'a yazılamaz kılıyordu)."""
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except UnicodeDecodeError:
+            return ""
+    return value or ""
+
+
 class CopilotProvider(CliProvider):
     name = "copilot"
 
@@ -418,7 +428,7 @@ class CopilotProvider(CliProvider):
                 conn.close()
         except sqlite3.Error:
             return []
-        return [(u or "", a or "") for u, a in rows]
+        return [(_cell_value(u), _cell_value(a)) for u, a in rows]
 
     def live_context(self, cwd: str, sid: Optional[str]) -> Optional[int]:
         """`assistant_usage_events`te oturumun ANA ajanının (`agent_id IS NULL`; alt ajanlar sayılmaz) son isteğinin

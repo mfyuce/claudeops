@@ -951,12 +951,10 @@ fn copilot_cases(b: &mut Build<'_>) {
     drop(conn);
     let c = b.copilot("utf8-hucre", fs::read(&path).unwrap());
     b.push(c);
-    let c = b.copilot("sapma-blob", copilot_db(&[("s1", 0, Sql::Blob(b"ham".to_vec()), t("A"))]));
-    b.diverges(
-        c,
-        "BLOB hücre: Python `bytes` döndürür (panel JSON'a yazamaz), Rust metne çevirir",
-        json!({"last_exchange": {"user": "ham", "assistant": "A"}, "full_history": turns(&[("user", "ham"), ("assistant", "A")])}),
-    );
+    for (id, blob, text) in [("blob", b"ham".to_vec(), "ham"), ("blob-bozuk", b"\xff\xfe".to_vec(), "")] {
+        let c = b.copilot(id, copilot_db(&[("s1", 0, Sql::Blob(blob), t("A"))]));
+        b.agrees(c, json!({"last_exchange": {"user": text, "assistant": "A"}}));
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------- ortak

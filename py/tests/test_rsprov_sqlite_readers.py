@@ -2,6 +2,7 @@
 
 Çalıştırma:  python3 -m unittest discover -s py/tests -p test_rsprov_sqlite_readers.py
 """
+import json
 import os
 import sqlite3
 import sys
@@ -87,6 +88,19 @@ class AgyBadCellTest(unittest.TestCase):
                     p = agy_provider.AgyProvider()
                     self.assertEqual(p.last_exchange("x", "abc"), {"user": "s", "assistant": "c"})
                     self.assertEqual(p.full_history("x", "abc"), PAIR)
+
+class CopilotBlobTest(unittest.TestCase):
+    def test_blob_cells_come_out_as_text_or_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "store.db")
+            make_db(path, "CREATE TABLE turns (session_id TEXT, turn_index INT, user_message, assistant_response)",
+                    [("s1", 0, "soru ğ".encode(), b"\xff\xfe"), ("s1", 1, b"", "c")], "INSERT INTO turns VALUES (?,?,?,?)")
+            with mock.patch.object(copilot_provider, "SESSION_STORE_DB", path):
+                p = copilot_provider.CopilotProvider()
+                history = p.full_history("x", "s1")
+                self.assertEqual(history, [{"role": "user", "text": "soru ğ"}, {"role": "assistant", "text": "c"}])
+                self.assertEqual(p.last_exchange("x", "s1"), {"user": "", "assistant": "c"})
+                json.dumps(history)             # panel yanıtı JSON'a yazılabilir
 
 
 if __name__ == "__main__":

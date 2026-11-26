@@ -342,8 +342,8 @@ fn cell_or_empty(cell: &SqlCell) -> Py {
         SqlCell::Int(i) if *i != 0 => Py::Int(*i),
         SqlCell::Real(f) if *f != 0.0 => Py::Float(*f),
         SqlCell::Text(s) => Py::Str(s.clone()),
-        // Python `bytes` döndürür (JSON'a yazılamaz).
-        SqlCell::Blob(b) => Py::Str(String::from_utf8_lossy(b).into_owned()),
+        // BLOB geçerli UTF-8 ise metin, değilse boş.
+        SqlCell::Blob(b) => Py::Str(std::str::from_utf8(b).unwrap_or_default().to_string()),
         _ => Py::Str(String::new()),
     }
 }
