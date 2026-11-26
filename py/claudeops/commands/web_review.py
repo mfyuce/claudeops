@@ -16,6 +16,7 @@ import dataclasses
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -2500,6 +2501,23 @@ def _ext_status() -> Dict[str, Any]:
     return extensions.status()
 
 
+def _finite_only(v: Any, key: str = "") -> Any:
+    """Yanıt geçerli JSON kalsın: sonlu olmayan sayı sözlükten atılır, listede None olur; loglanır (değer yazılmaz)."""
+    def _bad(x: Any) -> bool:
+        return isinstance(x, float) and not math.isfinite(x)
+    if isinstance(v, dict):
+        for k, x in v.items():
+            if _bad(x):
+                rv._log_bad("view.nonfinite", k)
+        return {k: _finite_only(x, str(k)) for k, x in v.items() if not _bad(x)}
+    if isinstance(v, (list, tuple)):
+        return [_finite_only(x, key) for x in v]
+    if _bad(v):
+        rv._log_bad("view.nonfinite", key)
+        return None
+    return v
+
+
 def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
@@ -2517,7 +2535,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
                      "complete": rv.project_complete(hist, name, targets, t,
                                                      rv.window_seconds(getattr(cfg, "review_window_hours", 720))),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
-    return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
+    return _finite_only({"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
             "remote_projects": remote_where_rows(),
             "lenses": list(rv.lenses()), "extension": _ext_status(),
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
@@ -2545,7 +2563,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "verify_mode": str(getattr(cfg, "review_verify_mode", "") or ""),
             "verify_provider": str(getattr(cfg, "review_verify_provider", "") or ""),
             "verify_model": str(getattr(cfg, "review_verify_model", "") or ""),
-            "verify_effective": f"{verify_provider(cfg)}/{verify_model(cfg)}"}
+            "verify_effective": f"{verify_provider(cfg)}/{verify_model(cfg)}"})
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
@@ -2576,7 +2594,7 @@ def list_findings(cfg: Any, project: str = "", state: str = "") -> Dict[str, Any
     rows = [dict(v, id=k) for k, v in data.items() if isinstance(v, dict)
             and (not project or v.get("project") == project) and (not state or v.get("state") == state)]
     rows.sort(key=lambda r: (str(r.get("project")), str(r.get("review_file")), str(r.get("ref"))))
-    return {"ok": True, "findings": rows}
+    return _finite_only({"ok": True, "findings": rows})
 
 
 def remote_where_rows() -> List[Dict[str, Any]]:
