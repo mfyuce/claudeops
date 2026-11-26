@@ -2,7 +2,7 @@
 
 Durum (26 Kas 2026 gece): eşleme tablosunda EKSİK satır YOK. **BİRLEŞTİRMEYE HAZIR.** TBD#374 (a) UYGULANDI: S1-S9
 iki dilde (Python ayrı `fix:` commit'leri `3fb38e0`, `bdc3345`..`f970079`; Rust `77816d2`). S10 kaldı. TBD#379 (a) UYGULANDI:
-S11-S12 (Python `214eb4a2`, `ec53bb28`). TBD#383 (dört Python yazım/kilit davranışı) sahipte, engel değil. **Birleşince web servisi restart + uzak deploy ister.**
+S11-S12 (Python `214eb4a2`, `ec53bb28`). TBD#383 (a) UYGULANDI (Python `8b1b4c39`, `04608a2c`, `a6e96e97`, `9e003333`). **Birleşince web servisi restart + uzak deploy ister.**
 (K1, K6), `a172591` (K2, K3), sonrası K4 + test boşlukları ve belge commit'leri.
 Doğrulama (rust/ içinde): `cargo fmt -p cops-state --check`, `cargo clippy -p cops-state --all-targets -- -D warnings`,
 `cargo test -p cops-state` (birim + entegrasyon/parite, toplam 118 test). Parite testleri `python3` ve kullanıcı site paketlerini (`websockets`),
@@ -94,13 +94,13 @@ Rust tutarken Python'un `flock`u meşgul görür, roster ve instances kilitleri 
 | `load_instances` `stat` EACCES | istisna | boş sözlük | Okuyucu toleranslı; yazıcı (`try_mutate`) yine hata verir |
 | Değnekçi kimliğinde sondaki satır sonu (`"kitap\n"`) | reddedilir | reddedilir | EŞ: TBD#379 S11. Python düzeltildi: `214eb4a2` (`rs/stew` `290f6a3a` cherry-pick). `parity_steward::steward_id_trailing_newline_rejected_in_both` |
 | `history_warn_at` sonsuz | varsayılan 1900 | varsayılan 1900 | EŞ: TBD#379 S12. Python düzeltildi: `ec53bb28`. `parity_steward::infinite_history_warn_at_keeps_default` |
-| `instances.json.lock` sembolik bağ / başkasının dosyası | `open("w")`: bağ izlenir, hedef boşaltılır (geçici dizinde yeniden üretildi) | reddedilir, hedefe dokunulmaz | SIKI: TBD#383 (4). `fsutil::tests::exclusive_lock_symlink_refused` |
+| `instances.json.lock` sembolik bağ / başkasının dosyası | reddedilir, hedefe dokunulmaz | reddedilir, hedefe dokunulmaz | EŞ: TBD#383 (4). Python düzeltildi: `9e003333`; Rust `c14e258c`. `fsutil::tests::exclusive_lock_symlink_refused`, `test_state_instances_lock_symlink` |
 | `diag.log` iletisindeki istisna metni | `{e!r}` | Rust hata metni | Dile özgü; olay öneki, biçim, yol ve izin aynı. `parity_statedocs::diag_log_matches_python` |
 
 ## Sahibe soruldu
 
 Sahip cevabı (TBD#374, q20261126_182502_d29f): (a). S1-S9 UYGULANDI (aşağıdaki tablo sorulduğu andaki durumu gösterir;
-güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 de UYGULANDI (TBD#379 (a), yukarıdaki sapma tablosu). Sonradan bulunan dört Python yazım/kilit davranışı TBD#383'te açık.
+güncel davranış yukarıdaki sapma tablosunda). S10 kalır. S11-S12 de UYGULANDI (TBD#379 (a), yukarıdaki sapma tablosu). Sonradan bulunan dört Python davranışı (TBD#383 (a)) da düzeldi: (1) okunamayan `settings.json` kayıtta ezilmez (`8b1b4c39`; Rust ayar yazmaz, kapsam dışı), (2) onay kaydı yazılamazsa askıdaki koşu hata döner (`04608a2c`; Rust karşılığı yok, kapsam dışı), (3) `cops` kilit hatasında tek satır basar (`a6e96e97`; CLI, kapsam dışı: T6), (4) yukarıdaki tablo (`9e003333`). Yazım/CLI Rust'a taşınırken 1-3 davranışı korunur.
 
 | # | Konu | Python | Rust (şimdi) | Seçenek A | Seçenek B | Öneri |
 |---|---|---|---|---|---|---|
@@ -969,3 +969,17 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 | `_LAST_BACKEND`, `_keep_backend` (settings.py), `_CACHE["good"]` (statedocs.py) | settings.rs::SettingsReader.last_backend, statedocs.rs State.good_backend | parity_settings.rs::settings_corrupt_keeps_store_backend_like_python; statedocs.rs::backend_tests | tamam |
 | `_tsv_unsafe` (web.py) | roster.rs::tsv_unsafe | parity_instances.rs::register_model_bad_chars_like_python | tamam |
 | `test_state_*.py` (7 dosya), `test_provider_bin_type.py` | yukarıdaki testler; parity_settings.rs::settings_readers_match_python (S8, S9 vakaları) | | tamam |
+
+### TBD#379 ve TBD#383 ile eklenen Python tanımları ve testleri
+
+| Python | Rust | Rust testi | Durum |
+|---|---|---|---|
+| `_open_lock_file` (atomic_json.py) | fsutil.rs::FileLock::acquire_within, exclusive_within | fsutil.rs::lock_symlink_refused, exclusive_lock_symlink_refused, lock_file_owner_and_type_rules | tamam |
+| `SettingsReadError` (settings.py) | | | kapsam dışı: Rust ayar yazmaz; yazım taşınırken (T7) korunur |
+| `_resume_approval`, `_diag_approval` (ucli_client.py) | | | kapsam dışı: ucli istemcisi bu izin modülü değil |
+| `test_state_instances_lock_symlink.py` (2) | fsutil.rs | exclusive_lock_symlink_refused | tamam |
+| `test_settings_tbd379.py` (1) | parity_steward.rs | infinite_history_warn_at_keeps_default | tamam |
+| `test_steward_tbd370.py::test_valid_steward_id` | parity_steward.rs | steward_id_trailing_newline_rejected_in_both | tamam |
+| `test_steward_tbd370.py` kalan 3 metot | | | kapsam dışı: rs/stew |
+| `test_state_settings_unreadable.py` (2) | | | kapsam dışı: ayar yazımı (T7) |
+| `test_ucli_approval_lock_error.py` (3), `test_cli_lock_error.py` (1) | | | kapsam dışı: ucli istemcisi / CLI (T6) |
