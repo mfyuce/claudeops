@@ -3,6 +3,7 @@
 Çağrı biçimleri:
   [işlev, *argüman]   tmux_backend işlevi (yalnız ALLOWED); dönüş JSON'a (demet -> liste) çevrilir
   ["const", ad]       modül sabiti: derlenmiş regex -> `.pattern`, küme -> sıralı liste, demet -> liste
+`ValueError` (hedeflenemeyen ad, TBD#366) `{"error": "ValueError"}` olur; Rust'ta `Err(BadArgument)` karşılığı.
 Tek bir süreçte sırayla koşar (ör. `push_ctx` önbelleği çağrılar arasında yaşar).
 """
 import json
@@ -47,7 +48,10 @@ def main() -> None:
         if fn == "const":
             out.append(const(args[0]))
         elif fn in ALLOWED:
-            out.append(getattr(tb, fn)(*args))
+            try:
+                out.append(getattr(tb, fn)(*args))
+            except ValueError:
+                out.append({"error": "ValueError"})
     json.dump(out, sys.stdout)
 
 

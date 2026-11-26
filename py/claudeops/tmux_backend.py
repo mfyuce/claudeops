@@ -51,8 +51,21 @@ def _exact(name: str) -> str:
     `list-panes`, `list-clients`, `display-message`) parse `-t` as
     `session:window.pane` and fail outright on a bare `=name` ("can't find
     pane") — a trailing `:` (session, default window/pane) resolves on both,
-    confirmed against disposable tmux sessions for every call site below."""
+    confirmed against disposable tmux sessions for every call site below.
+
+    Adı `=ad:` ile TAM hedeflenemeyen ad (`_addressable` False) ValueError verir: tmux bunları BAŞKA oturuma çözer
+    (TBD#366 P1-P3). Çağıran işlevler bunu kendi "olmadı" değerine çevirir; hiçbir tmux komutu çalışmaz."""
+    if not _addressable(name):
+        raise ValueError("tmux hedefi olamayan oturum adı")
     return f"={name}:"
+
+
+def _addressable(name: str) -> bool:
+    """`=ad:` hedefi tmux'ta YALNIZ bu oturuma çözülür mü (tmux 3.2a, yalıtılmış sunucuda ölçüldü, TBD#366):
+    boş ad (`=:` en son oturuma), `$` ile başlayan ad (`=$0:` oturum KİMLİĞİ $0'a) ve `:` içeren ad (`=zeta:0:`
+    display-message'ta zeta'ya; tmux zaten adlarda `:` bırakmaz, `_` yapar) başka oturumu hedefler. `=`, `@`, `%`, `.`
+    ile başlayan/içeren ad doğru çözülür."""
+    return isinstance(name, str) and bool(name) and not name.startswith("$") and ":" not in name
 
 
 def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
@@ -62,7 +75,11 @@ def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     -A = attach-if-exists-else-create (idempotent — safe to reopen the same window
     without creating a duplicate session). `inner` is spawn.py's own already
     shlex-quoted command string; shlex.quote nests safely over it.
+
+    Hedeflenemeyen ad (`_addressable`) ValueError verir (TBD#366): `-A` başka bir oturuma bağlanırdı.
     """
+    if not _addressable(name):
+        raise ValueError("tmux hedefi olamayan oturum adı")
     return (
         f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} "
         f"new-session -A -s {shlex.quote(name)} -c {shlex.quote(cwd)} "
@@ -88,7 +105,11 @@ def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
     `inner` TEK bir argv elemanı olarak geçiriliyor (subprocess shell=False) — tmux
     bunu kendi `$SHELL -c` çağrısına verir, `tmux_new_session_shell_fragment`'ın
     dolaylı yolunun (outer bash -c → bu fragment) ürettiğiyle AYNI tek-geçişli
-    shell-parse sonucunu verir, çift-quote uyumsuzluğu olmaz."""
+    shell-parse sonucunu verir, çift-quote uyumsuzluğu olmaz.
+
+    Hedeflenemeyen ad (`_addressable`) ile oturum açılmaz: sonraki her işlem başka oturuma giderdi."""
+    if not _addressable(name):
+        return False
     cmd = _base_argv() + [
         "-f", tmux_conf_path(), "new-session", "-d", "-A",
         "-s", name, "-c", cwd, "-x", "100", "-y", "30",
@@ -172,6 +193,7 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
     # yazılmış ama Enter'sız bırakıyordu (kutuda "[Pasted text]" birikiyor, sonraki turlar hep başarısız). Süre metinle büyür.
     timeout = max(_TIMEOUT, 5.0 + len(text) / 1500.0)
     try:
+        target = _exact(name)     # hedeflenemeyen ad: tampon bile yüklenmeden False (TBD#366)
         if "\n" in text or "\r" in text:
             # Çok satırlı mesaj: `send-keys -l` içindeki satır sonu TUI'de Enter sayılıp mesajı PARÇALI gönderirdi.
             # Tek parça bracketed paste (`load-buffer` + `paste-buffer -p`) ile yapıştır, sonra tek Enter.
@@ -180,13 +202,13 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
                                 capture_output=True, timeout=timeout)
             if rl.returncode != 0:
                 return False
-            rp = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", _exact(name)],
+            rp = subprocess.run(_base_argv() + ["paste-buffer", "-p", "-d", "-b", buf, "-t", target],
                                 capture_output=True, timeout=timeout)
             if rp.returncode != 0:
                 subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True, timeout=_TIMEOUT)
                 return False
             time.sleep(max(settle_delay, 0.15))     # TUI yapıştırmayı işlesin, sonra Enter
-            r2 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "Enter"],
+            r2 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "Enter"],
                                  capture_output=True, timeout=_TIMEOUT)
             return r2.returncode == 0
         # `--` ZORUNLU (`tmux_send_raw`'daki AYNI tuzak, burada 2026-09-14'e
@@ -195,13 +217,13 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0) -> bool:
         # unified diff "--- a/file") tmux'un KENDİ `send-keys` bayrağı sanılıp
         # `unknown option` ile reddediliyordu, girdi pane'e HİÇ ulaşmıyordu.
         arg = text[:-1] + "\\;" if text.endswith(";") else text      # sondaki `;` tmux'ta komut ayıracı: `\;` literal verir (ölçüldü: 'abc;' -> 'abc')
-        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "-l", "--", arg],
+        r1 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "-l", "--", arg],
                              capture_output=True, timeout=timeout)
         if r1.returncode != 0:
             return False
         if settle_delay > 0:
             time.sleep(settle_delay)
-        r2 = subprocess.run(_base_argv() + ["send-keys", "-t", _exact(name), "Enter"],
+        r2 = subprocess.run(_base_argv() + ["send-keys", "-t", target, "Enter"],
                              capture_output=True, timeout=_TIMEOUT)
         return r2.returncode == 0
     except Exception:
@@ -244,11 +266,11 @@ def ctx_label(tokens: Optional[int], warn: int = 0) -> str:
 def tmux_set_ctx(name: str, label: str) -> bool:
     """Oturumun `@cops_ctx` kullanıcı seçeneğini yazar (tmux-strip.conf status-right'ı okur); boş etiket seçeneği siler.
     Oturum yoksa/tmux yoksa sessizce False. Yalnız yerel tmux oturumları."""
-    argv = _base_argv() + ["set-option", "-t", _exact(name)]
-    argv += ["-u", "@cops_ctx"] if not label else ["@cops_ctx", label]
     try:
+        argv = _base_argv() + ["set-option", "-t", _exact(name)]
+        argv += ["-u", "@cops_ctx"] if not label else ["@cops_ctx", label]
         return subprocess.run(argv, capture_output=True, timeout=_TIMEOUT).returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return False
 
 
@@ -615,8 +637,8 @@ def tmux_pane_snapshot(name: str) -> Optional[tuple]:
     biter, `;` ile bitmez.
 
     Hata (oturum yok, tmux yok, çıktı beklenen biçimde değil) → None; çağıran tek tek çağrılara düşebilir."""
-    target = _exact(name)
     try:
+        target = _exact(name)
         r = subprocess.run(
             _base_argv() + ["display-message", "-p", "-t", target, _SNAPSHOT_FORMAT, ";",
                              "capture-pane", "-t", target, "-e", "-p"],
@@ -739,6 +761,8 @@ def find_outer_bash_pids(name: str) -> List[tuple]:
     """
     import psutil
 
+    if not _addressable(name):     # TBD#366: iğneler (`=ad:`) başka oturumun penceresini de bulurdu
+        return []
     # TBD#26: önce tmux'un kendi istemci listesi (cmdline metnine bağlı değil); boş/hata ise psutil taramasına düş.
     native = _outer_bash_via_list_clients(name)
     if native:

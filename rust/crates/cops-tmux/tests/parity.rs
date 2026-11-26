@@ -449,15 +449,17 @@ fn constants_patterns_and_shell_fragments_match_python() {
     let inners = ["claude --model x", "", "a 'b' \"c\"; exec bash", "ş\t$HOME"];
     for name in names {
         calls.push(json!(["_exact", name]));
-        rust.push(json!(cops_tmux::exact_target(name)));
+        rust.push(text_or_value_error(cops_tmux::exact_target(name)));
         calls.push(json!(["tmux_attach_shell_fragment", name]));
-        rust.push(json!(s.tmux.attach_shell_fragment(&conf, name)));
+        rust.push(text_or_value_error(
+            s.tmux.attach_shell_fragment(&conf, name),
+        ));
         for cwd in cwds {
             for inner in inners {
                 calls.push(json!(["tmux_new_session_shell_fragment", name, cwd, inner]));
-                rust.push(json!(s
-                    .tmux
-                    .new_session_shell_fragment(&conf, name, cwd, inner)));
+                rust.push(text_or_value_error(
+                    s.tmux.new_session_shell_fragment(&conf, name, cwd, inner),
+                ));
             }
         }
     }
@@ -602,6 +604,15 @@ impl Fake {
         self.reset(files);
         assert_eq!(got, rs(&self.tmux), "sonuç farkı: {py:?}");
         assert_eq!(py_argv, self.calls(), "argv farkı: {py:?}");
+    }
+}
+
+/// `Ok(metin)` metin, `BadArgument` Python'un `ValueError`u (`parity.py` `{"error": "ValueError"}`).
+fn text_or_value_error(r: Result<String, TmuxError>) -> Value {
+    match r {
+        Ok(s) => json!(s),
+        Err(TmuxError::BadArgument(_)) => json!({"error": "ValueError"}),
+        Err(e) => panic!("beklenmeyen hata: {e}"),
     }
 }
 
@@ -978,7 +989,7 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
     }
     // Yedek tarama: istemci yokken tüm süreçlerin `bash -c` betiği (P7: kullanıcı süzgeci iki tarafta da yok).
     let name = format!("cxrs-fake we'ird {me}");
-    let attach = f.tmux.attach_shell_fragment("/x.conf", &name);
+    let attach = f.tmux.attach_shell_fragment("/x.conf", &name).unwrap();
     let scanned = [
         Helper::new(
             "bash",
@@ -1384,8 +1395,9 @@ fn twins(names: &[&str]) -> (Server, Server) {
 }
 
 #[test]
-fn python_bug_candidates_p1_to_p7_behave_the_same_in_rust() {
-    // P1-P3: hedef çözümü. Okuma çağrıları aynı sunucuda, yıkıcı çağrı ikiz sunucularda.
+fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
+    // P1-P3: hedef çözümü. Okuma çağrıları aynı sunucuda, yıkıcı çağrı ikiz sunucularda. Python `None`/`False`, Rust
+    // `Err` (aşağıda `.ok()`/`unwrap_or(false)` ile eşlenir).
     let (a, b) = twins(&["alpha", "beta", "zeta"]);
     let mut calls = Vec::new();
     let mut rust = Vec::new();
@@ -1402,7 +1414,7 @@ fn python_bug_candidates_p1_to_p7_behave_the_same_in_rust() {
         "x;kill-session -t alpha;",
     ] {
         calls.push(json!(["tmux_has_session", name]));
-        rust.push(json!(b.tmux.has_session(name).unwrap()));
+        rust.push(json!(b.tmux.has_session(name).unwrap_or(false)));
         calls.push(json!(["tmux_pane_size", name]));
         rust.push(json!(b.tmux.pane_size(name).ok().map(|p| json!([
             p.cols,
@@ -1432,23 +1444,48 @@ fn python_bug_candidates_p1_to_p7_behave_the_same_in_rust() {
         ["alpha", "beta", "zeta"],
         "hiçbir okuma oturum kapatmadı"
     );
-    // Önemsiz eşitlik değil: bu adlar gerçekten başka oturuma çözülüyor (P1-P3).
-    // `=zeta:0:` yalnız tek başına `display-message`te (maske yoklaması) zeta'ya çözülür; has-session, kill-session,
-    // list-panes, capture-pane, send-keys (ve capture-pane içeren snapshot) "can't find window" ile reddeder (tmux 3.2a).
-    assert!(b.tmux.has_session("$0").unwrap() && b.tmux.has_session("").unwrap());
-    assert!(b.tmux.pane_is_masked_input("zeta:0").is_some() && b.tmux.snapshot("zeta:0").is_err());
-    assert!(b.tmux.capture("zeta:0", 0).is_err() && !b.tmux.has_session("zeta:0").unwrap());
-    for name in ["$1", "zeta:0", ""] {
+    // Önemsiz eşitlik değil: tmux bu hedefleri gerçekten başka oturuma çözer (P1-P3); iki taraf da artık hiçbir komut
+    // çalıştırmadan reddeder (TBD#366, sahip kararı 26 Kas: iki tarafta düzelt).
+    let resolved = |target: &str| {
+        b.raw(&["display-message", "-p", "-t", target, "#{session_name}"])
+            .trim()
+            .to_string()
+    };
+    assert_eq!(resolved("=$0:"), "alpha");
+    assert_eq!(resolved("=zeta:0:"), "zeta");
+    assert!(["alpha", "beta", "zeta"].contains(&resolved("=:").as_str()));
+    for name in ["", "$0", "$1", "zeta:0", "alpha:0.0"] {
+        assert!(matches!(
+            b.tmux.has_session(name),
+            Err(TmuxError::BadArgument("name"))
+        ));
+        assert_eq!(b.tmux.pane_is_masked_input(name), None);
+        assert!(matches!(
+            b.tmux.snapshot(name),
+            Err(TmuxError::BadArgument("name"))
+        ));
+        for guard in [MaskGuard::UserTyped, MaskGuard::RefuseMasked] {
+            assert!(matches!(
+                b.tmux.send_text(name, "x", Duration::ZERO, guard),
+                Err(TmuxError::BadArgument("name"))
+            ));
+        }
+    }
+    for name in ["$1", "zeta:0", "", "$0"] {
         assert_eq!(
             python(&a, &[json!(["tmux_kill_session", name])]),
             [Value::Null]
         );
-        let _ = b.tmux.kill_session(name);
+        assert!(matches!(
+            b.tmux.kill_session(name),
+            Err(TmuxError::BadArgument("name"))
+        ));
         assert_eq!(sessions(&a), sessions(&b), "kill {name:?}");
     }
-    assert!(
-        sessions(&b).len() < 3,
-        "en az bir oturum yanlış hedefle kapandı"
+    assert_eq!(
+        sessions(&b),
+        ["alpha", "beta", "zeta"],
+        "hiçbir oturum yanlış hedefle kapanmadı"
     );
 
     // P4: `;` ile biten ad ya da cwd ile açılış iki tarafta da başarısız ve iz bırakmaz.

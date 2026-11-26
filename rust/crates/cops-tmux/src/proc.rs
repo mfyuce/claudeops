@@ -167,8 +167,9 @@ impl Tmux {
     /// `list-clients`: her istemcinin ebeveyni `bash -c ...` ise o bash. Hata -> boş (Python
     /// `_outer_bash_via_list_clients`).
     pub fn outer_bash_via_list_clients(&self, session: &str) -> Vec<OuterBash> {
-        let target = exact_target(session);
-        let Ok(out) = self.text(&["list-clients", "-t", &target, "-F", "#{client_pid}"]) else {
+        let Ok(out) = exact_target(session)
+            .and_then(|target| self.text(&["list-clients", "-t", &target, "-F", "#{client_pid}"]))
+        else {
             return Vec::new();
         };
         let mut found = Vec::new();
@@ -193,6 +194,10 @@ impl Tmux {
     /// Oturuma bağlı pencerelerin dış `bash -c` süreçleri. Pane süreci / oturum öldürülmeden ÖNCE çağrılmalı: istemci
     /// dönünce `exec bash` argv'yi siler. Önce tmux'un istemci listesi, boşsa tüm süreçlerin komut satırı.
     pub fn find_outer_bash_pids(&self, session: &str) -> Vec<OuterBash> {
+        // Hedeflenemeyen ad (TBD#366): `=ad:` iğnesi başka oturumun penceresini de bulurdu.
+        let Ok(exact) = exact_target(session) else {
+            return Vec::new();
+        };
         let native = self.outer_bash_via_list_clients(session);
         if !native.is_empty() {
             return native;
@@ -200,7 +205,7 @@ impl Tmux {
         let needles = [
             format!("-s {} -c ", shell_quote(session)),
             format!("attach-session -t {};", shell_quote(session)),
-            format!("attach-session -t {};", shell_quote(&exact_target(session))),
+            format!("attach-session -t {};", shell_quote(&exact)),
         ];
         all_pids()
             .into_iter()

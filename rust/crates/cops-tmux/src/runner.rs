@@ -18,10 +18,20 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 /// `-t` hedefini TAM eşleşmeye zorlar (Python `_exact`). `=ad` tek başına yalnız oturum hedefli komutlarda çalışır;
 /// pane hedefli komutlar (`capture-pane`, `send-keys`, `list-panes`, `display-message`) sondaki `:` ister.
 ///
-/// Python gibi hiçbir adı reddetmez. Bilinen açıklar (docs/rs-tmux.md, "Python hatası?"): boş ad, `$N` ve `:` içeren
-/// ad tmux'ta BAŞKA bir oturuma çözülebilir.
-pub fn exact_target(name: &str) -> String {
-    format!("={name}:")
+/// [`addressable`] olmayan ad `BadArgument("name")`: tmux onu BAŞKA bir oturuma çözer (TBD#366 P1-P3); çağıran işlev
+/// hiçbir tmux komutu çalıştırmadan döner.
+pub fn exact_target(name: &str) -> Result<String, TmuxError> {
+    if !addressable(name) {
+        return Err(TmuxError::BadArgument("name"));
+    }
+    Ok(format!("={name}:"))
+}
+
+/// `=ad:` hedefi tmux'ta YALNIZ bu oturuma çözülür mü (Python `_addressable`; tmux 3.2a ölçümü): boş ad (`=:` en son
+/// oturum), `$` ile başlayan ad (`=$0:` oturum KİMLİĞİ) ve `:` içeren ad (`=zeta:0:` display-message'ta zeta; tmux
+/// adlarda `:` bırakmaz) başka oturumu hedefler.
+pub fn addressable(name: &str) -> bool {
+    !name.is_empty() && !name.starts_with('$') && !name.contains(':')
 }
 
 /// `;` ile biten argv elemanını literal yapar (`\;`; tmux ters bölüyü soyar). Diğer metin aynen kalır.
@@ -419,9 +429,22 @@ mod tests {
 
     #[test]
     fn exact_target_wraps_any_name_like_python() {
-        assert_eq!(exact_target("dccl20260917"), "=dccl20260917:");
-        assert_eq!(exact_target("we'ird name;"), "=we'ird name;:");
-        assert_eq!(exact_target(""), "=:");
+        assert_eq!(exact_target("dccl20260917").unwrap(), "=dccl20260917:");
+        assert_eq!(exact_target("we'ird name;").unwrap(), "=we'ird name;:");
+        for name in ["=eq", "@1", "%1", "a.b"] {
+            assert_eq!(exact_target(name).unwrap(), format!("={name}:"));
+        }
+    }
+
+    #[test]
+    fn exact_target_refuses_names_tmux_resolves_to_another_session() {
+        for name in ["", "$0", "$x", "zeta:0", "alpha:0.0", "a:b"] {
+            assert!(!addressable(name), "{name:?}");
+            assert!(
+                matches!(exact_target(name), Err(TmuxError::BadArgument("name"))),
+                "{name:?}"
+            );
+        }
         assert_eq!(Tmux::cops().base_argv(), ["tmux", "-L", "cops"]);
     }
 

@@ -125,7 +125,7 @@ fn parse_panes(out: &str) -> Result<Vec<PaneInfo>, TmuxError> {
 impl Tmux {
     /// `Ok(false)` = tmux "yok" dedi; `Err` = soruya cevap alınamadı (bilinmiyor).
     pub fn has_session(&self, name: &str) -> Result<bool, TmuxError> {
-        match self.run(&["has-session", "-t", &exact_target(name)]) {
+        match self.run(&["has-session", "-t", &exact_target(name)?]) {
             Ok(_) => Ok(true),
             Err(TmuxError::Failed { .. }) => Ok(false),
             Err(e) => Err(e),
@@ -146,7 +146,7 @@ impl Tmux {
 
     /// Tek oturumun tüm pencerelerindeki pane'ler.
     pub fn session_panes(&self, name: &str) -> Result<Vec<PaneInfo>, TmuxError> {
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         parse_panes(&self.text_utf8(&["list-panes", "-s", "-t", &target, "-F", PANE_FORMAT])?)
     }
 
@@ -156,7 +156,7 @@ impl Tmux {
         self.run(&[
             "capture-pane",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "-e",
             "-p",
             "-S",
@@ -176,7 +176,7 @@ impl Tmux {
         self.run(&[
             "capture-pane",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "-e",
             "-p",
             "-S",
@@ -192,7 +192,7 @@ impl Tmux {
         let out = self.text(&[
             "list-panes",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "-F",
             "#{pane_width} #{pane_height} #{history_size} #{alternate_on}",
         ])?;
@@ -205,7 +205,7 @@ impl Tmux {
     }
 
     pub fn snapshot(&self, name: &str) -> Result<Snapshot, TmuxError> {
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         // Yalın `;` elemanı BİLEREK: tmux komut ayıracı, iki komut aynı kuyrukta koşar.
         let out = self.text(&[
             "display-message",
@@ -225,9 +225,8 @@ impl Tmux {
 
     /// Pane şu an gizli girdi bekliyor mu; `None` = bilinmiyor.
     pub fn pane_is_masked_input(&self, name: &str) -> Option<bool> {
-        let target = exact_target(name);
-        let tty = self
-            .text(&["display-message", "-p", "-t", &target, "#{pane_tty}"])
+        let tty = exact_target(name)
+            .and_then(|target| self.text(&["display-message", "-p", "-t", &target, "#{pane_tty}"]))
             .ok()?;
         tty_is_masked(tty.trim())
     }
@@ -237,7 +236,7 @@ impl Tmux {
         let out = self.text(&[
             "list-clients",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "-F",
             "#{client_tty}",
         ])?;
@@ -266,7 +265,7 @@ impl Tmux {
 
     /// `@cops_ctx` kullanıcı seçeneğini yazar; boş etiket seçeneği siler.
     pub fn set_ctx(&self, name: &str, label: &str) -> Result<(), TmuxError> {
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         let mut args = vec!["set-option", "-t", &target];
         if label.is_empty() {
             args.extend(["-u", "@cops_ctx"]);

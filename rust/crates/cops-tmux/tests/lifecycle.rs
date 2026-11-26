@@ -144,7 +144,7 @@ fn outer_bash_is_found_through_the_client_list() {
 fn outer_bash_falls_back_to_scanning_command_lines() {
     let s = Server::new();
     let name = format!("cxrs-yedek-{}", std::process::id());
-    let attach = s.tmux.attach_shell_fragment("/x.conf", &name);
+    let attach = s.tmux.attach_shell_fragment("/x.conf", &name).unwrap();
     let scripts = [
         format!("read x # tmux new-session -A -s {name} -c /x"),
         format!("read x # {attach}; exec bash"),

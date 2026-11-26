@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::proc::pid_childless;
-use crate::runner::{exact_target, Call, Tmux};
+use crate::runner::{addressable, exact_target, Call, Tmux};
 use crate::text::{py_splitlines, py_strip};
 use crate::TmuxError;
 
@@ -65,31 +65,35 @@ impl Tmux {
     }
 
     /// gnome-terminal komutuna eklenen bash parçası (burada ÇALIŞTIRILMAZ): varsa bağlan, yoksa oluştur (`-A`).
+    /// Hedeflenemeyen ad `BadArgument` (Python `ValueError`): `-A` başka oturuma bağlanırdı.
     pub fn new_session_shell_fragment(
         &self,
         conf: &str,
         name: &str,
         cwd: &str,
         inner: &str,
-    ) -> String {
-        format!(
+    ) -> Result<String, TmuxError> {
+        if !addressable(name) {
+            return Err(TmuxError::BadArgument("name"));
+        }
+        Ok(format!(
             "{} -f {} new-session -A -s {} -c {} -x 100 -y 30 {}",
             self.shell_base(),
             shell_quote(conf),
             shell_quote(name),
             shell_quote(cwd),
             shell_quote(inner)
-        )
+        ))
     }
 
-    /// VAR OLAN oturuma yeni pencere bağlayan bash parçası.
-    pub fn attach_shell_fragment(&self, conf: &str, name: &str) -> String {
-        format!(
+    /// VAR OLAN oturuma yeni pencere bağlayan bash parçası. Hedeflenemeyen ad `BadArgument` (Python `ValueError`).
+    pub fn attach_shell_fragment(&self, conf: &str, name: &str) -> Result<String, TmuxError> {
+        Ok(format!(
             "{} -f {} attach-session -t {}",
             self.shell_base(),
             shell_quote(conf),
-            shell_quote(&exact_target(name))
-        )
+            shell_quote(&exact_target(name)?)
+        ))
     }
 
     /// Penceresiz doğrudan açma (Python `tmux_spawn_direct`). `envs` sürecin TÜM çevresidir (miras yok). `inner` tek
@@ -111,6 +115,10 @@ impl Tmux {
             .into_iter()
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
+        // Hedeflenemeyen adla oturum açılmaz: sonraki her işlem başka oturuma giderdi (TBD#366).
+        if !addressable(name) {
+            return Err(TmuxError::BadArgument("name"));
+        }
         let conf = conf.to_str().ok_or(TmuxError::BadArgument("conf"))?;
         let command = format!("{inner}; exec bash");
         let args = [
@@ -142,22 +150,23 @@ impl Tmux {
     /// Oturumu kapatır. Yalnız kapatma modülü (Python `kill.py` karşılığı) ve hayalet temizliği çağırır: süreç/pencere
     /// temizliği ve devir kuralları ORADADIR.
     pub fn kill_session(&self, name: &str) -> Result<(), TmuxError> {
-        self.run(&["kill-session", "-t", &exact_target(name)])
+        self.run(&["kill-session", "-t", &exact_target(name)?])
             .map(drop)
     }
 
     /// CLI'si çıkmış, `exec bash` ile canlı kalan oturum mu: TÜM pane'ler çıplak (alt süreçsiz) kabuk VE oturum
     /// [`GHOST_MIN_AGE_SECONDS`]ten eski. Her belirsizlik `false` (dokunma). `now` verilmezse şimdi.
     pub fn ghost_session(&self, name: &str, now: Option<f64>) -> bool {
-        let target = exact_target(name);
-        let Ok(out) = self.text(&[
-            "list-panes",
-            "-s",
-            "-t",
-            &target,
-            "-F",
-            "#{pane_current_command}\t#{session_created}\t#{pane_pid}",
-        ]) else {
+        let Ok(out) = exact_target(name).and_then(|target| {
+            self.text(&[
+                "list-panes",
+                "-s",
+                "-t",
+                &target,
+                "-F",
+                "#{pane_current_command}\t#{session_created}\t#{pane_pid}",
+            ])
+        }) else {
             return false;
         };
         let now = now.unwrap_or_else(|| {

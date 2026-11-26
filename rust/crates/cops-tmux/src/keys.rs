@@ -59,7 +59,7 @@ impl Tmux {
         settle: Duration,
         guard: MaskGuard,
     ) -> Result<(), TmuxError> {
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         self.guard(name, guard)?;
         let timeout = self.timeout.max(send_text_timeout(text.chars().count()));
         if text.contains(['\n', '\r']) {
@@ -104,7 +104,7 @@ impl Tmux {
         if data.is_empty() {
             return Ok(());
         }
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         self.guard(name, guard)?;
         for chunk in data.chunks(RAW_CHUNK_CHARS) {
             let arg = escape_arg(&chunk.iter().collect::<String>());
@@ -123,7 +123,7 @@ impl Tmux {
         if !ALLOWED_SPECIAL_KEYS.contains(&key) {
             return Err(TmuxError::BadArgument("key"));
         }
-        let target = exact_target(name);
+        let target = exact_target(name)?;
         self.guard(name, guard)?;
         self.run(&["send-keys", "-t", &target, key]).map(drop)
     }
@@ -140,7 +140,7 @@ impl Tmux {
         self.run(&[
             "resize-window",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "-x",
             &cols,
             "-y",
@@ -155,7 +155,7 @@ impl Tmux {
             "set-option",
             "-wu",
             "-t",
-            &exact_target(name),
+            &exact_target(name)?,
             "window-size",
         ])
         .map(drop)
@@ -167,7 +167,7 @@ impl Tmux {
             .client_session(client)?
             .ok_or(TmuxError::BadArgument("client"))?;
         // `-c <istemci>` DEĞİL: tmux 3.2a'da `display-message -c` hiç çalışmaz.
-        let target = exact_target(&session);
+        let target = exact_target(&session)?;
         let safe = safe_message(text);
         let ms = ms.to_string();
         match self.run(&["display-message", "-d", &ms, "-t", &target, &safe]) {
