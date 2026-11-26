@@ -17,6 +17,7 @@ import json
 import os
 import threading
 import time
+from collections import Counter
 from typing import Any, Dict, Optional, Tuple
 
 from .model_usage import _family
@@ -30,6 +31,9 @@ _lock = threading.RLock()
 _files: Dict[str, Dict[str, Any]] = {}
 # ana transkript yolu -> {"at", "value", "running"}
 _summaries: Dict[str, Dict[str, Any]] = {}
+# Atlanan bozuk satırlar (TBD#365: dizgi olmayan model ya da hashlenemeyen tur anahtarı tüm toplamı None yapıyordu,
+# alt ajan dosyasındaki dahil). Süreç ömrü boyunca birikir; log'a yazılmaz.
+_skipped: Counter = Counter()
 
 
 def _int(v: Any) -> int:
@@ -58,12 +62,20 @@ def _from_row(r: Any) -> Optional[Tuple[Any, Tuple[str, int, int, int, int]]]:
     u = m.get("usage") if isinstance(m, dict) else None
     if not isinstance(u, dict):
         return None
-    if m.get("model") == "<synthetic>":
+    model = m.get("model", "")
+    if model == "<synthetic>":
         return None            # API hata/kesinti sentetik mesajı: gerçek istek değil (TODO 1519); tur ya da "other" ailesi saymaz
     mid = m.get("id")
     # id yoksa tekilleştirilemez: satırın kendi uuid'si (o da yoksa her satır ayrı tur sayılır)
     key = (mid, r.get("requestId")) if mid else ("row", r.get("uuid") or object())
-    return key, (_family(m.get("model", "")), _int(u.get("input_tokens")), _int(u.get("output_tokens")),
+    try:
+        hash(key)
+    except TypeError:
+        key = None
+    if key is None or (model and not isinstance(model, str)):
+        _skipped["usage_row"] += 1
+        return None
+    return key, (_family(model), _int(u.get("input_tokens")), _int(u.get("output_tokens")),
                  _int(u.get("cache_creation_input_tokens")), _int(u.get("cache_read_input_tokens")))
 
 
@@ -81,10 +93,11 @@ def _update_file(path: str) -> Optional[Dict[str, Any]]:
         return None
     cur = _files.get(path)
     if cur is None or st.st_size < cur["offset"] or (st.st_size < cur["size"]):
-        # yeni dosya ya da KESİLMİŞ (küçüldü): baştan
-        cur = {"offset": 0, "size": 0, "mtime": 0.0, "turns": {}}
-        if len(_files) >= _MAX_CACHED_FILES:
+        # yeni dosya ya da KESİLMİŞ (küçüldü): baştan. Yalnız YENİ girdi yer açtırır: küçülen dosya yerinde sıfırlanır
+        # (TBD#365: dolu tabloda en eski başka girdiyi boşuna attırıyordu).
+        if cur is None and len(_files) >= _MAX_CACHED_FILES:
             _files.pop(next(iter(_files)), None)
+        cur = {"offset": 0, "size": 0, "mtime": 0.0, "turns": {}}
         _files[path] = cur
     if st.st_size == cur["offset"]:
         cur["size"], cur["mtime"] = st.st_size, st.st_mtime
@@ -175,7 +188,11 @@ def cached_usage_for_path(main_path: Any) -> Optional[Dict[str, Any]]:
                 if len(_summaries) > _MAX_CACHED_FILES:
                     for k in [k for k, v in _summaries.items() if not v["running"] and k != main][:200]:
                         _summaries.pop(k, None)
-                threading.Thread(target=_refresh, args=(main,), name="session-usage", daemon=True).start()
+                try:
+                    threading.Thread(target=_refresh, args=(main,), name="session-usage", daemon=True).start()
+                except Exception:
+                    ent["running"] = False      # başlatılamadı: bayrak açık kalsa yol bir daha yenilenmezdi (TBD#365)
+                    raise
             return ent["value"]
     except Exception:
         return None

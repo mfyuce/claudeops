@@ -8,10 +8,15 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections import Counter
 from typing import Optional
 
+from .atomic_json import atomic_write_text
 from .paths import STATE_DIR as _STATE_DIR  # handover ile AYNI kök (CLAUDEOPS_DIR izole koşuda da)
 _BASELINE_DIR = _STATE_DIR / "baselines"
+
+# Beklenmeyen tipte transkript satırı/bloğu (TBD#365): karar düşmez, satır atlanır ve burada sayılır (log'a yazılmaz).
+_skipped: Counter = Counter()
 
 
 # ── Git helpers ──────────────────────────────────────────────────────────────
@@ -91,7 +96,7 @@ def repo_baseline_set(cwd: str) -> None:
     h = _git(cwd, "rev-parse", "HEAD")
     if k and h:
         _BASELINE_DIR.mkdir(parents=True, exist_ok=True)
-        (_BASELINE_DIR / k).write_text(h)
+        atomic_write_text(str(_BASELINE_DIR / k), h)   # yarım yazım okunup "yeni commit var" sanılmasın (TBD#365)
 
 
 def repo_committed_since(cwd: str) -> bool:
@@ -147,6 +152,19 @@ def rfh_marker_in(text: str) -> bool:
     return False
 
 
+def _text_blocks(content: list) -> list:
+    """`type: text` bloklarının dizgi metinleri; dizgi olmayan `text` yok sayılır ve sayılır (TBD#365: join/strip düşüyordu)."""
+    out = []
+    for c in content:
+        if isinstance(c, dict) and c.get("type") == "text":
+            t = c.get("text", "")
+            if isinstance(t, str):
+                out.append(t)
+            else:
+                _skipped["transcript_row"] += 1
+    return out
+
+
 def handover_done(jsonl_path: str) -> bool:
     """jsonl'de RFH var mı ve sonrasında yeni user isteği yok mu?
 
@@ -165,6 +183,9 @@ def handover_done(jsonl_path: str) -> bool:
                     o = json.loads(line)
                 except Exception:
                     continue
+                if not isinstance(o, dict):
+                    _skipped["transcript_row"] += 1
+                    continue
                 i += 1
                 t = o.get("type")
                 msg = o.get("message", {})
@@ -173,10 +194,7 @@ def handover_done(jsonl_path: str) -> bool:
                 if isinstance(content, str):
                     text = content
                 elif isinstance(content, list):
-                    text = " ".join(
-                        c.get("text", "") for c in content
-                        if isinstance(c, dict) and c.get("type") == "text"
-                    )
+                    text = " ".join(_text_blocks(content))
                 if t == "assistant" and rfh_marker_in(text):   # yalnız ASİSTAN cevabı sayılır: user, api-request-blob, attachment, system (CLAUDE.md/system-reminder metni) satırları RFH taşıyabilir (18 Kas hcr olayı)
                     last_rfh = i
                 if t == "user":
@@ -215,9 +233,16 @@ def has_real_user_turn(jsonl_path: str) -> bool:
                     o = json.loads(line)
                 except Exception:
                     continue
+                if not isinstance(o, dict):
+                    _skipped["transcript_row"] += 1
+                    continue
                 if o.get("type") != "user" or o.get("isSidechain") or o.get("isMeta"):
                     continue
-                content = o.get("message", {}).get("content")
+                msg = o.get("message", {})
+                if not isinstance(msg, dict):
+                    _skipped["transcript_row"] += 1
+                    continue
+                content = msg.get("content")
                 if isinstance(content, str):
                     if content.strip():
                         return True
@@ -225,10 +250,7 @@ def has_real_user_turn(jsonl_path: str) -> bool:
                     is_tool_result = any(
                         isinstance(b, dict) and b.get("type") == "tool_result" for b in content
                     )
-                    has_text = any(
-                        isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip()
-                        for b in content
-                    )
+                    has_text = any(t.strip() for t in _text_blocks(content))
                     if not is_tool_result and has_text:
                         return True
     except OSError:

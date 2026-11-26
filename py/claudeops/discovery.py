@@ -16,6 +16,7 @@ provider'ın kendi `matches_proc`/`extract_name`/`extract_info`'sunda (providers
 """
 from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections import Counter
 import glob
 import json
 import os
@@ -26,6 +27,10 @@ from .mirrors import note_mirror
 from .paths import proc_ppid, proc_stat_fields
 from .session import Session
 from .providers import PROVIDERS
+
+# Atlanan bozuk kayıtlar (TBD#365): tarama düşmez, burada sayılır. Süreç ömrü boyunca birikir; log'a yazılmaz
+# (tarama her tick'te koşar, aynı bozuk dosya log'u taşırırdı).
+_skipped: Counter = Counter()
 
 
 def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
@@ -45,14 +50,22 @@ def _sessions_from_json() -> Dict[Tuple[str, int], Session]:
                 d = json.load(fh)
         except Exception:
             continue
+        if not isinstance(d, dict):
+            _skipped["session_file"] += 1       # nesne olmayan kök tüm taramayı düşürüyordu (TBD#365)
+            continue
         pid = d.get("pid")
         name = d.get("name") or ""
+        if name and not isinstance(name, str):
+            _skipped["session_file"] += 1       # dizgi olmayan ad: (ad, pid) anahtarı/sıralama düşüyordu (TBD#365)
+            continue
         if not pid or not name:
             continue
         try:
             pid = int(pid)
         except (ValueError, TypeError):
             continue
+        if pid <= 0:
+            continue                            # os.kill(<=0, 0) süreç GRUBUNU yoklar, canlı sanılırdı (TBD#365)
         # Liveness: proc yaşıyor mu?
         try:
             os.kill(pid, 0)
@@ -237,12 +250,12 @@ def find_sessions(measure_cpu: bool = True, mirrors_out: Optional[Dict[str, List
     # düşer: cwd()/cmdline gibi sonraki çağrılar zaten başka kullanıcıda patlardı).
     my_uid = os.getuid()
     raw = []  # (proc, cmdline, provider)
-    for p in psutil.process_iter(["pid", "cmdline", "uids"]):
+    for p in psutil.process_iter(["pid", "uids"]):   # cmdline yalnız kendi süreçlerimizde okunur (TBD#365)
         try:
             uids = p.info["uids"]
             if uids is None or uids.real != my_uid:
                 continue
-            cmd = p.info["cmdline"] or []
+            cmd = p.cmdline() or []
             if mirrors_out is not None:
                 note_mirror(mirrors_out, p.pid, cmd)
             provider = next((pr for pr in PROVIDERS.values() if pr.matches_proc(cmd)), None)

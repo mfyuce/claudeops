@@ -115,7 +115,9 @@ def jsonl_path_for(cwd: str, sid: Optional[str]) -> Optional[Path]:
     kullanıyordu — aynı cwd'de birden fazla session çalışırken (COMPACT HATASI,
     bkz. TODO.md) yanlış session'ın jsonl'ını izleyip 180s timeout'a düşüyordu.
     `sid` yoksa (fresh --new, henüz atanmamış) mtime fallback'e düşer."""
-    if sid:
+    # sid tek yol parçası olmalı (TBD#365): `/` (`../x` dahil) dizinin dışına çıkarırdı, NUL `is_file`i ValueError'la
+    # düşürürdü. Geçersiz sid = sid yok (aşağıdaki eski tahmin).
+    if sid and "/" not in str(sid) and "\0" not in str(sid):
         candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{sid}.jsonl"
         if candidate.is_file():
             return candidate
