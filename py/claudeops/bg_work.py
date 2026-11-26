@@ -94,7 +94,7 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
                 if b.get("is_error") is True:      # çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
                     del pending[b["tool_use_id"]]
                     continue
-                m = _RUNNING_ID_RE.search(str(b.get("content"))[:400])
+                m = _RUNNING_ID_RE.search(_result_text(b.get("content"))[:400])
                 if m:
                     pending[b["tool_use_id"]][1] = m.group(1)
     for tid, (t, task) in pending.items():
@@ -103,6 +103,15 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
         if now - t < PENDING_MAX_AGE_SECONDS:
             return True
     return False
+
+
+def _result_text(content) -> str:
+    """Araç sonucunun metni. Liste biçiminde yalnız metin blokları, gerçek satır sonlarıyla (`str(liste)` satır sonunu
+    `\\n` yazdığı için satır başındaki `ID:` yakalanmıyordu); diğer biçimlerde `str`."""
+    if isinstance(content, list):
+        return "\n".join(b["text"] for b in content
+                         if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
+    return str(content)
 
 
 def _hashable(v) -> bool:

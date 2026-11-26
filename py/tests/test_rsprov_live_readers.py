@@ -141,6 +141,30 @@ class CopilotContextTest(unittest.TestCase):
         self.assertEqual(self.context(" 1_000 "), 1000)
         self.assertEqual(self.context(1234.9), 1234)
 
+class ListToolResultTest(unittest.TestCase):
+    def rows(self, content, done="bg7"):
+        result = json.dumps({"message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": content}]},
+                             "x": "background"})
+        notif = json.dumps({"message": {"content": "<task-notification><task-id>" + done +
+                                        "</task-id><status>completed</status></task-notification>"}})
+        return [USE, result, notif]
+
+    def test_id_at_line_start_is_found_in_list_content(self):
+        now = bg_work._epoch(TS) + 60
+        for content in ([{"type": "text", "text": "Command running in background.\nID: bg7"}],
+                        [{"type": "text", "text": "ID: bg7"}],
+                        [{"type": "text", "text": "Basladi"}, {"type": "text", "text": "ID: bg7"}],
+                        [5, {"type": "text", "text": 5}, {"type": "text", "text": "ID: bg7"}],
+                        "Command running in background.\nID: bg7"):
+            with self.subTest(content=content):
+                self.assertFalse(bg_work.transcript_pending(self.rows(content), now))
+                self.assertTrue(bg_work.transcript_pending(self.rows(content, done="baska"), now))
+
+    def test_non_text_blocks_do_not_supply_an_id(self):
+        now = bg_work._epoch(TS) + 60
+        rows = self.rows([{"type": "image", "source": "ID: bg7"}])
+        self.assertTrue(bg_work.transcript_pending(rows, now))
+
 
 if __name__ == "__main__":
     unittest.main()

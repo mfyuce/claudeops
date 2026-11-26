@@ -137,6 +137,19 @@ fn dict_or_empty(v: Option<&Py>) -> Option<&Py> {
     }
 }
 
+/// Araç sonucunun metni: listede yalnız metin blokları, gerçek satır sonlarıyla; diğer biçimlerde `str()`.
+fn result_text(content: &Py) -> String {
+    match content {
+        Py::Array(blocks) => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(Py::as_str) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(Py::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        other => other.py_str(),
+    }
+}
+
 /// Transkript satırlarında bildirimi gelmemiş `run_in_background` işi var mı.
 pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: Clock) -> bool {
     // tool_use_id -> (epoch, task_id)
@@ -188,7 +201,7 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
                             pending.remove(&k);
                             continue;
                         }
-                        let text: String = b.get("content").unwrap_or(&Py::Null).py_str().chars().take(400).collect();
+                        let text: String = result_text(b.get("content").unwrap_or(&Py::Null)).chars().take(400).collect();
                         let task = groups(&RUNNING_ID, &text).next().map(str::to_string);
                         if let (Some(task), Some(slot)) = (task, pending.get_mut(&k)) {
                             slot.1 = Some(task);

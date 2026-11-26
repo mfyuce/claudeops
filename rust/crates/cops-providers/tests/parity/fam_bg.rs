@@ -173,10 +173,13 @@ fn transcripts() -> Vec<Vec<String>> {
         // is_error yalnız `true` ise düşer
         vec![u("t1"), res("t1", json!("x ID: b1"), json!(1)), done("b1")],
         vec![u("t1"), res("t1", json!("x ID: b1"), json!("true")), done("b1")],
-        // görev kimliği: liste içeriği (repr), kaçışlar, sınır, 400 karakter
+        // görev kimliği: liste içeriği (metin blokları), kaçışlar, sınır, 400 karakter
         vec![u("t1"), res("t1", json!([{"type": "text", "text": "running with ID: b1."}]), json!(false)), done("b1")],
         vec![u("t1"), res("t1", json!([{"type": "text", "text": "a\nID: b1"}]), json!(null)), done("b1")],
         vec![u("t1"), res("t1", json!([{"type": "text", "text": "a'\"b ID: b1"}]), json!(null)), done("b1")],
+        vec![u("t1"), res("t1", json!([{"type": "text", "text": "basladi"}, {"type": "text", "text": "ID: b1"}]), json!(null)), done("b1")],
+        vec![u("t1"), res("t1", json!([5, {"type": "text", "text": 5}, {"type": "image", "source": "ID: b1"}]), json!(null)), done("b1")],
+        vec![u("t1"), res("t1", json!([{"type": "text", "text": format!("{}ID: b1", "x".repeat(399))}]), json!(null)), done("b1")],
         vec![u("t1"), res("t1", json!("a\nID: b1"), json!(null)), done("b1")],
         vec![u("t1"), res("t1", json!("a\u{a0}ID: b1"), json!(null)), done("b1")],
         vec![u("t1"), res("t1", json!(["a\u{a0}ID: b1"]), json!(null)), done("b1")],
