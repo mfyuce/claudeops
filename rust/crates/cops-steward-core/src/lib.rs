@@ -5,11 +5,13 @@
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod cards;
 #[allow(clippy::expect_used)] // sabit desenler: derleme `generated` + parite testleriyle sınanır
 #[rustfmt::skip]
 pub mod consts_gen;
 pub mod identity;
 pub mod markers;
+pub mod prompts;
 #[rustfmt::skip]
 mod types_gen;
 pub mod pyc;

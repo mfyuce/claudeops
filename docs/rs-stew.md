@@ -23,6 +23,10 @@ Aynen taşındı, düzeltilmedi:
   geçer (`"ab\n"` geçerli; `"default\n"` ve `"degnekci\n"`den ilki rezerve listesini de aşar). Rust: `pyc::match_dollar`.
 - `scan_markers`: tersiz düzyazıda `STEWARD-DONE-CONFIRMED yazmıyorum, ...` `confirmed` doldurur (düz `DONE`daki "anma" korumasının
   eşi yok; geçerlilik sonraki kanıt denetimine kalıyor).
+- `build_tour_prompt(now=...)`: `now` yalnız başlık saatini belirler; kart yaşı `card_lines`e geçirilmediği için hep gerçek saatten
+  hesaplanır (Rust: `stamp` = Python `now`, `now` = saat).
+- `build_tour_prompt`: İngilizce turda faz satırının tür etiketi yine Türkçe (`  tür: ...`).
+- `_clip(text, 0)`: dolu metinde `text[:-1] + "…"` döner (sınırdan uzun); üretimde `n` hep > 0.
 
 Rust'ta kaçınılmaz farklar (tipli arayüz):
 
@@ -31,6 +35,15 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 - `lang_fix_action`: `state.lang_fix_at` sözlük olmayan dolu değerse hata (Python `dict()` ikili listesini kabul ederdi).
 - `marker_texts` yalnız `Markers` alır (Python'un sözlük öğeli girdi dalı `scan_markers` çıktısında oluşmaz).
 - `steward_badge`, `_project_key`/`derived_of` kuralını `identity::owner_key` içinde uygular; o işlevler taşınınca tek kopyaya indirilmeli.
+- Kartlar (`cards`): ham kart tipli `RawCard`dır; bozuk tipli kart/tur maddesi/`state` alanında (Python istisna fırlatır)
+  `cards::BadValue` döner (`brain_pause_verdict`, `card_refresh_reason`, `card_lines`, `build_tour_prompt`, `mark_ask_seen`).
+- `parse_card_json`: `serde_json` Python `json.loads`tan dardır: `NaN`/`Infinity`, eşsiz `\ud800` kaçışı ve 128'den derin iç içe
+  yapı `None` verir (Python ayrıştırır); i64/u64 dışı tamsayılar ve `-0` kayan sayı olarak yazılır.
+- `build_directive` `paths` yerine kimliğin soru listesini alır; `recent_answers`/`undelivered_answers`ın süzme kısmı
+  `prompts` içinde (depo okuma çağıranda). Kayıtlı vektörlerde "Önceki cevaplarım" bloğu olan kayıtlarda depo beklenen metinden
+  kurulur; süzme, sıralama ve kırpma `fixtures/hand` ile gerçek depoya karşı sınanır.
+- `note_claims`: üretilen regex'lerde `\s` U+001C..U+001F'i saymaz, `\b` birleşen işaretleri sözcük sayar (Python tersi).
+- `fixtures/hand` (`python3 -I parity/hand_cases.py`): kaydın kapsamadığı dallar için elle yazılmış girdiler, beklenen değer Python'dan.
 
 ## Eşleme tablosu
 
@@ -257,29 +270,29 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `compact_log` (steward.py:1879) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `rotate_log` (steward.py:1919) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
 | `tail_log` (steward.py:1933) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `card_path` (steward.py:1955) | - | - | EKSİK |
+| `card_path` (steward.py:1955) | `cards::card_path` | cards::card_path_vectors | tamam |
 | `_read_doc_head` (steward.py:1959) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
 | `_git_recent` (steward.py:1967) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
 | `build_raw_card` (steward.py:1994) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
-| `raw_card_from_docs` (steward.py:2012) | - | - | EKSİK |
-| `_short` (steward.py:2022) | - | - | EKSİK |
-| `_str_list` (steward.py:2026) | - | - | EKSİK |
-| `_tbd_lines` (steward.py:2035) | - | - | EKSİK |
-| `_goal_from_docs` (steward.py:2047) | - | - | EKSİK |
-| `raw_card_fields` (steward.py:2055) | - | - | EKSİK |
-| `parse_card_json` (steward.py:2069) | - | - | EKSİK |
-| `build_card_prompt` (steward.py:2102) | - | - | EKSİK |
-| `pick_card_model` (steward.py:2140) | - | - | EKSİK |
+| `raw_card_from_docs` (steward.py:2012) | `cards::raw_card_from_docs` | cards::raw_card_from_docs_vectors | tamam |
+| `_short` (steward.py:2022) | `cards::short` | cards::p_short | tamam |
+| `_str_list` (steward.py:2026) | `cards::str_list` | cards::p_str_list | tamam |
+| `_tbd_lines` (steward.py:2035) | `cards::tbd_lines` | cards::p_tbd_lines | tamam |
+| `_goal_from_docs` (steward.py:2047) | `cards::goal_from_docs` | cards::p_goal_from_docs | tamam |
+| `raw_card_fields` (steward.py:2055) | `cards::raw_card_fields` | cards::raw_card_fields_vectors | tamam |
+| `parse_card_json` (steward.py:2069) | `cards::parse_card_json` | cards::parse_card_json_vectors | tamam |
+| `build_card_prompt` (steward.py:2102) | `cards::build_card_prompt` | cards::build_card_prompt_vectors | tamam |
+| `pick_card_model` (steward.py:2140) | `cards::pick_card_model` | cards::pick_card_model_vectors | tamam |
 | `make_card` (steward.py:2149) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
 | `BRAIN_PAUSE_RECENT_SECONDS` (steward.py:2170) | `consts_gen::BRAIN_PAUSE_RECENT_SECONDS` | generated::generated_files_are_current | tamam |
-| `brain_pause_verdict` (steward.py:2173) | - | - | EKSİK |
+| `brain_pause_verdict` (steward.py:2173) | `cards::brain_pause_verdict` | cards::brain_pause_verdict_vectors | tamam |
 | `load_card` (steward.py:2194) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `save_card` (steward.py:2199) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `load_cards` (steward.py:2203) | - | - | kapsam dışı: G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10 |
 | `mark_card_stale` (steward.py:2217) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
-| `card_refresh_reason` (steward.py:2227) | - | - | EKSİK |
+| `card_refresh_reason` (steward.py:2227) | `cards::card_refresh_reason` | cards::card_refresh_reason_vectors | tamam |
 | `note_card_failure` (steward.py:2246) | - | - | kapsam dışı: G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı |
-| `card_one_liner` (steward.py:2257) | - | - | EKSİK |
+| `card_one_liner` (steward.py:2257) | `cards::card_one_liner` | cards::card_one_liner_vectors | tamam |
 | `persona_text` (steward.py:2263) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
 | `_unwrap_ticks` (steward.py:2276) | `markers::unwrap_ticks` | markers::p_unwrap_ticks | tamam |
 | `_PLACEHOLDER_BODY_RE` (steward.py:2289) | `consts_gen::P_PLACEHOLDER_BODY_RE` | generated::generated_files_are_current | tamam |
@@ -301,32 +314,32 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `text_lang_mismatch` (steward.py:2487) | `markers::text_lang_mismatch` | markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors | tamam |
 | `marker_texts` (steward.py:2502) | `markers::marker_texts` | markers::marker_texts_vectors | tamam |
 | `lang_fix_action` (steward.py:2513) | `markers::lang_fix_action` | markers::lang_fix_action_state_handling, markers::lang_fix_action_vectors | tamam |
-| `build_directive` (steward.py:2526) | - | - | EKSİK |
-| `_clip` (steward.py:2607) | - | - | EKSİK |
-| `card_lines` (steward.py:2612) | - | - | EKSİK |
-| `build_tour_prompt` (steward.py:2633) | - | - | EKSİK |
+| `build_directive` (steward.py:2526) | `prompts::build_directive` | prompts::build_directive_vectors | tamam |
+| `_clip` (steward.py:2607) | `prompts::clip` | prompts::p_clip | tamam |
+| `card_lines` (steward.py:2612) | `prompts::card_lines` | prompts::card_lines_vectors | tamam |
+| `build_tour_prompt` (steward.py:2633) | `prompts::build_tour_prompt` | prompts::build_tour_prompt_vectors | tamam |
 | `MODEL_RULE_TR` (steward.py:2734) | `consts_gen::MODEL_RULE_TR` | generated::generated_files_are_current | tamam |
 | `MODEL_RULE_EN` (steward.py:2769) | `consts_gen::MODEL_RULE_EN` | generated::generated_files_are_current | tamam |
-| `identity_section` (steward.py:2807) | - | - | EKSİK |
+| `identity_section` (steward.py:2807) | `prompts::identity_section` | prompts::identity_section_vectors | tamam |
 | `MEMORY_TR` (steward.py:2828) | `consts_gen::MEMORY_TR` | generated::generated_files_are_current | tamam |
 | `MEMORY_EN` (steward.py:2834) | `consts_gen::MEMORY_EN` | generated::generated_files_are_current | tamam |
 | `REMOTE_NOTE_TR` (steward.py:2841) | `consts_gen::REMOTE_NOTE_TR` | generated::generated_files_are_current | tamam |
 | `REMOTE_NOTE_EN` (steward.py:2846) | `consts_gen::REMOTE_NOTE_EN` | generated::generated_files_are_current | tamam |
-| `build_workspace_claude_md` (steward.py:2854) | - | - | EKSİK |
-| `_is_project_session` (steward.py:2907) | - | - | EKSİK |
-| `phase_model_effort` (steward.py:2911) | - | - | EKSİK |
-| `main_session_model_effort` (steward.py:2920) | - | - | EKSİK |
+| `build_workspace_claude_md` (steward.py:2854) | `prompts::build_workspace_claude_md` | prompts::build_workspace_claude_md_vectors | tamam |
+| `_is_project_session` (steward.py:2907) | `prompts::is_project_session` | prompts::p_is_project_session | tamam |
+| `phase_model_effort` (steward.py:2911) | `prompts::phase_model_effort` | prompts::phase_model_effort_vectors | tamam |
+| `main_session_model_effort` (steward.py:2920) | `prompts::main_session_model_effort` | prompts::main_session_model_effort_vectors | tamam |
 | `SKIP_QUIET_SECONDS` (steward.py:2932) | `consts_gen::SKIP_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
 | `STALE_ANSWER_SECONDS` (steward.py:2933) | `consts_gen::STALE_ANSWER_SECONDS` | generated::generated_files_are_current | tamam |
 | `BLOCKED_MAX_TOURS` (steward.py:2934) | `consts_gen::BLOCKED_MAX_TOURS` | generated::generated_files_are_current | tamam |
-| `item_signature` (steward.py:2937) | - | - | EKSİK |
-| `stale_answers` (steward.py:2949) | - | - | EKSİK |
+| `item_signature` (steward.py:2937) | `prompts::item_signature` | prompts::item_signature_vectors | tamam |
+| `stale_answers` (steward.py:2949) | `prompts::stale_answers` | prompts::stale_answers_vectors | tamam |
 | `NOTE_PID_RE` (steward.py:2966) | `consts_gen::NOTE_PID_RE` | generated::generated_files_are_current | tamam |
 | `NOTE_GATE_RE` (steward.py:2967) | `consts_gen::NOTE_GATE_RE` | generated::generated_files_are_current | tamam |
-| `note_claims` (steward.py:2970) | - | - | EKSİK |
-| `check_note_claims` (steward.py:2976) | - | - | EKSİK |
-| `cut_tour_items` (steward.py:2995) | - | - | EKSİK |
-| `mark_ask_seen` (steward.py:3007) | - | - | EKSİK |
+| `note_claims` (steward.py:2970) | `prompts::note_claims` | prompts::note_claims_vectors | tamam |
+| `check_note_claims` (steward.py:2976) | `prompts::check_note_claims` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors | tamam |
+| `cut_tour_items` (steward.py:2995) | `prompts::cut_tour_items` | prompts::cut_tour_items_vectors | tamam |
+| `mark_ask_seen` (steward.py:3007) | `prompts::mark_ask_seen` | prompts::mark_ask_seen_vectors | tamam |
 | `review_items` (steward.py:3018) | - | - | EKSİK |
 | `OWNER_TODO_LINE_RE` (steward.py:3107) | `consts_gen::OWNER_TODO_LINE_RE` | generated::generated_files_are_current | tamam |
 | `TODO_TRIAGE_TEXT` (steward.py:3108) | `consts_gen::TODO_TRIAGE_TEXT` | generated::generated_files_are_current | tamam |
@@ -607,19 +620,19 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_body_sensitive_c.AutoApprove.test_body_keyword_approved_title_keyword_held` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_brain_directive_subagent_gate.TestBrainDirectiveSubagentGate.test_subagent_active_defers` | identity::normalize_host_edges, identity::normalize_host_vectors |
 | `test_brain_directive_subagent_gate.TestBrainDirectiveSubagentGate.test_idle_without_subagent_sends` | EKSİK: parite testi olmayan directive_defer_reason |
-| `test_brain_pause.TestVerdict.test_finished_project_is_accepted` | EKSİK: parite testi olmayan brain_pause_verdict |
-| `test_brain_pause.TestVerdict.test_blocked_project_with_open_work_is_accepted` | EKSİK: parite testi olmayan brain_pause_verdict |
-| `test_brain_pause.TestVerdict.test_refusals` | EKSİK: parite testi olmayan brain_pause_verdict |
-| `test_brain_pause.TestGate.test_accepted_when_finished_and_logged` | EKSİK: parite testi olmayan _log_dedup, ask_prefix, brain_pause_verdict, card_one_liner |
-| `test_brain_pause.TestGate.test_refused_when_work_should_continue` | EKSİK: parite testi olmayan _log_dedup, brain_pause_verdict |
-| `test_brain_pause.TestGate.test_refused_without_reason_or_when_running` | EKSİK: parite testi olmayan _log_dedup, brain_pause_verdict |
+| `test_brain_pause.TestVerdict.test_finished_project_is_accepted` | cards::brain_pause_verdict_vectors |
+| `test_brain_pause.TestVerdict.test_blocked_project_with_open_work_is_accepted` | cards::brain_pause_verdict_vectors |
+| `test_brain_pause.TestVerdict.test_refusals` | cards::brain_pause_verdict_vectors |
+| `test_brain_pause.TestGate.test_accepted_when_finished_and_logged` | EKSİK: parite testi olmayan _log_dedup, ask_prefix |
+| `test_brain_pause.TestGate.test_refused_when_work_should_continue` | EKSİK: parite testi olmayan _log_dedup |
+| `test_brain_pause.TestGate.test_refused_without_reason_or_when_running` | EKSİK: parite testi olmayan _log_dedup |
 | `test_brain_pause.TestGate.test_idea_and_done_stay_owner_only` | EKSİK: parite testi olmayan _log_dedup |
 | `test_brain_permission_ucli.BrainPermission.test_default_allow_edit_is_a_valid_ucli_mode` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_brain_permission_ucli.BrainPermission.test_applied_only_for_ucli` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_brain_rules_g_h.TestBrainRules.test_rules_present_in_both_languages` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_brain_rules_g_h.TestBrainRules.test_h_is_limited_to_reversible_questions` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_card_prompt_blockers.CardPromptBlockersTest.test_tr_prompt_demands_currently_open_blockers` | EKSİK: parite testi olmayan build_card_prompt |
-| `test_card_prompt_blockers.CardPromptBlockersTest.test_en_prompt_demands_currently_open_blockers` | EKSİK: parite testi olmayan build_card_prompt |
+| `test_card_prompt_blockers.CardPromptBlockersTest.test_tr_prompt_demands_currently_open_blockers` | cards::build_card_prompt_vectors |
+| `test_card_prompt_blockers.CardPromptBlockersTest.test_en_prompt_demands_currently_open_blockers` | cards::build_card_prompt_vectors |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_adds_line_with_id_and_flattens_text` | EKSİK: parite testi olmayan todo_insert_directive |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_same_content_or_same_id_not_duplicated` | EKSİK: parite testi olmayan todo_insert_directive |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_closed_line_allows_same_text_again` | EKSİK: parite testi olmayan todo_insert_directive |
@@ -644,7 +657,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_directive_delivery.Queue.test_start_path_returns_queued_immediately_then_delivered` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+1) |
 | `test_directive_delivery.Queue.test_failure_is_visible_with_reason_and_notifies` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+1) |
 | `test_directive_delivery.Queue.test_brain_actor_stays_synchronous` | EKSİK: parite testi olmayan panic_path |
-| `test_directive_delivery.HoDoneFresh.test_ho_done_live_session_stopped_exact_and_started_fresh` | EKSİK: parite testi olmayan main_session_model_effort |
+| `test_directive_delivery.HoDoneFresh.test_ho_done_live_session_stopped_exact_and_started_fresh` | identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::main_session_model_effort_vectors |
 | `test_directive_delivery.ClosedHoDoneAndPersistence.test_closed_ho_done_conversation_starts_fresh` | EKSİK: parite testi olmayan World.resolve, _project_key, world_for |
 | `test_directive_delivery.ClosedHoDoneAndPersistence.test_deliveries_survive_restart_and_queued_becomes_failed` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+5) |
 | `test_done_conflict_answer.DoneAnswerTest.test_clear_yes_closes` | EKSİK: parite testi olmayan done_conflict_answer |
@@ -696,10 +709,10 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_labels.TestApi.test_post_flow_ignores_host_field` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_labels.TestApi.test_status_payload_has_labels` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_labels.TestSearchParserTs.test_label_terms` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_note_claims.TestClaims.test_parse` | EKSİK: parite testi olmayan note_claims |
-| `test_note_claims.TestClaims.test_dead_pid_and_empty_gate_are_contradictions` | EKSİK: parite testi olmayan check_note_claims, note_claims |
-| `test_note_claims.TestClaims.test_alive_unknown_or_ahead_are_silent` | EKSİK: parite testi olmayan check_note_claims, note_claims |
-| `test_note_claims.TestClaims.test_contradiction_rides_the_idle_item_and_renders` | EKSİK: parite testi olmayan _clip, _is_project_session, build_tour_prompt, check_note_claims |
+| `test_note_claims.TestClaims.test_parse` | prompts::note_claims_vectors |
+| `test_note_claims.TestClaims.test_dead_pid_and_empty_gate_are_contradictions` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors, prompts::note_claims_vectors |
+| `test_note_claims.TestClaims.test_alive_unknown_or_ahead_are_silent` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors, prompts::note_claims_vectors |
+| `test_note_claims.TestClaims.test_contradiction_rides_the_idle_item_and_renders` | EKSİK: parite testi olmayan marker_next_work, review_items |
 | `test_orphan_digest.OrphanDigestTest.test_line_shown_only_when_orphans` | EKSİK: parite testi olmayan _ask_gate_lines, daily_summary |
 | `test_orphan_digest.BrainTourRatioTest.test_ratio_line` | EKSİK: parite testi olmayan _ask_gate_lines, _names, daily_summary |
 | `test_owner_answer_persist.Pure.test_action_heuristic` | EKSİK: parite testi olmayan answer_has_action |
@@ -1026,7 +1039,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_stated_next.IdleNudge.test_nudges_with_stated_next_even_with_empty_todo_and_ask_marker` | EKSİK: parite testi olmayan clip_words, is_conditional_note, marker_next_work, one_line |
 | `test_stated_next.IdleNudge.test_no_next_empty_todo_no_nudge_as_before` | EKSİK: parite testi olmayan _done_at_line_end, idle_finish_marker, marker_next_work, next_line |
 | `test_stated_next.IdleNudge.test_chain_limit_still_applies` | EKSİK: parite testi olmayan clip_words, is_conditional_note, marker_next_work, one_line |
-| `test_stated_next.TourItem.test_prompt_shows_stated_next_and_contradiction` | EKSİK: parite testi olmayan _clip, build_tour_prompt |
+| `test_stated_next.TourItem.test_prompt_shows_stated_next_and_contradiction` | prompts::build_tour_prompt_vectors, prompts::p_clip |
 | `test_statedocs_writers.WritersShadowTests.test_name_for` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_statedocs_writers.WritersShadowTests.test_steward_save_load_shadow` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_statedocs_writers.WritersShadowTests.test_steward_corrupt_backup_kept_and_db_recovers` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1037,14 +1050,14 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_advance.TodoStatusTest.test_open_done_missing_and_path_safety` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.TodoStatusTest.test_candidates_only_exported` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.TodoStatusTest.test_secret_findings_are_held_back` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_advance.PlanTest.test_p1_first_batch_limit_and_single_action` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view, plan_deliveries |
-| `test_steward_advance.PlanTest.test_only_own_open_and_idle` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view, plan_deliveries |
-| `test_steward_advance.PlanTest.test_resend_policy` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view, plan_deliveries |
+| `test_steward_advance.PlanTest.test_p1_first_batch_limit_and_single_action` | EKSİK: parite testi olmayan pick_delivery_view, plan_deliveries |
+| `test_steward_advance.PlanTest.test_only_own_open_and_idle` | EKSİK: parite testi olmayan pick_delivery_view, plan_deliveries |
+| `test_steward_advance.PlanTest.test_resend_policy` | EKSİK: parite testi olmayan pick_delivery_view, plan_deliveries |
 | `test_steward_advance.PlanTest.test_message_carries_authority_limits` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_remote_candidates_take_approved_without_todo_check` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_remote_secret_in_body_is_stripped_not_held` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_advance.RemoteAdvanceTest.test_plan_delivers_to_remote_view_and_sends_once` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view, plan_deliveries |
-| `test_steward_advance.RemoteAdvanceTest.test_remote_todo_state_tracks_and_resends` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view, plan_deliveries |
+| `test_steward_advance.RemoteAdvanceTest.test_plan_delivers_to_remote_view_and_sends_once` | EKSİK: parite testi olmayan pick_delivery_view, plan_deliveries |
+| `test_steward_advance.RemoteAdvanceTest.test_remote_todo_state_tracks_and_resends` | EKSİK: parite testi olmayan pick_delivery_view, plan_deliveries |
 | `test_steward_advance.RemoteAdvanceTest.test_todo_status_text` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_remote_message_carries_detail_and_limits` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_advance.RemoteAdvanceTest.test_deliver_findings_passes_host` | identity::paths_for_vectors, identity::paths_layout_and_errors |
@@ -1072,7 +1085,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_api_recovery.OutageTest.test_exhausted_outage_gives_up_instead_of_staying_silent` | EKSİK: parite testi olmayan api_error_kind, plan_api_recovery |
 | `test_steward_api_recovery.OutageTest.test_closed_probe_session_is_not_a_recovery` | EKSİK: parite testi olmayan api_error_kind, plan_api_recovery |
 | `test_steward_api_recovery.OutageTest.test_two_sessions_is_an_outage_one_is_not` | EKSİK: parite testi olmayan api_error_kind, plan_api_recovery |
-| `test_steward_api_recovery.PlanTickIntegrationTest.test_state_keys_absent_when_clean_and_present_when_stuck` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_api_recovery.PlanTickIntegrationTest.test_state_keys_absent_when_clean_and_present_when_stuck` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_api_recovery.PlanTickIntegrationTest.test_observe_mode_does_not_apply_nudge` | EKSİK: parite testi olmayan _observe_cluster, observe_filter |
 | `test_steward_api_recovery.ApplyTest.test_nudge_sends_devam_to_tmux_session` | EKSİK: parite testi olmayan World.resolve, _project_key, world_for |
 | `test_steward_api_recovery.ApplyTest.test_nudge_refused_when_not_tmux_or_not_running` | EKSİK: parite testi olmayan World._class, World.name_class, World.resolve, World.session_class |
@@ -1100,13 +1113,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ask_gate.AnswerPathTest.test_owner_answer_in_between_is_not_overwritten` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_ask_gate.AnswerPathTest.test_answered_question_is_refused_without_gate_call` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_ask_gate.TourTest.test_off_has_no_ask_items` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
-| `test_steward_ask_gate.TourTest.test_eligible_ask_listed_owner_class_not` | EKSİK: parite testi olmayan _clip, _question_sentences, _words, find_answered_duplicate |
-| `test_steward_ask_gate.TourTest.test_seen_limits_and_gated` | EKSİK: parite testi olmayan _clip, _question_sentences, _words, find_answered_duplicate |
-| `test_steward_ask_gate.TourTest.test_tour_prompt_mentions_ask_item` | EKSİK: parite testi olmayan _clip, _question_sentences, _words, build_tour_prompt |
-| `test_steward_ask_gate.TourTest.test_cut_question_items_16_others_8` | EKSİK: parite testi olmayan cut_tour_items |
-| `test_steward_ask_gate.TourTest.test_plan_tick_sends_ask_and_records_seen` | EKSİK: parite testi olmayan _clip, _is_project_session, _question_sentences, _words |
-| `test_steward_ask_gate.DecisionsAndSummaryTest.test_owner_decisions_appended_to_brain_claude_md` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_ask_gate.DecisionsAndSummaryTest.test_summary_lists_brain_answers_override_and_shadow` | EKSİK: parite testi olmayan _ask_gate_lines, _clip, _log_dedup, _question_sentences |
+| `test_steward_ask_gate.TourTest.test_eligible_ask_listed_owner_class_not` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
+| `test_steward_ask_gate.TourTest.test_seen_limits_and_gated` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
+| `test_steward_ask_gate.TourTest.test_tour_prompt_mentions_ask_item` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
+| `test_steward_ask_gate.TourTest.test_cut_question_items_16_others_8` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9) |
+| `test_steward_ask_gate.TourTest.test_plan_tick_sends_ask_and_records_seen` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
+| `test_steward_ask_gate.DecisionsAndSummaryTest.test_owner_decisions_appended_to_brain_claude_md` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
+| `test_steward_ask_gate.DecisionsAndSummaryTest.test_summary_lists_brain_answers_override_and_shadow` | EKSİK: parite testi olmayan _ask_gate_lines, _log_dedup, _question_sentences, _salient |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_old_link_with_the_previous_identity_still_finds_the_question_by_key` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, answer_has_action |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_fallback_needs_the_key_not_just_the_id` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, find_answered_duplicate |
 | `test_steward_audit_p9.TestY1TransferredQuestionLink.test_find_question_any_prefers_the_stated_store` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
@@ -1115,7 +1128,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_audit_p9.TestY2JobsAck.test_ack_on_a_terminal_job_still_works` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_audit_p9.TestY2JobsAck.test_ack_on_an_unknown_state_is_refused_too` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_audit_p9.TestO1BrainCannotCreateProjects.test_brain_upsert_of_a_new_name_is_refused_but_existing_updates_work` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
-| `test_steward_audit_p9.TestO1BrainCannotCreateProjects.test_human_may_still_create_a_project` | EKSİK: parite testi olmayan _log_dedup, card_one_liner, card_path |
+| `test_steward_audit_p9.TestO1BrainCannotCreateProjects.test_human_may_still_create_a_project` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_audit_p9.TestO1BrainCannotCreateProjects.test_brain_refusal_applies_in_other_identities_and_the_mcp_tool_marks_the_actor` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_audit_p9.TestO2UnknownRemoteState.test_an_unknown_state_stays_open_keeps_polling_and_is_logged_once` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_audit_p9.TestO2UnknownRemoteState.test_known_states_unchanged` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+8) |
@@ -1133,24 +1146,24 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_audit_p9.TestD8TransferTargetMustBeConfigured.test_configured_target_and_default_still_work` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_auto_start_off.AutoStart.test_default_true_and_field_exists` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_auto_start_off.AutoStart.test_source_guard` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_brain.TestDefaultClaudeMdGolden.test_default_output_is_byte_identical_to_pre_p5` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestDefaultClaudeMdGolden.test_identity_section_only_for_non_default` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestWorkspace.test_default_workspace_claude_md_is_unchanged_and_not_rewritten` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestWorkspace.test_default_persona_override_still_applies` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestWorkspace.test_identity_workspace_is_separate_with_identity_and_model_rule` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestWorkspace.test_identity_persona_falls_back_to_shared` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
+| `test_steward_brain.TestDefaultClaudeMdGolden.test_default_output_is_byte_identical_to_pre_p5` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
+| `test_steward_brain.TestDefaultClaudeMdGolden.test_identity_section_only_for_non_default` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
+| `test_steward_brain.TestWorkspace.test_default_workspace_claude_md_is_unchanged_and_not_rewritten` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+4) |
+| `test_steward_brain.TestWorkspace.test_default_persona_override_still_applies` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+3) |
+| `test_steward_brain.TestWorkspace.test_identity_workspace_is_separate_with_identity_and_model_rule` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
+| `test_steward_brain.TestWorkspace.test_identity_persona_falls_back_to_shared` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5) |
 | `test_steward_brain.TestBrainMcp.test_verify_uses_connect_heartbeat` | EKSİK: parite testi olmayan brain_mcp_path |
-| `test_steward_brain.TestBrainMcp.test_start_without_mcp_restarts_once_then_gives_up` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestBrainMcp.test_start_defaults_to_new_conversation` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
+| `test_steward_brain.TestBrainMcp.test_start_without_mcp_restarts_once_then_gives_up` | EKSİK: parite testi olmayan _log_dedup |
+| `test_steward_brain.TestBrainMcp.test_start_defaults_to_new_conversation` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_brain.TestBrainMcp.test_close_note_written_without_model_turn` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+3) |
 | `test_steward_brain.TestBrainMcp.test_notools_verdict_pure` | EKSİK: parite testi olmayan brain_notools_verdict, brain_tools_missing_text |
 | `test_steward_brain.TestBrainMcp.test_recover_restarts_once_with_cooldown` | EKSİK: parite testi olmayan _log_dedup, brain_mcp_path, brain_notools_verdict, brain_tools_missing_text |
 | `test_steward_brain.TestBrainMcp.test_mcp_server_heartbeat_hook` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_brain.TestBrainMcp.test_touch_records_call_and_connect` | EKSİK: parite testi olmayan brain_mcp_path |
 | `test_steward_brain.TestBrainStart.test_brain_spec_default_is_the_old_command_line` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_brain.TestBrainStart.test_disabled_identity_never_starts_a_brain` | EKSİK: parite testi olmayan World.own_projects, review_items, select_rows, stale_answers |
-| `test_steward_brain.TestBrainStart.test_enabled_identity_starts_its_own_brain` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_steward_brain.TestBrainStart.test_default_brain_start_is_unchanged` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
+| `test_steward_brain.TestBrainStart.test_disabled_identity_never_starts_a_brain` | EKSİK: parite testi olmayan World.own_projects, review_items, select_rows, world_for |
+| `test_steward_brain.TestBrainStart.test_enabled_identity_starts_its_own_brain` | EKSİK: parite testi olmayan _log_dedup |
+| `test_steward_brain.TestBrainStart.test_default_brain_start_is_unchanged` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_brain.TestBrainStart.test_running_brain_is_not_started_twice` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::valid_custom_id_vectors, identity::valid_steward_id_vectors |
 | `test_steward_brain.TestBrainStart.test_brain_stop_uses_only_the_act_stop_path_with_the_exact_name` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_brain.TestClaudeMcpConfigFile.test_identity_gets_its_own_config_file` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1175,12 +1188,12 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_bridges_e2e.LessonsBridge.test_hand_written_and_old_lines_are_not_delivered` | EKSİK: parite testi olmayan World._class, World.is_manual, World.name_class, World.own_projects |
 | `test_steward_bridges_e2e.HandoverQuestions.test_open_question_travels_in_handover_extra` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_bridges_e2e.HandoverQuestions.test_ask_user_notifies_once_and_again_only_on_promotion` | EKSİK: parite testi olmayan World.resolve, _project_key, _question_sentences, _words |
-| `test_steward_bridges_e2e.HandoverQuestions.test_directive_prior_answers_come_from_the_identitys_own_store` | EKSİK: parite testi olmayan _question_sentences, _salient, _words, build_directive |
+| `test_steward_bridges_e2e.HandoverQuestions.test_directive_prior_answers_come_from_the_identitys_own_store` | EKSİK: parite testi olmayan _question_sentences, _salient, _words, find_answered_duplicate |
 | `test_steward_bridges_e2e.HandoverQuestions.test_project_name_resolves_to_the_dated_session` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
-| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_raw_card_has_no_blockers` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _short, _tbd_lines |
-| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_make_card_without_parse_has_empty_blockers` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _short, _tbd_lines |
-| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_without_blockers_does_not_inherit_old` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _short, _tbd_lines |
-| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_blockers_are_used` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _short, _tbd_lines |
+| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_raw_card_has_no_blockers` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+1) |
+| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_make_card_without_parse_has_empty_blockers` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+1) |
+| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_without_blockers_does_not_inherit_old` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+1) |
+| `test_steward_card_blockers_not_stale.CardBlockersNotStale.test_fresh_parse_blockers_are_used` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+1) |
 | `test_steward_claude_idle_stated.StatedNextWorkTest.test_extracts_last_stated_next` | EKSİK: parite testi olmayan clip_words, next_line, stated_next_work |
 | `test_steward_claude_idle_stated.StatedNextWorkTest.test_nothing_stated` | EKSİK: parite testi olmayan next_line, stated_next_work |
 | `test_steward_claude_idle_stated.StatedNextWorkTest.test_explicit_next_line` | EKSİK: parite testi olmayan clip_words, idle_finish_marker, next_line, stated_next_work |
@@ -1242,16 +1255,16 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.MarkerTest.test_scan_markers_ignores_inline_code_mention_in_prose` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_core_a.MarkerTest.test_scan_markers_job_line` | EKSİK: parite testi olmayan marker_record_actions |
 | `test_steward_core_a.MarkerTest.test_scan_markers` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
-| `test_steward_core_a.PromptTest.test_directive_by_phase_and_answer` | EKSİK: parite testi olmayan build_directive |
-| `test_steward_core_a.PromptTest.test_tour_prompt_lists_items_and_end_marker` | EKSİK: parite testi olmayan _clip, build_tour_prompt |
-| `test_steward_core_a.PromptTest.test_workspace_claude_md` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_core_a.RulesTest.test_handover_then_respawn` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, context_threshold |
-| `test_steward_core_a.RulesTest.test_handover_grace_expiry_and_gone_session` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_core_a.RulesTest.test_markers_once_per_reply` | EKSİK: parite testi olmayan _ask_is_status_line, _is_project_session, _project_key, api_error_kind |
-| `test_steward_core_a.RulesTest.test_done_marker_stops_session` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.RulesTest.test_done_confirmed_with_open_owner_question_pauses_not_done` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.RulesTest.test_done_marker_ignored_when_project_notes_have_no_done_tag` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.RulesTest.test_due_projects_respect_slots_priority_and_cadence` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.PromptTest.test_directive_by_phase_and_answer` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::reply_language_line_vectors (+1) |
+| `test_steward_core_a.PromptTest.test_tour_prompt_lists_items_and_end_marker` | prompts::build_tour_prompt_vectors, prompts::p_clip |
+| `test_steward_core_a.PromptTest.test_workspace_claude_md` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
+| `test_steward_core_a.RulesTest.test_handover_then_respawn` | EKSİK: parite testi olmayan _project_key, _sibling_running, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_handover_grace_expiry_and_gone_session` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, expired_handover_note |
+| `test_steward_core_a.RulesTest.test_markers_once_per_reply` | EKSİK: parite testi olmayan _ask_is_status_line, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.RulesTest.test_done_marker_stops_session` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.RulesTest.test_done_confirmed_with_open_owner_question_pauses_not_done` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, is_context_question |
+| `test_steward_core_a.RulesTest.test_done_marker_ignored_when_project_notes_have_no_done_tag` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_due_projects_respect_slots_priority_and_cadence` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_a.RulesTest.test_todo_change_opens_active_project_without_waiting_cadence` | EKSİK: parite testi olmayan notes_wait, paused_sweep_text, plan_api_recovery, plan_tick |
 | `test_steward_core_a.RulesTest.test_todo_change_reopens_done_project_to_planned` | EKSİK: parite testi olmayan notes_wait, plan_api_recovery, plan_tick, review_items |
 | `test_steward_core_a.RulesTest.test_todo_change_paused_project_asks_owner_once_per_day` | EKSİK: parite testi olmayan notes_wait, paused_sweep_text, plan_api_recovery, plan_tick |
@@ -1259,26 +1272,26 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.RulesTest.test_daily_sweep_done_project_with_unchanged_sha` | EKSİK: parite testi olmayan notes_wait, plan_api_recovery, plan_tick, review_items |
 | `test_steward_core_a.RulesTest.test_daily_sweep_paused_asks_once` | EKSİK: parite testi olmayan notes_wait, paused_sweep_text, plan_api_recovery, plan_tick |
 | `test_steward_core_a.RulesTest.test_only_fable_cila_open_work_does_not_trigger` | EKSİK: parite testi olmayan notes_wait, plan_api_recovery, plan_tick, review_items |
-| `test_steward_core_a.RulesTest.test_drain_starts_nothing_but_keeps_answers_and_running` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.RulesTest.test_slot_pressure_stops_idle_session` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.RulesTest.test_answer_delivery_running_busy_or_stopped` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running` | EKSİK: parite testi olmayan _is_project_session, _project_key, derived_of, notes_wait |
-| `test_steward_core_a.RulesTest.test_instance_sessions_map_to_blueprint_project` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.RulesTest.test_tour_only_when_brain_idle_and_due` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.RulesTest.test_phase_model_effort` | EKSİK: parite testi olmayan phase_model_effort |
+| `test_steward_core_a.RulesTest.test_drain_starts_nothing_but_keeps_answers_and_running` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, holds_total_slot |
+| `test_steward_core_a.RulesTest.test_slot_pressure_stops_idle_session` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_answer_delivery_running_busy_or_stopped` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running` | EKSİK: parite testi olmayan _project_key, derived_of, notes_wait, plan_api_recovery |
+| `test_steward_core_a.RulesTest.test_instance_sessions_map_to_blueprint_project` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_tour_only_when_brain_idle_and_due` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.RulesTest.test_phase_model_effort` | prompts::phase_model_effort_vectors |
 | `test_steward_core_a.CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.CardCoreTest.test_raw_card_without_git_or_docs` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_core_a.CardCoreTest.test_parse_card_json_variants` | EKSİK: parite testi olmayan _clip, _short, _str_list, parse_card_json |
-| `test_steward_core_a.CardCoreTest.test_make_card_falls_back_to_raw_fields` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _short, _tbd_lines |
-| `test_steward_core_a.CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` | EKSİK: parite testi olmayan _clip, _short, card_path, card_refresh_reason |
-| `test_steward_core_a.CardCoreTest.test_store_stale_and_listing` | EKSİK: parite testi olmayan card_one_liner, card_path |
-| `test_steward_core_a.CardCoreTest.test_model_pick_prompt_and_tour_rendering` | EKSİK: parite testi olmayan _clip, _short, build_card_prompt, build_tour_prompt |
+| `test_steward_core_a.CardCoreTest.test_parse_card_json_variants` | cards::p_short, cards::p_str_list, cards::parse_card_json_vectors, prompts::p_clip |
+| `test_steward_core_a.CardCoreTest.test_make_card_falls_back_to_raw_fields` | cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines, cards::raw_card_fields_vectors (+1) |
+| `test_steward_core_a.CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` | cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short, identity::p_pp (+3) |
+| `test_steward_core_a.CardCoreTest.test_store_stale_and_listing` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::name_rules_edges, identity::p_pp (+3) |
+| `test_steward_core_a.CardCoreTest.test_model_pick_prompt_and_tour_rendering` | cards::build_card_prompt_vectors, cards::p_short, cards::pick_card_model_vectors, prompts::build_tour_prompt_vectors (+2) |
 | `test_steward_core_a.OneshotProviderTest.test_claude_argv_shape_and_unsupported_default` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.OneshotProviderTest.test_ucli_oneshot_uses_chat_once_without_key_in_argv` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.OneshotProviderTest.test_oneshot_runs_argv_and_reports_failures` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.SimilarAnswersTest.test_ranks_by_similarity_and_excludes_self` | EKSİK: parite testi olmayan _salient, _words, similar_answers |
-| `test_steward_core_a.SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` | EKSİK: parite testi olmayan _clip, _salient, _words, build_tour_prompt |
-| `test_steward_core_a.RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` | EKSİK: parite testi olmayan _log_dedup, card_one_liner, card_path |
+| `test_steward_core_a.SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` | EKSİK: parite testi olmayan _salient, _words, similar_answers |
+| `test_steward_core_a.RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_core_a.ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_core_a.EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` | EKSİK: parite testi olmayan world_for |
@@ -1304,9 +1317,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.TopicMergeTest.test_other_project_not_merged` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_core_a.SalientReaskTest.test_paraphrased_same_topic_is_duplicate` | EKSİK: parite testi olmayan _salient, _words, find_answered_duplicate |
 | `test_steward_core_a.SalientReaskTest.test_different_topic_not_duplicate` | EKSİK: parite testi olmayan _salient, _words, find_answered_duplicate |
-| `test_steward_core_a.DoneDeferralTest.test_done_deferred_while_subagent_then_applied` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.DoneDeferralTest.test_done_immediate_without_subagent` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
+| `test_steward_core_a.DoneDeferralTest.test_done_deferred_while_subagent_then_applied` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.DoneDeferralTest.test_done_immediate_without_subagent` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
 | `test_steward_core_a.AnswerStartPhaseTest.test_active_phase_starts` | EKSİK: parite testi olmayan pick_delivery_view, plan_api_recovery, plan_tick, review_items |
 | `test_steward_core_a.AnswerStartPhaseTest.test_owner_answer_reopens_paused_and_done_project` | EKSİK: parite testi olmayan is_negative_answer, is_open_answer, pick_delivery_view, plan_api_recovery |
 | `test_steward_core_a.NegativeAnswerTest.test_is_negative_answer` | EKSİK: parite testi olmayan is_negative_answer |
@@ -1317,46 +1330,46 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_a.HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` | EKSİK: parite testi olmayan _held_instruction_item, _log_dedup, _question_sentences, _salient |
 | `test_steward_core_a.HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` | EKSİK: parite testi olmayan _held_instruction_item, _log_dedup, _question_sentences, _salient |
 | `test_steward_core_a.HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` | EKSİK: parite testi olmayan _held_instruction_item, _log_dedup, _question_sentences, _salient |
-| `test_steward_core_a.DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, context_threshold |
-| `test_steward_core_a.DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneHandoverTest.test_grace_expiry_still_stops` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, context_threshold |
-| `test_steward_core_a.DoneHandoverTest.test_small_context_skips_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneHandoverTest.test_switch_off_is_old_direct_stop` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneHandoverTest.test_unanswered_conflict_still_asks` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | EKSİK: parite testi olmayan _confirm_action, _is_project_session, _project_key, api_error_kind |
-| `test_steward_core_a.DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | EKSİK: parite testi olmayan _confirm_action, _is_project_session, _project_key, api_error_kind |
-| `test_steward_core_a.DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | EKSİK: parite testi olmayan _confirm_action, _is_project_session, _project_key, api_error_kind |
-| `test_steward_core_a.DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | EKSİK: parite testi olmayan _project_key, _sibling_running, context_threshold, derived_of |
+| `test_steward_core_a.DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.DoneHandoverTest.test_grace_expiry_still_stops` | EKSİK: parite testi olmayan _project_key, _sibling_running, context_threshold, derived_of |
+| `test_steward_core_a.DoneHandoverTest.test_small_context_skips_handover` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.DoneHandoverTest.test_switch_off_is_old_direct_stop` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, done_conflict_answer |
+| `test_steward_core_a.DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.DoneHandoverTest.test_unanswered_conflict_still_asks` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | EKSİK: parite testi olmayan _confirm_action, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | EKSİK: parite testi olmayan _confirm_action, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, marker_record_actions |
+| `test_steward_core_a.DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | EKSİK: parite testi olmayan _confirm_action, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_a.DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` | markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
-| `test_steward_core_a.DoneConfirmTest.test_subagent_active_defers_confirmed` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.DoneConfirmTest.test_subagent_active_defers_confirmed` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_a.DoneConfirmTest.test_open_work_of_counts_local_todo` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_a.DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors |
-| `test_steward_core_a.TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | EKSİK: parite testi olmayan _is_project_session, item_signature, marker_next_work, review_items |
-| `test_steward_core_a.TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | EKSİK: parite testi olmayan plan_api_recovery, plan_tick, review_items, stale_answers |
-| `test_steward_core_a.TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | EKSİK: parite testi olmayan item_signature, review_items, stale_answers |
-| `test_steward_core_a.TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | EKSİK: parite testi olmayan _is_project_session, _observe_cluster, _project_key, api_error_kind |
-| `test_steward_core_a.TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | EKSİK: parite testi olmayan marker_next_work, review_items |
+| `test_steward_core_a.TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | EKSİK: parite testi olmayan plan_api_recovery, plan_tick, review_items |
+| `test_steward_core_a.TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, notes_wait |
+| `test_steward_core_a.TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | EKSİK: parite testi olmayan review_items |
+| `test_steward_core_a.TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | EKSİK: parite testi olmayan _observe_cluster, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_a.TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors |
 | `test_steward_core_a.TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | EKSİK: parite testi olmayan plan_shutdown |
-| `test_steward_core_a.TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_a.IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | EKSİK: parite testi olmayan _is_project_session, item_signature, marker_next_work, review_items |
-| `test_steward_core_a.MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_core_a.MergedAnswersTest.test_answer_waits_while_subagent_active` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_a.TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_a.IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | EKSİK: parite testi olmayan marker_next_work, review_items |
+| `test_steward_core_a.MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, pick_delivery_view |
+| `test_steward_core_a.MergedAnswersTest.test_answer_waits_while_subagent_active` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_a.MergedAnswersTest.test_subagent_active_for_reads_mtime` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_core_a.MergedAnswersTest.test_compact_answer_directive_drops_preamble` | EKSİK: parite testi olmayan build_directive |
-| `test_steward_core_a.MergedAnswersTest.test_directive_contains_all_answers` | EKSİK: parite testi olmayan build_directive |
+| `test_steward_core_a.MergedAnswersTest.test_compact_answer_directive_drops_preamble` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::reply_language_line_vectors (+1) |
+| `test_steward_core_a.MergedAnswersTest.test_directive_contains_all_answers` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::reply_language_line_vectors (+1) |
 | `test_steward_core_b.ScanTicksTest.test_leading_code_tick_in_question_kept` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_core_b.ScanTicksTest.test_wrapped_marker_and_wrapped_body` | markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors |
 | `test_steward_core_b.PlanMarkersTest.test_records_asks_and_ideas_only` | EKSİK: parite testi olmayan _ask_is_status_line, marker_record_actions, note_project_next, plan_markers |
 | `test_steward_core_b.PlanMarkersTest.test_same_reply_not_rescanned_and_routine_needs_question_mark` | EKSİK: parite testi olmayan marker_record_actions, note_project_next, plan_markers |
-| `test_steward_core_b.PlanMarkersTest.test_matches_plan_tick_marker_actions` | EKSİK: parite testi olmayan _ask_is_status_line, _is_project_session, _project_key, api_error_kind |
+| `test_steward_core_b.PlanMarkersTest.test_matches_plan_tick_marker_actions` | EKSİK: parite testi olmayan _ask_is_status_line, _project_key, api_error_kind, context_threshold |
 | `test_steward_core_b.ObserveCoreTest.test_filter_act_passes_everything_and_clears_traces` | EKSİK: parite testi olmayan observe_filter |
 | `test_steward_core_b.ObserveCoreTest.test_filter_observe_splits_dedups_and_prunes` | EKSİK: parite testi olmayan _observe_cluster, observe_filter |
 | `test_steward_core_b.ObserveCoreTest.test_observed_visit_paces_due_projects_across_ticks` | EKSİK: parite testi olmayan _observe_cluster, notes_wait, observe_filter, plan_api_recovery |
@@ -1365,25 +1378,25 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_b.SummaryCoreTest.test_log_reader_and_summary_text` | EKSİK: parite testi olmayan _ask_gate_lines, _kind_counts, _log_dedup, _names |
 | `test_steward_core_b.SummaryCoreTest.test_compact_log_folds_ticks_and_keeps_summary_identical` | EKSİK: parite testi olmayan _ask_gate_lines, _kind_counts, _log_dedup, _names |
 | `test_steward_core_b.SummaryCoreTest.test_missed_summary_dates_and_catch_up` | EKSİK: parite testi olmayan _ask_gate_lines, _log_dedup, _names, _rewrite_log |
-| `test_steward_core_b.RoutineQuestionTest.test_marker_scan_and_session_reply_opens_routine_ask` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_b.RoutineQuestionTest.test_routine_goes_to_brain_tour_not_phone_and_escalates_late` | EKSİK: parite testi olmayan World.resolve, _clip, _project_key, _question_sentences |
+| `test_steward_core_b.RoutineQuestionTest.test_marker_scan_and_session_reply_opens_routine_ask` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_b.RoutineQuestionTest.test_routine_goes_to_brain_tour_not_phone_and_escalates_late` | EKSİK: parite testi olmayan World.resolve, _project_key, _question_sentences, _words |
 | `test_steward_core_b.RoutineQuestionTest.test_brain_answer_is_delivered_like_any_answer` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_finished_handover_of_second_session_stops_it_instead_of_respawn` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, api_error_kind |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_economy_rules_only_touch_managed_sessions` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_finished_handover_of_second_session_stops_it_instead_of_respawn` | EKSİK: parite testi olmayan _project_key, _sibling_running, api_error_kind, context_threshold |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_economy_rules_only_touch_managed_sessions` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_brain_respawn_after_handover_is_a_new_conversation` | EKSİK: parite testi olmayan World.resolve, world_for |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_context_tokens_trigger_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_line_count_is_only_a_fallback_and_ignores_young_sessions` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_core_b.OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_context_tokens_trigger_handover` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_line_count_is_only_a_fallback_and_ignores_young_sessions` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_core_b.StuckBrainTest.test_status_sentence_is_not_a_routine_question_and_tour_is_capped` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_core_b.StuckBrainTest.test_status_sentence_is_not_a_routine_question_and_tour_is_capped` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_core_b.StuckBrainTest.test_two_failed_tours_restart_the_brain` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_core_b.StuckBrainTest.test_undeliverable_adhoc_answer_is_given_up` | EKSİK: parite testi olmayan World.resolve, _log_dedup, _project_key, _question_sentences |
 | `test_steward_core_b.DeliveryTargetTest.test_prefers_asking_session_then_main_over_experiment_sessions` | EKSİK: parite testi olmayan pick_delivery_view |
-| `test_steward_core_b.ReaskTest.test_similar_answered_question_is_redelivered_not_reopened` | EKSİK: parite testi olmayan _question_sentences, _words, build_directive, find_answered_duplicate |
+| `test_steward_core_b.ReaskTest.test_similar_answered_question_is_redelivered_not_reopened` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_core_b.ReaskTest.test_repeat_cap_other_project_old_and_clarification_open_new` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_core_b.ReaskTest.test_answered_routine_question_asked_to_owner_opens_new` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
-| `test_steward_core_b.ReaskTest.test_directive_lists_earlier_answers` | EKSİK: parite testi olmayan _question_sentences, _salient, _words, build_directive |
+| `test_steward_core_b.ReaskTest.test_directive_lists_earlier_answers` | EKSİK: parite testi olmayan _question_sentences, _salient, _words, find_answered_duplicate |
 | `test_steward_core_b.QuestionOptionsTest.test_options_normalize_resolve_and_key` | EKSİK: parite testi olmayan _question_sentences, _words, find_answered_duplicate, find_answered_hold |
 | `test_steward_core_b.QuestionOptionsTest.test_notification_text_and_page_html` | EKSİK: parite testi olmayan ask_hint, ask_prefix, question_notification, question_page_html |
 | `test_steward_core_b.SettingsTest.test_defaults_parse_and_clamp` | identity::name_rules_edges, identity::valid_steward_id_vectors |
@@ -1411,43 +1424,43 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_core_b.ShutdownBlockersTest.test_blocked_session_waits_and_records_reason` | EKSİK: parite testi olmayan plan_shutdown |
 | `test_steward_core_b.ShutdownBlockersTest.test_blocked_session_left_open_after_wait_max` | EKSİK: parite testi olmayan plan_shutdown |
 | `test_steward_core_b.SmartTickTest.test_count_open_tbd` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors |
-| `test_steward_core_b.SmartTickTest.test_routine_question_skips_tour_interval` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_core_b.SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
+| `test_steward_core_b.SmartTickTest.test_routine_question_skips_tour_interval` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_core_b.SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, done_conflict_answer |
 | `test_steward_core_b.SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` | EKSİK: parite testi olmayan notes_wait, plan_api_recovery, plan_tick, review_items |
 | `test_steward_core_b.SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` | EKSİK: parite testi olmayan _project_key, derived_of, notes_wait, plan_api_recovery |
-| `test_steward_core_b.SmartTickTest.test_idle_session_without_open_todo_not_nudged` | EKSİK: parite testi olmayan _is_project_session, item_signature, marker_next_work, review_items |
+| `test_steward_core_b.SmartTickTest.test_idle_session_without_open_todo_not_nudged` | EKSİK: parite testi olmayan marker_next_work, review_items |
 | `test_steward_core_b.AskStatusLineTests.test_status_lines_do_not_open_records` | EKSİK: parite testi olmayan _ask_is_status_line, marker_record_actions |
 | `test_steward_core_b.AskBaseTests.test_dated_session_name_collapses_to_base` | EKSİK: parite testi olmayan _ask_base, _ask_is_status_line, marker_record_actions |
 | `test_steward_core_b.DeferAnswerTests.test_is_defer_answer` | EKSİK: parite testi olmayan is_defer_answer |
 | `test_steward_core_b.DeferAnswerTests.test_digest_hides_deferred_until_expiry` | EKSİK: parite testi olmayan pending_digest_text |
 | `test_steward_core_b.StartDecisionEventTests.test_event_shape` | EKSİK: parite testi olmayan start_decision_event |
 | `test_steward_core_b.ExpiredHandoverNoteTest.test_note_helper` | EKSİK: parite testi olmayan expired_handover_note |
-| `test_steward_core_b.ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_core_b.ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
+| `test_steward_core_b.ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, expired_handover_note |
+| `test_steward_core_b.ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
 | `test_steward_core_b.UcliStuckLadderTest.test_shorten_helper` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_b.UcliStuckLadderTest.test_ladder` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_core_b.RemoteRespawnNoteTest.test_note_reaches_directive` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_core_b.RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_ctx.ContextQuestionTest.test_classifier` | EKSİK: parite testi olmayan is_context_question |
-| `test_steward_ctx.ContextQuestionTest.test_low_context_continues_without_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_answer |
-| `test_steward_ctx.ContextQuestionTest.test_high_context_hands_over` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_answer, context_threshold |
-| `test_steward_ctx.ContextQuestionTest.test_unknown_context_or_disabled_leaves_question` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_ctx.ContextQuestionTest.test_over_threshold_single_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_paused_over_threshold_sends_no_handover_on_any_tick` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, derived_of |
-| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_done_project_also_gets_no_threshold_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, derived_of |
-| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_planned_project_still_hands_over_at_threshold` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_context_question_on_paused_project_does_not_start_a_handover` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_ctx.ContextQuestionTest.test_low_context_continues_without_handover` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_answer, context_threshold |
+| `test_steward_ctx.ContextQuestionTest.test_high_context_hands_over` | EKSİK: parite testi olmayan _project_key, context_answer, context_threshold, derived_of |
+| `test_steward_ctx.ContextQuestionTest.test_unknown_context_or_disabled_leaves_question` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_ctx.ContextQuestionTest.test_over_threshold_single_handover` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_paused_over_threshold_sends_no_handover_on_any_tick` | EKSİK: parite testi olmayan _project_key, api_error_kind, derived_of, plan_api_recovery |
+| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_done_project_also_gets_no_threshold_handover` | EKSİK: parite testi olmayan _project_key, api_error_kind, derived_of, plan_api_recovery |
+| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_planned_project_still_hands_over_at_threshold` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.PausedProjectNoContextHandoverTest.test_context_question_on_paused_project_does_not_start_a_handover` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_ctx.HandoverDeferTest.test_pure_decision` | EKSİK: parite testi olmayan handover_defer_decision |
-| `test_steward_ctx.HandoverDeferTest.test_subagent_active_defers_then_hands_over_when_quiet` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_busy_and_unknown_defer` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_history_fallback_defers_too` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_force_by_ratio` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_force_by_time` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_defer_disabled_keeps_old_behaviour` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_below_threshold_drops_deferral` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_ctx.HandoverDeferTest.test_brain_same_rule` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_no_second_action_while_deferred` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_ctx.HandoverDeferTest.test_context_question_path_defers` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_answer |
+| `test_steward_ctx.HandoverDeferTest.test_subagent_active_defers_then_hands_over_when_quiet` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_busy_and_unknown_defer` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_history_fallback_defers_too` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_force_by_ratio` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_force_by_time` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_defer_disabled_keeps_old_behaviour` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_below_threshold_drops_deferral` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_ctx.HandoverDeferTest.test_brain_same_rule` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_no_second_action_while_deferred` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, handover_defer_decision |
+| `test_steward_ctx.HandoverDeferTest.test_context_question_path_defers` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_answer, context_threshold |
 | `test_steward_ctx.HandoverDeferTest.test_engine_logs_deferral` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_dialog_stuck.ClassifyTest.test_kinds` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_dialog_stuck.ClassifyTest.test_history_mention_is_not_dialog` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -1502,17 +1515,17 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_explain_idle.Explain.test_all_and_lang` | EKSİK: parite testi olmayan _why, explain_idle |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_new_ui_keys` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_loop_reset_human_only` | EKSİK: parite testi olmayan _log_dedup |
-| `test_steward_generic.TestConfig.test_generic_defaults_to_sonnet_medium` | EKSİK: parite testi olmayan phase_model_effort |
+| `test_steward_generic.TestConfig.test_generic_defaults_to_sonnet_medium` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
 | `test_steward_generic.TestConfig.test_own_block_is_the_owners_explicit_choice` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+10) |
 | `test_steward_generic.TestConfig.test_default_can_never_be_generic` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+10) |
 | `test_steward_generic.TestCreate.test_http_create_with_role_generic` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_generic.TestCreate.test_cli_create_with_role_generic` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_generic.TestCreate.test_list_row_carries_role_generic` | EKSİK: parite testi olmayan api_error_brief, loop_paused, summarize_projects |
-| `test_steward_generic.TestBrainMd.test_generic_section_only_for_generic` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_generic.TestBrainMd.test_ensure_workspace_writes_generic_section` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_generic.TestBacklog.test_classification` | EKSİK: parite testi olmayan _clip, _short, generic_backlog |
-| `test_steward_generic.TestBacklog.test_empty_and_dedup_and_cap` | EKSİK: parite testi olmayan _clip, _short, generic_backlog |
-| `test_steward_generic.TestBacklog.test_tour_prompt_renders_backlog_only_when_present` | EKSİK: parite testi olmayan _clip, build_tour_prompt |
+| `test_steward_generic.TestBrainMd.test_generic_section_only_for_generic` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
+| `test_steward_generic.TestBrainMd.test_ensure_workspace_writes_generic_section` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15) |
+| `test_steward_generic.TestBacklog.test_classification` | EKSİK: parite testi olmayan generic_backlog |
+| `test_steward_generic.TestBacklog.test_empty_and_dedup_and_cap` | EKSİK: parite testi olmayan generic_backlog |
+| `test_steward_generic.TestBacklog.test_tour_prompt_renders_backlog_only_when_present` | prompts::build_tour_prompt_vectors, prompts::p_clip |
 | `test_steward_generic.TestUpperTier.test_is_upper_tier` | EKSİK: parite testi olmayan is_upper_tier |
 | `test_steward_generic.TestUpperTier.test_approval_is_specific_to_project_model_effort` | EKSİK: parite testi olmayan upper_tier_approved, upper_tier_question_text, upper_tier_tag |
 | `test_steward_generic.TestUpperGate.test_brain_directive_to_opus_refused_and_question_opened_once` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
@@ -1524,21 +1537,21 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_generic.TestUpperGate.test_register_gate_before_side_effects` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, ask_hint |
 | `test_steward_generic.TestDynamicProjects.test_remove_is_human_only_and_logged` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_generic.TestDynamicProjects.test_cli_drop` | EKSİK: parite testi olmayan _log_dedup |
-| `test_steward_generic.TestDynamicProjects.test_panel_add_then_tick_treats_it_as_normal_project` | EKSİK: parite testi olmayan _log_dedup, card_one_liner, card_path |
-| `test_steward_generic.TestTourBacklog.test_generic_tour_item_has_backlog` | EKSİK: parite testi olmayan World.host_of, World.resolve, _clip, _log_dedup |
-| `test_steward_generic.TestTourBacklog.test_plain_steward_tour_is_unchanged` | EKSİK: parite testi olmayan _log_dedup, build_tour_prompt, is_generic, world_for |
+| `test_steward_generic.TestDynamicProjects.test_panel_add_then_tick_treats_it_as_normal_project` | EKSİK: parite testi olmayan _log_dedup |
+| `test_steward_generic.TestTourBacklog.test_generic_tour_item_has_backlog` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
+| `test_steward_generic.TestTourBacklog.test_plain_steward_tour_is_unchanged` | EKSİK: parite testi olmayan _log_dedup, is_generic, world_for |
 | `test_steward_get_paths_complete.GetPathsCompleteTest.test_every_handled_get_path_is_registered` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_handover_log_session.HandoverLogSessionTest.test_log_has_session_name` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_handover_questions.HandoverQuestionsTest.test_note_lists_only_own_open_questions` | EKSİK: parite testi olmayan _question_sentences, _salient, _words, find_answered_duplicate |
 | `test_steward_handover_questions.HandoverQuestionsTest.test_note_is_bounded` | EKSİK: parite testi olmayan handover_questions_note |
 | `test_steward_handover_questions.HandoverQuestionsTest.test_local_handover_passes_extra_only_when_open_questions` | EKSİK: parite testi olmayan World.resolve, _project_key, _question_sentences, _words |
-| `test_steward_ho_halted.HoHaltedTest.test_paused_ready_no_respawn_session_stays` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
+| `test_steward_ho_halted.HoHaltedTest.test_paused_ready_no_respawn_session_stays` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
 | `test_steward_ho_halted.HoHaltedTest.test_paused_session_gone_no_start` | EKSİK: parite testi olmayan _project_key, derived_of, plan_api_recovery, plan_tick |
-| `test_steward_ho_halted.HoHaltedTest.test_done_ready_no_respawn` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_ho_halted.HoHaltedTest.test_planned_unchanged_respawn_and_start` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_ho_halted.HoHaltedTest.test_planning_unchanged` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_ho_halted.HoHaltedTest.test_done_close_flow_still_stops` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
-| `test_steward_ho_halted.HoHaltedTest.test_paused_busy_waits_then_halts` | EKSİK: parite testi olmayan _is_project_session, _project_key, derived_of, plan_api_recovery |
+| `test_steward_ho_halted.HoHaltedTest.test_done_ready_no_respawn` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
+| `test_steward_ho_halted.HoHaltedTest.test_planned_unchanged_respawn_and_start` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
+| `test_steward_ho_halted.HoHaltedTest.test_planning_unchanged` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
+| `test_steward_ho_halted.HoHaltedTest.test_done_close_flow_still_stops` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
+| `test_steward_ho_halted.HoHaltedTest.test_paused_busy_waits_then_halts` | EKSİK: parite testi olmayan _project_key, derived_of, plan_api_recovery, plan_tick |
 | `test_steward_ho_on_open.ResumeLacksHoTest.test_work_without_ho_is_detected` | markers::needs_ho_rfh_marker_in |
 | `test_steward_ho_on_open.ResumeLacksHoTest.test_ho_done_is_clean` | markers::needs_ho_rfh_marker_in |
 | `test_steward_ho_on_open.ResumeLacksHoTest.test_new_request_after_ho_needs_ho_again` | markers::needs_ho_rfh_marker_in |
@@ -1557,9 +1570,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.HttpTest.test_question_page_auth_and_answer_flow` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, answer_has_action |
 | `test_steward_http.HttpTest.test_register_creates_folder_goal_and_roster` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_http.HttpTest.test_tick_applies_actions_with_mocked_views` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
-| `test_steward_http.HttpTest.test_refresh_card_writes_summary_and_logs` | EKSİK: parite testi olmayan World.host_of, World.resolve, _clip, _log_dedup |
-| `test_steward_http.HttpTest.test_refresh_card_failure_keeps_old_card_or_writes_raw` | EKSİK: parite testi olmayan World.host_of, World.resolve, _clip, _log_dedup |
-| `test_steward_http.HttpTest.test_refresh_due_cards_rules` | EKSİK: parite testi olmayan World.host_of, World.resolve, _clip, _goal_from_docs |
+| `test_steward_http.HttpTest.test_refresh_card_writes_summary_and_logs` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
+| `test_steward_http.HttpTest.test_refresh_card_failure_keeps_old_card_or_writes_raw` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
+| `test_steward_http.HttpTest.test_refresh_due_cards_rules` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
 | `test_steward_http.HttpTest.test_tick_runs_card_step_unless_disabled` | EKSİK: parite testi olmayan World.host_of, World.own_projects, World.owner_of, World.owns |
 | `test_steward_http.HttpTest.test_respawn_marks_card_stale` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_http.HttpTest.test_cards_in_context_projects_and_api` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
@@ -1591,18 +1604,18 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.BrainWakeGateTest.test_brain_directive_capped_per_day_separately_from_due` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_http.BrainWakeGateTest.test_brain_gate_dry_logs_would_and_sends` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_http.WakeGateTest.test_first_send_never_gated_then_repeat_dry_logs_but_sends_act_skips` | EKSİK: parite testi olmayan _log_dedup |
-| `test_steward_http.WakeGateTest.test_gate_is_skipped_when_the_directive_just_opened_the_session` | EKSİK: parite testi olmayan _log_dedup, build_directive, main_session_model_effort, phase_model_effort |
+| `test_steward_http.WakeGateTest.test_gate_is_skipped_when_the_directive_just_opened_the_session` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_http.WakeGateTest.test_other_text_other_reason_answer_off_and_window` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_http.BigResumeTest.test_oversized_detection` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_http.BigResumeTest.test_small_unknown_other_cli_and_off_keep_resume` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_http.BigResumeTest.test_ensure_running_starts_fresh_for_big_context` | EKSİK: parite testi olmayan World.resolve, _log_dedup, _project_key, world_for |
 | `test_steward_http.WakeCapPanicTest.test_daily_cap_dry_and_act_and_reset_on_answer` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_http.WakeCapPanicTest.test_panic_flag_forces_observe_and_blocks_brain_directive` | EKSİK: parite testi olmayan World.own_projects, World.owner_of, World.owns, _log_dedup |
-| `test_steward_http.BlockedEscalationTest.test_blocked_waits_four_hours_routine_thirty_minutes` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
+| `test_steward_http.BlockedEscalationTest.test_blocked_waits_four_hours_routine_thirty_minutes` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
 | `test_steward_http.BlockedEscalationTest.test_owner_only_denial_escalates_routine_immediately` | EKSİK: parite testi olmayan World.resolve, _log_dedup, _project_key, _question_sentences |
 | `test_steward_http.BlockedEscalationTest.test_owner_only_denial_blocks_brain_directive_until_answered` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_http.BlockedEscalationTest.test_owner_pending_block_pure` | EKSİK: parite testi olmayan owner_pending_block |
-| `test_steward_http.BlockedEscalationTest.test_protocol_and_guide_derive_from_owner_topics` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
+| `test_steward_http.BlockedEscalationTest.test_protocol_and_guide_derive_from_owner_topics` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
 | `test_steward_hyphen_names.ValidNameTest.test_hyphen_rules` | identity::name_rules_edges, identity::valid_name_vectors |
 | `test_steward_hyphen_names.HyphenProjectTest.test_store_and_session_mapping` | EKSİK: parite testi olmayan _project_key, derived_of |
 | `test_steward_hyphen_names.HyphenProjectTest.test_shorter_prefix_does_not_claim` | EKSİK: parite testi olmayan _project_key, derived_of |
@@ -1729,9 +1742,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_lessons.DuplicateSignatureTest.test_same_signature_second_is_duplicate_and_not_sent` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_lessons.PruneTest.test_keeps_last_auto_lines_and_manual_notes` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_lessons.PruneTest.test_write_lesson_prunes_file` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_steward_lessons.PlanTest.test_sends_one_action_with_batch_limit` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view |
-| `test_steward_lessons.PlanTest.test_gates` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view |
-| `test_steward_lessons.PlanTest.test_sent_lines_not_resent_and_failures_capped` | EKSİK: parite testi olmayan _is_project_session, pick_delivery_view |
+| `test_steward_lessons.PlanTest.test_sends_one_action_with_batch_limit` | EKSİK: parite testi olmayan pick_delivery_view |
+| `test_steward_lessons.PlanTest.test_gates` | EKSİK: parite testi olmayan pick_delivery_view |
+| `test_steward_lessons.PlanTest.test_sent_lines_not_resent_and_failures_capped` | EKSİK: parite testi olmayan pick_delivery_view |
 | `test_steward_lessons.DeliverTest.test_success_marks_sent_once_and_failure_counts` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_lessons.DeliverTest.test_answer_delivery_failures_alert_once_and_answer_stays` | EKSİK: parite testi olmayan World.resolve, _log_dedup, _project_key, _question_sentences |
 | `test_steward_lessons.DeliverTest.test_stop_with_pause_payload_pauses_with_reason_after_ok_only` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
@@ -1763,13 +1776,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_loop_guard.LoopGuardTest.test_failing_start_on_absent_session_breaks` | EKSİK: parite testi olmayan _loop_sig, loop_guard |
 | `test_steward_loop_guard.LoopGuardTest.test_other_kinds_untouched` | EKSİK: parite testi olmayan loop_guard |
 | `test_steward_loop_guard.LogDedupTest.test_identical_events_within_window_are_suppressed_and_counted` | EKSİK: parite testi olmayan _log_dedup |
-| `test_steward_main_model.MainSessionModel.test_registered_fable_becomes_sonnet_medium` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_main_model.MainSessionModel.test_opus_and_empty_on_claude` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_main_model.MainSessionModel.test_non_claude_cli_untouched` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_main_model.MainSessionModel.test_remote_unknown_cli_only_claude_models` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_main_model.MainSessionModel.test_non_claude_model_on_claude_cli_untouched` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_main_model.MainSessionModel.test_no_sonnet_known_is_noop` | EKSİK: parite testi olmayan main_session_model_effort |
-| `test_steward_multi.TestGolden.test_world_none_is_byte_identical` | EKSİK: parite testi olmayan _ask_base, _ask_is_status_line, _is_project_session, _project_key |
+| `test_steward_main_model.MainSessionModel.test_registered_fable_becomes_sonnet_medium` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainSessionModel.test_opus_and_empty_on_claude` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainSessionModel.test_non_claude_cli_untouched` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainSessionModel.test_remote_unknown_cli_only_claude_models` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainSessionModel.test_non_claude_model_on_claude_cli_untouched` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainSessionModel.test_no_sonnet_known_is_noop` | prompts::main_session_model_effort_vectors |
+| `test_steward_multi.TestGolden.test_world_none_is_byte_identical` | EKSİK: parite testi olmayan _ask_base, _ask_is_status_line, _project_key, _sibling_running |
 | `test_steward_multi.TestGolden.test_default_world_is_identical` | EKSİK: parite testi olmayan World._class, World.is_manual, World.name_class, World.own_projects |
 | `test_steward_multi.TestGolden.test_default_world_from_disk_index_is_identical` | EKSİK: parite testi olmayan World._class, World.is_manual, World.name_class, World.own_projects |
 | `test_steward_multi.TestOwnershipIndex.test_two_identities_owners_and_brains` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::normalize_host_edges (+10) |
@@ -1857,20 +1870,20 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_owner_todo.Move.test_dry_mode_does_not_lock_act` | EKSİK: parite testi olmayan marker_next_work, one_line, plan_claude_idle, turn_failed |
 | `test_steward_owner_todo.Move.test_observe_skips_kind` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_owner_todo.Explain.test_count_in_why` | EKSİK: parite testi olmayan _why, explain_idle, notes_wait |
-| `test_steward_paths.PathsForTest.test_default_equals_legacy_layout` | EKSİK: parite testi olmayan card_path, daily_path |
+| `test_steward_paths.PathsForTest.test_default_equals_legacy_layout` | EKSİK: parite testi olmayan daily_path |
 | `test_steward_paths.PathsForTest.test_default_follows_constant_patches` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_paths.PathsForTest.test_other_sid_under_stewards` | identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_paths.PathsForTest.test_sid_rejects_traversal` | identity::paths_for_vectors, identity::paths_layout_and_errors |
-| `test_steward_paths.PathsForTest.test_no_arg_matches_explicit_default_byte_for_byte` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, card_path |
+| `test_steward_paths.PathsForTest.test_no_arg_matches_explicit_default_byte_for_byte` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, daily_path |
 | `test_steward_paths.PathsForTest.test_other_sid_isolated_from_default` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, find_answered_duplicate |
 | `test_steward_pause_close.WrapUpText.test_wrap_up_detected` | EKSİK: parite testi olmayan is_wrap_up_directive |
 | `test_steward_pause_close.WrapUpText.test_plain_work_not_wrap_up` | EKSİK: parite testi olmayan is_wrap_up_directive |
 | `test_steward_pause_close.WrapUpText.test_keep_phase_flag` | EKSİK: parite testi olmayan directive_keeps_phase, is_wrap_up_directive |
-| `test_steward_pause_close.PauseClose.test_idle_session_gets_handover_then_close` | EKSİK: parite testi olmayan _is_project_session, _project_key, context_threshold, derived_of |
-| `test_steward_pause_close.PauseClose.test_busy_session_waits` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, derived_of |
-| `test_steward_pause_close.PauseClose.test_not_paused_anymore_clears` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, context_threshold |
-| `test_steward_pause_close.PauseClose.test_no_request_no_action` | EKSİK: parite testi olmayan _is_project_session, _project_key, api_error_kind, derived_of |
-| `test_steward_pause_close.PauseClose.test_gone_session_clears_request` | EKSİK: parite testi olmayan plan_api_recovery, plan_tick, review_items, stale_answers |
+| `test_steward_pause_close.PauseClose.test_idle_session_gets_handover_then_close` | EKSİK: parite testi olmayan _project_key, context_threshold, derived_of, plan_api_recovery |
+| `test_steward_pause_close.PauseClose.test_busy_session_waits` | EKSİK: parite testi olmayan _project_key, api_error_kind, derived_of, plan_api_recovery |
+| `test_steward_pause_close.PauseClose.test_not_paused_anymore_clears` | EKSİK: parite testi olmayan _project_key, api_error_kind, context_threshold, derived_of |
+| `test_steward_pause_close.PauseClose.test_no_request_no_action` | EKSİK: parite testi olmayan _project_key, api_error_kind, derived_of, plan_api_recovery |
+| `test_steward_pause_close.PauseClose.test_gone_session_clears_request` | EKSİK: parite testi olmayan plan_api_recovery, plan_tick, review_items |
 | `test_steward_pause_close.PauseClose.test_request_helper` | EKSİK: parite testi olmayan request_pause_close |
 | `test_steward_pending_digest.SlotTest.test_slots` | EKSİK: parite testi olmayan pending_digest_slot |
 | `test_steward_pending_digest.TextTest.test_empty_when_nothing_open` | EKSİK: parite testi olmayan pending_digest_text |
@@ -1939,11 +1952,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote.TestEngineRemote.test_all_reads_timing_out_still_blames_host` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::normalize_host_edges (+10) |
 | `test_steward_remote.TestTargetRemote.test_rules` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_remote.TestTargetRemote.test_http_endpoints` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
-| `test_steward_remote.TestLocalFsGuards.test_cwd_and_cards` | EKSİK: parite testi olmayan World.host_of, World.resolve, _project_key, card_path |
+| `test_steward_remote.TestLocalFsGuards.test_cwd_and_cards` | EKSİK: parite testi olmayan World.host_of, World.resolve, _project_key, derived_of |
 | `test_steward_remote.TestLocalFsGuards.test_idea_export_register_file_context` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote.TestLocalFsGuards.test_project_for_session_skips_local_instance_registry` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
-| `test_steward_remote.TestUpsertRemote.test_active_phase_needs_remote_roster` | EKSİK: parite testi olmayan _log_dedup, card_one_liner, card_path |
-| `test_steward_remote.TestUpsertRemote.test_host_change_checks_running_sessions` | EKSİK: parite testi olmayan _log_dedup, _project_key, card_one_liner, card_path |
+| `test_steward_remote.TestUpsertRemote.test_active_phase_needs_remote_roster` | EKSİK: parite testi olmayan _log_dedup |
+| `test_steward_remote.TestUpsertRemote.test_host_change_checks_running_sessions` | EKSİK: parite testi olmayan _log_dedup, _project_key, derived_of |
 | `test_steward_remote.TestUpsertRemote.test_cli_set_host_goes_through_the_panel` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors |
 | `test_steward_remote.TestWebHostsLastOk.test_last_ok_at_tracks_only_successes` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_remote_actions.TestRemoteActions.test_handover_path_body_timeout` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
@@ -1979,12 +1992,12 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_answer_persist.Retry.test_tick_keeps_queue_and_jobs_step_retries` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_remote_answer_persist.OwnedSessionName.test_tracked_hyphen_session_gives_project_folder` | EKSİK: parite testi olmayan _log_dedup, _question_sentences, _words, answer_has_action |
 | `test_steward_remote_answer_persist.DeliveryAlert.test_transient_host_errors_alert_only_after_30_min` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
-| `test_steward_remote_cards.TestRemoteCards.test_card_built_from_remote_reads_and_written_locally` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _log_dedup, _short |
-| `test_steward_remote_cards.TestRemoteCards.test_manual_refresh_card_uses_remote` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _log_dedup, _short |
-| `test_steward_remote_cards.TestRemoteCards.test_skipped_when_off_or_host_unavailable` | EKSİK: parite testi olmayan card_path, select_rows, world_for |
+| `test_steward_remote_cards.TestRemoteCards.test_card_built_from_remote_reads_and_written_locally` | EKSİK: parite testi olmayan _log_dedup, select_rows, world_for |
+| `test_steward_remote_cards.TestRemoteCards.test_manual_refresh_card_uses_remote` | EKSİK: parite testi olmayan _log_dedup |
+| `test_steward_remote_cards.TestRemoteCards.test_skipped_when_off_or_host_unavailable` | EKSİK: parite testi olmayan select_rows, world_for |
 | `test_steward_remote_cards.TestRemoteCards.test_running_remote_project_is_skipped` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
-| `test_steward_remote_cards.TestRemoteCards.test_one_remote_card_per_tick_oldest_checked_first` | EKSİK: parite testi olmayan _clip, _goal_from_docs, _log_dedup, _short |
-| `test_steward_remote_cards.TestRemoteCards.test_remote_card_budget_stops_reads` | EKSİK: parite testi olmayan card_path, select_rows, world_for |
+| `test_steward_remote_cards.TestRemoteCards.test_one_remote_card_per_tick_oldest_checked_first` | EKSİK: parite testi olmayan _log_dedup, select_rows, world_for |
+| `test_steward_remote_cards.TestRemoteCards.test_remote_card_budget_stops_reads` | EKSİK: parite testi olmayan select_rows, world_for |
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_reads_first_then_writes_to_remote_path` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_tbd_target_file` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_missing_remote_notes_file_is_created_with_flag` | EKSİK: parite testi olmayan _log_dedup |
@@ -1992,7 +2005,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_observe_brain_is_dry_but_human_http_writes` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_gate_off_stale_down_skip_without_any_request` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+12) |
 | `test_steward_remote_cards.TestRemoteIdeaExport.test_write_failure_reported` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+12) |
-| `test_steward_remote_cards.TestRemoteRegister.test_adopts_existing_remote_roster_row_without_creating_anything` | EKSİK: parite testi olmayan _log_dedup, card_one_liner, card_path |
+| `test_steward_remote_cards.TestRemoteRegister.test_adopts_existing_remote_roster_row_without_creating_anything` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_remote_cards.TestRemoteRegister.test_missing_remote_row_or_gate_gives_clear_error` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+12) |
 | `test_steward_remote_cards.TestRemoteRegister.test_conflicting_host_refused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+12) |
 | `test_steward_remote_destructive.TestRemoteStop.test_steward_done_stop_path_body_timeout` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
@@ -2064,15 +2077,15 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_surface.TestState.test_state_shows_open_tbd_and_todo_counts` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestState.test_local_namesake_does_not_make_remote_project_running` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestState.test_no_double_count` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
-| `test_steward_remote_surface.TestState.test_stale_host_rows_not_listed` | EKSİK: parite testi olmayan api_error_brief, card_one_liner, loop_paused, select_rows |
+| `test_steward_remote_surface.TestState.test_stale_host_rows_not_listed` | EKSİK: parite testi olmayan api_error_brief, loop_paused, select_rows, summarize_projects |
 | `test_steward_remote_surface.TestState.test_question_host_and_remote_hosts_health` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
-| `test_steward_remote_surface.TestState.test_local_only_state_has_no_remote_keys` | EKSİK: parite testi olmayan api_error_brief, card_one_liner, loop_paused, summarize_projects |
+| `test_steward_remote_surface.TestState.test_local_only_state_has_no_remote_keys` | EKSİK: parite testi olmayan api_error_brief, loop_paused, summarize_projects, world_for |
 | `test_steward_remote_surface.TestRemoteReads.test_context_reads_over_host_not_local_fs` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestRemoteReads.test_context_running_with_dated_session_name` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestRemoteReads.test_same_path_local_folder_is_never_read` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestRemoteReads.test_errors_and_down_host_return_empty_never_raise` | EKSİK: parite testi olmayan World._class, World.host_of, World.name_class, World.resolve |
 | `test_steward_remote_surface.TestRemoteReads.test_file_read_and_path_guard` | EKSİK: parite testi olmayan World.host_of, World.resolve, _project_key, derived_of |
-| `test_steward_remote_surface.TestRemoteReads.test_enrich_item_remote` | EKSİK: parite testi olmayan World.host_of, World.resolve, _project_key, card_path |
+| `test_steward_remote_surface.TestRemoteReads.test_enrich_item_remote` | EKSİK: parite testi olmayan World.host_of, World.resolve, _project_key, derived_of |
 | `test_steward_remote_surface.TestNotifyAndLog.test_ask_prefix` | EKSİK: parite testi olmayan _question_sentences, _words, ask_hint, ask_prefix |
 | `test_steward_remote_surface.TestNotifyAndLog.test_ask_goes_out_with_host_prefix` | EKSİK: parite testi olmayan World.host_of, World.resolve, _log_dedup, _project_key |
 | `test_steward_remote_surface.TestNotifyAndLog.test_action_log_host_only_remote` | EKSİK: parite testi olmayan _log_dedup |
@@ -2080,15 +2093,15 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_remote_surface.TestJobSubmit.test_remote_project_rejects_local_files` | EKSİK: parite testi olmayan World.host_of, World.owner_of, World.owns, World.resolve |
 | `test_steward_remote_surface.TestMcpAndBrain.test_mcp_overview_carries_host_only_for_remote` | EKSİK: parite testi olmayan World._class, World.host_of, World.is_manual, World.name_class |
 | `test_steward_remote_surface.TestMcpAndBrain.test_mcp_signatures_unchanged_notes_added` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+11) |
-| `test_steward_remote_surface.TestMcpAndBrain.test_workspace_note_only_when_remote` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
-| `test_steward_remote_surface.TestCli.test_projects_host_column_only_with_remote` | EKSİK: parite testi olmayan card_one_liner |
+| `test_steward_remote_surface.TestMcpAndBrain.test_workspace_note_only_when_remote` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+14) |
+| `test_steward_remote_surface.TestCli.test_projects_host_column_only_with_remote` | cards::card_one_liner_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires (+12) |
 | `test_steward_remote_surface.TestCli.test_status_remote_summary_and_health` | EKSİK: parite testi olmayan api_error_brief, loop_paused, summarize_projects |
 | `test_steward_remote_surface.TestCli.test_status_panel_down_is_unknown_not_error` | EKSİK: parite testi olmayan api_error_brief, loop_paused, summarize_projects |
 | `test_steward_remote_surface.TestCli.test_status_without_remote_does_not_call_panel` | EKSİK: parite testi olmayan api_error_brief, loop_paused, summarize_projects |
 | `test_steward_remove_lock.RemoveLock.test_settings_delete_happens_while_lock_held` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_reply_language.Heuristic.test_mismatch_both_ways` | markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors |
 | `test_steward_reply_language.Heuristic.test_short_or_neutral_text_never_flagged` | markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors |
-| `test_steward_reply_language.Directive.test_language_line_in_full_and_compact_both_languages` | EKSİK: parite testi olmayan build_directive |
+| `test_steward_reply_language.Directive.test_language_line_in_full_and_compact_both_languages` | markers::reply_language_line_vectors, prompts::build_directive_vectors |
 | `test_steward_reply_language.Directive.test_handover_messages_carry_language` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_reply_language.FixNote.test_once_per_day_per_session` | markers::lang_fix_action_state_handling, markers::lang_fix_action_vectors, markers::text_lang_mismatch_edges, markers::text_lang_mismatch_vectors |
 | `test_steward_reply_language.FixNote.test_plan_tick_emits_note_for_wrong_language_marker` | markers::marker_texts_vectors, markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus (+3) |
@@ -2153,11 +2166,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_stale_note.StaleNoteTest.test_closed_item_is_stale` | EKSİK: parite testi olmayan _note_words, clip_words, stale_next_note |
 | `test_steward_stale_note.StaleNoteTest.test_open_item_wins` | EKSİK: parite testi olmayan _note_words, stale_next_note |
 | `test_steward_stale_note.StaleNoteTest.test_unknown_is_not_stale` | EKSİK: parite testi olmayan _note_words, stale_next_note |
-| `test_steward_stale_note.StaleNoteTest.test_copy_replaces_line_and_keeps_record` | EKSİK: parite testi olmayan _note_words, build_directive, clip_words, next_work_hint |
+| `test_steward_stale_note.StaleNoteTest.test_copy_replaces_line_and_keeps_record` | EKSİK: parite testi olmayan _note_words, clip_words, next_work_hint, stale_next_note |
 | `test_steward_stale_note.StaleNoteTest.test_item_moved_to_done_is_stale` | EKSİK: parite testi olmayan _note_words, clip_words, stale_next_note, without_stale_note |
 | `test_steward_stale_note.StaleNoteTest.test_open_item_wins_over_done` | EKSİK: parite testi olmayan _note_words, stale_next_note |
 | `test_steward_stale_note.StaleNoteTest.test_done_history_needs_stronger_match` | EKSİK: parite testi olmayan _note_words, clip_words, stale_next_note |
-| `test_steward_stale_note.DoneFileWiringTest.test_note_project_reads_done_md` | EKSİK: parite testi olmayan _note_words, clip_words, note_claims, stale_next_note |
+| `test_steward_stale_note.DoneFileWiringTest.test_note_project_reads_done_md` | EKSİK: parite testi olmayan _note_words, clip_words, stale_next_note, without_stale_note |
 | `test_steward_start_appears.StartAppearsTest.test_appears_after_a_few_polls` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_start_appears.StartAppearsTest.test_never_appears_returns_false_without_real_sleep` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_start_appears.StartAppearsTest.test_cache_is_invalidated_each_poll` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
@@ -2215,7 +2228,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ucli_idle.NotesWaitTest.test_notes_wait_detect` | EKSİK: parite testi olmayan notes_wait |
 | `test_steward_ucli_idle.NotesWaitTest.test_due_project_with_bekleme_note_not_started_and_reason_recorded` | EKSİK: parite testi olmayan notes_wait, plan_api_recovery, plan_tick, review_items |
 | `test_steward_ucli_idle.ChainPauseFlowTest.test_claude_idle_skips_owner_wait` | EKSİK: parite testi olmayan _done_at_line_end, idle_finish_marker, marker_next_work, next_line |
-| `test_steward_ucli_idle.ChainPauseFlowTest.test_pause_written_only_after_handover_finishes` | EKSİK: parite testi olmayan _is_project_session, _project_key, _sibling_running, derived_of |
+| `test_steward_ucli_idle.ChainPauseFlowTest.test_pause_written_only_after_handover_finishes` | EKSİK: parite testi olmayan _project_key, _sibling_running, derived_of, marker_record_actions |
 | `test_steward_ucli_send.UcliSendTest.test_ucli_text_folded_not_truncated` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_ucli_send.UcliSendTest.test_non_ucli_untouched_and_no_recheck` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_steward_ucli_send.UcliSendTest.test_claude_trust_dialog_blocks_send` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+5) |
@@ -2251,9 +2264,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_ui_api.UiServiceJobTest.test_add_list_hides_token_and_rm` | EKSİK: parite testi olmayan _log_dedup |
 | `test_steward_ui_api.UiServiceJobTest.test_add_validates_and_brain_refused` | identity::name_rules_edges, identity::valid_name_vectors |
 | `test_steward_ui_api.UiServiceJobTest.test_rm_refused_with_open_job_and_ack_only_terminal` | EKSİK: parite testi olmayan _log_dedup |
-| `test_steward_upper_main.TestPure.test_picks_only_running_main_sessions_above_sonnet_medium` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, phase_model_effort, upper_main_views |
-| `test_steward_upper_main.TestPure.test_owners_explicit_upper_choice_is_not_flagged` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, phase_model_effort, upper_main_views |
-| `test_steward_upper_main.TestPure.test_only_claude_family_models_are_audited` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, phase_model_effort, upper_main_views |
+| `test_steward_upper_main.TestPure.test_picks_only_running_main_sessions_above_sonnet_medium` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, upper_main_views |
+| `test_steward_upper_main.TestPure.test_owners_explicit_upper_choice_is_not_flagged` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, upper_main_views |
+| `test_steward_upper_main.TestPure.test_only_claude_family_models_are_audited` | EKSİK: parite testi olmayan is_claude_model, is_upper_tier, upper_main_views |
 | `test_steward_upper_main.TestPure.test_is_upper_tier_itself_stays_model_family_agnostic` | EKSİK: parite testi olmayan is_upper_tier |
 | `test_steward_upper_main.TestPure.test_reviewer_role_is_not_audited` | EKSİK: parite testi olmayan upper_main_views |
 | `test_steward_upper_main.TestPure.test_reminder_text_is_a_reminder_not_an_order` | EKSİK: parite testi olmayan upper_main_text |
@@ -2311,13 +2324,13 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_ucli_brain_mcp.SpawnCwdWiringTests.test_dry_run_preview_shows_env_and_command_not_priority_prefix` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_ucli_brain_mcp.SpawnCwdWiringTests.test_dry_run_preview_masks_secret_env_values` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_ucli_brain_mcp.SpawnCwdWiringTests.test_dry_run_preview_caps_very_long_command` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
-| `test_ucli_brain_mcp.BrainUcliTests.test_default_claude_brain_passes_no_cli_opts` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_ucli_brain_mcp.BrainUcliTests.test_ucli_brain_uses_claude_service_and_cost_cap` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_ucli_brain_mcp.BrainUcliTests.test_settings_override_service_model_and_cap` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
+| `test_ucli_brain_mcp.BrainUcliTests.test_default_claude_brain_passes_no_cli_opts` | EKSİK: parite testi olmayan _log_dedup |
+| `test_ucli_brain_mcp.BrainUcliTests.test_ucli_brain_uses_claude_service_and_cost_cap` | EKSİK: parite testi olmayan _log_dedup |
+| `test_ucli_brain_mcp.BrainUcliTests.test_settings_override_service_model_and_cap` | EKSİK: parite testi olmayan _log_dedup |
 | `test_ucli_brain_mcp.BrainUcliTests.test_defaults` | identity::name_rules_edges, identity::valid_custom_id_vectors, identity::valid_steward_id_vectors |
-| `test_ucli_brain_mcp.BrainUcliTests.test_unknown_service_refuses_without_spawn` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_ucli_brain_mcp.BrainUcliTests.test_spawn_refusal_is_reported_not_raised` | EKSİK: parite testi olmayan _log_dedup, build_workspace_claude_md, identity_section |
-| `test_ucli_brain_mcp.BrainUcliTests.test_claude_brain_value_error_still_raises` | EKSİK: parite testi olmayan build_workspace_claude_md, identity_section |
+| `test_ucli_brain_mcp.BrainUcliTests.test_unknown_service_refuses_without_spawn` | EKSİK: parite testi olmayan _log_dedup |
+| `test_ucli_brain_mcp.BrainUcliTests.test_spawn_refusal_is_reported_not_raised` | EKSİK: parite testi olmayan _log_dedup |
+| `test_ucli_brain_mcp.BrainUcliTests.test_claude_brain_value_error_still_raises` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+4) |
 | `test_ucli_cost_watch.CostWatch.test_no_cap_does_nothing` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_ucli_cost_watch.CostWatch.test_warn_once_at_80` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |
 | `test_ucli_cost_watch.CostWatch.test_second_warning_at_90_once` | EKSİK: saf çekirdek çağrısı yok, gerekçe yazılmadı |

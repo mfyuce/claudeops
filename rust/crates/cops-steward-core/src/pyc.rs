@@ -194,6 +194,86 @@ pub fn to_float(v: &Value) -> Option<f64> {
     }
 }
 
+/// `int(v)`; Python'un istisna fırlattığı (ya da i64'e sığmayan) değerde `None`.
+pub fn to_int(v: &Value) -> Option<i64> {
+    match v {
+        Value::Bool(b) => Some(i64::from(*b)),
+        Value::Number(n) => n.as_i64().or_else(|| {
+            let f = n.as_f64().filter(|f| f.is_finite() && f.abs() < 9.2e18)?;
+            Some(f.trunc() as i64)
+        }),
+        Value::String(s) => {
+            let t = strip(s);
+            let body = t.strip_prefix(['+', '-']).unwrap_or(t);
+            let bad = body.is_empty() || body.starts_with('_') || body.ends_with('_') || body.contains("__");
+            if bad || !body.chars().all(|c| c.is_ascii_digit() || c == '_') {
+                return None;
+            }
+            t.replace('_', "").parse().ok()
+        }
+        _ => None,
+    }
+}
+
+/// `json.dumps(s)` (str, `ensure_ascii=True`): tırnaklarıyla.
+pub fn json_str_ascii(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            ' '..='~' => out.push(c),
+            _ => {
+                for unit in c.encode_utf16(&mut [0u16; 2]) {
+                    out.push_str(&format!("\\u{unit:04x}"));
+                }
+            }
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// `hashlib.sha1(data).hexdigest()` (kimlik/değişim özeti; güvenlik amaçlı değil). Ayrı bağımlılık eklenmesin diye burada.
+pub fn sha1_hex(data: &[u8]) -> String {
+    let mut h: [u32; 5] = [0x6745_2301, 0xefcd_ab89, 0x98ba_dcfe, 0x1032_5476, 0xc3d2_e1f0];
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&(data.len() as u64).wrapping_mul(8).to_be_bytes());
+    for block in msg.as_chunks::<64>().0 {
+        let mut w = [0u32; 80];
+        for (slot, b) in w.iter_mut().zip(block.as_chunks::<4>().0) {
+            *slot = b.iter().fold(0, |acc, &x| (acc << 8) | u32::from(x));
+        }
+        for i in 16..80 {
+            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e] = h;
+        for (i, &word) in w.iter().enumerate() {
+            let (f, k) = match i {
+                0..=19 => ((b & c) | (!b & d), 0x5a82_7999),
+                20..=39 => (b ^ c ^ d, 0x6ed9_eba1),
+                40..=59 => ((b & c) | (b & d) | (c & d), 0x8f1b_bcdc),
+                _ => (b ^ c ^ d, 0xca62_c1d6),
+            };
+            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(word);
+            (e, d, c, b, a) = (d, c, b.rotate_left(30), a, t);
+        }
+        for (x, y) in h.iter_mut().zip([a, b, c, d, e]) {
+            *x = x.wrapping_add(y);
+        }
+    }
+    h.iter().map(|x| format!("{x:08x}")).collect()
+}
+
 /// `repr(s)` (str)
 pub fn repr_str(s: &str) -> String {
     let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
@@ -307,6 +387,18 @@ mod tests {
                 && !contains_word("_KARAR", "KARAR")
                 && contains_word("KARARKARAR KARAR", "KARAR")
         );
+    }
+
+    #[test]
+    fn int_json_and_sha1_follow_python() {
+        use serde_json::json;
+        assert_eq!(to_int(&json!(" -1_000 ")), Some(-1000));
+        assert_eq!(to_int(&json!(-2.9)), Some(-2));
+        assert!(to_int(&json!("1.5")).is_none() && to_int(&json!("_1")).is_none() && to_int(&json!(null)).is_none());
+        assert_eq!(json_str_ascii("a\"\\\n\u{7f}ç😀\u{1}"), r#""a\"\\\n\u007f\u00e7\ud83d\ude00\u0001""#);
+        assert_eq!(sha1_hex(b""), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+        assert_eq!(sha1_hex(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+        assert_eq!(sha1_hex(&[b'a'; 1000]), "291e9a6c66994949b57ba5e650361e98fc36b1ba");
     }
 
     #[test]

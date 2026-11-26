@@ -69,9 +69,19 @@ pub fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
+/// Kaydedilmiş vektörler + (varsa) elle yazılmış girdiler (`fixtures/hand`, parity/hand_cases.py).
 pub fn cases(function: &str) -> Vec<Case> {
-    let path = vectors_dir().join(format!("{function}.jsonl.gz"));
-    let file = std::fs::File::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let name = format!("{function}.jsonl.gz");
+    let mut all = cases_in(&vectors_dir().join(&name));
+    let hand = vectors_dir().with_file_name("hand").join(name);
+    if hand.exists() {
+        all.extend(cases_in(&hand));
+    }
+    all
+}
+
+fn cases_in(path: &std::path::Path) -> Vec<Case> {
+    let file = std::fs::File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     BufReader::new(GzDecoder::new(file))
         .lines()
         .map(|l| {
