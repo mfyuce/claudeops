@@ -271,6 +271,7 @@ impl Env {
             claude_state: parse(format!("{}/claude_models.json", self.state)),
             agy_models: strs(case.fact("agy_models")),
             codex_cache: parse(format!("{}/.codex/models_cache.json", self.home)),
+            codex_choices: None,
             ucli: LiveModels { ids, caps },
         }
     }

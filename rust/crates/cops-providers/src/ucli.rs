@@ -1,12 +1,16 @@
 //! ucli sağlayıcısı. Her isteğe bağlı bayrak YALNIZ ikilinin `chat --help`i listeliyorsa eklenir.
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
+use crate::model_sources::{bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, LIVE_MODELS_TIMEOUT};
 use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{basename, fmt_g, join_path, join_quoted, py_float, py_str_repr, quote, str_of, truthy};
+use crate::pyjson::Py;
+use crate::settings::Settings;
 use crate::ucli_opts::{exec_flags, expand_exec_cmds, str_list, BROAD_GLOBS};
 use serde_json::{json, Map, Value};
 use sha1::{Digest, Sha1};
+use std::sync::Mutex;
 
 pub const ALLOW_EDIT: &str = "allow-edit";
 const ALLOW_CREATE: &str = "allow-create";
@@ -58,6 +62,66 @@ pub fn parse_live_models(payload: &Value) -> LiveModels {
         out.ids.push(id);
     }
     out
+}
+
+/// Canlı model listesinin ömrü (sn).
+pub const MODELS_TTL: f64 = 300.0;
+
+/// `_fetch_live_models`: `GET <uç nokta>/models`. Anahtar yoksa istek YAPILMAZ; hata, bozuk yanıt ya da sohbet modeli
+/// yoksa None.
+pub fn fetch_live_models(io: &dyn ModelIo, settings: &Settings) -> Option<LiveModels> {
+    let key = settings.byok_value("ucli", "UCLI_API_KEY");
+    if key.is_empty() {
+        return None;
+    }
+    let mut endpoint = settings.ucli_endpoint();
+    if endpoint.is_empty() {
+        endpoint = DEFAULT_ENDPOINT.into();
+    }
+    let req = HttpRequest {
+        url: format!("{}/models", endpoint.trim_end_matches('/')),
+        headers: vec![("X-API-Key", SecretValue::new(&key)?)],
+        timeout: LIVE_MODELS_TIMEOUT,
+        max_body: HTTP_MAX_BYTES,
+    };
+    let body = bounded(io.http_get(&req), req.max_body)?;
+    // Python `json.loads(bytes)` UTF-8 BOM'u kabul eder (UTF-16/32'yi de; burada desteklenmez).
+    let body = body.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&body);
+    let payload = Py::parse(std::str::from_utf8(body).ok()?)?.to_value();
+    Some(parse_live_models(&payload)).filter(|l| !l.ids.is_empty())
+}
+
+#[derive(Debug, Default)]
+struct Cached {
+    ts: f64,
+    /// `ids` boş = hiç liste yok (Python `None`); başarısız ilk denemeden sonra sabit yedek yazılır.
+    live: LiveModels,
+}
+
+/// `_LIVE_MODEL_CACHE` / `_LIVE_MODEL_CACHE_TS` / `_LIVE_CAPS`.
+#[derive(Debug, Default)]
+pub struct LiveCache(Mutex<Cached>);
+
+impl LiveCache {
+    /// Önbellek yoksa ya da bayatsa (bloklayarak) çeker; başarısız çekim eski listeyi ve yetenekleri bırakır.
+    pub(crate) fn get(&self, io: &dyn ModelIo, settings: &Settings) -> LiveModels {
+        let now = io.monotonic_secs();
+        {
+            let mut c = lock(&self.0);
+            if !c.live.ids.is_empty() && now - c.ts <= MODELS_TTL {
+                return c.live.clone();
+            }
+            c.ts = now;
+        }
+        let fetched = fetch_live_models(io, settings);
+        let mut c = lock(&self.0);
+        match fetched {
+            Some(live) => c.live = live,
+            None if c.live.ids.is_empty() => c.live.ids = vec![FALLBACK_MODEL.into()],
+            None => {}
+        }
+        c.live.clone()
+    }
 }
 
 /// `--effort`e verilecek seviye; modelin alanı kabul ettiği kanıtlı değilse None.

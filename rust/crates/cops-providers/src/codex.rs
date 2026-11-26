@@ -1,9 +1,13 @@
 //! codex sağlayıcısı.
 
 use crate::effort::sort_levels;
+use crate::model_sources::{bounded, lock, ModelIo, CODEX_CACHE_MAX_BYTES};
+use crate::probe::Paths;
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{json_ascii, quote, truthy};
+use crate::pyjson::Py;
 use serde_json::{Map, Value};
+use std::sync::Mutex;
 
 pub const PERMISSION_MODES: [&str; 4] = ["auto", "acceptEdits", "manual", "plan"];
 pub const EFFORT_LEVELS: [&str; 4] = ["low", "medium", "high", "xhigh"];
@@ -40,22 +44,82 @@ fn prio_key(m: &Map<String, Value>) -> PrioKey {
     }
 }
 
-/// `models_cache.json`: `visibility == "list"`, `priority` sırasıyla; boşsa sabit liste. Python'da `models` girdisi sözlük
-/// değilse (AttributeError) ya da öncelikler karşılaştırılamazsa (TypeError) önbellek kullanılmaz, sabit listeye düşülür.
+/// Model listesinin ömrü (sn).
+pub const MODELS_TTL: f64 = 300.0;
+
+/// `models_cache.json`ın ayrıştırılmış hali; yoksa, okunamazsa, UTF-8 ya da JSON değilse None.
+pub(crate) fn read_models_cache(io: &dyn ModelIo, paths: &Paths) -> Option<Value> {
+    let data = bounded(io.read_file(&paths.codex_models_cache(), CODEX_CACHE_MAX_BYTES), CODEX_CACHE_MAX_BYTES)?;
+    Py::parse(std::str::from_utf8(&data).ok()?).map(|p| p.to_value())
+}
+
+#[derive(Debug, Default)]
+struct Cached {
+    /// Son deneme anı; başlangıç 0.0 (agy ile aynı Python davranışı).
+    ts: f64,
+    models: Vec<String>,
+}
+
+/// `CodexProvider._cache_ts` / `_cache_models`.
+#[derive(Debug, Default)]
+pub struct ModelsCache(Mutex<Cached>);
+
+impl ModelsCache {
+    /// TTL dolunca belgeyi (eşzamanlı) yeniden okur; boş/okunamayan sonuç eski listeyi bırakır; hiç yoksa sabit liste.
+    pub(crate) fn get(&self, io: &dyn ModelIo, paths: &Paths) -> Vec<String> {
+        let now = io.monotonic_secs();
+        let due = {
+            let mut c = lock(&self.0);
+            let due = now - c.ts > MODELS_TTL;
+            if due {
+                c.ts = now;
+            }
+            due
+        };
+        if due {
+            let slugs = listed_slugs(read_models_cache(io, paths).as_ref());
+            if !slugs.is_empty() {
+                lock(&self.0).models = slugs;
+            }
+        }
+        let c = lock(&self.0);
+        if c.models.is_empty() {
+            fallback_models()
+        } else {
+            c.models.clone()
+        }
+    }
+}
+
+fn fallback_models() -> Vec<String> {
+    FALLBACK_MODELS.iter().map(|s| s.to_string()).collect()
+}
+
+/// `models_cache.json`: `visibility == "list"`, `priority` sırasıyla; boşsa sabit liste.
 pub fn model_choices(cache: Option<&Value>) -> Vec<String> {
-    let fallback = || FALLBACK_MODELS.iter().map(|s| s.to_string()).collect();
-    let Some(Value::Object(data)) = cache else { return fallback() };
+    let slugs = listed_slugs(cache);
+    if slugs.is_empty() {
+        fallback_models()
+    } else {
+        slugs
+    }
+}
+
+/// Belgedeki listelenen modeller. Python'da `models` girdisi sözlük değilse (AttributeError) ya da öncelikler
+/// karşılaştırılamazsa (TypeError) belge kullanılmaz: burada boş liste.
+pub fn listed_slugs(cache: Option<&Value>) -> Vec<String> {
+    let Some(Value::Object(data)) = cache else { return Vec::new() };
     let models: Vec<&Value> = match data.get("models") {
         None => Vec::new(),
         Some(Value::Array(a)) => a.iter().collect(),
         // sözlük/dize üzerinde yineleme dize verir: `m.get` AttributeError; sayı/None/bool: TypeError.
         Some(Value::Object(o)) if o.is_empty() => Vec::new(),
         Some(Value::String(s)) if s.is_empty() => Vec::new(),
-        Some(_) => return fallback(),
+        Some(_) => return Vec::new(),
     };
     let mut listed: Vec<(PrioKey, String)> = Vec::new();
     for m in models {
-        let Value::Object(m) = m else { return fallback() };
+        let Value::Object(m) = m else { return Vec::new() };
         if m.get("visibility").and_then(Value::as_str) != Some("list") || !m.get("slug").is_some_and(truthy) {
             continue;
         }
@@ -67,7 +131,7 @@ pub fn model_choices(cache: Option<&Value>) -> Vec<String> {
         let all_num = listed.iter().all(|(k, _)| matches!(k, PrioKey::Num(_)));
         let all_str = listed.iter().all(|(k, _)| matches!(k, PrioKey::Str(_)));
         if !all_num && !all_str {
-            return fallback();
+            return Vec::new();
         }
         listed.sort_by(|a, b| match (&a.0, &b.0) {
             (PrioKey::Num(x), PrioKey::Num(y)) => x.total_cmp(y),
@@ -75,11 +139,7 @@ pub fn model_choices(cache: Option<&Value>) -> Vec<String> {
             _ => std::cmp::Ordering::Equal,
         });
     }
-    if listed.is_empty() {
-        fallback()
-    } else {
-        listed.into_iter().map(|(_, s)| s).collect()
-    }
+    listed.into_iter().map(|(_, s)| s).collect()
 }
 
 /// Python yinelemesi: liste öğeleri, sözlük anahtarları, dize karakterleri; başka tip (sayı, bool) `TypeError`.

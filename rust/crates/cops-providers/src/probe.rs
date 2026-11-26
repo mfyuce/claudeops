@@ -43,6 +43,18 @@ impl Paths {
     pub fn agy_conversations_dir(&self) -> String {
         format!("{}/.gemini/antigravity-cli/conversations", self.home)
     }
+    /// `CODEX_HOME` (ortamdaki `CODEX_HOME`a bakmaz: Python sabiti).
+    pub fn codex_home(&self) -> String {
+        format!("{}/.codex", self.home)
+    }
+    /// `MODELS_CACHE`.
+    pub fn codex_models_cache(&self) -> String {
+        format!("{}/models_cache.json", self.codex_home())
+    }
+    /// `CLAUDE_MODELS_JSON` (`claude_models` belgesinin dosya yolu; okuma [`crate::ModelIo::claude_models_doc`]).
+    pub fn claude_models_json(&self) -> String {
+        format!("{}/claude_models.json", self.claudeops_dir)
+    }
     pub fn ucli_metrics_dir(&self) -> String {
         format!("{}/ucli_metrics", self.claudeops_dir)
     }

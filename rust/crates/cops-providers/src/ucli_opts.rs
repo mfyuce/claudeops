@@ -1,11 +1,14 @@
 //! `ucli_session_opts.py`: ucli başlatma seçenekleri (`cli_opts`) doğrulaması ve exec bayrakları.
 //! Güvenlik duruşu: geçersiz değer sessizce atılmaz, HATA döner; yasaklı komutlar desenle de açılmaz.
 
+use crate::model_sources::{bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, SERVICE_MODELS_TIMEOUT};
 use crate::pyfmt::{basename, fmt_g, parse_float, parse_int, py_int, str_of, str_or_empty, strip, truthy};
+use crate::pyjson::Py;
 use crate::settings::{is_safe_env_name, Settings};
 use regex::Regex;
 use serde_json::{json, Map, Value};
-use std::sync::LazyLock;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{LazyLock, Mutex};
 
 /// Kabuk ya da "başka komut çalıştıran" adlar: exec izin listesine giremez.
 const FORBIDDEN: &str = "sh bash zsh dash fish ksh csh tcsh ash busybox env xargs find sudo doas su nohup timeout nice \
@@ -474,4 +477,59 @@ pub fn exec_flags(
         argv.extend(["--exec-timeout-secs".into(), secs.to_string()]);
     }
     argv
+}
+
+/// Boş olmayan hizmet listesinin ömrü (sn).
+pub const SERVICE_MODELS_TTL: f64 = 86400.0;
+/// Boş (başarısız) sonucun yeniden denemeden önce tutulma süresi (sn).
+pub const SERVICE_MODELS_RETRY: f64 = 60.0;
+
+/// `_MODELS_CACHE`: hizmet kimliği -> (çekim anı, kimlikler). Anahtar yalnız hizmet kimliğidir (Python gibi).
+#[derive(Debug, Default)]
+pub struct ServiceModelsCache(Mutex<HashMap<String, (f64, Vec<String>)>>);
+
+impl ServiceModelsCache {
+    /// `service_models`: hizmetin `/models` kimlikleri (sıralı, tekrarsız). Bilinmeyen hizmet, `evren` ya da boş anahtar:
+    /// boş liste ve istek YOK. Başarısızlık da önbelleğe yazılır (eski iyi listenin ÜSTÜNE, Python gibi).
+    pub(crate) fn get(&self, io: &dyn ModelIo, settings: &Settings, service: &str, key: &str) -> Vec<String> {
+        if service == "evren" || key.is_empty() {
+            return Vec::new();
+        }
+        let Some(svc) = settings.ucli_services().into_iter().find(|s| s.id == service) else { return Vec::new() };
+        let now = io.wall_secs();
+        if let Some((at, ids)) = lock(&self.0).get(service) {
+            let ttl = if ids.is_empty() { SERVICE_MODELS_RETRY } else { SERVICE_MODELS_TTL };
+            if now - at < ttl {
+                return ids.clone();
+            }
+        }
+        let ids = fetch_service_models(io, &svc.wire, &svc.endpoint, key).unwrap_or_default();
+        lock(&self.0).insert(service.to_string(), (now, ids.clone()));
+        ids
+    }
+}
+
+fn fetch_service_models(io: &dyn ModelIo, wire: &str, endpoint: &str, key: &str) -> Option<Vec<String>> {
+    let headers = if wire == "anthropic-messages" {
+        vec![("x-api-key", SecretValue::new(key)?), ("anthropic-version", SecretValue::new("2023-06-01")?)]
+    } else {
+        vec![("Authorization", SecretValue::new(&format!("Bearer {key}"))?)]
+    };
+    let req = HttpRequest {
+        url: format!("{}/models?limit=200", endpoint.trim_end_matches('/')),
+        headers,
+        timeout: SERVICE_MODELS_TIMEOUT,
+        max_body: HTTP_MAX_BYTES,
+    };
+    let body = bounded(io.http_get(&req), req.max_body)?;
+    Some(parse_service_models(&body))
+}
+
+/// Yanıt `{"data": [...]}` ya da doğrudan dizi; her nesnenin dolu `id`si `str()` ile. Bozuk gövde boş liste.
+pub fn parse_service_models(body: &[u8]) -> Vec<String> {
+    let Some(data) = Py::parse(&String::from_utf8_lossy(body)) else { return Vec::new() };
+    let rows = if data.is_object() { data.get("data") } else { Some(&data) };
+    let Some(Py::Array(rows)) = rows else { return Vec::new() };
+    let ids: BTreeSet<String> = rows.iter().filter_map(|m| m.get("id")).filter(|id| id.truthy()).map(Py::py_str).collect();
+    ids.into_iter().collect()
 }

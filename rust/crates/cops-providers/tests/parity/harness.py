@@ -631,6 +631,112 @@ def op_transcript(a):
         claude_p.session_file_sid = saved
 
 
+def op_sources(a):
+    """Model kaynakları (G7): adım dizisi, sahte saat/süreç/HTTP; arka plan iş parçacığı adım isterse (`run_bg`) koşar."""
+    import urllib.error
+    import urllib.request
+    src = a["source"]
+    clock = {"mono": 0.0, "wall": 0.0}
+    calls, pending, current = [], [], {}
+
+    def _payload():
+        r = current.get("resp") or {"raise": "os"}
+        kind = r.get("raise")
+        if kind == "os":
+            raise OSError("sahte")
+        if kind == "http":
+            raise urllib.error.HTTPError("http://sahte.invalid", 401, "sahte", {}, None)
+        if kind == "timeout":
+            raise subprocess.TimeoutExpired("agy", 5) if src == "agy" else TimeoutError("sahte")
+        if "rep" in r:
+            return bytes.fromhex(r["rep"][0]) * r["rep"][1]
+        return bytes.fromhex(r["hex"])
+
+    def _run(argv, **kw):
+        assert kw.get("capture_output") and kw.get("text")
+        calls.append(["run", [str(x) for x in argv], kw.get("timeout")])
+        out = _payload().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")      # metin kipi
+        return _Done(argv, current["resp"].get("rc", 0), out, "")
+
+    class _Resp:
+        def __init__(self, data):
+            self.data = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *x):
+            return False
+
+        def read(self):
+            return self.data
+
+    def _open(req, timeout=None):
+        calls.append(["get", req.full_url, sorted([k.lower(), v] for k, v in req.header_items()), float(timeout)])
+        return _Resp(_payload())
+
+    class _Thread:
+        def __init__(self, target=None, daemon=None, name=None):
+            assert daemon is True
+            self.target, self.name = target, name
+
+        def start(self):
+            calls.append(["bg", self.name])
+            pending.append(self.target)
+
+    fake_time = types.SimpleNamespace(monotonic=lambda: clock["mono"], time=lambda: clock["wall"])
+    saved = (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, urllib.request.urlopen)
+    agy_p.time = codex_p.time = ucli_p.time = fake_time
+    agy_p.threading = types.SimpleNamespace(Thread=_Thread)
+    agy_p.subprocess = types.SimpleNamespace(run=_run)
+    urllib.request.urlopen = _open
+    agy, codex = agy_p.AgyProvider(), codex_p.CodexProvider()
+    ucli_p._LIVE_MODEL_CACHE, ucli_p._LIVE_MODEL_CACHE_TS, ucli_p._LIVE_CAPS = None, 0.0, {}
+    uso._MODELS_CACHE.clear()
+    out = []
+    try:
+        for step in a["steps"]:
+            current.clear()
+            current.update(step)
+            calls.clear()
+            clock["mono"] = clock["wall"] = float(step["t"])
+            if "settings" in step:
+                with open(os.path.join(paths.CLAUDEOPS_DIR, "settings.json"), "w", encoding="utf-8") as f:
+                    f.write(step["settings"])
+                settings._LOAD_CACHE.update(sig=None, val=None)
+            if "file" in step:
+                path = codex_p.MODELS_CACHE
+                if step["file"] is None:
+                    if os.path.exists(path):
+                        os.remove(path)
+                else:
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "wb") as f:
+                        f.write(bytes.fromhex(step["file"]))
+            row = {"ret": None, "exc": None}
+            try:
+                if src == "agy":
+                    row["ret"] = list(agy.model_choices())
+                elif src == "codex":
+                    row["ret"] = list(codex.model_choices())
+                elif src == "ucli":
+                    row["ret"] = _jsonable(ucli_p.UcliProvider().model_choices())
+                    row["caps"] = _jsonable(ucli_p._LIVE_CAPS)
+                else:
+                    row["ret"] = [x if x.isprintable() or x.encode("utf-8", "ignore").decode() == x else repr(x)      # eşlenmemiş vekil
+                                  for x in uso.service_models(step["service"], step["key"], now=lambda: clock["wall"])]
+            except Exception as e:      # noqa: BLE001
+                row["exc"] = type(e).__name__
+            if step.get("run_bg"):
+                while pending:
+                    pending.pop(0)()
+            row["calls"] = list(calls)
+            out.append(row)
+    finally:
+        agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, urllib.request.urlopen = saved
+    return out
+
+
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}
 
 

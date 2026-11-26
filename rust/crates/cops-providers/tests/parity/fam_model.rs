@@ -168,7 +168,7 @@ fn model_cases() -> Vec<Case> {
         "home/.codex/models_cache.json",
         "{\"models\": [{\"slug\": \"a\", \"visibility\": \"list\", \"priority\": NaN}]}",
         0o644,
-    )).known("Python json.load NaN/Infinity kabul eder; serde_json reddeder (önbelleği ayrıştıran çağıran, crate dışı)"));
+    )).known("Python json.load NaN/Infinity kabul eder; serde_json reddeder (bu ailede katalog testte serde ile elle kurulur; crate okuma yolu: `src-codex-nan`)"));
     // agy: canlı `agy models` kimlikleri.
     let agy = [
         json!(["gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "claude-opus-4-6-thinking",

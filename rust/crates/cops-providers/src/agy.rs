@@ -1,8 +1,10 @@
 //! agy sağlayıcısı: effort model kimliğine gömülü.
 
 use crate::effort::{nearest_effort, sort_levels, split_tier};
+use crate::model_sources::{bounded, lock, ModelIo, RunRequest, AGY_MODELS_MAX_BYTES, AGY_MODELS_TIMEOUT};
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{join_quoted, quote};
+use std::sync::{Arc, Mutex};
 
 pub const PERMISSION_MODES: [&str; 3] = ["auto", "acceptEdits", "plan"];
 pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
@@ -25,6 +27,54 @@ pub fn parse_models(output: &str) -> Vec<String> {
         .filter_map(|l| l.split_once('\t'))
         .map(|(id, _)| crate::pyfmt::strip(id).to_string())
         .collect()
+}
+
+/// Model listesinin ömrü (sn).
+pub const MODELS_TTL: f64 = 300.0;
+
+#[derive(Debug, Default)]
+struct Cached {
+    /// Son deneme anı (başarısız olsa da damgalanır). Başlangıç 0.0: Python gibi açılıştan sonraki ilk [`MODELS_TTL`]
+    /// saniyede soğuk önbellek hiç çekilmez.
+    ts: f64,
+    models: Vec<String>,
+}
+
+/// `AgyProvider._cache_ts` / `_cache_models`.
+#[derive(Debug, Default)]
+pub struct ModelsCache(Arc<Mutex<Cached>>);
+
+impl ModelsCache {
+    /// Soğukta bloklayarak çeker; bayat ama doluysa eskiyi döndürür, yenisini arka planda çeker.
+    pub(crate) fn get(&self, io: &Arc<dyn ModelIo>, binary: impl FnOnce() -> String) -> Vec<String> {
+        let now = io.monotonic_secs();
+        let stale = {
+            let mut c = lock(&self.0);
+            if now - c.ts <= MODELS_TTL {
+                return c.models.clone();
+            }
+            c.ts = now;
+            c.models.clone()
+        };
+        let binary = binary();
+        if stale.is_empty() {
+            refresh(io.as_ref(), &self.0, binary);
+            return lock(&self.0).models.clone();
+        }
+        let (io2, cache) = (Arc::clone(io), Arc::clone(&self.0));
+        io.spawn_background("agy-models-refresh", Box::new(move || refresh(io2.as_ref(), &cache, binary)));
+        stale
+    }
+}
+
+/// `agy models`; hata, zaman aşımı, UTF-8 olmayan ya da modelsiz çıktı eski listeyi bırakır.
+fn refresh(io: &dyn ModelIo, cache: &Mutex<Cached>, binary: String) {
+    let req = RunRequest { argv: vec![binary, "models".into()], timeout: AGY_MODELS_TIMEOUT, max_stdout: AGY_MODELS_MAX_BYTES };
+    let Some(Ok(text)) = bounded(io.run_stdout(&req), req.max_stdout).map(String::from_utf8) else { return };
+    let models = parse_models(&text);
+    if !models.is_empty() {
+        lock(cache).models = models;
+    }
 }
 
 pub fn model_effort_levels(model: &str, models: &[String]) -> Option<Vec<String>> {

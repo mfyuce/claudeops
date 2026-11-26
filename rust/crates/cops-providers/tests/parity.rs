@@ -98,3 +98,10 @@ mod fam_bg;
 fn parity_bg_work() {
     fam_bg::run();
 }
+#[path = "parity/fam_sources.rs"]
+mod fam_sources;
+
+#[test]
+fn parity_model_sources() {
+    fam_sources::run();
+}

@@ -58,6 +58,21 @@ impl Py {
         }
     }
 
+    /// `serde_json` değeri. Sonlu olmayan float `null` olur; `i64`e sığmayan tam sayı yaklaşık float olur.
+    pub fn to_value(&self) -> serde_json::Value {
+        use serde_json::Value;
+        match self {
+            Py::Null => Value::Null,
+            Py::Bool(b) => Value::Bool(*b),
+            Py::Int(i) => Value::from(*i),
+            Py::BigInt(s) => s.parse::<f64>().map(Value::from).unwrap_or(Value::Null),
+            Py::Float(f) => Value::from(*f),
+            Py::Str(s) => Value::String(s.clone()),
+            Py::Array(a) => Value::Array(a.iter().map(Py::to_value).collect()),
+            Py::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), v.to_value())).collect()),
+        }
+    }
+
     /// `bool(v)`.
     pub fn truthy(&self) -> bool {
         match self {

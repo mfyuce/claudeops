@@ -92,7 +92,7 @@ impl Cli {
     }
 }
 
-/// Canlı model kaynakları; okuma/ağ çağıranın işi. Boş alan = Python'daki sabit yedek.
+/// Canlı model kaynakları ([`crate::ModelSources::catalog`] doldurur; elle de kurulabilir). Boş alan = Python'daki sabit yedek.
 #[derive(Debug, Clone, Default)]
 pub struct ModelCatalog {
     /// `claude_models` belgesi (`{"models": {id: "enabled"|"disabled"}}`).
@@ -101,6 +101,8 @@ pub struct ModelCatalog {
     pub agy_models: Vec<String>,
     /// `~/.codex/models_cache.json` (ayrıştırılmış).
     pub codex_cache: Option<Value>,
+    /// TTL önbellekli codex listesi ([`crate::ModelSources::codex_models`]); None = `codex_cache`ten türetilir.
+    pub codex_choices: Option<Vec<String>>,
     /// ucli uç noktasının `/models` sonucu (bkz. [`ucli::parse_live_models`]).
     pub ucli: ucli::LiveModels,
 }
@@ -183,7 +185,10 @@ impl Providers<'_> {
         match cli {
             Cli::Claude => claude::model_choices(self.catalog.claude_state.as_ref()),
             Cli::Agy => self.catalog.agy_models.clone(),
-            Cli::Codex => codex::model_choices(self.catalog.codex_cache.as_ref()),
+            Cli::Codex => match &self.catalog.codex_choices {
+                Some(c) => c.clone(),
+                None => codex::model_choices(self.catalog.codex_cache.as_ref()),
+            },
             Cli::Copilot => fixed(&copilot::MODEL_CHOICES),
             Cli::Shell => fixed(&shell::SENTINEL),
             Cli::Ucli => self.catalog.ucli.choices(),
