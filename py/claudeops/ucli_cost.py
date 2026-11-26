@@ -226,9 +226,36 @@ _RESERVE_LOCK = threading.Lock()
 _RESERVED: Dict[str, Tuple[float, float]] = {}      # oturum -> (usd, bitiş zamanı)
 
 
+def _ledger_problem(now: float, base: str, write_mult: float) -> str:
+    """Bugünün harcaması güvenilir biçimde sayılamıyorsa nedeni (dosya adıyla), aksi "". Okunamayan dizin/dosya ve geçersiz
+    sayaç 0 harcama gibi görünür; açık tavan buna güvenip geçirmesin. Dizin ya da dosyanın OLMAMASI sorun değildir."""
+    since = _day_start_ms(now)
+    try:
+        names = os.listdir(base)
+    except FileNotFoundError:
+        return ""
+    except OSError:
+        return "günlük dizini okunamadı"
+    for n in names:
+        p = os.path.join(base, n)
+        if not n.endswith(".jsonl"):
+            continue
+        try:
+            if os.path.getmtime(p) * 1000.0 < since:
+                continue
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return f"{n}: okunamadı"
+        why = rv._scan_usage(p, "", since, write_mult)[1]
+        if why:
+            return f"{n}: {why}"
+    return ""
+
+
 def reserve(session_name: str, now: Optional[float] = None, base: str = USAGE_DIR) -> None:
-    """Başlatma için RESERVE_USD ayır; tavan (bugün + başkalarının payı + bu pay) aşılıyorsa DailyCapExceeded.
-    Tavan yoksa (0) rezervasyon tutulmaz. Aynı ad yeniden ayırırsa öncekinin yerine geçer."""
+    """Başlatma için RESERVE_USD ayır; tavan (bugün + başkalarının payı + bu pay) aşılıyorsa DailyCapExceeded; tavan
+    açıkken günlükler okunamıyor/bozuksa ValueError. Tavan yoksa (0) rezervasyon tutulmaz. Aynı ad yeniden ayırırsa öncekinin yerine geçer."""
     t = time.time() if now is None else now
     with _RESERVE_LOCK:
         for k in [k for k, (_, exp) in _RESERVED.items() if exp <= t]:
@@ -238,6 +265,10 @@ def reserve(session_name: str, now: Optional[float] = None, base: str = USAGE_DI
         if cap <= 0:
             _RESERVED.pop(session_name, None)
             return
+        why = _ledger_problem(t, base, write_mult(ucli_cost_config()))
+        if why:      # sayılamayan harcama "tavanın altında" DEĞİLDİR: kapalı yön
+            raise ValueError(f"claude: günlük USD tavanı denetlenemiyor ({why}); ucli_usage günlüklerini düzelt ya da "
+                             "Ayarlar'dan ucli_cost.daily_cap_usd'yi kapat")
         others = sum(u for k, (u, _) in _RESERVED.items() if k != session_name)
         if s["today_usd"] + others >= cap:
             raise DailyCapExceeded(s["today_usd"] + others, cap)
