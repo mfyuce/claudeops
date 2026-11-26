@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_steward_remote import HOST, _row  # noqa: E402
 from test_steward_remote_session_resolve import _Resolve, _facts  # noqa: E402
 from claudeops import steward as sw  # noqa: E402
+from claudeops import window_actions as wa  # noqa: E402
 from claudeops.commands import web  # noqa: E402
 from claudeops.commands import web_review  # noqa: E402
 from claudeops.commands import web_steward as ws  # noqa: E402
@@ -290,6 +291,35 @@ class TestMirrorWindowTwins(unittest.TestCase):
     def test_a_stopped_row_of_the_same_name_does_not_hide_the_running_one(self):
         res, spawned, _ = self.open([self.row(running=False), self.row("/srv/b")])
         self.assertEqual((res["ok"], len(spawned)), (True, 1), res)
+
+
+class TestRemoteRefRowChoice(_Resolve):
+    """TBD#390/1: `_remote_ref` calisan satiri secer; yalniz kapali adaslarin klasoru farkliysa tahmin etmez."""
+
+    def test_running_row_wins_over_an_earlier_stopped_one(self):
+        self.fake.set(HOST, [_row("oiso", cwd="/srv/eski", running=False), _row("oiso", cwd="/srv/yeni")])
+        self.assertEqual(ws._remote_ref(HOST, "oiso"), ("oiso", "/srv/yeni"))
+
+    def test_running_row_without_folder_does_not_borrow_a_stopped_one(self):
+        self.fake.set(HOST, [_row("oiso", cwd="")], closed=[_row("oiso", cwd="/srv/eski", running=False)])
+        self.assertEqual(ws._remote_ref(HOST, "oiso"), ("", ""))
+
+    def test_stopped_twins_with_different_folders_are_refused(self):
+        self.fake.set(HOST, [], closed=[_row("oiso", cwd="/srv/a", running=False), _row("oiso", cwd="/srv/b", running=False)])
+        self.assertEqual(ws._remote_ref(HOST, "oiso"), ("", ""))
+
+    def test_stopped_twins_with_one_folder_resolve(self):
+        self.fake.set(HOST, [], closed=[_row("oiso", cwd="/srv/a", running=False), _row("oiso", cwd="/srv/a", running=False)])
+        self.assertEqual(ws._remote_ref(HOST, "oiso"), ("oiso", "/srv/a"))
+
+    def test_tracked_session_follows_the_same_rule(self):
+        state = sw.load_state(sw.paths_for("default"))
+        state["owned"] = {"oiso": "asp-fd"}
+        sw.save_state(state, sw.paths_for("default"))
+        self.fake.set(HOST, [_row("asp-fd", cwd="/srv/eski", running=False), _row("asp-fd", cwd="/srv/yeni")])
+        self.assertEqual(ws._remote_ref(HOST, "oiso", "default"), ("asp-fd", "/srv/yeni"))
+        self.fake.set(HOST, [], closed=[_row("asp-fd", cwd="/srv/a", running=False), _row("asp-fd", cwd="/srv/b", running=False)])
+        self.assertEqual(ws._remote_ref(HOST, "oiso", "default"), ("", ""))
 
 
 if __name__ == "__main__":

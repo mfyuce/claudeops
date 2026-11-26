@@ -1115,6 +1115,16 @@ def remote_health(hosts: Any, now: Optional[float] = None) -> Dict[str, Dict[str
     return out
 
 
+def _remote_folder_of(rows: List[Dict[str, Any]]) -> str:
+    """Ayni hedefe giden satirlarin klasoru: TEK calisan satirinki; calisan yoksa kapalilarin ortak klasoru. Birden cok
+    calisan, klasorsuz calisan ya da farkli kapali klasorler belirsiz: "" (TBD#390)."""
+    live = [r for r in rows if r.get("running")]
+    if live:
+        return str(live[0].get("cwd") or "") if len(live) == 1 else ""
+    folders = {str(r["cwd"]) for r in rows if r.get("cwd")}
+    return folders.pop() if len(folders) == 1 else ""
+
+
 def _remote_ref(host: str, name: str, sid: str = "") -> Tuple[str, str]:
     """Uzak okuma hedefi: (oturumun GERÇEK adı, klasörü); host'un TAZE önbelleğinden, ağa gitmez; bulunamazsa ("", "").
     Sıra: adı TAM `name` olan satır (çalışan ya da kapalı); yoksa ad bu host'taki bir projeye çözülüyorsa (proje adı
@@ -1128,18 +1138,18 @@ def _remote_ref(host: str, name: str, sid: str = "") -> Tuple[str, str]:
     rows = {k: [r for r in (st.get(k) or []) if isinstance(r, dict)] for k in ("sessions", "closed")}
     if len(_remote_named_rows(rows["sessions"], name)) > 1:
         return "", ""
-    for key in ("sessions", "closed"):
-        for r in rows[key]:
-            if r.get("name") == name and r.get("cwd"):
-                return name, str(r["cwd"])
+    exact = [r for k in ("sessions", "closed") for r in rows[k] if r.get("name") == name]
+    if any(r.get("running") or r.get("cwd") for r in exact):
+        cwd = _remote_folder_of(exact)
+        return (name, cwd) if cwd else ("", "")
     tracked = str((sw.load_state(sw.paths_for(sid)).get("owned") or {}).get(name) or "") if sid else ""
     if tracked:     # 26 Kas asp_fd: izlenen oturumun adı proje adından türemiyor (`ancient-script-pipeline-fd20261118`)
         if len(_remote_named_rows(rows["sessions"], tracked)) > 1:
             return "", ""
-        for key in ("sessions", "closed"):
-            for r in rows[key]:
-                if r.get("name") == tracked and r.get("cwd"):
-                    return tracked, str(r["cwd"])
+        mine = [r for k in ("sessions", "closed") for r in rows[k] if r.get("name") == tracked]
+        if any(r.get("running") or r.get("cwd") for r in mine):
+            cwd = _remote_folder_of(mine)
+            return (tracked, cwd) if cwd else ("", "")
     world = _world()
     key = _remote_key(name, host, world)
     if not key:
