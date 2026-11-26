@@ -120,6 +120,67 @@ fn parity_front_on_plans() {
 }
 
 #[test]
+fn parity_bad_addresses_are_blockers_on_both_sides() {
+    // "Python hatası?" 1 düzeltildi: iki taraf aynı engel/aynı metin; status rc 1.
+    let sb = Sandbox::new();
+    std::fs::write(sb.unit_dir().join("claudeops-web.service"), LIVE).unwrap();
+    sb.exe(&sb.state().join("bin/copsd"));
+    let (p, r) = both(
+        &sb,
+        &[
+            "front",
+            "status",
+            "--listen",
+            "[::1]:1",
+            "--internal",
+            "28765",
+        ],
+    );
+    same(&p, &r, "status geçersiz adres");
+    assert_eq!(r.status.code(), Some(1));
+    for (listen, internal) in [
+        ("127.0.0.1:1", "28765"),
+        ("127.0.0.1:1", "127.0.0.1:abc"),
+        ("127.0.0.1:1", "[::1]:28765"),
+        ("127.0.0.1:1", "127.0.0.1:0"),
+        ("127.0.0.1:1", "localhost:28765"),
+        ("127.0.0.1:1", "127.0.0.1:８７"),
+        ("8765", "127.0.0.1:1"),
+        ("127.0.0.1:1", "127.0.0.1:1"),
+    ] {
+        let (p, r) = both(
+            &sb,
+            &[
+                "front",
+                "on",
+                "--apply",
+                "--listen",
+                listen,
+                "--internal",
+                internal,
+            ],
+        );
+        same(&p, &r, &format!("{listen} / {internal}"));
+    }
+    assert!(!sb.sc_log().exists(), "engel systemctl çağırmaz");
+    assert!(!sb.state().join("front.secret").exists());
+    // IPv6 dış adres geçerli (plan)
+    let (p, r) = both(
+        &sb,
+        &[
+            "front",
+            "on",
+            "--listen",
+            "[::1]:1",
+            "--internal",
+            "127.0.0.1:2",
+        ],
+    );
+    same(&p, &r, "IPv6 dış adres planı");
+    assert_eq!(r.status.code(), Some(0));
+}
+
+#[test]
 fn fix_b_diverges_from_python_on_foreign_internal_port() {
     // Python: drop-in varken dolu iç port engel değil (yeniden uygulama); Rust: dinleyen web birimi değilse engel.
     let sb = Sandbox::new();

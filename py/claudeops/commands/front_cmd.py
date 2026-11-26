@@ -11,11 +11,13 @@ front start (Python restart'ı bugünkü normal restart kadar keser; oturumlar K
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shutil
 import socket
 import subprocess
+import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -83,15 +85,79 @@ def dropin_text(execstart: str) -> str:
     return f"[Service]\nExecStart=\nExecStart={execstart}\n"
 
 
+def _rdbg(s: str) -> str:
+    """Rust `{:?}` (str) biçimi: hata metinleri Rust `cops-cli` ile aynı olsun."""
+    out = []
+    for i, c in enumerate(s):
+        esc = {"\0": "\\0", "\t": "\\t", "\r": "\\r", "\n": "\\n", "\\": "\\\\", '"': '\\"'}.get(c)
+        cat = unicodedata.category(c)
+        if esc:
+            out.append(esc)
+        elif cat in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp") or (cat == "Zs" and c != " ") or (i == 0 and cat in ("Mn", "Me")):
+            out.append("\\u{%x}" % ord(c))
+        else:
+            out.append(c)
+    return '"' + "".join(out) + '"'
+
+
+def _parse_port(p: str) -> int:
+    if not p or len(p.encode()) > 5 or not all("0" <= c <= "9" for c in p):
+        raise ValueError(f"port sayı değil: {_rdbg(p)}")
+    n = int(p)
+    if not 1 <= n <= 65535:
+        raise ValueError(f"port aralık dışı (1-65535): {p}")
+    return n
+
+
+def _parse_listen(s: str):
+    """`IPv4:port` ya da `[IPv6]:port` -> (ipaddress, port); geçersizse ValueError (Rust `net::parse_listen` ile aynı kural ve
+    metin). Ad (`localhost`) kabul edilmez: copsd `SocketAddr` ister. Port yalnız ASCII rakam, 1-65535."""
+    host, sep, port = s.rpartition(":")
+    if not sep:
+        raise ValueError(f"{_rdbg(s)}: IP:port biçiminde değil (iki nokta yok)")
+    try:
+        n = _parse_port(port)
+    except ValueError as e:
+        raise ValueError(f"{_rdbg(s)}: {e}") from None
+    if host.startswith("[") and host.endswith("]") and len(host) >= 2:
+        inner = host[1:-1]
+        try:
+            if "%" in inner:
+                raise ValueError(inner)
+            return ipaddress.IPv6Address(inner), n
+        except ValueError:
+            raise ValueError(f"{_rdbg(s)}: geçersiz IPv6 adresi") from None
+    try:
+        if not all(c in "0123456789." for c in host):
+            raise ValueError(host)
+        return ipaddress.IPv4Address(host), n
+    except ValueError:
+        raise ValueError(f"{_rdbg(s)}: adres IPv4 ya da [IPv6] olmalı (ad kabul edilmez, copsd SocketAddr ister)") from None
+
+
+def _parse_internal(s: str):
+    """Yalnız `IPv4:port` (Python web `ThreadingHTTPServer` AF_INET ile dinler)."""
+    a = _parse_listen(s)
+    if a[0].version == 6:
+        raise ValueError(f"{_rdbg(s)}: iç adres IPv6 olamaz (Python web yalnız IPv4 dinler: ThreadingHTTPServer AF_INET)")
+    return a
+
+
+def _fmt(a) -> str:
+    """Rust `SocketAddr` gösterimi."""
+    ip, port = a
+    return f"[{ip}]:{port}" if ip.version == 6 else f"{ip}:{port}"
+
+
 def port_busy(hostport: str) -> bool:
-    host, _, port = hostport.rpartition(":")
-    with socket.socket() as s:
+    ip, port = _parse_listen(hostport)
+    with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET) as s:
         s.settimeout(0.5)
-        return s.connect_ex((host, int(port))) == 0
+        return s.connect_ex((str(ip), port)) == 0
 
 
 def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[List[str], List[str]]:
-    """(adımlar, engeller)."""
+    """(adımlar, engeller). Geçersiz `--listen`/`--internal` ve çakışan adresler ENGEL (Rust `plan_on` ile aynı sıra)."""
     blockers: List[str] = []
     if not os.path.exists(binp):
         blockers.append(f"ikili yok: {binp} (rust/ altında `cargo build --release`, sonra kopyala)")
@@ -99,7 +165,18 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     new = with_internal_port(es, internal) if es else None
     if new is None:
         blockers.append("claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir")
-    if port_busy(internal) and not DROPIN.exists():      # drop-in varsa zaten açık: yeniden uygulama (birim güncelle) serbest
+    la = ia = None
+    try:
+        la = _parse_listen(listen)
+    except ValueError as e:
+        blockers.append(f"geçersiz --listen: {e}")
+    try:
+        ia = _parse_internal(internal)
+    except ValueError as e:
+        blockers.append(f"geçersiz --internal: {e}")
+    if la and ia and la[1] == ia[1] and (la[0] == ia[0] or la[0].is_unspecified):
+        blockers.append(f"dış ve iç adres çakışıyor: {listen} / {internal}")
+    if ia and port_busy(_fmt(ia)) and not DROPIN.exists():      # drop-in varsa zaten açık: yeniden uygulama (birim güncelle) serbest
         blockers.append(f"iç port dolu: {internal}")
     steps = [f"gizli: {front_mod.secret_path()} (0600, yoksa üret)",
              f"yaz: {FRONT_UNIT} ({binp} --listen {listen} --upstream {internal} --dist {DIST_DIR} "
@@ -120,9 +197,16 @@ def run(args) -> int:
         print(f"gizli: {'var' if sec else 'YOK'} ({front_mod.secret_path()})")
         print(f"ikili: {'var' if os.path.exists(args.bin) else 'YOK'} ({args.bin})")
         print(f"front birimi: {'yazılı' if FRONT_UNIT.exists() else 'yok'}; drop-in: {'yazılı' if DROPIN.exists() else 'yok'}")
+        rc = 0
         for hp in (args.listen, args.internal):
-            print(f"port {hp}: {'dolu' if port_busy(hp) else 'boş'}")
-        return 0
+            try:
+                a = _parse_listen(hp)
+            except ValueError as e:
+                print(f"port {hp}: geçersiz adres ({e})")
+                rc = 1
+                continue
+            print(f"port {hp}: {'dolu' if port_busy(_fmt(a)) else 'boş'}")
+        return rc
     if args.action == "on":
         text = WEB_UNIT.read_text() if WEB_UNIT.exists() else ""
         steps, blockers = plan_on(args.listen, args.internal, args.bin, text)
@@ -133,7 +217,7 @@ def run(args) -> int:
         if not args.apply:
             print("(plan; uygulamak için --apply)")
             return 0
-        reapply = DROPIN.exists() and port_busy(args.internal)       # zaten açık: Python'a dokunma, yalnız front birimini yenile
+        reapply = DROPIN.exists() and port_busy(_fmt(_parse_internal(args.internal)))       # zaten açık: Python'a dokunma, yalnız front birimini yenile
         front_mod.ensure_secret()
         FRONT_UNIT.write_text(_unit_text(args.bin, args.listen, args.internal))
         DROPIN.parent.mkdir(parents=True, exist_ok=True)
