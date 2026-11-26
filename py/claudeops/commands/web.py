@@ -1126,17 +1126,17 @@ FALLBACK_ALERT_WINDOW_MINUTES = 15.0
 
 
 def _find_gnome_terminal_server() -> Optional[psutil.Process]:
-    for p in psutil.process_iter(["cmdline"]):
+    me = os.getuid()
+    for p in psutil.process_iter(["pid", "uids"]):
+        # review R-15 + TBD#365 birleştirme kapısı: uid ÖNCE; başka kullanıcının cmdline'ı hiç okunmaz
         try:
-            cmdline = p.info.get("cmdline") or []
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            uids = p.info.get("uids")
+            if uids is None or uids.real != me:
+                continue
+            cmdline = p.cmdline() or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
             continue
         if any("gnome-terminal-server" in part for part in cmdline):
-            try:    # review R-15: başka kullanıcının gnome-terminal-server'ı bizimki sayılmasın
-                if p.uids().real != os.getuid():
-                    continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-                continue
             return p
     return None
 
@@ -1184,9 +1184,20 @@ def _diag_status(live: Optional[list] = None) -> dict:
     except Exception:
         orphans = None
 
+    # Süreç taramasının atladığı bozuk kayıtlar (TBD#365): süreç ömrü boyunca birikir, log'a yazılmaz; burada görünür.
+    # Anahtarlar modüller arasında çakışmaz (discovery.session_file, needs_ho.transcript_*, session_usage.usage_*).
+    skipped: Dict[str, int] = {}
+    try:
+        from .. import discovery as _disc, needs_ho as _nho, session_usage as _su
+        for counter in (_disc._skipped, _nho._skipped, _su._skipped):
+            skipped.update({k: int(v) for k, v in counter.items() if v})
+    except Exception:
+        skipped = {}
+
     recent_fallbacks = diag_log_recent_fallback_count(FALLBACK_ALERT_WINDOW_MINUTES)
     return {
         "orphans": orphans,
+        "skipped": skipped,
         "web_pid": os.getpid(),
         "web_uptime_seconds": round(time.monotonic() - _WEB_PROC_START_MONO),
         "gt": gt_info,
