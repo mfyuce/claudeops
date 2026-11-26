@@ -41,5 +41,15 @@ class ListFieldsTest(unittest.TestCase):
         self.assertEqual((out["cli_list"], out["dups"]), (["claude"], ["x"]))
 
 
+class PrivateLanTest(unittest.TestCase):
+    def test_only_rfc1918_and_ula(self):
+        for ok in ("10.0.0.1", "172.31.255.255", "192.168.0.1:8765", "[fd12::1]", "[::ffff:10.0.0.1]"):
+            self.assertTrue(wh._is_private_lan_http(f"http://{ok}"), ok)
+        for bad in ("198.18.0.1", "192.0.2.1", "203.0.113.5", "[2001:db8::1]", "172.32.0.1", "100.64.0.1", "8.8.8.8",
+                    "127.0.0.1", "169.254.1.1", "0.0.0.0", "240.0.0.1", "[::1]", "[fe80::1]", "[::ffff:8.8.8.8]",
+                    "[fd12::1%25eth0]"):
+            self.assertFalse(wh._is_private_lan_http(f"http://{bad}"), bad)
+
+
 if __name__ == "__main__":
     unittest.main()

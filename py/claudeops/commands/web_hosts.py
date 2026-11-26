@@ -649,7 +649,11 @@ def _is_private_lan_http(url: str) -> bool:
         ip = ipaddress.ip_address(u.hostname)
     except ValueError:
         return False
-    return ip.is_private and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
+    if "%" in u.hostname:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    # `is_private` genis (198.18/15, 192.0.2/24, 2001:db8::/32 de "ozel"): yalniz gercek yerel ag araliklari
+    return any(ip in ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"))
 
 
 def _candidate_allowed(base_url: str, candidate: str) -> bool:
