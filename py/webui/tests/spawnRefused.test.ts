@@ -9,6 +9,10 @@ test("known codes are localized and keep the raw code", () => {
   assert.match(describeSpawnRefused("quota_usd_day", "", "en"), /daily spend/);
   assert.match(describeSpawnRefused("quota_new_thing", "", "tr"), /kotan doldu/);
 });
+test("corrupt owner record explains the repair, with the session name", () => {
+  assert.match(describeSpawnRefused("ownership_corrupt", "s1", "tr"), /sahip kaydı bozuk.*yönetici.*\nownership_corrupt: s1$/s);
+  assert.match(describeSpawnRefused("ownership_corrupt", "s1", "en"), /owner record is corrupt.*administrator.*\nownership_corrupt: s1$/s);
+});
 test("unknown code falls back to raw", () => {
   assert.equal(describeSpawnRefused("weird", "x", "en"), "weird: x");
   assert.equal(describeSpawnRefused("weird", "", "en"), "weird");
