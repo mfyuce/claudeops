@@ -56,6 +56,15 @@ pub fn is_reach_loopback(url: &str, ports: &BTreeSet<u16>) -> bool {
 /// Kayıt anı denetimi: ad çözülür, adreslerden biri engelliyse `true`. Çözülemez / zaman aşımı = `false` (karar
 /// verilemez; bağlantı anındaki peer denetimi ikinci kapıdır).
 pub async fn host_is_blocked(url: &str) -> bool {
+    host_is_blocked_via(url, &crate::net::system_resolver(), DNS_CHECK_TIMEOUT).await
+}
+
+/// [`host_is_blocked`]ın çözümleyicisi ve süresi verilebilen hâli (asılı DNS testi).
+pub async fn host_is_blocked_via(
+    url: &str,
+    resolver: &crate::net::Resolver,
+    timeout: Duration,
+) -> bool {
     let Some(e) = Endpoint::parse(url) else {
         return false;
     };
@@ -63,8 +72,8 @@ pub async fn host_is_blocked(url: &str) -> bool {
         return ip_is_blocked(ip);
     }
     let host = e.host.split('%').next().unwrap_or("").to_string();
-    match tokio::time::timeout(DNS_CHECK_TIMEOUT, tokio::net::lookup_host((host, e.port))).await {
-        Ok(Ok(mut addrs)) => addrs.any(|a| ip_is_blocked(a.ip())),
+    match tokio::time::timeout(timeout, resolver(host, e.port)).await {
+        Ok(Ok(addrs)) => addrs.iter().any(|a| ip_is_blocked(a.ip())),
         _ => false,
     }
 }
@@ -148,7 +157,38 @@ mod tests {
             assert!(host_is_blocked(u).await, "{u}");
         }
         assert!(!host_is_blocked("http://10.1.2.3").await);
-        assert!(!host_is_blocked("http://no-such-host.invalid").await);
+        // Çözülemeyen ad (fail-open) ağa gitmeden: `hung_or_failed_resolution_fails_open_and_loopback_is_blocked`.
+    }
+
+    /// Python `test_hosts_dns_timeout`: asılı çözüm kaydı bloklamaz, DNS_CHECK_TIMEOUT sonra "karar verilemez" (engel
+    /// yok, fail-open; bağlantı anı peer denetimi ikinci kapı); çözüm hatası da fail-open; loopback'e çözülen ad engelli.
+    #[tokio::test(start_paused = true)]
+    async fn hung_or_failed_resolution_fails_open_and_loopback_is_blocked() {
+        use std::sync::Arc;
+        let hung: crate::net::Resolver = Arc::new(|_h, _p| Box::pin(std::future::pending()));
+        let started = tokio::time::Instant::now();
+        assert!(!host_is_blocked_via("http://slow.example", &hung, DNS_CHECK_TIMEOUT).await);
+        assert_eq!(started.elapsed(), DNS_CHECK_TIMEOUT);
+        let failing: crate::net::Resolver =
+            Arc::new(|_h, _p| Box::pin(async { Err(std::io::Error::other("gaierror")) }));
+        assert!(!host_is_blocked_via("http://x.example", &failing, DNS_CHECK_TIMEOUT).await);
+        let to = |ip: &'static str| -> crate::net::Resolver {
+            Arc::new(move |_h, p| {
+                Box::pin(async move { Ok(vec![std::net::SocketAddr::new(ip.parse().unwrap(), p)]) })
+            })
+        };
+        assert!(host_is_blocked_via("http://x.example", &to("127.0.0.1"), DNS_CHECK_TIMEOUT).await);
+        assert!(
+            host_is_blocked_via(
+                "http://x.example",
+                &to("::ffff:169.254.169.254"),
+                DNS_CHECK_TIMEOUT
+            )
+            .await
+        );
+        assert!(!host_is_blocked_via("http://x.example", &to("10.1.2.3"), DNS_CHECK_TIMEOUT).await);
+        // IP literali çözümleyiciye hiç sorulmaz.
+        assert!(host_is_blocked_via("http://127.0.0.1:9", &hung, DNS_CHECK_TIMEOUT).await);
     }
 
     #[test]

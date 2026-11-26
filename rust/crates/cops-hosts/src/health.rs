@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use crate::proxy::{GetOpts, HostClient};
 use crate::record::{self, HostRecord};
 use crate::sign::Caller;
-use crate::status::HostStatus;
+use crate::status::{truthy, HostStatus};
 
 /// Son başarılı yoklama bundan eskiyse host "kapalı": bayat satırlarla karar verilmez.
 pub const REMOTE_STALE_SECONDS: f64 = 60.0;
@@ -253,6 +253,68 @@ impl CapabilityCache {
     }
 }
 
+/// Python `host_capabilities` varsayılan bütçesi.
+pub const CAPS_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+impl CapabilityCache {
+    /// Python `host_capabilities`: önbellekte varsa o (ağa gitmez), yoksa tek `/api/session/facts` yoklaması (ad
+    /// listesi boş). Geçici arıza önbelleğe yazılmaz, sonuç boş yetenek kümesidir.
+    pub async fn host_capabilities(
+        &self,
+        client: &HostClient,
+        hosts: &[HostRecord],
+        host: &str,
+        timeout: Duration,
+        now: f64,
+    ) -> Capabilities {
+        if let Some(c) = self.cached(host, now) {
+            return c;
+        }
+        self.probe_facts(client, hosts, host, &[], timeout, now, None)
+            .await
+            .0
+    }
+}
+
+/// Python `remote_health` satırı (değnekçi durum görünümü): `state` = `backoff` | `ok` | `down`, `api` (önbellek), `age`
+/// (son başarılı yoklamadan beri sn), `ok` değilse `reason` (en çok 120 karakter) ve `last_try`. Ağa gitmez.
+pub fn health_view(
+    status: Option<&HostStatus>,
+    last_ok_at: f64,
+    last_try_at: f64,
+    backing_off: bool,
+    caps: Option<&Capabilities>,
+    now: f64,
+) -> Value {
+    // Python: poller kaydı yoksa `last_ok_at` da yok sayılır.
+    let last = if status.is_some() { last_ok_at } else { 0.0 };
+    let state = if backing_off {
+        "backoff"
+    } else if host_fresh(status, last, now) {
+        "ok"
+    } else {
+        "down"
+    };
+    let secs = |t: f64| (t != 0.0).then_some((now - t) as i64);
+    let mut out = json!({"state": state, "api": caps.map(|c| c.api), "age": secs(last)});
+    if state != "ok" {
+        let err: String = match status {
+            Some(s) => s.error.clone().unwrap_or_default(),
+            None => "poller kaydı yok".into(),
+        };
+        let reason: String = err.chars().take(120).collect();
+        out["reason"] = if !reason.is_empty() {
+            reason.into()
+        } else if state == "backoff" {
+            "geri çekilmede".into()
+        } else {
+            "son başarılı poll bayat".into()
+        };
+        out["last_try"] = json!(secs(last_try_at));
+    }
+    out
+}
+
 /// Uzak proje dosyasına dokunma kapısı: uzak eylemler açık, host kayıtlı + taze, geri çekilmede değil.
 pub fn files_gate(
     hosts: &[HostRecord],
@@ -358,45 +420,26 @@ pub struct ExactTarget {
     name: String,
 }
 
-/// Python doğruluk değeri (`bool(x)`): uzak `running` alanı `true` dışında da gelebilir; belirsizlik kapalı yöne
-/// düşsün diye eşleşme SAYIMI Python ile aynı kuralı kullanır.
-fn truthy(v: &Value) -> bool {
-    match v {
-        Value::Null => false,
-        Value::Bool(b) => *b,
-        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
-        Value::String(s) => !s.is_empty(),
-        Value::Array(a) => !a.is_empty(),
-        Value::Object(o) => !o.is_empty(),
-    }
-}
-
-/// Sıra Python `_remote_stop` ile aynı: tazelik, satır (0 = `no_exact_match`, 2+ = `ambiguous`), sonra yetenek.
-/// `caps` = [`CapabilityCache::cached`]; `None` = yetenek şu an bilinmiyor (`caps_unknown`), bilinip `exact_target`
-/// yoksa `remote_too_old`.
+/// Sıra Python `_remote_stop` ile aynı: tazelik + geri çekilme (`_remote_rows`), satır (0 = `no_exact_row`, 2+ =
+/// `ambiguous_sessions`, Python kodları), sonra yetenek. `caps` = [`CapabilityCache::cached`]; `None` = yetenek şu an
+/// bilinmiyor (`caps_unknown`), bilinip `exact_target` yoksa `remote_too_old`. Projeye göre satır seçimi (dünya, sahiplik,
+/// `manual`, `not_own`) değnekçinindir (T10): bu kanıt yalnız TAM adı bilinen oturum içindir.
 pub fn exact_target(
     host: &str,
     name: &str,
     status: Option<&HostStatus>,
     last_ok_at: f64,
+    backing_off: bool,
     caps: Option<&Capabilities>,
     now: f64,
 ) -> Result<ExactTarget, &'static str> {
-    if !host_fresh(status, last_ok_at, now) {
+    if !host_fresh(status, last_ok_at, now) || backing_off {
         return Err("host_down");
     }
-    let matches = status
-        .map(|s| {
-            s.sessions
-                .iter()
-                .filter(|r| r["name"] == name && truthy(&r["running"]))
-                .count()
-        })
-        .unwrap_or(0);
-    match matches {
-        1 => {}
-        0 => return Err("no_exact_match"),
-        _ => return Err("ambiguous"),
+    match running_row(status, name) {
+        Err(e) => return Err(e),
+        Ok(None) => return Err("no_exact_row"),
+        Ok(Some(_)) => {}
     }
     match caps {
         None => Err("caps_unknown"),
@@ -405,6 +448,31 @@ pub fn exact_target(
             host: host.into(),
             name: name.into(),
         }),
+    }
+}
+
+/// Python `_remote_named_rows`: adı TAM `name` olan, `running` alanı doğru (Python `bool(x)`) nesne satırlar.
+pub fn named_running_rows<'a>(status: &'a HostStatus, name: &str) -> Vec<&'a Value> {
+    status
+        .sessions
+        .iter()
+        .filter(|r| r.is_object() && r["name"] == name && truthy(&r["running"]))
+        .collect()
+}
+
+/// Python `_remote_running_row`ın satır kısmı (tazelik ve geri çekilme çağıranın, [`host_fresh`] ve
+/// [`Breaker::backing_off`]): `Ok(None)` = çalışan satır yok, `Ok(Some)` = tek satır, `Err("ambiguous_sessions")` = aynı
+/// adlı iki çalışan satır (bilinmiyor; kapalı yön), `Err("host_down")` = durum yok.
+pub fn running_row<'a>(
+    status: Option<&'a HostStatus>,
+    name: &str,
+) -> Result<Option<&'a Value>, &'static str> {
+    let st = status.ok_or("host_down")?;
+    let hits = named_running_rows(st, name);
+    match hits.len() {
+        0 => Ok(None),
+        1 => Ok(hits.first().copied()),
+        _ => Err("ambiguous_sessions"),
     }
 }
 
@@ -444,4 +512,92 @@ pub async fn remote_stop(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn st(ok: bool, error: Option<&str>) -> HostStatus {
+        HostStatus {
+            ok,
+            error: error.map(str::to_string),
+            ..HostStatus::default()
+        }
+    }
+
+    #[test]
+    fn health_view_matches_python_remote_health() {
+        let now = 10_000.0;
+        let caps = Capabilities {
+            api: 2,
+            capabilities: vec![],
+        };
+        // Taze: ok, reason/last_try yok.
+        let v = health_view(
+            Some(&st(true, None)),
+            now - 5.5,
+            now - 1.0,
+            false,
+            Some(&caps),
+            now,
+        );
+        assert_eq!(v, json!({"state": "ok", "api": 2, "age": 5}));
+        // Geri çekilme tazelikten önce; hata metni boşsa sabit metin.
+        let v = health_view(Some(&st(true, None)), now - 5.0, now - 3.0, true, None, now);
+        assert_eq!(
+            v,
+            json!({"state": "backoff", "api": null, "age": 5, "reason": "geri çekilmede", "last_try": 3})
+        );
+        // Bayat (ok ama pencere dışı) ve hata metni 120 karaktere kırpılır.
+        let long = "x".repeat(200);
+        let v = health_view(
+            Some(&st(false, Some(&long))),
+            now - 61.0,
+            0.0,
+            false,
+            None,
+            now,
+        );
+        assert_eq!(v["state"], "down");
+        assert_eq!(v["reason"].as_str().unwrap().chars().count(), 120);
+        assert_eq!(v["last_try"], Value::Null);
+        let v = health_view(
+            Some(&st(true, None)),
+            now - 61.0,
+            now - 2.0,
+            false,
+            None,
+            now,
+        );
+        assert_eq!(v["reason"], "son başarılı poll bayat");
+        // Poller kaydı yok: `last_ok_at` yok sayılır.
+        let v = health_view(None, now - 1.0, 0.0, false, None, now);
+        assert_eq!(
+            v,
+            json!({"state": "down", "api": null, "age": null, "reason": "poller kaydı yok", "last_try": null})
+        );
+    }
+
+    #[test]
+    fn running_row_is_exact_truthy_and_ambiguous_is_unknown() {
+        let s = HostStatus {
+            ok: true,
+            sessions: vec![
+                json!({"name": "a", "running": 1}),
+                json!({"name": "b", "running": true}),
+                json!({"name": "b", "running": "yes"}),
+                json!({"name": "c", "running": 0}),
+                json!({"name": "C", "running": true}),
+                json!({"name": "d_1", "running": true}),
+            ],
+            ..HostStatus::default()
+        };
+        assert_eq!(running_row(Some(&s), "a").unwrap().unwrap()["name"], "a");
+        assert_eq!(running_row(Some(&s), "b"), Err("ambiguous_sessions"));
+        for n in ["c", "d", "x"] {
+            assert_eq!(running_row(Some(&s), n), Ok(None), "{n}");
+        }
+        assert_eq!(running_row(None, "a"), Err("host_down"));
+    }
 }

@@ -257,7 +257,11 @@ impl Draft {
         if d.name == LOCAL_HOST_NAME {
             return Err(RecordError::ReservedName);
         }
-        let ok = |u: &str| Endpoint::parse(u).is_some();
+        // Python `save_host`: şema öneki küçük harf (`HTTP://` reddedilir); Rust ayrıca ayrıştırıcının belirsiz
+        // biçimlerini (`user@`, sorgu, parça) reddeder.
+        let ok = |u: &str| {
+            (u.starts_with("http://") || u.starts_with("https://")) && Endpoint::parse(u).is_some()
+        };
         if !ok(&d.base_url) {
             return Err(RecordError::InvalidUrl);
         }
@@ -431,6 +435,19 @@ mod tests {
             ReservedName
         );
         assert_eq!(err(draft("a", "ftp://x", "t", "", "").await), InvalidUrl);
+        // Python önek denetimi küçük harfe duyarlı.
+        assert_eq!(
+            err(draft("a", "HTTP://10.0.0.1", "t", "", "").await),
+            InvalidUrl
+        );
+        assert_eq!(
+            err(draft("a", "http://10.0.0.1", "t", "Https://10.0.0.1:1", "").await),
+            InvalidGrpcUrl
+        );
+        assert_eq!(
+            err(draft("a", "http://10.0.0.1", "t", "", "HTTP://10.0.0.2").await),
+            InvalidExtraUrl
+        );
         assert_eq!(
             err(draft("a", "http://10.0.0.1", "t", "x", "").await),
             InvalidGrpcUrl

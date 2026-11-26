@@ -76,13 +76,39 @@ fn tag_rows(v: Option<&Value>, host: &str) -> Vec<Value> {
         .collect()
 }
 
-fn int_of(v: Option<&Value>) -> Option<i64> {
+/// Python doğruluk değeri (`bool(x)`).
+pub(crate) fn truthy(v: &Value) -> bool {
     match v {
-        None | Some(Value::Null) => Some(0),
-        Some(Value::Bool(b)) => Some(*b as i64),
-        Some(Value::Number(n)) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
-        Some(Value::String(s)) if s.is_empty() => Some(0),
-        Some(Value::String(s)) => s.trim().parse().ok(),
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
+}
+
+/// Python `str(x)` (yalnız JSON skalerleri birebir; dizi/nesne JSON metni olarak kalır, Python `repr`i değil).
+pub(crate) fn py_str(v: &Value) -> String {
+    match v {
+        Value::Null => "None".into(),
+        Value::Bool(true) => "True".into(),
+        Value::Bool(false) => "False".into(),
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Python `int(x or 0)`: yanlış (falsy) değer 0; dönüştürülemeyen `None`.
+fn int_of(v: Option<&Value>) -> Option<i64> {
+    let v = match v {
+        Some(v) if truthy(v) => v,
+        _ => return Some(0),
+    };
+    match v {
+        Value::Bool(b) => Some(*b as i64),
+        Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+        Value::String(s) => s.trim().parse().ok(),
         _ => None,
     }
 }
@@ -99,9 +125,10 @@ fn orphan_brief(v: Option<&Value>) -> Value {
     }
 }
 
+/// Python `str(r)[:12] if r`.
 fn build_running(v: Option<&Value>) -> Option<String> {
-    let r = v?.get("running")?.as_str()?;
-    (!r.is_empty()).then(|| r.chars().take(12).collect())
+    let r = v?.as_object()?.get("running")?;
+    truthy(r).then(|| py_str(r).chars().take(12).collect())
 }
 
 fn fwd_brief(v: Option<&Value>, local_now: f64) -> Value {
@@ -111,41 +138,51 @@ fn fwd_brief(v: Option<&Value>, local_now: f64) -> Value {
     let skew = match o.get("now") {
         None | Some(Value::Null) => Value::Null,
         Some(now) => {
-            let Some(n) = now
-                .as_f64()
-                .or_else(|| now.as_str().and_then(|s| s.trim().parse().ok()))
-            else {
+            let n = match now {
+                Value::Bool(b) => Some(f64::from(u8::from(*b))),
+                Value::Number(n) => n.as_f64(),
+                Value::String(s) => s.trim().parse().ok(),
+                _ => None,
+            };
+            let Some(n) = n else {
                 return Value::Null;
             };
-            json!(((n - local_now) * 10.0).round() / 10.0)
+            json!(py_round1(n - local_now))
         }
     };
+    // Python `[str(k) for k in (kids or [])][:4]`. Dizi olmayan DOĞRU değer (metin, nesne, sayı) Python'da karakterlere
+    // / anahtarlara bölünür ya da TypeError: Rust tüm `fwd`i yok sayar (bkz. docs/rs-hosts.md, Python bulgusu).
     let kids = match o.get("kids") {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(a)) => a
-            .iter()
-            .take(4)
-            .map(|k| {
-                Value::String(
-                    k.as_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|| k.to_string()),
-                )
-            })
-            .collect(),
+        None => Vec::new(),
+        Some(Value::Array(a)) => a.iter().take(4).map(|k| Value::String(py_str(k))).collect(),
+        Some(k) if !truthy(k) => Vec::new(),
         Some(_) => return Value::Null,
     };
-    json!({"mode": o.get("mode").and_then(Value::as_str).unwrap_or(""), "kids": kids, "skew": skew})
+    let mode = o
+        .get("mode")
+        .filter(|m| truthy(m))
+        .map(py_str)
+        .unwrap_or_default();
+    json!({"mode": mode, "kids": kids, "skew": skew})
+}
+
+/// Python `round(x, 1)`: ikili değerin TAM ondalık açılımı üzerinden en yakına (Rust biçimlendirmesi de tam değerden
+/// yuvarlar; `x * 10` ara adımı yok).
+fn py_round1(x: f64) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    format!("{x:.1}").parse().unwrap_or(x)
 }
 
 /// REST/WS/gRPC'nin ORTAK son adımı. `raw` başarılı bir durum nesnesidir.
 pub fn finalize(host: &str, raw: &Value, local_now: f64) -> HostStatus {
-    if raw.get("ok") == Some(&Value::Bool(false)) {
-        return HostStatus::failed(
-            raw.get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("remote error"),
-        );
+    // Python `if not result.get("ok")`: `ok` DOĞRU değilse (yok dahil) başarısız; REST/WS/gRPC yolları hep `ok:true` koyar.
+    if !raw.get("ok").is_some_and(truthy) {
+        return HostStatus {
+            error: raw.get("error").and_then(Value::as_str).map(str::to_string),
+            ..HostStatus::default()
+        };
     }
     HostStatus {
         ok: true,
@@ -263,10 +300,11 @@ impl StatusBook {
             };
             rows[0].extend(c.sessions.into_iter().map(|mut r| {
                 if let (Some(open), Some(o)) = (open_mirrors, r.as_object_mut()) {
+                    // Python f"{name}:{r.get('name')}": alan yoksa "None".
                     let key = format!(
                         "{}:{}",
                         h.name,
-                        o.get("name").and_then(Value::as_str).unwrap_or("")
+                        py_str(o.get("name").unwrap_or(&Value::Null))
                     );
                     o.insert("mirror_open".into(), open.contains(&key).into());
                 }

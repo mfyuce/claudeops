@@ -13,7 +13,7 @@ use crate::consts::*;
 use crate::grpc::GrpcClient;
 use crate::guard;
 use crate::proxy::{HostClient, JsonCall};
-use crate::push::{DeathLog, PushConsumer};
+use crate::push::{DeathLog, PushConsumer, SkipLog};
 use crate::record::{self, HostRecord};
 use crate::relay::Relays;
 use crate::sign::Caller;
@@ -88,6 +88,7 @@ pub struct Federation {
     consumers: Mutex<HashMap<String, StatusConsumer>>,
     pub(crate) relays: Relays,
     pub(crate) deaths: Arc<DeathLog>,
+    pub(crate) skips: Arc<SkipLog>,
     probe_at: Mutex<HashMap<String, Instant>>,
     beat: Mutex<Option<Instant>>,
     restarts: AtomicU32,
@@ -135,6 +136,7 @@ impl Federation {
             consumers: Mutex::default(),
             relays: Relays::default(),
             deaths: Arc::default(),
+            skips: Arc::default(),
             probe_at: Mutex::default(),
             beat: Mutex::default(),
             restarts: AtomicU32::new(0),
@@ -240,6 +242,7 @@ impl Federation {
                 "/ws",
                 Vec::new(),
                 ws::parse_status_frame,
+                self.skips.clone(),
             );
             (open, true)
         };

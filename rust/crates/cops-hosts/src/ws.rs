@@ -12,7 +12,7 @@ use tokio_tungstenite::WebSocketStream;
 use crate::endpoint::{urlencode, Endpoint};
 use crate::net::Stream;
 use crate::proxy::HostClient;
-use crate::push::{FrameStream, Open};
+use crate::push::{FrameStream, Open, SkipLog};
 use crate::record::HostRecord;
 
 /// Büyük filoda durum karesi 1 MiB'ı aşabilir.
@@ -50,6 +50,19 @@ pub fn parse_status_frame(v: &Value) -> Option<Value> {
 pub fn parse_term_frame(v: &Value) -> Option<Value> {
     let data = (v.get("type")? == "term").then(|| v.get("data"))??;
     data.is_object().then(|| data.clone())
+}
+
+/// Kare JSON nesnesi değil (okunamadı ya da dizi/sayı): atlanır ve loglanır.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SkippedFrame;
+
+/// Python `_ws_envelope` + ayrıştırıcı: `Err(SkippedFrame)` = kare JSON nesnesi değil (atlanır ve loglanır),
+/// `Ok(None)` = geçerli ama ilgisiz kare (loglanmaz), `Ok(Some)` = veri.
+pub fn decode_frame(raw: &[u8], parse: Parser) -> Result<Option<Value>, SkippedFrame> {
+    match serde_json::from_slice::<Value>(raw) {
+        Ok(v) if v.is_object() => Ok(parse(&v)),
+        _ => Err(SkippedFrame),
+    }
 }
 
 impl HostClient {
@@ -133,7 +146,10 @@ pub(crate) fn open(
     path: &'static str,
     extra: Vec<(String, String)>,
     parse: Parser,
+    skips: std::sync::Arc<SkipLog>,
 ) -> Open {
+    // Python `_ws_envelope` türü: durum akışı "status", terminal akışı "term".
+    let kind: &'static str = if path == "/ws/term" { "term" } else { "status" };
     Box::pin(async move {
         let ws = client
             .ws_connect(
@@ -145,18 +161,23 @@ pub(crate) fn open(
                 client.timeouts.ws_open,
             )
             .await?;
-        let frames = ws.filter_map(move |m| async move {
-            match m {
+        let events = client.events.clone();
+        let frames = ws.filter_map(move |m| {
+            let envelope = |raw: &[u8]| {
+                decode_frame(raw, parse).unwrap_or_else(|SkippedFrame| {
+                    // Okunamayan ya da nesne olmayan kare atlanır (akış sürer), dakikada en çok bir kez loglanır.
+                    skips.report(events.as_ref(), kind);
+                    None
+                })
+            };
+            let out = match m {
                 Err(e) => Some(Err(e.to_string())),
-                Ok(Message::Text(t)) => Some(Ok(serde_json::from_str::<Value>(t.as_str())
-                    .ok()
-                    .and_then(|v| parse(&v)))),
-                Ok(Message::Binary(b)) => Some(Ok(serde_json::from_slice::<Value>(&b)
-                    .ok()
-                    .and_then(|v| parse(&v)))),
+                Ok(Message::Text(t)) => Some(Ok(envelope(t.as_bytes()))),
+                Ok(Message::Binary(b)) => Some(Ok(envelope(&b))),
                 // Denetim çerçeveleri tüketiciye ulaşmaz (Python ile aynı: canlılık veri çerçevesinden).
                 Ok(_) => None,
-            }
+            };
+            async move { out }
         });
         Ok(Box::pin(frames) as FrameStream)
     })

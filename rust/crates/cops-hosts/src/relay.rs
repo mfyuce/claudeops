@@ -127,6 +127,7 @@ impl Federation {
                     "/ws/term",
                     q,
                     ws::parse_term_frame,
+                    self.skips.clone(),
                 )
             };
             let label = format!(

@@ -305,6 +305,29 @@ async fn dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_chann
     .await
 }
 
+/// Python `GrpcGuardTest.test_unresolvable_is_fail_closed`: çözülemeyen gRPC adı = bağlantı yok, kademe yükselmez.
+#[tokio::test]
+async fn grpc_unresolvable_name_is_fail_closed() {
+    deadline(async {
+        let g = GrpcFake::start(None).await;
+        let failing: cops_hosts::net::Resolver =
+            Arc::new(|_h, _p| Box::pin(async { Err(std::io::Error::other("no such host")) }));
+        let mut c = HostClient::new(Connector {
+            resolver: failing,
+            ..Default::default()
+        });
+        c.timeouts = timeouts();
+        let dead = closed_port().await;
+        let base = format!("http://127.0.0.1:{dead}");
+        let dns = format!("http://fake-remote.test:{}", g.addr.port());
+        let src = MemSource::new(vec![grpc_host(&base, &dns)]);
+        let (fed, _ev) = fed_with(c, &src);
+        assert_eq!(fed.probe_tier(&grpc_host(&base, &dns)).await, Tier::Rest);
+        assert_eq!(g.accepted(), 0);
+    })
+    .await
+}
+
 #[tokio::test]
 async fn grpc_dns_name_resolving_to_loopback_is_refused_before_connecting() {
     deadline(async {

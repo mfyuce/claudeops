@@ -509,11 +509,11 @@ impl HostClient {
     }
 }
 
-/// Python `term_dedup.valid_id`.
+/// Python `term_dedup.valid_id`in DAHA SIKI hâli: 1..=64 karakter, yalnız ASCII görünür karakter. Python
+/// `str.isprintable()` ASCII dışında Unicode sürümüne bağlı (biçim/özel kullanım/atanmamış karakter) ve uzak host'un
+/// Python'u bunu geçersiz sayarsa tekrarı ayıklamaz: Rust o kimlikle yeniden denerse girdi iki kez yazılırdı. ASCII
+/// dışı kimlik geçersiz sayılır (tek deneme, yinelenen girdi yok).
 pub fn valid_input_id(v: &Value) -> bool {
-    v.as_str().is_some_and(|s| {
-        !s.is_empty()
-            && s.chars().count() <= 64
-            && !s.chars().any(|c| c.is_control() || c.is_whitespace())
-    })
+    v.as_str()
+        .is_some_and(|s| !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_graphic()))
 }

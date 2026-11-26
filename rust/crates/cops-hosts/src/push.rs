@@ -42,6 +42,28 @@ impl DeathLog {
     }
 }
 
+/// Okunamayan ya da nesne olmayan uzak WS karesi (Python `_ws_envelope`): kare türü (`status`/`term`) başına dakikada
+/// en çok bir `push_frame_skipped` kaydı. Kare atlanır, akış sürer.
+#[derive(Default)]
+pub struct SkipLog {
+    last: Mutex<HashMap<&'static str, Instant>>,
+}
+
+impl SkipLog {
+    pub fn report(&self, events: &dyn Events, kind: &'static str) {
+        {
+            let mut m = self.last.lock().unwrap_or_else(|e| e.into_inner());
+            if m.get(kind)
+                .is_some_and(|t| t.elapsed() < CONSUMER_DEATH_LOG_MIN_INTERVAL)
+            {
+                return;
+            }
+            m.insert(kind, Instant::now());
+        }
+        events.log("push_frame_skipped", json!({"kind": kind}));
+    }
+}
+
 struct Shared {
     last_msg: Mutex<Instant>,
     has_data: AtomicBool,
@@ -110,5 +132,64 @@ impl PushConsumer {
 impl Drop for PushConsumer {
     fn drop(&mut self) {
         self.task.abort();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct Rec(Mutex<Vec<(String, Value)>>);
+    impl Events for Rec {
+        fn log(&self, event: &str, fields: Value) {
+            self.0.lock().unwrap().push((event.into(), fields));
+        }
+    }
+
+    /// Python `_log_consumer_death`: etiket başına dakikada bir kayıt, neden 200 karaktere kırpılır.
+    #[tokio::test(start_paused = true)]
+    async fn consumer_death_is_logged_once_a_minute_per_label() {
+        let ev = Rec::default();
+        let log = DeathLog::default();
+        log.report(&ev, "term:a/s1", "ws", "x");
+        log.report(&ev, "term:a/s1", "ws", "y");
+        log.report(&ev, "term:a/s1?lite", "ws", &"r".repeat(300));
+        tokio::time::advance(CONSUMER_DEATH_LOG_MIN_INTERVAL).await;
+        log.report(&ev, "term:a/s1", "grpc", "z");
+        let got = ev.0.lock().unwrap().clone();
+        assert_eq!(got.len(), 3);
+        assert_eq!(
+            got[0].1,
+            json!({"label": "term:a/s1", "tier": "ws", "reason": "x"})
+        );
+        assert_eq!(got[1].1["label"], "term:a/s1?lite");
+        assert_eq!(got[1].1["reason"].as_str().unwrap().len(), 200);
+        assert_eq!(got[2].1["reason"], "z");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn skipped_frames_are_logged_at_most_once_a_minute_per_kind() {
+        let ev = Rec::default();
+        let log = SkipLog::default();
+        for _ in 0..5 {
+            log.report(&ev, "status");
+        }
+        log.report(&ev, "term");
+        tokio::time::advance(CONSUMER_DEATH_LOG_MIN_INTERVAL - Duration::from_millis(1)).await;
+        log.report(&ev, "status");
+        assert_eq!(ev.0.lock().unwrap().len(), 2, "59.999 s: still suppressed");
+        tokio::time::advance(Duration::from_millis(1)).await;
+        log.report(&ev, "status");
+        let got = ev.0.lock().unwrap().clone();
+        assert_eq!(
+            got,
+            vec![
+                ("push_frame_skipped".to_string(), json!({"kind": "status"})),
+                ("push_frame_skipped".to_string(), json!({"kind": "term"})),
+                ("push_frame_skipped".to_string(), json!({"kind": "status"})),
+            ]
+        );
     }
 }

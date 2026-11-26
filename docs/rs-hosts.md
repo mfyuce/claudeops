@@ -1,16 +1,18 @@
 # İz T5 federasyon istemcisi (`rs/hosts`, crate `cops-hosts`)
 
-## Durum (26 Kas 2026, devir anı): BİRLEŞTİRMEYE HAZIR DEĞİL
+## Durum (26 Kas 2026 akşam, iş 4-5 sonrası): BİRLEŞTİRMEYE HAZIR DEĞİL (kalan maddeler aşağıda)
 
-Kütüphane kodu yazıldı ve derleniyor; `cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz;
-`cargo test -p cops-hosts` 102/102 geçiyor (17 birim + 85 sahte sunuculu entegrasyon; art arda 6 koşu, oynak değil).
-Birim: `endpoint`, `guard`, `record`, `flight`, `tier`. Entegrasyon (iş 1, `tests/fake_*.rs`): `http` havuzu ve zaman
-aşımları, `proxy` (vekil, dedup, yükleme/indirme), `sign` (imza kapısı), `net` (REST yolunda DNS-loopback reddi).
-İş 2 (`tests/fake_poller.rs`, `tests/fake_health.rs`): `status`, `federation` (poller/prober REST yolu), `health`.
-İş 3 (`tests/fake_ws.rs`, `fake_grpc.rs`, `fake_tls.rs`, `fake_restart.rs`): `relay`, `push`, `ws`, `grpc`, TLS, poller
-takılma/panik. Python parite testi yok (iş 4).
-Test edilmemiş davranış doğrulanmış sayılmaz.
+`cargo test -p cops-hosts` 122/122 geçiyor (22 birim + 100 entegrasyon, `tests/parity.rs` 12 dahil);
+`cargo clippy -p cops-hosts --all-targets -- -D warnings` temiz. Eşleme tablosu `docs/rs-hosts-mapping.md` (üreteç ve
+denetim `rust/crates/cops-hosts/tools/mapping.py`, `--check` temiz): tanım 358 (243 karşılandı, 115 kapsam dışı, 0 AÇIK),
+Python test durumu 857 / 61 dosya (148 karşılandı, 709 kapsam dışı, 0 AÇIK).
 Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı.
+
+Kalan (birleştirmeyi tutan) maddeler:
+- Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
+- Python bulguları (aşağıda "İş 4'te bulunan Python hataları"): sahip kararı gerekir; Rust güvenli davranışta, parity
+  testinde "bilinen fark" olarak kilitli. Karar Rust'ta değişiklik gerektirirse parity listesi düşer, unutulmaz.
+- Prober'ın kendi takılma yeniden başlatması testsiz (iş 3 gerekçesi; davranış Python'da hiç yok).
 
 ## Sıradaki işler (sırayla)
 
@@ -30,9 +32,9 @@ Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). G
    grpc::GrpcFake (tonic, crate'in `pb` mesajlarıyla), tls::Ca (rcgen geçici kök)}`; testler `fake_ws.rs` (18),
    `fake_grpc.rs` (7), `fake_tls.rs` (5), `fake_restart.rs` (2). Eşleme aşağıda "İş 3 test eşlemesi".
    gRPC'de `Dial` + `origin` ile https yolu ÇALIŞIYOR (sunucu `:scheme=https` görüyor, `origin` kaldırılınca test düşer).
-4. `tests/parity.rs`: route kümeleri = `web_hosts.py`; her host-routed yol `cops_auth::authz::action_for` ile
-   `UNMAPPED` değil; `grpc::pb` alan numaraları = `host_bridge.proto`; hata metinleri = `hosts.ERR`.
-5. Bu belgedeki kontrol listelerini test adlarıyla güncelle, sonra "BİRLEŞTİRMEYE HAZIR".
+4. BİTTİ (26 Kas akşam): `tests/parity.rs` (12 test) + Python kahini `tools/py_parity.py`; eşleme tablosu
+   `docs/rs-hosts-mapping.md` + `tools/mapping.py`. Ayrıntı aşağıda "İş 4 parite eşlemesi".
+5. BİTTİ: kontrol listeleri test adlarıyla güncellendi; `.ok()` / `let _` taraması yapıldı (gözden geçirme #5).
 
 ### İş 1 test eşlemesi
 
@@ -201,9 +203,73 @@ WS karesi (TBD#376, Python düzeltildi: `fix(hosts)` bozuk kare) ve açık yarı
 - `web_hosts._parse_ws_status_frame` / `_parse_ws_term_frame`: JSON dizi/sayı karesi `parsed.get` AttributeError
   verir (yalnız JSONDecodeError/TypeError yakalanıyor); `_PushConsumer._run` istisnayla ölür, tek bozuk kare akışı
   düşürürdü. Artık iki taraf da kareyi atlar (`junk_frames_keep_the_stream_alive_but_rest_polling_continues`);
-  Python dakikada bir `push_frame_skipped` loglar, Rust loglamaz (açık).
+  iki taraf da tür (`status`/`term`) başına dakikada en çok bir `push_frame_skipped` loglar (Rust `push::SkipLog`,
+  testler `push::tests::skipped_frames_are_logged_at_most_once_a_minute_per_kind`, `fake_ws::junk_frames_...`,
+  `fake_ws::term_relay_streams_...`).
 - Yarış (Python ile aynı, ders H3 açık): yeni akışın ilk karesi aynı turun REST sonucundan önce gelirse REST onu ezer
   (her iki kaynak da `record` eder, sıra/damga yok). Bir tur kadar daha eski veri; sonraki kare düzeltir.
+
+### İş 4 parite eşlemesi
+
+Kahin (`tools/py_parity.py`) `python3 -I` ile, geçici `CLAUDEOPS_DIR`/`HOME`/`CLAUDEOPS_DIAG_LOG` ve
+`CLAUDEOPS_EXTENSIONS=0` olmadan çalışmayı reddeder; soket bağlantısı ve sayısal olmayan ad çözümü süreç içinde
+engellidir; tek yazımı geçici `hosts.json`. Bilinen farklar her testte gerekçeli listede; listedeki girdi eşitlenirse test
+düşer.
+
+| Kapsam | Yöntem | Test |
+|---|---|---|
+| `HOST_ROUTED_PATHS`, `GET_HOST_ROUTED_PATHS`, `SECRET_BODY_PATHS`, `TERM_RETRY_PATHS`, indirme/yükleme yolu = `web_hosts.py` | Python KAYNAK METNİ ayrıştırılır (yorum atlanır, ayrıştırıcı kendini sınar) | `parity::host_routed_route_sets_equal_python_source` |
+| her host-routed yol (+ `/api/status`, `/ws`, `/ws/term`) `cops_auth::authz::action_for` ile `UNMAPPED` değil ve Python `authz.action_for` ile aynı eylem | metin + kahin | `parity::host_routed_paths_have_the_same_authz_action_as_python` |
+| `grpc::pb` ad/numara/etiket/tür = `host_bridge.proto` metni = Python pb2 tanımlayıcısı; servis yolu, yöntem ve istek/yanıt türleri | metin + kahin | `parity::grpc_messages_match_proto_text_and_python_descriptors` |
+| Python pb2 ile kodlanan `StatusUpdate`/`TermUpdate` Rust'ta çözülür, dict dönüşümü aynı (ucli bayrakları, extras, boş alanlar) | kahin | `parity::grpc_wire_decoding_matches_python_conversion` |
+| zaman aşımları, eşikler, TTL'ler, LRU/havuz sınırları, `hosts.ERR` (iki dil), `REFUSED_PREFIX`, gRPC keepalive, `_EXTRA_KEYS` | kahin (içe aktarılmış değer) + metin | `parity::shared_constants_and_error_texts_equal_python` |
+| aday adres kuralı, özel ağ, sır URL'si, engelli IP, DNS adı, reach portları, `urlencode` | kahin | `parity::address_filters_match_python` |
+| `input_id` kuralı (Rust hiçbir girdide Python'dan gevşek değil) | kahin | `parity::input_id_rule_is_python_or_stricter` |
+| kayıt doğrulama sırası, hata metni, upsert (token koruma, bilinmeyen alan, bozuk/boş belge) | kahin | `parity::save_host_validation_and_upsert_match_python` |
+| `finalize` (satır etiketleme, `cli_options`, `orphan_watch`, `fwd`, `build`, `ok` doğruluk kuralı) | kahin | `parity::status_reduction_matches_python` |
+| WS durum/terminal karesi, atlama (loglanan) ile ilgisiz kare ayrımı | kahin | `parity::ws_frames_match_python` |
+| ardışık hata toleransı dizileri, kademe dizileri, `merge_status` (sıralama, `mirror_open`, yer tutucu) | kahin | `parity::poll_cache_tier_and_merge_match_python` |
+| taşıma hatası sınıfı, tazelik, `_remote_running_row`, `remote_health` | kahin | `parity::steward_client_parts_match_python` |
+
+İş 4-5'te Rust'a eklenen/düzeltilen (Python ile eşitleme):
+- `push_frame_skipped` (`push::SkipLog`, `ws::decode_frame`); `pub mod ws`.
+- `health::exact_target`: geri çekilmedeki host `host_down` (Python `_remote_rows`; eskiden yalnız tazelik), hata kodları
+  Python ile aynı: `no_exact_row` (eski `no_exact_match`), `ambiguous_sessions` (eski `ambiguous`).
+- `health::running_row`, `named_running_rows` (Python `_remote_running_row`/`_remote_named_rows`), `health_view`
+  (`remote_health`), `CapabilityCache::host_capabilities` + `CAPS_PROBE_TIMEOUT` (`host_capabilities`).
+- `status::finalize`: `ok` doğru değilse (yok dahil) başarısız (Python `not result.get("ok")`); `build.running` ve
+  `fwd.mode` Python `str()` ile (sayı/doğru değer), `fwd.kids` yanlış (falsy) değerde boş, `fwd.now` bool kabul, `skew`
+  Python `round(x, 1)` ile (tam ondalık, `x*10` ara adımı yok); `orphan_watch` Python `int(x or 0)` (boş dizi/nesne 0).
+- `merge_status` `mirror_open` anahtarı Python f-string'i gibi (`host:None`, `host:7`).
+- `record::Draft::new`: şema öneki küçük harf (Python `startswith`); eskiden `HTTP://` kabul ediliyordu (gevşekti).
+- `proxy::valid_input_id` Python'dan SIKI: yalnız ASCII görünür (Python `isprintable` Unicode sürümüne bağlı; uzak
+  Python kimliği geçersiz sayarsa tekrar ayıklanmaz, Rust yeniden denerse girdi iki kez yazılırdı; eskiden U+200B gibi
+  biçim karakterlerini kabul ediyordu).
+- `guard::host_is_blocked_via` (çözümleyici + süre parametreli; asılı DNS testi), `relay` ölüm etiketi testi,
+  gRPC çözülemeyen ad testi, `capabilities` metin/nesne testi.
+
+İş 4'te bulunan Python hataları (Python'a YAZILMADI; sahip kararı gerekir, Rust güvenli davranışta, parity bilinen fark):
+- `web_hosts._orphan_brief`: `servers`/`procs` `Infinity` (Python `json.loads` kabul eder) ise `int(inf)` OverflowError
+  YAKALANMAZ (yalnız TypeError/ValueError): `_finalize_remote_result` düşer, REST'te `_poll_once` turu o host'tan
+  sonraki host'lar için biter, WS'te tüketici ölür (doğrulandı, geçici dizinde). Rust: serde `Infinity`yi JSON saymaz,
+  yanıt "bad response (not JSON)" (host hatası).
+- `web_hosts._fwd_brief`: `now` `NaN` ise `skew: nan` üretir; `/api/status` JSON'unda geçersiz `NaN` (tarayıcı
+  `JSON.parse` reddeder). Rust: girdi JSON değil sayılır.
+- `web_hosts._fwd_brief`: metin `kids` karakterlere, nesne `kids` anahtarlarına bölünür (TBD#372 `capabilities`
+  hatasıyla aynı sınıf). Rust tüm `fwd`i yok sayar.
+- `web_hosts._finalize_remote_result`: dizi olmayan doğru `cli_list`/`dups` (metin, dolu nesne) olduğu gibi geçer
+  (ön yüz dizi bekler). Rust boş dizi.
+- `web_hosts._is_private_lan_http` Python 3.10 `is_private`i geniş (198.18/15, 192.0.2/24, 2001:db8::/32 "özel ağ"):
+  https tabanlı host'ta bu http adaylar token'ı şifresiz alabilir. Rust yalnız RFC1918 + ULA (bilinçli fark, zaten
+  belgeliydi).
+- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz; WS/REST yarışı (H3).
+
+Hata yutma taraması (gözden geçirme #5): `src/` içindeki her `.ok()`, `let _`, `unwrap_or_default()`, `Err(_)`,
+`map_err(|_| ...)` okundu. Sonucu değiştiren yutma yok. Bilerek yutulanlar: `net.rs` `set_nodelay` (performans
+seçeneği), `ws.rs` yoklama sonrası kapanış (sonuç zaten belli, 1 sn sınırlı), `http.rs` bağlantı sürücüsü görevinin
+sonucu (hata isteğin kendisine yansır), `federation.rs` başarısız `extra_urls` adayı (Python gibi; tabanın hatası
+kaydedilir), `ws.rs` yoklama hatası (Python gibi `rest`). Ayrıştırma `.ok()`leri kapalı yöne düşer (geçersiz = red ya da
+Python ile aynı indirgeme). `map_err(|_| ...)` yalnız URL/token taşıyan iç hata metnini dışarı vermemek için.
 
 ## Modüller
 
@@ -242,6 +308,12 @@ WS karesi (TBD#376, Python düzeltildi: `fix(hosts)` bozuk kare) ve açık yarı
   değişimi yenilemez.
 - `interval` sorgu biçimi Rust `f64::to_string` (Python `{:g}`): 0.5/1/2.5 aynı; çok küçük/büyük değerde metin farklı
   (`1e-05` / `0.00001`). 0, negatif, NaN, sonsuz aralık Rust'ta yok sayılır (Python olduğu gibi iletir).
+- `input_id` yeniden deneme kuralı Python'dan sıkı (yalnız ASCII görünür karakter).
+- `remote_post` yıkıcı yolları (`/api/stop` vb.) reddeder; yalnız `remote_stop` (Python `_remote_post` gönderir) ve gövdede
+  `host` istisna değil hata değeri. `exact_target` yeteneği yalnız önbellekten okur (çağıran önce `host_capabilities`);
+  yetenek ve `blocked` denetim sırası farklı (ikisi de istek göndermez).
+- `finalize`, kahin dışı girdide (JSON'da `NaN`/`Infinity`) Python'dan önce reddeder (serde).
+- Python `str()` yalnız skalerlerde birebir; dizi/nesne değer JSON metni olarak kalır (`build.running`, `fwd.kids` öğesi).
 - Bilinen eşit davranış (düzeltilmedi): gRPC çağrıları imzalanmaz.
 
 ## Ders listesi 2.11 (federasyon)
@@ -250,12 +322,12 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 
 | Madde | Durum | Karşılık |
 |---|---|---|
-| `Remote<T>`; yıkıcı eylem yalnız `Ok` | T | `health::Remote`, `exact_target` + `remote_stop`; `remote_post` yıkıcı yolu reddeder |
-| SSRF tablo, menzil istisnası yalnız `extra_urls` | T | `guard::tests::*`, `record::tests::validation_order` |
+| `Remote<T>`; yıkıcı eylem yalnız `Ok` | T | `health::Remote`, `exact_target` (tazelik + geri çekilme + tek satır + yetenek) + `remote_stop`; `remote_post` yıkıcı yolu reddeder (`fake_health::ambiguous_or_inexact_target_sends_nothing`, `remote_stop_sends_one_exact_stop_per_host_per_tick`) |
+| SSRF tablo, menzil istisnası yalnız `extra_urls` | T | `guard::tests::*`, `record::tests::validation_order`, `parity::address_filters_match_python`, `parity::save_host_validation_and_upsert_match_python` |
 | HTTPS'ten düz HTTP'ye sessiz düşüş yok | T | `https_never_downgrades_to_public_http`, `try_fallback_urls` |
-| Breaker, probe başarısında sıfırlama, yavaş okuma suçlamaz | T | `Breaker::{settle,clear}`, `TickState::record_reads` |
-| Yetenek yoklaması, eski sürüme zarif düşüş | T | `CapabilityCache::probe_facts`, `Remote::Unsupported` |
-| Route = host-routed = yetki tablosu eşitlik testi | A | iş 4 |
+| Breaker, probe başarısında sıfırlama, yavaş okuma suçlamaz | T | `Breaker::{settle,clear}`, `TickState::record_reads` (`fake_health::breaker_*`, `probe_success_clears_backoff_immediately`, `slow_single_read_does_not_blame_a_reachable_host`) |
+| Yetenek yoklaması, eski sürüme zarif düşüş | T | `CapabilityCache::probe_facts`, `host_capabilities`, `Remote::Unsupported` (`fake_health::probe_facts_*`, `host_capabilities_uses_cache_then_probes_once`) |
+| Route = host-routed = yetki tablosu eşitlik testi | T | `parity::host_routed_route_sets_equal_python_source`, `parity::host_routed_paths_have_the_same_authz_action_as_python` (yerel POST tablosu = host-routed eşitliği W0-c/copsd) |
 | Deploy smoke | gerekçe | kütüphane; ikili ve deploy copsd entegrasyonunda (cops) |
 | Açık, uzun zaman aşımı | T (adım + tavan + terminal deneme sınırı), K (`long_read`) | `Timeouts` (`long_read` 90 sn çağıran seçer) |
 | İmzalı kimlik: istemci başlığı güvenilmez, gövde özeti | T (signer tam gövdeyi ve sorgusuz yolu alır) | vekil istemci başlığı taşımaz, gövde signer'a verilir; doğrulama alıcıda |
@@ -266,26 +338,26 @@ Durum: T = testli, K = kodda var, TEST YOK, A = açık.
 
 | # | Durum | Not |
 |---|---|---|
-| 1 hedef Unique | T (`ambiguous_or_inexact_target_sends_nothing`) | `exact_target` tam ad, birden çok eşleşme `ambiguous` |
+| 1 hedef Unique | T (`ambiguous_or_inexact_target_sends_nothing`, `health::tests::running_row_is_exact_truthy_and_ambiguous_is_unknown`) | `exact_target` tam ad, birden çok eşleşme `ambiguous_sessions`, geri çekilmede `host_down` |
 | 2 atomik yazım | gerekçe | dosya yazımı yok |
-| 3 belirsiz = kapalı | kısmen T | signer paniği ve yasak başlık red (T, iş 1), bozuk belge yazılmaz (T), `Remote` ayrımı (K) |
+| 3 belirsiz = kapalı | T | signer paniği ve yasak başlık red (`fake_proxy::signer_refusal_...`), bozuk belge yazılmaz (`record::tests::corrupt_and_irregular_documents`), `Remote` ayrımı (`fake_health::probe_facts_*`), belirsiz satır = bilinmiyor (`running_row`), `ok` doğru değilse başarısız (`parity::status_reduction_matches_python`), asılı DNS fail-open ama bağlantı anı peer denetimi (`guard::tests::hung_or_failed_...`) |
 | 4 sonuç doğrulama + negatif test | T | iş 1-3 negatifleri sunucu sayacıyla (bağlantı/istek/çağrı GİTMEDİ) |
-| 5 hata yutma | A | `.ok()`/`let _` taraması yapılmadı (WS kapanışı ve TCP nodelay bilerek yutuluyor) |
+| 5 hata yutma | T (tarama) | yukarıda "Hata yutma taraması"; sonucu değiştiren yutma yok, bilerek yutulanlar listeli |
 | 6 bayat önbellek | T | kayıtlar her turda okunur; hata `last_good`u ezmez (T, iş 2). Sistem TLS kökleri süreçte bir kez yüklenir |
-| 7 sınırlı döngü | kısmen T | yeniden deneme 2 ve 3 (T, iş 1); poller/prober sonsuz ama `Running` düşünce durur (T, iş 2); dedup TTL + LRU (T) |
+| 7 sınırlı döngü | T | yeniden deneme 2 ve 3 (`fake_http::stale_*`, `fake_proxy::term_input_retries_three_times_with_same_input_id`); poller/prober sonsuz ama `Running` düşünce durur (`fake_poller::dropping_running_stops_poller_and_prober`); dedup TTL + LRU (`flight::tests::*`); kahin `timeout 120` altında |
 | 8 CLI/TUI fixture | gerekçe | TUI yok |
 | 9 sahiplik, fd sızıntı testi | T | `fake_fd` (REST); WS/relay/gRPC: görev düşünce soket kapanır, fd tabana döner (`dropped_streams_close_their_sockets_and_leak_no_fds`, `dropped_grpc_consumers_...`) |
 | 10 girdi sınırları | T | REST gövde sınırı (iş 1); WS 16 MiB (tek ve parçalı), gRPC 4 MiB, bozuk kareler (iş 3) |
 | 11 metin ayrıştırma | gerekçe | yok |
-| 12 Python paritesi | A | iş 4; `py_strip` kullanıldı, `$HOME` erişimi yok |
+| 12 Python paritesi | T | `tests/parity.rs` (12 test, kahin `tools/py_parity.py`), eşleme `docs/rs-hosts-mapping.md`; `py_strip`, `$HOME` erişimi yok |
 | 13 sırlar | T (kayıt) | `Secret`, `public()`; hata metinlerinde URL/port/token yok (T, `error_texts_carry_no_url_port_or_token`) |
 | 14 adres denetimi | T | canonical `::ffff:` testli; DNS adı loopback'e çözülünce REST/WS/gRPC bağlantısı yok (sunucu kabulü 0); TLS ad/kök denetimi (T, iş 3) |
-| 15 kullanıcı yolu e2e | A | copsd entegrasyonundan sonra |
-| 16 route tabloları | A | iş 4 |
-| 17 test yalıtımı | T | testler dosya yazmaz, canlı dizine dokunmaz |
+| 15 kullanıcı yolu e2e | A | copsd entegrasyonundan sonra (birleştirmeyi tutan madde) |
+| 16 route tabloları | T | `parity::host_routed_route_sets_equal_python_source`, `parity::host_routed_paths_have_the_same_authz_action_as_python` |
+| 17 test yalıtımı | T | testler canlı dizine dokunmaz; kahin geçici dizin dışında çalışmayı reddeder, ağsız; DNS testi sahte çözümleyiciyle (gerçek ad sunucusuna `.invalid` sorgusu kaldırıldı) |
 | 18 uzak sürüm/deploy notu | K | uzak hostlara deploy gerektirmez (istemci tarafı) |
 | 19 GIT_SHA / geri dönüş | gerekçe | ikili yok |
-| 20 kanıt | yapıldı | perf iddiası yok; Python'a yazılmadı |
+| 20 kanıt | yapıldı | perf iddiası yok; Python'a yazılmadı; Python hataları kahinle doğrulandı |
 
 H1-H21'den bu ize değen diğerleri: H1 (bağlantı sahipliği: REST/WS/gRPC T), H18 (WS çerçeveleme: Ping/Pong, Close, sınır T; iki gerçek istemcili e2e copsd'de), H20 (olaylar
 `Events` ile, token'sız alanlar), H15/H4/H6 kapsam dışı (vekil sunucu, TUI, metin işareti yok).

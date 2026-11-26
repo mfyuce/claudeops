@@ -406,7 +406,8 @@ async fn malformed_remote_status_is_an_error_or_reduced_to_empty_fields() {
         );
         assert_eq!(s.disk_clean, Value::Null);
         assert_eq!(s.orphan_watch, json!({"servers": 2, "procs": 1, "last_end": "t"}));
-        assert_eq!(s.build_running, None);
+        // Python `str(r)[:12] if r`: sayı da metne çevrilir (parity `status_reduction_matches_python`).
+        assert_eq!(s.build_running.as_deref(), Some("7"));
         assert_eq!(s.fwd["mode"], "on");
         assert_eq!(s.fwd["kids"], json!(["k1", "2", "k3", "k4"]));
         assert!(s.fwd["skew"].is_number());

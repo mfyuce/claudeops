@@ -261,6 +261,15 @@ async fn junk_frames_keep_the_stream_alive_but_rest_polling_continues() {
         assert_eq!(f.upgrades(), 1, "stream kept (alive, not silent)");
         assert_eq!(f.ws_live(), 1);
         assert!(deaths(&ev).is_empty(), "{:?}", ev.all());
+        // Üç okunamayan/nesne olmayan kare (dizi, JSON değil, bozuk ikili) dakikada TEK `push_frame_skipped` (Python
+        // `_ws_envelope`); geçerli ama ilgisiz nesneler loglanmaz.
+        let skipped: Vec<Value> = ev
+            .all()
+            .into_iter()
+            .filter(|(n, _)| n == "push_frame_skipped")
+            .map(|(_, v)| v)
+            .collect();
+        assert_eq!(skipped, vec![json!({"kind": "status"})]);
         // REST sonucu yazılı (kareler önbelleğe hiçbir şey yazmadı).
         assert_eq!(fed.book.cached("a").unwrap().sessions[0]["name"], "rest1");
 
@@ -402,7 +411,7 @@ async fn term_relay_streams_frames_and_keeps_one_stream_per_option_set() {
     deadline(async {
         let f = fake(default_opener()).await;
         let src = MemSource::new(vec![host("a", &f.url())]);
-        let (fed, _) = fed(&src);
+        let (fed, ev) = fed(&src);
         ws_tier(&fed, "a");
         let plain = TermOpts::default();
 
@@ -439,6 +448,14 @@ async fn term_relay_streams_frames_and_keeps_one_stream_per_option_set() {
         }
         f.send_last(Cmd::Send(term_frame("after-junk")));
         wait_text(&fed, "s1", &plain, "after-junk").await;
+        // Yalnız nesne olmayan `[]` atlama olayı üretir (Python `_ws_envelope`), tür `term`; ilgisiz nesneler loglanmaz.
+        let skipped: Vec<Value> = ev
+            .all()
+            .into_iter()
+            .filter(|(n, _)| n == "push_frame_skipped")
+            .map(|(_, v)| v)
+            .collect();
+        assert_eq!(skipped, vec![json!({"kind": "term"})]);
 
         // lite / interval / viewport: ayrı akış, sorguda taşınır.
         let lite = TermOpts {
@@ -472,6 +489,32 @@ async fn term_relay_streams_frames_and_keeps_one_stream_per_option_set() {
         let v = fed.term_output("nope", "s1", "en", &plain);
         assert_eq!(v["code"], "unknown_host");
         assert_eq!(f.upgrades(), 2);
+    })
+    .await
+}
+
+/// Python `_TermRelay` etiketi: `term:<host>/<ad>` + `?lite` + `@<aralık>s` + `+viewport`; ölüm olayı bu etiketle.
+#[tokio::test]
+async fn relay_death_label_names_lite_interval_and_viewport() {
+    deadline(async {
+        let f = fake(default_opener()).await;
+        let src = MemSource::new(vec![host("a", &f.url())]);
+        let (fed, ev) = fed(&src);
+        ws_tier(&fed, "a");
+        let o = TermOpts {
+            lite: true,
+            interval: Some(2.5),
+            viewport: true,
+        };
+        wait_text(&fed, "s1", &o, "s1#0").await;
+        f.send_last(Cmd::Drop);
+        let d = ev.clone();
+        wait_until("relay consumer died", Duration::from_secs(5), || {
+            !deaths(&d).is_empty()
+        })
+        .await;
+        assert_eq!(deaths(&ev)[0]["label"], "term:a/s1?lite@2.5s+viewport");
+        assert_eq!(deaths(&ev)[0]["tier"], "ws");
     })
     .await
 }

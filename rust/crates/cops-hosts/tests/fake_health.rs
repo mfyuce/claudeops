@@ -372,6 +372,20 @@ async fn probe_facts_reads_caps_and_facts_in_one_request() {
         assert_eq!(caps.api, 3);
         assert!(caps.capabilities.is_empty());
         assert_eq!(facts, Remote::Ok(Map::new()));
+        // Python `_caps_put` (TBD#372): dizi olmayan `capabilities` boş, metin karakterlere bölünmez.
+        for caps_val in [
+            json!("exact_target"),
+            json!({"exact_target": 1}),
+            json!(5),
+            json!(null),
+        ] {
+            r.set(
+                200,
+                json!({"api": 3, "capabilities": caps_val.clone(), "sessions": {}}),
+            );
+            let (caps, _) = cache.probe_facts(&c, &hosts, "a", &[], T, NOW, None).await;
+            assert!(caps.capabilities.is_empty(), "{caps_val}");
+        }
         for bad in [
             json!({"api": true}),
             json!({"api": 2.5}),
@@ -436,6 +450,46 @@ async fn probe_facts_404_caches_old_host_and_stops_asking() {
             1,
             "api>0 never expires"
         );
+    })
+    .await
+}
+
+/// Python `host_capabilities`: önbellekte varsa istek GİTMEZ; yoksa ad listesi boş tek yoklama; geçici arıza boş yetenek
+/// döner ve önbelleğe yazılmaz.
+#[tokio::test]
+async fn host_capabilities_uses_cache_then_probes_once() {
+    deadline(async {
+        let r = Reply::new(500, json!({"ok": false, "error": "boom"}));
+        let f = scripted(&r).await;
+        let c = client();
+        let hosts = vec![host("a", &f.url())];
+        let cache = CapabilityCache::default();
+        let caps = cache.host_capabilities(&c, &hosts, "a", T, NOW).await;
+        assert_eq!(caps, Capabilities::default());
+        assert!(
+            cache.cached("a", NOW).is_none(),
+            "transient failure not cached"
+        );
+        assert_eq!(f.count(), 1);
+        assert!(
+            f.recs()[0].query.starts_with("names=&token="),
+            "{}",
+            f.recs()[0].query
+        );
+
+        r.set(
+            200,
+            json!({"api": 2, "capabilities": ["exact_target"], "sessions": {}}),
+        );
+        let caps = cache.host_capabilities(&c, &hosts, "a", T, NOW).await;
+        assert!(caps.has("exact_target"));
+        assert_eq!(f.count(), 2);
+        // Önbellekte: ağa gitmez.
+        r.set(500, json!({}));
+        let again = cache.host_capabilities(&c, &hosts, "a", T, NOW + 1.0).await;
+        assert_eq!(again, caps);
+        assert_eq!(f.count(), 2);
+        assert_eq!(health::CAPS_PROBE_TIMEOUT, Duration::from_secs(5));
     })
     .await
 }
@@ -721,7 +775,7 @@ async fn stop_if_exact(
     t: &mut TickState,
 ) -> Result<Value, &'static str> {
     let now = 5000.0;
-    let target = exact_target("a", name, Some(st), now - 1.0, caps, now)?;
+    let target = exact_target("a", name, Some(st), now - 1.0, false, caps, now)?;
     Ok(remote_stop(c, hosts, target, "tr", T, t).await)
 }
 
@@ -735,14 +789,14 @@ async fn ambiguous_or_inexact_target_sends_nothing() {
         let mut t = TickState::default();
         let cases = [
             // iki çalışan satır aynı adla (biri "running": 1, Python doğruluk kuralı)
-            (json!([{"name": "s1", "running": true}, {"name": "s1", "running": 1}]), "s1", "ambiguous"),
-            (json!([{"name": "s1", "running": true}, {"name": "s1", "running": "yes"}]), "s1", "ambiguous"),
+            (json!([{"name": "s1", "running": true}, {"name": "s1", "running": 1}]), "s1", "ambiguous_sessions"),
+            (json!([{"name": "s1", "running": true}, {"name": "s1", "running": "yes"}]), "s1", "ambiguous_sessions"),
             // yalnız önek/sonek eşleşmesi
-            (json!([{"name": "s1_2", "running": true}, {"name": "xs1", "running": true}]), "s1", "no_exact_match"),
+            (json!([{"name": "s1_2", "running": true}, {"name": "xs1", "running": true}]), "s1", "no_exact_row"),
             // tam ad var ama çalışmıyor
-            (json!([{"name": "s1", "running": false}, {"name": "s1", "running": 0}, {"name": "s1"}]), "s1", "no_exact_match"),
-            (json!([{"name": "S1", "running": true}]), "s1", "no_exact_match"),
-            (json!([]), "s1", "no_exact_match"),
+            (json!([{"name": "s1", "running": false}, {"name": "s1", "running": 0}, {"name": "s1"}]), "s1", "no_exact_row"),
+            (json!([{"name": "S1", "running": true}]), "s1", "no_exact_row"),
+            (json!([]), "s1", "no_exact_row"),
         ];
         for (rows, name, want) in cases {
             let st = rows_status(rows.clone());
@@ -759,14 +813,16 @@ async fn ambiguous_or_inexact_target_sends_nothing() {
         assert_eq!(stop_if_exact(&c, &hosts, &one, Some(&no_cap), "s1", &mut t).await.unwrap_err(), "remote_too_old");
         // Belirsizlik yetenekten ÖNCE (Python sırası).
         let two = rows_status(json!([{"name": "s1", "running": true}, {"name": "s1", "running": true}]));
-        assert_eq!(stop_if_exact(&c, &hosts, &two, None, "s1", &mut t).await.unwrap_err(), "ambiguous");
+        assert_eq!(stop_if_exact(&c, &hosts, &two, None, "s1", &mut t).await.unwrap_err(), "ambiguous_sessions");
         let now = 5000.0;
         for (st, last_ok) in [(Some(&one), 0.0), (Some(&one), now - REMOTE_STALE_SECONDS - 1.0), (None, now)] {
-            assert_eq!(exact_target("a", "s1", st, last_ok, Some(&caps), now).unwrap_err(), "host_down");
+            assert_eq!(exact_target("a", "s1", st, last_ok, false, Some(&caps), now).unwrap_err(), "host_down");
         }
+        // Geri çekilmedeki host (Python `_remote_rows`: `_backing_off`) taze satırla da kapalı sayılır.
+        assert_eq!(exact_target("a", "s1", Some(&one), now, true, Some(&caps), now).unwrap_err(), "host_down");
         let mut kept = one.clone();
         kept.ok = false;
-        assert_eq!(exact_target("a", "s1", Some(&kept), now, Some(&caps), now).unwrap_err(), "host_down");
+        assert_eq!(exact_target("a", "s1", Some(&kept), now, false, Some(&caps), now).unwrap_err(), "host_down");
 
         assert_eq!(f.count(), 0, "no request for any refused target");
         assert_eq!(f.accepted(), 0);
@@ -796,7 +852,7 @@ async fn remote_stop_sends_one_exact_stop_per_host_per_tick() {
         let now = 5000.0;
         let mut t = TickState::default();
 
-        let t1 = exact_target("a", "s1", Some(&st), now, Some(&caps), now).unwrap();
+        let t1 = exact_target("a", "s1", Some(&st), now, false, Some(&caps), now).unwrap();
         let out = remote_stop(&c, &hosts, t1, "tr", T, &mut t).await;
         assert_eq!(out["ok"], true);
         assert_eq!(out["host"], "a");
@@ -814,14 +870,14 @@ async fn remote_stop_sends_one_exact_stop_per_host_per_tick() {
         assert_eq!(t.succeeded, set(&["a"]));
 
         // Aynı tick'te aynı host'a ikinci yıkıcı eylem ertelenir, GİTMEZ.
-        let t2 = exact_target("a", "s10", Some(&st), now, Some(&caps), now).unwrap();
+        let t2 = exact_target("a", "s10", Some(&st), now, false, Some(&caps), now).unwrap();
         let out = remote_stop(&c, &hosts, t2, "tr", T, &mut t).await;
         assert_eq!(out["ok"], false);
         assert_eq!(out["code"], "destructive_budget");
         assert_eq!(fa.count(), 1);
 
         // Başka host'un kendi bütçesi var; uzak ret uygulanmış sayılmaz, adı/host'u taşır.
-        let t3 = exact_target("b", "s1", Some(&st), now, Some(&caps), now).unwrap();
+        let t3 = exact_target("b", "s1", Some(&st), now, false, Some(&caps), now).unwrap();
         let out = remote_stop(&c, &hosts, t3, "en", T, &mut t).await;
         assert_eq!(fb.count(), 1);
         assert_eq!(out["ok"], false);
@@ -836,7 +892,7 @@ async fn remote_stop_sends_one_exact_stop_per_host_per_tick() {
         // Yeni tick: bütçe yenilenir; bloklu host'a gitmez.
         let mut t = TickState::default();
         t.failed.insert("a".into());
-        let t4 = exact_target("a", "s1", Some(&st), now, Some(&caps), now).unwrap();
+        let t4 = exact_target("a", "s1", Some(&st), now, false, Some(&caps), now).unwrap();
         let out = remote_stop(&c, &hosts, t4, "tr", T, &mut t).await;
         assert_eq!(
             out,
@@ -844,7 +900,7 @@ async fn remote_stop_sends_one_exact_stop_per_host_per_tick() {
         );
         assert_eq!(fa.count(), 1);
         let mut t = TickState::default();
-        let t5 = exact_target("a", "s1", Some(&st), now, Some(&caps), now).unwrap();
+        let t5 = exact_target("a", "s1", Some(&st), now, false, Some(&caps), now).unwrap();
         assert_eq!(
             remote_stop(&c, &hosts, t5, "tr", T, &mut t).await["ok"],
             true
@@ -855,7 +911,7 @@ async fn remote_stop_sends_one_exact_stop_per_host_per_tick() {
         let fc = Fake::start(handler(|_r| async { json(200, json!({"done": 1})) })).await;
         let hosts = vec![host("a", &fc.url())];
         let mut t = TickState::default();
-        let t6 = exact_target("a", "s1", Some(&st), now, Some(&caps), now).unwrap();
+        let t6 = exact_target("a", "s1", Some(&st), now, false, Some(&caps), now).unwrap();
         let out = remote_stop(&c, &hosts, t6, "tr", T, &mut t).await;
         assert_eq!(out["ok"], false);
         assert_eq!(

@@ -19,7 +19,7 @@ pub mod relay;
 pub mod sign;
 pub mod status;
 pub mod tier;
-mod ws;
+pub mod ws;
 
 pub use federation::{Federation, HostSource, PollerHealth, Running};
 pub use proxy::{GetOpts, HostClient, Reply};
