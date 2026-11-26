@@ -1,7 +1,7 @@
 # rs/cli (İz T6: Rust `cops` CLI)
 
 **Durum (26 Kas 2026 gece): BİRLEŞTİRMEYE HAZIR** (kod + eşlik tablosu + ders listesi). **py/ değişti** ("Python hatası?"
-1-8 Python'da düzeltildi): birleşince web restart + uzak deploy (yuhem, ulak_31) gerekir. Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list` `cops-procscan` birleşince bağlanır.
+1-8 Python'da düzeltildi): birleşince web restart + uzak deploy (yuhem, ulak_31) gerekir. Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list`/`ls` `cops-procscan`e bağlandı (27 Kas, aşağıda "`list`").
 
 ## Doğrulama (26 Kas gece, "Python hatası?" 1-8 sonrası)
 
@@ -16,12 +16,12 @@ Testler yalıtık HOME/CLAUDEOPS_DIR ve sahte systemctl ile; canlı birimlere ve
 
 | dosya | içerik |
 |---|---|
-| `src/lib.rs` | yönlendirme: `front`, `self` Rust; gerisi Python'a |
+| `src/lib.rs` | yönlendirme: `front`, `list`/`ls`, `self` Rust; gerisi Python'a |
 | `src/delegate.rs` | Python CLI'ı bulma (`COPS_PY`, ikilinin ataları, `<durum dizini>/bin/cops-py`), özyineleme koruması, `exec`, çıkış 125 |
 | `src/argp.rs`, `src/pyenv.rs` | argparse biçimleri (taklit edilmeyen devredilir), Python yol kuralları |
 | `src/front/` | `front status|on|off [--apply]`, TBD#371/4 (a) adres ayrıştırma, (b) yabancı porta vekillik, (c) geri alma; gizli üretimi |
 | `src/selfcmd.rs` | `self` |
-| `src/list.rs` | `list` yalnız arayüz; komut Python'a devredilir |
+| `src/list.rs` | `list`/`ls`: tarama ve çıktı `cops-procscan`den; şüpheli taramada devir (`delegate_reason`) |
 
 ## İşlevce eşlik tablosu
 
@@ -136,11 +136,33 @@ Koddan okunan, "Bilinçli sapmalar"da yazmayan ve testi olmayan farklar (koşulm
 almaz, `json_files` alır; sıralama bash'te yerel ayara, Rust'ta bayt sırasına göre; `pid`i metin olan kaydı bash kabul eder,
 Rust atlar; UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET`i Python dolu sayar, `cops-rs` yok sayıp dosyaya bakar.
 
-### `list` (yalnız arayüz)
+### `list` / `ls`
 
 | Python adı (satır) | Rust karşılığı | Rust testi | durum |
 |---|---|---|---|
-| `py/claudeops/commands/ls.py` `register` (11), `run` (19) | `src/list.rs` yalnız tipler; komut Python'a devredilir | `list_is_delegated_until_procscan_lands`, `routing` | kapsam dışı: cops-procscan birleşince (`rs/proc`) |
+| `register` (`commands/ls.py` 11) | `src/argp.rs` `parse_list`, `ListArgs` (taklit edilmeyen biçim devredilir) | `rust_list_parse_never_accepts_more_than_python`, `unusual_list_arguments_are_delegated` | karşılandı |
+| `run` (`commands/ls.py` 19) | `src/list.rs` `run` + `cops_procscan::list::render` | `list_is_answered_without_python_and_matches_python_bytes` | karşılandı |
+| `_s` (`tests/test_ls_json.py` 13) | `cops-procscan` `list.rs` test yardımcısı `sessions` | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson` (17) | `cops-procscan` `list.rs` testleri | `json_is_sorted_valid_and_has_no_table`, `table_matches_python_layout` | karşılandı |
+| `LsJson.run_ls` (18) | `render` doğrudan çağrılır | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson.test_json_is_sorted_valid_and_has_no_table` (27) | aynı | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson.test_table_unchanged_without_flag` (34) | aynı | `table_matches_python_layout` | karşılandı |
+
+Devir koşulları (hiçbir çıktı yazılmadan aynı argv Python'a; `list` Rust'ta hiçbir şey yazmaz):
+
+| koşul | neden | test |
+|---|---|---|
+| `Scan.agy_learned` boş değil (`--base` süzgecinden bağımsız) | Python keşifte `agy_sids`e yazar | `learned_agy_mapping_is_delegated_so_python_records_it` |
+| `diag.agy_files_unreadable > 0` | Python `db` kipinde DB'den okur; eşleme belirsiz | `unreadable_agy_mirror_is_delegated` |
+| `diag.proc_root_error` | "oturum yok" değil "bilinmiyor" | `unreadable_proc_root_is_delegated_not_reported_empty`, `every_doubt_delegates_and_clean_scan_does_not` |
+| `diag.session_files_invalid > 0` | serde `NaN`/`Infinity` okumaz | `invalid_session_file_is_delegated` |
+| satırın adında, cwd'sinde ya da modelinde U+FFFD | UTF-8 olmayan argv/yol kayıpla okunmuş | `replacement_char_in_row_is_delegated` |
+| `Roots::from_env` hatası, göreli `HOME`/`CLAUDEOPS_DIR`, `Config::from_env` `None` | Python kök kuralı farklı | `bad_roots_are_delegated` |
+
+27 Kas doğrulaması: yerel cevap testi uygulamadan önce kırmızıydı (çıkış 125); `delegate_reason`in her koşulu ve
+`check_absolute` tek tek geri alınınca ilgili test kırıldı. Canlı filoda (`list --no-cpu`, `--json`; Rust/Python/Rust)
+çıktı bayt bayt aynı; CPU ölçümlü `--json` `cpu` satırları dışında aynı. `cargo test -p cops-cli` 101 geçti, clippy temiz.
+`tests/list_bin.rs` gerçek `/proc`u tarar (sahte süreçler canlı filoda kısa süre görünür), testleri kendi içinde sıralıdır.
 
 ### Python testleri: `py/tests/test_front_cmd.py`
 
@@ -292,8 +314,8 @@ Rust atlar; UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET`i Python dolu sayar, `cops-rs`
 | `ast` öğeleri (`front.py` 10, `front_cmd.py` 61, `test_front_cmd.py` 8, `test_front_internal.py` 29, `test_front_xff.py` 13, `test_front_pyfix.py` 71) | 192 | 155 | 37 | 0 |
 | `paths.py` (yalnız değişen satır) | 1 | 1 | 0 | 0 |
 | `self` (bash) | 6 | 5 | 1 | 0 |
-| `list` (tek satır) | 1 | 0 | 1 | 0 |
-| **toplam** | **200** | **161** | **39** | **0** |
+| `list` (`ls.py` 2, `test_ls_json.py` 5) | 7 | 7 | 0 | 0 |
+| **toplam** | **206** | **168** | **38** | **0** |
 
 27 Kas kapı notu düzeltmesinden sonra `front_cmd.py` ve `test_front_pyfix.py` satır numaraları `ast` ile yenilendi, yeni
 `P9` satırları eklendi (186 -> 192).
@@ -331,7 +353,8 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `bin/cops-py` ve `cops-rs`yi hiçbir kurulum yazmıyor: `COPS_PY` ya da elle `ln -s <depo>/py/cops <durum>/bin/cops-py` yoksa
   devir 125 ile düşer. Kurulum betiği (`scripts/`) bu izin yolları dışında; CANLIYA ALMADAN ÖNCE gerekli.
 - `web_addr` argparse kısaltmalarını (`--po`) ve ExecStart'ı ezen başka drop-in'leri görmez (ön kapı listen'ine düşer).
-- `list` yalnız arayüz (`cops-procscan` birleşince bağlanacak).
+- `list`: `agy_sids` `db` kipinde DB belgesidir, `cops-rs` dosya aynasını okur. Ayna DB'den gerideyse (DB yazımı sonrası ayna
+  yazılamadıysa) agy satırının `fresh`/`resume` alanı Python'dan farklı olabilir; yeni öğrenme gerekiyorsa zaten devredilir.
 - `cops-rs --version` Python'a devrediliyor, GIT_SHA yok (ders H11).
 - py/ değişti (`front_cmd.py`, `front.py`, `paths.py`): birleşince `systemctl --user restart claudeops-web.service` + uzak deploy
   (yuhem, ulak_31; CLAUDE.md "Federasyon"). `paths.py` her süreçte yüklenir: göreli `CLAUDEOPS_DIR` artık açılışta hata.

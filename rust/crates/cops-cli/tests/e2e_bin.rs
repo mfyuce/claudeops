@@ -89,7 +89,7 @@ fn python_not_found_is_loud_with_its_own_exit_code() {
     let out = sb
         .cmd(&bin())
         .env_remove("COPS_PY")
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
@@ -147,7 +147,7 @@ fn self_symlink_and_exec_loop_are_refused() {
     let out = sb
         .cmd(&bin())
         .env("COPS_PY", &link)
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
@@ -163,7 +163,7 @@ fn self_symlink_and_exec_loop_are_refused() {
     let out = sb
         .cmd(&bin())
         .env("COPS_PY", &wrap)
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
@@ -224,7 +224,7 @@ fn leaked_depth_from_other_lineage_is_ignored() {
         sb.cmd(&bin())
             .env("COPS_PY", &s)
             .env("COPS_RS_DEPTH", v)
-            .arg("list")
+            .arg("--version")
             .output()
             .unwrap()
     };

@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 cops-proxy = { path = "../cops-proxy" }
 cops-auth = { path = "../cops-auth" }
+cops-procscan = { path = "../cops-procscan" }
 libc = "0.2"
 serde_json = "1"
 

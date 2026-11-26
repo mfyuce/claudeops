@@ -7,8 +7,9 @@
 use cops_cli::delegate::{self, Locate, EXIT_DELEGATE};
 use cops_cli::front::{self, net::RealNet, systemctl::RealSystemctl, Ctx, Paths, Timing};
 use cops_cli::pyenv::Roots;
-use cops_cli::{route, selfcmd, Route};
+use cops_cli::{list, route, selfcmd, Route};
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -94,6 +95,22 @@ fn run_front(fa: &cops_cli::argp::FrontArgs) -> i32 {
     front::run(&mut ctx, fa)
 }
 
+/// `None` = Python'a devret (hiçbir şey yazılmadı).
+fn run_list(la: &cops_cli::argp::ListArgs) -> Option<i32> {
+    let roots = Roots::from_env().ok()?;
+    roots.check_absolute().ok()?;
+    let cfg = cops_procscan::Config::from_env()?;
+    let text = list::run(&cfg, la).ok()?;
+    let mut out = std::io::stdout().lock();
+    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+        Ok(()) => Some(0),
+        Err(err) => {
+            eprintln!("cops-rs: çıktı yazılamadı: {err}");
+            Some(1)
+        }
+    }
+}
+
 fn run_self() -> i32 {
     let roots = match Roots::from_env() {
         Ok(r) => r,
@@ -125,6 +142,10 @@ fn main() {
     match route(&args) {
         Route::Delegate(_) => run_delegate(&args),
         Route::Front(fa) => exit(run_front(&fa)),
+        Route::List(la) => match run_list(&la) {
+            Some(code) => exit(code),
+            None => run_delegate(&args),
+        },
         Route::SelfCmd => exit(run_self()),
     }
 }
