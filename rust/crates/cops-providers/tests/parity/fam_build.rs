@@ -134,12 +134,9 @@ fn build_cases(e: &Env) -> Vec<Case> {
             .settings_json(json!({"provider_bin": {cli: "~root/x"}})));
         v.push(bcase(format!("{cli}-override-bos"), cli, json!({"cwd": w}))
             .settings_json(json!({"provider_bin": {cli: " \u{1f} "}})));
-        let tip = bcase(format!("{cli}-override-tip"), cli, json!({"cwd": w})).settings_json(json!({"provider_bin": {cli: 5}}));
-        v.push(if ["shell", "bogus"].contains(&cli) {
-            tip
-        } else {
-            tip.known("Python HATASI? `provider_bin[cli]` dize değilse `.strip()` AttributeError: spawn düşer; Rust yok sayar")
-        });
+        for (i, bad) in [json!(5), json!(null), json!(true), json!(["/x"]), json!({"a": 1}), json!(1.5)].into_iter().enumerate() {
+            v.push(bcase(format!("{cli}-override-tip{i}"), cli, json!({"cwd": w})).settings_json(json!({"provider_bin": {cli: bad}})));
+        }
     }
     // claude: PATH'te yokken bilinen kurulum konumları (sıra önemli).
     for (i, rel) in ["home/cc/node_modules/.bin/claude", "home/.local/bin/claude", "home/.npm-global/bin/claude"].iter().enumerate() {
@@ -160,8 +157,7 @@ fn build_cases(e: &Env) -> Vec<Case> {
     v.push(rg("override-crlf", json!({"routing_guidance_text": "a\r\nb"}))
         .file(file("state/routing-guidance.md", "a\r\nb\n", 0o600)));
     v.push(rg("override-bozuk-utf8", json!({"routing_guidance_text": "Yönerge"}))
-        .file(Fx::File("state/routing-guidance.md".into(), vec![0xff, 0xfe, b'x'], 0o600))
-        .known("Python HATASI? bozuk UTF-8 override dosyası UnicodeDecodeError -> `claude_guidance_path` None: yönerge sessizce düşer ve dosya hiç düzeltilmez; Rust okunamayanı yeniden yazar"));
+        .file(Fx::File("state/routing-guidance.md".into(), vec![0xff, 0xfe, b'x'], 0o600)));
     v.push(rg("override-symlink", json!({"routing_guidance_text": "Yönerge"}))
         .file(file("state/hedef.md", "eski", 0o600))
         .file(Fx::Link("state/routing-guidance.md".into(), "hedef.md".into())));
@@ -172,6 +168,22 @@ fn build_cases(e: &Env) -> Vec<Case> {
     // copilot: güven klasörü (config.json JSONC) ve BYOK dosyası.
     let cfg = |t: &str| file("home/.copilot/config.json", t, 0o600);
     let cp = |id: &str| bcase(format!("copilot-{id}"), "copilot", json!({"cwd": w}));
+    for (i, text) in [
+        r#"{"trustedFolders": ["/a/[x]", "WORK"], "x": [1]}"#,
+        r#"{"trustedFolders": ["/a]b"], "x": [1]}"#,
+        r#"{"trustedFolders": [ // eski ] "WORK"
+ /* ] */ "/q\"]" ]}"#,
+        r#"{"trustedFolders": [ "/a]""#,
+        r#"{"trustedFolders": ["/a", "\x", "WORK"]}"#,
+        r#"{"trustedFolders": ["WORK\u002f", "/\u00e7]"]}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        v.push(cp(&format!("trust-ayrac{i}")).file(cfg(&text.replace("WORK", &w))));
+    }
+    v.push(bcase("copilot-trust-ayrac-cwd".into(), "copilot", json!({"cwd": format!("{w}/[q]")}))
+        .file(cfg(r#"{"trustedFolders": ["/a]b"]}"#)));
     v.push(cp("trust-bos").file(cfg("{\n  \"trustedFolders\": []\n}\n")));
     v.push(cp("trust-dolu").file(cfg("// yorum\n{\"trustedFolders\" :[\n  \"/x\"\n], \"a\": 1}")));
     v.push(cp("trust-var").file(cfg(&format!("{{\"trustedFolders\": [\"{w}\"]}}"))));
@@ -274,11 +286,8 @@ fn binary_cases(e: &Env) -> Vec<Case> {
         .file(file("home/work/projects/tmp/unified-cli/target/debug/ucli", "x", 0o755)));
     v.push(ru("kardes-debug").env("PATH", "").file(file("home/work/projects/tmp/unified-cli/target/debug/ucli", "x", 0o755)));
     v.push(ru("kardes-dizin").env("PATH", "").file(Fx::Dir("home/work/projects/tmp/unified-cli/target/release/ucli".into(), 0o755)));
-    v.push(
-        ru("override-tip")
-            .settings_json(json!({"provider_bin": {"ucli": null}}))
-            .known("Python HATASI? `provider_bin.ucli` null -> `.strip()` AttributeError; Rust yok sayar"),
-    );
+    v.push(ru("override-tip").settings_json(json!({"provider_bin": {"ucli": null}})));
+    v.push(ru("override-tip-sayi").settings_json(json!({"provider_bin": {"ucli": 5}})).env("UCLI_BIN", "/env/ucli"));
     let _ = e;
     v
 }

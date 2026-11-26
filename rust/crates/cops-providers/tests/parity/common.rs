@@ -440,7 +440,7 @@ impl Probe for FsProbe<'_> {
             _ => Err("Rust araç zinciri bulunamadı: <sahte>".into()),
         }
     }
-    fn searxng_url(&self, _session: &str) -> Option<String> {
+    fn searxng_url(&self, _session: &str, _preview: bool) -> Option<String> {
         self.case.fact("searxng_url").and_then(Value::as_str).map(String::from)
     }
     fn checks_registry(&self, _path: &str) -> Result<(), String> {

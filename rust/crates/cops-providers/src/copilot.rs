@@ -41,19 +41,30 @@ fn permission_flags(mode: &str) -> &'static [&'static str] {
 
 static TRUSTED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""trustedFolders"\s*:\s*\["#).unwrap());
 
+/// `trustedFolders` dizisini gezen sözcükler: dize (içindeki `]` dizi sonu DEĞİL), JSONC yorumu, dizi sonu.
+static TRUST_TOKEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?s)"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*.*?\*/|\]"#).unwrap());
+
 /// `config.json` (JSONC) metnine `cwd`yi `trustedFolders`a ekler; değişiklik yoksa None.
 pub fn trust_folder_edit(text: &str, cwd: &str) -> Option<String> {
     let m = TRUSTED.find(text)?;
     let after = &text[m.end()..];
-    // Python `text[m.end():text.find("]", m.end())]`: `]` yoksa -1, yani son karakter hariç.
-    let rest = match after.find(']') {
-        Some(i) => &after[..i],
-        None => &after[..after.len().saturating_sub(after.chars().last().map_or(0, char::len_utf8))],
-    };
-    let entry = crate::pyfmt::json_ascii(cwd);
-    if rest.contains(&entry) {
-        return None;
+    let mut end = None;
+    for token in TRUST_TOKEN.find_iter(after) {
+        match token.as_str() {
+            "]" => {
+                end = Some(token.start());
+                break;
+            }
+            // Okunamayan dize ya da kayıtlı `cwd`: dokunma.
+            t if t.starts_with('"') && serde_json::from_str::<String>(t).map_or(true, |entry| entry == cwd) => {
+                return None;
+            }
+            _ => {}
+        }
     }
+    let rest = &after[..end?]; // kapanmayan liste: dokunma
+    let entry = crate::pyfmt::json_ascii(cwd);
     let sep = if crate::pyfmt::strip(rest).is_empty() { "" } else { "," };
     Some(format!("{}\n    {entry}{sep}{after}", &text[..m.end()]))
 }

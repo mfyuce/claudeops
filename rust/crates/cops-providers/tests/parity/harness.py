@@ -67,6 +67,7 @@ import claudeops.paths as paths  # noqa: E402
 
 assert paths.CLAUDEOPS_DIR == os.environ["CLAUDEOPS_DIR"], "CLAUDEOPS_DIR yalıtılamadı"
 import claudeops.diaglog as diaglog  # noqa: E402
+import claudeops.preview as preview  # noqa: E402
 import claudeops.settings as settings  # noqa: E402
 import claudeops.effort as effort  # noqa: E402
 import claudeops.routing as routing  # noqa: E402
@@ -97,7 +98,8 @@ _ORIG_DIAG = diaglog.diag_log
 
 
 def _rec_diag(event, **kw):
-    DIAGS.append([event, kw])
+    if not preview.active():      # gerçek `diag_log` gibi: kuru çalıştırmada günlük yok
+        DIAGS.append([event, kw])
 
 
 for _m in list(sys.modules.values()):
@@ -110,7 +112,12 @@ def _fake_ensure_search_url(session_name=""):
     return FACTS.get("searxng_url")
 
 
+_ORIG_ISSUE = ucli_agents.issue_token
+
+
 def _fake_issue_token(session_name):
+    if preview.active():      # kuru yol gerçek koddan: token üretmez
+        return _ORIG_ISSUE(session_name)
     t = FACTS.get("agent_token") or {}
     if "error" in t:
         raise OSError(t["error"])

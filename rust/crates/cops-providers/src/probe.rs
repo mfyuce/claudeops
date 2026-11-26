@@ -34,6 +34,10 @@ impl Paths {
     pub fn ucli_metrics_dir(&self) -> String {
         format!("{}/ucli_metrics", self.claudeops_dir)
     }
+    /// `ucli_agents.token_file(session)`.
+    pub fn ucli_agent_token_file(&self, session: &str) -> String {
+        format!("{}/ucli_agent_tokens/{session}", self.claudeops_dir)
+    }
     pub fn ucli_ask_root(&self) -> String {
         format!("{}/ucli_ask", self.claudeops_dir)
     }
@@ -80,8 +84,9 @@ pub trait Probe {
     fn path_executables(&self) -> Vec<String>;
     /// `~/.rustup/toolchains` altındaki seçilmiş araç zinciri.
     fn rust_toolchain(&self) -> Result<Toolchain, String>;
-    /// Yönetilen yerel SearXNG adresi (hazır değilse None; spawn BEKLEMEZ).
-    fn searxng_url(&self, session: &str) -> Option<String>;
+    /// Yönetilen yerel SearXNG adresi (hazır değilse None; spawn BEKLEMEZ). `preview` (kuru çalıştırma): docker'a
+    /// dokunulmaz, kurulum/başlatma tetiklenmez; yalnız ŞU AN cevap veren adres döner.
+    fn searxng_url(&self, session: &str, preview: bool) -> Option<String>;
     /// `ucli_checks` kayıt dosyasını yükle/denetle (hata metni).
     fn checks_registry(&self, path: &str) -> Result<(), String>;
     /// Günlük USD tavanı + başlatma payı ayırma; aşıldıysa hata metni.
@@ -147,6 +152,10 @@ pub struct Diag {
 /// Komut kurulumunda biriken yan etkiler ve günlük olayları.
 #[derive(Debug, Default)]
 pub struct BuildOutput {
+    /// Kuru çalıştırma: durum değiştiren [`Probe`] çağrıları yapılmaz (`claude_cost_gate` hariç: payı yalnız bellekte
+    /// ayırır, Python gibi). Biriken `effects`/`diags` çağıran tarafından UYGULANMAZ ([`crate::spawn::plan_spawn`]
+    /// kendi eklediklerini atar).
+    pub dry_run: bool,
     pub effects: Vec<Effect>,
     pub diags: Vec<Diag>,
 }

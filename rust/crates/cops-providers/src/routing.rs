@@ -5,6 +5,7 @@ use crate::probe::{BuildOutput, Effect};
 use crate::provider::Providers;
 use crate::pyfmt::strip;
 use crate::settings::Settings;
+use serde_json::json;
 
 pub const BLOCK_BEGIN: &str = "<!-- claudeops-routing:begin -->";
 pub const BLOCK_END: &str = "<!-- claudeops-routing:end -->";
@@ -33,7 +34,13 @@ pub fn claude_guidance_path(p: &Providers<'_>, out: &mut BuildOutput) -> Option<
         return Some(bundled_path);
     }
     let path = p.paths.routing_override();
-    if p.probe.read_text(&path).as_deref() != Some(text.as_str()) {
+    let current = p.probe.read_text(&path);
+    // Okunamayan (bozuk UTF-8) var olan dosya EZİLMEZ: bayraksız açılır, günlüğe yazılır.
+    if current.is_none() && p.probe.is_file(&path) {
+        out.diag("routing_guidance_unreadable", vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))]);
+        return None;
+    }
+    if current.as_deref() != Some(text.as_str()) {
         out.effects.push(Effect::WriteAtomic { path: path.clone(), content: text });
     }
     Some(path)
@@ -70,6 +77,8 @@ pub fn with_block(existing: &str, body: Option<&str>) -> String {
 pub enum SyncAction {
     /// Dosya yok ve oluşturulmayacak.
     SkippedNoFile,
+    /// Dosya UTF-8 değil: dokunulmaz (çağıran `routing_guidance_unreadable` günlüğü yazar).
+    SkippedBadUtf8,
     Unchanged,
     /// Dosyayı sil (biz oluşturduk, içinde başka şey kalmadı).
     Remove,
@@ -77,16 +86,18 @@ pub enum SyncAction {
     Write { content: String, backup: bool, removed: bool },
 }
 
-/// `_sync_one`: `current` = dosya içeriği (yoksa None), `create` = yoksa oluştur (agy).
-pub fn sync_plan(settings: &Settings, bundled: Option<&str>, current: Option<&str>, create: bool) -> SyncAction {
+/// `_sync_one`: `current` = dosyanın HAM içeriği (yoksa None), `create` = yoksa oluştur (agy). Satır sonları Python
+/// metin okuması gibi (`\r\n`, `\r` -> `\n`) burada çevrilir.
+pub fn sync_plan(settings: &Settings, bundled: Option<&str>, current: Option<&[u8]>, create: bool) -> SyncAction {
     if current.is_none() && !create {
         return SyncAction::SkippedNoFile;
     }
     let exists = current.is_some();
-    let current = current.unwrap_or("");
+    let Ok(current) = std::str::from_utf8(current.unwrap_or_default()) else { return SyncAction::SkippedBadUtf8 };
+    let current = current.replace("\r\n", "\n").replace('\r', "\n");
     let body = if settings.routing_guidance_enabled() { routing_text(settings, bundled) } else { String::new() };
     let has_body = !strip(&body).is_empty();
-    let new = with_block(current, has_body.then_some(body.as_str()));
+    let new = with_block(&current, has_body.then_some(body.as_str()));
     if new == current {
         SyncAction::Unchanged
     } else if exists && strip(&new).is_empty() && create {

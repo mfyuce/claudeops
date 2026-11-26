@@ -13,7 +13,7 @@ use cops_providers::ucli::{
     supports_flag, usage_log_path, LiveModels,
 };
 use cops_providers::ucli_opts::{exec_flags, expand_exec_cmds, is_forbidden_cmd, validate_opts};
-use cops_providers::Probe;
+use cops_providers::{Diag, Probe};
 use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -57,9 +57,17 @@ fn rs_sync_one(e: &Env, c: &Case) -> RsOut {
         let path = c.args["path"].as_str().unwrap();
         let create = c.args["create"].as_bool().unwrap();
         let bundled = probe.read_text(&e.paths().routing_bundled());
-        let current = if probe.is_file(path) { probe.read_text(path) } else { None };
+        let current = if probe.is_file(path) { fs::read(path).ok() } else { None };
+        let mut extra = Vec::new();
         let ret = match sync_plan(p.settings, bundled.as_deref(), current.as_deref(), create) {
             SyncAction::SkippedNoFile => "skipped:no file".to_string(),
+            SyncAction::SkippedBadUtf8 => {
+                extra.push(Diag {
+                    event: "routing_guidance_unreadable",
+                    fields: vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))],
+                });
+                "skipped:UnicodeDecodeError".to_string()
+            }
             SyncAction::Unchanged => "unchanged".to_string(),
             SyncAction::Remove => {
                 fs::remove_file(path).unwrap();
@@ -80,7 +88,9 @@ fn rs_sync_one(e: &Env, c: &Case) -> RsOut {
                 (if removed { "removed" } else { "written" }).to_string()
             }
         };
-        RsOut::ret(json!(ret))
+        let mut rs = RsOut::ret(json!(ret));
+        rs.extra_diags = extra;
+        rs
     })
 }
 
@@ -122,8 +132,10 @@ fn sync_cases(e: &Env) -> Vec<Case> {
         .file(Fx::Link("home/.codex/AGENTS.md".into(), "../gercek.md".into())));
     v.push(Case::new("sync-dizin-yok-create", "sync_one", json!({"path": format!("{}/.gemini/GEMINI.md", e.home), "create": true})));
     v.push(Case::new("sync-bozuk-utf8", "sync_one", json!({"path": path, "create": false}))
-        .file(Fx::File("home/.codex/AGENTS.md".into(), vec![0xff, b'\n'], 0o600))
-        .known("Python HATASI? bozuk UTF-8 küresel dosya: `_sync_one` yalnız OSError yakalar, UnicodeDecodeError `sync_global_files`ı düşürür; Rust tarafında okuma çağıranın"));
+        .file(Fx::File("home/.codex/AGENTS.md".into(), vec![0xff, b'\n'], 0o600)));
+    v.push(Case::new("sync-bozuk-utf8-kapali", "sync_one", json!({"path": path, "create": true}))
+        .settings_json(json!({"routing_guidance": "off"}))
+        .file(Fx::File("home/.codex/AGENTS.md".into(), vec![b'k', 0xfe], 0o600)));
     v
 }
 
@@ -225,9 +237,11 @@ fn live_cases() -> Vec<Case> {
                 .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
         })
         .collect();
-    v.push(Case::new("live-liste", "live_models", json!({"payload": "[1]"}))
-        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
-        .known("Python HATASI? `/models` yanıtı nesne değilse `payload.get` AttributeError yakalanmaz (model listesi isteği düşer); Rust boş liste"));
+    for (i, p) in ["[1]", "[]", "\"x\"", "5", "null", "true", r#"{"data": 5}"#, r#"{"data": null}"#, r#"{"data": true}"#,
+                   r#"{"data": "ab"}"#, r#"{"data": {"id": "a"}}"#].iter().enumerate() {
+        v.push(Case::new(format!("live-bicim{i}"), "live_models", json!({"payload": p}))
+            .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})));
+    }
     v.push(Case::new("live-sayi-id", "live_models", json!({"payload": json!({"data": [{"id": 5, "task": "chat"}]}).to_string()}))
         .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
         .known("dize olmayan model kimliği (5) Python'da int kalır, Rust `str()` ile \"5\""));

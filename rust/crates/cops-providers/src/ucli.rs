@@ -250,7 +250,8 @@ impl Ctx<'_, '_> {
                     vec![("name", json!(&name)), ("flag", json!("--search-url")), ("binary", json!(&binary)), ("auto", json!(auto))],
                 );
             } else {
-                let url = cfg.search_url.clone().or_else(|| self.p.probe.searxng_url(self.session));
+                let preview = self.out.dry_run;
+                let url = cfg.search_url.clone().or_else(|| self.p.probe.searxng_url(self.session, preview));
                 if let Some(url) = url.filter(|u| !u.is_empty()) {
                     argv.extend(["--search-url".into(), url, "--search-flavor".into(), "searxng".into()]);
                 }
@@ -624,7 +625,15 @@ impl Ctx<'_, '_> {
         if !self.known("--allow-agents") {
             return none;
         }
-        match self.p.probe.issue_agent_token(self.session) {
+        // Kuru kurulum token ÜRETMEZ: yalnız dosya yolu (güvensiz ad gerçek koşuyla aynı biçimde reddedilir).
+        let issued = if !self.out.dry_run {
+            self.p.probe.issue_agent_token(self.session)
+        } else if valid_ask_name(self.session) && !self.session.ends_with('\n') {
+            Ok(self.p.paths.ucli_agent_token_file(self.session))
+        } else {
+            Err("ValueError".into())
+        };
+        match issued {
             Ok(path) => (
                 vec!["--allow-agents".into()],
                 vec![
@@ -728,6 +737,7 @@ pub(crate) fn build_inner_command(
     }
     if cx.sync_api_key_file() {
         let key_file = p.paths.ucli_key_file("");
+        let key_file = quote(&key_file);
         return Ok(sh(format!("UCLI_API_KEY=\"$(cat {key_file})\" {agent_prefix}exec {inner}")));
     }
     if !agent_prefix.is_empty() {
@@ -760,10 +770,8 @@ pub fn mcp_add_argv(binary: &str, cwd: &str, spec: &McpSpec) -> Vec<String> {
     argv
 }
 
-/// `_MCP_TOOL_RE` (`^[A-Za-z0-9_.-]{1,64}$`): Python `$` sondaki TEK satır sonunu da kabul eder (`"ok\n"` geçer);
-/// Python ile aynı tutuldu (bkz. parite raporu, Python hatası şüphesi).
+/// `_MCP_TOOL_RE.fullmatch` (`[A-Za-z0-9_.-]{1,64}`): sondaki satır sonu da reddedilir.
 fn valid_tool_name(t: &str) -> bool {
-    let t = t.strip_suffix('\n').unwrap_or(t);
     (1..=64).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 
@@ -798,6 +806,10 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
             vec![("name", json!("")), ("cwd", json!(cwd)), ("error", json!(".ucli is a symlink"))],
         );
         return Vec::new();
+    }
+    // Kuru kurulum: kayıt silinmez/yazılmaz, `mcp add` koşmaz; komut satırı başarılı kayıttaki gibi.
+    if out.dry_run {
+        return vec!["--with-mcp".into()];
     }
     let clean = McpSpec { allowed_tools: tools, ..spec.clone() };
     match p.probe.register_mcp(cwd, &join_path(&dir, "mcp.json"), &mcp_add_argv(&binary, cwd, &clean)) {

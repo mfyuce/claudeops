@@ -110,6 +110,8 @@ pub struct SpawnRequest {
     /// Çok kullanıcı kancasının ortamı (reddi çağıran bundan ÖNCE verir).
     pub hook_env: Vec<(String, String)>,
     pub cli_opts: Option<Map<String, Value>>,
+    /// Yan etkisiz kurulum: `output`a Effect/diag eklenmez, durum değiştiren Probe çağrısı yapılmaz; `inner` aynıdır.
+    pub dry_run: bool,
 }
 
 /// Başlatmaya hazır plan.
@@ -133,7 +135,21 @@ impl SpawnPlan {
 
 /// `spawn_session`ın komut kuran kısmı (tek geçit: effort burada çözülür). Diag olayları ve Effect'ler `output`a
 /// birikir; HATA dönse bile birikenler uygulanmalı/günlüğe yazılmalı (Python hatadan önce yazdıklarını bırakır).
+/// `req.dry_run` ya da `output.dry_run` ise bu çağrı `output`a hiçbir şey eklemez.
 pub fn plan_spawn(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -> Result<SpawnPlan, SpawnError> {
+    let outer = output.dry_run;
+    output.dry_run |= req.dry_run;
+    let (effects, diags) = (output.effects.len(), output.diags.len());
+    let plan = plan_inner(p, req, output);
+    if output.dry_run {
+        output.effects.truncate(effects);
+        output.diags.truncate(diags);
+    }
+    output.dry_run = outer;
+    plan
+}
+
+fn plan_inner(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -> Result<SpawnPlan, SpawnError> {
     let cli = Cli::parse(&req.cli);
     let resume = req.resume_id.as_deref();
     let kind = match resume {

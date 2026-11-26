@@ -60,6 +60,7 @@ fn rs_spawn(e: &Env, c: &Case) -> RsOut {
             extension_mcp: c.fact("extension_mcp").map(spec_of),
             hook_env: kv(c.fact("hook_env")),
             cli_opts: a.get("cli_opts").and_then(Value::as_object).cloned(),
+            dry_run: a["mode"] == "dry",
         };
         let mut rs = RsOut::default();
         let res = plan_spawn(p, &req, &mut rs.out);
@@ -123,6 +124,26 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
         v.push(base(format!("{cli}-eklenti-ve-acik-mcp"), cli, "dry", json!({"mcp": {"name": "a", "command": "c", "args": []}}))
             .facts(json!({"extension_mcp": {"name": "notes", "command": "/r/cops", "args": ["mcp-ext", "notes"]}})));
         v.push(base(format!("{cli}-cwd-tirnak"), cli, "dry", json!({"cwd": format!("{w}/a b'c")})));
+    }
+    // Yan etkili dallar: kuru kipte dosya/diag/`mcp add` yok, komut satırı aynı; gizli kipte hepsi uygulanır.
+    let mcp = json!({"name": "s", "command": "/r/cops", "args": [], "allowed_tools": ["t"]});
+    for mode in ["dry", "hidden"] {
+        let byok = json!({"byok": {"ucli": {"UCLI_API_KEY": "k", "ANTHROPIC_API_KEY": "a"},
+                                   "copilot": {"COPILOT_PROVIDER_API_KEY": "c"}},
+                          "routing_guidance_text": "yönerge"});
+        for (i, name) in ["s1", "a b"].iter().enumerate() {
+            v.push(base(format!("yan-ucli-{mode}-{i}"), "ucli", mode, json!({"name": name, "mcp": mcp}))
+                .facts(json!({"panel_port": 8765, "searxng_url": "http://127.0.0.1:1",
+                              "agent_token": {"path": format!("{}/ucli_agent_tokens/{name}", e.state)}}))
+                .settings_json(byok.clone()));
+        }
+        v.push(base(format!("yan-ucli-hizmet-{mode}"), "ucli", mode, json!({"cli_opts": {"service": "claude", "ask_dir": true}}))
+            .settings_json(byok.clone()));
+        for cli in ["claude", "copilot"] {
+            v.push(base(format!("yan-{cli}-{mode}"), cli, mode, json!({"mcp": mcp}))
+                .settings_json(byok.clone())
+                .file(file("home/.copilot/config.json", "{\"trustedFolders\": []}", 0o600)));
+        }
     }
     // effort düzeltme olayı (agy kademeli kimlik, codex önbelleği).
     v.push(base("agy-effort-ayar".into(), "agy", "dry", json!({"model": "gemini-3.8-flash-high", "effort": "low"})));
