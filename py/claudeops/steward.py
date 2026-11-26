@@ -6096,20 +6096,32 @@ DRY_KIPS = {"wake_repeat": "wake_gate", "wake_cap": "wake_gate", "brain_wake_cap
 DRY_REPORT_HOURS = 72
 
 
+def _count_or_zero(value: Any) -> int:
+    """Günlük/state sayısı: `int(value or 0)`; sayıya çevrilemiyorsa 0 (bozuk alan raporu/özeti düşürmesin)."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
     """`log.jsonl`(+`.1`) içindeki `would:<tür>` olaylarını son `hours` saatte türe göre sayar: `{tür: {count, names:{ad:n},
-    chars, first, last}}` (`first`/`last` epoch). Yalnız okur."""
+    chars, first, last}}` (`first`/`last` epoch). Yalnız okur. Bozuk satır (geçersiz UTF-8/JSON/`ts`, sözlük olmayan) atlanır,
+    sayıya çevrilemeyen `chars` 0 sayılır."""
     t = time.time() if now is None else now
     lp = _pp(paths).log
     out: Dict[str, Dict[str, Any]] = {}
     for fn in (lp + ".1", lp):
         try:
-            with open(fn, encoding="utf-8") as f:
+            with open(fn, encoding="utf-8", errors="surrogateescape") as f:
                 for ln in f:
                     if '"would:' not in ln:
                         continue
                     try:
+                        ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
                         e = json.loads(ln)
+                        if not isinstance(e, dict):
+                            continue
                         ts = time.mktime(time.strptime(str(e.get("ts"))[:19], "%Y-%m-%dT%H:%M:%S"))
                     except (ValueError, OverflowError):
                         continue
@@ -6119,7 +6131,7 @@ def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional
                     r = out.setdefault(ev[6:], {"count": 0, "names": {}, "chars": 0, "first": ts, "last": ts})
                     r["count"] += 1
                     r["names"][str(e.get("name") or "-")] = r["names"].get(str(e.get("name") or "-"), 0) + 1
-                    r["chars"] += int(e.get("chars") or 0)
+                    r["chars"] += _count_or_zero(e.get("chars"))
                     r["first"], r["last"] = min(r["first"], ts), max(r["last"], ts)
         except OSError:
             continue
