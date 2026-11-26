@@ -1,6 +1,6 @@
 //! copsd: OSS ön sunucu. D0 = saf vekil: `--listen` (varsayılan 127.0.0.1:8765) -> `--upstream` (Python iç port, varsayılan
 //! [`DEFAULT_UPSTREAM`] = 127.0.0.1:28765, `cops front` `DEFAULT_INTERNAL` ile aynı).
-//! Ön kapı gizlisi: `CLAUDEOPS_FRONT_SECRET` (boş değilse) ya da `--secret-file` (varsayılan `$HOME/.claude/claudeops/front.secret`,
+//! Ön kapı gizlisi: `CLAUDEOPS_FRONT_SECRET` (boş değilse) ya da `--secret-file` (varsayılan [`state_dir`]`/front.secret`,
 //! Python `front.secret_path` ile aynı). AÇILIŞTA dosya var ama kullanılamıyorsa (0600 değil, UTF-8 değil, okunamıyor) süreç çıkış
 //! kodu 2 ile durur (Python gizliyi yok sayar; Rust daha sıkı). ÇALIŞIRKEN dosya her istekte `stat` edilir, değişince yeniden okunur;
 //! yok/gevşek/bozuk olursa gizli YOK sayılır (kapalı yön), bkz. [`cops_proxy::front`].
@@ -76,16 +76,9 @@ pub fn token_file() -> std::path::PathBuf {
     state_path("--token-file", "web.token")
 }
 
-/// Gizli dosyasının yolu: `--secret-file`, yoksa `$HOME/.claude/claudeops/front.secret` (Python `front.secret_path`; durum dizinini
-/// izlemez, "Python hatası?" 3).
+/// Gizli dosyasının yolu: `--secret-file`, yoksa [`state_dir`]`/front.secret` (Python `front.secret_path` ile aynı).
 pub fn secret_file() -> std::path::PathBuf {
-    arg("--secret-file").map(Into::into).unwrap_or_else(|| {
-        format!(
-            "{}/.claude/claudeops/front.secret",
-            std::env::var("HOME").unwrap_or_default()
-        )
-        .into()
-    })
+    state_path("--secret-file", "front.secret")
 }
 
 /// Açılış denetimi: ortam değişkeni (boş değilse, kırpılmadan) ya da dosya. Dosya yoksa ya da yalnız boşluksa `Ok(None)`; var ama

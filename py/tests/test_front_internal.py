@@ -7,10 +7,16 @@ from claudeops import authz, front, ws_ticket  # noqa: E402
 
 class Secret(unittest.TestCase):
     def setUp(self):
-        self.home = tempfile.mkdtemp()
-        p = mock.patch.object(front.os.path, "expanduser", lambda x: x.replace("~", self.home)); p.start(); self.addCleanup(p.stop)
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        self.state = tmp.name
+        p = mock.patch.object(front.paths, "CLAUDEOPS_DIR", self.state); p.start(); self.addCleanup(p.stop)
         p = mock.patch.dict(os.environ, {}, clear=False); p.start(); self.addCleanup(p.stop)
         os.environ.pop("CLAUDEOPS_FRONT_SECRET", None)
+
+    def test_secret_follows_state_dir(self):
+        self.assertEqual(front.secret_path(), os.path.join(self.state, "front.secret"))
+        front.ensure_secret()
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "front.secret")))
 
     def test_ensure_creates_0600_and_is_stable(self):
         v = front.ensure_secret()

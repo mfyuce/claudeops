@@ -225,14 +225,40 @@ fn startup_refuses_unusable_secret_file() {
     std::fs::remove_file(&sec).unwrap();
     let (_p, port) = spawn(&home.0, &state.0, &sec, echo_upstream());
     assert!(get(port, "/api/x", "").starts_with("HTTP/1.1 200"));
-    // `--secret-file` yoksa varsayılan yol `$HOME/.claude/claudeops/front.secret` (Python `front.secret_path`; durum dizini DEĞİL).
+    // `--secret-file` yoksa varsayılan yol durum dizinidir (Python `front.secret_path`): `--state-dir` ve `CLAUDEOPS_DIR` izlenir,
+    // `$HOME/.claude/claudeops/front.secret` durum dizini başkayken okunmaz.
     let hd = home.0.join(".claude/claudeops");
     std::fs::create_dir_all(&hd).unwrap();
     put(&hd.join("front.secret"), b"gizli\n", 0o644);
+    put(&sec, b"gizli\n", 0o644);
+    for by_env in [false, true] {
+        let mut c = copsd(&home.0);
+        c.args([
+            "--listen",
+            &format!("127.0.0.1:{}", free_port()),
+            "--upstream",
+            &format!("127.0.0.1:{}", free_port()),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+        if by_env {
+            c.env("CLAUDEOPS_DIR", &state.0);
+        } else {
+            c.arg("--state-dir").arg(&state.0);
+        }
+        let mut p = Proc(c.spawn().unwrap());
+        assert_eq!(
+            wait_exit(&mut p.0, Duration::from_secs(3)),
+            Some(2),
+            "durum dizinindeki gizli okunmadı (env={by_env})"
+        );
+    }
+    std::fs::remove_file(&sec).unwrap();
     let mut c = copsd(&home.0);
+    let port = free_port();
     c.args([
         "--listen",
-        &format!("127.0.0.1:{}", free_port()),
+        &format!("127.0.0.1:{port}"),
         "--upstream",
         &format!("127.0.0.1:{}", free_port()),
         "--state-dir",
@@ -242,9 +268,9 @@ fn startup_refuses_unusable_secret_file() {
     .stderr(Stdio::null());
     let mut p = Proc(c.spawn().unwrap());
     assert_eq!(
-        wait_exit(&mut p.0, Duration::from_secs(3)),
-        Some(2),
-        "varsayılan yol okunmadı"
+        wait_exit(&mut p.0, Duration::from_secs(1)),
+        None,
+        "$HOME altındaki gizli okunmamalı"
     );
 }
 

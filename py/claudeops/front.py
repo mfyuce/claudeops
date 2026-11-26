@@ -1,6 +1,6 @@
 """Rust ön kapı (copsd) ile Python arasındaki geçiş eki (docs/rust-strangler-plan.md bölüm 3-4, -prv).
 
-- Ön kapı gizlisi: `~/.claude/claudeops/front.secret` (0600) ya da `CLAUDEOPS_FRONT_SECRET`. `X-Cops-Front` başlığı bununla eşleşmeden
+- Ön kapı gizlisi: `<durum dizini>/front.secret` (`CLAUDEOPS_DIR`, yoksa `~/.claude/claudeops`; 0600) ya da `CLAUDEOPS_FRONT_SECRET`. `X-Cops-Front` başlığı bununla eşleşmeden
   ve eş loopback değilken `X-Forwarded-For` ile iç uçlara GÜVENİLMEZ. Gizli commit'e girmez (dosya kullanıcı dizininde).
 - İç uçlar: `/api/_internal/authz` (Rust'un yerel uçları için kimlik + yetki sorusu), `/api/_internal/ws-ticket/consume`.
 """
@@ -13,11 +13,13 @@ import secrets
 import tempfile
 from typing import Any, Dict, Mapping, Optional
 
+from . import paths
+
 LOOPBACK = ("127.0.0.1", "::1")
 
 
 def secret_path() -> str:
-    return os.path.join(os.path.expanduser("~"), ".claude", "claudeops", "front.secret")
+    return os.path.join(paths.CLAUDEOPS_DIR, "front.secret")   # deneme paneli canlı gizliyi kullanmaz (copsd `secret_file` ile aynı)
 
 
 def read_secret() -> str:
