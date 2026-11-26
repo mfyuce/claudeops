@@ -134,7 +134,7 @@ class StatusPayloadCacheTests(unittest.TestCase):
             mock.patch.object(web, "_needs_ho_cached", lambda s: None),
             mock.patch.object(web, "_live_usage", lambda s: None),
             mock.patch.object(web, "_cache_info_cached", lambda s: {"age": 42, "ttl": 3600}),
-            mock.patch.object(web.inst_mod, "load_instances", lambda: {}),
+            mock.patch.object(web.inst_mod, "view_instances", lambda: {}),
             mock.patch.object(web_hosts.hosts_mod, "load_hosts", lambda: []),
         ):
             p.start()

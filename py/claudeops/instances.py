@@ -90,6 +90,12 @@ def load_instances() -> Dict[str, dict]:
     return _copy(_shared())
 
 
+def view_instances() -> Dict[str, dict]:
+    """`load_instances` ile aynı veri, KOPYASIZ (sık çalışan salt okuyucular için): sözlüğü de kayıtları da
+    DEĞİŞTİRME; dışarı verilecek kayıt `get_instance`/`load_instances` ile alınır."""
+    return _shared()
+
+
 def _shared() -> Dict[str, dict]:
     """Önbellekteki kayıtların KENDİSİ: DEĞİŞTİRME, dışarı vermeden önce `_copy`."""
     global _cache_key, _cache, _db_cache

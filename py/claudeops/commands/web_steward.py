@@ -2044,7 +2044,7 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
     """`instances.json`daki SON başlatma kaydı (TBD#156): `name`in kendi kaydı, yoksa blueprint'i `name` olan en son
     başlatılan/oluşturulan unutulmamış kayıt. Yoksa None (çağıran roster/varsayılana düşer). Fırlatmaz."""
     try:
-        recs = inst_mod.load_instances()
+        recs = inst_mod.view_instances()
     except Exception:
         return None
     rec = recs.get(name)
@@ -2052,7 +2052,9 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
         cands = [r for r in recs.values()
                  if isinstance(r, dict) and r.get("blueprint") == name and not r.get("forgotten")]
         rec = max(cands, key=lambda r: float(r.get("last_started_at") or r.get("created_at") or 0), default=None)
-    return rec if isinstance(rec, dict) and rec.get("cli") in PROVIDERS else None
+    if not (isinstance(rec, dict) and rec.get("cli") in PROVIDERS):
+        return None
+    return inst_mod.get_instance(next(n for n, r in recs.items() if r is rec))     # yalnız dönen kayıt kopyalanır
 
 
 def _main_model_effort(project: "sw.Project", cfg: "sw.Config", name: str = "", host: str = "",

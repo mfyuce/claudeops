@@ -688,7 +688,7 @@ def _all_known_names() -> set:
     """roster.tsv'deki (aktif/kapalı/emekli FARK ETMEZ) TÜM isimler + şu an çalışan
     TÜM proc isimleri/base'leri — yeni chat ismi üretirken çakışma kontrolü için."""
     names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
-    names |= set(inst_mod.load_instances())
+    names |= set(inst_mod.view_instances())
     for s in find_sessions(measure_cpu=False):
         names.add(s.name)
         names.add(s.base)
@@ -1775,7 +1775,7 @@ def _status_payload() -> dict:
     # base-dict aynı base'in ikinci proc'unu yuttuğu için duplicates() hiç
     # tetiklenemiyordu — artık tüm canlı liste üzerinden sayılıyor.
     active_names = {n for n, i in fleet.items() if i["state"] == "active"}
-    registry = inst_mod.load_instances()
+    registry = inst_mod.view_instances()
     assigned = {}
     for s in all_live:
         if s.name in active_names:
@@ -4385,7 +4385,7 @@ def _instances_list() -> dict:
     """Geçmiş sekmesi: tüm instance kayıtları + şu an çalışıp çalışmadığı, en yeni önce."""
     live = {s.name for s in find_sessions(measure_cpu=False)}
     items = [dict(rec, name=name, running=name in live, host=LOCAL_HOST_NAME)
-             for name, rec in inst_mod.load_instances().items() if not rec.get("forgotten")]
+             for name, rec in inst_mod.view_instances().items() if not rec.get("forgotten")]
     items.sort(key=lambda r: r.get("last_started_at") or r.get("created_at") or 0, reverse=True)
     try:    # History rozeti (değnekçi beyni / yönetilen proje oturumu); yalnız ek bilgi, hata satırı bozmaz
         from .. import steward as _sw
