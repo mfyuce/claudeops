@@ -77,8 +77,11 @@ DEFS: dict = {}
 
 DEFS["discovery.py"] = [
     ok("_sessions_from_json", "discovery.rs::sessions_from_json discovery.rs::json_pid",
-       "I:fake_proc.rs::json_source_merges_with_proc_scan I:fake_proc.rs::broken_proc_fields P:scan_sessions",
-       "sapma 5; nesne olmayan dosya `ScanError` (TBD#365)"),
+       "I:fake_proc.rs::json_source_merges_with_proc_scan I:fake_proc.rs::broken_proc_fields "
+       "I:fake_proc.rs::bad_session_files_are_skipped_and_counted P:scan_sessions",
+       "sapma 5; bozuk dosya ve sıfır/negatif pid atlanır (TBD#365). Python düzeltildi: 6ae5da3"),
+    ok("_skipped", "discovery.rs::ScanDiag.session_files_bad", "I:fake_proc.rs::bad_session_files_are_skipped_and_counted",
+       "Python sayacı süreç geneli, Rust tarama başına. Python düzeltildi: 6ae5da3"),
     ok("fold_background", "session.rs::fold_background",
        "U:session.rs::background_folds_into_single_front U:session.rs::background_fold_edge_cases_like_python "
        "I:fake_proc.rs::background_session_folds"),
@@ -103,7 +106,7 @@ DEFS["discovery.py"] = [
     ok("find_sessions", "discovery.rs::find_sessions discovery.rs::Scan discovery.rs::CpuMode",
        "I:fake_proc.rs::json_source_merges_with_proc_scan I:fake_proc.rs::json_sid_merge_rules_like_python "
        "I:fake_proc.rs::cpu_from_two_samples I:fake_proc.rs::discovers_each_cli_and_names P:scan_sessions",
-       "CPU yolu yalnız sahte `/proc` ile sınanır (canlı parite `--no-cpu`)"),
+       "CPU yolu yalnız sahte `/proc` ile sınanır (canlı parite `--no-cpu`); cmdline yalnız kendi süreçte okunur. Python düzeltildi: 6ae5da3"),
     ok("find_by_name", "discovery.rs::find_by_name",
        "I:fake_proc.rs::find_by_name_is_exact_and_returns_every_process"),
     ok("duplicates", "session.rs::duplicates",
@@ -146,30 +149,36 @@ DEFS["session_usage.py"] = [
        "test TTL kuralını sınar, 30 sn değerini değil"),
     ok("_MAX_CACHED_FILES", "usage.rs::MAX_CACHED_FILES usage.rs::Ordered",
        "U:usage.rs::file_cache_evicts_in_insertion_order U:usage.rs::summary_cache_evicts_oldest_200",
-       "ekleme sırasıyla tahliye (dosya durumu 1, özet 200), Python gibi"),
+       "ekleme sırasıyla tahliye (dosya durumu 1, özet 200), Python gibi; küçülen dosya yer açtırmaz. Python düzeltildi: 6ae5da3"),
     ok("_ZERO", "usage.rs::Totals::add", "G:usage_totals_two_calls", "alan sırası sabit dizi"),
     ok("_lock", "usage.rs::lock usage.rs::UsageCache",
        "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
     ok("_files", "usage.rs::UsageReader.files usage.rs::FileState",
-       "U:usage.rs::bad_row_returns_none_once_and_offset_moves_past_it G:usage_totals_two_calls"),
+       "U:usage.rs::bad_row_is_skipped_and_counted G:usage_totals_two_calls"),
     ok("_summaries", "usage.rs::UsageCache.summaries usage.rs::Summary",
        "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
     ok("_int", "usage.rs::count", "G:usage_totals_two_calls P:usage_real", "sapma 4 ve 6; u64'te doyar"),
     ok("_parse _from_row", "usage.rs::parse usage.rs::py_key",
-       "G:usage_totals_two_calls U:usage.rs::python_key_equality P:usage_real", "sapma 4"),
+       "G:usage_totals_two_calls U:usage.rs::python_key_equality U:usage.rs::bad_row_is_skipped_and_counted "
+       "P:usage_real", "sapma 4; dizgi olmayan model ve hashlenemeyen anahtar atlanır, sayılır. Python düzeltildi: 6ae5da3"),
+    ok("_skipped", "usage.rs::FileState.bad usage.rs::Usage.skipped_rows", "U:usage.rs::bad_row_is_skipped_and_counted",
+       "Python süreç geneli sayaç, Rust dosya başına (JSON'a yazılmaz). Python düzeltildi: 6ae5da3"),
     ok("_merge", "usage.rs::UsageReader::update", "I:fake_proc.rs::usage_dedups_subagents_and_increments "
        "G:usage_totals_two_calls"),
     ok("_update_file", "usage.rs::UsageReader::update",
-       "I:fake_proc.rs::usage_dedups_subagents_and_increments "
-       "U:usage.rs::bad_row_returns_none_once_and_offset_moves_past_it", "`mtime` tutulmaz (okuyanı yok)"),
+       "I:fake_proc.rs::usage_dedups_subagents_and_increments U:usage.rs::bad_row_is_skipped_and_counted "
+       "U:usage.rs::file_cache_evicts_in_insertion_order",
+       "`mtime` tutulmaz (okuyanı yok); küçülen dosya yerinde sıfırlanır. Python düzeltildi: 6ae5da3"),
     ok("_sum", "usage.rs::sum usage.rs::Totals::add", "G:usage_totals_two_calls P:usage_real"),
     ok("usage_for_path", "usage.rs::UsageReader::usage_for_path usage.rs::Usage",
-       "I:fake_proc.rs::usage_dedups_subagents_and_increments G:usage_totals_two_calls P:usage_real"),
+       "I:fake_proc.rs::usage_dedups_subagents_and_increments G:usage_totals_two_calls P:usage_real "
+       "U:usage.rs::bad_row_is_skipped_and_counted", "alt ajan dosyasındaki bozuk satır toplamı boşaltmaz. Python düzeltildi: 6ae5da3"),
     ok("_refresh", "usage.rs::UsageCache::refresh",
        "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
     ok("cached_usage_for_path", "usage.rs::UsageCache::get",
-       "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good U:usage.rs::cache_respects_ttl",
-       "sapma 10"),
+       "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good U:usage.rs::cache_respects_ttl "
+       "U:usage.rs::spawn_failure_does_not_lock_the_path",
+       "başlatılamayan iş parçacığı bayrağı geri alınır (eski sapma 10). Python düzeltildi: 6ae5da3"),
     ok("fmt_tokens", "usage.rs::fmt_tokens", "U:usage.rs::fmt_tokens_python_examples G:names_paths_and_token_format"),
 ]
 
@@ -179,7 +188,8 @@ DEFS["mirrors.py"] = [
     ok("spec_from_cmdline", "mirrors.rs::spec_from_cmdline", "U:mirrors.rs::specs G:provider_detect_and_info"),
     ok("note_mirror", "mirrors.rs::note_mirror", "U:mirrors.rs::notes_accumulate P:scan_mirrors"),
     ok("running_mirrors", "mirrors.rs::running_mirrors",
-       "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges I:real_proc.rs::real_viewer_process_is_seen"),
+       "I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges I:real_proc.rs::real_viewer_process_is_seen",
+       "cmdline yalnız uid süzgecinden sonra. Python düzeltildi: 6ae5da3"),
     ok("focus_window", "mirrors.rs::focus_window mirrors.rs::focus_with",
        "U:mirrors.rs::focus_reports_exit_status_and_passes_exact_args U:proc_cmd.rs::output_status_and_timeout",
        "test iç `focus_with`i sahte programla çağırır"),
@@ -198,8 +208,9 @@ DEFS["needs_ho.py"] = [
        "Python'un yazdığı baseline'ı Rust okur (aynı sha1 adı)"),
     ok("_repo_baseline_get", "needs_ho.rs::NeedsHo::baseline_get",
        "I:needs_ho_git.rs::git_signals_and_baseline P:needs_ho_repos"),
-    ok("repo_baseline_set", "needs_ho.rs::NeedsHo::repo_baseline_set", "I:needs_ho_git.rs::git_signals_and_baseline",
-       "Python gibi atomik değil (TBD#365 listesi)"),
+    ok("repo_baseline_set", "needs_ho.rs::NeedsHo::repo_baseline_set needs_ho.rs::write_atomic",
+       "I:needs_ho_git.rs::git_signals_and_baseline U:needs_ho.rs::baseline_is_written_atomically",
+       "atomik (geçici dosya + rename). Python düzeltildi: 6ae5da3"),
     ok("repo_committed_since", "needs_ho.rs::NeedsHo::repo_committed_since needs_ho.rs::committed_after "
        "needs_ho.rs::from_iso", "I:needs_ho_git.rs::git_signals_and_baseline G:committed_after_iso_rules "
        "U:needs_ho.rs::iso_times_compare_as_instants P:needs_ho_repos", "sapma 7"),
@@ -207,13 +218,21 @@ DEFS["needs_ho.py"] = [
     ok("rfh_marker_in rfh_marker_in::re1", "needs_ho.rs::rfh_marker_in",
        "G:rfh_marker U:needs_ho.rs::prose_mention_is_not_a_marker U:needs_ho.rs::heading_and_bare_line_count "
        "U:needs_ho.rs::code_block_and_quote_do_not_count"),
-    ok("handover_done", "needs_ho.rs::handover_done needs_ho.rs::each_row",
-       "G:transcripts_needs_ho U:needs_ho.rs::only_assistant_rows_carry_the_marker P:needs_ho_transcripts",
-       "sapma 4; istisna yerine `BadTranscript`"),
+    ok("_skipped", "needs_ho.rs::Checked.skipped", "U:needs_ho.rs::broken_input_is_skipped_and_counted",
+       "Python süreç geneli sayaç, Rust çağrı başına. Python düzeltildi: 6ae5da3"),
+    ok("_text_blocks", "needs_ho.rs::text_blocks",
+       "U:needs_ho.rs::broken_input_is_skipped_and_counted G:transcripts_needs_ho",
+       "dizgi olmayan `text` yok sayılır ve sayılır. Python düzeltildi: 6ae5da3"),
+    ok("handover_done", "needs_ho.rs::handover_done needs_ho.rs::each_row needs_ho.rs::Checked",
+       "G:transcripts_needs_ho U:needs_ho.rs::only_assistant_rows_carry_the_marker "
+       "U:needs_ho.rs::broken_input_is_skipped_and_counted P:needs_ho_transcripts",
+       "sapma 4; beklenmeyen tipte kayıt atlanır ve sayılır. Python düzeltildi: 6ae5da3"),
     ok("has_real_user_turn", "needs_ho.rs::has_real_user_turn needs_ho.rs::each_row",
-       "G:transcripts_needs_ho U:needs_ho.rs::real_user_turn_filters P:needs_ho_transcripts"),
+       "G:transcripts_needs_ho U:needs_ho.rs::real_user_turn_filters U:needs_ho.rs::broken_input_is_skipped_and_counted "
+       "P:needs_ho_transcripts", "nesne olmayan `message` atlanır ve sayılır. Python düzeltildi: 6ae5da3"),
     ok("needs_ho", "needs_ho.rs::NeedsHo::needs_ho",
-       "I:needs_ho_git.rs::git_signals_and_baseline P:needs_ho_repos", "kullanılmayan `sid` parametresi alınmadı"),
+       "I:needs_ho_git.rs::git_signals_and_baseline U:needs_ho.rs::needs_ho_decides_with_bad_rows P:needs_ho_repos",
+       "kullanılmayan `sid` parametresi alınmadı; bozuk satırda istisna yok. Python düzeltildi: 6ae5da3"),
 ]
 
 DEFS["commands/ls.py"] = [
@@ -274,7 +293,7 @@ DEFS["providers/claude_provider.py"] = [
     ok("_encode_cwd _encode_cwd::re1", "transcript.rs::encode_cwd",
        "U:transcript.rs::encodes_non_ascii_per_char G:names_paths_and_token_format"),
     ok("jsonl_path_for", "transcript.rs::jsonl_path_for", "I:fake_proc.rs::transcript_requires_exact_sid "
-       "P:scan_sessions", "sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok"),
+       "P:scan_sessions", "sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3"),
     oos("_safe_mtime find_latest_jsonl",
         "cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken "
         "yeniden karar gerekir", f"{T1}; {T4}"),
@@ -507,7 +526,7 @@ DEFS["tmux_backend.py"] = [
        "6 adım sınırının ucu sınanmıyor"),
     ok("is_tmux_backed", "status.rs::Probe::is_tmux_backed",
        "I:fake_proc.rs::tmux_terminal_and_orphans I:fake_proc.rs::other_users_processes_are_never_read "
-       "P:scan_sessions", "sapma 2"),
+       "P:scan_sessions", "başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3"),
 ]
 
 # ── test eşlemesi: tek tek ───────────────────────────────────────────────────
@@ -702,6 +721,31 @@ CASES["test_session_usage.py"] = [
     t_ok(cls(k, "test_cached_returns_none_first_then_value_after_background_refresh"),
          "U:usage.rs::cache_first_none_then_value_and_error_keeps_last_good"),
     t_ok(cls(k, "test_fmt_tokens"), "U:usage.rs::fmt_tokens_python_examples G:names_paths_and_token_format"),
+]
+
+CASES["test_procscan_tbd365.py"] = [
+    t_ok("SessionFilesTest.test_bad_files_are_skipped_and_counted SessionFilesTest.test_negative_or_zero_pid_never_reaches_kill",
+         "I:fake_proc.rs::bad_session_files_are_skipped_and_counted", "Python düzeltildi: 6ae5da3"),
+    t_ok("ForeignCmdlineTest.test_find_sessions_reads_only_own_cmdline "
+         "ForeignCmdlineTest.test_running_mirrors_reads_only_own_cmdline",
+         "I:fake_proc.rs::other_users_processes_are_never_read I:fake_proc.rs::mirrors_terminal_and_ucli_flag_edges",
+         "Python düzeltildi: 6ae5da3"),
+    t_ok("TmuxAncestorTest.test_foreign_ancestor_stops_walk_without_reading_it",
+         "I:fake_proc.rs::other_users_processes_are_never_read I:fake_proc.rs::tmux_terminal_and_orphans", "Python düzeltildi: 6ae5da3"),
+    t_ok("TranscriptRowsTest.test_bad_rows_skipped",
+         "U:needs_ho.rs::broken_input_is_skipped_and_counted G:transcripts_needs_ho", "Python düzeltildi: 6ae5da3"),
+    t_ok("TranscriptRowsTest.test_needs_ho_decides_instead_of_raising", "U:needs_ho.rs::needs_ho_decides_with_bad_rows",
+         "Python düzeltildi: 6ae5da3"),
+    t_ok("BaselineAtomicTest.test_baseline_written_via_replace", "U:needs_ho.rs::baseline_is_written_atomically", "Python düzeltildi: 6ae5da3"),
+    t_ok("SidPathTest.test_sid_with_path_parts_is_not_joined", "I:fake_proc.rs::transcript_requires_exact_sid", "Python düzeltildi: 6ae5da3"),
+    t_ok("UsageRowsTest.test_bad_rows_skipped_on_first_call UsageRowsTest.test_bad_subagent_row_does_not_blank_total",
+         "U:usage.rs::bad_row_is_skipped_and_counted G:usage_totals_two_calls", "Python düzeltildi: 6ae5da3"),
+    t_oos("UsageRowsTest.test_day_usage_file_survives_bad_row",
+          "gün bazlı döküm (`day_usage`); ortak `_from_row` düzeltmesi `usage.rs::parse` satırında", T7),
+    t_ok("UsageRowsTest.test_thread_start_failure_does_not_lock_path", "U:usage.rs::spawn_failure_does_not_lock_the_path",
+         "Python düzeltildi: 6ae5da3"),
+    t_ok("UsageRowsTest.test_shrinking_file_does_not_evict_another_when_full",
+         "U:usage.rs::file_cache_evicts_in_insertion_order", "Python düzeltildi: 6ae5da3"),
 ]
 
 CASES["test_usage_cli.py"] = [

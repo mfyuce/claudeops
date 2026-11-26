@@ -1,6 +1,6 @@
 # rs/proc: cops-procscan (Rust sprinti W1-pre, süreç taraması)
 
-Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). Birleştirme için açık: sohbet geçmişi okumanın izi bir VARSAYIM (cops onayı bekler, aşağıda); sahibe açık sorular TBD#365 ve aşağıdaki "Python hatası?" listesi.
+Durum (26 Kas 2026 gece): kod, testler, altın vektörler ve canlı parite koşucusu var. Eşleme tablosunda ([rs-proc-mapping.md](rs-proc-mapping.md)) EKSİK satır yok (`--check --strict` 0). TBD#365 uygulandı: "Python hataları" listesindeki maddeler hem Python'da (ayrı `fix:` commit'i, kırmızı-sonra-yeşil test) hem Rust'ta düzeltildi; Rust bozuk kaydı atlayıp sayar. Birleştirme için açık: sohbet geçmişi okumanın izi bir VARSAYIM (cops onayı bekler, aşağıda); parite koşucusunun `cops-parity`ye geçişi (Açık işler).
 
 ## Kapsam (taşınan)
 | Python | Rust (`rust/crates/cops-procscan/src`) |
@@ -21,7 +21,7 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
 İkili (salt okur): `cops-procscan list|ls [--json] [--no-cpu] [--base AD]`, `scan [--no-cpu]` (çıktıda ayrıca `diag`, `agy_learned`), `usage DOSYA`, `needs-ho DURUM_DIZINI CWD [JSONL]` (tek yazımı yok; git'i yalnız okur).
 
 ## Ölçüm
-- `cargo test -p cops-procscan`: **74 test** (43 birim, 21 sahte `/proc`, 6 altın vektör, 2 gerçek süreç, 1 alt süreç yaşam döngüsü, 1 git); `clippy --all-targets -D warnings` ve `fmt --check` temiz.
+- `cargo test -p cops-procscan`: **78 test** (46 birim, 22 sahte `/proc`, 6 altın vektör, 2 gerçek süreç, 1 alt süreç yaşam döngüsü, 1 git); `clippy --all-targets -D warnings` ve `fmt --check` temiz (26 Kas gece, TBD#365 sonrası).
 - Altın vektörler (`parity/gen_golden.py` -> `tests/golden/`, Python 3.10.12): RFH 39, taban/yedek ad + cwd kodlama + `fmt_tokens` 54, `committed_after` 1155 çift, sağlayıcı tanıma + `extract_info` 50 argv, watch hedefi 20, transkript fikstürü 28 (iki işlev), kullanım fikstürü 23 (iki ardışık çağrı). Tek bilinen fark: `nan_line` (sapma 4), testte adıyla listeli.
 - Canlı parite (`parity/run.py`, 26 Kas akşam, bu makine): sayılar "Parite koşucusu" bölümünde.
 - Tarama maliyeti: 636 süreç, release `list --no-cpu` 0,06-0,11 sn (3 koşu, 26 Kas öğle). Parite koşusunun tamamı 3-6 dk (çoğu Python içe aktarma + 120 transkriptin iki dilde okunması).
@@ -32,12 +32,13 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
 - Süreç kimliği `ProcId{pid,start_time}` (`Session.proc_id`, JSON'a yazılmaz). Eylemden önce `ProcFs::verify` `Liveness::Same` dönmeli; `Replaced`/`Gone`/`NotOwn`/`Unknown` ayrı. Crate sinyal göndermez.
 - Süreç öldürme yalnız `proc_cmd::ChildGuard` (kendi git/wmctrl çocuğu; `Drop`ta kill+wait). Crate düzeyi `clippy.toml` `disallowed-methods`: `libc::kill/killpg/tgkill/raise`, `std::process::Child::kill` (tek izinli yer `allow` ile işaretli). Denendi: eklenen bir `libc::kill` çağrısı clippy'yi kırdı.
 - Üretim kodunda `unwrap/expect/panic` `deny` (testler hariç).
-- Yutulan hatalar `Scan.diag` (`ScanDiag`) sayaçlarında: okunamayan `/proc` kökü (`proc_root_error`), okunamayan `sessions/` (`sessions_dir_error`; yokluğu hata değil), kaybolan/okunamayan süreç, okunamayan cmdline/cwd/stat, okunamayan ya da geçersiz oturum dosyası, bozuk agy dosyası. Davranış ve JSON çıktısı Python gibi kalır.
+- Yutulan hatalar `Scan.diag` (`ScanDiag`) sayaçlarında: okunamayan `/proc` kökü (`proc_root_error`), okunamayan `sessions/` (`sessions_dir_error`; yokluğu hata değil), kaybolan/okunamayan süreç, okunamayan cmdline/cwd/stat, okunamayan ya da geçersiz oturum dosyası, kökü nesne olmayan ya da `name`i dizgi olmayan oturum dosyası (`session_files_bad`, TBD#365), bozuk agy dosyası. Davranış ve JSON çıktısı Python gibi kalır.
+- Bozuk kayıt sayaçları (TBD#365): transkript kararları `needs_ho::Checked{value, skipped}` döner (nesne olmayan satır, nesne olmayan `message`, dizgi olmayan `text` bloğu); kullanım `Usage.skipped_rows` (JSON'a yazılmaz; dosya başına `FileState.bad`). Python karşılıkları süreç geneli `_skipped` sayaçları (`discovery`, `needs_ho`, `session_usage`); log'a yazılmaz (tarama her tick'te koşar, aynı bozuk dosya log'u taşırırdı).
 - Yeni bağımlılıklar: `libc`, `regex`, `sha1`, `serde` (`rust/Cargo.lock` da değişti).
 
 ## Python'dan bilinen sapmalar
 1. `jsonl_path_for`: "cwd'deki en yeni dosya" düşüşü YOK (iz görevi böyle istedi). Python `_usage_total` sid dosyası yoksa başka oturumun sayacını gösterebilir (parite koşucusu bu düşüşe giren oturumları ayrıca sayar ve karşılaştırmaz).
-2. Ata zinciri (tmux, shell alt kabuğu) başka kullanıcının sürecinde durur (Python geçer): gizlilik kuralı.
+2. Alt kabuk ata zinciri (`_ancestors`, yalnız `stat` okur) başka kullanıcının sürecinde durur, Python geçer: gizlilik kuralı. tmux ata yürüyüşü artık sapma DEĞİL: Python `is_tmux_backed` de başka kullanıcının atasında durur, cmdline'ını okumaz (Python düzeltildi: 6ae5da3).
 3. agy sid öğrenme yazılmaz; `Scan::agy_learned` döner. Yazım `cops-state` ile (T1) yapılmadan `/api/status` Rust'a alınmamalı. `agy_sids` DB yerine dosya aynasından okunur.
 4. serde farkları: `NaN`/`Infinity` ve 128'den derin JSON reddedilir. Transkriptte `NaN` içeren satır Python'da sayılır, Rust'ta atlanır (altın `nan_line`, parite koşucusunda `known_deviation`). claude transkriptlerini Node `JSON.stringify` yazar, bu belirteçleri üretmez. Yinelenen anahtar Python gibi son değeri alır (altın `dup_keys`, transkript ve kullanım).
 5. `procStart`/pid gibi alanlarda dizi/nesne değerlerinin `str()` yazımı birebir değil (yalnız eşitlik denetimi).
@@ -45,32 +46,35 @@ Durum (26 Kas 2026 akşam): kod, testler, altın vektörler ve canlı parite ko�
 7. `fromisoformat` Python 3.10 kuralıyla (yerel yorumlayıcı 3.10.12). 3.11+ (`Z`, `+0300`, kısa biçimler) kabul eder: başka sürümlü uzak hostta Python sonucu farklı olabilir.
 8. Canlılık: Python `os.kill(pid, 0)` çekirdek kuralı (gönderen uid = hedefin gerçek YA DA saklı uid'i); Rust yalnız gerçek uid'e bakar. Fark yalnız başka kullanıcının çalıştırdığı, saklı uid'i bize ait süreçte.
 9. `--max-cost-usd` `NaN`/`inf`: Python `float` kabul eder ve `json.dumps` geçersiz JSON (`NaN`) yazar; Rust değeri kabul eder, serde `null` yazar. `_ucli_flags`ın pid başına süresiz önbelleği (pid yeniden kullanımında bayat rozet) Rust'ta yok (önbellek T1'in işi).
-10. `UsageCache` arka plan iş parçacığı başlatılamazsa `None` döner (Python da istisnadan `None`); eldeki değer o çağrıda dönmez. Rust `running`i geri alır ve sonraki çağrıda yeniden dener; Python'da bayrak açık kalır ("Python hatası?").
-11. Kullanım önbelleği taşması artık sapma DEĞİL (numara korunuyor): iki tablo da Python `dict` gibi ekleme sırasını tutar (`usage::Ordered`) ve en eski eklenenleri atar (dosya durumu 1, özet 200). Testler `usage::tests::file_cache_evicts_in_insertion_order`, `summary_cache_evicts_oldest_200`; aynı senaryolar 26 Kas'ta Python `session_usage` üzerinde elle koşuldu, sonuç aynı (bir kerelik denetim, parite koşucusunda adım değil).
+10. Artık sapma DEĞİL (numara korunuyor): arka plan iş parçacığı başlatılamazsa iki dil de `None` döner ve `running`i geri alır, sonraki çağrı yeniden dener (Python düzeltildi: 6ae5da3; Rust testi `usage::tests::spawn_failure_does_not_lock_the_path`).
+11. Kullanım önbelleği taşması artık sapma DEĞİL (numara korunuyor): iki tablo da Python `dict` gibi ekleme sırasını tutar (`usage::Ordered`) ve en eski eklenenleri atar (dosya durumu 1, özet 200). Testler `usage::tests::file_cache_evicts_in_insertion_order`, `summary_cache_evicts_oldest_200`; aynı senaryolar 26 Kas'ta Python `session_usage` üzerinde elle koşuldu, sonuç aynı (bir kerelik denetim, parite koşucusunda adım değil). Küçülen dosya artık iki dilde de yer açtırmaz (Python düzeltildi: 6ae5da3; Python testi `test_procscan_tbd365.UsageRowsTest.test_shrinking_file_does_not_evict_another_when_full`).
 12. `HOME` tanımsızsa `Config::from_env` `None` döner; Python `expanduser` parola veritabanına düşer.
 13. `Scan.mirrors` her taramada doldurulur (Python'da yalnız `mirrors_out` verilirse).
 
-## "Python hatası?" (Rust şimdilik Python gibi davranır; sahibe soru TBD#365)
-- Nesne olmayan ya da `name`i dizgi olmayan `sessions/*.json` tüm taramayı düşürür (`ScanError`).
-- Transkriptte nesne olmayan satır / dizgi olmayan `text` / nesne olmayan `message` `needs_ho`yu istisnayla bitirir (`BadTranscript`).
-- Kullanım toplamı `None` olur (o satır bir sonraki çağrıda atlanır): dizgi olmayan doğru `message.model`; tur anahtarında hashlenemeyen değer (`message.id`/`requestId`/`uuid` dizi ya da nesne); bu satır ANA ya da herhangi bir ALT AJAN dosyasındaysa. Tur anahtarı Python sözlük eşitliğiyle (`1 == 1.0 == true`; `("row", uuid)` ile `(message.id="row", requestId=uuid)` aynı tur) birebir taklit edildi.
-- Kullanım dosya önbelleği doluyken (2000) var olan bir transkript küçülürse en eski girdi yine atılır, tablo bir eksilir (en eski o dosyanın kendisiyse sona taşınır). Zararsız (atılan dosya baştan okunur); Rust Python gibi. TBD#365'e eklenmedi.
-- `cached_usage_for_path` iş parçacığı başlatamazsa `running` açık kalır, o yol bir daha yenilenmez (kod okuması; Rust bu maddede Python gibi DEĞİL, sapma 10). TBD#365'e eklenmedi.
-- `needs_ho` baseline yazımı atomik değil; `sid` içinde `/`/`..` süzülmüyor.
-- Python üretimde başka kullanıcının süreç İÇERİĞİNİ okur: `process_iter(["pid","cmdline","uids"])` uid süzgecinden önce herkesin cmdline'ını çeker; `is_tmux_backed` başka kullanıcının atasının cmdline'ını okur. Sonuç etkilenmiyor (uid süzgeci/ata yürüyüşü bu süreçleri eler); parite koşucusu Python'u bu okumalar engellenmiş hâlde koşturur.
-- Negatif `pid`li oturum dosyası Python'da `os.kill`den geçebilir; Rust atlar (bu madde Python gibi DEĞİL).
+## Python hataları (TBD#365, sahip 26 Kas: ikisi de düzelsin)
+Her madde Python'da ayrı `fix:` commit'inde kırmızı-sonra-yeşil testle (`py/tests/test_procscan_tbd365.py`, 14 test, düzeltmeden önce 14'ü de kırmızı) ve Rust'ta aynı güvenli davranışla düzeltildi. Altın vektörler yeni Python davranışından yeniden üretildi (altında Python istisnası kalmadı).
+- Nesne olmayan ya da `name`i dizgi olmayan `sessions/*.json` tüm taramayı düşürüyordu. Şimdi dosya atlanır ve sayılır (Python `discovery._skipped["session_file"]`, Rust `ScanDiag.session_files_bad`; `ScanError` kaldırıldı, `find_sessions` hata döndürmez). Python düzeltildi: 6ae5da3
+- Transkriptte nesne olmayan satır / nesne olmayan `message` / dizgi olmayan `text` `needs_ho`yu istisnayla bitiriyordu. Şimdi satır (ya da dizgi olmayan blok) atlanır ve sayılır; aynı satırın dizgi blokları sayılmaya devam eder, önceden düşmeyen girdide sonuç değişmez (Python `needs_ho._skipped["transcript_row"]`, Rust `Checked.skipped`; `BadTranscript` kaldırıldı). Python düzeltildi: 6ae5da3
+- Kullanım toplamı `None` oluyordu (dizgi olmayan doğru `message.model`; tur anahtarında hashlenemeyen `message.id`/`requestId`/`uuid`; ana ya da herhangi bir alt ajan dosyasında). Şimdi yalnız o satır atlanır ve sayılır, toplam ilk çağrıda doğru (Python `session_usage._skipped["usage_row"]`, Rust `Usage.skipped_rows`). Aynı `_from_row`u kullanan gün dökümü (`day_usage`) de artık bozuk satırda dosyanın kalanını kaybetmiyor. Tur anahtarı Python sözlük eşitliğiyle (`1 == 1.0 == true`) birebir kaldı. Python düzeltildi: 6ae5da3
+- Dolu dosya önbelleğinde (2000) küçülen transkript en eski başka girdiyi attırıyordu. Şimdi yalnız yeni girdi yer açtırır, küçülen dosya yerinde sıfırlanır (zararsızdı; düzeltme bir satır). Python düzeltildi: 6ae5da3
+- `cached_usage_for_path` iş parçacığı başlatamazsa `running` açık kalıyor, yol bir daha yenilenmiyordu. Şimdi bayrak geri alınır (Rust zaten böyleydi; Rust'a sınamak için test kancası eklendi). Python düzeltildi: 6ae5da3
+- `needs_ho` baseline yazımı atomik değildi. Şimdi Python `atomic_json.atomic_write_text`, Rust `needs_ho::write_atomic` (aynı dizinde `O_EXCL|O_NOFOLLOW` geçici dosya, `fsync`, `rename`). Python düzeltildi: 6ae5da3
+- `sid` yol parçası olarak süzülmüyordu (`jsonl_path_for`). Şimdi `/` ya da NUL içeren sid yok sayılır (Python NUL'da `ValueError`la da düşüyordu); Python'da sid yokmuş gibi eski tahmine düşer (sapma 1 aynen). Python düzeltildi: 6ae5da3
+- Python başka kullanıcının süreç İÇERİĞİNİ okuyordu: `process_iter(["pid","cmdline","uids"])` (`find_sessions`, `mirrors.running_mirrors`) uid süzgecinden önce herkesin cmdline'ını çekiyordu; `is_tmux_backed` başka kullanıcının atasının cmdline'ını okuyordu. Şimdi `process_iter(["pid","uids"])` + yalnız kendi sürecinde `cmdline()`; tmux yürüyüşü başka kullanıcının atasında durur. Sonuç değişmez (bizim `tmux -L cops` sunucumuz bizimdir). Rust zaten böyleydi. Python düzeltildi: 6ae5da3
+- Negatif/sıfır `pid`li oturum dosyası Python'da `os.kill(<=0, 0)` ile süreç GRUBUNU yokluyor, canlı sanılabiliyordu. Şimdi atlanır (Rust zaten atlıyordu). Python düzeltildi: 6ae5da3
+
+Düzeltilmeyen: yok. Not: Python `_ancestors` (alt kabuk katlama) başka kullanıcının `stat`ını okumaya devam eder; bu listede değildi, içerik değil, sapma 2'de kalır.
 
 ## Parite koşucusu (`rust/crates/cops-procscan/parity/`)
 - `pyenv.py`: `CLAUDEOPS_DIR` claudeops import edilmeden önce geçici dizine, `CLAUDEOPS_EXTENSIONS` boş, `GIT_OPTIONAL_LOCKS=0`, bayt kodu yazılmaz. Audit hook geçici dizin dışına her yazma açılışını, silme/taşıma/dizin oluşturmayı, sqlite bağlantısını ve sinyali durdurur (ilk denemede `py/**/__pycache__` yazımlarını da yakaladı). `os.kill(pid,0)` sinyalsiz taklitle değişir; psutil'in başka kullanıcının cmdline/environ/cwd okuması engellenir. `web.py` içe aktarılmaz (bağımlılıkları yok): `_ucli_flags` kaynağından ast ile derlenir.
 - Kod okuması (yazım yolları): `discovery`/`providers` keşif yolunda tek yazım `agy_provider._remember_agy_sid` (koşucuda yazmayan kayıtçıyla değişir, Rust `agy_learned` ile karşılaştırılır); `session_usage` yalnız bellek önbelleği; `needs_ho` yalnız `repo_baseline_set` (fikstürde geçici dizine bilerek çağrılır); `statedocs.read_json` `dual` kipte DB'ye yazabilir: DB geçici dizindedir.
 - `gen_golden.py`: altın vektörleri üretir (`tests/golden/`, `.gitattributes` `-text`: CRLF ve bozuk UTF-8 fikstürleri bayt bayt korunur).
 - `run.py`: `list` (JSON + tablo), `scan` (oturum alanları + türetilmiş alanlar + mirrors/duplicates/orphans/agy_learned), gerçek transkriptlerde usage ve transkript işaretleri, fikstür depolarında ve canlı oturum cwd'lerinde needs_ho. Rust Python'dan önce ve sonra koşar; fark iki görüntüde de varsa kalıcı. Çıktı yalnız sayı ve alan adı. Koşum: `python3 -I rust/crates/cops-procscan/parity/run.py`.
-- Son koşu (26 Kas akşam, EKSİK kapatma sonrası, çıkış 0, kalıcı fark 0, Python'un engellenen yazımı 0, süre 5 dk 32 sn):
-  - `list --json --no-cpu`: Python 31, Rust 31/31 satır, alan farkı 0; tablo çıktısı Rust görüntülerinden biriyle aynı (35 satır).
-  - `scan`: Python 30, Rust 31/30 satır; kalıcı fark 0. Geçici (iki görüntüde birden olmayan) farklar: 1 `usage_total`, 1 yalnız Rust'ta satır (koşu sırasında değişen canlı filo). mirrors (5), duplicates, orphans, agy_learned eşit. Python en-yeni-dosya düşüşü 0. Rust `diag`: 2 süreç tarama sırasında çıktı.
-  - usage: 123 gerçek transkript, fark 0.
-  - transkript işaretleri (has_real_user_turn, handover_done, needs_ho): 123 x 3, fark 0.
-  - needs_ho: 1276 fikstür durumu x 4 sinyal fark 0, `needs_ho`da 14 bilinen sapma (hepsi `nan_line`, sapma 4); canlı 30 oturum cwd'si x 4 sinyal fark 0.
+- Son koşu (26 Kas gece, TBD#365 sonrası, iki koşu, ikisi de çıkış 1, süre 2-6 dk): tek kalıcı fark `scan` `usage_total` (koşu 1'de 2, koşu 2'de 1 satır); diğer her şey eşit. Neden canlı filo: Python kullanımı iki Rust görüntüsünün ARASINDA okur, o sırada yazmakta olan oturumun transkripti büyürse Python değeri iki görüntüden de farklı çıkar. Kanıt: aynı oturum transkriptleri, okuma boyunca boyutu değişmeyenlerle sınırlanıp üç kez karşılaştırıldı (28-29 dosya), fark 0; `usage_real` (123 transkript) fark 0. Koşucunun karşılaştırma kuralı gevşetilmedi; bu fark `cops-parity`ye geçişte (Açık işler) boyut damgalı karşılaştırmayla kapatılmalı.
+  - `list --json --no-cpu`: Python 29, Rust 29/29 satır, kalıcı fark 0; tablo bir Rust görüntüsüyle aynı (33 satır).
+  - `scan`: mirrors (5), duplicates, orphans, agy_learned eşit; Python en-yeni-dosya düşüşü 0; Python'un engellenen yazımı 0.
+  - transkript işaretleri: 123 x 3 fark 0. needs_ho: 1276 fikstür durumu x 4 sinyal fark 0 (14 bilinen `nan_line`), canlı 29 cwd x 4 sinyal fark 0.
+  - Koşucu değişikliği: fikstür baseline'ı artık Python ad/içerik kuralıyla (`_repo_key`, `rev-parse HEAD`) düz yazılıyor; `repo_baseline_set`in `atomic_write_text`i (`os.fdopen`) pyenv korumasına takılıyordu, koruma gevşetilmedi.
 
 ## Test eşlemesi (Python testi -> Rust)
 Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.md](rs-proc-mapping.md).
@@ -87,7 +91,8 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 | test_rfh_marker | `needs_ho::tests::*`, altın `rfh` |
 | test_triage_fixes_20261107 (needs_ho) | `needs_ho::tests::only_assistant_rows_carry_the_marker`, altın `transcripts` |
 | test_review_fixes_2026_11_04 (committed_since) | `needs_ho::tests::iso_times_compare_as_instants`, altın `committed_after`, `needs_ho_git` |
-| test_session_usage | `fake_proc::usage_dedups_subagents_and_increments`, `usage::tests::*` (UsageCache, tahliye sırası, BadRow offset, anahtar eşitliği, fmt_tokens), altın `usage` |
+| test_session_usage | `fake_proc::usage_dedups_subagents_and_increments`, `usage::tests::*` (UsageCache, tahliye sırası, bozuk satır sayacı, anahtar eşitliği, fmt_tokens), altın `usage` |
+| test_procscan_tbd365 (TBD#365) | `fake_proc::bad_session_files_are_skipped_and_counted`, `other_users_processes_are_never_read`, `transcript_requires_exact_sid`, `needs_ho::tests::broken_input_is_skipped_and_counted`, `needs_ho_decides_with_bad_rows`, `baseline_is_written_atomically`, `usage::tests::bad_row_is_skipped_and_counted`, `spawn_failure_does_not_lock_the_path`, `file_cache_evicts_in_insertion_order`, altın `transcripts`/`usage`; `day_usage` kapsam dışı (T7) |
 | test_usage_cli | `usage_for_path`/`fmt_tokens` (yukarıda), `fake_proc::probe_usage_total_claude_exact_sid_without_blocking`; CLI tablosu kapsam dışı (T6) |
 | test_proc07_io_ucli_not_fleet (matches_proc) | `providers::tests::detect`, altın `detect_info`; `_io_ask` kapsam dışı (web) |
 | test_web_ucli_flags | `fake_proc::ucli_flags`, `ucli_flags_all_set`, `ucli_flags_lost_process_is_none_and_not_cached`, `mirrors_terminal_and_ucli_flag_edges`, `py::tests::python_string_rules` (`float`); `tools` alanı ve pid önbelleği kapsam dışı (T1) |
@@ -99,7 +104,9 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
   - Sınır: betik adların varlığını sınar, testin davranışı kapsadığını sınamaz ve testleri koşturmaz. Crate davranışını sınamayan test dosyaları dosya başına gerekçe/izle girildi (adet + ad özeti; dosya değişince betik durur, `--pins` yeni özeti basar).
 - [x] Eşleme tablosundaki 13 EKSİK kapandı: Rust testleri yazıldı; iki davranış Python'a eşitlendi (önbellek tahliye sırası; `ucli_flags` `cmdline`ı okunamayan süreçte artık "bütün bayraklar kapalı" yerine `None`).
 - [ ] Sohbet geçmişi okumanın izi: T1 varsayıldı ("Kapsam" bölümü), cops onayı bekliyor.
-- [ ] TBD#365 ve "Python hatası?" maddeleri sahipte.
+- [x] TBD#365: "Python hataları" maddeleri iki dilde düzeltildi (yukarıda; Python `fix:` commit'i 6ae5da3).
+- [ ] Parite koşucusu: canlı filoda `scan` `usage_total` karşılaştırması büyüyen transkriptte yanlış fark üretiyor (yukarıda); boyut damgalı karşılaştırma gerekli.
+- [ ] Parite koşucusu: rsgate'in `cops-parity`si (`rs/gate`) main'e birleşince `parity/run.py` yerine ona geçilecek (sahip, TBD#365 cevabı). O zamana dek kapı `parity/run.py`.
 - [ ] `ProcId` doğrulamasını kullanan kill yolu T4'te (crate yalnız tipi ve `verify`ı sağlar).
 - [ ] Tick içi tarama maliyeti T1'de `/api/status`a bağlanınca ölçülmeli (CPU kipi +0,3 sn bekler).
 - [ ] `Config::from_env` `$HOME`/`$CLAUDEOPS_DIR`i doğrudan okur; `cops-state` birleşince `state_dir()` oradan alınmalı (H14).
@@ -124,7 +131,7 @@ T = `tests/fake_proc.rs`, R = `tests/real_proc.rs`, C = `tests/child_lifecycle.r
 | # | Durum | Test / gerekçe |
 |---|---|---|
 | 1 | karşılandı | yıkıcı eylem yok; transkript yalnız tam sid: T `transcript_requires_exact_sid`; `find_by_name` tam ad; `ProcId` |
-| 2 | KISMİ | tek yazım `repo_baseline_set`, Python gibi atomik DEĞİL (parite; "Python hatası?") |
+| 2 | karşılandı | tek yazım `repo_baseline_set` atomik (`write_atomic`), Python da (TBD#365); `needs_ho::tests::baseline_is_written_atomically` |
 | 3 | karşılandı | `ScanDiag` okunamayan `/proc` kökünü ve `sessions/`i "yok"tan ayırır; `Liveness::Unknown`, `Access::Unreadable`; T `unreadable_roots_are_not_absence`. Git hatası "temiz" sayılır (Python aynı; sinyal yalnız devir önerisi). |
 | 4 | uygulanmaz | crate eylem yapmaz (`focus_window` sonucu döner, negatif test var) |
 | 5 | karşılandı | yutulan okuma hataları `ScanDiag` sayaçlarında; agy dosyası `AgyState::unreadable`; T `broken_proc_fields`, `broken_agy_files`. Log yok (kütüphane; sayaçları çağıran yayımlar). |
@@ -136,7 +143,7 @@ T = `tests/fake_proc.rs`, R = `tests/real_proc.rs`, C = `tests/child_lifecycle.r
 | 11 | karşılandı | RFH tek modül (`needs_ho::rfh_marker_in`), Python altın vektörü G `rfh_marker` (39), transkript düzeyi G `transcripts_needs_ho` |
 | 12 | KISMİ | altın vektör + canlı diferansiyel koşucu var; `Config::from_env` `$HOME` kullanır (`cops-state` birleşince) |
 | 13 | karşılandı | sır okunmaz/yazılmaz; `environ`den yalnız `COPS_NAME`; parite çıktısı yalnız sayı/alan adı |
-| 14 | KISMİ | `sid` argv'den yol parçası olur, `..` süzülmez (Python aynı; "Python hatası?") |
+| 14 | karşılandı | `sid` tek yol parçası olmalı (`/`, NUL yok sayılır), Python da (TBD#365); T `transcript_requires_exact_sid` |
 | 15 | uygulanmaz | vekil/WS yok |
 | 16 | uygulanmaz | uç/route yok |
 | 17 | karşılandı | testler yalnız geçici dizin ve kendi açtığı süreçler; parite koşucusu audit hook ile canlı duruma yazamaz (koşu sonunda engellenen yazım 0) |
@@ -148,17 +155,17 @@ T = `tests/fake_proc.rs`, R = `tests/real_proc.rs`, C = `tests/child_lifecycle.r
 | Sınıf | Durum | Karşılık |
 |---|---|---|
 | H1 süreç yaşam döngüsü | karşılandı | `ProcId`+`verify`, `ChildGuard`, `disallowed-methods`, C fd/zombi testi |
-| H2 atomik yazım | KISMİ | tek yazım (baseline) Python gibi atomik değil |
+| H2 atomik yazım | karşılandı | tek yazım (baseline) atomik; Python da düzeltildi (TBD#365) |
 | H3 bayat önbellek | karşılandı | `UsageCache` last-good testi; agy durumu her taramada okunur |
 | H4 dış CLI varsayımı | KISMİ | sağlayıcı tanıma tek modül + altın argv; sürüm etiketli fixture yok (ekran okuma bu izde yok) |
-| H5 bozuk girdi | karşılandı | bozuk dosya fikstürleri (altın + sahte `/proc`), `deny(unwrap/expect/panic)`; proptest yok |
+| H5 bozuk girdi | karşılandı | bozuk dosya fikstürleri (altın + sahte `/proc`), `deny(unwrap/expect/panic)`; bozuk kayıt atlanır ve sayılır (TBD#365); proptest yok |
 | H6 işaretçi ayrıştırma | karşılandı | RFH tek fonksiyon + altın corpus; yalnız asistan satırı |
 | H7 kimlik çözümleme | karşılandı | tam sid transkript, en-yeni düşüşü yok, `ProcId` |
 | H8 sınırsız döngü | karşılandı | tüm döngüler adım/süre sınırlı |
 | H9 sessiz başarı | karşılandı | `ScanDiag`, `Liveness::Unknown`, `Access::Unreadable` |
 | H14 parite | karşılandı | altın vektörler + `parity/run.py` |
 | H16 test yalıtımı | karşılandı | geçici dizin, kendi süreçleri, pyenv koruması |
-| H17 yol | KISMİ | `sid` yol parçası (Python aynı) |
+| H17 yol | karşılandı | `sid` yol parçası olarak süzülür; Python da (TBD#365) |
 | H20 gözlemlenebilirlik | KISMİ | sayaçlar var, log yayını çağıranda |
 | H21 ölçüm | karşılandı | sayılar ölçümle |
 | H10-H13, H15, H18, H19 | uygulanmaz | uzak host, dağıtım, sır, yetki, vekil, HTTP/WS, faz mantığı bu crate'te yok |

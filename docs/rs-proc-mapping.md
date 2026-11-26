@@ -11,16 +11,16 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 536 | 144 | 392 | 0 |
-| test durumu (115 dosya) | 1554 | 93 | 1461 | 0 |
+| tanım | 540 | 148 | 392 | 0 |
+| test durumu (116 dosya) | 1568 | 106 | 1462 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
-| `discovery.py` | TAM | 14 | 14 | 0 | 0 |
+| `discovery.py` | TAM | 15 | 15 | 0 | 0 |
 | `session.py` | TAM | 20 | 20 | 0 | 0 |
-| `session_usage.py` | TAM | 16 | 16 | 0 | 0 |
+| `session_usage.py` | TAM | 17 | 17 | 0 | 0 |
 | `mirrors.py` | TAM | 6 | 6 | 0 | 0 |
-| `needs_ho.py` | TAM | 15 | 15 | 0 | 0 |
+| `needs_ho.py` | TAM | 17 | 17 | 0 | 0 |
 | `commands/ls.py` | TAM | 2 | 2 | 0 | 0 |
 | `providers/__init__.py` | KISMİ | 3 | 1 | 2 | 0 |
 | `providers/base.py` | KISMİ | 73 | 6 | 67 | 0 |
@@ -47,20 +47,21 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `discovery.py::_sessions_from_json` | işlev:31 | karşılandı | `discovery.rs::sessions_from_json`<br>`discovery.rs::json_pid` | `tests/fake_proc.rs::json_source_merges_with_proc_scan`<br>`tests/fake_proc.rs::broken_proc_fields`<br>`run.py:scan_sessions` | sapma 5; nesne olmayan dosya `ScanError` (TBD#365) |
-| `discovery.py::fold_background` | işlev:95 | karşılandı | `session.rs::fold_background` | `session.rs::background_folds_into_single_front`<br>`session.rs::background_fold_edge_cases_like_python`<br>`tests/fake_proc.rs::background_session_folds` | yok |
-| `discovery.py::_ancestors` | işlev:123 | karşılandı | `discovery.rs::ancestors` | `tests/real_proc.rs::real_background_subshell_is_one_session` | sapma 2 (başka kullanıcının sürecinde durur) |
-| `discovery.py::fold_subshells` | işlev:137 | karşılandı | `session.rs::fold_subshells` | `session.rs::subshell_tree_like_python`<br>`session.rs::subshells_fold_only_for_shell`<br>`tests/real_proc.rs::real_background_subshell_is_one_session` | yok |
-| `discovery.py::fallback_name` | işlev:150 | karşılandı | `discovery.rs::fallback_name` | `discovery.rs::fallback_names`<br>`golden.rs::names_paths_and_token_format`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `discovery.py::terminal_lost` | işlev:156 | karşılandı | `procfs.rs::OwnProc::terminal_lost`<br>`status.rs::Probe::terminal_lost` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | yok |
-| `discovery.py::IDLE_SPIN_CPU` | sabit:165 | karşılandı | `status.rs::IDLE_SPIN_CPU` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yok |
-| `discovery.py::idle_spin` | işlev:168 | karşılandı | `status.rs::Probe::idle_spin` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | Rust `tmux`i parametre almaz, kendisi hesaplar |
-| `discovery.py::_SPIN_SINCE` | sabit:173 | karşılandı | `status.rs::OrphanTracker.since` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | modül sözlüğü yerine çağıranın tuttuğu örnek |
-| `discovery.py::SPIN_SECONDS` | sabit:174 | karşılandı | `status.rs::SPIN_SECONDS` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yok |
-| `discovery.py::orphan_report` | işlev:177 | karşılandı | `status.rs::OrphanTracker::report` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_orphans` | cpu yeniden yuvarlanmaz (taramada zaten tek ondalık) |
-| `discovery.py::find_sessions` | işlev:200 | karşılandı | `discovery.rs::find_sessions`<br>`discovery.rs::Scan`<br>`discovery.rs::CpuMode` | `tests/fake_proc.rs::json_source_merges_with_proc_scan`<br>`tests/fake_proc.rs::json_sid_merge_rules_like_python`<br>`tests/fake_proc.rs::cpu_from_two_samples`<br>`tests/fake_proc.rs::discovers_each_cli_and_names`<br>`run.py:scan_sessions` | CPU yolu yalnız sahte `/proc` ile sınanır (canlı parite `--no-cpu`) |
-| `discovery.py::find_by_name` | işlev:342 | karşılandı | `discovery.rs::find_by_name` | `tests/fake_proc.rs::find_by_name_is_exact_and_returns_every_process` | yok |
-| `discovery.py::duplicates` | işlev:347 | karşılandı | `session.rs::duplicates` | `session.rs::subshells_fold_only_for_shell`<br>`list.rs::table_matches_python_layout`<br>`run.py:scan_duplicates` | yok |
+| `discovery.py::_skipped` | sabit:33 | karşılandı | `discovery.rs::ScanDiag.session_files_bad` | `tests/fake_proc.rs::bad_session_files_are_skipped_and_counted` | Python sayacı süreç geneli, Rust tarama başına. Python düzeltildi: 6ae5da3 |
+| `discovery.py::_sessions_from_json` | işlev:36 | karşılandı | `discovery.rs::sessions_from_json`<br>`discovery.rs::json_pid` | `tests/fake_proc.rs::json_source_merges_with_proc_scan`<br>`tests/fake_proc.rs::broken_proc_fields`<br>`tests/fake_proc.rs::bad_session_files_are_skipped_and_counted`<br>`run.py:scan_sessions` | sapma 5; bozuk dosya ve sıfır/negatif pid atlanır (TBD#365). Python düzeltildi: 6ae5da3 |
+| `discovery.py::fold_background` | işlev:108 | karşılandı | `session.rs::fold_background` | `session.rs::background_folds_into_single_front`<br>`session.rs::background_fold_edge_cases_like_python`<br>`tests/fake_proc.rs::background_session_folds` | yok |
+| `discovery.py::_ancestors` | işlev:136 | karşılandı | `discovery.rs::ancestors` | `tests/real_proc.rs::real_background_subshell_is_one_session` | sapma 2 (başka kullanıcının sürecinde durur) |
+| `discovery.py::fold_subshells` | işlev:150 | karşılandı | `session.rs::fold_subshells` | `session.rs::subshell_tree_like_python`<br>`session.rs::subshells_fold_only_for_shell`<br>`tests/real_proc.rs::real_background_subshell_is_one_session` | yok |
+| `discovery.py::fallback_name` | işlev:163 | karşılandı | `discovery.rs::fallback_name` | `discovery.rs::fallback_names`<br>`golden.rs::names_paths_and_token_format`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `discovery.py::terminal_lost` | işlev:169 | karşılandı | `procfs.rs::OwnProc::terminal_lost`<br>`status.rs::Probe::terminal_lost` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | yok |
+| `discovery.py::IDLE_SPIN_CPU` | sabit:178 | karşılandı | `status.rs::IDLE_SPIN_CPU` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yok |
+| `discovery.py::idle_spin` | işlev:181 | karşılandı | `status.rs::Probe::idle_spin` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | Rust `tmux`i parametre almaz, kendisi hesaplar |
+| `discovery.py::_SPIN_SINCE` | sabit:186 | karşılandı | `status.rs::OrphanTracker.since` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | modül sözlüğü yerine çağıranın tuttuğu örnek |
+| `discovery.py::SPIN_SECONDS` | sabit:187 | karşılandı | `status.rs::SPIN_SECONDS` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yok |
+| `discovery.py::orphan_report` | işlev:190 | karşılandı | `status.rs::OrphanTracker::report` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_orphans` | cpu yeniden yuvarlanmaz (taramada zaten tek ondalık) |
+| `discovery.py::find_sessions` | işlev:213 | karşılandı | `discovery.rs::find_sessions`<br>`discovery.rs::Scan`<br>`discovery.rs::CpuMode` | `tests/fake_proc.rs::json_source_merges_with_proc_scan`<br>`tests/fake_proc.rs::json_sid_merge_rules_like_python`<br>`tests/fake_proc.rs::cpu_from_two_samples`<br>`tests/fake_proc.rs::discovers_each_cli_and_names`<br>`run.py:scan_sessions` | CPU yolu yalnız sahte `/proc` ile sınanır (canlı parite `--no-cpu`); cmdline yalnız kendi süreçte okunur. Python düzeltildi: 6ae5da3 |
+| `discovery.py::find_by_name` | işlev:355 | karşılandı | `discovery.rs::find_by_name` | `tests/fake_proc.rs::find_by_name_is_exact_and_returns_every_process` | yok |
+| `discovery.py::duplicates` | işlev:360 | karşılandı | `session.rs::duplicates` | `session.rs::subshells_fold_only_for_shell`<br>`list.rs::table_matches_python_layout`<br>`run.py:scan_duplicates` | yok |
 
 ### `py/claudeops/session.py`
 
@@ -91,22 +92,23 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `session_usage.py::CACHE_SECONDS` | sabit:24 | karşılandı | `usage.rs::CACHE_TTL` | `usage.rs::cache_respects_ttl` | test TTL kuralını sınar, 30 sn değerini değil |
-| `session_usage.py::_MAX_CACHED_FILES` | sabit:25 | karşılandı | `usage.rs::MAX_CACHED_FILES`<br>`usage.rs::Ordered` | `usage.rs::file_cache_evicts_in_insertion_order`<br>`usage.rs::summary_cache_evicts_oldest_200` | ekleme sırasıyla tahliye (dosya durumu 1, özet 200), Python gibi |
-| `session_usage.py::_ZERO` | sabit:26 | karşılandı | `usage.rs::Totals::add` | `golden.rs::usage_totals_two_calls` | alan sırası sabit dizi |
-| `session_usage.py::_lock` | sabit:28 | karşılandı | `usage.rs::lock`<br>`usage.rs::UsageCache` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
-| `session_usage.py::_files` | sabit:30 | karşılandı | `usage.rs::UsageReader.files`<br>`usage.rs::FileState` | `usage.rs::bad_row_returns_none_once_and_offset_moves_past_it`<br>`golden.rs::usage_totals_two_calls` | yok |
-| `session_usage.py::_summaries` | sabit:32 | karşılandı | `usage.rs::UsageCache.summaries`<br>`usage.rs::Summary` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
-| `session_usage.py::_int` | işlev:35 | karşılandı | `usage.rs::count` | `golden.rs::usage_totals_two_calls`<br>`run.py:usage_real` | sapma 4 ve 6; u64'te doyar |
-| `session_usage.py::_parse` | işlev:42 | karşılandı | `usage.rs::parse`<br>`usage.rs::py_key` | `golden.rs::usage_totals_two_calls`<br>`usage.rs::python_key_equality`<br>`run.py:usage_real` | sapma 4 |
-| `session_usage.py::_from_row` | işlev:53 | karşılandı | `usage.rs::parse`<br>`usage.rs::py_key` | `golden.rs::usage_totals_two_calls`<br>`usage.rs::python_key_equality`<br>`run.py:usage_real` | sapma 4 |
-| `session_usage.py::_merge` | işlev:70 | karşılandı | `usage.rs::UsageReader::update` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`golden.rs::usage_totals_two_calls` | yok |
-| `session_usage.py::_update_file` | işlev:75 | karşılandı | `usage.rs::UsageReader::update` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`usage.rs::bad_row_returns_none_once_and_offset_moves_past_it` | `mtime` tutulmaz (okuyanı yok) |
-| `session_usage.py::_sum` | işlev:113 | karşılandı | `usage.rs::sum`<br>`usage.rs::Totals::add` | `golden.rs::usage_totals_two_calls`<br>`run.py:usage_real` | yok |
-| `session_usage.py::usage_for_path` | işlev:130 | karşılandı | `usage.rs::UsageReader::usage_for_path`<br>`usage.rs::Usage` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`golden.rs::usage_totals_two_calls`<br>`run.py:usage_real` | yok |
-| `session_usage.py::_refresh` | işlev:158 | karşılandı | `usage.rs::UsageCache::refresh` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
-| `session_usage.py::cached_usage_for_path` | işlev:167 | karşılandı | `usage.rs::UsageCache::get` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good`<br>`usage.rs::cache_respects_ttl` | sapma 10 |
-| `session_usage.py::fmt_tokens` | işlev:184 | karşılandı | `usage.rs::fmt_tokens` | `usage.rs::fmt_tokens_python_examples`<br>`golden.rs::names_paths_and_token_format` | yok |
+| `session_usage.py::CACHE_SECONDS` | sabit:25 | karşılandı | `usage.rs::CACHE_TTL` | `usage.rs::cache_respects_ttl` | test TTL kuralını sınar, 30 sn değerini değil |
+| `session_usage.py::_MAX_CACHED_FILES` | sabit:26 | karşılandı | `usage.rs::MAX_CACHED_FILES`<br>`usage.rs::Ordered` | `usage.rs::file_cache_evicts_in_insertion_order`<br>`usage.rs::summary_cache_evicts_oldest_200` | ekleme sırasıyla tahliye (dosya durumu 1, özet 200), Python gibi; küçülen dosya yer açtırmaz. Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_ZERO` | sabit:27 | karşılandı | `usage.rs::Totals::add` | `golden.rs::usage_totals_two_calls` | alan sırası sabit dizi |
+| `session_usage.py::_lock` | sabit:29 | karşılandı | `usage.rs::lock`<br>`usage.rs::UsageCache` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
+| `session_usage.py::_files` | sabit:31 | karşılandı | `usage.rs::UsageReader.files`<br>`usage.rs::FileState` | `usage.rs::bad_row_is_skipped_and_counted`<br>`golden.rs::usage_totals_two_calls` | yok |
+| `session_usage.py::_summaries` | sabit:33 | karşılandı | `usage.rs::UsageCache.summaries`<br>`usage.rs::Summary` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
+| `session_usage.py::_skipped` | sabit:36 | karşılandı | `usage.rs::FileState.bad`<br>`usage.rs::Usage.skipped_rows` | `usage.rs::bad_row_is_skipped_and_counted` | Python süreç geneli sayaç, Rust dosya başına (JSON'a yazılmaz). Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_int` | işlev:39 | karşılandı | `usage.rs::count` | `golden.rs::usage_totals_two_calls`<br>`run.py:usage_real` | sapma 4 ve 6; u64'te doyar |
+| `session_usage.py::_parse` | işlev:46 | karşılandı | `usage.rs::parse`<br>`usage.rs::py_key` | `golden.rs::usage_totals_two_calls`<br>`usage.rs::python_key_equality`<br>`usage.rs::bad_row_is_skipped_and_counted`<br>`run.py:usage_real` | sapma 4; dizgi olmayan model ve hashlenemeyen anahtar atlanır, sayılır. Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_from_row` | işlev:57 | karşılandı | `usage.rs::parse`<br>`usage.rs::py_key` | `golden.rs::usage_totals_two_calls`<br>`usage.rs::python_key_equality`<br>`usage.rs::bad_row_is_skipped_and_counted`<br>`run.py:usage_real` | sapma 4; dizgi olmayan model ve hashlenemeyen anahtar atlanır, sayılır. Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_merge` | işlev:82 | karşılandı | `usage.rs::UsageReader::update` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`golden.rs::usage_totals_two_calls` | yok |
+| `session_usage.py::_update_file` | işlev:87 | karşılandı | `usage.rs::UsageReader::update` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`usage.rs::bad_row_is_skipped_and_counted`<br>`usage.rs::file_cache_evicts_in_insertion_order` | `mtime` tutulmaz (okuyanı yok); küçülen dosya yerinde sıfırlanır. Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_sum` | işlev:126 | karşılandı | `usage.rs::sum`<br>`usage.rs::Totals::add` | `golden.rs::usage_totals_two_calls`<br>`run.py:usage_real` | yok |
+| `session_usage.py::usage_for_path` | işlev:143 | karşılandı | `usage.rs::UsageReader::usage_for_path`<br>`usage.rs::Usage` | `tests/fake_proc.rs::usage_dedups_subagents_and_increments`<br>`golden.rs::usage_totals_two_calls`<br>`run.py:usage_real`<br>`usage.rs::bad_row_is_skipped_and_counted` | alt ajan dosyasındaki bozuk satır toplamı boşaltmaz. Python düzeltildi: 6ae5da3 |
+| `session_usage.py::_refresh` | işlev:171 | karşılandı | `usage.rs::UsageCache::refresh` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good` | yok |
+| `session_usage.py::cached_usage_for_path` | işlev:180 | karşılandı | `usage.rs::UsageCache::get` | `usage.rs::cache_first_none_then_value_and_error_keeps_last_good`<br>`usage.rs::cache_respects_ttl`<br>`usage.rs::spawn_failure_does_not_lock_the_path` | başlatılamayan iş parçacığı bayrağı geri alınır (eski sapma 10). Python düzeltildi: 6ae5da3 |
+| `session_usage.py::fmt_tokens` | işlev:201 | karşılandı | `usage.rs::fmt_tokens` | `usage.rs::fmt_tokens_python_examples`<br>`golden.rs::names_paths_and_token_format` | yok |
 
 ### `py/claudeops/mirrors.py`
 
@@ -116,28 +118,30 @@ Yok.
 | `mirrors.py::_VALUE_FLAGS` | sabit:23 | karşılandı | `mirrors.rs::VALUE_FLAGS` | `mirrors.rs::specs`<br>`golden.rs::provider_detect_and_info` | yok |
 | `mirrors.py::spec_from_cmdline` | işlev:26 | karşılandı | `mirrors.rs::spec_from_cmdline` | `mirrors.rs::specs`<br>`golden.rs::provider_detect_and_info` | yok |
 | `mirrors.py::note_mirror` | işlev:61 | karşılandı | `mirrors.rs::note_mirror` | `mirrors.rs::notes_accumulate`<br>`run.py:scan_mirrors` | yok |
-| `mirrors.py::running_mirrors` | işlev:72 | karşılandı | `mirrors.rs::running_mirrors` | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`tests/real_proc.rs::real_viewer_process_is_seen` | yok |
+| `mirrors.py::running_mirrors` | işlev:72 | karşılandı | `mirrors.rs::running_mirrors` | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`tests/real_proc.rs::real_viewer_process_is_seen` | cmdline yalnız uid süzgecinden sonra. Python düzeltildi: 6ae5da3 |
 | `mirrors.py::focus_window` | işlev:88 | karşılandı | `mirrors.rs::focus_window`<br>`mirrors.rs::focus_with` | `mirrors.rs::focus_reports_exit_status_and_passes_exact_args`<br>`proc_cmd.rs::output_status_and_timeout` | test iç `focus_with`i sahte programla çağırır |
 
 ### `py/claudeops/needs_ho.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `needs_ho.py::_BASELINE_DIR` | sabit:14 | karşılandı | `needs_ho.rs::NeedsHo::baseline_get`<br>`needs_ho.rs::NeedsHo.state_dir` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
-| `needs_ho.py::_git` | işlev:19 | karşılandı | `needs_ho.rs::git`<br>`needs_ho.rs::GIT_TIMEOUT`<br>`proc_cmd.rs::run` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`proc_cmd.rs::output_status_and_timeout` | yok |
-| `needs_ho.py::_is_git_repo` | işlev:30 | karşılandı | `needs_ho.rs::is_git_repo` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
-| `needs_ho.py::repo_dirty` | işlev:34 | karşılandı | `needs_ho.rs::repo_dirty` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
-| `needs_ho.py::repo_untracked_count` | işlev:64 | karşılandı | `needs_ho.rs::repo_untracked_count` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
-| `needs_ho.py::_repo_key` | işlev:71 | karşılandı | `needs_ho.rs::repo_key` | `run.py:needs_ho_repos`<br>`tests/needs_ho_git.rs::git_signals_and_baseline` | Python'un yazdığı baseline'ı Rust okur (aynı sha1 adı) |
-| `needs_ho.py::_repo_baseline_get` | işlev:77 | karşılandı | `needs_ho.rs::NeedsHo::baseline_get` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
-| `needs_ho.py::repo_baseline_set` | işlev:88 | karşılandı | `needs_ho.rs::NeedsHo::repo_baseline_set` | `tests/needs_ho_git.rs::git_signals_and_baseline` | Python gibi atomik değil (TBD#365 listesi) |
-| `needs_ho.py::repo_committed_since` | işlev:97 | karşılandı | `needs_ho.rs::NeedsHo::repo_committed_since`<br>`needs_ho.rs::committed_after`<br>`needs_ho.rs::from_iso` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`golden.rs::committed_after_iso_rules`<br>`needs_ho.rs::iso_times_compare_as_instants`<br>`run.py:needs_ho_repos` | sapma 7 |
-| `needs_ho.py::_RFH` | sabit:132 | karşılandı | `needs_ho.rs::RFH` | `golden.rs::rfh_marker` | yok |
-| `needs_ho.py::rfh_marker_in` | işlev:135 | karşılandı | `needs_ho.rs::rfh_marker_in` | `golden.rs::rfh_marker`<br>`needs_ho.rs::prose_mention_is_not_a_marker`<br>`needs_ho.rs::heading_and_bare_line_count`<br>`needs_ho.rs::code_block_and_quote_do_not_count` | yok |
-| `needs_ho.py::rfh_marker_in::re1` | regex:145 | karşılandı | `needs_ho.rs::rfh_marker_in` | `golden.rs::rfh_marker`<br>`needs_ho.rs::prose_mention_is_not_a_marker`<br>`needs_ho.rs::heading_and_bare_line_count`<br>`needs_ho.rs::code_block_and_quote_do_not_count` | yok |
-| `needs_ho.py::handover_done` | işlev:150 | karşılandı | `needs_ho.rs::handover_done`<br>`needs_ho.rs::each_row` | `golden.rs::transcripts_needs_ho`<br>`needs_ho.rs::only_assistant_rows_carry_the_marker`<br>`run.py:needs_ho_transcripts` | sapma 4; istisna yerine `BadTranscript` |
-| `needs_ho.py::has_real_user_turn` | işlev:197 | karşılandı | `needs_ho.rs::has_real_user_turn`<br>`needs_ho.rs::each_row` | `golden.rs::transcripts_needs_ho`<br>`needs_ho.rs::real_user_turn_filters`<br>`run.py:needs_ho_transcripts` | yok |
-| `needs_ho.py::needs_ho` | işlev:241 | karşılandı | `needs_ho.rs::NeedsHo::needs_ho` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | kullanılmayan `sid` parametresi alınmadı |
+| `needs_ho.py::_BASELINE_DIR` | sabit:16 | karşılandı | `needs_ho.rs::NeedsHo::baseline_get`<br>`needs_ho.rs::NeedsHo.state_dir` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
+| `needs_ho.py::_skipped` | sabit:19 | karşılandı | `needs_ho.rs::Checked.skipped` | `needs_ho.rs::broken_input_is_skipped_and_counted` | Python süreç geneli sayaç, Rust çağrı başına. Python düzeltildi: 6ae5da3 |
+| `needs_ho.py::_git` | işlev:24 | karşılandı | `needs_ho.rs::git`<br>`needs_ho.rs::GIT_TIMEOUT`<br>`proc_cmd.rs::run` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`proc_cmd.rs::output_status_and_timeout` | yok |
+| `needs_ho.py::_is_git_repo` | işlev:35 | karşılandı | `needs_ho.rs::is_git_repo` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
+| `needs_ho.py::repo_dirty` | işlev:39 | karşılandı | `needs_ho.rs::repo_dirty` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
+| `needs_ho.py::repo_untracked_count` | işlev:69 | karşılandı | `needs_ho.rs::repo_untracked_count` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
+| `needs_ho.py::_repo_key` | işlev:76 | karşılandı | `needs_ho.rs::repo_key` | `run.py:needs_ho_repos`<br>`tests/needs_ho_git.rs::git_signals_and_baseline` | Python'un yazdığı baseline'ı Rust okur (aynı sha1 adı) |
+| `needs_ho.py::_repo_baseline_get` | işlev:82 | karşılandı | `needs_ho.rs::NeedsHo::baseline_get` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | yok |
+| `needs_ho.py::repo_baseline_set` | işlev:93 | karşılandı | `needs_ho.rs::NeedsHo::repo_baseline_set`<br>`needs_ho.rs::write_atomic` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`needs_ho.rs::baseline_is_written_atomically` | atomik (geçici dosya + rename). Python düzeltildi: 6ae5da3 |
+| `needs_ho.py::repo_committed_since` | işlev:102 | karşılandı | `needs_ho.rs::NeedsHo::repo_committed_since`<br>`needs_ho.rs::committed_after`<br>`needs_ho.rs::from_iso` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`golden.rs::committed_after_iso_rules`<br>`needs_ho.rs::iso_times_compare_as_instants`<br>`run.py:needs_ho_repos` | sapma 7 |
+| `needs_ho.py::_RFH` | sabit:137 | karşılandı | `needs_ho.rs::RFH` | `golden.rs::rfh_marker` | yok |
+| `needs_ho.py::rfh_marker_in` | işlev:140 | karşılandı | `needs_ho.rs::rfh_marker_in` | `golden.rs::rfh_marker`<br>`needs_ho.rs::prose_mention_is_not_a_marker`<br>`needs_ho.rs::heading_and_bare_line_count`<br>`needs_ho.rs::code_block_and_quote_do_not_count` | yok |
+| `needs_ho.py::rfh_marker_in::re1` | regex:150 | karşılandı | `needs_ho.rs::rfh_marker_in` | `golden.rs::rfh_marker`<br>`needs_ho.rs::prose_mention_is_not_a_marker`<br>`needs_ho.rs::heading_and_bare_line_count`<br>`needs_ho.rs::code_block_and_quote_do_not_count` | yok |
+| `needs_ho.py::_text_blocks` | işlev:155 | karşılandı | `needs_ho.rs::text_blocks` | `needs_ho.rs::broken_input_is_skipped_and_counted`<br>`golden.rs::transcripts_needs_ho` | dizgi olmayan `text` yok sayılır ve sayılır. Python düzeltildi: 6ae5da3 |
+| `needs_ho.py::handover_done` | işlev:168 | karşılandı | `needs_ho.rs::handover_done`<br>`needs_ho.rs::each_row`<br>`needs_ho.rs::Checked` | `golden.rs::transcripts_needs_ho`<br>`needs_ho.rs::only_assistant_rows_carry_the_marker`<br>`needs_ho.rs::broken_input_is_skipped_and_counted`<br>`run.py:needs_ho_transcripts` | sapma 4; beklenmeyen tipte kayıt atlanır ve sayılır. Python düzeltildi: 6ae5da3 |
+| `needs_ho.py::has_real_user_turn` | işlev:215 | karşılandı | `needs_ho.rs::has_real_user_turn`<br>`needs_ho.rs::each_row` | `golden.rs::transcripts_needs_ho`<br>`needs_ho.rs::real_user_turn_filters`<br>`needs_ho.rs::broken_input_is_skipped_and_counted`<br>`run.py:needs_ho_transcripts` | nesne olmayan `message` atlanır ve sayılır. Python düzeltildi: 6ae5da3 |
+| `needs_ho.py::needs_ho` | işlev:263 | karşılandı | `needs_ho.rs::NeedsHo::needs_ho` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`needs_ho.rs::needs_ho_decides_with_bad_rows`<br>`run.py:needs_ho_repos` | kullanılmayan `sid` parametresi alınmadı; bozuk satırda istisna yok. Python düzeltildi: 6ae5da3 |
 
 ### `py/claudeops/commands/ls.py`
 
@@ -253,88 +257,88 @@ Yok.
 | `providers/claude_provider.py::_encode_cwd` | işlev:83 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
 | `providers/claude_provider.py::_encode_cwd::re1` | regex:99 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
 | `providers/claude_provider.py::_safe_mtime` | işlev:102 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::jsonl_path_for` | işlev:110 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid`<br>`run.py:scan_sessions` | sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok |
-| `providers/claude_provider.py::find_latest_jsonl` | işlev:125 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:143 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:144 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_row_epoch` | işlev:147 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_last_assistant_value` | işlev:158 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_assistant_model` | işlev:208 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_assistant_effort` | işlev:214 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:228 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_real_request_epoch` | işlev:231 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::last_real_request_epoch` | işlev:254 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::session_file_sid` | işlev:260 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_EFFORT_BUSTS_CACHE_RE` | sabit:293 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::live_or_spawn_model` | işlev:296 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::live_or_spawn_effort` | işlev:315 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::_META_HEAD_LINES` | sabit:331 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_RESUME_SCAN_LIMIT` | sabit:334 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_jsonl_meta` | işlev:337 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_same_path` | işlev:364 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_META_CACHE` | sabit:372 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_META_CACHE_MAX` | sabit:373 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_jsonl_meta_cached` | işlev:376 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_STUB_MAX_BYTES` | sabit:391 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_has_chat_rows` | işlev:394 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::MCP_CONFIG_PATH` | sabit:414 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_mcp_config_path` | işlev:417 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_write_mcp_config_file` | işlev:431 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_extract_text` | işlev:440 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::_is_real_user_text` | işlev:452 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::_HELP_CACHE` | sabit:466 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_HELP_TIMEOUT_SECONDS` | sabit:467 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_help_text` | işlev:470 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_supports_flag` | işlev:492 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_supports_flag::re1` | regex:495 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider` | sınıf:498 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma; kalan metotlar kendi satırında |
-| `providers/claude_provider.py::ClaudeProvider.name` | sabit:499 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:501 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.build_inner_command` | işlev:545 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.oneshot_argv` | işlev:586 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.mcp_launch_args` | işlev:602 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.compact_command` | işlev:610 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.usage_command` | işlev:613 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.usage_needs_dismiss` | işlev:616 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.parse_usage_text` | işlev:624 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.usage_fresh_argv` | işlev:666 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.parse_fresh_usage` | işlev:669 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.context_command` | işlev:678 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.context_needs_dismiss` | işlev:681 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.parse_context_text` | işlev:687 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.handover_model_downgrade` | işlev:744 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_TIMEOUT_SECONDS` | sabit:761 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` | sabit:762 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.apply_live_model_switch` | işlev:764 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.handover_effort_downgrade` | işlev:824 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:837 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:840 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
-| `providers/claude_provider.py::ClaudeProvider.effort_switch_keeps_cache` | işlev:859 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` | sabit:862 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` | sabit:863 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` | sabit:864 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.apply_live_effort_switch` | işlev:867 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` | sabit:926 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` | sabit:927 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog` | işlev:929 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.matches_proc` | işlev:970 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/claude_provider.py::ClaudeProvider.extract_name` | işlev:975 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/claude_provider.py::ClaudeProvider.extract_info` | işlev:978 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
-| `providers/claude_provider.py::ClaudeProvider.preferred_default_model` | işlev:986 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.default_effort` | işlev:992 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.model_choices` | işlev:995 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.refresh_stored_model` | işlev:1010 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.permission_modes` | işlev:1029 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.effort_levels` | işlev:1032 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.mode_status_patterns` | işlev:1035 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1038 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1048 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1051 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1054 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1080 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1110 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
-| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1115 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
-| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1144 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::jsonl_path_for` | işlev:110 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid`<br>`run.py:scan_sessions` | sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3 |
+| `providers/claude_provider.py::find_latest_jsonl` | işlev:127 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:145 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:146 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::_row_epoch` | işlev:149 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::_last_assistant_value` | işlev:160 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::last_assistant_model` | işlev:210 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::last_assistant_effort` | işlev:216 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:230 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::_real_request_epoch` | işlev:233 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::last_real_request_epoch` | işlev:256 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::session_file_sid` | işlev:262 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_EFFORT_BUSTS_CACHE_RE` | sabit:295 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::live_or_spawn_model` | işlev:298 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::live_or_spawn_effort` | işlev:317 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::_META_HEAD_LINES` | sabit:333 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_RESUME_SCAN_LIMIT` | sabit:336 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_jsonl_meta` | işlev:339 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_same_path` | işlev:366 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_META_CACHE` | sabit:374 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_META_CACHE_MAX` | sabit:375 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_jsonl_meta_cached` | işlev:378 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_STUB_MAX_BYTES` | sabit:393 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_has_chat_rows` | işlev:396 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::MCP_CONFIG_PATH` | sabit:416 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_mcp_config_path` | işlev:419 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_write_mcp_config_file` | işlev:433 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_extract_text` | işlev:442 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::_is_real_user_text` | işlev:454 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::_HELP_CACHE` | sabit:468 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_HELP_TIMEOUT_SECONDS` | sabit:469 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_help_text` | işlev:472 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_supports_flag` | işlev:494 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_supports_flag::re1` | regex:497 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider` | sınıf:500 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma; kalan metotlar kendi satırında |
+| `providers/claude_provider.py::ClaudeProvider.name` | sabit:501 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:503 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.build_inner_command` | işlev:547 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.oneshot_argv` | işlev:588 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.mcp_launch_args` | işlev:604 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.compact_command` | işlev:612 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.usage_command` | işlev:615 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.usage_needs_dismiss` | işlev:618 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.parse_usage_text` | işlev:626 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.usage_fresh_argv` | işlev:668 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.parse_fresh_usage` | işlev:671 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.context_command` | işlev:680 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.context_needs_dismiss` | işlev:683 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.parse_context_text` | işlev:689 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.handover_model_downgrade` | işlev:746 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_TIMEOUT_SECONDS` | sabit:763 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` | sabit:764 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.apply_live_model_switch` | işlev:766 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.handover_effort_downgrade` | işlev:826 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:839 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:842 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: T1 (durum) |
+| `providers/claude_provider.py::ClaudeProvider.effort_switch_keeps_cache` | işlev:861 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` | sabit:864 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` | sabit:865 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` | sabit:866 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.apply_live_effort_switch` | işlev:869 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` | sabit:928 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` | sabit:929 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog` | işlev:931 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.matches_proc` | işlev:972 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/claude_provider.py::ClaudeProvider.extract_name` | işlev:977 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/claude_provider.py::ClaudeProvider.extract_info` | işlev:980 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
+| `providers/claude_provider.py::ClaudeProvider.preferred_default_model` | işlev:988 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.default_effort` | işlev:994 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.model_choices` | işlev:997 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.refresh_stored_model` | işlev:1012 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.permission_modes` | işlev:1031 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.effort_levels` | işlev:1034 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.mode_status_patterns` | işlev:1037 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1040 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1050 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1053 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1056 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1082 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1112 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
+| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1117 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
+| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1146 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: T1 (/api/status ve sohbet okuma; cops onayı bekler) |
 
 ### `py/claudeops/providers/codex_provider.py`
 
@@ -677,7 +681,7 @@ Yok.
 |---|---|---|---|---|---|
 | `tmux_backend.py::TMUX_SOCKET` | sabit:22 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
 | `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:24 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
-| `tmux_backend.py::is_tmux_backed` | işlev:768 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | sapma 2 |
+| `tmux_backend.py::is_tmux_backed` | işlev:768 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
 
 ## Python test durumları
 
@@ -863,17 +867,17 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_fresh_session_gets_the_live_sid_from_the_json_entry` | 77 | karşılandı | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_resumed_session_keeps_its_sid_and_stays_resumed` | 85 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_the_live_json_sid_wins_over_a_stale_cmdline_sid` | 92 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before` | 101 | karşılandı | `tests/fake_proc.rs::is_fresh_without_json_entry_for_every_cli` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_json_entry_without_a_sid_never_blanks_the_cmdline_sid` | 106 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_tui_renamed_session_is_listed_once_under_its_spawn_name` | 110 | karşılandı | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_each_session_gets_its_own_sid_by_pid` | 116 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_json_entry_of_another_cli_never_donates_its_sid` | 121 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
-| `test_discovery_sid.py::FindSessionsSidTests.test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh` | 129 | karşılandı | `tests/fake_proc.rs::is_fresh_without_json_entry_for_every_cli` | sahte sağlayıcı yerine ucli ve codex |
-| `test_discovery_sid.py::IsFreshTests.test_flag_unknown_falls_back_to_the_sid` | 138 | karşılandı | `session.rs::is_fresh_flag_and_sid_combinations` | yok |
-| `test_discovery_sid.py::IsFreshTests.test_flag_known_wins_over_the_sid` | 143 | karşılandı | `session.rs::is_fresh_flag_and_sid_combinations` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_fresh_session_gets_the_live_sid_from_the_json_entry` | 80 | karşılandı | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_resumed_session_keeps_its_sid_and_stays_resumed` | 88 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_the_live_json_sid_wins_over_a_stale_cmdline_sid` | 95 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before` | 104 | karşılandı | `tests/fake_proc.rs::is_fresh_without_json_entry_for_every_cli` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_json_entry_without_a_sid_never_blanks_the_cmdline_sid` | 109 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_tui_renamed_session_is_listed_once_under_its_spawn_name` | 113 | karşılandı | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_each_session_gets_its_own_sid_by_pid` | 119 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_json_entry_of_another_cli_never_donates_its_sid` | 124 | karşılandı | `tests/fake_proc.rs::json_sid_merge_rules_like_python` | yok |
+| `test_discovery_sid.py::FindSessionsSidTests.test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh` | 132 | karşılandı | `tests/fake_proc.rs::is_fresh_without_json_entry_for_every_cli` | sahte sağlayıcı yerine ucli ve codex |
+| `test_discovery_sid.py::IsFreshTests.test_flag_unknown_falls_back_to_the_sid` | 141 | karşılandı | `session.rs::is_fresh_flag_and_sid_combinations` | yok |
+| `test_discovery_sid.py::IsFreshTests.test_flag_known_wins_over_the_sid` | 146 | karşılandı | `session.rs::is_fresh_flag_and_sid_combinations` | yok |
 
 ### `py/tests/test_discovery_subshell.py`
 
@@ -1065,26 +1069,26 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_mirror_marker.py::NoteMirrorTests.test_records_the_pid_under_the_spec` | 47 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
-| `test_mirror_marker.py::NoteMirrorTests.test_same_spec_accumulates_pids` | 52 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
-| `test_mirror_marker.py::NoteMirrorTests.test_anything_else_leaves_the_dict_alone` | 58 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
-| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_viewers_are_collected_in_the_same_pass` | 91 | karşılandı | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/real_proc.rs::real_viewer_process_is_seen` | tek tarama yapısal (`find_sessions` içinde `note_mirror`) |
-| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_viewers_are_not_sessions_and_fleet_result_is_unchanged` | 97 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
-| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_default_does_not_collect_anything` | 104 | kapsam dışı | yok | Rust'ta isteğe bağlı toplama yok: `Scan.mirrors` her taramada dolar (bilinçli davranış farkı). İz: T1 (durum) |
-| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_a_real_viewer_process_is_seen_by_the_real_scan` | 110 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_open_and_closed_are_stamped_per_remote_row` | 148 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_same_name_on_two_hosts_is_told_apart` | 155 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_match_is_exact_not_a_prefix` | 162 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_cached_rows_are_copied_not_mutated` | 169 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_stale_value_from_upstream_is_overwritten` | 177 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_no_marker_at_all_when_the_state_is_unknown` | 182 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_empty_set_means_known_and_closed` | 187 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_local_closed_and_retired_rows_are_not_stamped` | 192 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_a_dict_works_as_the_container_like_find_sessions_hands_it_over` | 201 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::MergeStatusMarkerTests.test_unpolled_host_adds_no_rows_and_no_crash` | 206 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
-| `test_mirror_marker.py::StatusPayloadWiringTests.test_remote_rows_carry_the_marker_from_the_fleet_scan` | 243 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
-| `test_mirror_marker.py::StatusPayloadWiringTests.test_exactly_one_scan_carries_the_collector` | 249 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
-| `test_mirror_marker.py::StatusPayloadWiringTests.test_a_closed_window_flips_the_marker_on_the_next_tick` | 259 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
+| `test_mirror_marker.py::NoteMirrorTests.test_records_the_pid_under_the_spec` | 50 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
+| `test_mirror_marker.py::NoteMirrorTests.test_same_spec_accumulates_pids` | 55 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
+| `test_mirror_marker.py::NoteMirrorTests.test_anything_else_leaves_the_dict_alone` | 61 | karşılandı | `mirrors.rs::notes_accumulate` | yok |
+| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_viewers_are_collected_in_the_same_pass` | 94 | karşılandı | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/real_proc.rs::real_viewer_process_is_seen` | tek tarama yapısal (`find_sessions` içinde `note_mirror`) |
+| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_viewers_are_not_sessions_and_fleet_result_is_unchanged` | 100 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
+| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_default_does_not_collect_anything` | 107 | kapsam dışı | yok | Rust'ta isteğe bağlı toplama yok: `Scan.mirrors` her taramada dolar (bilinçli davranış farkı). İz: T1 (durum) |
+| `test_mirror_marker.py::FindSessionsMirrorsOutTests.test_a_real_viewer_process_is_seen_by_the_real_scan` | 113 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_open_and_closed_are_stamped_per_remote_row` | 151 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_same_name_on_two_hosts_is_told_apart` | 158 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_match_is_exact_not_a_prefix` | 165 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_cached_rows_are_copied_not_mutated` | 172 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_stale_value_from_upstream_is_overwritten` | 180 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_no_marker_at_all_when_the_state_is_unknown` | 185 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_empty_set_means_known_and_closed` | 190 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_local_closed_and_retired_rows_are_not_stamped` | 195 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_a_dict_works_as_the_container_like_find_sessions_hands_it_over` | 204 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::MergeStatusMarkerTests.test_unpolled_host_adds_no_rows_and_no_crash` | 209 | kapsam dışı | yok | uzak satırlara `mirror_open` işareti. İz: T1 (durum); T5 (federasyon) |
+| `test_mirror_marker.py::StatusPayloadWiringTests.test_remote_rows_carry_the_marker_from_the_fleet_scan` | 246 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
+| `test_mirror_marker.py::StatusPayloadWiringTests.test_exactly_one_scan_carries_the_collector` | 252 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
+| `test_mirror_marker.py::StatusPayloadWiringTests.test_a_closed_window_flips_the_marker_on_the_next_tick` | 262 | kapsam dışı | yok | durum yayını bağlantısı. İz: T1 (durum) |
 
 ### `py/tests/test_mirror_window.py`
 
@@ -1098,39 +1102,39 @@ Yok.
 | `test_mirror_window.py::SpecFromCmdlineTests.test_other_commands_do_not_match` | 50 | karşılandı | `mirrors.rs::specs`<br>`golden.rs::provider_detect_and_info` | yok |
 | `test_mirror_window.py::SpecFromCmdlineTests.test_watch_without_a_target` | 56 | karşılandı | `mirrors.rs::specs`<br>`golden.rs::provider_detect_and_info` | yok |
 | `test_mirror_window.py::SpecFromCmdlineTests.test_empty_parts` | 60 | karşılandı | `mirrors.rs::specs`<br>`golden.rs::provider_detect_and_info` | yok |
-| `test_mirror_window.py::RunningMirrorsTests.test_collects_pids_per_spec` | 78 | karşılandı | `mirrors.rs::notes_accumulate`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
-| `test_mirror_window.py::RunningMirrorsTests.test_other_users_processes_are_ignored` | 83 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
-| `test_mirror_window.py::RunningMirrorsTests.test_unreadable_processes_are_skipped` | 86 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
-| `test_mirror_window.py::RunningMirrorsTests.test_default_uid_is_the_current_user` | 89 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
-| `test_mirror_window.py::RunningMirrorsTests.test_a_process_vanishing_mid_scan_is_skipped` | 94 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
-| `test_mirror_window.py::FocusWindowTests.test_uses_exact_title_matching_and_the_given_display` | 104 | karşılandı | `mirrors.rs::focus_reports_exit_status_and_passes_exact_args` | yok |
-| `test_mirror_window.py::FocusWindowTests.test_failures_are_false_not_exceptions` | 117 | karşılandı | `mirrors.rs::focus_reports_exit_status_and_passes_exact_args`<br>`proc_cmd.rs::output_status_and_timeout` | yok |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_gnome_terminal_argv` | 138 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_the_command_runs_cops_watch_against_this_panels_port` | 145 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_a_failing_viewer_keeps_the_window_open_and_a_clean_exit_closes_it` | 151 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_arguments_are_shell_quoted` | 158 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_environment` | 162 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_popen_failure_is_false` | 170 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_success_spawns_once_with_the_panels_port` | 211 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_local_sessions_are_rejected` | 215 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_bad_characters_never_reach_the_command_line` | 222 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_unknown_host` | 229 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_session_must_be_in_the_hosts_last_known_state` | 234 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_a_session_without_tmux_has_no_terminal_to_mirror` | 245 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_no_x11_display` | 250 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_an_open_mirror_is_focused_not_duplicated` | 257 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_force_opens_a_second_one` | 263 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_another_sessions_mirror_does_not_count` | 269 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_launch_failure` | 274 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_messages_follow_the_language` | 280 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
-| `test_mirror_window.py::MirrorRouteHttpTests.test_route_is_declared_local_only` | 323 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
-| `test_mirror_window.py::MirrorRouteHttpTests.test_post_with_a_remote_host_field_is_handled_locally` | 326 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
-| `test_mirror_window.py::MirrorRouteHttpTests.test_force_flag_is_passed_through` | 331 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
-| `test_mirror_window.py::MirrorRouteHttpTests.test_name_is_required` | 335 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
-| `test_mirror_window.py::MirrorRouteHttpTests.test_token_is_required` | 340 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
-| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_a_mirror_window_is_tiled_once_its_spec_is_known` | 355 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
-| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` | 360 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
-| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` | 365 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
+| `test_mirror_window.py::RunningMirrorsTests.test_collects_pids_per_spec` | 81 | karşılandı | `mirrors.rs::notes_accumulate`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
+| `test_mirror_window.py::RunningMirrorsTests.test_other_users_processes_are_ignored` | 86 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
+| `test_mirror_window.py::RunningMirrorsTests.test_unreadable_processes_are_skipped` | 89 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
+| `test_mirror_window.py::RunningMirrorsTests.test_default_uid_is_the_current_user` | 92 | karşılandı | `tests/real_proc.rs::real_viewer_process_is_seen` | yok |
+| `test_mirror_window.py::RunningMirrorsTests.test_a_process_vanishing_mid_scan_is_skipped` | 97 | karşılandı | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
+| `test_mirror_window.py::FocusWindowTests.test_uses_exact_title_matching_and_the_given_display` | 107 | karşılandı | `mirrors.rs::focus_reports_exit_status_and_passes_exact_args` | yok |
+| `test_mirror_window.py::FocusWindowTests.test_failures_are_false_not_exceptions` | 120 | karşılandı | `mirrors.rs::focus_reports_exit_status_and_passes_exact_args`<br>`proc_cmd.rs::output_status_and_timeout` | yok |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_gnome_terminal_argv` | 141 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_the_command_runs_cops_watch_against_this_panels_port` | 148 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_a_failing_viewer_keeps_the_window_open_and_a_clean_exit_closes_it` | 154 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_arguments_are_shell_quoted` | 161 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_environment` | 165 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowSpawnTests.test_popen_failure_is_false` | 173 | kapsam dışı | yok | görüntüleyici penceresi açma. İz: T2 (terminal) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_success_spawns_once_with_the_panels_port` | 214 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_local_sessions_are_rejected` | 218 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_bad_characters_never_reach_the_command_line` | 225 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_unknown_host` | 232 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_session_must_be_in_the_hosts_last_known_state` | 237 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_a_session_without_tmux_has_no_terminal_to_mirror` | 248 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_no_x11_display` | 253 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_an_open_mirror_is_focused_not_duplicated` | 260 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_force_opens_a_second_one` | 266 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_another_sessions_mirror_does_not_count` | 272 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_launch_failure` | 277 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::OpenMirrorWindowBackendTests.test_messages_follow_the_language` | 283 | kapsam dışı | yok | pencere açma uç mantığı. İz: T2 (terminal); T5 (federasyon) |
+| `test_mirror_window.py::MirrorRouteHttpTests.test_route_is_declared_local_only` | 326 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
+| `test_mirror_window.py::MirrorRouteHttpTests.test_post_with_a_remote_host_field_is_handled_locally` | 329 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
+| `test_mirror_window.py::MirrorRouteHttpTests.test_force_flag_is_passed_through` | 334 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
+| `test_mirror_window.py::MirrorRouteHttpTests.test_name_is_required` | 338 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
+| `test_mirror_window.py::MirrorRouteHttpTests.test_token_is_required` | 343 | kapsam dışı | yok | HTTP ucu. İz: T2 (terminal) |
+| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_a_mirror_window_is_tiled_once_its_spec_is_known` | 358 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
+| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` | 363 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
+| `test_mirror_window.py::LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` | 368 | kapsam dışı | yok | pencere döşeme (`cops layout`). İz: T6 (CLI) |
 
 ### `py/tests/test_model_usage.py`
 
@@ -1222,6 +1226,25 @@ Yok.
 | `test_proc_stat_parse.py::ProcStatTest.test_no_paren_raises` | 26 | karşılandı | `procfs.rs::stat_with_parens_in_comm` | yok |
 | `test_proc_stat_parse.py::ProcStatTest.test_own_ppid` | 30 | karşılandı | `tests/fake_proc.rs::own_ppid_from_real_proc` | yok |
 | `test_proc_stat_parse.py::ProcStatTest.test_no_inline_copies` | 33 | kapsam dışı | yok | Python kaynağında kopya ayrıştırıcı yasağı (Rust'ta karşılığı yok). İz: yalnız Python |
+
+### `py/tests/test_procscan_tbd365.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_procscan_tbd365.py::SessionFilesTest.test_bad_files_are_skipped_and_counted` | 61 | karşılandı | `tests/fake_proc.rs::bad_session_files_are_skipped_and_counted` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::SessionFilesTest.test_negative_or_zero_pid_never_reaches_kill` | 73 | karşılandı | `tests/fake_proc.rs::bad_session_files_are_skipped_and_counted` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::ForeignCmdlineTest.test_find_sessions_reads_only_own_cmdline` | 109 | karşılandı | `tests/fake_proc.rs::other_users_processes_are_never_read`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::ForeignCmdlineTest.test_running_mirrors_reads_only_own_cmdline` | 116 | karşılandı | `tests/fake_proc.rs::other_users_processes_are_never_read`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::TmuxAncestorTest.test_foreign_ancestor_stops_walk_without_reading_it` | 138 | karşılandı | `tests/fake_proc.rs::other_users_processes_are_never_read`<br>`tests/fake_proc.rs::tmux_terminal_and_orphans` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::TranscriptRowsTest.test_bad_rows_skipped` | 165 | karşılandı | `needs_ho.rs::broken_input_is_skipped_and_counted`<br>`golden.rs::transcripts_needs_ho` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::TranscriptRowsTest.test_needs_ho_decides_instead_of_raising` | 190 | karşılandı | `needs_ho.rs::needs_ho_decides_with_bad_rows` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::BaselineAtomicTest.test_baseline_written_via_replace` | 199 | karşılandı | `needs_ho.rs::baseline_is_written_atomically` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::SidPathTest.test_sid_with_path_parts_is_not_joined` | 222 | karşılandı | `tests/fake_proc.rs::transcript_requires_exact_sid` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::UsageRowsTest.test_bad_rows_skipped_on_first_call` | 260 | karşılandı | `usage.rs::bad_row_is_skipped_and_counted`<br>`golden.rs::usage_totals_two_calls` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::UsageRowsTest.test_bad_subagent_row_does_not_blank_total` | 277 | karşılandı | `usage.rs::bad_row_is_skipped_and_counted`<br>`golden.rs::usage_totals_two_calls` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::UsageRowsTest.test_day_usage_file_survives_bad_row` | 285 | kapsam dışı | yok | gün bazlı döküm (`day_usage`); ortak `_from_row` düzeltmesi `usage.rs::parse` satırında. İz: T7 (periyodik+kullanım) |
+| `test_procscan_tbd365.py::UsageRowsTest.test_thread_start_failure_does_not_lock_path` | 295 | karşılandı | `usage.rs::spawn_failure_does_not_lock_the_path` | Python düzeltildi: 6ae5da3 |
+| `test_procscan_tbd365.py::UsageRowsTest.test_shrinking_file_does_not_evict_another_when_full` | 312 | karşılandı | `usage.rs::file_cache_evicts_in_insertion_order` | Python düzeltildi: 6ae5da3 |
 
 ### `py/tests/test_provider_live_context.py`
 
