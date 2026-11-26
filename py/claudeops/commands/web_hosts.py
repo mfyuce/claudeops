@@ -1030,8 +1030,11 @@ def merge_status(local_payload: Dict[str, Any], open_mirrors: Optional[Collectio
     # (bkz. o fonksiyondaki 2026-09-23 notu).
     fleet_sort = load_settings().get("fleet_sort") or "name"
 
+    def _text(v: Any) -> str:
+        return v.lower() if isinstance(v, str) else ""      # uzak satır güvenilmez: alan yok/null/metin değil = boş
+
     def _row_key(r: Dict[str, Any]) -> Any:
-        cwd, nm = r["cwd"].lower(), r["name"].lower()
+        cwd, nm = _text(r.get("cwd")), _text(r.get("name"))
         return (cwd, nm) if fleet_sort == "cwd" else (nm, cwd)
     local_payload["sessions"].sort(key=_row_key)
     local_payload["closed"].sort(key=_row_key)
