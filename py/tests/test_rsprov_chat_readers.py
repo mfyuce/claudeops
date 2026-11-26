@@ -99,6 +99,29 @@ class BadByteTest(Base):
         self.assertIsNone(p.last_exchange(str(self.root), "s"))
         self.assertIsNone(p.last_message_role(str(self.root), "s"))
 
+class UcliHalfLineTest(Base):
+    DONE = b'{"ucli_session_schema_version":1}\n{"role":"user","content":"soru"}\n{"role":"assistant","content":"cevap"}\n'
+
+    def test_half_written_last_line_is_skipped(self):
+        for tail in (b'{"role":"assistant","cont', b'{"role":"user","content":"\xc4'):
+            with self.subTest(tail=tail):
+                p = self.ucli(self.DONE + tail)
+                self.assertEqual(p.full_history(str(self.root), "s"), PAIR)
+                self.assertEqual(p.last_exchange(str(self.root), "s"), EXCHANGE)
+                # yarım satır varken son rol bilinmiyor (eskisi gibi): takılma tespiti oturumu yeniden açmaz
+                self.assertIsNone(p.last_message_role(str(self.root), "s"))
+
+    def test_complete_but_broken_line_is_still_unreadable(self):
+        for body in (self.DONE + b'{bozuk\n', b'{"role":"user","cont\n' + self.DONE,
+                     self.DONE + b'{"role":"user"}'):          # tamamlanmış ama `content`siz satır
+            with self.subTest(body=body):
+                self.assertIsNone(self.ucli(body).full_history(str(self.root), "s"))
+
+    def test_complete_unterminated_line_still_counts(self):
+        p = self.ucli(self.DONE + b'{"role":"user","content":"yeni"}')
+        self.assertEqual(p.full_history(str(self.root), "s")[-1], {"role": "user", "text": "yeni"})
+        self.assertEqual(p.last_message_role(str(self.root), "s"), "user")
+
 
 if __name__ == "__main__":
     unittest.main()

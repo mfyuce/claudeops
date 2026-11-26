@@ -404,27 +404,37 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
     """`{session}.jsonl`'ı `[{"role":..., "text":...}, ...]`'a çevirir.
     Dosya yoksa boş liste (henüz mesaj yok, hata değil) — okunamaz/bozuksa
     `None` (çağıran "desteklenmiyor" ile "henüz mesaj yok"u ayırabilsin).
+    Yazım sürerken yarım kalan SON satır (satır sonu yok ve ayrışmıyor) atlanır; tamamlanmış bozuk satır yine `None`.
 
     Yeni ucli sürümlerinde dosyanın ilk satırı `{"ucli_session_schema_version":1}` başlığı
     (`role` yok): eskiden `KeyError` → `None` → panel ucli sohbetini "desteklenmiyor" diye
     gösteriyordu (2026-10-14, Geçmiş'te "chat görünmüyor"); `role`süz satır atlanır."""
+    return _read_turns(cwd, session)[0]
+
+
+def _read_turns(cwd: str, session: str):
+    """`read_chat_history`nin gövdesi: `(turlar | None, yarım son satır atlandı mı)`."""
     path = find_chat_file(cwd, f"{session}.jsonl")
     if not os.path.isfile(path):
-        return []
+        return [], False
     turns: List[Dict[str, str]] = []
     try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                turn = json.loads(line)
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            for raw in f:
+                try:
+                    raw.encode("utf-8")         # bozuk bayt: `UnicodeEncodeError` (`ValueError`)
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    turn = json.loads(line)
+                except ValueError:
+                    return (None, False) if raw.endswith("\n") else (turns, True)
                 if not isinstance(turn, dict) or "role" not in turn:
                     continue
                 turns.append({"role": turn["role"], "text": turn["content"]})
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError):
-        return None
-    return turns
+    except (OSError, KeyError):
+        return None, False
+    return turns, False
 
 
 _BUDGET_NOTES = {

@@ -104,6 +104,7 @@ from ..ucli_session_opts import _open_no_redirect
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
 from ..settings import (ucli_show_reasoning_enabled, byok_env_for, ucli_endpoint, ucli_limit_overrides, ucli_reasoning_mode, ucli_script_mode, ucli_state_dir_enabled, ucli_stream_enabled,
                         ucli_web_config)
+from ..ucli_client import _read_turns
 from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, McpServerSpec, OneshotError
@@ -1100,6 +1101,12 @@ class UcliProvider(CliProvider):
         if not sid:
             return None
         return read_chat_history(cwd, sid)
+
+    def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        # Yarım yazılmış son satır varken rol BİLİNMİYOR: takılma tespiti öncekine bakıp oturumu yeniden açmasın.
+        if sid and _read_turns(cwd, sid)[1]:
+            return None
+        return super().last_message_role(cwd, sid)
 
     def sid_for_stopped_session(self, cwd: str, session_name: str) -> Optional[str]:
         # sid = session adının kendisi (modül docstring'i, `extract_info`): durmuş bir ucli

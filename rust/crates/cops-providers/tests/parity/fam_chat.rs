@@ -511,6 +511,21 @@ fn ucli_cases(b: &mut Build<'_>) {
             b.push(c);
         }
     }
+    // yarım yazılmış son satır (satır sonu yok): atlanır, son rol bilinmiyor
+    let done = lines(&[h.clone(), user("soru"), ai("cevap")]);
+    let ok = turns(&[("user", "soru"), ("assistant", "cevap")]);
+    for (id, tail) in [
+        ("json", br#"{"role":"assistant","cont"#.as_slice()),
+        ("bayt", b"{\"role\":\"user\",\"content\":\"\xc4"),
+    ] {
+        let mut data = done.clone().into_bytes();
+        data.extend_from_slice(tail);
+        let c = b.ucli(&format!("yarim-son-{id}"), data);
+        b.agrees(c, json!({"full_history": ok, "read_chat_history": ok, "last_message_role": null,
+                           "last_exchange": {"user": "soru", "assistant": "cevap"}}));
+    }
+    let c = b.ucli("sonsuz-tam-satir", format!("{done}{}", user("yeni")));
+    b.agrees(c, json!({"last_message_role": "user"}));
     let body = lines(&[h.clone(), user("soru"), ai("cevap")]);
     for (id, text) in [
         ("bos", String::new()),
@@ -563,8 +578,8 @@ fn ucli_cases(b: &mut Build<'_>) {
     let c = b.ucli("sapma-derin", lines(&[user("a"), deep]));
     b.diverges(c, "çok derin satır: Python `RecursionError`, Rust None", json!({"full_history": null}));
     let huge = format!("{{\"role\":\"x\",\"content\":{}}}", "9".repeat(5000));
-    let c = b.ucli("sapma-dev-sayi", lines(&[user("a"), huge]));
-    b.diverges(c, "4300+ basamaklı sayı: Python `ValueError`, Rust None", json!({"full_history": null}));
+    let c = b.ucli("dev-sayi", lines(&[user("a"), huge]));
+    b.agrees(c, json!({"full_history": null}));
     let c = b.ucli("sapma-vekil", lines(&[r#"{"role":"user","content":"\udc00"}"#]));
     b.diverges(
         c,

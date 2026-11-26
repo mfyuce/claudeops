@@ -410,8 +410,8 @@ impl Live<'_> {
         }
     }
 
-    /// Kronolojik olarak son satırın rolü (takılma tespiti); None = bilinmiyor. claude/codex'te son satır okunamıyorsa
-    /// da bilinmiyor: öncekine bakıp oturum yeniden açılmaz.
+    /// Kronolojik olarak son satırın rolü (takılma tespiti); None = bilinmiyor. claude/codex'te son satır okunamıyorsa,
+    /// ucli'de yarım yazılmışsa da bilinmiyor: öncekine bakıp oturum yeniden açılmaz.
     pub fn last_message_role(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Py> {
         let history = match cli {
             Cli::Claude | Cli::Codex => {
@@ -428,6 +428,13 @@ impl Live<'_> {
                     _ => codex_history(&data),
                 }
             }
+            Cli::Ucli => {
+                let (turns, half) = self.ucli_turns(cwd, sid.filter(|s| !s.is_empty())?)?;
+                if half {
+                    return None;
+                }
+                turns
+            }
             _ => self.full_history(cli, cwd, sid)?,
         };
         let role = history.into_iter().next_back()?.role;
@@ -443,21 +450,33 @@ impl Live<'_> {
     }
 
     /// ucli `{session}.jsonl`: dosya yoksa boş liste; okunamaz ya da bozuksa None. `role`süz satır (şema başlığı)
-    /// atlanır; `role` olup `content` olmayan satır dosyayı bozuk sayar.
+    /// atlanır; `role` olup `content` olmayan satır dosyayı bozuk sayar. Yazım sürerken yarım kalan SON satır (satır sonu
+    /// yok ve ayrışmıyor) atlanır.
     pub fn read_chat_history(&self, cwd: &str, session: &str) -> Option<Vec<ChatTurn>> {
+        self.ucli_turns(cwd, session).map(|(turns, _)| turns)
+    }
+
+    /// [`Live::read_chat_history`] gövdesi: `(turlar, yarım son satır atlandı mı)`.
+    fn ucli_turns(&self, cwd: &str, session: &str) -> Option<(Vec<ChatTurn>, bool)> {
         let path = self.find_chat_file(cwd, &format!("{session}.jsonl"));
         if !self.probe.is_file(&path) {
-            return Some(Vec::new());
+            return Some((Vec::new(), false));
         }
         let data = self.probe.read_bytes(&path, u64::MAX)?;
-        let text = std::str::from_utf8(&data).ok()?;
         let mut out = Vec::new();
-        for line in text.split(['\n', '\r']).map(strip).filter(|l| !l.is_empty()) {
-            let turn = Py::parse(line)?;
+        let mut pieces = data.split(|b| matches!(b, b'\n' | b'\r')).peekable();
+        while let Some(raw) = pieces.next() {
+            let line = std::str::from_utf8(raw).ok().map(strip);
+            if line == Some("") {
+                continue;
+            }
+            let Some(turn) = line.and_then(Py::parse) else {
+                return pieces.peek().is_none().then_some((out, true));
+            };
             let Some(role) = turn.get("role") else { continue };
             out.push(ChatTurn { role: role.clone(), text: turn.get("content")?.clone() });
         }
-        Some(out)
+        Some((out, false))
     }
 
     /// Transkriptin tamamı; yol yoksa ya da okunamazsa boş.
