@@ -156,6 +156,7 @@ Devir koşulları (hiçbir çıktı yazılmadan aynı argv Python'a; `list` Rust
 | `diag.agy_files_unreadable > 0` | Python `db` kipinde DB'den okur; eşleme belirsiz | `unreadable_agy_mirror_is_delegated` |
 | `diag.proc_root_error` | "oturum yok" değil "bilinmiyor" | `unreadable_proc_root_is_delegated_not_reported_empty`, `every_doubt_delegates_and_clean_scan_does_not` |
 | `diag.session_files_invalid > 0` | serde `NaN`/`Infinity` okumaz | `invalid_session_file_is_delegated` |
+| `db` kipinde `agy_sids`: DB okunamıyor ya da dosya aynası belgeyle aynı değil (`list::agy_mirror_reason`) | doğruluk kaynağı DB; Python okur, gerekirse içe aktarır | `db_backend_answers_only_when_agy_mirror_matches_db` |
 | satırın adında, cwd'sinde ya da modelinde U+FFFD | UTF-8 olmayan argv/yol kayıpla okunmuş | `replacement_char_in_row_is_delegated` |
 | `Roots::from_env` hatası, göreli `HOME`/`CLAUDEOPS_DIR`, `Config::from_env` `None` | Python kök kuralı farklı | `bad_roots_are_delegated` |
 
@@ -163,6 +164,10 @@ Devir koşulları (hiçbir çıktı yazılmadan aynı argv Python'a; `list` Rust
 `check_absolute` tek tek geri alınınca ilgili test kırıldı. Canlı filoda (`list --no-cpu`, `--json`; Rust/Python/Rust)
 çıktı bayt bayt aynı; CPU ölçümlü `--json` `cpu` satırları dışında aynı. `cargo test -p cops-cli` 101 geçti, clippy temiz.
 `tests/list_bin.rs` gerçek `/proc`u tarar (sahte süreçler canlı filoda kısa süre görünür), testleri kendi içinde sıralıdır.
+
+27 Kas (db kipi devri): yeni test uygulamadan önce kırmızıydı ("DB yok" durumunda yerelde cevaplandı). Canlı filoda
+(`db` kipi) `list --no-cpu --json` yerelde cevaplandı, Python/Rust/Python çıktısı aynı. `cargo test -p cops-cli` geçti,
+clippy temiz. Karşılaştırma sırasında ayna yazılırsa en kötü sonuç gereksiz devirdir.
 
 ### Python testleri: `py/tests/test_front_cmd.py`
 
@@ -353,8 +358,6 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `bin/cops-py` ve `cops-rs`yi hiçbir kurulum yazmıyor: `COPS_PY` ya da elle `ln -s <depo>/py/cops <durum>/bin/cops-py` yoksa
   devir 125 ile düşer. Kurulum betiği (`scripts/`) bu izin yolları dışında; CANLIYA ALMADAN ÖNCE gerekli.
 - `web_addr` argparse kısaltmalarını (`--po`) ve ExecStart'ı ezen başka drop-in'leri görmez (ön kapı listen'ine düşer).
-- `list`: `agy_sids` `db` kipinde DB belgesidir, `cops-rs` dosya aynasını okur. Ayna DB'den gerideyse (DB yazımı sonrası ayna
-  yazılamadıysa) agy satırının `fresh`/`resume` alanı Python'dan farklı olabilir; yeni öğrenme gerekiyorsa zaten devredilir.
 - `cops-rs --version` Python'a devrediliyor, GIT_SHA yok (ders H11).
 - py/ değişti (`front_cmd.py`, `front.py`, `paths.py`): birleşince `systemctl --user restart claudeops-web.service` + uzak deploy
   (yuhem, ulak_31; CLAUDE.md "Federasyon"). `paths.py` her süreçte yüklenir: göreli `CLAUDEOPS_DIR` artık açılışta hata.

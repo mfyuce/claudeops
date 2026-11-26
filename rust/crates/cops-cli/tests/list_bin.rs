@@ -8,6 +8,7 @@ use common::*;
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 
 /// Testler gerçek `/proc`u tarar: birinin sahte süreci ötekinin taramasına düşmesin diye sıraya alınır.
@@ -132,7 +133,15 @@ fn list_is_answered_without_python_and_matches_python_bytes() {
         &["list", "--no-cpu", "--json", "--base", &none],
     ];
     for args in cases {
-        let r = without_python(&sb, args);
+        // makinede koşu sırasında yeni bir agy sohbeti öğrenilirse devredilir: yeniden tohumlanır
+        let mut r = without_python(&sb, args);
+        for _ in 0..2 {
+            if r.status.code() != Some(125) {
+                break;
+            }
+            seed_agy(&sb);
+            r = without_python(&sb, args);
+        }
         assert_eq!(
             r.status.code(),
             Some(0),
@@ -261,4 +270,60 @@ fn unusual_list_arguments_are_delegated() {
     ] {
         assert_delegated(&without_python(&sb, args), &format!("{args:?}"));
     }
+}
+
+/// Python ile sandbox `claudeops.db`yi kurar ve `agy_sids` belgesini yazar (`body` JSON metni).
+fn put_agy_doc(sb: &Sandbox, body: &str) {
+    let out = sb
+        .cmd(Path::new("/usr/bin/python3"))
+        .env("PYTHONPATH", repo().join("py"))
+        .args([
+            "-c",
+            "import json,sys; from claudeops.store import default_store; default_store().set_doc('agy_sids', json.loads(sys.argv[1]))",
+            body,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn db_backend_answers_only_when_agy_mirror_matches_db() {
+    let _sira = serial();
+    let sb = Sandbox::new();
+    std::fs::write(
+        sb.state().join("settings.json"),
+        r#"{"store_backend":"db"}"#,
+    )
+    .unwrap();
+    let args = ["list", "--no-cpu", "--base", "yokboyle"];
+    let mirror = sb.state().join("agy_sids.json");
+
+    // DB yok: Python dosyaya düşüp loglar
+    seed_agy(&sb);
+    assert_delegated(&without_python(&sb, &args), "db kipi, DB yok");
+
+    // eşit: yerelde cevaplanır (makinede o an yeni agy sohbeti öğrenilirse yeniden tohumlanır)
+    let mut code = None;
+    for _ in 0..3 {
+        seed_agy(&sb);
+        put_agy_doc(&sb, &std::fs::read_to_string(&mirror).unwrap());
+        code = without_python(&sb, &args).status.code();
+        if code == Some(0) {
+            break;
+        }
+    }
+    assert_eq!(code, Some(0), "ayna DB ile eşit");
+
+    // ayna geride: DB doğruluk kaynağı
+    put_agy_doc(&sb, r#"{"yalnizdbde": "s9"}"#);
+    assert_delegated(&without_python(&sb, &args), "ayna DB'den geride");
+
+    // ayna yok, DB dolu
+    std::fs::remove_file(&mirror).unwrap();
+    assert_delegated(&without_python(&sb, &args), "ayna yok");
 }

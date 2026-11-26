@@ -5,6 +5,10 @@
 
 use crate::argp::ListArgs;
 use cops_procscan::{find_sessions, list::render, Config, CpuMode, Scan};
+use cops_state::json::Json;
+use cops_state::statedocs::read_file;
+use cops_state::{Backend, StateDocs};
+use std::path::Path;
 
 /// Taramanın Python'a bırakılması gerekiyorsa nedeni.
 pub fn delegate_reason(scan: &Scan) -> Option<&'static str> {
@@ -32,6 +36,23 @@ pub fn delegate_reason(scan: &Scan) -> Option<&'static str> {
         return Some("satırda kayıplı karakter");
     }
     None
+}
+
+/// `db` kipinde `agy_sids`in doğruluk kaynağı DB'dir, tarama ise dosya aynasını okur: DB okunamıyorsa ya da ayna
+/// belgeyle aynı değilse devir nedeni (Python DB'den okur, gerekirse içe aktarır). Belge yazmaz, günlük tutmaz.
+pub fn agy_mirror_reason(docs: &StateDocs, mirror: &Path) -> Option<&'static str> {
+    if docs.backend() != Backend::Db {
+        return None;
+    }
+    let Ok(doc) = docs.store().and_then(|s| s.get_doc("agy_sids")) else {
+        return Some("agy_sids DB'den okunamadı");
+    };
+    let same = match (doc, read_file(mirror).into_option()) {
+        (None, None) => matches!(mirror.try_exists(), Ok(false)),
+        (Some(d), Some(m)) => matches!(d, Json::Object(_)) && d.py_eq(&m),
+        _ => false,
+    };
+    (!same).then_some("agy_sids aynası DB ile aynı değil")
 }
 
 /// Tarar; `Ok` = yazılacak metin, `Err` = devir nedeni.

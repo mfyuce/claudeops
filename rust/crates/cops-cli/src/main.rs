@@ -8,6 +8,7 @@ use cops_cli::delegate::{self, Locate, EXIT_DELEGATE};
 use cops_cli::front::{self, net::RealNet, systemctl::RealSystemctl, Ctx, Paths, Timing};
 use cops_cli::pyenv::Roots;
 use cops_cli::{list, route, selfcmd, Route};
+use cops_state::{StateDir, StateDocs};
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
@@ -100,6 +101,10 @@ fn run_list(la: &cops_cli::argp::ListArgs) -> Option<i32> {
     let roots = Roots::from_env().ok()?;
     roots.check_absolute().ok()?;
     let cfg = cops_procscan::Config::from_env()?;
+    let docs = StateDocs::new(StateDir::at(cfg.agy_sids.parent()?));
+    if list::agy_mirror_reason(&docs, &cfg.agy_sids).is_some() {
+        return None;
+    }
     let text = list::run(&cfg, la).ok()?;
     let mut out = std::io::stdout().lock();
     match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {

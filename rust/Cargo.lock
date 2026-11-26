@@ -192,6 +192,7 @@ dependencies = [
  "cops-auth",
  "cops-procscan",
  "cops-proxy",
+ "cops-state",
  "libc",
  "serde_json",
  "tempfile",
