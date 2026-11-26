@@ -1,5 +1,6 @@
 //! Kullanım/maliyet/sağlık özetleri ve rapor nitelik denetimleri.
-use crate::error::{Error, Result};
+use crate::badrec;
+use crate::error::Result;
 use crate::py::{self, S};
 use crate::store::round_to;
 use crate::targets::{ci, ANTHROPIC_PRICES};
@@ -109,8 +110,14 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
                     continue;
                 }
                 let usage = e.get("usage").and_then(Json::as_object);
+                let Some(sec) = badrec::field(&e, "seconds", "usage.record", &path) else { continue };
+                let non_finite = |v: &Json| matches!(v, Json::Float(f) if !f.is_finite());
+                if usage.is_some_and(|u| u.values().any(non_finite)) {
+                    badrec::log_bad("usage.record", &path);
+                    continue;
+                }
                 a.requests += 1;
-                a.seconds += py::float_or_zero(e.get("seconds"))?;
+                a.seconds += sec;
                 let Some(u) = usage else { continue };
                 for (key, slot) in [
                     ("prompt_tokens", &mut a.prompt_tokens),
@@ -121,10 +128,10 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
                 ] {
                     let n = match u.get(key) {
                         Some(Json::Int(i)) => *i,
-                        Some(Json::Float(f)) if f.is_finite() => f.trunc() as i64,
-                        Some(v @ (Json::Float(_) | Json::BigInt(_))) => {
-                            return Err(Error::Value(format!("int({})", py::repr(v))))
-                        }
+                        Some(Json::Float(f)) => f.trunc() as i64,
+                        // Python keyfi büyüklükte toplar; burada sınıra kırpılır.
+                        Some(Json::BigInt(s)) if s.starts_with('-') => i64::MIN,
+                        Some(Json::BigInt(_)) => i64::MAX,
                         _ => continue,
                     };
                     *slot = slot.saturating_add(n);
@@ -335,8 +342,12 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
     let [mut pi, mut po, mut pr, mut pw] = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
     let Ok(bytes) = std::fs::read(path) else { return Ok(0.0) };
-    let text = String::from_utf8(bytes).map_err(|_| Error::Value(format!("{path}: utf-8 değil")))?;
-    for line in text_lines(&text) {
+    for raw in bytes.split(|b| *b == b'\n') {
+        let Ok(line) = std::str::from_utf8(raw) else {
+            badrec::log_bad("usage.line", path); // yalnız bozuk satır atlanır; kalan istekler maliyete girer
+            continue;
+        };
+        let line = line.trim_end_matches('\r');
         let Ok(Json::Object(rec)) = Json::parse(line) else { continue };
         if model.is_empty() && py::is_str(rec.get("event"), "task_start") && py::truthy(rec.get("model")) {
             [pi, po, pr, pw] = anthropic_price(&py::str_or_empty(rec.get("model")));

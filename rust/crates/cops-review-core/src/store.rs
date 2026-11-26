@@ -1,5 +1,6 @@
 //! `review_pool.json` / `review_history.json` / `findings.json` depoları. Yazım yolu `cops-state` (`statedocs`) üzerinden:
 //! canlıda `store_backend=db`de doğruluk kaynağı DB, dosya ayna. Kilit Python ile AYNI dosyada (`<kök>/.lock`, flock).
+use crate::badrec;
 use crate::clock;
 use crate::error::{Error, Result};
 use crate::flow::{sha1_hex, APPROVABLE_STATES, REJECTABLE_STATES, VERIFIABLE_STATES};
@@ -96,6 +97,9 @@ pub fn steward_lock(path: &Path, timeout: Duration) -> Result<StewardLock> {
 
 /// `_corrupt_backup`: bozuk dosyanın kanıt kopyası (`<yol>.corrupt-<ts>`, değiştirilme zamanı korunur); hata yutulur.
 fn corrupt_backup(path: &Path) {
+    if backed_up(path) {
+        return; // aynı içerik zaten yedekli (kopya mtime korur): her okumada yeni kopya yok
+    }
     let mut dst = path.as_os_str().to_os_string();
     dst.push(format!(".corrupt-{}", clock::now() as i64));
     let dst = PathBuf::from(dst);
@@ -107,6 +111,24 @@ fn corrupt_backup(path: &Path) {
         }
     }
 }
+
+/// `<yol>.corrupt-*` içinde aynı boyut ve değiştirilme zamanlı kopya var mı.
+fn backed_up(path: &Path) -> bool {
+    let (Ok(st), Some(dir), Some(name)) = (std::fs::metadata(path), path.parent(), path.file_name()) else {
+        return false;
+    };
+    let prefix = format!("{}.corrupt-", name.to_string_lossy());
+    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    rd.flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+        .filter_map(|e| e.metadata().ok())
+        .any(|o| o.len() == st.len() && o.modified().ok() == st.modified().ok())
+}
+
+/// Depo biçimi denetimi: anahtar varsa bu türde olmalı.
+type Shape = &'static [(&'static str, fn(&Json) -> bool)];
+const POOL_SHAPE: Shape = &[("projects", |v| v.as_object().is_some())];
+const HISTORY_SHAPE: Shape = &[("pairs", |v| v.as_object().is_some()), ("runs", |v| v.as_array().is_some())];
 
 pub struct ReviewStore {
     docs: Arc<StateDocs>,
@@ -169,15 +191,32 @@ impl ReviewStore {
     }
 
     /// `sw._save_json` (0600).
-    fn save_json(&self, path: &Path, obj: &Json) -> Result<()> {
+    fn save_json(&self, path: &Path, obj: &Json, shape: Shape) -> Result<()> {
         if self.lossy.lock().unwrap_or_else(PoisonError::into_inner).contains(path) {
             return Err(Error::Value(format!("{}: eşlenmemiş vekil, geri yazılmaz", path.display())));
         }
+        self.refuse_corrupt(path, shape)?;
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
         let name = self.docs.name_for(path);
         self.docs.write(&name, path, obj, Some(0o600)).map(|_| ()).map_err(|e| Error::State(e.to_string()))
+    }
+
+    /// `_refuse_corrupt`: yazmadan ÖNCE mevcut içerik; yoksa ya da sağlamsa sessiz, bozuksa [`Error::StoreCorrupt`].
+    fn refuse_corrupt(&self, path: &Path, shape: Shape) -> Result<()> {
+        let bad = match self.load_json(path) {
+            Err(Error::Value(_)) => true, // UTF-8 olmayan dosya
+            Err(e) => return Err(e),
+            Ok(None) => std::fs::symlink_metadata(path).is_ok(),
+            Ok(Some(v)) => v.as_object().is_none_or(|m| shape.iter().any(|(k, ok)| m.get(*k).is_some_and(|x| !ok(x)))),
+        };
+        if bad {
+            let p = path.display().to_string();
+            badrec::log_bad("store", &p);
+            return Err(Error::StoreCorrupt(p));
+        }
+        Ok(())
     }
 
     pub fn load_pool(&self) -> Result<Json> {
@@ -193,7 +232,7 @@ impl ReviewStore {
     }
 
     pub fn save_pool(&self, pool: &Json) -> Result<()> {
-        self.save_json(&self.paths.review_pool, pool)
+        self.save_json(&self.paths.review_pool, pool, POOL_SHAPE)
     }
 
     pub fn load_history(&self) -> Result<Map> {
@@ -214,7 +253,7 @@ impl ReviewStore {
             _ => Vec::new(),
         };
         h.insert("runs".into(), Json::Array(runs));
-        self.save_json(&self.paths.review_history, &Json::Object(h))
+        self.save_json(&self.paths.review_history, &Json::Object(h), HISTORY_SHAPE)
     }
 
     /// `set_block`: `key` mod ya da `mod/slug`.
@@ -246,7 +285,10 @@ impl ReviewStore {
             .ok_or_else(|| Error::Value("history[\"pairs\"] nesne değil".into()))?;
         let mut rec = match pairs.get(&key) {
             Some(Json::Object(m)) => m.clone(),
-            Some(v) if v.truthy() => return Err(Error::Value(format!("çift kaydı nesne değil: {key}"))),
+            Some(v) if v.truthy() => {
+                badrec::log_bad("pairs.record", &key); // bozuk tek kayıt: yok sayılır, bu yazımla yenilenir
+                Map::new()
+            }
             _ => Map::new(),
         };
         if py::is_str(fields.get("status"), "running") && !fields.contains_key("attempts") {
@@ -288,7 +330,7 @@ impl ReviewStore {
     }
 
     pub fn save_findings(&self, findings: Map) -> Result<()> {
-        self.save_json(&self.paths.findings, &Json::Object(findings))
+        self.save_json(&self.paths.findings, &Json::Object(findings), &[])
     }
 
     /// Ayrıştırılmış bulguları `state=new` (ya da yinelenense `dup`) ekler; eklenen yeni fid'ler döner.
@@ -506,7 +548,8 @@ pub fn migrate_r10_sub(hist: &mut Map) -> Result<usize> {
             continue;
         }
         let Some(rec) = pairs.get(&k).and_then(Json::as_object) else { continue };
-        if py::float_or_zero(rec.get("started_at"))? < R10_SUB_SINCE {
+        let Some(started) = badrec::field(rec, "started_at", "pairs", &k) else { continue };
+        if started < R10_SUB_SINCE {
             continue;
         }
         let (model, at, eff) = match rest.split_once('@') {

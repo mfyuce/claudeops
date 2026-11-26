@@ -8,6 +8,8 @@ pub enum Error {
     Io(std::io::Error),
     /// Durum deposu (`cops-state`) yazımı başarısız.
     State(String),
+    /// `StoreCorrupt`: depo bozuk, yazım reddedildi.
+    StoreCorrupt(String),
     /// `LockTimeout`: kilit alınamadı, yazım yapılmadı.
     LockTimeout(String),
 }
@@ -20,6 +22,7 @@ impl fmt::Display for Error {
             Error::Value(s) => write!(f, "{s}"),
             Error::Io(e) => write!(f, "{e}"),
             Error::State(s) => write!(f, "{s}"),
+            Error::StoreCorrupt(s) => write!(f, "bozuk depo, yazım reddedildi: {s}"),
             Error::LockTimeout(s) => write!(f, "could not lock {s}"),
         }
     }

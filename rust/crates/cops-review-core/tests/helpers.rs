@@ -103,3 +103,16 @@ fn review_paths_layout_per_identity() {
         assert!(ReviewPaths::for_sid(d, bad).is_err(), "{bad:?}");
     }
 }
+
+#[test]
+fn corrupt_store_refuses_write() {
+    let d = tempfile::tempdir().unwrap();
+    let docs = Arc::new(StateDocs::isolated(StateDir::at(d.path()), Some(Backend::Files), ""));
+    let st = ReviewStore::new(docs, ReviewPaths::at(d.path()));
+    std::fs::write(&st.paths.findings, b"{bozuk").unwrap();
+    assert!(matches!(
+        st.save_findings(Map::new()),
+        Err(cops_review_core::Error::StoreCorrupt(_))
+    ));
+    assert_eq!(std::fs::read(&st.paths.findings).unwrap(), b"{bozuk");
+}

@@ -88,6 +88,10 @@ MAP = {
     "_HAS_FINDING_RE": _m("report", "HAS_FINDING"),
     **_same("export", """EXPORT_HEADING is_decision where_text where_relpath has_quoted_names stale_reason_text stale_reason
         changed_after_review _worktree_main row_in_repo export_root export_lines appended_export _where_file"""),
+    **_same("badrec", "_BAD_SEEN _BAD_SEEN_MAX _field"),
+    "_log_bad": _m("badrec", "log_bad"),
+    "StoreCorrupt": _m("error", "Error"),
+    "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
     "_DECISION_RE": _m("export", "is_decision::DECISION"),
     "_BACKTICK_RE": _m("export", "BACKTICK"),
     "_WHERE_FILE_RE": _m("export", "where_path::FILE"),
@@ -99,6 +103,8 @@ STATEMENTS = {"_ext.load()": "kapsam dışı: Python eklenti yükleyicisi (`exte
                              "eklenti kaydı T9 (enterprise) / T8 (koşucu `web_review.py`)"}
 
 NOTES = {
+    "StoreCorrupt": "`Error::StoreCorrupt` varyantı",
+    "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
     "_LENS_FORMAT_EXTRA": "modül genel sözlüğü yerine kayıt nesnesinin alanı",
     "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"",
@@ -107,7 +113,8 @@ NOTES = {
 # Özel yardımcıların / değerlerin Rust birim testleri (`tests/helpers.rs`).
 UNIT = {"_num": ["num_tolerates_corrupt_values"], "_run_seconds": ["run_seconds_cases"],
         "_fence_step": ["fence_closes_only_with_own_kind"], "_canon_rank": ["canonical_record_by_tier_then_age"],
-        "ReviewTarget.lens": ["planner_targets_have_no_lens"]}
+        "ReviewTarget.lens": ["planner_targets_have_no_lens"],
+        "StoreCorrupt": ["corrupt_store_refuses_write"]}
 
 # Parite sunucusunda adı farklı çağrılan işlevler (kanca adı).
 HOOK_NAME = {**{f"ReviewTarget.{n}": "target_props" for n in ("pslug", "key", "spec")}}
@@ -187,6 +194,9 @@ classes("test_review", out("rs/state + " + ST, "`settings.steward_config` okuma 
 classes("test_review", _runner, "TestClaudeArgv TestCodexArgv TerminateReapsTest")
 classes("test_review_anthropic", CORE, "TestAnthropicCost")
 classes("test_review_anthropic", _runner, "TestTrialComplete")
+classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
+tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),
+      "corrupt_backup_not_repeated")
 classes("test_review_backlog", CORE, "BacklogTest")
 tests("test_review_backlog.BacklogTest", out(WR, "TODO/RTODO dosya okuma önbelleği"),
       "review_backlog_reads_todo_and_rtodo_with_cache")

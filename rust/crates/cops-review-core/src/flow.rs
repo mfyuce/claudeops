@@ -1,4 +1,5 @@
 //! Bulgu durum makinesi (saf): `new -> verify_sent -> verified|refuted|unclear -> approved|rejected -> exported` (+ `dup`).
+use crate::badrec;
 use crate::error::Result;
 use crate::parse::{Verdict, VERDICTS, VERDICT_MARK, VERDICT_REASON_MAX};
 use crate::py;
@@ -83,10 +84,16 @@ pub fn requeue_stale_verify(findings: &mut Map, now: f64, stale: f64) -> Result<
         if !py::is_str(rec.get("state"), "verify_sent") || py::is_str(rec.get("verify_session"), "self") {
             continue;
         }
-        if now - py::float_or_zero(rec.get("verify_sent_at"))? < stale {
+        let Some(sent) = badrec::field(rec, "verify_sent_at", "findings", fid) else { continue };
+        if now - sent < stale {
             continue;
         }
-        let tries = py::int_or_zero(rec.get("verify_tries"))?.saturating_add(1);
+        let Some(done) = badrec::field(rec, "verify_tries", "findings", fid) else { continue };
+        if !done.is_finite() {
+            badrec::log_bad("findings.verify_tries", fid);
+            continue;
+        }
+        let tries = (done.trunc() as i64).saturating_add(1);
         if tries >= VERIFY_MAX_TRIES {
             rec.insert("state".into(), "unclear".into());
             rec.insert("verify_tries".into(), Json::Int(tries));

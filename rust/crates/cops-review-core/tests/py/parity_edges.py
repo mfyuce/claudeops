@@ -259,10 +259,7 @@ class TestEdges(unittest.TestCase):
             h = {"pairs": pairs, "blocks": blocks, "runs": []}
             heads = {"a": "h1", "b": "h2", "c": ""}
             rec = rnd.choice(list(pairs.values()) or [None])
-            try:
-                rv.counts_as_attempt(rec)
-            except AttributeError:      # dolu ama sözlük olmayan kayıt: Rust da Err dönmeli
-                pass
+            rv.counts_as_attempt(rec)
             try:
                 rv.blocked_modes(h, NOW)
                 rv.next_review(pool, h, targets, NOW, busy_projects=rnd.sample(["a", "b"], rnd.randint(0, 1)),
@@ -338,8 +335,7 @@ class TestEdges(unittest.TestCase):
                         "s|claude/k-sub": {"started_at": 9e9}, "t|claude/b": "x"}}
         rv.migrate_r10_sub(copy.deepcopy(hs))
         rv.migrate_r10_sub({"pairs": {}, rv.R10_MARK: True})
-        with self.assertRaises(ValueError):
-            rv.migrate_r10_sub({"pairs": {"p|claude/m": {"started_at": "x"}}})
+        rv.migrate_r10_sub({"pairs": {"p|claude/m": {"started_at": "x"}}})
 
     def test_flow_functions(self):
         base = {"project": "p", "state": "verify_sent", "review_file": "/r/p/claude/m-sub/low/1/1.md"}
@@ -354,8 +350,7 @@ class TestEdges(unittest.TestCase):
                 rv.requeue_stale_verify({"a": dict(base, verify_sent_at=sent, verify_tries=tries),
                                          "b": dict(base, verify_session="self"), "c": 4}, NOW)
         for bad in ({"verify_sent_at": "x"}, {"verify_tries": "1.5"}):
-            with self.assertRaises(ValueError):
-                rv.requeue_stale_verify({"a": dict(base, **bad)}, NOW)
+            rv.requeue_stale_verify({"a": dict(base, **bad)}, NOW)
         rows = [{"id": "p:1:R-1", "severity": "P1", "where": "a:1", "title": "  çok \n satır  " + "ş" * 300},
                 {"id": 5, "severity": "", "where": None, "title": None}]
         for lang in ("tr", "en"):
@@ -487,8 +482,13 @@ class TestEdges(unittest.TestCase):
                 for mult in (1.0, 1.6):
                     rv.usage_cost_usd(os.path.join(d, paths[0]), model, since, mult)
         rv.usage_cost_usd(d + "/yok", "m")
-        with self.assertRaises(UnicodeDecodeError):
-            rv.usage_cost_usd(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "m")
+        rv.usage_cost_usd(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "m")
+        odd = ['{"event": "request", "seconds": %s, "usage": {"prompt_tokens": %s}}' % x
+               for x in (('"x"', 1), ("[1]", 1), ("1", "Infinity"), ("1", "NaN"), ("2", "2.5"), ("{}", 3), ('"3"', 4))]
+        with open(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "wb") as f:
+            f.write(("\n".join(odd) + "\n").encode() + b"\xff\n" + odd[4].encode() + b"\r\n")
+        rv.usage_summary(d, "q")
+        rv.usage_cost_usd(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "m")
 
 
 class TestStoreEdges(unittest.TestCase):
@@ -515,6 +515,33 @@ class TestStoreEdges(unittest.TestCase):
                 load(self.p)
         os.remove(self.p.findings)
         rv.load_findings(self.p)
+
+    def test_corrupt_store_write_refused(self):
+        for data in (b"{", b"[]", b"5", b"null", b'{"projects": []}', b'{"pairs": 3}', b'{"runs": {}}', b"\xff\xfe"):
+            for path, save, value in ((self.p.review_pool, rv.save_pool, {"projects": {}}),
+                                      (self.p.review_history, rv.save_history, {"pairs": {}, "runs": []}),
+                                      (self.p.findings, rv.save_findings, {})):
+                self.put(path, data)
+                try:
+                    save(self.p, value)
+                except rv.StoreCorrupt:
+                    pass
+
+    def test_bad_records(self):
+        hist = {"pairs": {"a|claude/s": {"started_at": "x"}, "b|claude/s": {"started_at": [1]},
+                          "c|claude/s": {"started_at": str(rv.R10_SUB_SINCE + 5)}},
+                "blocks": {"evren": {"until": "x"}, "codex": {"until": {"a": 1}}, "copilot": {"until": [2]},
+                           "agy/gemini-3": {"until": "x"}}}
+        rv.migrate_r10_sub(json.loads(json.dumps(hist)))
+        rv.blocked_modes(hist, NOW)
+        rv.reconcile_copilot_blocks(json.loads(json.dumps(hist)), (99.0, NOW + 500, "d"), 95.0, NOW)
+        rv.reconcile_agy_blocks(json.loads(json.dumps(hist)), {"gemini": {"weekly": (0.0, NOW + 900)}}, [], NOW)
+        base = {"state": "verify_sent", "verify_session": "s"}
+        rv.requeue_stale_verify({"a": dict(base, verify_sent_at="x"), "b": dict(base, verify_sent_at=1, verify_tries="y"),
+                                 "c": dict(base, verify_sent_at=1, verify_tries=float("inf")),
+                                 "d": dict(base, verify_sent_at=1, verify_tries="1.5"), "e": dict(base, verify_sent_at=[])}, NOW)
+        for rec in ("x", 5, [1], True):
+            rv.counts_as_attempt(rec)
 
     def test_roundtrip_formats(self):
         values = {"f": [0.0, -0.0, 1.0, 1e16, 1e15, 1.5e-5, 1e-4, 123456789.125, 1794908485.0, 5e-324, 1.7976931348623157e308,
@@ -546,8 +573,7 @@ class TestStoreEdges(unittest.TestCase):
         rv.set_block(self.p, "agy/m", NOW + 5, "r")
         rv.set_block(self.p, "evren", NOW + 5)
         self.put(self.p.review_history, b'{"pairs": {"p|agy/m@high": "x"}, "runs": []}')
-        with self.assertRaises(ValueError):
-            rv.update_pair(self.p, "p", t, status="done")
+        rv.update_pair(self.p, "p", t, status="done")
         self.put(self.p.review_history, b'{"blocks": []}')
         with self.assertRaises(TypeError):
             rv.set_block(self.p, "evren", NOW)

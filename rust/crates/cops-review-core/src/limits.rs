@@ -1,4 +1,5 @@
 //! Günlük/aylık kota, kapasite, agy/copilot engelleri.
+use crate::badrec;
 use crate::clock;
 use crate::error::{Error, Result};
 use crate::planner::{agy_pool, key_model, pairs};
@@ -193,9 +194,9 @@ pub(crate) fn blocks_mut(hist: &mut Map) -> Result<&mut Map> {
         .ok_or_else(|| Error::Value("history[\"blocks\"] nesne değil".into()))
 }
 
-/// `float(x.get("until") or 0)`; sayıya çevrilemezse Python gibi HATA.
-fn until_of(e: &Map) -> Result<f64> {
-    py::float_or_zero(e.get("until"))
+/// `blocks.<key>.until`; sayıya çevrilemiyorsa `None` (loglanır).
+fn until_of(e: &Map, key: &str) -> Option<f64> {
+    badrec::field(e, "until", "blocks", key)
 }
 
 fn block_entry(until: f64, set_at: f64, reason: String) -> Json {
@@ -251,7 +252,7 @@ pub fn reconcile_copilot_blocks(
     let cur = cur.filter(|c| !c.is_empty());
     if *pct >= stop_pct {
         if let Some(c) = cur {
-            if until_of(c)? >= reset - 60.0 {
+            if until_of(c, "copilot").unwrap_or(0.0) >= reset - 60.0 {
                 return Ok(Vec::new());
             }
         }
@@ -384,7 +385,7 @@ pub fn reconcile_agy_blocks(
         let cur = blocks.get(&key).and_then(Json::as_object);
         if let Some(until) = until {
             let stale = match cur.filter(|c| !c.is_empty()) {
-                Some(c) => (until_of(c)? - until).abs() > 60.0,
+                Some(c) => (until_of(c, &key).unwrap_or(0.0) - until).abs() > 60.0,
                 None => true,
             };
             if stale {
@@ -450,7 +451,8 @@ pub fn blocked_modes(history: &Json, now: f64) -> Result<Vec<String>> {
     let mut set = BTreeSet::new();
     for (m, e) in b {
         let Some(e) = e.as_object() else { continue };
-        if until_of(e)? > now && !(m.starts_with("agy/") && agy_block_cleared(history, m, e)) {
+        let Some(until) = until_of(e, m) else { continue };
+        if until > now && !(m.starts_with("agy/") && agy_block_cleared(history, m, e)) {
             set.insert(m.clone());
         }
     }

@@ -216,7 +216,7 @@ fn lock_is_bounded_and_private() {
     assert_eq!(mode(&st.paths.findings), 0o600);
 }
 
-/// 2.7 bozuk girdi: bozuk JSON yedeklenip boş sayılır, UTF-8 olmayan dosya `Err`, dolu ama nesne olmayan çift kaydı `Err`.
+/// 2.7 bozuk girdi: bozuk JSON yedeklenip boş sayılır ve ÜSTÜNE YAZILMAZ, UTF-8 olmayan dosya `Err`, nesne olmayan çift kaydı sayılmaz.
 #[test]
 fn broken_inputs_fail_loud_or_backup() {
     let d = tempfile::tempdir().unwrap();
@@ -228,6 +228,8 @@ fn broken_inputs_fail_loud_or_backup() {
         .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with("findings.json.corrupt-"))
         .count();
     assert_eq!(backups, 1, "kanıt yedeği");
+    assert!(matches!(st.save_findings(Map::new()), Err(cops_review_core::Error::StoreCorrupt(_))));
+    assert_eq!(std::fs::read(&st.paths.findings).unwrap(), b"{bozuk");
     // Eşlenmemiş vekil: okunur (Python gibi), geri yazılmaz, bozuk yedeği alınmaz.
     let raw = br#"{"projects": {}, "not": "\ud800"}"#;
     std::fs::write(&st.paths.review_pool, raw).unwrap();
@@ -238,7 +240,9 @@ fn broken_inputs_fail_loud_or_backup() {
     assert!(st.load_history().is_err());
     std::fs::write(&st.paths.review_pool, b"[]").unwrap();
     assert_eq!(st.load_pool().unwrap().get("projects"), Some(&Json::object()));
-    assert!(targets::counts_as_attempt(Some(&Json::Str("bozuk".into()))).is_err());
-    assert!(targets::counts_as_attempt(Some(&Json::Str(String::new()))).unwrap());
-    assert!(targets::counts_as_attempt(None).unwrap());
+    assert!(matches!(st.save_history(&Map::new()), Err(cops_review_core::Error::StoreCorrupt(_))));
+    assert!(matches!(st.save_pool(&Json::object()), Err(cops_review_core::Error::StoreCorrupt(_)) | Err(cops_review_core::Error::Value(_))));
+    assert!(!targets::counts_as_attempt(Some(&Json::Str("bozuk".into()))));
+    assert!(targets::counts_as_attempt(Some(&Json::Str(String::new()))));
+    assert!(targets::counts_as_attempt(None));
 }

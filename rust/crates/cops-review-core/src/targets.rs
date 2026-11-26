@@ -1,5 +1,4 @@
 //! Hedefler (mod, model, effort, mercek), yuva ayarı, kapasite hatası sınıflaması ve ilgili sabitler.
-use crate::error::{Error, Result};
 use crate::py;
 use cops_state::json::{Json, Map};
 use regex::Regex;
@@ -86,19 +85,32 @@ fn is_decimal_digit(c: char) -> bool {
 }
 
 /// Bu çift kaydının hatası deneme hakkını TÜKETİR mi.
-/// Dolu ama nesne olmayan kayıt hatadır (Python `AttributeError`).
-pub fn counts_as_attempt(rec: Option<&Json>) -> Result<bool> {
+/// Dolu ama nesne olmayan kayıt deneme SAYILMAZ (loglanır).
+pub fn counts_as_attempt(rec: Option<&Json>) -> bool {
     let m = match rec.filter(|r| r.truthy()) {
-        Some(r) => Some(r.as_object().ok_or_else(|| Error::Value(format!("counts_as_attempt: {}", py::repr(r))))?),
+        Some(r) => match r.as_object() {
+            Some(m) => Some(m),
+            None => {
+                let kind = match r {
+                    Json::Str(_) => "str",
+                    Json::Array(_) => "list",
+                    Json::Float(_) => "float",
+                    Json::Bool(_) => "bool",
+                    _ => "int",
+                };
+                crate::badrec::log_bad("pairs.record", kind);
+                return false;
+            }
+        },
         None => None,
     };
     let err = py::str_or_empty(m.and_then(|m| m.get("error")));
     if err.starts_with(CAPACITY_ERROR_PREFIX)
         && py::num(m.and_then(|m| m.get("attempts"))).trunc() > CAPACITY_MAX_TRIES as f64
     {
-        return Ok(true);
+        return true;
     }
-    Ok(!UNCOUNTED_ERRORS.iter().any(|p| err.starts_with(p)))
+    !UNCOUNTED_ERRORS.iter().any(|p| err.starts_with(p))
 }
 
 pub fn max_attempts(mode: &str) -> i64 {
