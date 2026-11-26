@@ -1,20 +1,20 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G1, G4, G8-G10 ve ders listesi açık; G2, G3, G5, G6, G7 ve G11 taşındı). `cargo clippy -p cops-providers
---all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 44/44 (birim 10, transkript sözleşmesi 7, model kaynakları 14, parite 13).
+Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G4, G8-G10 ve ders listesi açık; G1, G2, G3, G5, G6, G7 ve G11 taşındı). `cargo clippy -p cops-providers
+--all-targets -- -D warnings` temiz, `cargo test -p cops-providers` 58/58 (birim 11, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 14).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 4940 vaka: model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
+- 5274 vaka: resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1156 (G2), bg_work 70 ve live 652 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 324 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 96 "bilinen ayrışma" (7si G7, 21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
+- 110 "bilinen ayrışma" (14ü G1, 7si G7, 21i G3, 29u G2, 19u G6, aşağıda) testte gerekçesiyle kayıtlı (eşit çıkarsa test düşer). Türleri ve gerekçeleri testteki `known(`/`known_if(`
   kayıtlarındadır: Python repr/JSON metni, sınırsız int, tür/Unicode farkı, daha sıkı regex, Effect sözleşmesi, `models` TypeError
   (rs/state'in maddesi).
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
-- Kapsanmayan: süreç başlatma, tmux parçası, resume taraması, hayalet oturum temizliği; gerçek `Effect` uygulayıcısı; eşzamanlı yazım ve
-  zaman aşımı; `--help` önbellek tazelemesi; gerçek `ModelIo` uygulayıcısı (G8).
+- Kapsanmayan: süreç başlatma, tmux parçası, hayalet oturum temizliği; gerçek `Effect`, `LiveProbe` ve `AgySidStore` uygulayıcıları;
+  süreçler arası eşzamanlı yazım ve zaman aşımı; `--help` önbellek tazelemesi; gerçek `ModelIo` uygulayıcısı (G8).
 - Rust'ta henüz yok: `rust_toolchain`, `_rustup_default_toolchain`, `path_executables` (`_CMD_RE`); `_sync_one` dosya adımları;
   diag `ucli_web_searxng_error`, `ucli_usage_log_dir_failed`.
 - TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
@@ -53,14 +53,14 @@ Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 
 - `Probe` (dış olgular) + `Effect` listesi (dosya yazma/silme isteği, sırayla uygulanır) + `Diag` (diag_log olayları). Sır içeren `Effect`
   Debug'da maskeli. Durum değiştiren üç `Probe` yöntemi: `claude_cost_gate`, `issue_agent_token`, `register_mcp`.
 - Modüller: `provider` (Cli enum, model/effort, build), `claude|agy|codex|copilot|shell|ucli`, `ucli_opts`, `routing`, `spawn`, `settings`, `effort`, `pyfmt`, `model_sources` (G7).
-- `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
+- `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G1, G8, G4, G10, G9 (G2, G3, G11, G5, G6 ve G7 taşındı).
+1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G8, G4, G10, G9 (G1, G2, G3, G11, G5, G6 ve G7 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
-5. Birim testi yalnız `pyfmt.rs`de (2 test): effort, `with_block`, `validate_opts`, "sır argv'de yok" için ekle (G6 ile `bg_work.rs`e 3 test eklendi).
+5. Birim testi `pyfmt.rs`de 3 test: effort, `with_block`, `validate_opts`, "sır argv'de yok" için ekle (G6 ile `bg_work.rs`e 3 test eklendi).
 6. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
 
 ## Parite testinde bakılacak bilinen farklar / şüpheler
@@ -85,14 +85,14 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 
 | Grup | Kapsam | işlev/atama | test | zorluk notu |
 |---|---|---|---|---|
-| G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 39 | 35 | zor: Python davranış ayrıntısı çok (stub eleme, cwd/ad eşleme, önbellek); rs/proc ve rs/state'e bağlanır |
+| G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 0 (39 TAŞINDI) | 0 (24 TAŞINDI, 11 kapsam dışı) | bitti: `resume.rs`, `claude_resume.rs`, `codex_resume.rs`, `agy_resume.rs`, `copilot.rs`; parite `parity_resume`, `tests/resume.rs` |
 | G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 0 (38 TAŞINDI) | 0 (17 TAŞINDI, 8 kapsam dışı) | bitti: `chat.rs`, parite `parity_chat` |
 | G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 0 (18 TAŞINDI) | 0 (23 TAŞINDI, 31 kapsam dışı) | bitti: `claude_transcript.rs`, parite `parity_transcript` |
 | G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 37 | 17 | orta-zor: rs/tmux'a bağlı, zamanlama ve kör Enter kuralları |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo` G8'de |
-| G8 `Probe` ve `Effect` gerçek uygulayıcısı | atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü; ayrıca gerçek `ModelIo` (süreç, HTTP, saat, belge; G7 sözleşmesi) | 53 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
+| G8 `Probe` ve `Effect` gerçek uygulayıcısı | gerçek `LiveProbe` (G1/G2/G3/G6 sözleşmeleri) ve `AgySidStore`; atomik/gizli yazım, `--help`, `path_executables`, `rust_toolchain`, searxng, checks kaydı, maliyet defteri, ajan token'ı, `register_mcp`, diag günlüğü; ayrıca gerçek `ModelIo` (süreç, HTTP, saat, belge; G7 sözleşmesi) | 53 | 52 | zor: güvenlik (0600, O_NOFOLLOW), eşzamanlılık, zaman aşımı; iki alt göreve bölünebilir (dosya/süreç ve maliyet defteri) |
 | G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 13 | zor: rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` kullanılan kısım), bütçe notu | 19 | 19 | orta: alt süreç, zaman aşımı, sır ortamda |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
@@ -105,9 +105,8 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
   (`COPILOT_CONTEXT_SQL`), sorguyu çağıran koşar. `rusqlite` yalnız dev bağımlılığı.
 - `LiveProbe`un gerçek uygulaması YOK (G8). Sözleşme: yalnız normal dosya (FIFO/aygıt açılışta bloklamasın), `max` aşan dosya
   None, kuyruk okuması en çok `max` bayt, SQLite `mode=ro` + 2 sn meşgul beklemesi, bağlantı her sorguda kapanır.
-- G1 bağımlılığı: `claude_transcript` (`jsonl_path_for`, "cwd'deki en yeni" düşüşü dahil), `codex_rollout` (`_rollout_path`),
-  `copilot_resume_id` (G3 ile `claude_session_sid`). Testteki uygulama yalnız vakaların kullandığı yolları taklit eder; G1 taşınınca bu üç yöntem crate
-  içi işleve dönmeli ve codex cwd taraması paritede sınanmalı. `rs/proc` `transcript.rs::jsonl_path_for` yalnız tam sid eşler.
+- G1 bağımlılığı kapandı: transkript, rollout ve copilot resume çözümü crate içinde (`Live::{jsonl_path_for, codex_rollout_path,
+  resolve_resume_id}`); `rs/proc` `transcript.rs::jsonl_path_for` yalnız tam sid eşler (düşüş yok), birleştirmede karıştırılmamalı.
 - Birleştirmede tekleştirilecek: `pyjson.rs` ile `rs/state` `cops-state::json::Json`; `bg_work.rs::iso_epoch` ile `rs/state`
   `pytime.rs`. İkisi de bu dalda olmadığı için bağlanmadı.
 - `Clock {now, utc_offset_secs}` çağırandan gelir. Saat dilimsiz damga sabit farkla yorumlanır (yaz saati geçişi yok;
@@ -151,10 +150,10 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | 3.9 kaynak sahibi ve sınırı (H1) | okuma sınırları `TRANSCRIPT_TAIL_BYTES`, `CODEX_CONTEXT_TAIL_BYTES`, `STATUS_MAX_BYTES`, `RECORD_MAX_BYTES`; `bg-kuyruk-`, `codex-ctx-`, `sinir-`. Dosya/SQLite kapanışı G8'de sınanacak |
 | 3.11 işaret ayrıştırma tek modül + Python'la eşit (H6, H14) | `bg_work.rs`; `bg-ekran` (3000 rastgele metin), `bg-transkript-` |
 | 3.12 diferansiyel test (H14) | `parity_bg_work`, `parity_live`; `$HOME` yolları yalnız `Paths` üzerinden |
-| 3.14 yol girdisi (H17) | AÇIK: oturum adı Python gibi dosya yoluna eklenir (`..`/`/` denetlenmez); yalnız okuma. Denetim çağıranda ya da G1'de |
+| 3.14 yol girdisi (H17) | AÇIK: oturum adı Python gibi dosya yoluna eklenir (`..`/`/` denetlenmez); yalnız okuma. G1 de denetim eklemedi (birebir): denetim çağıranda |
 | 3.17 test yalıtımı (H16) | geçici HOME/CLAUDEOPS_DIR; koşucu bunu `assert` eder |
 | 3.20 performans (H21) | desenler doğrusal `regex`: geri izlemeli motor 4 MB satırda sessizce 0 sayıyordu, `very_long_screen_line_is_still_scanned` |
-| H7 "en yeni" tahmini | claude transkripti ve copilot resume Python'da "en yeni"ye düşer; karar G1'de |
+| H7 "en yeni" tahmini | claude transkripti ve copilot resume Python'da "en yeni"ye düşer; G1 birebir taşıdı (G1 şüphe listesi) |
 | Uygulanmaz | 3.1, 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: bu kod yazmaz, süreç/ağ/uç açmaz, sır okumaz |
 
 ## G2: sohbet geçmişi okuma
@@ -162,18 +161,17 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 ### Sahiplik
 26 Kas'ta bakıldı (`origin/rs/*` ve `main`): kod hiçbir dalda yoktu. `rs/proc` `docs/rs-proc.md` bu işlevleri "VARSAYIM, cops onayı bekler"
 diye T1'e yazmıştı; burada taşındı. Birleştirmede `rs/proc` `parity/mapping.py` `CHAT` satırlarından `last_exchange`/`full_history`
-tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açık).
+tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
 
 ### Tasarım ve bağımlılıklar
 - Modül `chat.rs`; giriş `Live::{last_exchange, full_history, last_message_role, extra_file_roots, read_chat_history}`.
   Satır tipi `ChatTurn { role: Py, text: Py }`: ucli `role`/`content` değerini, copilot SQLite hücresini Python gibi olduğu gibi geçirir.
 - `LiveProbe`a eklenenler (gerçek uygulama G8): `sqlite_rows` (satır satır ziyaretçi; hata `false`, önceki satırlar verilmiş kalır;
-  yol URI diye ayrıştırılmaz), `claude_project_dir` (`_encode_cwd`: `rs/proc` `transcript.rs::encode_cwd`), `agy_resume_id` (G1).
-  Var olan G1 yöntemleri de kullanılır: `claude_transcript`, `codex_rollout`, `copilot_resume_id`. Testteki uygulamalar yalnız
-  vakaların kullandığı yolları taklit eder.
+  yol URI diye ayrıştırılmaz), `claude_project_dir` (`_encode_cwd`: `rs/proc` `transcript.rs::encode_cwd`), `agy_resume_id` (G1 ile crate içine alındı).
+  Transkript, rollout ve resume çözümü crate içinde (G1); paritede gerçek dosyalardan sınanır.
 - Transkript `read_bytes(path, u64::MAX)` ile BÜTÜN okunur (Python da sınırsız). Satırlar tek tek ayrıştırılıp atılır; son çift
   sondan tembel aranır. Boyut sınırı konmadı (konursa Python'dan sapma olur); bellek dosya boyutu kadar.
-- Taşınmayan: `web._term_chat` bağlaması (T1), `sid_for_stopped_session` (G1), `io_providers`.
+- Taşınmayan: `web._term_chat` bağlaması (T1), `io_providers`.
 
 ### Bilinen ayrışmalar (29; testte `chat-...sapma-`, Rust sonucu `expect` ile ayrıca doğrulanır)
 - claude 17: nesne olmayan satır (4), nesne olmayan `message` (4), metin olmayan `text` (3), nesne olmayan `compactMetadata`,
@@ -208,7 +206,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` burada da G1'de açı
 | 3.12 diferansiyel test (H14) | `parity_chat` (1156 vaka; 500 rastgele jsonl, 150 rastgele protobuf veritabanı); `strip` Python kuralı `claude-satir-kirpma` |
 | 3.14 yol girdisi (H17) | AÇIK: `sid` Python gibi yola eklenir (mutlak yol dizin dışını açar, `agy-mutlak-kimlik`); yalnız okuma |
 | 3.17 test yalıtımı (H16) | geçici HOME; tüm veri sentetik |
-| H7 "en yeni" tahmini | transkript/resume çözümü G1'de |
+| H7 "en yeni" tahmini | transkript/resume çözümü G1'de taşındı (Python gibi) |
 | Uygulanmaz | 3.1, 3.2, 3.4, 3.6-3.8 (önbellek, döngü, yazım yok), 3.13, 3.15, 3.16, 3.18, 3.19 |
 
 ## G3: transkriptten model/effort ve önbellek sıcaklığı
@@ -223,12 +221,11 @@ bu ize yönlendirilmeli.
   last_assistant_effort, last_real_request_epoch, live_or_spawn_model, live_or_spawn_effort, last_request_epoch}`.
   `_row_epoch` = `bg_work::iso_epoch` (ayrı kopya yok).
 - Pencere Python'la aynı: 64 KiB, x4, en çok 4 MiB; boyut bir kez okunur (`Probe::file_size`), her adım `[boyut-pencere, boyut)`.
-- `LiveProbe`a eklenenler (gerçek uygulama G8/G1): `read_range(path, start, len)` (yalnız normal dosya; hata None) ve
-  `claude_session_sid(pid)` (`session_file_sid`, G1: `pid` + `procStart` doğrulaması orada; paritede iki tarafta sahte).
-- `live_or_spawn_*` transkript yolunu `LiveProbe::claude_transcript`ten alır (G1): Python'un "cwd'deki en yeni" düşüşü
-  kararı orada. `last_request_epoch` düşüş kullanmaz, yalnız tam `<sid>.jsonl`.
+- `LiveProbe`a eklenen (gerçek uygulama G8): `read_range(path, start, len)` (yalnız normal dosya; hata None).
+- `live_or_spawn_*` transkript yolunu `Live::jsonl_path_for`dan alır (G1; "cwd'deki en yeni" düşüşü Python gibi).
+  `last_request_epoch` düşüş kullanmaz, yalnız tam `<sid>.jsonl`; pid kimliği `Live::session_file_sid`.
 - Saat dilimsiz damga `Clock::utc_offset_secs` ile yorumlanır (G6 ile aynı sınır).
-- Taşınmayan: `session_file_sid`, `jsonl_path_for`, `find_latest_jsonl` (G1); `web._live_model_effort` önbelleği ve
+- Taşınmayan: `web._live_model_effort` önbelleği ve
   `_live_model`/`_live_effort` uçları (T1: "yalnız tam `<sid>.jsonl`, yalnız süreç başlangıcından sonrası" kuralını T1
   uygulamalı); `handover` politikası (T4); `handover_*_downgrade` ve canlı geçiş (G4); `web_steward.context_tokens_for`
   (T10; `rs/stew` tablosunda EKSİK, henüz kimse taşımadı).
@@ -251,7 +248,7 @@ bu ize yönlendirilmeli.
 3. Metin olmayan model (ör. `5`) olduğu gibi döner ve komut satırına gidebilir. Rust atlar.
 4. `live_or_spawn_*` sid yoksa ya da dosyası yoksa cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
    modeli/effort'u devir kararına ve takılan oturumun yeniden açılışına girer (aynı modüldeki `last_request_epoch` bu
-   düşüşü bilerek reddediyor). Rust sağlayıcıya bırakır (G1 kararı).
+   düşüşü bilerek reddediyor). G1 birebir taşıdı (düşüş korundu).
 5. `last_assistant_model`/`_effort` `isSidechain` (alt ajan) satırlarını süzmez; ana dosyada böyle satır varsa alt ajanın
    modeli oturumun sayılır (`_real_request_epoch` süzüyor). Rust Python gibi davranır.
 6. Effort ayrı taranır: en son satır effort taşımıyorsa (ör. effort desteklemeyen modele geçiş) eski modelin effort'u
@@ -263,7 +260,7 @@ bu ize yönlendirilmeli.
 |---|---|
 | 2.5 sağlayıcı başına tek modül (H4) | claude'a özgü kod `claude_transcript.rs`; sağlayıcı farkı kapsayıcı `match` (`_` kolu yok) |
 | 2.5 canlı model/effort jsonl'den (H3) | `surec-sonrasi`, `onceki-surec`, `canli`; `synthetic_and_unexpected_rows_do_not_hide_the_real_model` |
-| 2.5 kardeş oturum (H4, H7); 3.1 hedef çözümü | `last_request_epoch` yalnız tam ad: `istek-` (`sibling`, `onek`), `cache_candidates_are_exact_files_and_newest_wins`. AÇIK: `live_or_spawn_*` düşüşü G1 |
+| 2.5 kardeş oturum (H4, H7); 3.1 hedef çözümü | `last_request_epoch` yalnız tam ad: `istek-` (`sibling`, `onek`), `cache_candidates_are_exact_files_and_newest_wins`. AÇIK: `live_or_spawn_*` düşüşü Python gibi (G3 şüphe 4) |
 | 2.5 kaynak yoksa "bilinmiyor" (H3, H21); 3.3 | okuyucular `Option`; `yollar`, `truncated_file_and_read_errors_mean_unknown` |
 | 3.5 hata yutma, panik | `expect` yalnız sabit desende. Atlanan satır sayılmıyor/loglanmıyor (Python da; H20 açık). Regex motoru hatası "önbellek korunur" sayılır (başa demirli desen, tetikleyen girdi bilinmiyor) |
 | 3.6 bayat önbellek | okuyucularda önbellek yok; `rows_appended_after_the_size_was_read_are_not_seen` |
@@ -357,6 +354,85 @@ bu ize yönlendirilmeli.
 | H1/H21 performans | `/api/status` yolunda bayat agy beklemez (`agy_stale_list_is_returned_at_once_while_a_real_thread_refreshes`); ölçüm yapılmadı |
 | Uygulanmaz | H2/3.2 (yazım yok), H6, H10, H11, H15, H18, H19 |
 
+## G1: oturum kimliği ve devam
+
+### Sahiplik
+26 Kas'ta `git fetch` sonrası `origin/rs/*` ve `main` bu işlev adlarıyla (`rust/**/*.rs`) tarandı: yalnız `rs/proc`
+`transcript.rs::jsonl_path_for` var (tam sid eşleşmesi, düşüş yok). `rs/proc` `extract_info` agy kimliğini yalnız döndürür
+(`AgyState::learned`), yazmaz: `remember_agy_sid` + `sid_claimed_by_other` burada, çağrı birleştirmede bağlanacak.
+
+### Tasarım ve bağımlılıklar
+- Modüller: `resume.rs` (dağıtım, `ids_held_by_others`, `head_lines`, `same_path`, zaman sıralaması), `claude_resume.rs`,
+  `codex_resume.rs`, `agy_resume.rs`, copilot `copilot.rs`te. Dağıtımda `_` kolu yok.
+- `LiveProbe`tan beş sahte yöntem kalktı (`claude_session_sid`, `claude_transcript`, `codex_rollout`, `copilot_resume_id`,
+  `agy_resume_id`); yerine `stat`, `proc_stat`, `current_dir`, `agy_sids_doc` geldi. `claude_project_dir` kaldı (rs/proc
+  `encode_cwd`). Sohbet, canlı okuyucu ve transkript parite aileleri artık gerçek çözümü kullanır.
+- `LiveProbe` sözleşmesi (G8): `list_dir` dizin okuma sırasını korur (eşit zamanda seçim sıraya bağlı); `stat` symlink izler,
+  `mtime_ns`; `proc_stat` yalnız `/proc/<pid>/stat`; `read_range` yalnız normal dosya.
+- Başlık önbelleği `MetaCache` (imza `(mtime_ns, boyut)`, 20000 girdi) çağıranındır; süreç başına TEK örnek. Kilit okuma
+  sırasında tutulmaz.
+- `agy_sids` yazımı `AgySidStore {load, locked, save}`: kilitsiz ucuz karşılaştırma, kilit altında yeniden okuma, aynı değer
+  yazılmaz, `preview` yazmaz. Gerçek uygulama (claudeops.db + ayna, `flock`, atomik yazım) YOK: rs/state `statedocs`.
+- `ids_held_by_others(name, live)`: süreç taraması girdidir (`None` = tarama patladı = boş küme). Yeni bağımlılık yok.
+- Okuma sınırları: baş satırlar 8 MiB (64 KiB parçalarla, yarım satır atılır), stub taraması 8 MiB, `sessions/<pid>.json`
+  1 MiB, agy cwd önbelleği 8 MiB.
+
+### Bilinen ayrışmalar (14; testte `devam-sapma-`, Rust sonucu `expect` ile ayrıca doğrulanır)
+- codex 7: ilk okuma parçasında bozuk UTF-8 (ilk ya da sonraki satır), nesne olmayan ilk satır, liste `payload`, liste
+  kimlik (Python istisna; Rust o satırı/adayı değerlendirmez), sayı kimlik (Python sayı döndürür), joker taşıyan `sid`
+  (Python glob deseni sayar; `/` taşıyan `sid` de Rust'ta ad eşleşmesine girmez).
+- agy 2: UTF-8 olmayan cwd önbelleği (istisna), metin olmayan öğrenilen kimlik (Python döndürür, Rust önbelleğe düşer).
+- claude 4: proje dizini yerinde dosya (`NotADirectoryError`), dosya adı sınırını aşan sid (`OSError`), sonsuz pid
+  (`OverflowError`), 512'den derin başlık satırı.
+- copilot 1: metin olmayan oturum kimliği (Python sayı döndürür).
+- Testsiz farklar: okuma sınırları (Python sınırsız); UTF-8 olmayan dosya adları listelenmeyebilir; okunamayan proje
+  dizininde Python `PermissionError`, Rust "yok"; `sid_for_stopped_session`/`session_file_sid` imzaları tipli (metin pid yok).
+
+### Python hatası şüpheleri (sahibe sorulmadı; Python'a dokunulmadı; Rust aksi yazılmadıkça Python gibi)
+1. codex `resolve_resume_id`: tek bozuk/UTF-8 olmayan rollout dosyası bütün aramayı istisnayla düşürür (spawn yolu korumasız).
+   Yeniden üretildi (`devam-sapma-codex-utf8`, `-nesne-degil`, `-payload-liste`, `-utf8-sonraki-satir`).
+2. codex `resolve_resume_id`: cwd'si uyan en yeni dosyada kimlik yoksa `None` döner, daha eski kimlikli dosyaya bakılmaz.
+   Yeniden üretildi (`devam-codex-adsiz-id-yok`).
+3. copilot `resolve_resume_id`: en yeni uyan satırın `id`si NULL ise `None`, eskiye bakılmaz. Yeniden üretildi
+   (`devam-copilot-null-kimlik`); gerçek şemada NULL kimlik olup olmadığı bilinmiyor.
+4. codex `_rollout_path`: `sid` glob desenine kaçışsız girer ve yalnız son ek eşleşir (joker ya da kısmi kimlik başka
+   konuşmanın dosyasını verir). Yeniden üretildi (`devam-sapma-codex-joker`, `devam-codex-glob`); kısmi eşleşmede Rust aynı.
+5. agy `resolve_resume_id`: cwd önbelleğine düşerken kimliğin BAŞKA ada kayıtlı olmasına bakmaz (`_sid_claimed_by_other` yalnız
+   öğrenmede); o oturum kapalıyken yeni ad onun konuşmasını devralır. Kod okuması.
+6. agy `resolve_resume_id`: öğrenilen kimliğin veritabanı silinmiş olsa da döner (durmuş oturum yolu denetliyor). Yeniden
+   üretildi (`devam-agy-ogrenilen-tam`, `gone`).
+7. agy `_remember_agy_sid`: bozuk ya da nesne olmayan belge boş sayılır ve ilk yazımda üzerine tek kayıt yazılır: öğrenilen
+   bütün eşleşmeler yedeksiz kaybolur. Dosya kipinde yeniden üretildi (`devam-agy-yaz-bozuk`, `-liste`); db kipi sınanmadı.
+8. agy cwd önbelleği UTF-8 değilse `UnicodeDecodeError` yakalanmaz. Yeniden üretildi (`devam-sapma-agy-onbellek-utf8`);
+   aynı `open` `extract_info`da da var (kod okuması).
+9. claude `resolve_resume_id`/`find_latest_jsonl`: proje yolu dosyaysa ya da `sid` dosya adı sınırını aşarsa istisna.
+   Yeniden üretildi (`devam-sapma-claude-dizin-dosya`, `-uzun-sid`).
+10. `session_file_sid`: `pid: Infinity` `OverflowError` atar (except listesinde yok). Yeniden üretildi
+    (`devam-sapma-kayit-sonsuz-pid`).
+11. Metin olmayan kimlik (codex, copilot, agy) olduğu gibi döner ve komut satırı kurucusuna gider. Dönüş yeniden üretildi
+    (`devam-sapma-*-sayi`); komut kurucuda ne olduğu sınanmadı.
+
+### Ders listesi (`docs/rust-lessons-from-python.md`), G1 koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| H7, 3.1 hedef çözümü; 2.10 "en yeni" tahmini | Python birebir: `jsonl_path_for` ve codex rollout en yeniye düşer (G3 şüphe 4). Kesin eşleşme isteyen yollar düşmez: `sid_for_stopped_session` (`devam-claude-kardes`, `-yeni-gercek`), `last_request_epoch`. `Unique` kanıtı tipi YOK (AÇIK: yıkıcı eylem sahibi çağıran) |
+| 2.10 kilit içinde çözüm | uygulanmaz: crate eylem yapmaz; `ids_held_by_others` ile spawn arasındaki yarış G9'da (AÇIK) |
+| 2.5 cwd başına tek kimlik, kardeş oturumlar | `devam-claude-kardes`, `devam-agy-onbellek-tutulan`, `devam-agy-ogrenilen-`, `devam-tutulan`; şüphe 5 AÇIK |
+| 2.5 sağlayıcı başına tek modül (H4) | `claude_resume`, `codex_resume`, `agy_resume`, `copilot`; dağıtımda `_` kolu yok |
+| H2, 3.2 atomik/kilitli yazım | `value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing`; atomik yazım, DB ve `flock` gerçek `AgySidStore`ta (AÇIK, rs/state) |
+| H5 bozuk belge yedeği | AÇIK: Python gibi üzerine yazılır (şüphe 7) |
+| H3, 3.6 bayat önbellek | `unchanged_files_are_not_reread_but_changed_ones_are` (imza değişince yeniden okuma); `agy_sids` ve cwd önbelleği her çağrıda okunur |
+| H21, 3.3 "bilinmiyor" | her okuyucu `Option`; `devam-claude-dizin-yok`, `devam-copilot-db-yok`, `devam-agy-dizin-yok`. agy `snapshot` dizin yoksa boş küme (Python gibi) |
+| H9, 3.5 hata yutma, panik | `save`/kilit hatası `Result` ile döner (`preview_writes_nothing_and_save_errors_surface`); `unwrap` yok, `expect` yalnız sabit desende; zehirli kilit geri alınır. Atlanan aday loglanmıyor (Python da; H20 AÇIK) |
+| H5, 3.10 girdi sınırları | `devam-meta-` (150 rastgele), `devam-kayit-`, `devam-codex-satir-`, `truncated_and_mutated_input_never_panics` (3000) |
+| H1, H8, 3.7, 3.9 kaynak/döngü sınırı | taramalar 25 / 500 / 500 (`-sinir-`); `head_reading_is_bounded_and_drops_the_unfinished_line`, `whole_file_reads_carry_a_limit`, `meta_cache_is_bounded`. Dizin girdi sayısı sınırsız (Python da) |
+| H17, 3.14 yol girdisi | claude `sid` Python gibi yola eklenir (mutlak ad dizini aşar), agy kimliği `{kimlik}.db` olarak eklenir; codex joker/`/` daha sıkı. Yalnız okuma. copilot SQL parametreli |
+| H14, 3.12 diferansiyel test | `parity_resume` (334 vaka; sabitler ve kök yollar dahil) |
+| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR, `/proc` ve süreç taraması sahte, depo `files` kipi; birim testler bellek içi |
+| H12, H13 | uygulanmaz (sır ve yetki kararı yok) |
+| H21 performans | ölçüm yapılmadı: `jsonl_path_for` düşüşü ve codex taraması her çağrıda dosya listeler (Python gibi) |
+| Uygulanmaz | H6, H10, H11, H15, H18, H19 |
+
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
   yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Sorulacak/izlenecek.
@@ -375,9 +451,9 @@ bu ize yönlendirilmeli.
 | `DEFAULT_CLI` (py/claudeops/providers/__init__.py:14) | `provider.rs::Cli::parse` (bilinmeyen = claude) | `parity.rs::parity_spawn` `bogus-*` | TAŞINDI |
 | `PROVIDERS` (py/claudeops/providers/__init__.py:16) | `provider.rs::Cli`, `Cli::ALL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `get_provider` (py/claudeops/providers/__init__.py:26) | `provider.rs::Cli::parse` | `parity.rs::parity_build` `bogus`; ayrıca `parity_spawn` `bogus-*` | TAŞINDI |
-| `CONVERSATIONS_CACHE` (py/claudeops/providers/agy_provider.py:84) | yok | - | EKSİK(G1) |
+| `CONVERSATIONS_CACHE` (py/claudeops/providers/agy_provider.py:84) | `probe.rs::Paths::agy_conversations_cache` | `parity.rs::parity_resume` `devam-diger` `devam-agy-onbellek-` | TAŞINDI |
 | `CONVERSATIONS_DIR` (py/claudeops/providers/agy_provider.py:85) | `probe.rs::Paths::agy_conversations_dir` | `parity.rs::parity_chat` `chat-agy-` (`roots`) | TAŞINDI |
-| `AGY_SIDS_JSON` (py/claudeops/providers/agy_provider.py:94) | `rs/proc` `Config::agy_sids` | rs/proc: `fake_proc::broken_agy_files` (okuma; yazım G1) | KAPSAM DIŞI |
+| `AGY_SIDS_JSON` (py/claudeops/providers/agy_provider.py:94) | `rs/proc` `Config::agy_sids` | rs/proc: `fake_proc::broken_agy_files` (okuma); yazım yolu `agy_resume.rs::AgySidStore` (G1) | KAPSAM DIŞI |
 | `_STEP_TYPE_USER` (py/claudeops/providers/agy_provider.py:98) | `chat.rs::AGY_STEP_USER` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
 | `_STEP_TYPE_ASSISTANT` (py/claudeops/providers/agy_provider.py:99) | `chat.rs::AGY_STEP_ASSISTANT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
 | `_STEP_TYPE_CHECKPOINT` (py/claudeops/providers/agy_provider.py:101) | `chat.rs::AGY_STEP_CHECKPOINT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-sinir-yarim` | TAŞINDI |
@@ -387,19 +463,19 @@ bu ize yönlendirilmeli.
 | `_get_text_field` (py/claudeops/providers/agy_provider.py:160) | `chat.rs::nested_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
 | `_step_user_text` (py/claudeops/providers/agy_provider.py:165) | `chat.rs::agy_user_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
 | `_step_assistant_text` (py/claudeops/providers/agy_provider.py:172) | `chat.rs::agy_assistant_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
-| `_conversation_ids` (py/claudeops/providers/agy_provider.py:179) | yok | - | EKSİK(G1) |
+| `_conversation_ids` (py/claudeops/providers/agy_provider.py:179) | `agy_resume.rs::Live::agy_conversation_ids` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
 | `PERMISSION_MODES` (py/claudeops/providers/agy_provider.py:187) | `agy.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/agy_provider.py:188) | `agy.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:195) | `agy.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/agy_provider.py:197) | `agy.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:203) | `agy.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-agy-akis`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
-| `_load_agy_sids` (py/claudeops/providers/agy_provider.py:206) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur | KAPSAM DIŞI |
-| `_remember_agy_sid` (py/claudeops/providers/agy_provider.py:215) | yok: rs/proc yalnız `AgyState::learned` döndürür, yazmaz (rs-proc.md sapma 3) | - | EKSİK(G1) |
-| `_sid_claimed_by_other` (py/claudeops/providers/agy_provider.py:230) | yok | - | EKSİK(G1) |
+| `_load_agy_sids` (py/claudeops/providers/agy_provider.py:206) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur. Devam yolunda okuma `LiveProbe::agy_sids_doc` (G1, parite `devam-agy-ogrenilen-`) | KAPSAM DIŞI |
+| `_remember_agy_sid` (py/claudeops/providers/agy_provider.py:215) | `agy_resume.rs::remember_agy_sid` + `AgySidStore` (DB+ayna yazımı ve kilit gerçek uygulamada: rs/state, henüz yok) | `parity.rs::parity_resume` `devam-agy-yaz-`; `tests/resume.rs::concurrent_remembers_lose_nothing`, `value_is_checked_again_under_the_lock`, `preview_writes_nothing_and_save_errors_surface` | TAŞINDI |
+| `_sid_claimed_by_other` (py/claudeops/providers/agy_provider.py:230) | `agy_resume.rs::sid_claimed_by_other` | `parity.rs::parity_resume` `devam-agy-sahipli-` | TAŞINDI |
 | `AgyProvider` (py/claudeops/providers/agy_provider.py:237) | `agy.rs` + `Cli::Agy` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `AgyProvider.name` (py/claudeops/providers/agy_provider.py:238) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.__init__` (py/claudeops/providers/agy_provider.py:240) | `agy.rs::ModelsCache` (`model_sources.rs::ModelSources::new`) | `parity.rs::parity_model_sources` `src-agy-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
-| `AgyProvider.resolve_resume_id` (py/claudeops/providers/agy_provider.py:244) | yok | - | EKSİK(G1) |
+| `AgyProvider.resolve_resume_id` (py/claudeops/providers/agy_provider.py:244) | `agy_resume.rs::Live::agy_resume_id` | `parity.rs::parity_resume` `devam-agy-onbellek-` `devam-agy-ogrenilen-` `devam-agy-cwd-` | TAŞINDI |
 | `AgyProvider.build_inner_command` (py/claudeops/providers/agy_provider.py:271) | `agy.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra`; ve `parity_spawn` `agy-effort-ayar agy-effort-kardes` | TAŞINDI |
 | `AgyProvider.env_overrides` (py/claudeops/providers/agy_provider.py:320) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `AgyProvider.mcp_setup_command` (py/claudeops/providers/agy_provider.py:323) | `agy.rs::mcp_setup_command` | `parity.rs::parity_build` `mcp` | TAŞINDI |
@@ -422,9 +498,9 @@ bu ize yönlendirilmeli.
 | `AgyProvider._steps_desc` (py/claudeops/providers/agy_provider.py:528) | `chat.rs::Live::agy_steps` (`AGY_STEPS_DESC_SQL`) | `parity.rs::parity_chat` `agy-son-cift` `agy-sapma-utf8-hucre` | TAŞINDI |
 | `AgyProvider.last_exchange` (py/claudeops/providers/agy_provider.py:554) | `chat.rs::Live::agy_last` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
 | `AgyProvider.full_history` (py/claudeops/providers/agy_provider.py:573) | `chat.rs::Live::agy_history` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
-| `AgyProvider.sid_for_stopped_session` (py/claudeops/providers/agy_provider.py:591) | yok | - | EKSİK(G1) |
-| `AgyProvider.snapshot_for_live_sid` (py/claudeops/providers/agy_provider.py:601) | yok | - | EKSİK(G1) |
-| `AgyProvider.discover_live_sid` (py/claudeops/providers/agy_provider.py:611) | yok | - | EKSİK(G1) |
+| `AgyProvider.sid_for_stopped_session` (py/claudeops/providers/agy_provider.py:591) | `agy_resume.rs::Live::agy_stopped_sid` | `parity.rs::parity_resume` `devam-agy-ogrenilen-` | TAŞINDI |
+| `AgyProvider.snapshot_for_live_sid` (py/claudeops/providers/agy_provider.py:601) | `resume.rs::Live::snapshot_for_live_sid` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-diger` | TAŞINDI |
+| `AgyProvider.discover_live_sid` (py/claudeops/providers/agy_provider.py:611) | `agy_resume.rs::Live::agy_discover` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
 | `cmd_arg` (py/claudeops/providers/base.py:20) | `rs/proc` `providers.rs::arg` | rs/proc: `providers.rs::claude_info` | KAPSAM DIŞI |
 | `OneshotError` (py/claudeops/providers/base.py:28) | yok | - | EKSİK(G10) |
 | `McpServerSpec` (py/claudeops/providers/base.py:33) | `provider.rs::McpSpec` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
@@ -437,14 +513,14 @@ bu ize yönlendirilmeli.
 | `CliProvider.accepts_cli_opts` (py/claudeops/providers/base.py:57) | `provider.rs::Cli::accepts_cli_opts` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.mcp_needs_cwd` (py/claudeops/providers/base.py:61) | `provider.rs::Cli::mcp_needs_cwd` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.validate_cli_opts` (py/claudeops/providers/base.py:63) | `provider.rs::Providers::validate_cli_opts` | `parity.rs::parity_ucli` `opts-*`; ucli dışı ret: `parity_spawn` `claude-opts`; ret metni için ayrı vaka yok | TAŞINDI |
-| `CliProvider.resolve_resume_id` (py/claudeops/providers/base.py:70) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
+| `CliProvider.resolve_resume_id` (py/claudeops/providers/base.py:70) | `resume.rs::Live::resolve_resume_id` (soyut yöntem: kapsayıcı `match`) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `CliProvider.build_inner_command` (py/claudeops/providers/base.py:92) | `provider.rs::Providers::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
 | `CliProvider.has_conversation` (py/claudeops/providers/base.py:113) | yok | - | EKSİK(G4) |
 | `CliProvider.wants_handover_wrapup` (py/claudeops/providers/base.py:121) | yok | - | EKSİK(G4) |
 | `CliProvider.wants_stuck_recovery` (py/claudeops/providers/base.py:125) | yok | - | EKSİK(G4) |
 | `CliProvider.last_exchange` (py/claudeops/providers/base.py:129) | `chat.rs::Live::last_exchange` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
 | `CliProvider.full_history` (py/claudeops/providers/base.py:138) | `chat.rs::Live::full_history` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
-| `CliProvider.sid_for_stopped_session` (py/claudeops/providers/base.py:147) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
+| `CliProvider.sid_for_stopped_session` (py/claudeops/providers/base.py:147) | `resume.rs::Live::sid_for_stopped_session` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `CliProvider.last_message_role` (py/claudeops/providers/base.py:162) | `chat.rs::Live::last_message_role` | `parity.rs::parity_chat` `chat-` (her vakada) | TAŞINDI |
 | `CliProvider.handover_model_downgrade` (py/claudeops/providers/base.py:175) | yok | - | EKSİK(G4) |
 | `CliProvider.apply_live_model_switch` (py/claudeops/providers/base.py:185) | yok | - | EKSİK(G4) |
@@ -496,8 +572,8 @@ bu ize yönlendirilmeli.
 | `CliProvider.live_failed_turns` (py/claudeops/providers/base.py:606) | `live.rs::Live::live_failed_turns` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CliProvider.live_phase` (py/claudeops/providers/base.py:611) | `live.rs::Live::live_phase` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CliProvider.cyclable_modes` (py/claudeops/providers/base.py:620) | yok | - | EKSİK(G4) |
-| `CliProvider.snapshot_for_live_sid` (py/claudeops/providers/base.py:629) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
-| `CliProvider.discover_live_sid` (py/claudeops/providers/base.py:650) | yok: `resume_id` çağırandan girdi sayılıyor | - | EKSİK(G1) |
+| `CliProvider.snapshot_for_live_sid` (py/claudeops/providers/base.py:629) | `resume.rs::Live::snapshot_for_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `CliProvider.discover_live_sid` (py/claudeops/providers/base.py:650) | `resume.rs::Live::discover_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `MODEL_CHOICES` (py/claudeops/providers/claude_provider.py:18) | `claude.rs::MODEL_CHOICES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
 | `PERMISSION_MODES` (py/claudeops/providers/claude_provider.py:24) | `claude.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/claude_provider.py:25) | `claude.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
@@ -513,9 +589,9 @@ bu ize yönlendirilmeli.
 | `CYCLABLE_MODES` (py/claudeops/providers/claude_provider.py:73) | yok | - | EKSİK(G4) |
 | `BUSY_STATUS_PATTERN` (py/claudeops/providers/claude_provider.py:80) | `claude.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_encode_cwd` (py/claudeops/providers/claude_provider.py:83) | `rs/proc` `transcript.rs::encode_cwd` | rs/proc: `transcript.rs::encodes_non_ascii_per_char`, altın ad+cwd kodlama | KAPSAM DIŞI |
-| `_safe_mtime` (py/claudeops/providers/claude_provider.py:102) | yok | - | EKSİK(G1) |
-| `jsonl_path_for` (py/claudeops/providers/claude_provider.py:110) | yok: rs/proc `transcript.rs::jsonl_path_for` YALNIZ tam sid eşleşmesi; Python'daki "cwd'deki en yeni dosya" düşüşü bilerek yok | - | EKSİK(G1) |
-| `find_latest_jsonl` (py/claudeops/providers/claude_provider.py:125) | yok | - | EKSİK(G1) |
+| `_safe_mtime` (py/claudeops/providers/claude_provider.py:102) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-claude-zaman-` `devam-claude-adlar` | TAŞINDI |
+| `jsonl_path_for` (py/claudeops/providers/claude_provider.py:110) | `claude_resume.rs::Live::jsonl_path_for` | `parity.rs::parity_resume` `devam-claude-`; `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest` | TAŞINDI |
+| `find_latest_jsonl` (py/claudeops/providers/claude_provider.py:125) | `claude_resume.rs::Live::find_latest_jsonl` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
 | `_LAST_MODEL_CHUNK_BYTES` (py/claudeops/providers/claude_provider.py:143) | `claude_transcript.rs::FIRST_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
 | `_LAST_MODEL_MAX_BYTES` (py/claudeops/providers/claude_provider.py:144) | `claude_transcript.rs::MAX_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
 | `_row_epoch` (py/claudeops/providers/claude_provider.py:147) | `bg_work.rs::iso_epoch` | `parity.rs::parity_transcript` `damga-listesi-` `damga-` | TAŞINDI |
@@ -525,19 +601,19 @@ bu ize yönlendirilmeli.
 | `PROMPT_CACHE_TTL_SECONDS` (py/claudeops/providers/claude_provider.py:228) | `claude_transcript.rs::PROMPT_CACHE_TTL_SECONDS` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
 | `_real_request_epoch` (py/claudeops/providers/claude_provider.py:231) | `claude_transcript.rs::real_request_epoch` | `parity.rs::parity_transcript` `kullanim-` `istek-model-` `damga-` | TAŞINDI |
 | `last_real_request_epoch` (py/claudeops/providers/claude_provider.py:254) | `claude_transcript.rs::Live::last_real_request_epoch` | `parity.rs::parity_transcript` `son-istek` `alt-ajan` `pencere-` `yollar` | TAŞINDI |
-| `session_file_sid` (py/claudeops/providers/claude_provider.py:260) | yok | - | EKSİK(G1) |
+| `session_file_sid` (py/claudeops/providers/claude_provider.py:260) | `claude_resume.rs::Live::session_file_sid` | `parity.rs::parity_resume` `devam-kayit-` `devam-stat-` | TAŞINDI |
 | `_EFFORT_BUSTS_CACHE_RE` (py/claudeops/providers/claude_provider.py:293) | `claude_transcript.rs::EFFORT_BUSTS_CACHE` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
 | `live_or_spawn_model` (py/claudeops/providers/claude_provider.py:296) | `claude_transcript.rs::Live::live_or_spawn_model` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
 | `live_or_spawn_effort` (py/claudeops/providers/claude_provider.py:315) | `claude_transcript.rs::Live::live_or_spawn_effort` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
-| `_META_HEAD_LINES` (py/claudeops/providers/claude_provider.py:331) | yok | - | EKSİK(G1) |
-| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/claude_provider.py:334) | yok | - | EKSİK(G1) |
-| `_jsonl_meta` (py/claudeops/providers/claude_provider.py:337) | yok | - | EKSİK(G1) |
-| `_same_path` (py/claudeops/providers/claude_provider.py:364) | yok | - | EKSİK(G1) |
-| `_META_CACHE` (py/claudeops/providers/claude_provider.py:372) | yok | - | EKSİK(G1) |
-| `_META_CACHE_MAX` (py/claudeops/providers/claude_provider.py:373) | yok | - | EKSİK(G1) |
-| `_jsonl_meta_cached` (py/claudeops/providers/claude_provider.py:376) | yok | - | EKSİK(G1) |
-| `_STUB_MAX_BYTES` (py/claudeops/providers/claude_provider.py:391) | yok | - | EKSİK(G1) |
-| `_has_chat_rows` (py/claudeops/providers/claude_provider.py:394) | yok | - | EKSİK(G1) |
+| `_META_HEAD_LINES` (py/claudeops/providers/claude_provider.py:331) | `claude_resume.rs::META_HEAD_LINES` | `parity.rs::parity_resume` `devam-diger` `devam-meta-` | TAŞINDI |
+| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/claude_provider.py:334) | `claude_resume.rs::RESUME_SCAN_LIMIT` | `parity.rs::parity_resume` `devam-diger` `devam-claude-sinir-` | TAŞINDI |
+| `_jsonl_meta` (py/claudeops/providers/claude_provider.py:337) | `claude_resume.rs::Live::jsonl_meta` + `resume.rs::Live::head_lines` | `parity.rs::parity_resume` `devam-meta-`; `tests/resume.rs::head_reading_is_bounded_and_drops_the_unfinished_line` | TAŞINDI |
+| `_same_path` (py/claudeops/providers/claude_provider.py:364) | `resume.rs::Live::same_path` + `pyfmt.rs::{abspath, normpath}` | `parity.rs::parity_resume` `devam-claude-cwd`; `pyfmt::tests::path_normalisation` | TAŞINDI |
+| `_META_CACHE` (py/claudeops/providers/claude_provider.py:372) | `claude_resume.rs::MetaCache` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
+| `_META_CACHE_MAX` (py/claudeops/providers/claude_provider.py:373) | `claude_resume.rs::META_CACHE_MAX` | `parity.rs::parity_resume` `devam-diger`; `tests/resume.rs::meta_cache_is_bounded` | TAŞINDI |
+| `_jsonl_meta_cached` (py/claudeops/providers/claude_provider.py:376) | `claude_resume.rs::MetaCache::get` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
+| `_STUB_MAX_BYTES` (py/claudeops/providers/claude_provider.py:391) | `claude_resume.rs::STUB_MAX_BYTES` | `parity.rs::parity_resume` `devam-diger` `devam-claude-stub-` | TAŞINDI |
+| `_has_chat_rows` (py/claudeops/providers/claude_provider.py:394) | `claude_resume.rs::Live::has_chat_rows` | `parity.rs::parity_resume` `devam-meta-` | TAŞINDI |
 | `MCP_CONFIG_PATH` (py/claudeops/providers/claude_provider.py:414) | `probe.rs::Paths::mcp_config` | `parity.rs::parity_build` `mcp` | TAŞINDI |
 | `_mcp_config_path` (py/claudeops/providers/claude_provider.py:417) | `claude.rs::mcp_config_path` | `parity.rs::parity_spawn` `-mcp` `-eklenti-mcp`; beyin/eklenti dosya adı dalları | TAŞINDI |
 | `_write_mcp_config_file` (py/claudeops/providers/claude_provider.py:431) | `claude.rs::{mcp_config_json, mcp_launch_args}` + `Effect::WriteAtomic` | `parity.rs::parity_build` `mcp-orchestration-dosya` `mcp-orchestration-engel`; dosya yazımı yalnız test uygulayıcısında (G8) | TAŞINDI |
@@ -549,7 +625,7 @@ bu ize yönlendirilmeli.
 | `claude_supports_flag` (py/claudeops/providers/claude_provider.py:492) | `claude.rs::supports_flag` (`ucli.rs::find_flag`) | `parity.rs::parity_build` `oneshot` | TAŞINDI |
 | `ClaudeProvider` (py/claudeops/providers/claude_provider.py:498) | `claude.rs` + `provider.rs::Cli::Claude` | `parity.rs::parity_build` `claude-extra` `claude-routing-` | TAŞINDI |
 | `ClaudeProvider.name` (py/claudeops/providers/claude_provider.py:499) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.resolve_resume_id` (py/claudeops/providers/claude_provider.py:501) | yok | - | EKSİK(G1) |
+| `ClaudeProvider.resolve_resume_id` (py/claudeops/providers/claude_provider.py:501) | `claude_resume.rs::Live::claude_resume_id` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
 | `ClaudeProvider.build_inner_command` (py/claudeops/providers/claude_provider.py:545) | `claude.rs::build_inner_command` | `parity.rs::parity_build` `claude-extra` `claude-routing-` `claude-bilinen` | TAŞINDI |
 | `ClaudeProvider.oneshot_argv` (py/claudeops/providers/claude_provider.py:586) | `claude.rs::oneshot_argv` | `parity.rs::parity_build` `oneshot` | TAŞINDI |
 | `ClaudeProvider.mcp_launch_args` (py/claudeops/providers/claude_provider.py:602) | `claude.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
@@ -587,16 +663,16 @@ bu ize yönlendirilmeli.
 | `ClaudeProvider.permission_modes` (py/claudeops/providers/claude_provider.py:1029) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ClaudeProvider.effort_levels` (py/claudeops/providers/claude_provider.py:1032) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ClaudeProvider.mode_status_patterns` (py/claudeops/providers/claude_provider.py:1035) | yok | - | EKSİK(G4) |
-| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1038) | `live.rs::Live::background_work` | `parity.rs::parity_live` `claude-`, `ekran-claude-` (transkript yolu `LiveProbe::claude_transcript`, G1) | TAŞINDI |
+| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1038) | `live.rs::Live::background_work` | `parity.rs::parity_live` `claude-`, `ekran-claude-` (transkript yolu `claude_resume.rs::Live::jsonl_path_for`) | TAŞINDI |
 | `ClaudeProvider.busy_status_pattern` (py/claudeops/providers/claude_provider.py:1048) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `ClaudeProvider.cyclable_modes` (py/claudeops/providers/claude_provider.py:1051) | yok | - | EKSİK(G4) |
-| `ClaudeProvider._transcript_lines` (py/claudeops/providers/claude_provider.py:1054) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `LiveProbe::claude_transcript`, G1) | `parity.rs::parity_chat` `claude-satir-` `claude-kesik-` | TAŞINDI |
+| `ClaudeProvider._transcript_lines` (py/claudeops/providers/claude_provider.py:1054) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::jsonl_path_for`) | `parity.rs::parity_chat` `claude-satir-` `claude-kesik-` | TAŞINDI |
 | `ClaudeProvider.last_exchange` (py/claudeops/providers/claude_provider.py:1080) | `chat.rs::claude_last` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
 | `ClaudeProvider.extra_file_roots` (py/claudeops/providers/claude_provider.py:1110) | `chat.rs::Live::extra_file_roots` (dizin: `LiveProbe::claude_project_dir`, rs/proc) | `parity.rs::parity_chat` `chat-kok-claude-` | TAŞINDI |
 | `ClaudeProvider.full_history` (py/claudeops/providers/claude_provider.py:1115) | `chat.rs::claude_history` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
-| `ClaudeProvider.sid_for_stopped_session` (py/claudeops/providers/claude_provider.py:1144) | yok | - | EKSİK(G1) |
+| `ClaudeProvider.sid_for_stopped_session` (py/claudeops/providers/claude_provider.py:1144) | `claude_resume.rs::Live::claude_stopped_sid` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
 | `CODEX_HOME` (py/claudeops/providers/codex_provider.py:42) | `probe.rs::Paths::codex_home` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
-| `SESSIONS_DIR` (py/claudeops/providers/codex_provider.py:43) | `probe.rs::Paths::codex_sessions_dir` (rollout taraması G1) | `parity.rs::parity_chat` `chat-codex-` (`roots`) | TAŞINDI |
+| `SESSIONS_DIR` (py/claudeops/providers/codex_provider.py:43) | `probe.rs::Paths::codex_sessions_dir` (rollout taraması `codex_resume.rs`) | `parity.rs::parity_chat` `chat-codex-` (`roots`) | TAŞINDI |
 | `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:44) | `probe.rs::Paths::codex_models_cache`, `codex.rs::read_models_cache` | `parity.rs::parity_model_sources` `src-codex-akis` `src-codex-nan` (Python hatası? G7 şüphe 2) | TAŞINDI |
 | `PERMISSION_MODES` (py/claudeops/providers/codex_provider.py:46) | `codex.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `EFFORT_LEVELS` (py/claudeops/providers/codex_provider.py:47) | `codex.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -605,17 +681,17 @@ bu ize yönlendirilmeli.
 | `_NON_SESSION_SUBCOMMANDS` (py/claudeops/providers/codex_provider.py:77) | `rs/proc` `providers.rs::CODEX_NON_SESSION` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/codex_provider.py:84) | `codex.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `_MODELS_TTL` (py/claudeops/providers/codex_provider.py:91) | `codex.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
-| `_ROLLOUT_UUID_RE` (py/claudeops/providers/codex_provider.py:92) | yok | - | EKSİK(G1) |
-| `_MAX_ROLLOUT_SCAN` (py/claudeops/providers/codex_provider.py:93) | yok | - | EKSİK(G1) |
+| `_ROLLOUT_UUID_RE` (py/claudeops/providers/codex_provider.py:92) | `codex_resume.rs::ROLLOUT_UUID` | `parity.rs::parity_resume` `devam-codex-temel` `devam-codex-adsiz-` | TAŞINDI |
+| `_MAX_ROLLOUT_SCAN` (py/claudeops/providers/codex_provider.py:93) | `codex_resume.rs::MAX_ROLLOUT_SCAN` | `parity.rs::parity_resume` `devam-diger` `devam-codex-sinir-` | TAŞINDI |
 | `_config_value` (py/claudeops/providers/codex_provider.py:96) | `rs/proc` `providers.rs::codex_config` | rs/proc: `providers.rs::codex_info` | KAPSAM DIŞI |
-| `_safe_mtime` (py/claudeops/providers/codex_provider.py:104) | yok | - | EKSİK(G1) |
-| `_session_meta` (py/claudeops/providers/codex_provider.py:111) | yok | - | EKSİK(G1) |
+| `_safe_mtime` (py/claudeops/providers/codex_provider.py:104) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-codex-esit` `devam-codex-glob` | TAŞINDI |
+| `_session_meta` (py/claudeops/providers/codex_provider.py:111) | `codex_resume.rs::Live::session_meta` | `parity.rs::parity_resume` `devam-codex-satir-` | TAŞINDI |
 | `_codex_text` (py/claudeops/providers/codex_provider.py:125) | `chat.rs::codex_text` | `parity.rs::parity_chat` `codex-icerik-` | TAŞINDI |
 | `_is_real_codex_user_text` (py/claudeops/providers/codex_provider.py:139) | `chat.rs::codex_real_user` | `parity.rs::parity_chat` `codex-metin-` | TAŞINDI |
 | `CodexProvider` (py/claudeops/providers/codex_provider.py:148) | `codex.rs` + `Cli::Codex` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CodexProvider.name` (py/claudeops/providers/codex_provider.py:149) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CodexProvider.__init__` (py/claudeops/providers/codex_provider.py:151) | `codex.rs::ModelsCache` | `parity.rs::parity_model_sources` `src-codex-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
-| `CodexProvider.resolve_resume_id` (py/claudeops/providers/codex_provider.py:155) | yok | - | EKSİK(G1) |
+| `CodexProvider.resolve_resume_id` (py/claudeops/providers/codex_provider.py:155) | `codex_resume.rs::Live::codex_resume_id` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
 | `CodexProvider.build_inner_command` (py/claudeops/providers/codex_provider.py:178) | `codex.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
 | `CodexProvider.mcp_launch_args` (py/claudeops/providers/codex_provider.py:196) | `codex.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
 | `CodexProvider.env_overrides` (py/claudeops/providers/codex_provider.py:207) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -628,9 +704,9 @@ bu ize yönlendirilmeli.
 | `CodexProvider.model_effort_levels` (py/claudeops/providers/codex_provider.py:271) | `codex.rs::model_effort_levels` | `parity.rs::parity_model_effort` `codex-cache`; ve `parity_spawn` `codex-effort` | TAŞINDI |
 | `CodexProvider.busy_status_pattern` (py/claudeops/providers/codex_provider.py:292) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `CodexProvider.input_settle_delay` (py/claudeops/providers/codex_provider.py:295) | yok | - | EKSİK(G4) |
-| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:306) | `live.rs::Live::background_work` | `parity.rs::parity_live` `codex-ajan-`, `ekran-codex-` (rollout yolu `LiveProbe::codex_rollout`, G1) | TAŞINDI |
-| `CodexProvider._rollout_path` (py/claudeops/providers/codex_provider.py:317) | yok | - | EKSİK(G1) |
-| `CodexProvider._transcript_lines` (py/claudeops/providers/codex_provider.py:336) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `LiveProbe::codex_rollout`, G1) | `parity.rs::parity_chat` `codex-satir-` `codex-sid-yok` | TAŞINDI |
+| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:306) | `live.rs::Live::background_work` | `parity.rs::parity_live` `codex-ajan-`, `ekran-codex-` (rollout yolu `Live::codex_rollout_path`) | TAŞINDI |
+| `CodexProvider._rollout_path` (py/claudeops/providers/codex_provider.py:317) | `codex_resume.rs::Live::codex_rollout_path` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
+| `CodexProvider._transcript_lines` (py/claudeops/providers/codex_provider.py:336) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::codex_rollout_path`) | `parity.rs::parity_chat` `codex-satir-` `codex-sid-yok` | TAŞINDI |
 | `CodexProvider.live_context` (py/claudeops/providers/codex_provider.py:358) | `live.rs::Live::codex_context` | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
 | `CodexProvider.last_exchange` (py/claudeops/providers/codex_provider.py:385) | `chat.rs::codex_last` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
 | `CodexProvider.full_history` (py/claudeops/providers/codex_provider.py:410) | `chat.rs::codex_history` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
@@ -644,7 +720,7 @@ bu ize yönlendirilmeli.
 | `MODE_STATUS_PATTERNS` (py/claudeops/providers/copilot_provider.py:183) | yok | - | EKSİK(G4) |
 | `BUSY_STATUS_PATTERN` (py/claudeops/providers/copilot_provider.py:187) | `copilot.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `_PERMISSION_FLAGS` (py/claudeops/providers/copilot_provider.py:189) | `copilot.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/copilot_provider.py:196) | yok | - | EKSİK(G1) |
+| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/copilot_provider.py:196) | `copilot.rs::RESUME_SCAN_LIMIT`, `RESUME_SQL` | `parity.rs::parity_resume` `devam-diger` `devam-copilot-sinir-` | TAŞINDI |
 | `_USAGE_PLAN_RE` (py/claudeops/providers/copilot_provider.py:205) | `usage.rs::PLAN` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `_USAGE_FRACTION_RE` (py/claudeops/providers/copilot_provider.py:206) | `usage.rs::FRACTION` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
 | `_USAGE_RESET_RE` (py/claudeops/providers/copilot_provider.py:207) | `usage.rs::RESET_IN` (`$` -> `\z`, gerekçe kodda) | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
@@ -653,7 +729,7 @@ bu ize yönlendirilmeli.
 | `_connect_ro` (py/claudeops/providers/copilot_provider.py:232) | `live.rs::LiveProbe::sqlite_rows` sözleşmesi (gerçek uygulama G8) | `parity.rs::parity_chat` `copilot-sohbet-db-` | TAŞINDI |
 | `CopilotProvider` (py/claudeops/providers/copilot_provider.py:239) | `copilot.rs` + `Cli::Copilot` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CopilotProvider.name` (py/claudeops/providers/copilot_provider.py:240) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.resolve_resume_id` (py/claudeops/providers/copilot_provider.py:242) | yok | - | EKSİK(G1) |
+| `CopilotProvider.resolve_resume_id` (py/claudeops/providers/copilot_provider.py:242) | `copilot.rs::Live::copilot_resume_id` | `parity.rs::parity_resume` `devam-copilot-` | TAŞINDI |
 | `CopilotProvider.build_inner_command` (py/claudeops/providers/copilot_provider.py:270) | `copilot.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` `byok-` `trust-` | TAŞINDI |
 | `CopilotProvider.env_overrides` (py/claudeops/providers/copilot_provider.py:297) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CopilotProvider.matches_proc` (py/claudeops/providers/copilot_provider.py:303) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
@@ -676,7 +752,7 @@ bu ize yönlendirilmeli.
 | `ShellProvider` (py/claudeops/providers/shell_provider.py:41) | `shell.rs` + `Cli::Shell` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider.name` (py/claudeops/providers/shell_provider.py:42) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider.has_conversation` (py/claudeops/providers/shell_provider.py:44) | yok | - | EKSİK(G4) |
-| `ShellProvider.resolve_resume_id` (py/claudeops/providers/shell_provider.py:47) | yok: sabit None; crate'te resume çözümü hiç yok | - | EKSİK(G1) |
+| `ShellProvider.resolve_resume_id` (py/claudeops/providers/shell_provider.py:47) | `resume.rs::Live::resolve_resume_id` (`Cli::Shell` = None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `ShellProvider.build_inner_command` (py/claudeops/providers/shell_provider.py:51) | `shell.rs::build_inner_command` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `ShellProvider.env_overrides` (py/claudeops/providers/shell_provider.py:58) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider.matches_proc` (py/claudeops/providers/shell_provider.py:61) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
@@ -741,7 +817,7 @@ bu ize yönlendirilmeli.
 | `UcliProvider.prepare_input` (py/claudeops/providers/ucli_provider.py:870) | yok | - | EKSİK(G4) |
 | `UcliProvider.has_conversation` (py/claudeops/providers/ucli_provider.py:878) | yok | - | EKSİK(G4) |
 | `UcliProvider.wants_handover_wrapup` (py/claudeops/providers/ucli_provider.py:881) | yok | - | EKSİK(G4) |
-| `UcliProvider.resolve_resume_id` (py/claudeops/providers/ucli_provider.py:884) | yok: sabit None; crate'te resume çözümü hiç yok | - | EKSİK(G1) |
+| `UcliProvider.resolve_resume_id` (py/claudeops/providers/ucli_provider.py:884) | `resume.rs::Live::resolve_resume_id` (`Cli::Ucli` = None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `UcliProvider.accepts_cli_opts` (py/claudeops/providers/ucli_provider.py:888) | `provider.rs::Cli::accepts_cli_opts` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.mcp_needs_cwd` (py/claudeops/providers/ucli_provider.py:889) | `provider.rs::Cli::mcp_needs_cwd` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.validate_cli_opts` (py/claudeops/providers/ucli_provider.py:891) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-` | TAŞINDI |
@@ -758,7 +834,7 @@ bu ize yönlendirilmeli.
 | `UcliProvider.permission_modes` (py/claudeops/providers/ucli_provider.py:1080) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.effort_levels` (py/claudeops/providers/ucli_provider.py:1083) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.full_history` (py/claudeops/providers/ucli_provider.py:1086) | `chat.rs::Live::full_history` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
-| `UcliProvider.sid_for_stopped_session` (py/claudeops/providers/ucli_provider.py:1091) | yok | - | EKSİK(G1) |
+| `UcliProvider.sid_for_stopped_session` (py/claudeops/providers/ucli_provider.py:1091) | `resume.rs::Live::sid_for_stopped_session` (`Cli::Ucli` = ad) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `UcliProvider.live_busy` (py/claudeops/providers/ucli_provider.py:1097) | `ucli_status.rs::Live::ucli_busy` (`Live::live_busy`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
 | `UcliProvider.background_work` (py/claudeops/providers/ucli_provider.py:1112) | `live.rs::Live::background_work` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
 | `UcliProvider.live_tools` (py/claudeops/providers/ucli_provider.py:1127) | `ucli_status.rs::Live::ucli_tools` (`Live::live_tools`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
@@ -786,7 +862,7 @@ bu ize yönlendirilmeli.
 | `_SECRET_ENV_RE` (py/claudeops/spawn.py:60) | `spawn.rs::{SECRET_WORDS, fold_char}` | `parity.rs::parity_spawn` `preview` | TAŞINDI |
 | `_dry_run_preview` (py/claudeops/spawn.py:63) | `spawn.rs::{dry_run_preview, SpawnPlan::dry_run_line}` | `parity.rs::parity_spawn` `preview` `-dry` | TAŞINDI |
 | `detect_display` (py/claudeops/spawn.py:71) | `spawn.rs::detect_display` | `parity.rs::parity_spawn` `display-env` `display-bos` `display-yok`; soket/kilit dosyası senaryoları denetimli değil | TAŞINDI |
-| `_ids_held_by_others` (py/claudeops/spawn.py:83) | yok: rs/proc `discovery.rs::find_sessions` var; süzgeç yok (parite harness boş küme sahteler) | - | EKSİK(G1) |
+| `_ids_held_by_others` (py/claudeops/spawn.py:83) | `resume.rs::ids_held_by_others` (süreç taraması girdi: rs/proc) | `parity.rs::parity_resume` `devam-tutulan` | TAŞINDI |
 | `SESSION_USD_CAP_KEY` (py/claudeops/spawn.py:110) | `spawn.rs::SESSION_USD_CAP_KEY` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
 | `_apply_hook_session_cap` (py/claudeops/spawn.py:113) | `spawn.rs::apply_hook_session_cap` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
 | `BRAIN_NAME_PREFIXES` (py/claudeops/spawn.py:138) | `spawn.rs::BRAIN_NAME_PREFIX` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
@@ -1035,9 +1111,9 @@ bu ize yönlendirilmeli.
 | `AgyLastExchange.test_missing_db_is_empty` (py/tests/test_agy_last_exchange.py:45) | `parity.rs::parity_chat` `agy-sid-yok-dosya` `agy-resume-dosyasiz` | TAŞINDI |
 | `AgyModelsSwr.test_cold_blocks_then_stale_returns_old_immediately_and_refreshes_in_background` (py/tests/test_agy_models_swr.py:19) | `tests/model_sources.rs::agy_stale_list_is_returned_at_once_while_a_real_thread_refreshes`; `parity.rs::parity_model_sources` `src-agy-akis` | TAŞINDI |
 | `AgySidsStoreTest.test_db_ready` (py/tests/test_agy_sids_store.py:31) | rs/state: `statedocs.rs::DB_READY` `agy_sids` | KAPSAM DIŞI |
-| `AgySidsStoreTest.test_remember_writes_db_and_mirror` (py/tests/test_agy_sids_store.py:34) | yok: agy sid yazımı | EKSİK(G1) |
-| `AgySidsStoreTest.test_unchanged_value_does_not_rewrite` (py/tests/test_agy_sids_store.py:42) | yok: agy sid yazımı | EKSİK(G1) |
-| `AgySidsStoreTest.test_concurrent_remembers_lose_nothing` (py/tests/test_agy_sids_store.py:48) | yok: agy sid yazımı | EKSİK(G1) |
+| `AgySidsStoreTest.test_remember_writes_db_and_mirror` (py/tests/test_agy_sids_store.py:34) | DB + ayna yazımı `AgySidStore` gerçek uygulamasının işi (rs/state `statedocs`; uygulama henüz yazılmadı). Crate yalnız `save` çağırır: `tests/resume.rs::remember_saves_through_the_store_once` | KAPSAM DIŞI |
+| `AgySidsStoreTest.test_unchanged_value_does_not_rewrite` (py/tests/test_agy_sids_store.py:42) | `tests/resume.rs::unchanged_value_does_not_rewrite_or_lock` | TAŞINDI |
+| `AgySidsStoreTest.test_concurrent_remembers_lose_nothing` (py/tests/test_agy_sids_store.py:48) | `tests/resume.rs::concurrent_remembers_lose_nothing` (oku-değiştir-yaz kilit içinde; süreçler arası `flock` gerçek `AgySidStore`ta sınanmalı) | TAŞINDI |
 | `RoutingSymlink.test_symlink_kept_and_target_written_with_mode` (py/tests/test_atomic_users_symlink.py:13) | yok: karar `parity_misc` `sync-symlink`; gerçek yazım uygulayıcısı yok | EKSİK(G9) |
 | `TokenFile.test_token_file_0600_atomic` (py/tests/test_atomic_users_symlink.py:30) | yok | EKSİK(G8) |
 | `OrphanMarker.test_orphan_begin_does_not_eat_user_text` (py/tests/test_atomic_users_symlink.py:41) | `parity.rs::parity_misc` `blok` | TAŞINDI |
@@ -1180,16 +1256,16 @@ bu ize yönlendirilmeli.
 | `ClaudeProviderCacheHookTests.test_no_sid_or_no_matching_file_is_unknown_never_the_newest_sibling` (py/tests/test_handover_cache_policy.py:123) | `parity_transcript` `istek-claude`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
 | `ClaudeProviderCacheHookTests.test_effort_switch_keeps_cache_by_model` (py/tests/test_handover_cache_policy.py:135) | `parity_transcript` `model-listesi` | TAŞINDI |
 | `ClaudeProviderCacheHookTests.test_other_providers_keep_the_old_behaviour` (py/tests/test_handover_cache_policy.py:148) | `parity_transcript` `istek-codex` `istek-ucli` `model-listesi`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `SessionFileSidTests.test_verified_file_gives_the_session_id` (py/tests/test_handover_cache_policy.py:177) | yok | EKSİK(G1) |
-| `SessionFileSidTests.test_a_reused_pid_is_rejected_by_proc_start` (py/tests/test_handover_cache_policy.py:182) | yok | EKSİK(G1) |
-| `SessionFileSidTests.test_unverifiable_or_inconsistent_files_are_not_trusted` (py/tests/test_handover_cache_policy.py:186) | yok | EKSİK(G1) |
-| `SessionFileSidTests.test_dead_process_and_missing_file_and_no_pid` (py/tests/test_handover_cache_policy.py:202) | yok | EKSİK(G1) |
-| `LastRequestEpochByPidTests.test_fresh_session_without_cmdline_sid_is_found_through_its_pid` (py/tests/test_handover_cache_policy.py:234) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `LastRequestEpochByPidTests.test_without_a_pid_the_sidless_session_stays_unknown` (py/tests/test_handover_cache_policy.py:239) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `LastRequestEpochByPidTests.test_the_newest_request_of_the_two_candidate_files_wins` (py/tests/test_handover_cache_policy.py:245) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `LastRequestEpochByPidTests.test_a_missing_candidate_file_falls_back_to_the_other_one` (py/tests/test_handover_cache_policy.py:255) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `LastRequestEpochByPidTests.test_a_sibling_session_in_the_same_directory_is_never_picked_up` (py/tests/test_handover_cache_policy.py:260) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `LastRequestEpochByPidTests.test_empty_conversation_file_is_unknown` (py/tests/test_handover_cache_policy.py:266) | `parity_transcript` `istek-claude` (`session_file_sid` G1: iki tarafta sahte); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `SessionFileSidTests.test_verified_file_gives_the_session_id` (py/tests/test_handover_cache_policy.py:177) | `parity.rs::parity_resume` `devam-kayit-tamam` (Rust imzası `i64`: metin pid tip düzeyinde yok) | TAŞINDI |
+| `SessionFileSidTests.test_a_reused_pid_is_rejected_by_proc_start` (py/tests/test_handover_cache_policy.py:182) | `parity.rs::parity_resume` `devam-stat-baska` `devam-kayit-start-` | TAŞINDI |
+| `SessionFileSidTests.test_unverifiable_or_inconsistent_files_are_not_trusted` (py/tests/test_handover_cache_policy.py:186) | `parity.rs::parity_resume` `devam-kayit-` | TAŞINDI |
+| `SessionFileSidTests.test_dead_process_and_missing_file_and_no_pid` (py/tests/test_handover_cache_policy.py:202) | `parity.rs::parity_resume` `devam-stat-yok` `devam-kayit-dosya-yok` (metin pid `"abc"` tip düzeyinde yok) | TAŞINDI |
+| `LastRequestEpochByPidTests.test_fresh_session_without_cmdline_sid_is_found_through_its_pid` (py/tests/test_handover_cache_policy.py:234) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_without_a_pid_the_sidless_session_stays_unknown` (py/tests/test_handover_cache_policy.py:239) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_the_newest_request_of_the_two_candidate_files_wins` (py/tests/test_handover_cache_policy.py:245) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_a_missing_candidate_file_falls_back_to_the_other_one` (py/tests/test_handover_cache_policy.py:255) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_a_sibling_session_in_the_same_directory_is_never_picked_up` (py/tests/test_handover_cache_policy.py:260) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `LastRequestEpochByPidTests.test_empty_conversation_file_is_unknown` (py/tests/test_handover_cache_policy.py:266) | `parity_transcript` `istek-claude` (`session_file_sid` gerçek; kayıt dosyası + sahte `/proc`); `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
 | `PromptCacheIsWarmTests.test_margin_is_five_minutes` (py/tests/test_handover_cache_policy.py:288) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_fresh_request_is_warm` (py/tests/test_handover_cache_policy.py:291) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
 | `PromptCacheIsWarmTests.test_boundary_and_older_is_cold` (py/tests/test_handover_cache_policy.py:296) | T4: `handover.prompt_cache_is_warm`; sağlayıcı girdileri G3 | KAPSAM DIŞI |
@@ -1297,9 +1373,9 @@ bu ize yönlendirilmeli.
 | `LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` (py/tests/test_mirror_window.py:360) | T7: pencere yerleşimi | KAPSAM DIŞI |
 | `LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` (py/tests/test_mirror_window.py:365) | T7: pencere yerleşimi | KAPSAM DIŞI |
 | `WebNeedsHoCachedTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:64) | T1: web önbelleği; `needs_ho` rs/proc | KAPSAM DIŞI |
-| `WebNeedsHoCachedTests.test_without_a_sid_or_a_matching_file_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:68) | yok: "cwd'deki en yeni dosya" düşüşü rs/proc'ta bilerek yok | EKSİK(G1) |
+| `WebNeedsHoCachedTests.test_without_a_sid_or_a_matching_file_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:68) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `web._needs_ho_cached` bağlaması T1 | TAŞINDI |
 | `HandoverBatchTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:89) | T4: devir toplu akışı; `needs_ho` rs/proc | KAPSAM DIŞI |
-| `HandoverBatchTests.test_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:93) | yok: "cwd'deki en yeni dosya" düşüşü rs/proc'ta bilerek yok | EKSİK(G1) |
+| `HandoverBatchTests.test_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:93) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `handover_faz1` bağlaması T4 | TAŞINDI |
 | `MatchesProcTest.test_repl_is_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:15) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
 | `MatchesProcTest.test_oneshot_and_reviewer_are_not_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:18) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
 | `IoAskLiveNameTest.test_rejects_live_same_name` (py/tests/test_proc07_io_ucli_not_fleet.py:28) | T7: `/api/io` ucu | KAPSAM DIŞI |
@@ -1509,7 +1585,7 @@ bu ize yönlendirilmeli.
 | `IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` (py/tests/test_steward_core_a.py:1389) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` (py/tests/test_steward_core_a.py:1405) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `MergedAnswersTest.test_answer_waits_while_subagent_active` (py/tests/test_steward_core_a.py:1413) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `MergedAnswersTest.test_subagent_active_for_reads_mtime` (py/tests/test_steward_core_a.py:1421) | yok: transkript yolu + mtime; rs-stew.md EKSİK | EKSİK(G1) |
+| `MergedAnswersTest.test_subagent_active_for_reads_mtime` (py/tests/test_steward_core_a.py:1421) | `web_steward.subagent_active_for` (T10, rs/stew); crate yalnız transkript yolunu verir: `parity.rs::parity_resume` `devam-claude-` (`jsonl`) | KAPSAM DIŞI |
 | `MergedAnswersTest.test_compact_answer_directive_drops_preamble` (py/tests/test_steward_core_a.py:1438) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
 | `MergedAnswersTest.test_directive_contains_all_answers` (py/tests/test_steward_core_a.py:1454) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
 | `ScanTicksTest.test_leading_code_tick_in_question_kept` (py/tests/test_steward_core_b.py:56) | rs/stew: rs-stew.md: markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
@@ -1654,9 +1730,9 @@ bu ize yönlendirilmeli.
 | `WakeGateTest.test_first_send_never_gated_then_repeat_dry_logs_but_sends_act_skips` (py/tests/test_steward_http.py:836) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `WakeGateTest.test_gate_is_skipped_when_the_directive_just_opened_the_session` (py/tests/test_steward_http.py:847) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `WakeGateTest.test_other_text_other_reason_answer_off_and_window` (py/tests/test_steward_http.py:869) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors | KAPSAM DIŞI |
-| `BigResumeTest.test_oversized_detection` (py/tests/test_steward_http.py:904) | yok: resume çözümü; karar T10, rs-stew.md EKSİK | EKSİK(G1) |
-| `BigResumeTest.test_small_unknown_other_cli_and_off_keep_resume` (py/tests/test_steward_http.py:908) | yok: resume çözümü; karar T10, rs-stew.md EKSİK | EKSİK(G1) |
-| `BigResumeTest.test_ensure_running_starts_fresh_for_big_context` (py/tests/test_steward_http.py:919) | yok: resume çözümü; karar T10, rs-stew.md EKSİK | EKSİK(G1) |
+| `BigResumeTest.test_oversized_detection` (py/tests/test_steward_http.py:904) | `web_steward._oversized_resume`/`_ensure_running` politikası (T10, karar rs/stew); kullandığı `resolve_resume_id`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `BigResumeTest.test_small_unknown_other_cli_and_off_keep_resume` (py/tests/test_steward_http.py:908) | `web_steward._oversized_resume`/`_ensure_running` politikası (T10, karar rs/stew); kullandığı `resolve_resume_id`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `BigResumeTest.test_ensure_running_starts_fresh_for_big_context` (py/tests/test_steward_http.py:919) | `web_steward._oversized_resume`/`_ensure_running` politikası (T10, karar rs/stew); kullandığı `resolve_resume_id`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
 | `WakeCapPanicTest.test_daily_cap_dry_and_act_and_reset_on_answer` (py/tests/test_steward_http.py:935) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `WakeCapPanicTest.test_panic_flag_forces_observe_and_blocks_brain_directive` (py/tests/test_steward_http.py:952) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `BlockedEscalationTest.test_blocked_waits_four_hours_routine_thirty_minutes` (py/tests/test_steward_http.py:982) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
@@ -1680,19 +1756,19 @@ bu ize yönlendirilmeli.
 | `BoxTextTest.test_turn_output_after_prompt_is_empty` (py/tests/test_steward_ucli_send.py:131) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `BoxTextTest.test_last_prompt_line_wins` (py/tests/test_steward_ucli_send.py:134) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `BoxTextTest.test_no_prompt` (py/tests/test_steward_ucli_send.py:137) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ClaudeSidForStoppedSessionTests.test_own_conversation_wins_over_a_newer_sibling_stub` (py/tests/test_stopped_session_chat.py:80) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_each_sibling_resolves_to_its_own_file` (py/tests/test_stopped_session_chat.py:86) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_same_title_prefers_the_real_conversation_over_a_newer_stub` (py/tests/test_stopped_session_chat.py:95) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_same_title_picks_the_newest_real_conversation_even_when_it_is_the_smaller_one` (py/tests/test_stopped_session_chat.py:101) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_all_stubs_returns_the_newest_one` (py/tests/test_stopped_session_chat.py:107) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_a_large_file_counts_as_real_without_being_scanned` (py/tests/test_stopped_session_chat.py:112) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_no_title_match_returns_none` (py/tests/test_stopped_session_chat.py:119) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_title_is_an_exact_match_not_a_prefix` (py/tests/test_stopped_session_chat.py:123) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_untitled_files_never_match` (py/tests/test_stopped_session_chat.py:127) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_missing_project_dir_and_empty_name_return_none` (py/tests/test_stopped_session_chat.py:131) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_file_recording_a_different_cwd_is_ignored` (py/tests/test_stopped_session_chat.py:136) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_finds_a_file_older_than_the_resume_scan_limit` (py/tests/test_stopped_session_chat.py:141) | yok | EKSİK(G1) |
-| `ClaudeSidForStoppedSessionTests.test_unchanged_files_are_not_reread_but_changed_ones_are` (py/tests/test_stopped_session_chat.py:149) | yok | EKSİK(G1) |
+| `ClaudeSidForStoppedSessionTests.test_own_conversation_wins_over_a_newer_sibling_stub` (py/tests/test_stopped_session_chat.py:80) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_each_sibling_resolves_to_its_own_file` (py/tests/test_stopped_session_chat.py:86) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_same_title_prefers_the_real_conversation_over_a_newer_stub` (py/tests/test_stopped_session_chat.py:95) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_same_title_picks_the_newest_real_conversation_even_when_it_is_the_smaller_one` (py/tests/test_stopped_session_chat.py:101) | `parity.rs::parity_resume` `devam-claude-yeni-gercek` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_all_stubs_returns_the_newest_one` (py/tests/test_stopped_session_chat.py:107) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_a_large_file_counts_as_real_without_being_scanned` (py/tests/test_stopped_session_chat.py:112) | `tests/resume.rs::a_large_file_counts_as_real_without_being_scanned`; `parity.rs::parity_resume` `devam-claude-stub-` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_no_title_match_returns_none` (py/tests/test_stopped_session_chat.py:119) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_title_is_an_exact_match_not_a_prefix` (py/tests/test_stopped_session_chat.py:123) | `parity.rs::parity_resume` `devam-claude-yeni-gercek` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_untitled_files_never_match` (py/tests/test_stopped_session_chat.py:127) | `parity.rs::parity_resume` `devam-claude-kardes` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_missing_project_dir_and_empty_name_return_none` (py/tests/test_stopped_session_chat.py:131) | `parity.rs::parity_resume` `devam-claude-dizin-yok` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_file_recording_a_different_cwd_is_ignored` (py/tests/test_stopped_session_chat.py:136) | `parity.rs::parity_resume` `devam-claude-cwd` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_finds_a_file_older_than_the_resume_scan_limit` (py/tests/test_stopped_session_chat.py:141) | `parity.rs::parity_resume` `devam-claude-sinir-` | TAŞINDI |
+| `ClaudeSidForStoppedSessionTests.test_unchanged_files_are_not_reread_but_changed_ones_are` (py/tests/test_stopped_session_chat.py:149) | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
 | `TermChatWiringTests.test_stopped_session_shows_its_own_full_history_not_the_newest_stub` (py/tests/test_stopped_session_chat.py:177) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
 | `TermChatWiringTests.test_stopped_session_last_exchange_is_its_own` (py/tests/test_stopped_session_chat.py:182) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
 | `TermChatWiringTests.test_incremental_since_still_works_on_the_resolved_conversation` (py/tests/test_stopped_session_chat.py:186) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
@@ -1700,9 +1776,9 @@ bu ize yönlendirilmeli.
 | `TermChatWiringTests.test_live_session_never_consults_the_name_lookup` (py/tests/test_stopped_session_chat.py:200) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
 | `TermChatWiringTests.test_live_session_without_sid_is_left_alone_too` (py/tests/test_stopped_session_chat.py:207) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
 | `TermChatWiringTests.test_unsupported_cli_still_reports_supported_false` (py/tests/test_stopped_session_chat.py:214) | `web._term_chat` bağlaması (T1): `pid=0` için `sid_for_stopped_session` (G1), `since` sayfalaması, `supported` alanı. Altındaki okuyucular `parity_chat` `chat-claude-`, `shell-` | KAPSAM DIŞI |
-| `OtherProvidersTests.test_default_providers_do_not_guess` (py/tests/test_stopped_session_chat.py:220) | yok | EKSİK(G1) |
-| `OtherProvidersTests.test_agy_uses_the_learned_name_to_sid_map_when_the_db_exists` (py/tests/test_stopped_session_chat.py:224) | yok | EKSİK(G1) |
-| `OtherProvidersTests.test_ucli_sid_is_the_session_name` (py/tests/test_stopped_session_chat.py:237) | yok | EKSİK(G1) |
+| `OtherProvidersTests.test_default_providers_do_not_guess` (py/tests/test_stopped_session_chat.py:220) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `OtherProvidersTests.test_agy_uses_the_learned_name_to_sid_map_when_the_db_exists` (py/tests/test_stopped_session_chat.py:224) | `parity.rs::parity_resume` `devam-agy-ogrenilen-` (metin olmayan değer: `devam-sapma-agy-kimlik-sayi` resume tarafı) | TAŞINDI |
+| `OtherProvidersTests.test_ucli_sid_is_the_session_name` (py/tests/test_stopped_session_chat.py:237) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `UcliChatTests.test_schema_header_row_is_skipped` (py/tests/test_stopped_session_chat.py:258) | `parity.rs::parity_chat` `ucli-baslik` | TAŞINDI |
 | `UcliChatTests.test_header_only_file_means_no_messages_yet_not_unsupported` (py/tests/test_stopped_session_chat.py:263) | `parity.rs::parity_chat` `ucli-yalniz-baslik` | TAŞINDI |
 | `UcliChatTests.test_old_files_without_a_header_still_parse` (py/tests/test_stopped_session_chat.py:267) | `parity.rs::parity_chat` `ucli-basliksiz` | TAŞINDI |
@@ -2243,12 +2319,12 @@ bu ize yönlendirilmeli.
 | `SelfVerifyTest.test_evren_verifier_waits_for_running_evren_review_and_has_no_allow_flags` (py/tests/test_review_self_verify.py:220) | T8: reviewer doğrulama koşucusu | KAPSAM DIŞI |
 | `SelfVerifyTest.test_missing_model_is_busy_not_marked` (py/tests/test_review_self_verify.py:240) | T8: reviewer doğrulama koşucusu | KAPSAM DIŞI |
 | `SelfVerifyTest.test_config_accepts_provider_and_single_model` (py/tests/test_review_self_verify.py:246) | T8: reviewer doğrulama koşucusu | KAPSAM DIŞI |
-| `ResumeLacksHoTest.test_work_without_ho_is_detected` (py/tests/test_steward_ho_on_open.py:51) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
-| `ResumeLacksHoTest.test_ho_done_is_clean` (py/tests/test_steward_ho_on_open.py:55) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
-| `ResumeLacksHoTest.test_new_request_after_ho_needs_ho_again` (py/tests/test_steward_ho_on_open.py:58) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
-| `ResumeLacksHoTest.test_empty_conversation_is_clean` (py/tests/test_steward_ho_on_open.py:62) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
-| `ResumeLacksHoTest.test_off_and_non_claude_and_ucli_record` (py/tests/test_steward_ho_on_open.py:65) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
-| `ResumeLacksHoTest.test_missing_jsonl` (py/tests/test_steward_ho_on_open.py:71) | yok: resume çözümü ve transkript yolu; karar T10 | EKSİK(G1) |
+| `ResumeLacksHoTest.test_work_without_ho_is_detected` (py/tests/test_steward_ho_on_open.py:51) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `ResumeLacksHoTest.test_ho_done_is_clean` (py/tests/test_steward_ho_on_open.py:55) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `ResumeLacksHoTest.test_new_request_after_ho_needs_ho_again` (py/tests/test_steward_ho_on_open.py:58) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `ResumeLacksHoTest.test_empty_conversation_is_clean` (py/tests/test_steward_ho_on_open.py:62) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `ResumeLacksHoTest.test_off_and_non_claude_and_ucli_record` (py/tests/test_steward_ho_on_open.py:65) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
+| `ResumeLacksHoTest.test_missing_jsonl` (py/tests/test_steward_ho_on_open.py:71) | `web_steward._resume_lacks_ho` + `needs_ho` (T10); kullandığı `resolve_resume_id`/`jsonl_path_for`: `parity.rs::parity_resume` `devam-claude-` | KAPSAM DIŞI |
 | `EnsureRunningHoOnOpenTest.test_lacking_ho_resumes_then_hands_over` (py/tests/test_steward_ho_on_open.py:102) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `EnsureRunningHoOnOpenTest.test_clean_open_no_handover` (py/tests/test_steward_ho_on_open.py:110) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `EnsureRunningHoOnOpenTest.test_handover_failure_no_pending` (py/tests/test_steward_ho_on_open.py:116) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
