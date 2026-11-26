@@ -8607,16 +8607,13 @@ class RemoteReviewDriver:
         return _remote_rows(self.host)
 
     def _project_cwd_remote(self, rows: List[Dict[str, Any]]) -> str:
-        """Projenin uzak klasörü; seçilen adda iki ÇALIŞAN satır varsa belirsiz: "" (başka satıra düşülmez, TBD#380)."""
-        if len(_remote_named_rows(rows, self.project)) > 1:
-            return ""
-        for r in rows:
-            if r.get("name") == self.project and r.get("cwd"):
-                return str(r["cwd"])
-        for r in rows:
-            if r.get("cwd") and (r.get("blueprint") == self.project or str(r.get("name") or "").startswith(self.project)):
-                return "" if len(_remote_named_rows(rows, str(r.get("name") or ""))) > 1 else str(r["cwd"])
-        return ""
+        """Projenin uzak klasörü: tam adlı satırlar, yoksa projenin kendi oturumları (blueprint ya da `sw.derived_of`;
+        salt ön ek DEĞİL). Belirsizlikte "" (başka satıra düşülmez, TBD#380/#390)."""
+        exact = [r for r in rows if r.get("name") == self.project]
+        if any(r.get("running") or r.get("cwd") for r in exact):
+            return _remote_folder_of(exact)
+        return _remote_folder_of([r for r in rows if r.get("blueprint") == self.project
+                                  or sw.derived_of(str(r.get("name") or ""), self.project)])
 
     def _ambiguous(self, rows: Optional[List[Dict[str, Any]]] = None) -> str:
         """Review oturumu adıyla iki çalışan satır varsa red metni (hiçbir eylem gitmez), yoksa ""."""

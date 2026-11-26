@@ -322,5 +322,32 @@ class TestRemoteRefRowChoice(_Resolve):
         self.assertEqual(ws._remote_ref(HOST, "oiso", "default"), ("", ""))
 
 
+class TestReviewFolderFallback(_Resolve):
+    """TBD#390/2: `_project_cwd_remote` yedek yolu yalniz projenin kendi oturumlarini sayar, belirsizde "" doner."""
+
+    def folder(self, *rows):
+        self.fake.set(HOST, list(rows))
+        drv = ws.RemoteReviewDriver("oiso", HOST)
+        return drv._project_cwd_remote(drv._rows())
+
+    def test_prefix_of_another_project_is_not_matched(self):
+        self.assertEqual(self.folder(_row("oisox", cwd="/srv/x")), "")
+
+    def test_two_dated_sessions_with_different_names_are_refused(self):
+        self.assertEqual(self.folder(_row("oiso20261017", cwd="/srv/a"), _row("oiso20261018", cwd="/srv/b")), "")
+
+    def test_running_session_wins_over_a_stopped_one(self):
+        self.assertEqual(self.folder(_row("oiso20261017", cwd="/srv/eski", running=False),
+                                     _row("oiso20261018", cwd="/srv/yeni")), "/srv/yeni")
+
+    def test_stopped_sessions_need_a_common_folder(self):
+        a, b = _row("oiso20261017", cwd="/srv/a", running=False), _row("oiso20261018", cwd="/srv/b", running=False)
+        self.assertEqual(self.folder(a, b), "")
+        self.assertEqual(self.folder(a, dict(b, cwd="/srv/a")), "/srv/a")
+
+    def test_exact_name_prefers_the_running_row(self):
+        self.assertEqual(self.folder(_row("oiso", cwd="/srv/eski", running=False), _row("oiso", cwd="/srv/yeni")), "/srv/yeni")
+
+
 if __name__ == "__main__":
     unittest.main()
