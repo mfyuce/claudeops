@@ -5276,16 +5276,24 @@ _OPEN_LEAD_RE = re.compile(r"^[\s\"'`*_\-\[(]*(?:a[çc][ıi]ls[ıi]n|a[çc]|ba[�
 _OPEN_ANY_RE = re.compile(r"\b(?:a[çc][ıi]ls[ıi]n|a[çc]|ba[şs]la\w*|evet|planned|yes|start)\b", re.IGNORECASE)
 _HOLD_ANY_RE = re.compile(r"kals[ıi]n|bekle|yapma|istenmesin|gelene\s+(?:dek|kadar)|\btbd\b|hay[ıi]r|a[çc]ma|\bsonra\b|\bpaused\b|\bdur\b|olmas[ıi]n|gerek\s+yok|\bno\b", re.IGNORECASE)
 _OPT_NUM_RE = re.compile(r"^\s*\d+\s*[).:\-]\s*")
+# olumsuzlanmış açma isteği ("başlamasın", "başlatma", "devam etme", "start etme", "don't start"); TBD#387/1
+_NEG_OPEN = (r"(?:\bba[şs]la(?:t[ıi]l|t|n)?m(?:a(?:s[ıi]n(?:lar)?|y[ıi]n(?:[ıi]z)?|yal[ıi]m|mal[ıi]\w*|yacak\w*|sa)?|[ıi]yor\w*)\b"
+             r"|\b(?:devam|start)\s+(?:et(?:tir)?|edil|ver(?:il)?)m(?:e(?:sin(?:ler)?|yin(?:iz)?|yelim|meli\w*|yecek\w*|se)?|[iı]yor\w*)\b"
+             r"|\b(?:don['’]?t|do\s+not|never)\s+(?:(?:open\s+or\s+)?(?:re)?start|resume|continue)\b)")
+_NEG_OPEN_RE = re.compile(_NEG_OPEN, re.IGNORECASE)
+_NEG_OPEN_LEAD_RE = re.compile(r"^[\s\"'`*_\-\[(]*(?:(?:evet|ok|yes|tamam)\b[\s,;:.!]*)?" + _NEG_OPEN, re.IGNORECASE)
 
 
 def is_open_answer(text: str) -> bool:
     """22 Kas (esneklikppr/genetarihppr yeniden açıldı): paused/done projede sahip cevabı YALNIZ açıkça olumlu iş vericiyse
     ("Aç", "evet", "başla", "planned", "devam") faz açar. Numaralı seçenek öneki ("2) ") atılır. Baştaki olumlu sözcük kazanır;
     yoksa herhangi bir tutma kalıbı ("paused kalsın", "TBD'de kalsın", "yapma", "yuhem gelene dek", "sonra") TUTAR; hiçbiri yoksa
-    olumlu sözcük aranır; belirsiz cevap AÇMAZ (False). SAF."""
+    olumlu sözcük aranır; belirsiz cevap AÇMAZ (False). Olumsuzlanmış istek ("başlamasın", "devam etme") baştaysa AÇMAZ;
+    sonradaysa olumlu sözcük sayılmaz ("Aç, eski oturuma devam etme" açar). SAF."""
     t = _OPT_NUM_RE.sub("", " ".join(str(text or "").split()))
-    if not t:
+    if not t or _NEG_OPEN_LEAD_RE.search(t):
         return False
+    t = _NEG_OPEN_RE.sub(" ", t)
     if _OPEN_LEAD_RE.search(t):
         return True
     if _HOLD_ANY_RE.search(t):

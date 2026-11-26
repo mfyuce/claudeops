@@ -15,7 +15,7 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
 - `parity/map.py`: aşağıdaki tabloyu `ast` ile üretir; EKSİK satır varsa `--check` kırmızı.
 - Altın tick: `py/tests/steward_golden_tick.json`.
 
-## Durum ve devir (26 Kas 2026 akşam): BİRLEŞTİRMEYE HAZIR DEĞİL
+## Durum ve devir (27 Kas 2026): BİRLEŞTİRMEYE HAZIR DEĞİL
 
 Taşınan: `identity.rs`, `markers.rs` (`fa5cecc`), `cards.rs`, `prompts.rs` (`c9e1d80`), grup 1 (soru/fikir):
 `questions.rs`, `store.rs`, `notify.rs`, `inserts.rs`, `logdedup.rs` (+ `cards.rs`de `make_card`, `mark_card_stale`,
@@ -167,8 +167,8 @@ Grup 3 (aynen taşınan):
 
 - `is_open_answer`: baştaki olumlu sözcük deseni olumsuz çekimi de yakalar: "Başlamasın", "başlama", "devam etme",
   "start etme" -> `True` (paused/done proje AÇILIR). "ok, ama bekle" de `True` (baştaki olumlu sözcük kazanır; bu
-  belgelenen davranış). Bu madde TBD#387/1'dir: `main`de `e33208ec` ile yalnız
-  Python'da düzeltildi; bu dalda henüz yok, `main` alınınca Rust (`is_open_answer`) eşitlenmeli.
+  belgelenen davranış). Python düzeltildi: `e33208ec` (TBD#387/1, `main`den alındı; Rust `is_open_answer` eşitlendi):
+  olumsuzlanmış istek baştaysa açmaz, sonradaysa olumlu sözcük sayılmaz.
 
 Grup 3-4, TBD#387/2-6:
 
@@ -246,13 +246,15 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
   (`UpsertContext::expanduser`); `log_dedup` içerik özetini kendi kanonik biçiminden alır (özet bellek içidir, dışarı çıkmaz);
   `casefold`/`isdigit` tablosu kaydın Python sürümünden (3.10, Unicode 13), diğer karakter sınıfları Rust'ın daha yeni
   Unicode'undan; 4300 haneden uzun sayı cevabında Python `int` istisnası taklit edilmez.
+- `serde_json/preserve_order` cargo birleştirmesiyle tüm çalışma alanında açılır; `cops-parity` `canonical` bu yüzden nesne
+  anahtarlarını sıralar (27 Kas: birleşik ağaçta `cargo test --workspace` 494/0, clippy temiz).
 - `fixtures/hand` (`python3 -I parity/hand_cases.py`): kaydın kapsamadığı dallar için elle yazılmış girdiler, beklenen değer Python'dan.
 
 ## Eşleme tablosu
 
 <!-- MAP:BEGIN (parity/map.py üretir) -->
 
-### Python öğeleri (561 satır)
+### Python öğeleri (564 satır)
 
 | Python adı (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
@@ -751,74 +753,77 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_OPEN_ANY_RE` (steward.py:5276) | `consts_gen::P_OPEN_ANY_RE` | generated::generated_files_are_current | tamam |
 | `_HOLD_ANY_RE` (steward.py:5277) | `consts_gen::P_HOLD_ANY_RE` | generated::generated_files_are_current | tamam |
 | `_OPT_NUM_RE` (steward.py:5278) | `consts_gen::P_OPT_NUM_RE` | generated::generated_files_are_current | tamam |
-| `is_open_answer` (steward.py:5281) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
-| `_HELD_ANSWER_PREFIX` (steward.py:5296) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
-| `_held_instruction_item` (steward.py:5299) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
-| `CARD_NOTE_MAX_CHARS` (steward.py:5312) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
-| `expired_handover_note` (steward.py:5315) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
-| `is_conditional_note` (steward.py:5328) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
-| `_FABLE_POLISH_RE` (steward.py:5333) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
-| `is_fable_polish` (steward.py:5336) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
-| `next_work_hint` (steward.py:5341) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
-| `_TODO_ITEM_RE` (steward.py:5376) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_WORD_RE` (steward.py:5377) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_STOPWORDS` (steward.py:5378) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MIN_WORDS` (steward.py:5379) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_CLOSED_MIN` (steward.py:5380) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MARGIN` (steward.py:5381) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_DONE_MIN` (steward.py:5382) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
-| `_DONE_BULLET_RE` (steward.py:5383) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
-| `_note_words` (steward.py:5386) | `idletext::note_words` | idletext::p_note_words | tamam |
-| `stale_next_note` (steward.py:5390) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
-| `without_stale_note` (steward.py:5422) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
-| `_OWNER_WAIT_PHRASES` (steward.py:5438) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
-| `_NEXT_LINE_RE` (steward.py:5441) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NONE_RE` (steward.py:5442) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
-| `_last_next_line` (steward.py:5445) | `idletext::last_next_line` | idletext::p_last_next_line | tamam |
-| `next_line` (steward.py:5455) | `idletext::next_line` | idletext::next_line_vectors | tamam |
-| `_STATED_NEXT_RE` (steward.py:5466) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
-| `stated_next_work` (steward.py:5472) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
-| `owner_wait` (steward.py:5491) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
-| `_done_at_line_end` (steward.py:5497) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
-| `idle_finish_marker` (steward.py:5503) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
-| `plan_ucli_idle` (steward.py:5534) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
-| `_ASK_MARKERS` (steward.py:5630) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
-| `_forced_open_nudge` (steward.py:5633) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
-| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5646) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
-| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5647) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `plan_claude_idle` (steward.py:5652) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
-| `_WHY_TR` (steward.py:5823) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
-| `_WHY_EN` (steward.py:5842) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
-| `_START_BLOCK_TR` (steward.py:5860) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
-| `_why` (steward.py:5865) | `explain::why` | explain::p_why | tamam |
-| `explain_idle` (steward.py:5871) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
-| `explain_idle_all` (steward.py:5985) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:6012) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
-| `daily_path` (steward.py:6063) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6067) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `DRY_KIPS` (steward.py:6086) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
-| `DRY_REPORT_HOURS` (steward.py:6088) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `dry_report` (steward.py:6091) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `dry_report_text` (steward.py:6121) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
-| `dry_ask_due` (steward.py:6133) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
-| `summary_due` (steward.py:6144) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6151) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `_NO_LOG_DAYS` (steward.py:6175) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
-| `_SUMMARY_TXT` (steward.py:6178) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6202) | `report::names_line` | report::p_names | tamam |
-| `_kind_counts` (steward.py:6207) | `report::kind_counts` | report::p_kind_counts | tamam |
-| `_ask_gate_lines` (steward.py:6212) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
-| `daily_summary` (steward.py:6231) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6315) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `write_daily` (steward.py:6333) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6340) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
-| `rfh_marker_in` (needs_ho.py:135) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
+| `_NEG_OPEN` (steward.py:5280) | `consts_gen::P_NEG_OPEN` | generated::generated_files_are_current | tamam |
+| `_NEG_OPEN_RE` (steward.py:5283) | `consts_gen::P_NEG_OPEN_RE` | generated::generated_files_are_current | tamam |
+| `_NEG_OPEN_LEAD_RE` (steward.py:5284) | `consts_gen::P_NEG_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
+| `is_open_answer` (steward.py:5287) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
+| `_HELD_ANSWER_PREFIX` (steward.py:5304) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
+| `_held_instruction_item` (steward.py:5307) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
+| `CARD_NOTE_MAX_CHARS` (steward.py:5320) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
+| `expired_handover_note` (steward.py:5323) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
+| `is_conditional_note` (steward.py:5336) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
+| `_FABLE_POLISH_RE` (steward.py:5341) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
+| `is_fable_polish` (steward.py:5344) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
+| `next_work_hint` (steward.py:5349) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
+| `_TODO_ITEM_RE` (steward.py:5384) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_WORD_RE` (steward.py:5385) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_STOPWORDS` (steward.py:5386) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MIN_WORDS` (steward.py:5387) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_CLOSED_MIN` (steward.py:5388) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MARGIN` (steward.py:5389) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_DONE_MIN` (steward.py:5390) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
+| `_DONE_BULLET_RE` (steward.py:5391) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
+| `_note_words` (steward.py:5394) | `idletext::note_words` | idletext::p_note_words | tamam |
+| `stale_next_note` (steward.py:5398) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
+| `without_stale_note` (steward.py:5430) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
+| `_OWNER_WAIT_PHRASES` (steward.py:5446) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
+| `_NEXT_LINE_RE` (steward.py:5449) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NONE_RE` (steward.py:5450) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
+| `_last_next_line` (steward.py:5453) | `idletext::last_next_line` | idletext::p_last_next_line | tamam |
+| `next_line` (steward.py:5463) | `idletext::next_line` | idletext::next_line_vectors | tamam |
+| `_STATED_NEXT_RE` (steward.py:5474) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
+| `stated_next_work` (steward.py:5480) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
+| `owner_wait` (steward.py:5499) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
+| `_done_at_line_end` (steward.py:5505) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
+| `idle_finish_marker` (steward.py:5511) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
+| `plan_ucli_idle` (steward.py:5542) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
+| `_ASK_MARKERS` (steward.py:5638) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
+| `_forced_open_nudge` (steward.py:5641) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
+| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5654) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
+| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5655) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `plan_claude_idle` (steward.py:5660) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
+| `_WHY_TR` (steward.py:5831) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
+| `_WHY_EN` (steward.py:5850) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
+| `_START_BLOCK_TR` (steward.py:5868) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
+| `_why` (steward.py:5873) | `explain::why` | explain::p_why | tamam |
+| `explain_idle` (steward.py:5879) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
+| `explain_idle_all` (steward.py:5993) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
+| `observe_filter` (steward.py:6020) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:6071) | `report::daily_path` | report::daily_path_vectors | tamam |
+| `log_entries_for_date` (steward.py:6075) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `DRY_KIPS` (steward.py:6094) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
+| `DRY_REPORT_HOURS` (steward.py:6096) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
+| `dry_report` (steward.py:6099) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `dry_report_text` (steward.py:6129) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6141) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6152) | `report::summary_due` | report::summary_due_vectors | tamam |
+| `missed_summary_dates` (steward.py:6159) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `_NO_LOG_DAYS` (steward.py:6183) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
+| `_SUMMARY_TXT` (steward.py:6186) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
+| `_names` (steward.py:6210) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6215) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6220) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6239) | `report::daily_summary` | report::daily_summary_vectors | tamam |
+| `summary_text` (steward.py:6323) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `write_daily` (steward.py:6341) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summarize_projects` (steward.py:6348) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
+| `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1853 satır)
+### Python testleri (1856 satır)
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1786,11 +1791,11 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_http.HttpTest.test_ask_with_options_notifies_with_link_once` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::normalize_host_edges (+34) |
 | `test_steward_http.HttpTest.test_question_page_auth_and_answer_flow` | identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+25) |
 | `test_steward_http.HttpTest.test_register_creates_folder_goal_and_roster` | cards::card_one_liner_vectors, cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+31) |
-| `test_steward_http.HttpTest.test_tick_applies_actions_with_mocked_views` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, gates::panic_path_is_under_default_root (+62) |
+| `test_steward_http.HttpTest.test_tick_applies_actions_with_mocked_views` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, gates::panic_path_is_under_default_root (+65) |
 | `test_steward_http.HttpTest.test_refresh_card_writes_summary_and_logs` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::p_short, cards::p_str_list (+31) |
 | `test_steward_http.HttpTest.test_refresh_card_failure_keeps_old_card_or_writes_raw` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::p_short, cards::p_str_list (+32) |
 | `test_steward_http.HttpTest.test_refresh_due_cards_rules` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_goal_from_docs (+34) |
-| `test_steward_http.HttpTest.test_tick_runs_card_step_unless_disabled` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short (+63) |
+| `test_steward_http.HttpTest.test_tick_runs_card_step_unless_disabled` | cards::build_card_prompt_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short (+65) |
 | `test_steward_http.HttpTest.test_respawn_marks_card_stale` | cards::card_path_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors (+31) |
 | `test_steward_http.HttpTest.test_cards_in_context_projects_and_api` | cards::build_card_prompt_vectors, cards::card_one_liner_vectors, cards::card_path_vectors, cards::card_refresh_reason_vectors (+45) |
 | `test_steward_http.HttpTest.test_observe_tick_records_would_and_touches_nothing` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why, gates::panic_path_is_under_default_root (+55) |
@@ -2440,6 +2445,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `test_steward_tbd382_small.OwnerClassZeroNowTest.test_none_reads_the_clock` | gates::steward_ask_owner_class |
 | `test_steward_tbd382_small.ReviewItemsLanguageTest.test_english_panel` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::p_is_no_work_value (+12) |
 | `test_steward_tbd382_small.ReviewItemsLanguageTest.test_turkish_panel_unchanged` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, markers::p_is_no_work_value (+12) |
+| `test_steward_tbd387.OpenAnswerNegationTest.test_negated_answers_are_not_open` | idletext::is_open_answer_vectors |
+| `test_steward_tbd387.OpenAnswerNegationTest.test_positive_answers_still_open` | idletext::is_open_answer_vectors |
+| `test_steward_tbd387.OpenAnswerNegationTest.test_plan_tick_does_not_reopen_on_negated_answer` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, idletext::is_negative_answer_vectors (+12) |
 | `test_steward_tbd387_small.NoWorkValuesTest.test_next_line` | idletext::next_line_vectors, idletext::p_last_next_line, idletext::stated_next_work_vectors, markers::p_is_no_work_value |
 | `test_steward_tbd387_small.NoWorkValuesTest.test_finish_marker_not_hidden` | idletext::idle_finish_marker_vectors, idletext::next_line_vectors, idletext::p_last_next_line, markers::needs_ho_rfh_marker_in (+2) |
 | `test_steward_tbd387_small.NoWorkValuesTest.test_real_work_stays` | idletext::next_line_vectors, idletext::p_last_next_line, markers::p_is_no_work_value, tour::clip_words_vectors |

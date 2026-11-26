@@ -4401,6 +4401,62 @@
    "query": ""
   },
   {
+   "body": "{\"base\": \" a \", \"name\": \"benim\", \"host\": \"h\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "h",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/new-chat",
+   "query": ""
+  },
+  {
+   "body": "{\"name\": \"n\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/new-chat",
+   "query": "base=q&name=n"
+  },
+  {
+   "body": "{\"base\": \"a\"}",
+   "expect": [
+    {
+     "cwd": "",
+     "host": "qh",
+     "kind": "session",
+     "name": "a",
+     "steward": ""
+    }
+   ],
+   "path": "/api/new-chat",
+   "query": "host=qh"
+  },
+  {
+   "body": null,
+   "expect": [
+    {
+     "cwd": "",
+     "host": "",
+     "kind": "global",
+     "name": "",
+     "steward": ""
+    }
+   ],
+   "path": "/api/new-chat",
+   "query": ""
+  },
+  {
    "body": "{\"participants\": [{\"host\": \"h\", \"name\": \"a\"}, {\"name\": \"b\"}, 5, \"c\", {\"host\": \"h\", \"name\": \"a\"}]}",
    "expect": [
     {
@@ -4709,6 +4765,12 @@
   {
    "body": "{\"run_key\": 1}",
    "path": "/api/ucli/approvals",
+   "query": "",
+   "rust_rejects": true
+  },
+  {
+   "body": "{\"base\": 5}",
+   "path": "/api/new-chat",
    "query": "",
    "rust_rejects": true
   },

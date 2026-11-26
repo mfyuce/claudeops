@@ -1299,6 +1299,16 @@ for field, bad in itertools.product(("goal", "model", "effort", "last_directive"
     OUT.setdefault("upsert_project", []).append(json.dumps({"args": args, "ret": ret, "now": NOW,
         "after": {"projects": enc(sw.load_projects()), "cleared": False, "auto_label_via": None}}, ensure_ascii=False, separators=(",", ":")))
 
+# TBD#387/1: olumsuzlanmış açma isteği (rastgele üretici KULLANILMAZ: diğer girdiler kaymasın)
+V3871 = ["Başlamasın", "BAŞLAMASIN", "Baslamasin", "başlama", "Başlama.", "başlatma", "başlatmayın", "başlamayın", "başlamayalım",
+         "Başlatılmasın", "başlanmasın", "başlamamalı", "başlamıyoruz", "başlamasa", "henüz başlamasın", "2) Başlamasın", "Evet, başlamasın",
+         "ok, başlatma", "Başlama, evet diyene dek", "devam etme", "Devam etmesin", "devam etmeyelim", "devam edilmesin", "devam ettirme",
+         "bu proje devam etmesin", "start etme", "start verme", "don't start", "Don’t start it yet", "do not start", "never restart",
+         "please do not open or start", "DO NOT START", "başlamak için aç", "başlamalı", "devam etmeli", "Aç, eski oturuma devam etme",
+         "Başla ama deploy'a devam etme", "Sonnet ile aç, eski kuyruğu başlatma", "(başlama)", "**tamam** başlama", "başlamasın\u0301"]
+for t in V3871:
+    add("is_open_answer", {"text": t})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

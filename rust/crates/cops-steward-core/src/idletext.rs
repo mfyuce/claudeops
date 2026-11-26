@@ -22,6 +22,8 @@ static NEG_ANSWER_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEG_ANSWER_RE.as_
 static OPEN_LEAD_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_OPEN_LEAD_RE.as_str()));
 static OPEN_ANY_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_OPEN_ANY_RE.as_str()));
 static HOLD_ANY_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_HOLD_ANY_RE.as_str()));
+static NEG_OPEN_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEG_OPEN_RE.as_str()));
+static NEG_OPEN_LEAD_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEG_OPEN_LEAD_RE.as_str()));
 static OPT_NUM_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_OPT_NUM_RE.as_str()));
 static FABLE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_FABLE_POLISH_RE.as_str()));
 static NOTE_WORD_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NOTE_WORD_RE.as_str()));
@@ -116,14 +118,22 @@ pub fn is_negative_answer(text: &str) -> bool {
     !t.is_empty() && pyc::len(t) <= neg_max() && ci_search(&NEG_ANSWER_RE, t)
 }
 
-/// paused/done projede sahip cevabı açıkça olumlu iş verici mi.
+/// paused/done projede sahip cevabı açıkça olumlu iş verici mi. Olumsuzlanmış istek ("başlamasın") baştaysa açmaz,
+/// sonradaysa olumlu sözcük sayılmaz. Olumsuz desen derlenemez ya da aranamazsa AÇMAZ.
 ///
 /// py: is_open_answer
 pub fn is_open_answer(text: &str) -> bool {
     let all = pyc::collapse_ws(text);
     let skip = OPT_NUM_RE.as_ref().and_then(|r| r.find(&all).ok().flatten()).map_or(0, |m| m.end());
     let t = all.get(skip..).unwrap_or("");
-    !t.is_empty() && (ci_search(&OPEN_LEAD_RE, t) || (!ci_search(&HOLD_ANY_RE, t) && ci_search(&OPEN_ANY_RE, t)))
+    let folded = pyc::ci_input(t);
+    let leads_negative = NEG_OPEN_LEAD_RE.as_ref().is_none_or(|r| !matches!(r.is_match(&folded), Ok(false)));
+    if t.is_empty() || leads_negative {
+        return false;
+    }
+    let Some(neg) = NEG_OPEN_RE.as_ref() else { return false };
+    let Ok(rest) = neg.try_replacen(&folded, 0, " ") else { return false };
+    ci_search(&OPEN_LEAD_RE, &rest) || (!ci_search(&HOLD_ANY_RE, &rest) && ci_search(&OPEN_ANY_RE, &rest))
 }
 
 /// done/paused projeyi AÇMAYAN uzun sahip cevabının beyne gidecek rutin madde metni ("" = gitmez).
