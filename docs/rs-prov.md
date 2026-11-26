@@ -49,6 +49,9 @@ Durum (26 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKS�
 - `resume_id` çözümü (transkript taraması) ve `_ids_held_by_others` girdi sayıldı.
 
 ## Sıradaki
+0. İlk iş: TBD#373 sahip cevabı (b): 1-7 maddeleri Python (ayrı `fix:` commit'i + kırmızı-sonra-yeşil test; `py/claudeops` ilgili dosyalar ve
+   `py/tests` bu iş için yazılabilir) VE Rust'ta düzelt, ilgili `known(` kayıtlarını kaldır. Bozuk UTF-8 settings maddesinde rs/state'in
+   düzeltmesini kullan. 8. madde (copilot `]`) cevap bekliyor.
 1. EŞLEME TABLOSU'ndaki EKSİK grupları taşı (aşağıdaki liste). Önerilen sıra: G6, G2, G3, G7, G1, G8, G4, G10, G9 (G11 ve G5 taşındı).
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
