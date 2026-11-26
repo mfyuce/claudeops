@@ -2,7 +2,7 @@
   "defaults": {"ignore": ["server_started_at"]},
   "requests": [
     {"name": "durum", "path": "/api/status",
-     "dynamic": ["**.cpu", "**.cpu_percent", "**.mem_mb", "**.age", "**.updated_at", "**.ts"],
+     "dynamic": ["**.cpu", "**.cpu_percent", "**.mem_mb", "**.age", "**.age_secs", "**.updated_at", "**.ts", "**.at", "**.ok_at", "sessions.*.busy", "sessions.*.history_size", "sessions.*.context.tokens", "sessions.*.usage_total.**", "model_usage.families.*.calls", "model_usage.families.*.fresh", "model_usage.families.*.out", "model_usage.families.*.read", "usage_state.providers.*.entries.*.detail", "usage_state.providers.*.entries.*.detail_en", "usage_state.providers.*.entries.*.percent", "diag.web_uptime_seconds", "diag.gt.uptime_seconds", "**.disk_clean.free_bytes", "stewards.*.open_questions", "stewards.*.pending_items", "ucli_cost.daily_budget_usd"],
      "unordered": ["sessions"]},
     {"name": "hostlar", "path": "/api/hosts"},
     {"name": "arayüz eklentileri", "path": "/api/ui/extensions"},
