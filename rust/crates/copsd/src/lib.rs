@@ -4,6 +4,7 @@
 //! `--mounts-file` (varsayılan ~/.claude/claudeops/derbent/mounts.json): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
 //! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
 //! `web.token` açılışta yalnız uçları açmak için denetlenir; değeri her istekte dosyadan okunur (silme/döndürme anında geçerli).
+//! `--token-file` verilmezse `web.token` durum dizininden okunur ([`state_dir`]: `--state-dir`, `CLAUDEOPS_DIR`, `~/.claude/claudeops`).
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
@@ -28,6 +29,30 @@ pub fn arg(name: &str) -> Option<String> {
     a.iter()
         .position(|x| x == name)
         .and_then(|i| a.get(i + 1).cloned())
+}
+
+/// Durum dizini: `--state-dir`, yoksa `CLAUDEOPS_DIR` (boş değilse), yoksa `$HOME/.claude/claudeops` (Python
+/// `paths.CLAUDEOPS_DIR` ile aynı kural; enterprise `copsd-ent` de bunu kullanır).
+pub fn state_dir() -> std::path::PathBuf {
+    if let Some(d) = arg("--state-dir") {
+        return d.into();
+    }
+    match std::env::var("CLAUDEOPS_DIR") {
+        Ok(d) if !d.is_empty() => d.into(),
+        _ => format!(
+            "{}/.claude/claudeops",
+            std::env::var("HOME").unwrap_or_default()
+        )
+        .into(),
+    }
+}
+
+/// `web.token` yolu: `--token-file`, yoksa [`state_dir`]`/web.token` (R1-10: Python token'ı durum dizininden okur; yalnız
+/// `$HOME` kullanmak durum dizini farklıyken ikinci bir acil token kabul ettiriyordu).
+pub fn token_file() -> std::path::PathBuf {
+    arg("--token-file")
+        .map(Into::into)
+        .unwrap_or_else(|| state_dir().join("web.token"))
 }
 
 fn read_secret() -> Result<Option<String>, String> {
@@ -126,9 +151,7 @@ where
     };
     // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
     let home = std::env::var("HOME").unwrap_or_default();
-    let tok_path = std::path::PathBuf::from(
-        arg("--token-file").unwrap_or_else(|| format!("{home}/.claude/claudeops/web.token")),
-    );
+    let tok_path = token_file();
     let db_path = std::path::PathBuf::from(
         arg("--db").unwrap_or_else(|| format!("{home}/.claude/claudeops/claudeops.db")),
     );
