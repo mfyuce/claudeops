@@ -6,15 +6,30 @@ HOME = os.path.expanduser("~")
 CLAUDE_DIR = os.path.join(HOME, ".claude")
 
 
+def _test_code_loaded() -> bool:
+    """Süreçte test kodu var mı (argv'den bağımsız; 26 Kas 2026: `unittest.main()` çağıran özel koşucu canlıya yazdı):
+    bu deponun `py/tests` altından modül yüklenmiş, ya da depo DIŞI bir betik `unittest` yüklemiş. Canlı giriş
+    noktası (`__main__` depo içinde) `unittest` yüklese de gerçek dizinde kalır."""
+    import sys
+    repo = Path(__file__).resolve().parents[2]
+    tests = str(repo / "py" / "tests") + os.sep
+    if any((getattr(m, "__file__", None) or "").startswith(tests) for m in list(sys.modules.values())):
+        return True
+    if "unittest.case" not in sys.modules:
+        return False
+    main = getattr(sys.modules.get("__main__"), "__file__", None)
+    return not main or repo not in Path(main).resolve().parents
+
+
 def _under_test_runner() -> bool:
-    """`python -m unittest` (argv[0]'ı "... -m unittest" yapar) ya da pytest altında mıyız. `CLAUDEOPS_TEST_REAL_DIR=1`
-    bilerek gerçek dizini isteyen (izole e2e değil, canlı) koşu içindir."""
+    """`python -m unittest` (argv[0]'ı "... -m unittest" yapar), pytest ya da yüklü test kodu (`_test_code_loaded`).
+    `CLAUDEOPS_TEST_REAL_DIR=1` bilerek gerçek dizini isteyen (izole e2e değil, canlı) koşu içindir."""
     import sys
     if os.environ.get("CLAUDEOPS_TEST_REAL_DIR") == "1":
         return False
     argv0 = sys.argv[0] if sys.argv else ""
     return (argv0.endswith("-m unittest") or os.path.basename(argv0).startswith("test_")     # `python3 test_x.py` de
-            or "pytest" in sys.modules or "_pytest" in sys.modules)
+            or "pytest" in sys.modules or "_pytest" in sys.modules or _test_code_loaded())
 
 
 # Env override izole test/e2e için (canlı roster yerine bir config kopyası); normalde set edilmez.
