@@ -60,6 +60,22 @@ SPECS = ["", "off", "OFF ", "agy=5,evren=1,codex=1,copilot=0", "agy = 2 , nope=3
 
 
 class TestEdges(unittest.TestCase):
+    def test_claude_catalog_documents(self):
+        """Dolu, bozuk ve tipi yanlış `claude_models` belgesi (yol parite koşusunun geçici `CLAUDEOPS_DIR`i altında)."""
+        from claudeops.paths import CLAUDE_MODELS_JSON as path
+        self.assertTrue(path.startswith(os.environ["CLAUDEOPS_DIR"] + os.sep))
+        self.assertFalse(os.path.exists(path))
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        full = '{"models": {"claude-fable-5-2": "enabled", "claude-opus-5-5": "disabled", "n": 3, "b": true, "z": null}}'
+        for text in (full, '{"models": {}}', '{"models": []}', '{"models": ["a"]}', '{"models": "x"}', '{"models": 0}',
+                     "{}", "[]", '"x"', "null", "bozuk{"):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            got = rv.claude_catalog()
+            if text == full:
+                self.assertEqual(got["claude-fable-5-2"], "enabled")
+
     def test_text_functions(self):
         for t in TEXTS:
             rv.is_capacity_error(t, "z")
