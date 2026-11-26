@@ -204,7 +204,7 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `self` Rust'ta (karşılığı bash `cmd_self`, Python'da yok); kendi uid'imizde canlı olmayan pid kaydı atlanır.
 - `front on` planı Python deposunu bulamazsa 125.
 
-## Python hatası? (Python değiştirilmedi; sahip sorusu TBD#391)
+## Python hatası? (Python değiştirilmedi; sahip sorusu TBD#393)
 
 1. `front_cmd.py:71-90`: `--internal 28765` bozuk birim yazar; sayı olmayan port döküm verir; `[::1]` hata.
 2. `front_cmd.py:102,136`: drop-in varken yabancı süreç iç portta ise ön kapı ona vekil olur.
