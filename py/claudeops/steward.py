@@ -4011,7 +4011,7 @@ def note_project_next(st: Dict[str, Any], proj: str, session: str, m: Dict[str, 
     if not proj or not val:
         return
     body = str(val).strip()
-    none = body.strip(" .`").lower() in _NO_WORK_VALUES
+    none = _is_no_work_value(body)
     pn = dict(st.get("project_next") or {})
     pn[proj] = {"text": clip_words(body, 200), "at": now, "session": session, "none": none}
     st["project_next"] = pn
@@ -4938,7 +4938,7 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
             rec.update(until=now + pause, n=0, first=now)
             guard[key] = rec
             breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
-                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(pause // 3600), "pause_min": int(pause // 60),
+                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(-(-pause // 3600)), "pause_min": int(pause // 60),
                                   "last_reason": a.reason[:200]}))
             continue
         guard[key] = rec
@@ -5155,7 +5155,15 @@ def _observe_cluster(a: Action) -> str:
 
 _AJ_CHILD_RE = re.compile(r"_aj\d+$")                          # ucli alt ajanı (`<üst>_aj<N>`): proje oturumu DEĞİL
 _NEXT_NOTE_RE = re.compile(r"(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(.+)", re.IGNORECASE)
-_NO_WORK_VALUES = {"yok", "none", "-", "—", "n/a", "bitti", "done"}
+_NO_WORK_VALUES = {"yok", "none", "-", "—", "–", "n/a", "bitti", "done"}
+# TBD#387/2: "-", "n/a", "bitti", "done" ardında noktalama ya da açıklamayla da iş değildir; "done.md düzenle", "- testleri koş" iştir.
+_NEXT_DONE_VALUE_RE = re.compile(r"^[`*_\s]*(?:[-—–][`*_\s.,;:!]*$|(?:n/a|bitti|done)[`*_]*(?:\s*$|[.,;:!](?=[`*_\s]|$)|\s*\(|\s+[-—–]\s))",
+                                 re.IGNORECASE)
+
+
+def _is_no_work_value(value: str) -> bool:
+    """"sıradaki" değeri "iş yok" anlamında mı (yok/none/-/n/a/bitti/done). SAF."""
+    return value.strip(" .`*_,;:!").lower() in _NO_WORK_VALUES or bool(_NEXT_DONE_VALUE_RE.match(value))
 
 
 def marker_next_work(text: str) -> str:
@@ -5165,7 +5173,7 @@ def marker_next_work(text: str) -> str:
     if not text or "STEWARD-NEXT" not in text:
         return ""
     val = str(scan_markers(text).get("next") or "").strip()
-    if not val or val.strip(" .`").lower() in _NO_WORK_VALUES or is_conditional_note(val):
+    if not val or _is_no_work_value(val) or is_conditional_note(val):
         return ""
     return clip_words(val, 200)
 _DONE_TEXT_RE = re.compile(r"(?<![-\w])STEWARD-DONE(?![-\w])")
@@ -5180,7 +5188,7 @@ def next_none_stated(text: str) -> bool:
     """Son cevap "sıradaki: yok" (ya da `STEWARD-NEXT: yok`) diyor mu. SAF."""
     t = text or ""
     nx = scan_markers(t).get("next")
-    if nx is not None and str(nx).strip(" .`").lower() in _NO_WORK_VALUES:
+    if nx is not None and _is_no_work_value(str(nx)):
         return True
     return bool(_NEXT_NONE_LINE_RE.search(t))
 _NO_WORK_PHRASES = ("yapacak iş yok", "yapılacak iş yok", "yapacak başka iş yok", "yapılacak başka iş yok",
@@ -5342,7 +5350,7 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
         m = _NEXT_NOTE_RE.search(line)
         if m:
             val = clip_words(m.group(1), 160)
-            if val.strip(" .").lower() in _NO_WORK_VALUES:
+            if _is_no_work_value(val):
                 return ""
             if is_conditional_note(val):
                 return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
@@ -5430,19 +5438,29 @@ def without_stale_note(proj: Project, todo_text: str, lang: str = "tr", done_tex
 _OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
 
 
-_NEXT_LINE_RE = re.compile(r"^[ \t>*_-]*(?:sıradaki|siradaki|next)\s*:\s*(?P<what>.+)$", re.IGNORECASE | re.MULTILINE)
+_NEXT_LINE_RE = re.compile(r"^[ \t>*_-]*(?:sıradaki|siradaki|next)\s*:(?P<what>.*)$", re.IGNORECASE)     # TEK satıra uygulanır
 _NEXT_NONE_RE = re.compile(r"^[`*_\s]*(?:yok|none|nothing|-)\b", re.IGNORECASE)
 
 
+def _last_next_line(text: str) -> Optional[Tuple[str, List[str]]]:
+    """SON "sıradaki:" satırı: (aynı satırdaki değer, sonraki satırlar); yoksa None. Değer satır sonunu GEÇMEZ. SAF."""
+    lines = (text or "").splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        m = _NEXT_LINE_RE.match(lines[i])
+        if m:
+            return m.group("what").strip(), lines[i + 1:]
+    return None
+
+
 def next_line(text: str) -> Tuple[bool, str]:
-    """Cevaptaki SON "sıradaki: <iş>" satırı (ayıklama turu biçimi): (var_mı, iş). "sıradaki: yok" -> (True, ""). SAF."""
-    m = None
-    for m in _NEXT_LINE_RE.finditer(text or ""):
-        pass
-    if m is None:
+    """Cevaptaki SON "sıradaki: <iş>" satırı (ayıklama turu biçimi): (var_mı, iş). "sıradaki: yok" ve boş satır -> (True, ""). SAF."""
+    found = _last_next_line(text)
+    if found is None:
         return False, ""
-    what = m.group("what").strip()
-    return True, ("" if _NEXT_NONE_RE.match(what) else clip_words(" ".join(what.split()), 220))
+    what = found[0]
+    if not what.strip("`*_ ") or _NEXT_NONE_RE.match(what) or _is_no_work_value(what):
+        return True, ""
+    return True, clip_words(" ".join(what.split()), 220)
 
 
 _STATED_NEXT_RE = re.compile(
@@ -5489,6 +5507,9 @@ def idle_finish_marker(text: str) -> Tuple[str, bool]:
     has, what = next_line(t)
     if has and what:
         return "", False         # cevap açık bir sıradaki iş söylüyor: "STEWARD-DONE yazmıyorum" / eski devir bölümü anması bitti sayılmaz
+    found = _last_next_line(t)
+    if found and not found[0].strip("`*_ ") and any(l.strip() for l in found[1]):
+        return "", False         # boş "sıradaki:" ardında metin: iş listesi olabilir (belirsiz), bitti sayılıp oturum kapatılmaz
     ready = rfh_marker_in(t)
     if ready:
         return READY_FOR_HANDOVER, True
@@ -5935,7 +5956,7 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     since = float(v.last_activity or 0.0)
     if since <= 0 or now - since < cfg.claude_idle_nudge_secs:
         left = int(max(0, cfg.claude_idle_nudge_secs - (now - since)) // 60) if since > 0 else 0
-        return _why("idle_wait", lang, f"{left} dk" if since > 0 else "?", minutes_left=left)
+        return _why("idle_wait", lang, (f"{left} min" if lang == "en" else f"{left} dk") if since > 0 else "?", minutes_left=left)
     rec = dict(state.get("claude_idle") or {}).get(v.name) or {}
     chain = 0 if since > float(rec.get("at") or 0) else int(rec.get("n") or 0)
     if rec.get("mode", "dry") != cfg.claude_idle:
@@ -6097,14 +6118,15 @@ def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional
     return out
 
 
-def dry_report_text(rep: Dict[str, Dict[str, Any]], hours: float = DRY_REPORT_HOURS) -> str:
+def dry_report_text(rep: Dict[str, Dict[str, Any]], hours: float = DRY_REPORT_HOURS, lang: str = "tr") -> str:
+    en = lang == "en"
     if not rep:
-        return f"Son {int(hours)} saatte `would:*` olayı yok.\n"
-    lines = [f"Ölçüm (dry) kipleri, son {int(hours)} saat:"]
+        return f"No `would:*` events in the last {int(hours)} hours.\n" if en else f"Son {int(hours)} saatte `would:*` olayı yok.\n"
+    lines = [f"Measurement (dry) modes, last {int(hours)} hours:" if en else f"Ölçüm (dry) kipleri, son {int(hours)} saat:"]
     for kind, r in sorted(rep.items(), key=lambda kv: -kv[1]["count"]):
         top = ", ".join(f"{n}×{c}" for n, c in sorted(r["names"].items(), key=lambda kv: -kv[1])[:3])
-        extra = f", ~{r['chars']} karakter" if r["chars"] else ""
-        lines.append(f"- would:{kind}{' [' + DRY_KIPS[kind] + ']' if kind in DRY_KIPS else ''}: {r['count']} olay{extra} ({top})")
+        extra = f", ~{r['chars']} {'characters' if en else 'karakter'}" if r["chars"] else ""
+        lines.append(f"- would:{kind}{' [' + DRY_KIPS[kind] + ']' if kind in DRY_KIPS else ''}: {r['count']} {'events' if en else 'olay'}{extra} ({top})")
     return "\n".join(lines) + "\n"
 
 
@@ -6192,7 +6214,7 @@ def _ask_gate_lines(events: List[Dict[str, Any]], answered_by: Dict[str, str], e
     if not events:
         return []
     applied = [e for e in events if e.get("applied")]
-    shadow = [e for e in events if e.get("mode") == "shadow"]
+    shadow = [e for e in events if e.get("mode") == "shadow" and not e.get("applied")]     # yazılan cevap bir kez (uygulanan) sayılır
     denied = len(events) - len(applied) - len(shadow)
     passed = sum(1 for e in shadow if e.get("allow"))
     head = (f"- ASK gate: brain answered for the owner {len(applied)}, refused {denied}, shadow {len(shadow)} ({passed} would pass)" if en else
@@ -6275,7 +6297,8 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     tours, skips = ev("tour"), ev("skip")
     if tours or skips:
         # D16 (beyin turu ekonomisi): tur başına skip oranı yüksekse maddeler gereksiz turlanıyor demektir
-        ratio = f"%{round(100 * len(skips) / len(tours))}" if tours else "-"
+        pct = round(100 * len(skips) / len(tours)) if tours else 0
+        ratio = (f"{pct}%" if lang == "en" else f"%{pct}") if tours else "-"
         lines.append(f"- {'brain tours: ' if lang == 'en' else 'beyin turu: '}{len(tours)} tur, {len(skips)} skip ({ratio}), {len(dirs)} direktif"
                      if lang != "en" else f"- brain tours: {len(tours)} tours, {len(skips)} skips ({ratio}), {len(dirs)} directives")
     if phases:
