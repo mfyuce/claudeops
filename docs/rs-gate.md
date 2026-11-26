@@ -30,13 +30,13 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
 
 ### Gizli yaşam döngüsü ve "gizli yokken uzak istemci loopback görünmesin" kararı
 
-- Açılış: `CLAUDEOPS_FRONT_SECRET` boş değilse o (sabit, kırpılmaz). Yoksa `--secret-file` / `$HOME/.claude/claudeops/front.secret`:
+- Açılış: `CLAUDEOPS_FRONT_SECRET` boş değilse o (sabit, kırpılmaz). Yoksa `--secret-file` / `<durum dizini>/front.secret`:
   yoksa gizlisiz açılır; var ama kullanılamıyorsa (0600 değil, UTF-8 değil, okunamıyor, düzenli dosya değil) çıkış 2 (Python yok
-  sayar; Rust daha sıkı, sahibin isteğiyle KALDI).
+  sayar, bozuk UTF-8 dahil; Rust daha sıkı, sahibin isteğiyle KALDI).
 - Çalışma: dosya her istekte `stat` edilir; imza değişince yeniden okunur (Python her çağrıda okur). Yok, gevşek, bozuk, 64 KiB
   üstü ya da boş = gizli YOK: aktarılan isteğe `X-Cops-Front` eklenmez (Python da aynı dosyayı okuduğu için zaten güvenmez),
   stats/metrik `X-Cops-Front` denetimi reddeder. Süreç ÇIKMAZ. Bilinen sınır: aynı inode, aynı boy ve çekirdeğin kaba zaman
-  damgası içinde iki ardışık yazım imzayı değiştirmeyebilir (gizli yalnız `cops front on` ile bir kez üretilir).
+  damgası içinde iki ardışık yazım imzayı değiştirmeyebilir (Python gizliyi yalnız `cops front on` ile, `os.replace` ile yani yeni inode olarak yazar).
 - Gizli yokken Python `X-Forwarded-For`a güvenmez ve her isteği copsd'nin `127.0.0.1`inden görür; `_client_ip`nin son adımı
   "sonuç loopback ise `Cf-Connecting-IP`" kuralıdır. Seçilen çözüm (`front::pin_client_ip`): eş Python loopback'i DEĞİLSE copsd
   `Cf-Connecting-IP`yi eşin kanonik adresiyle EZER (istemcinin değeri asla geçmez). Loopback eşte (cloudflared tüneli) tünelin
@@ -54,7 +54,15 @@ gözden geçirme dahil, `docs/rust-sprint-plan.md` "Sahip eki").
   enterprise `PyAuthz` gizliyi kendisi `FrontSecret` ile okur ya da `Ctx`e `Arc<FrontSecret>` eklenir (iki repoda rev birlikte).
 - Gövde süre sınırı: Rust yerel uçlarda 10 sn TOPLAM (Python 60 sn, her okuma). Daha sıkı; büyük yükleme alan yerel uç (T3)
   gelince ayrı sınır gerekir.
-- Eşlik "Python hatası?" 1 ve 2a yalıtılmış koşuda DOĞRULANDI (eşlik belgesi); düzeltme sahibin kararı (TBD#371).
+- TBD#371 cevaplandı (26 Kas): eşlik "Python hatası?" 1-3 düzeltildi (`f7dedcc`, `5737ae8`, `31ff561`).
+
+## TBD#371'den açık kalanlar
+
+- [ ] (sahip numarası 4, T6) `cops front on/off`: port ayrıştırma, yabancı porta vekillik, geri sarma yokluğu (eşlik "Python hatası?" 4-6).
+- [ ] (sahip numarası 5, T9) eklentiye giden başlıklar her erişimde harf duyarsız olsun (eşlik "Python hatası?" 7).
+- [ ] (T6/T9) `cops front on` sızmış gizliyi artık YENİLER: çalışan `copsd-ent` eski `Ctx.front_secret`i restart'a dek yollar. Kabukta
+  `CLAUDEOPS_DIR` doluyken `front on`, gizliyi birimlerin okumadığı dizine yazar.
+- Canlı etkisi: iki serviste `CLAUDEOPS_DIR` yok (26 Kas ölçümü), canlı gizli yolu değişmez; canlı `front.secret`e dokunulmadı.
 
 ## Yapılanlar
 
@@ -179,4 +187,13 @@ Her test adı `rust/crates` altında grep ile bulundu (betik: eşlik bölüm 7).
   `test_front_cmd`, `test_authz_vectors`, `test_front_xff`: 24 test geçti.
 - Testler yalnız geçici dizin ve boş port kullanır.
 
-BİRLEŞTİRMEYE HAZIR: rs/gate 5ce9f57 (cargo test cops-proxy+copsd+cops-parity+cops-auth 122 geçti 0 kaldı; clippy -D warnings ve fmt temiz; copsd-ent 50/0 ve Python 24 test alt ajan koşusu; parite GET 7/7, 174c18e ikilisiyle). main 5ce9f57 tabanından ileride: birleştirilmiş ağaçta testler ve bağımsız gözden geçirme cops kapısında.
+## Doğrulama (26 Kas, TBD#371 düzeltmeleri, kod `31ff561`)
+
+- `cargo test -p cops-proxy -p copsd -p cops-parity -p cops-auth`: hata yok; clippy `-D warnings` temiz; `cargo fmt --check` (`copsd`, `cops-proxy`) temiz.
+- Python tam paket (`unittest discover -s tests`): 5669 test, 23 atlanan, hata yok.
+- Yeni üç gizli testi (sızmış, boş/bozuk, eşzamanlı) eski `front.py`ye karşı düşüyor.
+- Enterprise `34cfdd3` `copsd-ent` (scratchpad kopyası, `patch` ile bu ağaca karşı): 50 geçti, 0 kaldı. Python paketiyle eşzamanlı ilk
+  koşuda `r2_maint::b7_watchdog_closes_when_maintenance_stops` bir kez düştü; tekrar koşuda geçti (zamanlamaya duyarlı).
+- Parite yeniden koşulmadı (son koşu `174c18e`); bu düzeltmeler yanıt üreten yolu değiştirmiyor.
+
+BİRLEŞTİRMEYE HAZIR: rs/gate 31ff561 (yukarıdaki doğrulama). Birleştirilmiş ağaçta testler ve bağımsız gözden geçirme cops kapısında.

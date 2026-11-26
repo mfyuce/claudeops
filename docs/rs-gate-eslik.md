@@ -31,9 +31,9 @@ bölüm 1.5'te nedeniyle listelendi.
 | Python adı (dosya:satır) | Rust karşılığı (dosya:satır) | parite testi (Rust) | durum |
 |---|---|---|---|
 | `LOOPBACK` (front.py:14) | `cops-proxy/src/front.rs:18` `LOOPBACK`, `cops-proxy/src/front.rs:27` `python_loopback` (IPv4 eşlemeli `::ffff:127.0.0.1` kanonik yazımıyla dahil, 127/8'in geri kalanı DEĞİL). `client_https` ve `drop_untrusted_client_ip` (`cops-proxy/src/lib.rs:247`, `cops-proxy/src/lib.rs:257`) 127/8 kullanır: orada eş Python loopback'i değilse `Cf-Connecting-IP` zaten `pin_client_ip` ile ezilir | `python_loopback_address_table`, `trusted_front_needs_secret_loopback_and_exact_header`, `mapped_ipv4_loopback_peer_may_report_https` | eşit |
-| `secret_path` (front.py:17) | `copsd/src/lib.rs:81` `secret_file`: `$HOME/.claude/claudeops/front.secret` (ek: `--secret-file`); durum dizinini izlemez (Python ile aynı, "Python hatası?" 3) | `startup_refuses_unusable_secret_file` (varsayılan yol ve `--secret-file`) | eşit |
-| `read_secret` (front.py:21) | `cops-proxy/src/front.rs:69` `read_secret_file`, `cops-proxy/src/front.rs:148` `FrontSecret::current` (her istekte `stat`, imza değişince yeniden okuma), `copsd/src/lib.rs:93` açılış denetimi. Fark: açılışta dosya var ama kullanılamıyorsa çıkış 2; çalışırken yok/gevşek/bozuk UTF-8/64 KiB üstü = gizli yok (Python bozuk UTF-8'de istisna) | `file_secret_follows_changes_and_fails_closed`, `front_secret_file_is_reread_and_fails_closed`, `runtime_secret_changes_apply_without_restart`, `startup_refuses_unusable_secret_file` | eşit (daha sıkı) |
-| `ensure_secret` (front.py:36) | yok (copsd gizli üretmez) | yok | kapsam dışı: yalnız `cops front on` çağırır, Python CLI kalıyor, T6 |
+| `secret_path` (front.py:21) | `copsd/src/lib.rs:80` `secret_file`: `<durum dizini>/front.secret` (`--state-dir`, `CLAUDEOPS_DIR`, `$HOME/.claude/claudeops`; ek: `--secret-file`); "Python hatası?" 3 iki tarafta düzeltildi | `startup_refuses_unusable_secret_file` (durum dizini, ortam, `--secret-file`), `test_secret_follows_state_dir` | eşit |
+| `read_secret` (front.py:25) | `cops-proxy/src/front.rs:69` `read_secret_file`, `cops-proxy/src/front.rs:148` `FrontSecret::current` (her istekte `stat`, imza değişince yeniden okuma), `copsd/src/lib.rs:86` açılış denetimi. Fark: açılışta dosya var ama kullanılamıyorsa çıkış 2; çalışırken yok/gevşek/bozuk UTF-8/64 KiB üstü = gizli yok (Python bozuk UTF-8'de de gizli yok, düzeltildi) | `file_secret_follows_changes_and_fails_closed`, `front_secret_file_is_reread_and_fails_closed`, `runtime_secret_changes_apply_without_restart`, `startup_refuses_unusable_secret_file` | eşit (daha sıkı) |
+| `ensure_secret` (front.py:40) | yok (copsd gizli üretmez) | yok | kapsam dışı: yalnız `cops front on` çağırır, Python CLI kalıyor, T6 |
 | `trusted_front` (front.py:57) | `cops-proxy/src/front.rs:176` `FrontSecret::trusted` (gizli dolu, Python loopback eşi, ilk `X-Cops-Front` HAM bayt sabit zamanlı eşit; kırpma yok, Python gibi); stats/metrik denetimi bunu kullanır (`cops-proxy/src/lib.rs:1156` `front_trusted`) | `trusted_front_needs_secret_loopback_and_exact_header`, `front_secret_file_is_reread_and_fails_closed` | eşit |
 | `internal_authz` (front.py:68) | sunucu tarafı yok; copsd yolu dışarıya kapatır (`cops-proxy/src/lib.rs:1184`); istemcisi enterprise `copsd-ent` `PyAuthz` | yok | kapsam dışı: karar Python'da, Rust yalnız tüketir, T9 (envanter W50 "T9?") |
 | `internal_authz._H` (front.py:82) | karşılığı gereksiz: Rust `RequestView.headers` küçük harf listesi | yok | kapsam dışı: `internal_authz` iç yardımcısı, T9 |
@@ -258,8 +258,8 @@ bölüm 1.5'te nedeniyle listelendi.
 | `front.secret` açılıştan sonra oluşur / değişir / silinir | her çağrıda taze | her istekte `stat`, imza değişince yeniden okunur | aynı; `file_secret_follows_changes_and_fails_closed`, `runtime_secret_changes_apply_without_restart` (kaba zaman damgası içinde aynı inode ve boyla iki yazım istisnası, `docs/rs-gate.md`) |
 | `front.secret` boş ya da yalnız boşluk | "" | gizli yok | aynı (kırpma `cops_auth::py_strip` = Python `strip`, U+001C..U+001F dahil); `file_secret_follows_changes_and_fails_closed` |
 | `front.secret` gevşek izin | "" (panel çalışır) | açılışta `exit(2)` (`Restart=always` ile döngü, dış port kapalı); çalışırken gizli yok, süreç sürer | açılışta daha sıkı, çalışırken aynı; `startup_refuses_unusable_secret_file`, `runtime_secret_changes_apply_without_restart` |
-| `front.secret` UTF-8 değil | yakalanmayan `UnicodeDecodeError` (doğrulandı, "Python hatası?" 1) | açılışta `exit(2)`, çalışırken gizli yok | Rust kapalı yön; `file_secret_follows_changes_and_fails_closed`, `startup_refuses_unusable_secret_file` |
-| `front.secret` yolu, `CLAUDEOPS_DIR` farklı | yok sayar (`$HOME`) | yok sayar (`$HOME`) | aynı; Python hatası 3 |
+| `front.secret` UTF-8 değil | gizli yok (`test_non_utf8_file_means_no_secret`; düzeltme `f7dedcc`) | açılışta `exit(2)`, çalışırken gizli yok | Rust açılışta daha sıkı; `file_secret_follows_changes_and_fails_closed`, `startup_refuses_unusable_secret_file` |
+| `front.secret` yolu, `CLAUDEOPS_DIR` farklı | durum dizinini izler (`31ff561`) | durum dizinini izler (`31ff561`) | eşit; `test_secret_follows_state_dir`, `startup_refuses_unusable_secret_file` |
 | `X-Cops-Front` yok / yanlış | güvenilmez | aynı | `trusted_front_needs_secret_loopback_and_exact_header`, `front_secret_file_is_reread_and_fails_closed` |
 | istemcinin sahte `X-Cops-Front` / `X-Forwarded-For` | (Rust arkasında görmez) | siler / ezer | `front_secret_is_injected_and_client_copy_dropped`, `forwards_and_overwrites_x_forwarded_for` |
 | uzak eşin sahte `Cf-Connecting-IP` | yok sayılır | silinir | `cf_connecting_ip_survives_only_from_loopback_peer` |
@@ -269,7 +269,7 @@ bölüm 1.5'te nedeniyle listelendi.
 | yavaş başlık (slowloris) | 15 sn | 15 sn (`HEADER_READ_TIMEOUT`, hyper `TokioTimer`) | aynı; `slow_headers_are_cut_off` |
 | erken kopan gövde | 408 | 408 + kapanış | aynı; `short_body_is_408_and_closes` |
 | eşzamanlı bilet tüketimi | kilit altında tek kullanım | Python'a aktarılır | kapsam dışı T2 |
-| eşzamanlı `ensure_secret` | yarış (Python hatası 2) | üretmez | kapsam dışı T6 |
+| eşzamanlı `ensure_secret` | kilit + atomik değiştirme, tek değer (`5737ae8`, `test_concurrent_ensure_returns_the_value_on_disk`) | üretmez | kapsam dışı T6 |
 | yanıt yazılırken bağlantı koparsa | `diag_log`, yutulur | hyper bağlantıyı bırakır | günlük satırı yok |
 
 ## 4. Referans: `force_proxy`
@@ -280,7 +280,16 @@ Python çekirdeğinde karşılığı yoktur. Enterprise geri alma bayrağıyla k
 
 ## Python hatası?
 
-Hiçbiri düzeltilmedi; sahibe soruldu (TBD#371). 1 ve 2a koşularak doğrulandı (aşağıda); diğerleri koddan çıkarımdır, koşulmadı.
+Sahip cevabı (TBD#371, 26 Kas): 1-3 şimdi iki tarafta düzeltildi; 4-6 `cops front` Rust'a taşınırken (T6), 7 enterprise taşımasında (T9).
+Aşağıdaki metin düzeltme ÖNCESİ bulgudur (satır numaraları `04c91cb`).
+
+| bulgu | durum |
+|---|---|
+| 1 | [x] `f7dedcc` |
+| 2a, 2b | [x] `5737ae8` (sızmış, boş, bozuk gizli yeniden üretilir; kilit + `os.replace`) |
+| 3 | [x] `31ff561` (Python ve copsd) |
+| 4, 5, 6 | [ ] AÇIK: T6 |
+| 7 | [ ] AÇIK: T9 |
 
 1. **Doğrulandı (26 Kas, yalıtılmış geçici `HOME`, `python3 -I`, `sys.path` = `py`):** bozuk UTF-8 `front.secret` (0600) ile
    `read_secret()` ve `trusted_front()` `UnicodeDecodeError` fırlattı. `front.py:26-33` `read_secret` yalnız `OSError` yakalar. `front.secret` UTF-8 olmayan bayt içerirse (bozuk dosya)
