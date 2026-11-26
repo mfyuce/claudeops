@@ -446,7 +446,21 @@ fn constants_patterns_and_shell_fragments_match_python() {
         "%1",
     ];
     let cwds = ["/", "/tmp/a b", "", "/t;", "çalışma"];
-    let inners = ["claude --model x", "", "a 'b' \"c\"; exec bash", "ş\t$HOME"];
+    let inners = [
+        "claude --model x",
+        "",
+        "a 'b' \"c\"; exec bash",
+        "ş\t$HOME",
+        "x;",
+    ];
+    for arg in ["semi;", "a;b", r"bar\;", ";", "", "x", "ş;"] {
+        calls.push(json!(["_tmux_arg", arg]));
+        rust.push(json!(cops_tmux::escape_arg(arg)));
+    }
+    for name in names.iter().chain(&["=eq", "@1", "$", "a:", ":"]) {
+        calls.push(json!(["_addressable", name]));
+        rust.push(json!(cops_tmux::addressable(name)));
+    }
     for name in names {
         calls.push(json!(["_exact", name]));
         rust.push(text_or_value_error(cops_tmux::exact_target(name)));
@@ -1491,6 +1505,25 @@ fn python_bug_fixes_p1_to_p7_behave_the_same_in_rust() {
         ["alpha", "beta", "zeta"],
         "hiçbir oturum yanlış hedefle kapanmadı"
     );
+    // tmux'un adı olduğu gibi tuttuğu `=`, `@`, `%` ile başlayan adlar hâlâ TAM o oturumu hedefler.
+    let (a, b) = twins(&["=eq", "@1", "%1", "eq"]);
+    let mut calls = Vec::new();
+    let mut rust = Vec::new();
+    for name in ["=eq", "@1", "%1"] {
+        calls.push(json!(["tmux_has_session", name]));
+        rust.push(json!(b.tmux.has_session(name).unwrap()));
+        calls.push(json!(["pane_is_masked_input", name]));
+        rust.push(json!(b.tmux.pane_is_masked_input(name)));
+    }
+    assert!(rust.iter().step_by(2).all(|v| *v == json!(true)));
+    assert_same(&b, &calls, &rust);
+    assert_eq!(
+        python(&a, &[json!(["tmux_kill_session", "=eq"])]),
+        [Value::Null]
+    );
+    b.tmux.kill_session("=eq").unwrap();
+    assert_eq!(sessions(&a), sessions(&b));
+    assert_eq!(sessions(&b), ["%1", "@1", "eq"]);
 
     // P4: `;` ile biten ad ya da cwd ile açılış iki tarafta da başarılı (TBD#366: argüman `\;` ile kaçırılır); oturum
     // tam o adla, o dizinde açılır.

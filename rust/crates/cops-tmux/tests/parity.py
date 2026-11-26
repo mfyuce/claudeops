@@ -16,7 +16,7 @@ from claudeops import tmux_backend as tb
 ORIGINAL_SOCKET = tb.TMUX_SOCKET   # test soketiyle ezilmeden önceki değer (sabit paritesi için)
 
 ALLOWED = {
-    "tmux_available", "tmux_conf_path", "_base_argv", "_exact",
+    "tmux_available", "tmux_conf_path", "_base_argv", "_exact", "_addressable", "_tmux_arg",
     "tmux_new_session_shell_fragment", "tmux_attach_shell_fragment", "tmux_spawn_direct",
     "tmux_has_session", "tmux_capture", "tmux_capture_range", "strip_ansi",
     "tmux_send_keys", "tmux_resize_window", "ctx_label", "tmux_set_ctx", "push_ctx", "tmux_release_size",
