@@ -5477,12 +5477,23 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._json({"ok": True, "path": dest}, status=200)
 
+    def _lock_busy(self, event: str, e: LockError) -> None:
+        """Durum dosyası kilidi alınamadı: hiçbir şey yazılmadı, istemci yeniden deneyebilir (503, bağlantı kapanır)."""
+        diag_log(event, path=urlparse(self.path).path, error=str(e)[:200])
+        self.close_connection = True
+        try:
+            self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
+        except Exception:
+            pass
+
     def do_GET(self):
         from .. import authz as _az
         try:
             self._do_get_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
+        except LockError as e:
+            self._lock_busy("get_lock_busy", e)
         finally:
             _az.bind_principal(None)        # keep-alive: kimlik sonraki isteğe/iş parçacığına sızmasın
 
@@ -6000,13 +6011,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._do_post_inner()
         except _az.SpawnRefused as e:
             self._spawn_refused(e)
-        except LockError as e:      # kilit alınamadı: hiçbir şey yazılmadı, yeniden denenebilir
-            diag_log("post_lock_busy", path=urlparse(self.path).path, error=str(e)[:200])
-            self.close_connection = True
-            try:
-                self._json({"ok": False, "error": "state file is locked, retry"}, status=503)
-            except Exception:
-                pass
+        except LockError as e:
+            self._lock_busy("post_lock_busy", e)
         except (TypeError, ValueError, AttributeError, KeyError) as e:
             # review R-13: tip doğrulaması olmayan gövde alanı yakalanmamış istisnayla bağlantıyı düşürmesin
             diag_log("post_bad_body", path=urlparse(self.path).path, error=f"{type(e).__name__}: {e}"[:200])
