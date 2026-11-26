@@ -54,9 +54,10 @@ pub struct Usage {
     pub subagents: Subagents,
     /// Ana + alt ajanlar, model ailesine göre.
     pub by_family: BTreeMap<&'static str, Totals>,
-    /// Bu dosyalarda atlanan bozuk satırlar (dizgi olmayan `model`, hashlenemeyen tur anahtarı). JSON'a yazılmaz
-    /// (Python çıktısıyla aynı kalsın); Python karşılığı süreç geneli `session_usage._skipped["usage_row"]`.
-    #[serde(skip)]
+    /// Bu dosyalarda atlanan satırlar: bozuk (dizgi olmayan `model`, hashlenemeyen tur anahtarı) ve satır sınırını aşan.
+    /// JSON'da görünür (birleştirme kapısı: sayaç hiçbir yerde görünmüyordu). Python karşılığı süreç geneli
+    /// `session_usage._skipped["usage_row"]` + `["usage_line_too_long"]` (Tanılama `diag.skipped`); parite koşucusu
+    /// Python'un bu çağrıdaki artışıyla kıyaslar.
     pub skipped_rows: u64,
 }
 
@@ -545,6 +546,8 @@ mod tests {
             (1, 1, 7)
         );
         assert_eq!(u.skipped_rows, 4);
+        // birleştirme kapısı: sayaç JSON'da görünür (önceden `serde(skip)`)
+        assert_eq!(serde_json::to_value(&u).unwrap()["skipped_rows"], 4);
         // baştan okunan dosyada sayaç sıfırlanır (kalan 2 alt ajan dosyasının)
         fs::write(&p, row("m1", "\"x\"", 1)).unwrap();
         assert_eq!(r.usage_for_path(&p).unwrap().skipped_rows, 2);

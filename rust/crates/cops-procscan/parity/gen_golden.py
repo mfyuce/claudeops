@@ -234,8 +234,19 @@ def usage_cases():
                 (cd / "s" / "subagents" / fname).write_bytes(data)
         su._files.clear()
         su._summaries.clear()
-        out[name] = [su.usage_for_path(str(main)), su.usage_for_path(str(main))]
+        base = _usage_skips()
+        out[name] = [_with_skips(su.usage_for_path(str(main)), base), _with_skips(su.usage_for_path(str(main)), base)]
     return out
+
+
+def _usage_skips() -> int:
+    return su._skipped["usage_row"] + su._skipped["usage_line_too_long"]
+
+
+def _with_skips(u, base):
+    """Rust `Usage.skipped_rows` dosya durumu başına birikir (dosya baştan okununca sıfırlanır); Python karşılığı süreç
+    geneli sayaçların, önbellek temizlendiğinden beri artışı."""
+    return None if u is None else {**u, "skipped_rows": _usage_skips() - base}
 
 
 def main():
