@@ -284,7 +284,11 @@ pub fn to_float(v: &Value) -> Option<f64> {
         Value::Bool(b) => Some(f64::from(u8::from(*b))),
         Value::Number(n) => n.as_f64(),
         Value::String(s) => {
-            let c: Vec<char> = strip(s).chars().collect();
+            // Python `float()` Unicode ondalık rakamları (ör. tam genişlik `１２`) ASCII'ye çevirir
+            let c: Vec<char> = strip(s)
+                .chars()
+                .map(|c| if !c.is_ascii() && is_decimal(c) { char::from(b'0' + decimal_value(c) as u8) } else { c })
+                .collect();
             let mut out = String::new();
             for (i, &ch) in c.iter().enumerate() {
                 if ch != '_' {
@@ -511,9 +515,72 @@ pub fn str_of(v: &Value) -> String {
     }
 }
 
+/// Metin kipinde (`open(..., encoding="utf-8")`, `newline=None`) açılan dosyanın `readlines()`/satır satır okuması:
+/// `\r\n` ve `\r` `\n`e çevrilir, satırlar sondaki `\n` ile döner (son satırda yoksa yok). `splitlines`ten farkı:
+/// yalnız bu üç satır sonu ayırır (U+2028, `\x1c` vb. satır İÇİNDE kalır).
+pub fn readlines(text: &str) -> Vec<String> {
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    text.split_inclusive('\n').map(str::to_string).collect()
+}
+
+/// `"%d" % int(x)` (float): sıfıra doğru keser; Python `int()` tam sayıyı sınırsız tutar, burada da tam ondalık yazılır.
+/// Sonsuz/NaN Python'da `OverflowError`/`ValueError`: `None`.
+pub fn int_str(x: f64) -> Option<String> {
+    x.is_finite().then(|| format!("{:.0}", x.trunc() + 0.0))
+}
+
+// `time.strptime(s, "%Y-%m-%dT%H:%M:%S")`: `_strptime` desenleri (re.IGNORECASE, `\d` Unicode ondalık rakam).
+static ISO_SECONDS_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"^(?i)(?P<Y>\d\d\d\d)-(?P<m>1[0-2]|0[1-9]|[1-9])-(?P<d>3[0-1]|[1-2]\d|0[1-9]|[1-9]| [1-9])T",
+        r"(?P<H>2[0-3]|[0-1]\d|\d):(?P<M>[0-5]\d|\d):(?P<S>6[0-1]|[0-5]\d|\d)"
+    ))
+    .ok()
+});
+
+/// `time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%S"))` (yerel saat, `TZ`ye uyar). Python'un `ValueError` fırlattığı
+/// her durumda (desen uymaz, artık veri, geçersiz gün, yıl 0) `None`. Saniye 60/61 `mktime` gibi sonraki dakikaya taşar.
+/// Yaz saati belirsizliğinde en erken an, boşlukta (var olmayan yerel saat) `None` (Python bir değer üretir; yalnız UTC
+/// ile sınandı).
+pub fn mktime_iso_seconds(s: &str) -> Option<f64> {
+    use chrono::{NaiveDate, TimeDelta};
+    let caps = ISO_SECONDS_RE.as_ref()?.captures(s)?;
+    if caps.get(0)?.end() != s.len() {
+        return None; // "unconverted data remains"
+    }
+    let num = |k: &str| caps.name(k).and_then(|m| to_int(&Value::from(m.as_str())));
+    let year = i32::try_from(num("Y")?).ok()?;
+    let month = u32::try_from(num("m")?).ok()?;
+    let day = u32::try_from(num("d")?).ok()?;
+    if year < 1 {
+        return None;
+    }
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    let secs = num("H")? * 3600 + num("M")? * 60 + num("S")?;
+    let naive = date.and_hms_opt(0, 0, 0)?.checked_add_signed(TimeDelta::try_seconds(secs)?)?;
+    let local = Local.from_local_datetime(&naive).earliest()?;
+    Some(local.timestamp() as f64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readlines_int_str_mktime_like_python() {
+        assert_eq!(readlines("a\r\nb\rc\u{2028}d\ne"), vec!["a\n", "b\n", "c\u{2028}d\n", "e"]);
+        assert!(readlines("").is_empty());
+        assert_eq!(int_str(-0.4).as_deref(), Some("0"));
+        assert_eq!(int_str(1e20).as_deref(), Some("100000000000000000000"));
+        assert_eq!(int_str(f64::NAN), None);
+        assert_eq!(to_float(&Value::from(" １２ ")), Some(12.0));
+        std::env::set_var("TZ", "UTC");
+        assert_eq!(mktime_iso_seconds("2027-01-15T07:00:00"), Some(1_799_996_400.0));
+        assert_eq!(mktime_iso_seconds("2027-1-5t7:0:61"), mktime_iso_seconds("2027-01-05T07:01:01"));
+        for bad in ["2027-02-30T00:00:00", "0000-01-01T00:00:00", "2027-01-15T07:00:00Z", "2027-01-15 07:00:00", ""] {
+            assert_eq!(mktime_iso_seconds(bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn splitlines_like_python() {
