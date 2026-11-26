@@ -213,6 +213,17 @@ fn steward_config_values() {
             "medium"
         )
     );
+    // kimlik bloğuna açıkça yazılan model/effort geçer, boş kalanlar generic varsayılanı alır
+    let own = cfg(CASES[10], "gen");
+    assert_eq!(
+        (
+            own.str_of("planned_model"),
+            own.str_of("planned_effort"),
+            own.str_of("planning_model"),
+            own.str_of("planning_effort"),
+        ),
+        ("claude-opus-5-5", "high", ss::GENERIC_MODEL, "medium")
+    );
     assert_eq!(
         cfg(CASES[9], "default").str_of("role"),
         "steward",

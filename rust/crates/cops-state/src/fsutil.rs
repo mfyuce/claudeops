@@ -173,6 +173,11 @@ impl Drop for FileLock {
     }
 }
 
+/// Kilit dosyası yalnız normal dosya VE çağırana aitse kullanılır (Python `_file_lock_outer`).
+fn lock_file_usable(is_file: bool, owner: u32, me: u32) -> bool {
+    is_file && owner == me
+}
+
 fn flock(f: &File, op: libc::c_int) -> io::Result<()> {
     loop {
         // SAFETY: açık ve bu işlev boyunca yaşayan bir tanıtıcı.
@@ -217,7 +222,7 @@ impl FileLock {
             .open(&lock)?;
         let m = f.metadata()?;
         // SAFETY: getuid her zaman başarılıdır.
-        if !m.is_file() || m.uid() != unsafe { libc::getuid() } {
+        if !lock_file_usable(m.is_file(), m.uid(), unsafe { libc::getuid() }) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "kilit dosyası bize ait değil",
@@ -306,6 +311,16 @@ mod tests {
         });
         assert!(t.join().unwrap().is_ok(), "son tutamaç düşünce bırakılır");
         assert!(HELD.with(|h| h.borrow().is_empty()));
+    }
+
+    /// Başkasına ait kilit dosyası root olmadan üretilemez: karar işlevi sınanır (normal dosya olmayan gerçek dosya:
+    /// `tests/fs_atomic.rs::non_regular_lock_file_refused`).
+    #[test]
+    fn lock_file_owner_and_type_rules() {
+        assert!(lock_file_usable(true, 1000, 1000));
+        assert!(!lock_file_usable(true, 0, 1000), "başkasının dosyası");
+        assert!(!lock_file_usable(true, 1001, 1000));
+        assert!(!lock_file_usable(false, 1000, 1000), "normal dosya değil");
     }
 
     /// H17: kilit dosyası sembolik bağ ya da başkasının dosyasıysa kullanılmaz (bağ izlenmez, hedef oluşturulmaz).

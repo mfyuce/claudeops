@@ -8,13 +8,13 @@
 //! Python'dan sapma: db kipinde KALICI DB hatasında (DB yok, şema farklı, Postgres) yazım HİÇBİR yere yapılmaz ve hata döner
 //! (Python tarafı DB'yi okuyacağı için yalnız dosyaya yazmak sessiz kayıp olurdu).
 use crate::fsutil::atomic_write_json;
-use crate::json::Json;
+use crate::json::{Json, Map};
 use crate::paths::{realpath, StateDir};
 use crate::store::{sqlite_path_from_url, Store, StoreError};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -34,7 +34,8 @@ pub const MIRROR_KEEP: i64 = 200_000;
 /// Python `_MIRROR_EVERY`.
 pub const MIRROR_EVERY: u64 = 2000;
 const BACKEND_TTL: Duration = Duration::from_secs(5);
-const TSV_FILES: [&str; 2] = ["roster.tsv", "models.tsv"];
+/// Python `_TSV_FILES`.
+pub const TSV_FILES: [&str; 2] = ["roster.tsv", "models.tsv"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -173,11 +174,12 @@ pub struct StateDocs {
     read_env: bool,
     db_url: String,
     state: Mutex<State>,
-    logger: Logger,
+    /// `None` = [`StateDocs::diag_log`].
+    logger: Option<Logger>,
 }
 
 impl StateDocs {
-    /// Ortam: `CLAUDEOPS_STORE_BACKEND` (kip), `CLAUDEOPS_DB_URL`.
+    /// Ortam: `CLAUDEOPS_STORE_BACKEND` (kip), `CLAUDEOPS_DB_URL`, `CLAUDEOPS_DIAG_LOG`.
     pub fn new(dir: StateDir) -> StateDocs {
         let db_url = std::env::var("CLAUDEOPS_DB_URL").unwrap_or_default();
         StateDocs {
@@ -186,7 +188,7 @@ impl StateDocs {
             read_env: true,
             db_url,
             state: Mutex::new(State::default()),
-            logger: Box::new(|m| eprintln!("statedocs {m}")),
+            logger: None,
         }
     }
     /// Ortamdan bağımsız kurulum (testler): kip ve `db_url` açık; `None` = settings.json.
@@ -198,7 +200,7 @@ impl StateDocs {
         s
     }
     pub fn with_logger(mut self, f: impl Fn(&str) + Send + Sync + 'static) -> StateDocs {
-        self.logger = Box::new(f);
+        self.logger = Some(Box::new(f));
         self
     }
     pub fn dir(&self) -> &StateDir {
@@ -208,8 +210,37 @@ impl StateDocs {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
+    /// Varsayılan günlükçü Python `_log` gibi: `diag.log`a `statedocs <ileti>` olayı.
     fn log(&self, msg: &str) {
-        (self.logger)(msg)
+        match &self.logger {
+            Some(f) => f(msg),
+            None => self.diag_log(&format!("statedocs {msg}")),
+        }
+    }
+
+    /// `diaglog.diag_log_path()`: boş olmayan `CLAUDEOPS_DIAG_LOG` (`isolated` okumaz), yoksa `<dizin>/diag.log`.
+    fn diag_log_path(&self) -> PathBuf {
+        self.read_env
+            .then(|| std::env::var_os("CLAUDEOPS_DIAG_LOG"))
+            .flatten()
+            .filter(|v| !v.is_empty())
+            .map_or_else(|| self.dir.join("diag.log"), PathBuf::from)
+    }
+
+    /// `diaglog.diag_log(event)`: `{"ts": yerel saniye, "event": ..}` satırı + `log` akışı `diag` (dual/db). Best-effort:
+    /// hiçbir hata çağırana dönmez; dosyaya yazılamazsa DB'ye de eklenmez (Python gibi).
+    pub fn diag_log(&self, event: &str) {
+        let Some(ts) = crate::pytime::local_isoformat_seconds(crate::now()) else {
+            return;
+        };
+        let mut m = Map::new();
+        m.insert("ts".into(), ts.into());
+        m.insert("event".into(), event.into());
+        let entry = Json::Object(m);
+        let path = self.diag_log_path();
+        if crate::diaglog::append(&path, &entry).is_ok() {
+            self.mirror_log("diag", &path, &entry);
+        }
     }
 
     /// Ortam (her çağrıda) > settings.json `store_backend` (5 sn önbellek) > files.
@@ -244,7 +275,8 @@ impl StateDocs {
 
     /// K8: eklentinin DB-doğruluk-kaynağı öneki. Boş, `/` ile başlayan ya da bitmeyen önek reddedilir.
     pub fn register_doc_prefix(&self, prefix: &str) -> bool {
-        let ok = prefix.len() >= 3 && prefix.ends_with('/') && !prefix.starts_with('/');
+        // Python `len` kod noktası sayar
+        let ok = prefix.chars().count() >= 3 && prefix.ends_with('/') && !prefix.starts_with('/');
         if ok {
             self.lock().ext_prefixes.push(prefix.to_string());
         }

@@ -61,6 +61,17 @@ fn no_fd_leak() {
         std::fs::write(d.join("instances.json"), "{bozuk").unwrap();
         assert!(Instances::new(&docs).forget("n0").is_err());
         std::fs::remove_file(d.join("instances.json")).unwrap();
+        // atomik yazım hatası (`rename` hedefi dizin): tanıtıcı da geçici dosya da kalmaz
+        let dolu = d.join("dolu-dizin");
+        std::fs::create_dir_all(dolu.join("x")).unwrap();
+        assert!(cops_state::fsutil::atomic_write_text(&dolu, "x", None).is_err());
+        assert!(cops_state::fsutil::atomic_write_json(&dolu, &j, None).is_err());
+        assert!(cops_state::fsutil::atomic_write_tsv(&dolu, "x").is_err());
+        assert!(!std::fs::read_dir(d.root()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".tmp")));
         SettingsReader::new(d.clone()).load();
         let s = Store::open(&d.db()).unwrap();
         s.backup(&env.root().join("yedek.db")).unwrap();

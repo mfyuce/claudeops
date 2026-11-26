@@ -10,7 +10,8 @@ use std::sync::Mutex;
 
 /// Bu kodun bildiği şema sürümü = Python `len(store.MIGRATIONS)` (parite testi denetler).
 pub const SCHEMA_VERSION: i64 = 2;
-const BUSY_TIMEOUT_MS: u64 = 5000;
+/// Python `BUSY_TIMEOUT_MS`.
+pub const BUSY_TIMEOUT_MS: u64 = 5000;
 const BACKUP_RETRIES: usize = 120;
 
 #[derive(Debug)]
@@ -121,7 +122,7 @@ pub struct TsvShadowRow {
 
 /// `CLAUDEOPS_DB_URL` -> SQLite yolu (Python `dbapi.backend_of`/`sqlite_path`).
 pub fn sqlite_path_from_url(url: &str, default: &Path) -> Result<PathBuf> {
-    let u = url.trim();
+    let u = py_strip(url);
     if u.is_empty() {
         return Ok(default.to_path_buf());
     }
@@ -664,4 +665,34 @@ pub(crate) fn split_lines_keepends(text: &str) -> Vec<&str> {
         out.push(&text[start..]);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Python `dbapi.connect`: WAL, `synchronous=NORMAL`, `busy_timeout`. Bağlantı ayarları dışarıdan görülemediği için
+    /// birim testi; Python tarafının aynı üç değeri `tests/parity_store.rs::connection_pragmas_python`ta.
+    #[test]
+    fn open_sets_pragmas() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let path = env.dir().db();
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("PRAGMA user_version=2")
+            .unwrap();
+        let s = Store::open(&path).unwrap();
+        let c = s.conn();
+        let get = |q: &str| -> String {
+            c.query_row(q, [], |r| r.get::<_, rusqlite::types::Value>(0))
+                .map(|v| format!("{v:?}"))
+                .unwrap()
+        };
+        assert_eq!(get("PRAGMA journal_mode"), "Text(\"wal\")");
+        assert_eq!(get("PRAGMA synchronous"), "Integer(1)");
+        assert_eq!(
+            get("PRAGMA busy_timeout"),
+            format!("Integer({BUSY_TIMEOUT_MS})")
+        );
+    }
 }

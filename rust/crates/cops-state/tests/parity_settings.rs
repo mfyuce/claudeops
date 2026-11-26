@@ -227,6 +227,347 @@ fn settings_readers_match_python() {
     }
 }
 
+fn obj1(key: &str, v: Json) -> Json {
+    obj(vec![(key, v)])
+}
+
+fn strs(v: &[String]) -> Json {
+    Json::Array(v.iter().map(|x| Json::from(x.as_str())).collect())
+}
+
+/// Sınır durumları: uzunluk sınırları, tavanlar, sözlük olmayan bloklar, kırpma, tanınmayan değerler.
+fn boundary_cases() -> Vec<Json> {
+    let text = |t: &str| Json::from(t);
+    let mut v: Vec<Json> = Vec::new();
+    // sözlük olması gereken bloklar sözlük değil
+    for block in [
+        "ucli_web",
+        "ucli_cost",
+        "ucli_usage_warn",
+        "ucli_limits",
+        "ucli_script",
+    ] {
+        for bad in ["null", "\"oops\"", "[\"x\"]", "7", "[]", "true"] {
+            v.push(obj1(block, j(bad)));
+        }
+    }
+    for value in ["null", "\"\"", "\" \"", "\"turbo\"", "\"5\"", "\"mid\""] {
+        v.push(obj1("ucli_limits", obj1("reasoning_effort", j(value))));
+    }
+    for mode in ["read", " READ ", "Read", "full", " FULL "] {
+        v.push(obj1("ucli_script", obj1("mode", text(mode))));
+    }
+    // ucli_web: flavor'sız geçerli adres, kırpma, geçersiz alan adları, tek etiket, uzunluk sınırları, tavan
+    for url in [
+        "  http://127.0.0.1:8888/search  ",
+        "\n  http://h/s \t\n",
+        "http://127.0.0.1:8888/search",
+    ] {
+        v.push(obj1("ucli_web", obj1("search_url", text(url))));
+    }
+    let l63 = "x".repeat(63);
+    let l64 = "x".repeat(64);
+    let host253 = format!("{l63}.{l63}.{l63}.{}", "y".repeat(61));
+    let host254 = format!("{l63}.{l63}.{l63}.{}", "y".repeat(62));
+    let bad = [
+        "*.org",
+        "https://a.org",
+        "a.org/path",
+        "a_b.org",
+        "-a.org",
+        "a-.org",
+        "a..org",
+        "a.org:8080",
+        &format!("{l64}.org"),
+        ".org",
+        "org.",
+        "a@b.org",
+        "ü.org",
+        &host254,
+    ]
+    .join(",");
+    for domains in [
+        format!("{bad},ok.org"),
+        "localhost".to_string(),
+        format!("{l63}.org"),
+        host253.clone(),
+        host254.clone(),
+        "a,1,a-1".to_string(),
+        (0..200)
+            .map(|i| format!("h{i}.example.org"))
+            .collect::<Vec<_>>()
+            .join(","),
+    ] {
+        v.push(obj1(
+            "ucli_web",
+            obj1("allow_fetch_domains", text(&domains)),
+        ));
+    }
+    // ucli_services: kimlik ve env uzunluk sınırları, env reddi, model ve effort tavanları
+    let svc = |id: &str, env: &str| {
+        obj(vec![
+            ("id", text(id)),
+            ("env", text(env)),
+            ("endpoint", text("https://a/v1/")),
+        ])
+    };
+    for (id, env) in [
+        ("a", "OK_KEY"),
+        ("ab", "OK_KEY"),
+        (&"a".repeat(20), "OK_KEY"),
+        (&"a".repeat(21), "OK_KEY"),
+        ("ok1", "AB"),
+        ("ok1", "ABC"),
+        ("ok1", &"A".repeat(40)),
+        ("ok1", &"A".repeat(41)),
+        ("ok1", "lower"),
+        ("ok1", "1ABC"),
+        ("ok1", "_ABC"),
+        ("ok1", "AB-C"),
+        ("ok1", "ABc"),
+        ("ok1", ""),
+        ("1ab", "OK_KEY"),
+    ] {
+        v.push(obj1("ucli_services", Json::Array(vec![svc(id, env)])));
+    }
+    let models: Vec<String> = (0..70).map(|i| format!("m{i}")).collect();
+    let efforts = Json::Object((0..25).map(|i| (format!("m{i}"), j("[\"low\"]"))).collect());
+    let mut full = svc("ok1", "OK_KEY");
+    if let Some(m) = full.as_object_mut() {
+        m.insert("models".into(), strs(&models));
+        m.insert("efforts".into(), efforts);
+    }
+    v.push(obj1("ucli_services", Json::Array(vec![full])));
+    v
+}
+
+#[test]
+fn settings_boundaries_match_python() {
+    let e = Env::new();
+    let root = e.root.display().to_string();
+    let cases = boundary_cases();
+    let input = Json::Array(cases.clone()).to_compact();
+    let mut cmd = e.command("files", PY_READ);
+    cmd.arg(&root);
+    let mut child = cmd.spawn().unwrap();
+    std::io::Write::write_all(&mut child.stdin.take().unwrap(), input.as_bytes()).unwrap();
+    let o = child.wait_with_output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let py_out = j(String::from_utf8(o.stdout).unwrap().trim_end());
+    // PY_READ'in PATH'i ile aynı
+    let env = SysEnv {
+        home: Some(e.root.join("home").display().to_string()),
+        path: Some(format!("{root}/home/bin1:{root}/home/bin2:{root}/home/bin1").into()),
+    };
+    let py_rows = py_out.as_array().unwrap();
+    assert_eq!(py_rows.len(), cases.len());
+    for (i, c) in cases.iter().enumerate() {
+        let s = Settings::from_text(Some(&c.to_compact()));
+        assert_eq!(
+            rust_read(&s, &env, &root).to_compact(),
+            py_rows[i].to_compact(),
+            "durum {i}: {}",
+            c.to_compact()
+        );
+    }
+}
+
+/// Sınırların beklenen değerleri (parite iki tarafın birlikte kaymasını yakalamaz).
+#[test]
+fn settings_boundary_values() {
+    let s = |t: &str| Settings::from_text(Some(t));
+    for block in ["[\"x\"]", "\"oops\"", "7", "null"] {
+        let a = s(&format!(
+            r#"{{"ucli_web": {block}, "ucli_cost": {block}, "ucli_usage_warn": {block}}}"#
+        ));
+        assert_eq!(a.ucli_web_config(), j(r#"{"search_docker": true}"#));
+        assert_eq!(a.get("ucli_web"), Some(&Json::object()));
+        let (amber, red) = a.ucli_usage_warn_thresholds();
+        assert_eq!(
+            (amber.as_i64(), red.as_i64()),
+            (Some(1_000_000), Some(3_000_000))
+        );
+        let c = a.ucli_cost_config();
+        assert_eq!(
+            (c.daily_cap_usd, c.credit_total_usd, c.cache_ttl.as_str()),
+            (0.0, 0.0, "1h")
+        );
+    }
+    assert_eq!(
+        s(r#"{"ucli_limits": {"reasoning_effort": "turbo"}}"#).ucli_reasoning_mode(),
+        "auto"
+    );
+    assert_eq!(
+        s(r#"{"ucli_script": {"mode": " Read "}}"#).ucli_script_mode(),
+        "read"
+    );
+    assert_eq!(
+        s(r#"{"ucli_web": {"search_url": "  http://h/s \n"}}"#).ucli_web_config(),
+        j(r#"{"search_url": "http://h/s", "search_flavor": "searxng"}"#)
+    );
+    let domains = |text: &str| -> usize {
+        s(&format!(
+            r#"{{"ucli_web": {{"allow_fetch_domains": "{text}"}}}}"#
+        ))
+        .ucli_web_config()
+        .get("allow_fetch_domains")
+        .and_then(Json::as_array)
+        .map_or(0, <[Json]>::len)
+    };
+    let l63 = "x".repeat(63);
+    assert_eq!(domains("localhost"), 1);
+    assert_eq!(domains(&format!("{l63}.org")), 1);
+    assert_eq!(domains(&format!("{l63}x.org")), 0);
+    assert_eq!(
+        domains(&format!("{l63}.{l63}.{l63}.{}", "y".repeat(61))),
+        1,
+        "253"
+    );
+    assert_eq!(
+        domains(&format!("{l63}.{l63}.{l63}.{}", "y".repeat(62))),
+        0,
+        "254"
+    );
+    let many: Vec<String> = (0..200).map(|i| format!("h{i}.org")).collect();
+    assert_eq!(domains(&many.join(",")), 64);
+    let ids = |id: &str, env: &str| -> usize {
+        s(&format!(
+            r#"{{"ucli_services": [{{"id": "{id}", "env": "{env}", "endpoint": "https://a"}}]}}"#
+        ))
+        .ucli_services()
+        .unwrap()
+        .len()
+            - 1 // evren
+    };
+    assert_eq!((ids("a", "KEY"), ids("ab", "KEY")), (0, 1));
+    assert_eq!(
+        (ids(&"a".repeat(20), "KEY"), ids(&"a".repeat(21), "KEY")),
+        (1, 0)
+    );
+    assert_eq!((ids("ab", "KE"), ids("ab", "KEY")), (0, 1));
+    assert_eq!(
+        (ids("ab", &"K".repeat(40)), ids("ab", &"K".repeat(41))),
+        (1, 0)
+    );
+    assert_eq!(ids("ab", "lower"), 0);
+    let models: Vec<String> = (0..70).map(|i| format!("\"m{i}\"")).collect();
+    let efforts: Vec<String> = (0..25).map(|i| format!("\"m{i}\": [\"low\"]")).collect();
+    let out = s(&format!(
+        r#"{{"ucli_services": [{{"id": "ab", "env": "KEY", "endpoint": "https://a", "models": [{}], "efforts": {{{}}}}}]}}"#,
+        models.join(","),
+        efforts.join(",")
+    ))
+    .ucli_services()
+    .unwrap();
+    let svc = &out[1];
+    assert_eq!(
+        svc.get("models")
+            .and_then(Json::as_array)
+            .map(<[Json]>::len),
+        Some(60)
+    );
+    assert_eq!(
+        svc.get("efforts")
+            .and_then(Json::as_object)
+            .map(|m| m.len()),
+        Some(20)
+    );
+}
+
+/// Sözlük olması gereken HER anahtar (ve diğerleri) sözlük olmayan değerle: tam `load_settings` çıktısı Python ile aynı.
+#[test]
+fn every_key_with_wrong_type_matches_python() {
+    let e = Env::new();
+    let out = e.py(
+        "files",
+        r#"
+from claudeops import settings as s
+for bad in (5, 'x', [1], None):
+    with open(s.SETTINGS_JSON, 'w', encoding='utf-8') as f:
+        json.dump({k: bad for k in s.DEFAULT_SETTINGS}, f)
+    s._LOAD_CACHE['sig'] = None
+    print(json.dumps(s.load_settings(), ensure_ascii=False))
+"#,
+    );
+    let mut lines = out.lines();
+    for bad in ["5", "\"x\"", "[1]", "null"] {
+        let all = Json::Object(
+            cops_state::settings::defaults()
+                .keys()
+                .map(|k| (k.clone(), j(bad)))
+                .collect(),
+        );
+        let got = Settings::from_text(Some(&all.to_compact()));
+        assert_eq!(
+            Json::Object(got.as_map().clone()).to_compact(),
+            lines.next().unwrap(),
+            "{bad}"
+        );
+        let dicts = got
+            .as_map()
+            .values()
+            .filter(|v| **v == Json::object())
+            .count();
+        assert_eq!(dicts, 12, "sözlük anahtarlarının tamamı {{}}");
+    }
+}
+
+/// Değişmeyen dosya yeniden ayrıştırılmaz (aynı `Arc`); değişince yeni nesne. Python da bir kez ayrıştırır.
+#[test]
+fn settings_cache_hit() {
+    let e = Env::new();
+    e.write("settings.json", r#"{"fleet_sort": "cwd"}"#);
+    let r = cops_state::settings::SettingsReader::new(e.dir());
+    let first = r.load();
+    for _ in 0..5 {
+        assert!(std::sync::Arc::ptr_eq(&first, &r.load()));
+    }
+    assert_eq!(first.str_of("fleet_sort"), "cwd");
+    e.write("settings.json", r#"{"fleet_sort": "name "}"#);
+    let second = r.load();
+    assert!(!std::sync::Arc::ptr_eq(&first, &second));
+    assert_eq!(second.str_of("fleet_sort"), "name ");
+    let py = e.py(
+        "files",
+        r#"
+from claudeops import settings as s
+n = []
+f = s._load_settings_uncached
+s._load_settings_uncached = lambda: (n.append(1), f())[1]
+for _ in range(5):
+    s.load_settings()
+print(len(n))
+"#,
+    );
+    assert_eq!(py.trim_end(), "1");
+}
+
+/// `_backup_if_corrupt`: dosya yok ya da boşsa yedek de hata da yok (Python aynı).
+#[test]
+fn missing_or_empty_settings_not_backed_up() {
+    let e = Env::new();
+    let corrupt = || {
+        std::fs::read_dir(&e.state)
+            .unwrap()
+            .filter(|x| {
+                x.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".corrupt-")
+            })
+            .count()
+    };
+    let py = "from claudeops import settings as s\ns._backup_if_corrupt()\nprint('ok')";
+    assert!(cops_state::settings::backup_if_corrupt(&e.dir()).is_none());
+    assert_eq!(e.py("files", py).trim_end(), "ok");
+    assert!(!e.dir().settings_json().exists());
+    e.write("settings.json", " \n\t");
+    assert!(cops_state::settings::backup_if_corrupt(&e.dir()).is_none());
+    e.py("files", py);
+    assert_eq!(corrupt(), 0);
+}
+
 #[test]
 fn defaults_lists_match_python() {
     let e = Env::new();
@@ -513,7 +854,7 @@ def ps_(r):
         return paths.parse_proc_stat(r)
     except ValueError:
         return None
-print(json.dumps([res, [ps_(r) for r in stats], paths.ucli_key_file(''), paths.ucli_key_file('grok')], ensure_ascii=False))
+print(json.dumps([res, [ps_(r) for r in stats]], ensure_ascii=False))
 "#,
         &input,
     );
@@ -542,24 +883,9 @@ print(json.dumps([res, [ps_(r) for r in stats], paths.ucli_key_file(''), paths.u
             })
         })
         .collect();
-    let home = e.root.join("home").display().to_string();
-    let key = |s: &str| {
-        let name = if s.is_empty() {
-            "ucli_api_key".into()
-        } else {
-            format!("ucli_key_{s}")
-        };
-        expanduser_with(&format!("~/.claude/claudeops/{name}"), Some(&home))
-    };
-    let rs = Json::Array(vec![
-        Json::Array(res),
-        Json::Array(ps),
-        key("").into(),
-        key("grok").into(),
-    ]);
+    // `ucli_key_file` süreç `HOME`unu okur: paritesi `env_paths.rs`te (geçici `HOME`)
+    let rs = Json::Array(vec![Json::Array(res), Json::Array(ps)]);
     assert_eq!(rs.to_compact(), out.trim_end());
-    // ucli_key_file kendi işlevi: süreç HOME'u ile aynı kural
-    assert!(cops_state::paths::ucli_key_file("x").ends_with("/.claude/claudeops/ucli_key_x"));
 }
 
 /// H3: okunamayan (G/Ç hatası) settings.json varsayılanları döndürür (Python gibi) ama önbelleği EZMEZ: son iyi değer
