@@ -12,16 +12,18 @@
 use crate::cost::{
     credit_window, py_round, write_mult, CostRefusal, UsageScan, BY_SESSION_TOP, RESERVE_TTL, RESERVE_USD, TTL,
 };
+use crate::probe::Diag;
 use crate::pyfmt::parse_int;
 use crate::pyjson::Py;
 use crate::real::{docs::DOC_MAX_BYTES, fsio};
 use crate::settings::{Settings, UcliCostConfig};
 use serde_json::{json, Map, Value};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Tek günlük satırının sınırı (Python sınırsız); aşan satır sayılamaz (sorun).
@@ -95,9 +97,46 @@ pub fn date_ms(day: &str, end: bool) -> f64 {
     local_midnight(*y, *m, *d).map_or(0.0, |t| (t + if end { 86400.0 } else { 0.0 }) * 1000.0)
 }
 
-/// `review._scan_usage(path, ..)`: dosyayı satır satır toplar (evrensel satır sonu, bozuk bayt U+FFFD). Olmayan dosya
+/// `review._BAD_SEEN_MAX`.
+const BAD_SEEN_MAX: usize = 1000;
+
+#[derive(Default)]
+struct BadLog {
+    seen: HashSet<(&'static str, String)>,
+    pending: Vec<Diag>,
+}
+
+static BAD_LOG: LazyLock<Mutex<BadLog>> = LazyLock::new(Mutex::default);
+
+/// `review._log_bad`: atlanan bozuk kayıt (tür, anahtar) başına bir kez günlüğe girer; bozuk değer yazılmaz.
+fn log_bad(what: &'static str, key: &str) {
+    let key: String = key.chars().take(200).collect();
+    let mut log = BAD_LOG.lock().unwrap_or_else(PoisonError::into_inner);
+    if log.seen.contains(&(what, key.clone())) {
+        return;
+    }
+    if log.seen.len() >= BAD_SEEN_MAX {
+        log.seen.clear();
+        log.pending.clear(); // kimse almıyorsa sınırsız büyümesin
+    }
+    log.seen.insert((what, key.clone()));
+    log.pending.push(Diag { event: "review_bad_record", fields: vec![("what", what.into()), ("key", key.into())] });
+}
+
+/// Birikmiş `review_bad_record` olayları; çağıran günlüğe yazar.
+pub fn take_bad_record_diags() -> Vec<Diag> {
+    std::mem::take(&mut BAD_LOG.lock().unwrap_or_else(PoisonError::into_inner).pending)
+}
+
+/// Tekrar süzgecini sıfırlar (süreç yeniden başlamış gibi).
+pub fn forget_bad_records() {
+    BAD_LOG.lock().unwrap_or_else(PoisonError::into_inner).seen.clear();
+}
+
+/// `review._scan_usage(path, ..)`: dosyayı satır satır toplar (yalnız `\n` satır ayırır, UTF-8 olmayan satır atlanır). Olmayan dosya
 /// sorunsuz 0. FIFO/aygıt açılışta bloklamaz.
 pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64) -> UsageScan {
+    let key = path.as_ref().to_string_lossy().into_owned();
     let mut scan = UsageScan::new(model, since_ms, mult);
     let opened = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY).open(path);
     let file = match opened {
@@ -140,10 +179,13 @@ pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64)
             }
             continue;
         }
-        for part in line.split(|b| *b == b'\r') {
-            if !part.is_empty() {
-                scan.feed(&String::from_utf8_lossy(part));
-            }
+        // Python ikili okur: yalnız `\n` satır ayırır; UTF-8 olmayan satır atlanır
+        match std::str::from_utf8(&line) {
+            Ok(text) => scan.feed(text),
+            Err(_) => scan.skipped.push("usage.line"),
+        }
+        for what in scan.skipped.drain(..) {
+            log_bad(what, &key);
         }
     }
     scan

@@ -284,6 +284,19 @@ fn load_db_cache_follows_row_stamp() {
     body(&doc("c").to_compact());
     assert_eq!(names(), ["c"]);
 
+    // bozuk ayna + okunamayan/olmayan DB satırı: reddedilir, dosyaya dokunulmaz
+    std::fs::write(&path, "{yarim").unwrap();
+    for broken in [r#"{"instances": []}"#, "{yarim"] {
+        body(broken);
+        let fresh = e.docs(Backend::Db);
+        assert!(Instances::new(&fresh).load().is_empty());
+        assert!(Instances::new(&fresh).forget("c").is_err(), "{broken}");
+    }
+    docs.store().unwrap().delete_doc("instances").unwrap();
+    assert!(i.forget("c").is_err(), "satır yok");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{yarim");
+    put("c");
+
     // dönen sözlük kopyadır
     i.load().clear();
     assert_eq!(names(), ["c"]);

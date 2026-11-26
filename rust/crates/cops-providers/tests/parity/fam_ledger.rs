@@ -251,6 +251,8 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
         let f = fs::OpenOptions::new().write(true).open(format!("{}/{}", e.root, m[0].as_str().unwrap())).unwrap();
         f.set_modified(at).unwrap();
     }
+    ledger::forget_bad_records();
+    drop(ledger::take_bad_record_diags());
     let settings = file_cost_settings(format!("{}/settings.json", e.state));
     let book = CostLedger::new(base.clone(), settings.clone());
     let out: Vec<Value> = a["steps"]
@@ -322,7 +324,7 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
             }
         })
         .collect();
-    RsOut::ret(Value::from(out))
+    RsOut { extra_diags: ledger::take_bad_record_diags(), ..RsOut::ret(Value::from(out)) }
 }
 
 pub fn run() {

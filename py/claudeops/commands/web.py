@@ -2236,17 +2236,41 @@ def _stop(name: str, lang: str = "tr", exact: bool = False) -> dict:
 HO_STOP_TIMEOUT_SECONDS = 900.0     # üst sınır: uzun devirler 5 dk'yı aşıyor (mo 14 Kas 7 dk 44 sn); bekleme READY görününce biter
 HO_STOP_REASK_FRACTION = 2 / 3      # bu orandan sonra READY yoksa devir BİR kez yeniden istenir (done 14 Kas: başka işle cevap verdi)
 HO_STOP_POLL_SECONDS = 2.0
+HO_STOP_REPOLL_SECONDS = 15.0       # uzak durum bayatsa poller önbelleği bu kadar daha yoklanır (poll 3 sn; ağa gitmez)
 
 
 def _ho_stop_fail(lang: str, why: str, code: str) -> dict:
     tr = {"handover_failed": "Devir mesajı gönderilemedi; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
           "handover_timeout": "Devir zamanında tamamlanmadı (READY FOR HANDOVER görünmedi); oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
-          "handover_unreadable": "Oturumun son yanıtı okunamadı, devir doğrulanamaz; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın."}
+          "handover_unreadable": "Oturumun son yanıtı okunamadı, devir doğrulanamaz; oturum KAPATILMADI. Devirsiz kapatmak için \"kapat\" düğmesini kullanın.",
+          "ambiguous_sessions": "Uzak makinede aynı adlı birden çok çalışan oturum var, hedef belirsiz; oturum KAPATILMADI. Önce adaş oturumlardan birini o makinede kapatın."}
     en = {"handover_failed": "Could not send the handover message; session NOT closed. Use the \"close\" button to close without a handover.",
           "handover_timeout": "Handover did not finish in time (no READY FOR HANDOVER); session NOT closed. Use the \"close\" button to close without a handover.",
-          "handover_unreadable": "The session's last reply could not be read, so the handover cannot be verified; session NOT closed. Use the \"close\" button to close without a handover."}
+          "handover_unreadable": "The session's last reply could not be read, so the handover cannot be verified; session NOT closed. Use the \"close\" button to close without a handover.",
+          "ambiguous_sessions": "More than one running session has this name on the remote host, so the target is ambiguous; session NOT closed. Close one of the twins on that host first."}
     msg = (en if lang == "en" else tr)[code]
-    return {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code, "suggest": "force"}
+    out = {"ok": False, "error": msg + (f" ({why})" if why else ""), "code": code}
+    if code != "ambiguous_sessions":      # adaşta devirsiz kapatma önerilmez: hedef yine belirsiz
+        out["suggest"] = "force"
+    return out
+
+
+def _remote_stop_row(host: str, name: str) -> Tuple[str, Optional[dict]]:
+    """Devirli uzak durdurmanın hedef denetimi: ("", satır ya da None) ya da (hata kodu, None). Aynı adlı iki çalışan satır
+    `ambiguous_sessions` (beklemeden); durum bayatsa `HO_STOP_REPOLL_SECONDS` boyunca yeniden yoklanır, sonra
+    `handover_unreadable`."""
+    deadline = time.monotonic() + HO_STOP_REPOLL_SECONDS
+    while True:
+        fresh, row = web_steward._remote_running_row(host, name)
+        if fresh:
+            return "", row
+        rows = web_steward._remote_rows(host)
+        if rows is not None and len(web_steward._remote_named_rows(rows, name)) > 1:
+            return "ambiguous_sessions", None
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return "handover_unreadable", None
+        time.sleep(min(HO_STOP_POLL_SECONDS, left))
 
 
 def _stop_with_handover(name: str, lang: str = "tr", timeout: float = HO_STOP_TIMEOUT_SECONDS, exact: bool = False) -> Optional[dict]:
@@ -2289,10 +2313,10 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     """UZAK oturum (tam adı çalışan satır): uzak `/api/handover` -> `/api/term/chat` ile READY FOR HANDOVER -> uzak
     `/api/stop` `force`+`exact` (devir zaten alındı). None = devir uygulanamaz (çalışan satır yok ya da konuşmasız): çağıran
     tam adlı düz durdurmaya düşer. Host durumu OKUNAMAZSA "uygulanamaz" sayılmaz: devir doğrulanamaz, kapatmaz."""
-    fresh, row = web_steward._remote_running_row(host, name)
-    if not fresh:
-        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="status")
-        return _ho_stop_fail(lang, "", "handover_unreadable")
+    code, row = _remote_stop_row(host, name)
+    if code:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="status", code=code)
+        return _ho_stop_fail(lang, "", code)
     provider = None if row is None else get_provider(str(row.get("cli") or DEFAULT_CLI))
     if provider is None or not provider.has_conversation():
         diag_log("ho_stop_remote_skip", name=name, host=host, reason="no_running_row" if row is None else "no_conversation")
@@ -2312,9 +2336,10 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
                                             push_check=None)
     # Bekleme uzundur: sonradan ikinci adaş çıktıysa ya da host okunamıyorsa istek de `/api/stop` da GİTMEZ (TBD#372).
     if reply is None:
-        if not web_steward._remote_running_row(host, name)[0]:
-            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask")
-            return _ho_stop_fail(lang, "", "handover_unreadable")
+        code = _remote_stop_row(host, name)[0]
+        if code:
+            diag_log("ho_stop_remote_unreadable", name=name, host=host, step="reask", code=code)
+            return _ho_stop_fail(lang, "", code)
         diag_log("ho_stop_reask", name=name, host=host)
         res2, _s2 = web_hosts.proxy_action("/api/handover", host, {"name": name, "exact": True, "lang": lang})
         if res2.get("ok"):
@@ -2324,9 +2349,10 @@ def _remote_stop_with_handover(host: str, name: str, lang: str = "tr", timeout: 
     if reply is None:
         diag_log("ho_stop_timeout", name=name, host=host)
         return _ho_stop_fail(lang, "", "handover_timeout")
-    if not web_steward._remote_running_row(host, name)[0]:
-        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop")
-        return _ho_stop_fail(lang, "", "handover_unreadable")
+    code = _remote_stop_row(host, name)[0]
+    if code:
+        diag_log("ho_stop_remote_unreadable", name=name, host=host, step="stop", code=code)
+        return _ho_stop_fail(lang, "", code)
     out, _status = web_hosts.proxy_action("/api/stop", host, {"name": name, "lang": lang, "force": True, "exact": True})
     return dict(out, handover=True) if isinstance(out, dict) else out
 

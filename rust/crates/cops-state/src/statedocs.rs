@@ -354,6 +354,23 @@ impl StateDocs {
         let fallbacks = self.lock().fallbacks.get(name).copied().unwrap_or(0);
         Some(DbStamp(st.path().to_path_buf(), row, fallbacks))
     }
+    /// `db_truth`: AYNA dosya bozukken kullanılacak DB değeri. `None` = DB doğruluğu kesin değil (kip db değil, yol
+    /// durum dizini dışında, son DB yazımı başarısız, satır yok ya da DB okunamıyor).
+    pub(crate) fn db_truth(&self, name: &str, path: &Path) -> Option<Json> {
+        if self.effective(name) != Backend::Db
+            || !self.db_ok(path)
+            || self.lock().dirty.contains(name)
+        {
+            return None;
+        }
+        match self.store().and_then(|s| s.get_doc(name)) {
+            Ok(v) => v,
+            Err(e) => {
+                self.log(&format!("read {name}: {e} (ayna bozuk)"));
+                None
+            }
+        }
+    }
     pub(crate) fn db_cache_get(&self, name: &'static str, stamp: &DbStamp) -> Option<Json> {
         self.lock()
             .db_cache
@@ -636,8 +653,10 @@ mod backend_tests {
         assert!(docs
             .db_stamp("hosts", &env.dir().join("hosts.json"))
             .is_none());
+        assert!(docs.db_truth("instances", &path).is_some());
         docs.lock().dirty.insert("instances".into());
         assert!(docs.db_stamp("instances", &path).is_none());
+        assert!(docs.db_truth("instances", &path).is_none());
         let dual = StateDocs::isolated(env.dir().clone(), Some(Backend::Dual), "");
         assert!(dual.db_stamp("instances", &path).is_none());
     }

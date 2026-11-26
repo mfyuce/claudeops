@@ -89,6 +89,7 @@ import claudeops.effort as effort  # noqa: E402
 import claudeops.routing as routing  # noqa: E402
 import claudeops.spawn as spawn  # noqa: E402
 import claudeops.steward as steward  # noqa: E402
+import claudeops.review as review  # noqa: E402
 import claudeops.tmux_backend as tmux_backend  # noqa: E402
 import claudeops.extensions as extensions  # noqa: E402
 import claudeops.authz as authz  # noqa: E402
@@ -1041,6 +1042,7 @@ def op_g8x_ledger(a):
     ucli_cost.cap_exceeded, ucli_cost.state, ucli_cost.reserve = _ORIG_COST
     ucli_cost.invalidate()
     ucli_cost._RESERVED.clear()
+    review._BAD_SEEN.clear()          # her vaka yeni süreç gibi
     mult = lambda: ucli_cost.write_mult()
     out = []
     try:

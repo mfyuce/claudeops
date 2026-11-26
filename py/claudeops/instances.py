@@ -8,7 +8,9 @@ silmez, `forgotten` işaretiyle Geçmiş'ten gizler.
 """
 from __future__ import annotations
 import datetime
+import hashlib
 import json
+import marshal
 import os
 import re
 import time
@@ -16,6 +18,7 @@ from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
 from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file
+from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
 
 INSTANCES_JSON = os.path.join(CLAUDEOPS_DIR, "instances.json")
@@ -40,23 +43,56 @@ _db_cache: Optional[tuple] = None      # db kipi: (DB damgası, kayıtlar); TEK 
 
 
 def read_strict() -> dict:
-    """Eksikse boş şekil; bozuksa InstancesCorrupt (yazıcılar üstüne yazmasın diye)."""
+    """Eksikse boş şekil; bozuksa InstancesCorrupt (yazıcılar üstüne yazmasın diye). db kipinde bozuk olan yalnız ayna
+    ise DB satırı döner, aynanın ham hali `.corrupt-<sha8>` olarak saklanır."""
+    from . import statedocs
     try:
         with open(INSTANCES_JSON, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         data = {"version": _VERSION, "instances": {}}     # dosya yoksa db kipinde DB'den okunur (aşağıda)
     except (ValueError, OSError) as e:      # UnicodeDecodeError dahil (bozuk kodlama): yazıcılar üstüne yazmasın
-        raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
-    from . import statedocs
+        data = statedocs.db_truth("instances", INSTANCES_JSON)
+        if not _valid(data):
+            raise InstancesCorrupt(f"{INSTANCES_JSON} okunamadı: {e}") from e
+        _keep_corrupt_mirror()
+        return data
     data = statedocs.read_json("instances", INSTANCES_JSON, data)   # db: DB tek kaynak (dosya ayna); files: dosya
-    if not isinstance(data, dict) or not isinstance(data.get("instances"), dict):
+    if not _valid(data):
         raise InstancesCorrupt(f"{INSTANCES_JSON} beklenen şekilde değil")
     return data
 
 
+def _valid(data) -> bool:
+    return isinstance(data, dict) and isinstance(data.get("instances"), dict)
+
+
+def _keep_corrupt_mirror() -> None:
+    """Sonraki yazım aynayı ezmeden ham halinin 0600 kopyası (aynı içerik bir kez, o zaman diag.log). Hata yutulur."""
+    try:
+        with open(INSTANCES_JSON, "rb") as f:
+            raw = f.read()
+        dest = f"{INSTANCES_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
+        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(raw)
+    except OSError:
+        return
+    diag_log("instances_mirror_corrupt", backup=dest)
+
+
+def _copy(value):
+    """JSON verisinin derin kopyası; `deepcopy`den ~10 kat hızlı (1155 kayıtta ~3 ms)."""
+    return marshal.loads(marshal.dumps(value))
+
+
 def load_instances() -> Dict[str, dict]:
-    """{isim: kayıt}. Okuyucular için toleranslı: bozuk dosyada boş döner."""
+    """{isim: kayıt}. Okuyucular için toleranslı: bozuk dosyada boş döner. Dönen yapı çağıranındır."""
+    return _copy(_shared())
+
+
+def _shared() -> Dict[str, dict]:
+    """Önbellekteki kayıtların KENDİSİ: DEĞİŞTİRME, dışarı vermeden önce `_copy`."""
     global _cache_key, _cache, _db_cache
     from . import statedocs
     if statedocs.backend() == "db":     # kayıt DB'de: ayna dosyanın imzası değil DB satır damgası anahtardır (TBD#374 S4)
@@ -64,7 +100,7 @@ def load_instances() -> Dict[str, dict]:
         stamp = statedocs._db_stamp("instances", INSTANCES_JSON)
         hit = _db_cache
         if stamp is not None and hit is not None and hit[0] == stamp:
-            return dict(hit[1])
+            return hit[1]
         try:
             data = read_strict()["instances"]
         except InstancesCorrupt:
@@ -72,13 +108,13 @@ def load_instances() -> Dict[str, dict]:
         # damga okumadan ÖNCE alındı: arada yazım olursa sonraki çağrı yeniden okur; okuma dosyaya düştüyse saklanmaz
         if stamp is not None and statedocs._db_stamp("instances", INSTANCES_JSON) == stamp:
             _db_cache = (stamp, data)
-        return dict(data)
+        return data
     try:
         st = os.stat(INSTANCES_JSON)
     except FileNotFoundError:       # ayna dosya yok: db kipinde kayıtlar DB'de olabilir (önbelleksiz oku)
         _cache_key = None
         try:
-            return dict(read_strict()["instances"])
+            return read_strict()["instances"]
         except InstancesCorrupt:
             return {}
     key = (st.st_ino, st.st_mtime_ns, st.st_size)
@@ -88,11 +124,11 @@ def load_instances() -> Dict[str, dict]:
         except InstancesCorrupt:
             _cache = {}
         _cache_key = key
-    return dict(_cache)
+    return _cache
 
 
 def get_instance(name: str) -> Optional[dict]:
-    return load_instances().get(name)
+    return _copy(_shared().get(name))     # yalnız istenen kayıt kopyalanır
 
 
 @contextmanager

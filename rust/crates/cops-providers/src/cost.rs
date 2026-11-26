@@ -118,14 +118,23 @@ const COUNT_KEYS: [&str; 9] = [
     "completion_tokens",
 ];
 
-/// `float(rec.get("t") or 0)` + sonlu mu.
+/// `review._finite`: sayısal değer sonlu mu (float'a sığmayan tam sayı sonlu değil).
+fn finite(v: &Py) -> bool {
+    match v {
+        Py::BigInt(s) => s.parse::<f64>().is_ok_and(f64::is_finite),
+        Py::Float(f) => f.is_finite(),
+        _ => true,
+    }
+}
+
+/// `float(rec.get("t") or 0)` + geçerli mi. Sayıya çevrilemeyen = (0, geçersiz); sonlu olmayan değer aynen döner.
 fn timestamp(v: Option<&Py>) -> (f64, bool) {
     let Some(v) = v.filter(|v| v.truthy()) else { return (0.0, true) };
     let parsed = match v {
         Py::Bool(_) => Some(1.0),
         Py::Int(i) => Some(*i as f64),
-        // float'a sığmayan tam sayı Python'da `OverflowError`
-        Py::BigInt(s) => s.parse::<f64>().ok().filter(|f| f.is_finite()),
+        // float'a sığmayan tam sayı (Python `OverflowError`) burada sonsuz olur
+        Py::BigInt(s) => s.parse::<f64>().ok(),
         Py::Float(f) => Some(*f),
         Py::Str(s) => parse_float(s),
         _ => None,
@@ -150,12 +159,14 @@ pub struct UsageScan {
     pub total: f64,
     /// Boş değilse toplama güvenilmez.
     pub problem: Option<&'static str>,
+    /// Atlanan bozuk kayıtların türü (`usage.record`), görülme sırasıyla.
+    pub skipped: Vec<&'static str>,
 }
 
 impl UsageScan {
     pub fn new(model: &str, since_ms: f64, write_mult: f64) -> UsageScan {
         let price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
-        UsageScan { price, fixed_model: !model.is_empty(), since_ms, write_mult, total: 0.0, problem: None }
+        UsageScan { price, fixed_model: !model.is_empty(), since_ms, write_mult, total: 0.0, problem: None, skipped: Vec::new() }
     }
 
     /// Tek satır (satır sonu olsa da olur). Ayrıştırılamayan (yarım yazılmış) satır atlanır.
@@ -181,12 +192,22 @@ impl UsageScan {
         if !t_ok && usage.is_some() {
             self.problem = Some("geçersiz zaman damgası");
         }
+        if !t.is_finite() {
+            self.skipped.push("usage.record"); // sonlu olmayan damgalı kayıt toplama girmez (TBD#375)
+            return;
+        }
         if self.since_ms != 0.0 && t < self.since_ms {
             return;
         }
         let Some(u) = usage else { return };
         if COUNT_KEYS.iter().any(|k| u.get(k).is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())) {
             self.problem = Some("geçersiz sayaç");
+        }
+        if let Py::Object(fields) = u {
+            if !fields.iter().all(|(_, v)| finite(v)) {
+                self.skipped.push("usage.record"); // sonlu olmayan sayaçlı istek bütünüyle atlanır
+                return;
+            }
         }
         let g = |names: &[&str]| names.iter().find_map(|n| usage_number(u.get(n))).unwrap_or(0.0);
         let cr = g(&["cache_read_input_tokens", "cached_tokens", "cache_read_tokens"]);

@@ -152,6 +152,19 @@ def _db_stamp(name: str, path: str) -> Optional[tuple]:
     return None if row is None else (str(st.path), row, _FALLBACKS.get(name, 0))
 
 
+def db_truth(name: str, path: str) -> Any:
+    """AYNA dosya bozukken kullanılacak DB değeri. None = DB doğruluğu kesin değil (kip db değil, yol durum dizini
+    dışında, son DB yazımı başarısız, satır yok ya da DB okunamıyor): çağıran bozuk dosyayı reddetsin."""
+    if _effective(name) != "db" or not _db_ok(path) or name in _DIRTY:
+        return None
+    try:
+        from .store import default_store
+        return default_store().get_doc(name)
+    except Exception as e:
+        _log(f"read {name}: {e!r} (ayna bozuk)")
+        return None
+
+
 def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = True, on_corrupt: Any = None) -> Any:
     """`dual`: DOSYA doğruluk kaynağı, DB gölge kopya (uzun yaşayan eski kodlu süreçler yalnız dosyaya yazabilir; elle düzenleme
     ezilmez). Dosya imzası (mtime,size) son eşitlemeden değiştiyse DB ile karşılaştırılır, fark loglanır ve DB uydurulur;

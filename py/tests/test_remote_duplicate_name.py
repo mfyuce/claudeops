@@ -80,7 +80,8 @@ class TestCallers(_Dup):
                 mock.patch.object(web.web_orch, "_wait_for_reply_remote", lambda *a, **k: None):
             res = web._remote_stop_with_handover(HOST, DUP)
         self.assertIsNotNone(res)                   # None = çağıran düz `/api/stop`a düşer
-        self.assertEqual((res["ok"], res["code"]), (False, "handover_unreadable"))
+        self.assertEqual((res["ok"], res["code"]), (False, "ambiguous_sessions"))
+        self.assertNotIn("suggest", res)            # adaşta "kapat" önerilmez
         self.assertEqual(calls, [])
 
 
@@ -127,7 +128,7 @@ class TestTwinAppearsDuringHandover(_Resolve):
                 mock.patch.object(web.web_orch, "_fetch_exchange", lambda *a, **k: {"user": "u", "assistant": "a"}), \
                 mock.patch.object(web.web_orch, "_wait_for_reply_remote", wait):
             res = web._remote_stop_with_handover(HOST, DUP)
-        self.assertEqual((res["ok"], res["code"]), (False, "handover_unreadable"), res)
+        self.assertEqual((res["ok"], res["code"]), (False, "ambiguous_sessions"), res)
         return calls
 
     def test_no_second_handover_request(self):
