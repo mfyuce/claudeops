@@ -28,6 +28,8 @@ pub const MODEL_CHOICES: [&str; 17] = [
 ];
 pub const PERMISSION_MODES: [&str; 4] = ["auto", "manual", "plan", "autopilot"];
 pub const EFFORT_LEVELS: [&str; 4] = ["low", "medium", "high", "xhigh"];
+/// Tur işlenirken durum çubuğunda görünen metin.
+pub const BUSY_STATUS_PATTERN: &str = "Esc to cancel";
 
 fn permission_flags(mode: &str) -> &'static [&'static str] {
     match if mode.is_empty() { "auto" } else { mode } {

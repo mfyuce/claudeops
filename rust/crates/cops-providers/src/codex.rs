@@ -7,6 +7,8 @@ use serde_json::{Map, Value};
 
 pub const PERMISSION_MODES: [&str; 4] = ["auto", "acceptEdits", "manual", "plan"];
 pub const EFFORT_LEVELS: [&str; 4] = ["low", "medium", "high", "xhigh"];
+/// Tur işlenirken durum çubuğunda görünen metin.
+pub const BUSY_STATUS_PATTERN: &str = "esc to interrupt";
 pub const FALLBACK_MODELS: [&str; 4] = ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4-mini"];
 
 fn permission_flags(mode: &str) -> &'static [&'static str] {

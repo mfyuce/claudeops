@@ -28,7 +28,7 @@ fn entry(label: impl Into<String>, percent: impl Into<String>, detail: impl Into
 const S_IN: &str = r"\s\x1C-\x1F";
 
 /// Python `\d` sınıfının içi (Unicode 13 `Nd` blokları; [`crate::pyfmt::decimal_value`] ile aynı tablo).
-fn d_in() -> String {
+pub(crate) fn d_in() -> String {
     let mut out = String::new();
     let mut cp = 0u32;
     while cp < 0x20000 {

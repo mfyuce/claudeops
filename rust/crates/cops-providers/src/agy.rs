@@ -6,6 +6,8 @@ use crate::pyfmt::{join_quoted, quote};
 
 pub const PERMISSION_MODES: [&str; 3] = ["auto", "acceptEdits", "plan"];
 pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// Tur işlenirken durum çubuğunda görünen metin (küçük `e`; copilot'unkiyle karıştırma, arama büyük/küçük harf duyarlı).
+pub const BUSY_STATUS_PATTERN: &str = "esc to cancel";
 
 fn permission_flags(mode: &str) -> &'static [&'static str] {
     match if mode.is_empty() { "auto" } else { mode } {

@@ -31,6 +31,10 @@ impl Paths {
     pub fn ucli_state_root(&self) -> String {
         format!("{}/ucli-state", self.home_state())
     }
+    /// copilot'un oturum deposu (`COPILOT_HOME`a bakmaz: Python `SESSION_STORE_DB`).
+    pub fn copilot_session_db(&self) -> String {
+        format!("{}/.copilot/session-store.db", self.home)
+    }
     pub fn ucli_metrics_dir(&self) -> String {
         format!("{}/ucli_metrics", self.claudeops_dir)
     }

@@ -12,6 +12,8 @@ use std::sync::LazyLock;
 pub const MODEL_CHOICES: [&str; 4] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2", "claude-haiku-5-5"];
 pub const PERMISSION_MODES: [&str; 6] = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"];
 pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// Tur işlenirken durum çubuğunda görünen metin.
+pub const BUSY_STATUS_PATTERN: &str = "esc to interrupt";
 
 static SONNET_PIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(claude-sonnet-)(\d{1,2}(?:-\d{1,2})?)(\[[^\]]*\])?\n?$").unwrap());

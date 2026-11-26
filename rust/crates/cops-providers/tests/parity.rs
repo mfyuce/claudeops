@@ -70,3 +70,17 @@ mod fam_panel;
 fn parity_panel() {
     fam_panel::run();
 }
+#[path = "parity/fam_live.rs"]
+mod fam_live;
+
+#[test]
+fn parity_live() {
+    fam_live::run();
+}
+#[path = "parity/fam_bg.rs"]
+mod fam_bg;
+
+#[test]
+fn parity_bg_work() {
+    fam_bg::run();
+}

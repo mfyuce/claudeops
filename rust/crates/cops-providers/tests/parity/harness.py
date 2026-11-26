@@ -66,6 +66,7 @@ subprocess.call = subprocess.check_call = subprocess.check_output = _fake_run
 import claudeops.paths as paths  # noqa: E402
 
 assert paths.CLAUDEOPS_DIR == os.environ["CLAUDEOPS_DIR"], "CLAUDEOPS_DIR yalıtılamadı"
+import claudeops.bg_work as bg_work  # noqa: E402
 import claudeops.diaglog as diaglog  # noqa: E402
 import claudeops.preview as preview  # noqa: E402
 import claudeops.settings as settings  # noqa: E402
@@ -511,6 +512,60 @@ def op_metrics_config(a):
 
 def op_instr_check(a):
     return ucli_p.instructions_check(a["cwd"])
+
+
+def _safe(fn):
+    try:
+        return fn()
+    except Exception as e:      # noqa: BLE001
+        return {"$exc": type(e).__name__}
+
+
+def op_live(a):
+    p = _prov(a)
+    cwd, sid, pane = a["cwd"], a.get("sid"), a.get("pane") or ""
+    saved_time, saved_resume = bg_work.time, copilot_p.CopilotProvider.resolve_resume_id
+    bg_work.time = types.SimpleNamespace(time=lambda: a["now"])
+    copilot_p.CopilotProvider.resolve_resume_id = lambda self, cwd, *x, **k: FACTS.get("copilot_resume")
+    try:
+        out = {
+            "busy_status_pattern": p.busy_status_pattern(),
+            "background_work": _safe(lambda: p.background_work(pane, cwd, sid)),
+            "live_busy": _safe(lambda: p.live_busy(cwd, sid)),
+            "live_tools": _safe(lambda: p.live_tools(cwd, sid)),
+            "live_context": _safe(lambda: p.live_context(cwd, sid)),
+            "live_usage": _safe(lambda: p.live_usage(cwd, sid)),
+            "live_failed_turns": _safe(lambda: p.live_failed_turns(cwd, sid)),
+            "live_phase": _safe(lambda: p.live_phase(cwd, sid)),
+        }
+        if a["cli"] == "ucli":
+            out["dirs"] = ucli_client.chat_session_dirs(cwd)
+            out["status_path"] = ucli_client.find_chat_file(cwd, f"{sid}.status.json")
+            out["records"] = _safe(lambda: ucli_client.failed_turn_records(cwd, sid or ""))
+        return out
+    finally:
+        bg_work.time, copilot_p.CopilotProvider.resolve_resume_id = saved_time, saved_resume
+
+
+def op_bg(a):
+    os.environ["TZ"] = a["tz"]
+    time.tzset()
+    now = a["now"]
+    texts = a.get("texts") or []
+    transcripts = a.get("transcripts") or []
+    files = a.get("files") or []
+    saved = bg_work.TRANSCRIPT_TAIL_BYTES
+    return {
+        "screen_bg_count": [_safe(lambda: bg_work.screen_bg_count(t)) for t in texts],
+        "screen_bg_work": [bg_work.screen_bg_work(t) for t in texts],
+        "codex_screen_count": [_safe(lambda: bg_work.codex_screen_count(t)) for t in texts],
+        "transcript_pending": [_safe(lambda: bg_work.transcript_pending(ls, now)) for ls in transcripts],
+        "codex_subagents_pending": [_safe(lambda: bg_work.codex_subagents_pending(ls, now)) for ls in transcripts],
+        "transcript_pending_path": [_safe(lambda: bg_work.transcript_pending_path(f, now)) for f in files],
+        "tail_lines": [bg_work.tail_lines(f) for f in files],
+        "tail_bytes": saved,
+        "epochs": [_safe(lambda: bg_work._epoch(x)) for x in (a.get("stamps") or [])],
+    }
 
 
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}
