@@ -141,6 +141,12 @@ fn bash_script(pid: u32) -> Option<String> {
 impl Tmux {
     /// Pid'in ata zincirinde (sınırlı) bu soketin tmux sunucusu var mı. Her belirsizlik `false` (tmux'suz say).
     pub fn is_tmux_backed(&self, pid: u32) -> bool {
+        // SAFETY: yan etkisiz sistem sorgusu.
+        self.tmux_ancestor_of(pid, unsafe { libc::getuid() })
+    }
+
+    /// Yalnız `uid` kullanıcısının ataları: başkasınınki yürüyüşü bitirir, içeriği okunmaz (TBD#365).
+    fn tmux_ancestor_of(&self, pid: u32, uid: u32) -> bool {
         if stat(pid).is_none() {
             return false;
         }
@@ -150,6 +156,9 @@ impl Tmux {
                 return false;
             };
             current = up;
+            if real_uid(current) != Some(uid) {
+                return false;
+            }
             let Some(cmd) = cmdline(current) else {
                 return false;
             };
@@ -338,6 +347,40 @@ mod tests {
         );
         assert!(other.is_empty(), "{other:?}");
         assert_eq!(real_uid(child.id()), None, "süreç bitti");
+    }
+
+    #[test]
+    fn another_users_tmux_ancestor_does_not_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = format!("cxrs-uid-{}", std::process::id());
+        let tmux = |args: &[&str]| {
+            std::process::Command::new("tmux")
+                .args(["-L", &socket, "-f", "/dev/null"])
+                .args(args)
+                .env("TMUX_TMPDIR", dir.path())
+                .env_remove("TMUX")
+                .output()
+                .unwrap()
+        };
+        let out = tmux(&[
+            "new-session",
+            "-d",
+            "-P",
+            "-F",
+            "#{pane_pid}",
+            "exec sleep 900",
+        ]);
+        let pid: u32 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
+        let t = Tmux::with_socket(&socket);
+        // SAFETY: yan etkisiz sistem sorgusu.
+        let me = unsafe { libc::getuid() };
+        let (own, foreign) = (
+            t.tmux_ancestor_of(pid, me),
+            t.tmux_ancestor_of(pid, me.wrapping_add(4242)),
+        );
+        tmux(&["kill-server"]);
+        assert!(own);
+        assert!(!foreign);
     }
 
     #[test]
