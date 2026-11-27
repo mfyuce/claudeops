@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 557 | 153 | 404 | 0 |
-| test durumu (127 dosya) | 1665 | 115 | 1550 | 0 |
+| test durumu (127 dosya) | 1672 | 115 | 1557 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -1062,6 +1062,13 @@ Yok.
 | `test_handover_session_wait.py::SteerView.test_other_waits_do_not_freeze_the_planner` | 76 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
 | `test_handover_session_wait.py::BatchHandover.test_batch_skips_waiting_session` | 95 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
 | `test_handover_session_wait.py::BatchHandover.test_batch_skips_open_question_in_transcript` | 99 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_directive` | 129 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_directive_goes_through_when_idle` | 132 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_nudges` | 137 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_brain_tour` | 143 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_refusal_does_not_use_up_lesson_or_job_attempts` | 148 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::EngineDelivery.test_unregistered_answer_is_kept_and_not_reported` | 161 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::TermInput.test_engine_input_is_refused_but_owner_typing_is_not` | 183 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
 
 ### `py/tests/test_input_box_typed.py`
 
