@@ -3,7 +3,8 @@
 //! [`crate::AgySidStore`] ([`docs::DocAgySidStore`]). Çekirdek modüller saf kalır; dosya, süreç, ağ ve saat yalnız
 //! buradadır.
 //!
-//! Tek atımlık çağrı ([`oneshot::OneShot`]) ve onay kaydının yazılan kısmı ([`approval::ApprovalStore`]).
+//! Tek atımlık çağrı ([`oneshot::OneShot`]) ve onay kaydının yazılan kısmı ([`approval::ApprovalStore`]). Canlı
+//! pane ([`crate::tui::Pane`]): [`pane::TmuxPane`] (G4).
 //!
 //! [`probe::CostGate`] (gerçek: [`ledger::CostLedger`]) ve [`probe::SearchUrl`] (gerçek:
 //! [`searxng::ManagedSearch`]) kurucuya dışarıdan verilir (süreç başına tek örnek). Başka ize ait bağımlılıklar:
@@ -25,6 +26,7 @@ pub mod lock;
 pub mod modelio;
 pub mod oneshot;
 pub mod oserr;
+pub mod pane;
 pub mod pathexec;
 pub mod probe;
 pub mod process;

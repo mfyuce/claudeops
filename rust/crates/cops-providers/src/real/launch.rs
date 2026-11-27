@@ -88,9 +88,13 @@ impl Clock for SystemClock {
         static ORIGIN: OnceLock<Instant> = OnceLock::new();
         ORIGIN.get_or_init(Instant::now).elapsed().as_secs_f64()
     }
+    /// NaN, negatif ve `Duration`a sığmayan süre beklemez (`from_secs_f64` panik atardı; Python `ValueError` /
+    /// `OverflowError` verir, çağıranlar yalnız sabit süre geçirir).
     fn sleep(&self, secs: f64) {
-        if secs.is_finite() && secs > 0.0 {
-            std::thread::sleep(Duration::from_secs_f64(secs));
+        if secs > 0.0 {
+            if let Ok(d) = Duration::try_from_secs_f64(secs) {
+                std::thread::sleep(d);
+            }
         }
     }
 }
