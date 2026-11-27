@@ -7,16 +7,15 @@ use crate::common::*;
 use crate::fam_model::with;
 use crate::fam_ucli::full_help;
 use cops_providers::agy::parse_models;
-use cops_providers::routing::{sync_plan, with_block, SyncAction};
+use cops_providers::real::routing_sync::sync_one;
+use cops_providers::routing::with_block;
 use cops_providers::ucli::{
     derives_context, flag_values, is_child_name, mcp_server_name, parse_live_models, reasoning_effort_for, state_dir_for,
     supports_flag, usage_log_path, LiveModels,
 };
 use cops_providers::ucli_opts::{exec_flags, expand_exec_cmds, is_forbidden_cmd, validate_opts};
-use cops_providers::{Diag, Probe};
+use cops_providers::Probe;
 use serde_json::{json, Value};
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
 
 fn rs_with_block(_e: &Env, c: &Case) -> RsOut {
     RsOut::ret(json!(with_block(c.args["existing"].as_str().unwrap(), c.args.get("body").and_then(Value::as_str))))
@@ -51,45 +50,15 @@ fn with_block_cases() -> Vec<Case> {
     v
 }
 
-/// `_sync_one` sonucu: Rust kararı (`sync_plan`) + çağıranın dosya adımları (yedek kopyası, realpath'e atomik yazım).
+/// `_sync_one`: GERÇEK `real::routing_sync::sync_one` (karar `sync_plan` + yedek, silme, realpath'e atomik yazım).
 fn rs_sync_one(e: &Env, c: &Case) -> RsOut {
     with(e, c, |p, probe| {
         let path = c.args["path"].as_str().unwrap();
         let create = c.args["create"].as_bool().unwrap();
-        let bundled = probe.read_text(&e.paths().routing_bundled());
-        let current = if probe.is_file(path) { fs::read(path).ok() } else { None };
-        let mut extra = Vec::new();
-        let ret = match sync_plan(p.settings, bundled.as_deref(), current.as_deref(), create) {
-            SyncAction::SkippedNoFile => "skipped:no file".to_string(),
-            SyncAction::SkippedBadUtf8 => {
-                extra.push(Diag {
-                    event: "routing_guidance_unreadable",
-                    fields: vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))],
-                });
-                "skipped:UnicodeDecodeError".to_string()
-            }
-            SyncAction::Unchanged => "unchanged".to_string(),
-            SyncAction::Remove => {
-                fs::remove_file(path).unwrap();
-                "removed".to_string()
-            }
-            SyncAction::Write { content, backup, removed } => {
-                let bak = format!("{path}.bak-routing");
-                if backup && fs::symlink_metadata(&bak).is_err() && !std::path::Path::new(&bak).exists() {
-                    // shutil.copy2: içerik + izin (zaman damgası görüntüde yok).
-                    fs::copy(path, &bak).unwrap();
-                    let mode = fs::metadata(path).unwrap().permissions().mode();
-                    fs::set_permissions(&bak, fs::Permissions::from_mode(mode)).unwrap();
-                }
-                let real = probe.realpath(path);
-                if let Err(err) = cops_providers::real::effects::apply_all(&[cops_providers::Effect::WriteAtomic { path: real, content }]) {
-                    return RsOut::ret(json!(format!("skipped:{:?}", err.error.kind())));
-                }
-                (if removed { "removed" } else { "written" }).to_string()
-            }
-        };
+        let sink = VecSink::default();
+        let ret = sync_one(probe, p.settings, p.paths, path, create, &sink);
         let mut rs = RsOut::ret(json!(ret));
-        rs.extra_diags = extra;
+        rs.extra_diags = sink.take();
         rs
     })
 }

@@ -728,3 +728,19 @@ impl Runner {
 pub fn map(v: Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
+
+/// Toplayan `DiagSink` (G9: `sync_one`, spawn yürütücüsü, bekçi).
+#[derive(Default)]
+pub struct VecSink(pub std::sync::Mutex<Vec<Diag>>);
+
+impl VecSink {
+    pub fn take(&self) -> Vec<Diag> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
+}
+
+impl cops_providers::spawn_exec::DiagSink for VecSink {
+    fn log(&self, diag: &Diag) {
+        self.0.lock().unwrap().push(diag.clone());
+    }
+}

@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 /// Python koşucusunun `os.environ`'u: sabit taban + vaka ortamı (dict ataması: var olan anahtar yerinde).
-fn parent_env(e: &Env, c: &Case) -> Vec<(String, String)> {
+pub fn parent_env(e: &Env, c: &Case) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = vec![
         ("HOME".into(), e.home.clone()),
         ("CLAUDEOPS_DIR".into(), e.state.clone()),
@@ -33,7 +33,7 @@ fn parent_env(e: &Env, c: &Case) -> Vec<(String, String)> {
     env
 }
 
-fn pairs(v: &[(String, String)]) -> Vec<Value> {
+pub fn pairs(v: &[(String, String)]) -> Vec<Value> {
     v.iter().map(|(k, x)| json!([k, x])).collect()
 }
 

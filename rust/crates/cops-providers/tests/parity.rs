@@ -149,3 +149,10 @@ mod fam_tui;
 fn parity_tui() {
     fam_tui::run();
 }
+#[path = "parity/fam_g9.rs"]
+mod fam_g9;
+
+#[test]
+fn parity_g9() {
+    fam_g9::run();
+}
