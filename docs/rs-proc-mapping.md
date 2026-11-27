@@ -2721,13 +2721,13 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` | 31 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_fable_gets_table_price` | 37 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` | 41 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` | 46 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` | 51 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_binary_without_price_flag_is_refused` | 57 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_no_cap_no_refusal` | 61 | kapsam dışı | yok | fiyatsız modelde USD tavanı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` | 31 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_fable_gets_table_price` | 37 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` | 41 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` | 46 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` | 51 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_binary_without_price_flag_is_refused` | 57 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_no_cap_no_refusal` | 61 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_usage.py`
 

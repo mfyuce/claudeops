@@ -985,6 +985,7 @@ FILES = {
     "ucli_start_opts": ("başlatma seçenekleri", f"{SAG}; {T4}"),
     "ucli_state_dir": ("ucli durum dizini bayrağı ve okuyucuları", f"{SAG}; {T1}"),
     "ucli_stream": (_BUILD, SAG),
+    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı: `--price` ya da spawn reddi", SAG),
     "ucli_usage": ("`usage` satır alanı", T1),
     "ucli_web": ("ucli web bayrakları ve ayarları", SAG),
     "usage_category": ("`cops usage` gün/kategori dökümü", f"{T6}; {T7}"),
