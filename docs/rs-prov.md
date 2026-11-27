@@ -179,10 +179,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 - Tek davranış penceresi: dosya DENETİM SÜRERKEN büyürse (ya da okunamaz olursa) eski akış sonraki okumada bunu
   görebiliyordu; yenisi dosyanın tek okunduğu andaki içeriğe göre karar verir (eskisi de son okumasından sonrasını
   görmüyordu). Ret kuralı değişmez.
-- Bu turda görülen, değiştirilmeyen eski fark: nesneyle birlikte 513 kattan derin satırı (en içte bir değer varsa
-  513 katlı olanı da) `cops-review-core` saymıyor (0 USD), Python sayıyor (rev parite koşucusu yeni Python testindeki
-  çağrılarda yakaladı; test satırları iki tarafın uyuştuğu derinliğe çekildi). Defter 512'den derinini zaten
-  "sayılamıyor" diye reddediyor.
+- Bu turda görülen derinlik farkı (513 katlı satır) 27 Kas "Sayılamayan harcama satırı" bölümünde DÜZELDİ.
 - Kapsam dışı (değişmedi): panel özeti `state` (30 sn önbellek) her yenilemede dosyaları pencere başına okur; tek başına
   `reserve`/`cap_exceeded` çağrısı da öyle. Üretimde açılış yolu yalnız `_claude_service_flags` / `check_and_reserve_at`.
 
@@ -732,15 +729,12 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ### Sahiplik
 Fiyat tablosu, Haiku dilim sabitleri ve `anthropic_price` tek kaynaktan: `cops-review-core` (`targets.rs`, `report.rs`);
-`cost.rs` ve `ucli.rs` oradan alır (`f4679f51` eşitlemesi). Toplayıcı İKİ kopya: `report.rs::usage_cost_usd` yalnız toplam,
-`cost.rs::UsageScan` toplam + güvenilirlik (`problem`); kural değişirse ikisi de güncellenir.
-- 27 Kas ölçümü (`tests/usage_two_copies.rs`: elle sınır satırları + 3000 rastgele günlük, 4 model x 3 `since`/çarpan):
-  rastgele dosyalarda fark yoktu; sınır satırlarında üç tür fark. İkisi `cops-review-core`da düzeltildi (Python'a eşit):
-  eşlenmemiş vekil taşıyan satır sayımdan düşüyordu (`parse_lossy`); metin damgada ASCII olmayan rakam 0 okunuyordu
-  (`py::float_str` artık `cops_state::pycompat::parse_float`). Kalan, testte adıyla izinli tek fark: nesneyle birlikte 513
-  katlı satırı review sayar (Python gibi), defter saymaz ve `problem` ile tavanı KAPATIR (yukarıdaki 512 sınırı).
-- Tekleştirme YAPILMADI (açık iş, iz): iki ayrı JSON türü (`cops_state::json::Json`, `pyjson::Py`) üstünde para kapısının
-  yeniden yazımı demek; eşlik testi sapmayı yakalıyor.
+`cost.rs` ve `ucli.rs` oradan alır (`f4679f51` eşitlemesi). Satır kuralları da tek kaynakta (`usage.rs`, aşağıdaki
+"Sayılamayan harcama satırı" bölümü): `report.rs::usage_cost_usd` yalnız toplam,
+`cost.rs::UsageScan` toplam + güvenilirlik (`problem`). İkisinde dosya okuma ayrıdır (defter satır satır ve 16 MiB satır
+sınırlı, review dosyayı bütün okur).
+- Eşlik testi `tests/usage_two_copies.rs` (elle sınır satırları + 3000 rastgele günlük, 4 model x 3 `since`/çarpan;
+  derinlik ve uzun tam sayı sınırı): izinli fark YOK.
 
 ### Maliyet defteri (`cost.rs` saf, `real/ledger.rs` G/Ç)
 - Defterin yazarı claudeops değil: `<durum>/ucli_usage/<oturum>.jsonl` dosyalarına yalnız `ucli` ekler; Python ve Rust yalnız
@@ -766,7 +760,7 @@ Fiyat tablosu, Haiku dilim sabitleri ve `anthropic_price` tek kaynaktan: `cops-r
 - Sağlık yoklaması std soketle yalnız `127.0.0.1`: proxy yok, yönlendirme yok, toplam süre. Yeni bağımlılık yok.
 
 ### Bilinen ayrışmalar (testte kayıtlı olan yok: yalnız Rust testinde ya da testsiz)
-- Defter: 512'den derin ya da 16 MiB'tan uzun satır Rust'ta "sayılamıyor" reddi (Python 1000'e dek okur / sınırsız); var ama
+- Defter: 16 MiB'tan uzun satır yalnız defterde "sayılamıyor" reddi (Python ve review toplamı sınırsız okur); var ama
   ayrıştırılamayan `settings.json` ve geçersiz tavan iki tarafta reddedilir (TBD#397); `credit_window` sonlu olmayan
   girdiyi `null` yazar. 512'den derin `settings.json`da Rust "bozuk" reddi verir, Python daha derine dek okur, çok derinde
   `load_settings` `RecursionError` atar (başlatma yine olmaz; düzeltilmedi).
@@ -803,6 +797,49 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Bağlayan uç: `ApprovalStore::with_diag` ve `DocAgySidStore::with_diag` verilmeli (`RealProbe` ajan defterine kendi bağlar,
   `SpawnRuntime` `HelpCache`e ve arama yöneticisine bağlar). `rs/state` `cops-state::fsutil::FileLock` bu olayı yazmaz (o iz).
 - TBD#397 maddeleri 4, 5, 6 (süreçler arası pay, ayrıştırılamayan günlük satırı, SearXNG port sahibi) DEĞİŞMEDİ.
+
+## Sayılamayan harcama satırı ve tek kaynak (27 Kas)
+- Eski durum: kayıt nesnesiyle birlikte 513 kattan derin satırı review toplamı saymıyor (0), defter reddediyor, Python
+  yaklaşık 1000 kata dek sayıyor, daha derinini iz bırakmadan atlıyordu. 4300 basamaktan uzun tam sayılı satırı Python
+  ve defter iz bırakmadan atlıyor, review sayıyordu.
+- Karar (belirsizlikte ret; iki tarafta ayrı `fix:`): kayıt nesnesi dahil 512 kattan derin satır (dize içindeki ayraç
+  sayılmaz, ayrıştırmadan önce bakılır) ve 4300 basamaktan uzun tam sayılı satır toplama GİRMEZ; açık günlük tavan
+  `problem` ile kapanır (`çok derin satır` / `çok uzun sayı`), `review_bad_record` olayı `usage.depth` / `usage.number`,
+  review bütçe kapısı `anthropic_spent_usd` 1e18 döner (kapı dolu; sonlu, günlüğe JSON yazılabilir).
+- Görünür değişiklik yalnız böyle sentetik satırda (gerçek ucli kaydı 2-3 katlı, sayıları küçük): 513..~1000 katlı satır
+  Python toplamında artık yok ve tavanı kapatır (önce sayılıp geçiyordu).
+- Tek kaynak: `cops-review-core` `usage.rs` (`read_line`, `Record::charge`); `usage_cost_usd` ve `cost::UsageScan` onu
+  kullanır. Eşdeğerlik: önceki (`390ed46b`) ve yeni derlemenin dökümü bayt bayt aynı (bir kerelik, commit'lenmeyen koşucu):
+  43 234 günlük dosyası (sınır satırları, eski ve yeni rastgele üreticiler, bayt bozmaları) x 4 model x 4 pencere/çarpan
+  (toplam bitleri, `problem`, `anthropic_spent_usd`, olaylar) + 4000 dizin ağacında durum özeti ve açılış kapısı sonucu;
+  782 212 çıktı satırı.
+- Süre (100 MB tek günlük, release, 5'er koşuda 3 tur, art arda eski/yeni, yük 4-5): açılış denetimi ortancası eski
+  1,28 sn, yeni 1,33 sn; review toplamı 1,49 -> 1,40 sn (koşudan koşuya oynama bundan büyük).
+- AÇIK kalan fark: 16 MiB üstü satır (yalnız defter reddeder); BOZUK bir satırda 4300 basamağı Rust metinden, Python
+  ayrıştırma hatasından gördüğü için Rust daha sık reddedebilir (hiçbir yönde sayılmayan satır).
+  Ayrıca review bütçe kapısı başka güvenilmezlikleri
+  (geçersiz sayaç, okunamayan günlük) hâlâ yalnız toplamdan görür (iki dilde; değiştirilmedi).
+
+## Oynak testler (27 Kas)
+- `parity_real` (`ucli_mcp_register_failed` farkı): test hatası. Sahte ikilileri test süreci `fs::write` ile yazıyordu;
+  paralel ailenin `fork`u yazma tanıtıcısını taşıyınca `ucli chat --help` `ETXTBSY` alıyor (strace ile görüldü), bir
+  tarafta "bayrak yok" ötekinde kayıt hatası çıkıyordu. Yeniden üretim: testte 16 iş parçacıklı `/bin/true` fırtınasıyla
+  65 koşuda 21 düşüş; düzeltmeyle (alt süreç yazar, standart saplama sert bağ) 46 koşuda 0. Tek çekirdeğe iğnelenmiş
+  40 ve 120 meşgul döngülü 8 koşu düşüş üretmemişti.
+- `real_oneshot` eşzamanlı kayıt ve `real_fs::concurrent_issue_keeps_file_and_digest_consistent` (`flock` zaman aşımı):
+  test hatası. Her biri yaklaşık 640 `fsync`li sıralı kilitli yazım yapar, `flock` beklemesi sıra gözetmez; strace ile
+  `fsync` +150 ms iken ikisi de 30 sn sınırında düştü. Ağaçları `/dev/shm`e alındı (`Tmp::in_memory`; ölçülen `fsync`
+  ortancası diskte 1 ms, orada 0,01 ms). Doğal yükte düşüş yeniden üretilmedi (eski ve yeni 25'er tek koşu yeşil).
+  Not: Python `file_lock` aynı süreçteki iş parçacıklarını süre sınırsız `RLock`ta bekletir, Rust `FileLock` onları da
+  30 sn sınırına sokar (daha sıkı yön; değiştirilmedi).
+- `parity_live` `live-codex-ctx-dev` önceki turda düzeltildi.
+  `test_review_io_history::test_real_pipes_stream_and_heartbeat` bu turda incelenmedi.
+
+| Python testi (py/tests/test_rsprov_cost_depth.py) | Rust karşılığı | durum |
+|---|---|---|
+| `DepthLimit.*` | `usage_two_copies::{both_copies_draw_the_depth_limit_at_the_same_line, edge_lines_cost_the_same_in_both_copies}` (`derin-*`, `ayrac-*`) | TAŞINDI |
+| `LongIntegers.*` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`, `edge_lines_cost_the_same_in_both_copies` (`sayi-*`) | TAŞINDI |
+| `ReviewBudgetGate.*` | rev `parity` (`anthropic_spent_usd`); `usage_two_copies` sınır testleri | TAŞINDI |
 
 ## main `9e5bcf24` eşitlemesi: fiyatsız modelde USD tavanı (27 Kas)
 claude hizmetinde claudeops tablosundan `--price` (dilimli modelde en pahalı dilim), tur tavanı `--price` verilen modelde de
@@ -1453,6 +1490,8 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_PRICED_MODELS` (py/claudeops/providers/ucli_provider.py:597) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
 | `_default_session_cap` (py/claudeops/providers/ucli_provider.py:600) | `ucli.rs::Ctx::apply_cli_opts` + `Settings::default_max_session_usd` | `parity.rs::parity_ucli` `hizmet-grok-tavan-ayar` `ham-service-evren` | TAŞINDI |
 | `_max_cost_args` (py/claudeops/providers/ucli_provider.py:609) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
+| `_with_price`, `_effective_session_cap`, `_unpriced_cap_reason` (py/claudeops/providers/ucli_provider.py:647; main `79a15322`, davranışsız ayırma) | `ucli.rs::Ctx::apply_cli_opts` içinde (fiyat, tavan, ret metni) | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
+| `session_cap_refusal` (py/claudeops/providers/ucli_provider.py:674; main `79a15322`) | panel model kataloğu (`commands/web_agents.py`); crate'te çağıran yok | T4/T10 | KAPSAM DIŞI |
 | `_MCP_NAME_BAD` (py/claudeops/providers/ucli_provider.py:624) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `ucli-mcp-ad` | TAŞINDI |
 | `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:625) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-` (satır sonlu ad: `spec` içindeki `ok\n`) | TAŞINDI |
 | `_MCP_ADD_TIMEOUT` (py/claudeops/providers/ucli_provider.py:626) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
@@ -1790,7 +1829,9 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `startup_env` (py/claudeops/startup_desktop.py:146) | `startup_desktop.rs::startup_env`; çağrı `spawn_exec.rs::Launcher::launch_window` (`Terminal::startup_env`, gerçek `GnomeTerminal::with_desktop`) | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::gnome_terminal_desktop_is_off_by_default_and_reads_settings_each_time` | TAŞINDI |
 | `HAIKU_LONG_PRICE` (py/claudeops/review.py:111) | `cops-review-core` `targets.rs::HAIKU_LONG_PRICE` (`cost.rs`, `ucli.rs` oradan) | `parity.rs::parity_ledger` `dilim`; `parity_ucli` `fiyat-` | TAŞINDI |
 | `HAIKU_LONG_PROMPT` (py/claudeops/review.py:112) | `cops-review-core` `targets.rs::HAIKU_LONG_PROMPT` | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
-| `_scan_usage` (py/claudeops/review.py:1864) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına); toplam yarısı `cops-review-core` `report.rs::usage_cost_usd` | `parity.rs::parity_ledger` `dilim` `satir`; iki kopya birbirine karşı `tests/usage_two_copies.rs` | TAŞINDI |
+| `_scan_usage` (py/claudeops/review.py:1894) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına); toplam yarısı `cops-review-core` `report.rs::usage_cost_usd`, satır kuralları `usage.rs` | `parity.rs::parity_ledger` `dilim` `satir`; iki kopya birbirine karşı `tests/usage_two_copies.rs` | TAŞINDI |
+| `_MAX_LINE_DEPTH`, `_DEPTH_TOKEN_RE`, `_too_deep` (py/claudeops/review.py:1861) | `cops-review-core` `usage.rs::{MAX_LINE_DEPTH, too_deep}` | `usage_two_copies::both_copies_draw_the_depth_limit_at_the_same_line`; rev `parity` | TAŞINDI |
+| `_UNCOUNTABLE_SPENT_USD`, `_UNCOUNTABLE_KINDS` (py/claudeops/review.py:1863) | `report.rs::{UNCOUNTABLE_SPENT_USD, scan_report}`, `usage.rs::{Line::Uncountable, long_integer}` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`; rev `parity` | TAŞINDI |
 | `_with_ucli_error` (py/claudeops/commands/web.py:2116) | bağlayan uç (copsd/panel `_start`); pane okuması için `cops-tmux` `query.rs::Tmux::capture_joined` hazır | rs/tmux `reads_match_python` (`-J`) | KAPSAM DIŞI |
 
 ### 27 Kas ikinci turunun satırları (`726888f1` eşitlemesi, G3 3/5, TBD#401)
@@ -3208,13 +3249,19 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `SendText.test_text_with_nothing_but_blanks_and_controls_sends_nothing` (py/tests/test_tbd399_control_chars.py:39) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
 | `SendText.test_empty_text_is_still_a_deliberate_enter` (py/tests/test_tbd399_control_chars.py:43) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
 | `SendText.test_ucli_folding_never_turns_newlines_into_an_empty_enter` (py/tests/test_tbd399_control_chars.py:48) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
-| `UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` (py/tests/test_ucli_unpriced_model_cap.py:31) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_fable_gets_table_price` (py/tests/test_ucli_unpriced_model_cap.py:37) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` (py/tests/test_ucli_unpriced_model_cap.py:41) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` (py/tests/test_ucli_unpriced_model_cap.py:46) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:51) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_binary_without_price_flag_is_refused` (py/tests/test_ucli_unpriced_model_cap.py:57) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `UnpricedModelCapTest.test_no_cap_no_refusal` (py/tests/test_ucli_unpriced_model_cap.py:61) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` (py/tests/test_ucli_unpriced_model_cap.py:35) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_fable_gets_table_price` (py/tests/test_ucli_unpriced_model_cap.py:41) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` (py/tests/test_ucli_unpriced_model_cap.py:45) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` (py/tests/test_ucli_unpriced_model_cap.py:50) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:55) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_binary_without_price_flag_is_refused` (py/tests/test_ucli_unpriced_model_cap.py:61) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_no_cap_no_refusal` (py/tests/test_ucli_unpriced_model_cap.py:65) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_only_unpriced_paid_models_are_marked_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:90) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_reason_is_the_one_the_launch_refuses_with` (py/tests/test_ucli_unpriced_model_cap.py:97) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_cap_off_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:103) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_binary_without_session_cap_flag_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:106) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_binary_without_price_flag_marks_table_priced_model_too` (py/tests/test_ucli_unpriced_model_cap.py:109) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_check_failure_keeps_the_list` (py/tests/test_ucli_unpriced_model_cap.py:113) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
 | `Names.test_trailing_newline_run_key_refused` (py/tests/test_rsprov_g10_approval.py:37) | `approval::tests::names_are_full_matches`; `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
 | `Names.test_trailing_newline_approval_id_ignored` (py/tests/test_rsprov_g10_approval.py:41) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |
 | `Names.test_deep_line_is_skipped` (py/tests/test_rsprov_g10_approval.py:44) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |

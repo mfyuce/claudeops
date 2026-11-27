@@ -1858,7 +1858,7 @@ def _usage_number(v: Any) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= _MAX_USAGE_TOKENS     # NaN karşılaştırması False
 
 
-_MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `report::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
+_MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `usage::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
 _DEPTH_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.S)      # dize (yarım da olur) içindeki ayraç sayılmaz
 _UNCOUNTABLE_SPENT_USD = 1e18      # sayılamayan satır varken bütçe kapısının gördüğü harcama (sonlu: günlüğe JSON olarak yazılır)
 _UNCOUNTABLE_KINDS = ("usage.depth", "usage.number")      # atlanan satır türlerinden harcaması bilinemeyenler
