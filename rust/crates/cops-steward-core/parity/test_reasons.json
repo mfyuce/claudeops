@@ -120,6 +120,7 @@
  "test_review_io_history.ReportIncompleteTests.test_real_findings_or_clean_reports_are_not": "`review.py` saf çekirdeği, rs/rev izinde: report.rs::report_incomplete; dal rs/rev 40b29bf4, docs/rs-rev.md",
  "test_review_io_history.TestIoLog": "`web_review.IoLog` / `io_to_messages` / `_read_io_file`: koşu günlüğünün artımlı yazımı, parça sınırında maskeleme, kırpma, okuma; dosya G/Ç'li koşucu sınıfı, iz T8 (`commands/web_review.py`)",
  "test_review_io_history.TestNaming.test_review_title": "`review.py` saf çekirdeği, rs/rev izinde: targets.rs::review_title; dal rs/rev 40b29bf4, docs/rs-rev.md",
+ "test_review_io_history.TestRunWritesIo.test_status_path_flag_per_run_only_when_binary_knows_it": "reviewer koşucusunun (`web_review.run_job`) argv kuruluşu; koşucu Rust'a taşınırken `--status-path` de taşınacak (TBD#357), iz T8",
  "test_review_model_health.TestExclusion.test_toggle_and_targets_filter": "`review.py` saf çekirdeği, rs/rev izinde: targets.rs::targets_from_config, targets.rs::toggle_excluded; dal rs/rev 40b29bf4, docs/rs-rev.md",
  "test_review_model_health.TestHealth.test_digest_lists_only_non_excluded_candidates": "`review.py` saf çekirdeği, rs/rev izinde: report.rs::health_digest, report.rs::model_health; dal rs/rev 40b29bf4, docs/rs-rev.md",
  "test_review_model_health.TestHealth.test_limit_runs_do_not_count_and_candidates_need_min_runs": "`review.py` saf çekirdeği, rs/rev izinde: report.rs::model_health; dal rs/rev 40b29bf4, docs/rs-rev.md",

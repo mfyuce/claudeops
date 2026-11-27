@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1934 satır)
+### Python testleri (1935 satır)
 
-Test satırı özeti: 1934 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1935 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1366,6 +1366,7 @@ Test satırı özeti: 1934 satır; doğrudan açık (aşağıda `AÇIK`) 190; pa
 | `test_review_io_history.TestRunWritesIo.test_create_dir_flag_and_draft_recovery` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.draft_path, review.parse_findings |
 | `test_review_io_history.TestRunWritesIo.test_findings_written_as_found_survive_a_cut_run` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.finding_paths, review.parse_findings |
 | `test_review_io_history.TestRunWritesIo.test_streamed_report_recovery_on_empty_stdout` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.parse_findings, web_review.IoLog |
+| `test_review_io_history.TestRunWritesIo.test_status_path_flag_per_run_only_when_binary_knows_it` | gereksiz (bu crate'te sınanacak saf çağrı yok): reviewer koşucusunun (`web_review.run_job`) argv kuruluşu; koşucu Rust'a taşınırken `--status-path` de taşınacak (TBD#357), iz T8 |
 | `test_review_io_history.TestRunWritesIo.test_report_and_draft_mask_password_learned_from_stream` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.draft_path |
 | `test_review_io_history.TestRunWritesIo.test_recovered_text_with_clean_exit_is_partial_not_done` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6) |
 | `test_review_io_history.TestRunWritesIo.test_no_findings_report_recovered_from_stream` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+6); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_review.IoLog |
