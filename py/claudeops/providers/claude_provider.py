@@ -356,11 +356,19 @@ def last_assistant_model(jsonl_path: Path, since: Optional[float] = None) -> Opt
 
 
 def _row_model(obj: Dict[str, Any]) -> Optional[str]:
-    """Satırın `message.model`'i; `message` nesne değilse ya da model `<synthetic>` yer tutucusuysa (hata/iptal satırı,
-    gerçek bir model değil: yeniden açılışa `--model` diye taşınmasın) None."""
+    """Satırın `message.model`'i; alt ajan satırı (`isSidechain`), nesne olmayan `message`, metin olmayan model ya da
+    `<synthetic>` yer tutucusu (hata/iptal satırı) None: hiçbiri yeniden açılışa `--model` diye taşınmasın."""
+    if obj.get("isSidechain"):
+        return None
     msg = obj.get("message")
     model = msg.get("model") if isinstance(msg, dict) else None
-    return None if model == "<synthetic>" else model
+    return model if isinstance(model, str) and model != "<synthetic>" else None
+
+
+def _row_effort(obj: Dict[str, Any]) -> Optional[str]:
+    """Satırın üst düzey `effort`u; alt ajan satırı ya da metin olmayan değer None."""
+    effort = obj.get("effort")
+    return effort if isinstance(effort, str) and not obj.get("isSidechain") else None
 
 
 def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
@@ -369,8 +377,7 @@ def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Op
     doğrulandı, ör. `"effort":"max"`), yoksa None. Sadece string kabul edilir:
     CLI sayısal/özel effort da tanıyor, onlar "bilinmiyor" sayılıp çağırana
     düşer."""
-    return _last_assistant_value(
-        jsonl_path, lambda obj: obj.get("effort") if isinstance(obj.get("effort"), str) else None, since)
+    return _last_assistant_value(jsonl_path, _row_effort, since)
 
 
 # TBD#87 (2026-10-16): Claude Code istem önbelleğini 1 saatlik sınıfta yazıyor
