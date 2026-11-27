@@ -177,6 +177,11 @@ impl Providers<'_> {
             .shared_write_allowed(path, &|p| self.probe.realpath(p))
     }
 
+    pub(crate) fn service_key_file(&self, service: &str) -> String {
+        self.paths
+            .service_key_file(service, &|p| self.probe.realpath(p))
+    }
+
     pub(crate) fn usage_write_dir(&self, base: &str) -> String {
         self.paths
             .usage_write_dir(base, &|p| self.probe.realpath(p))

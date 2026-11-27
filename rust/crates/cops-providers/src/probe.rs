@@ -56,6 +56,16 @@ impl Paths {
         !(inside(abspath(&shared, "/"), abspath(path, "/"))
             || inside(realpath(&shared), realpath(path)))
     }
+    /// `ucli_provider._service_key_file`: hizmet anahtarının yazılıp okunduğu dosya. Ortak dosya salt okunursa (ikinci
+    /// örnek) aynı adla `claudeops_dir` altında: deneme anahtarı canlınınkini ezmez (TBD#417 S6).
+    pub fn service_key_file(&self, service: &str, realpath: &dyn Fn(&str) -> String) -> String {
+        let shared = self.ucli_key_file(service);
+        if self.shared_write_allowed(&shared, realpath) {
+            return shared;
+        }
+        let name = shared.rsplit('/').next().unwrap_or_default();
+        join_path(&self.claudeops_dir, name)
+    }
     /// `ucli_cost.write_dir(base)`: günlüğün YAZILACAĞI dizin; ortak dizin salt okunursa `claudeops_dir` altındaki eşi.
     pub fn usage_write_dir(&self, base: &str, realpath: &dyn Fn(&str) -> String) -> String {
         if self.shared_write_allowed(base, realpath) {

@@ -639,7 +639,7 @@ impl Ctx<'_, '_> {
                     "ucli ikilisi --provider bayrağını tanımıyor".into(),
                 ));
             }
-            let path = self.p.paths.ucli_key_file(&service);
+            let path = self.p.service_key_file(&service);
             self.out.effects.push(Effect::WriteSecret {
                 path: path.clone(),
                 content: key,

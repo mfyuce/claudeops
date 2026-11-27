@@ -92,6 +92,58 @@ class SharedStateTest(unittest.TestCase):
         self.assertTrue(self._ucli("live"))
         self.assertTrue(self._copilot({"A": "live"}))
 
+    def _service(self, service, env, key):
+        """`_apply_cli_opts`: (argv, anahtar env öneki)."""
+        with mock.patch.object(up, "byok_env_for", lambda cli: {env: key} if key else {}), \
+                mock.patch.object(up, "binary_supports_flag", lambda binary, flag: flag == "--provider"), \
+                mock.patch.object(up, "diag_log", lambda *a, **k: None):
+            return up._apply_cli_opts(["ucli", "chat", "--endpoint", "x"], {"service": service}, "s", self.own, "high")
+
+    def test_service_key_of_a_second_instance_lives_in_its_own_dir(self):
+        for service, env in (("grok", "XAI_API_KEY"), ("claude", "ANTHROPIC_API_KEY")):
+            shared = os.path.join(self.shared, f"ucli_key_{service}")
+            own = os.path.join(self.own, f"ucli_key_{service}")
+            _put(shared, "live")
+            before = os.stat(shared).st_mtime_ns
+            with mock.patch.object(up, "_claude_service_flags", lambda argv, *a: argv):
+                _, prefix = self._service(service, env, "trial")
+            self.assertEqual(prefix, f'{env}="$(cat {own})"')
+            self.assertEqual((_read(own), os.stat(own).st_mode & 0o777), ("trial", 0o600))
+            self.assertEqual((_read(shared), os.stat(shared).st_mtime_ns), ("live", before))
+
+    def test_second_instance_without_a_service_key_refuses_and_removes_nothing(self):
+        shared = os.path.join(self.shared, "ucli_key_grok")
+        own = os.path.join(self.own, "ucli_key_grok")
+        _put(shared, "live")
+        _put(shared + ".managed", "")
+        _put(own, "eski")
+        with self.assertRaises(ValueError):          # ortak anahtara düşülmez
+            self._service("grok", "XAI_API_KEY", "")
+        self.assertEqual((_read(shared), _read(own)), ("live", "eski"))
+        self.assertTrue(os.path.exists(shared + ".managed"))
+
+    def test_preview_writes_no_service_key_but_names_the_own_path(self):
+        own = os.path.join(self.own, "ucli_key_grok")
+        with up.preview.preview_only():
+            _, prefix = self._service("grok", "XAI_API_KEY", "trial")
+        self.assertEqual(prefix, f'XAI_API_KEY="$(cat {own})"')
+        self.assertEqual((os.listdir(self.shared), os.path.exists(own)), ([], False))
+
+    def test_own_key_link_into_the_shared_dir_is_not_followed(self):
+        shared = os.path.join(self.shared, "ucli_key_grok")
+        _put(shared, "live")
+        os.symlink(shared, os.path.join(self.own, "ucli_key_grok"))
+        with self.assertRaises(OSError):
+            self._service("grok", "XAI_API_KEY", "trial")
+        self.assertEqual(_read(shared), "live")
+
+    def test_default_instance_writes_the_shared_service_key(self):
+        shared = os.path.join(self.shared, "ucli_key_grok")
+        with mock.patch.object(paths, "CLAUDEOPS_DIR", self.shared):
+            _, prefix = self._service("grok", "XAI_API_KEY", "canli")
+        self.assertEqual(prefix, f'XAI_API_KEY="$(cat {shared})"')
+        self.assertEqual(_read(shared), "canli")
+
     def test_usage_written_to_own_dir_and_both_counted(self):
         self.assertEqual(ucli_cost.log_path("s"), os.path.join(self.own, "ucli_usage", "s.jsonl"))
         self.assertEqual(ucli_cost.other_log_path("s"), os.path.join(self.own, "ucli_usage", "other", "s.jsonl"))

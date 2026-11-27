@@ -97,6 +97,7 @@ from .. import preview
 from .. import searxng
 from .. import ucli_agents
 from ..diaglog import diag_log
+from .. import paths
 from ..paths import shared_write_allowed, ucli_key_file
 from .. import ucli_cost
 from ..childgroup import _run_grouped
@@ -551,7 +552,12 @@ def _set_flag_value(argv: List[str], flag: str, value: str) -> List[str]:
 
 
 def _service_key_file(service: str) -> str:
-    return ucli_key_file(service)
+    """Hizmet anahtarının yazılıp okunduğu dosya. Ortak dosya salt okunursa (`paths.shared_write_allowed`: ikinci/deneme
+    örnek) aynı adla `CLAUDEOPS_DIR` altında: deneme anahtarı canlınınkini ezmez (TBD#417 S6)."""
+    path = ucli_key_file(service)
+    if shared_write_allowed(path):
+        return path
+    return os.path.join(paths.CLAUDEOPS_DIR, os.path.basename(path))
 
 
 _INSTRUCTIONS_MAX_BYTES = 40960   # ucli `--instructions` dosya başına sınırı (40 KiB)

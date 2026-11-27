@@ -80,7 +80,8 @@ def proc_ppid(pid) -> int:
 
 def ucli_key_file(service: str = "") -> str:
     """ucli anahtar dosyası TEK yerde: `service` boşsa Evren `ucli_api_key`, doluysa `ucli_key_<service>`.
-    Taban `~/.claude/claudeops` (CLAUDEOPS_DIR env'inden BAĞIMSIZ: eski davranış birebir)."""
+    Taban `~/.claude/claudeops` (CLAUDEOPS_DIR env'inden BAĞIMSIZ: eski davranış birebir). Hizmet anahtarını ikinci
+    örnek kendi dizininde tutar (`ucli_provider._service_key_file`)."""
     name = f"ucli_key_{service}" if service else "ucli_api_key"
     return os.path.expanduser(f"~/.claude/claudeops/{name}")
 

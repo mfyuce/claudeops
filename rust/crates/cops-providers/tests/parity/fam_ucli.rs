@@ -782,8 +782,38 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         .file(Fx::Link(
             "home/.claude/claudeops/ucli_key_grok".into(),
             "../../hedef".into(),
+        ))
+        .default_instance(),
+    );
+    v.push(
+        opts(
+            e,
+            "hizmet-anahtar-dosyasi-symlink-ikinci",
+            json!({"service": "grok"}),
+        )
+        .settings_json(byok.clone())
+        .file(file("home/hedef", "h", 0o600))
+        .file(Fx::Link(
+            "state/ucli_key_grok".into(),
+            "../home/hedef".into(),
         )),
     );
+    // TBD#417 S6: ikinci örnek hizmet anahtarını kendi dizinine yazar, ortak dosyaya dokunmaz; varsayılan örnek aynı.
+    for service in ["grok", "claude"] {
+        let make = |instance: &str, settings: Value| {
+            let shared = format!("home/.claude/claudeops/ucli_key_{service}");
+            opts(
+                e,
+                &format!("ornek-hizmet-{instance}-{service}"),
+                json!({"service": service}),
+            )
+            .settings_json(settings)
+            .file(file(&shared, "canli", 0o600))
+        };
+        v.push(make("varsayilan", byok.clone()).default_instance());
+        v.push(make("ikinci", byok.clone()));
+        v.push(make("ikinci-anahtarsiz", json!({})));
+    }
     // Dizin açılamayınca komut değişir (`Probe::apply_now`): bayrak düşer ve/veya günlüğe yazılır.
     v.push(ucase(e, "dizin-metrics-dosya", json!({})).file(file("state/ucli_metrics", "x", 0o600)));
     let usage = "home/.claude/claudeops/ucli_usage";

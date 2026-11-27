@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,7 +20,8 @@ class UcliKeyPathTest(unittest.TestCase):
     def test_callers_share_helper(self):
         self.assertEqual(up._API_KEY_FILE, paths.ucli_key_file())
         self.assertEqual(wr.UCLI_KEY_FILE, paths.ucli_key_file())
-        self.assertEqual(up._service_key_file("openrouter"), paths.ucli_key_file("openrouter"))
+        with mock.patch.object(paths, "CLAUDEOPS_DIR", os.path.expanduser("~/.claude/claudeops")):    # varsayılan örnek
+            self.assertEqual(up._service_key_file("openrouter"), paths.ucli_key_file("openrouter"))
 
 
 if __name__ == "__main__":
