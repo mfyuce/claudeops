@@ -2,9 +2,9 @@
 //! `context_*`, `parse_*`; claude, agy, copilot karşılıkları). Ekranı okumak ve komutu göndermek çağıranın işi; burada
 //! yalnız komut adları, oturumsuz okuma argv'si ve ANSI'siz metnin yorumu var.
 //!
-//! Python `re` (3.10, `str` deseni) anlamı korunur: `\s` = `str.isspace()` (`\x1c-\x1f` dahil), `\d` = Unicode 13
-//! ondalık rakamları (regex crate'in daha yeni Unicode `\d`i DEĞİL), `$` yalnız kırpılmış satırda kullanıldığından `\z`,
-//! `pos`/`endpos` kod noktası konumudur. `str.strip()`/`splitlines()` için [`crate::pyfmt`].
+//! Python `re` (3.10, `str` deseni) anlamı korunur: `\s` = `str.isspace()` (`\x1c-\x1f` dahil), `$` yalnız kırpılmış
+//! satırda kullanıldığından `\z`, `pos`/`endpos` kod noktası konumudur. Yüzde ve sayılar yalnız ASCII rakam (`[0-9]`;
+//! Python `\d` Unicode ondalık rakamları da sayıyordu, 27 Kas iki tarafta düzeldi). `str.strip()`/`splitlines()` için [`crate::pyfmt`].
 
 use crate::provider::{Cli, Providers};
 use crate::pyfmt::{decimal_value, splitlines, strip};
@@ -52,74 +52,37 @@ pub(crate) fn d_in() -> String {
     out
 }
 
-/// Python deseninden çeviri: `{S}` -> `[\s\x1C-\x1F]`, `{NS}` -> değili, `{D}` -> `[<Nd>]`, `{DI}` -> sınıf içi.
+/// Python deseninden çeviri: `{S}` -> `[\s\x1C-\x1F]`, `{NS}` -> değili.
 fn rx(pat: &str) -> Regex {
-    let di = d_in();
     let p = pat
         .replace("{NS}", &format!("[^{S_IN}]"))
-        .replace("{S}", &format!("[{S_IN}]"))
-        .replace("{DI}", &di)
-        .replace("{D}", &format!("[{di}]"));
+        .replace("{S}", &format!("[{S_IN}]"));
     Regex::new(&p).expect("sabit desen")
 }
 
 // claude_provider.py `_USAGE_HEADER_RE`, `_USAGE_PERCENT_RE`, `_USAGE_RESETS_RE`, `_USAGE_FRESH_RE`.
 static USAGE_HEADER: LazyLock<Regex> =
     LazyLock::new(|| rx(r"^(Current (?:session|week(?:{S}*\([^)]+\))?))\z"));
-static USAGE_PERCENT: LazyLock<Regex> = LazyLock::new(|| rx(r"({D}+)%{S}*used"));
+static USAGE_PERCENT: LazyLock<Regex> = LazyLock::new(|| rx(r"([0-9]+)%{S}*used"));
 static USAGE_RESETS: LazyLock<Regex> = LazyLock::new(|| rx(r"^(Resets{S}.+)\z"));
 static USAGE_FRESH: LazyLock<Regex> = LazyLock::new(|| {
     rx(
-        r"^(Current (?:session|week(?:{S}*\([^)]+\))?)):{S}*({D}+)%{S}*used(?:{S}*[·•]{S}*(?:[Rr]esets?{S}+)?(.+))?\z",
+        r"^(Current (?:session|week(?:{S}*\([^)]+\))?)):{S}*([0-9]+)%{S}*used(?:{S}*[·•]{S}*(?:[Rr]esets?{S}+)?(.+))?\z",
     )
 });
 // claude_provider.py `_CONTEXT_TOTAL_RE`, `_CONTEXT_CATEGORY_RE` (satır içinde `search`).
 static CONTEXT_TOTAL: LazyLock<Regex> = LazyLock::new(|| {
-    rx(r"([{DI}.]+[kKmM]?){S}*/{S}*([{DI}.]+[kKmM]?){S}*tokens{S}*\(({D}+(?:\.{D}+)?)%\)")
+    rx(r"([0-9.]+[kKmM]?){S}*/{S}*([0-9.]+[kKmM]?){S}*tokens{S}*\(([0-9]+(?:\.[0-9]+)?)%\)")
 });
 static CONTEXT_CATEGORY: LazyLock<Regex> = LazyLock::new(|| {
-    rx(r"([A-Za-z][A-Za-z ]*?):{S}*([{DI}.]+[kKmM]?){S}*(?:tokens?)?{S}*\(({D}+(?:\.{D}+)?)%\)")
+    rx(r"([A-Za-z][A-Za-z ]*?):{S}*([0-9.]+[kKmM]?){S}*(?:tokens?)?{S}*\(([0-9]+(?:\.[0-9]+)?)%\)")
 });
 // copilot_provider.py `_USAGE_PLAN_RE`, `_USAGE_FRACTION_RE`, `_USAGE_RESET_RE`. Sonuncusunda Python `$` (dizge sonu ya
-// da sondaki `\n`in önü) `\z` oldu: önündeki `{S}*` sondaki `\n`i de yuttuğundan ilk başarılı eşleşme aynıdır.
-static PLAN: LazyLock<Regex> = LazyLock::new(|| rx(r"Plan{S}+{NS}*{S}*({D}+)%{S}*used"));
-static FRACTION: LazyLock<Regex> = LazyLock::new(|| rx(r"([{DI},]+{S}*/{S}*[{DI},]+{S}*AIC)"));
+// da sondaki `\n`in önü) `\z` oldu: önündeki `{S}*` sondaki `\n`i de yuttuğundan ilk başarılı eşleşme aynıdır. PLAN'da
+// çubuk tembel (`{NS}*?`): bitişik çubuk (`■■50%`) yüzdenin baş rakamlarını yutmasın.
+static PLAN: LazyLock<Regex> = LazyLock::new(|| rx(r"Plan{S}+{NS}*?{S}*([0-9]+)%{S}*used"));
+static FRACTION: LazyLock<Regex> = LazyLock::new(|| rx(r"([0-9,]+{S}*/{S}*[0-9,]+{S}*AIC)"));
 static RESET_IN: LazyLock<Regex> = LazyLock::new(|| rx(r"resets{S}+in{S}+([^\n•]+?){S}*(?:\n|\z)"));
-
-/// Python `str.isdigit()` olup ondalık OLMAYAN karakterler (Unicode 13: üst/alt simge, daire içi rakamlar ...).
-const DIGIT_NOT_DECIMAL: [(u32, u32); 20] = [
-    (0xB2, 0xB3),
-    (0xB9, 0xB9),
-    (0x1369, 0x1371),
-    (0x19DA, 0x19DA),
-    (0x2070, 0x2070),
-    (0x2074, 0x2079),
-    (0x2080, 0x2089),
-    (0x2460, 0x2468),
-    (0x2474, 0x247C),
-    (0x2488, 0x2490),
-    (0x24EA, 0x24EA),
-    (0x24F5, 0x24FD),
-    (0x24FF, 0x24FF),
-    (0x2776, 0x277E),
-    (0x2780, 0x2788),
-    (0x278A, 0x2792),
-    (0x10A40, 0x10A43),
-    (0x10E60, 0x10E68),
-    (0x11052, 0x1105A),
-    (0x1F100, 0x1F10A),
-];
-
-/// `str.isdigit()` (boş dizge False).
-fn py_isdigit(s: &str) -> bool {
-    !s.is_empty()
-        && s.chars().all(|c| {
-            decimal_value(c).is_some()
-                || DIGIT_NOT_DECIMAL
-                    .iter()
-                    .any(|(a, b)| (*a..=*b).contains(&(c as u32)))
-        })
-}
 
 /// Kod noktası konumu -> bayt konumu (dizge sonunda kırpılır).
 fn byte_at(s: &str, chars: usize) -> usize {
@@ -162,6 +125,12 @@ pub fn claude_fresh_usage(text: &str) -> Option<Vec<UsageEntry>> {
     for ln in splitlines(text) {
         if let Some(c) = USAGE_FRESH.captures(strip(ln)) {
             let rs = strip(c.get(3).map_or("", |m| m.as_str()));
+            // `· resets` sonrası metin yoksa yakalanan sözcüğün kendisidir (`Resets resets` olmasın).
+            let rs = if matches!(rs, "resets" | "Resets" | "reset" | "Reset") {
+                ""
+            } else {
+                rs
+            };
             let detail = if rs.is_empty() {
                 String::new()
             } else {
@@ -191,6 +160,15 @@ pub fn claude_context(text: &str) -> Option<Vec<UsageEntry>> {
             continue;
         }
         if let Some(c) = CONTEXT_CATEGORY.captures(line) {
+            // Ad bir harfin ortasından başlıyorsa (`Şey` -> `ey`) satır atlanır: ASCII dışı harfle başlayan ad kırpılmaz.
+            let start = c.get(1).map_or(0, |m| m.start());
+            if line[..start]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_alphabetic)
+            {
+                continue;
+            }
             let label = strip(&c[1]);
             if !label.is_empty() {
                 entries.push(entry(label, &c[3], format!("{} tokens", &c[2])));
@@ -209,7 +187,8 @@ pub fn agy_usage(text: &str) -> Option<Vec<UsageEntry>> {
             continue;
         };
         let pct = percent.trim_end_matches('%');
-        if !py_isdigit(pct) {
+        // Yalnız ASCII rakam (Python `isdigit()` üst simge ve daire içi rakamı da sayıyordu).
+        if pct.is_empty() || !pct.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
         rows.push(entry(
@@ -231,7 +210,8 @@ pub fn copilot_usage(text: &str) -> Option<Vec<UsageEntry>> {
     let hay = &text[..byte_at(text, end_chars)];
     let rm = RESET_IN.captures_at(hay, whole.start());
     let mut detail = fm.map_or(String::new(), |f| f[1].to_string());
-    if let Some(r) = rm {
+    // `resets in` sonrası yalnız boşluk varsa ayrıntıya eklenmez.
+    if let Some(r) = rm.filter(|r| !strip(&r[1]).is_empty()) {
         let sep = if detail.is_empty() { "" } else { " \u{b7} " };
         detail = format!("{detail}{sep}resets in {}", strip(&r[1]));
     }
@@ -322,9 +302,35 @@ mod tests {
     #[test]
     fn python_classes() {
         assert!(USAGE_PERCENT.is_match("\u{1d}5%\u{1c}used"));
-        assert!(USAGE_PERCENT.is_match("٣%used"));
-        // U+11F50 (Kawi rakamı, Unicode 15): Python 3.10 `\d` DEĞİL.
+        // Yalnız ASCII rakam (27 Kas düzeltmesi; Python `[0-9]`).
+        assert!(!USAGE_PERCENT.is_match("٣%used"));
         assert!(!USAGE_PERCENT.is_match("\u{11F50}%used"));
-        assert!(py_isdigit("²") && py_isdigit("٣") && !py_isdigit("") && !py_isdigit("½"));
+        assert_eq!(agy_usage("g\tm\t²%\tt"), None);
+        assert_eq!(agy_usage("g\tm\t٣%\tt"), None);
+        assert!(agy_usage("g\tm\t42%\tt").is_some());
+    }
+
+    #[test]
+    fn parser_corners_fixed_on_both_sides() {
+        // bitişik çubuk yüzdenin baş rakamlarını yutmaz
+        assert_eq!(copilot_usage("Plan ■■50% used").unwrap()[0].percent, "50");
+        assert_eq!(
+            copilot_usage("Plan 2025 50% used").unwrap()[0].percent,
+            "50"
+        );
+        // `resets in` sonrası boşluk: ayrıntıya girmez
+        assert_eq!(
+            copilot_usage("Plan 5% used resets in   ").unwrap()[0].detail,
+            ""
+        );
+        // `· resets` sonrası metin yok
+        let e = claude_fresh_usage("Current session: 5% used · resets").unwrap();
+        assert_eq!(e[0].detail, "");
+        // ASCII dışı harfle başlayan bağlam kategorisi kırpılmaz, atlanır
+        assert_eq!(claude_context("Şey: 1k tokens (1%)"), None);
+        assert_eq!(
+            claude_context("Messages: 1k tokens (1%)").unwrap()[0].label,
+            "Messages"
+        );
     }
 }

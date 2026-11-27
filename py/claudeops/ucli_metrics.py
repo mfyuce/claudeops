@@ -43,6 +43,8 @@ def _num(v: Any, default: float, lo: float, hi: float) -> float:
         f = float(v)
     except (TypeError, ValueError):
         return default
+    if f != f:          # NaN sınırlanamaz (`max(nan, lo)` = nan): örnekleyici `sleep(nan)` yapardı
+        return default
     return min(max(f, lo), hi)
 
 

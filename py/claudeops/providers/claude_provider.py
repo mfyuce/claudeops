@@ -38,16 +38,16 @@ def _sonnet_version(model_id: str) -> Tuple[int, ...]:
 # `/usage`'ın çıktısını `parse_usage_text()`'in ayrıştırdığı desen — o metodun
 # kendi docstring'ine bkz. gerçek örnek metin için.
 _USAGE_HEADER_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?))$")
-_USAGE_PERCENT_RE = re.compile(r"(\d+)%\s*used")
+_USAGE_PERCENT_RE = re.compile(r"([0-9]+)%\s*used")       # yalnız ASCII rakam (`\d` Unicode ondalık rakamı da sayıyordu)
 _USAGE_RESETS_RE = re.compile(r"^(Resets\s.+)$")
 # `claude -p /usage` (oturumsuz) tek satır biçimi: "Current week (all models): 48% used · resets Nov 16, 6pm (Europe/Istanbul)"
-_USAGE_FRESH_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?)):\s*(\d+)%\s*used(?:\s*[·•]\s*(?:[Rr]esets?\s+)?(.+))?$")
+_USAGE_FRESH_RE = re.compile(r"^(Current (?:session|week(?:\s*\([^)]+\))?)):\s*([0-9]+)%\s*used(?:\s*[·•]\s*(?:[Rr]esets?\s+)?(.+))?$")
 # `/context`'in çıktısını `parse_context_text()`'in ayrıştırdığı desen — o
 # metodun docstring'inde gerçek örnek metin var. `re.search` ile satır
 # İÇİNDE aranır (`match` DEĞİL): soldaki blok-glif bar-chart pane genişliğine
 # göre farklı yerde sarabilir, sabit bir kolon pozisyonuna güvenilemez.
-_CONTEXT_TOTAL_RE = re.compile(r"([\d.]+[kKmM]?)\s*/\s*([\d.]+[kKmM]?)\s*tokens\s*\((\d+(?:\.\d+)?)%\)")
-_CONTEXT_CATEGORY_RE = re.compile(r"([A-Za-z][A-Za-z ]*?):\s*([\d.]+[kKmM]?)\s*(?:tokens?)?\s*\((\d+(?:\.\d+)?)%\)")
+_CONTEXT_TOTAL_RE = re.compile(r"([0-9.]+[kKmM]?)\s*/\s*([0-9.]+[kKmM]?)\s*tokens\s*\(([0-9]+(?:\.[0-9]+)?)%\)")
+_CONTEXT_CATEGORY_RE = re.compile(r"([A-Za-z][A-Za-z ]*?):\s*([0-9.]+[kKmM]?)\s*(?:tokens?)?\s*\(([0-9]+(?:\.[0-9]+)?)%\)")
 # Claude Code'un durum çubuğunda gösterdiği metinler (claude-code-guide ajanının
 # resmi dokümantasyondan doğruladığı 3 mod, 2026-09-07) — SADECE bunlar Shift+Tab
 # döngüsüyle GÜVENİLİR şekilde hedeflenebilir. `bypassPermissions` sadece session
@@ -701,6 +701,8 @@ class ClaudeProvider(CliProvider):
             m = _USAGE_FRESH_RE.match(ln.strip())
             if m:
                 rs = (m.group(3) or "").strip()
+                if rs in ("resets", "Resets", "reset", "Reset"):     # `· resets` sonrası metin yok: `Resets resets` olmasın
+                    rs = ""
                 entries.append({"label": m.group(1), "percent": m.group(2), "detail": ("Resets " + rs) if rs else ""})
         return entries or self.parse_usage_text(text)
 
@@ -763,6 +765,8 @@ class ClaudeProvider(CliProvider):
                 entries = [{"label": "Context", "percent": percent, "detail": f"{used}/{limit} tokens"}]
                 continue
             cm = _CONTEXT_CATEGORY_RE.search(line)
+            if cm and cm.start(1) > 0 and line[cm.start(1) - 1].isalpha():
+                continue        # ad bir harfin ortasından başlıyor (`Şey` -> `ey`): kırpılmış ad yazılmaz, satır atlanır
             if cm:
                 label, amount, percent = cm.groups()
                 label = label.strip()

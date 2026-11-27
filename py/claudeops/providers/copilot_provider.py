@@ -205,8 +205,8 @@ _RESUME_SCAN_LIMIT = 500  # session-store.db tek dosya/hafif ama sınırsız tar
 # aksine tek bir "Plan" satırı var (hesap tek bir AI-Credit havuzu kullanıyor
 # gibi duruyor) — o yüzden claude'un çok-satır-tarama döngüsüne gerek yok,
 # tek geçişte iki regex yeterli.
-_USAGE_PLAN_RE = re.compile(r"Plan\s+\S*\s*(\d+)%\s*used")
-_USAGE_FRACTION_RE = re.compile(r"([\d,]+\s*/\s*[\d,]+\s*AIC)")
+_USAGE_PLAN_RE = re.compile(r"Plan\s+\S*?\s*([0-9]+)%\s*used")      # tembel çubuk: `■■50%` baş rakamları yutulmasın
+_USAGE_FRACTION_RE = re.compile(r"([0-9,]+\s*/\s*[0-9,]+\s*AIC)")
 _USAGE_RESET_RE = re.compile(r"resets\s+in\s+([^\n•]+?)\s*(?:\n|$)")
 
 
@@ -399,7 +399,7 @@ class CopilotProvider(CliProvider):
         fm = _USAGE_FRACTION_RE.search(text, m.end())
         rm = _USAGE_RESET_RE.search(text, m.start(), m.end() + 120)      # "resets in 11 days" aynı satırda (yüzdenin hemen yanında)
         detail = fm.group(1) if fm else ""
-        if rm:
+        if rm and rm.group(1).strip():      # `resets in` sonrası yalnız boşluk: ayrıntıya girmez
             detail = (detail + " · " if detail else "") + "resets in " + rm.group(1).strip()
         return [{"label": "Plan (AI Credits)", "percent": m.group(1), "detail": detail}]
 

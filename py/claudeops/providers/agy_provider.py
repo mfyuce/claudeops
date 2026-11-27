@@ -541,7 +541,8 @@ class AgyProvider(CliProvider):
             if len(parts) != 4:
                 continue
             group, metric, percent, reset_at = parts
-            if not percent.rstrip("%").isdigit():
+            pct = percent.rstrip("%")
+            if not (pct.isascii() and pct.isdigit()):     # yalnız ASCII rakam (`isdigit()` `²`, `①` da sayıyordu)
                 continue
             rows.append({
                 "label": f"{group} — {metric}",

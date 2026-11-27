@@ -230,8 +230,8 @@ pub const METRICS_DEFAULTS: MetricsConfig = MetricsConfig {
 /// `ucli_metrics._num`: `float(v)` (olmayan/bozuk = varsayılan), sonra `min(max(f, lo), hi)`. Python `max`/`min`
 /// karşılaştırma sırası korunur: NaN SINIRLANMADAN döner (Python davranışı, bkz. parite `metrics-nan`).
 fn metrics_num(v: Option<&Value>, default: f64, lo: f64, hi: f64) -> f64 {
-    let Some(f) = v.and_then(py_float) else {
-        return default;
+    let Some(f) = v.and_then(py_float).filter(|f| !f.is_nan()) else {
+        return default; // NaN sınırlanamaz (`max(nan, lo)` = nan): varsayılan
     };
     let f = if lo > f { lo } else { f };
     if hi < f {
