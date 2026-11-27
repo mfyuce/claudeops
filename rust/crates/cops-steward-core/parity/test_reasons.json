@@ -249,7 +249,6 @@
  "test_steward_upper_main.TestCollectViews": "AÇIK: `web_steward._remote_view` uzak satırdan live_model/live_effort aktarımı; saf dönüşüm, iz T10",
  "test_tmux_send_raw_semicolon.JobAttemptsResetOnStateChange": "AÇIK: `pending_stage/apply_remote` durum değişince deneme sayacı sıfırlanır, saf; `steward_jobs.py` (dış iş kuyruğu istemcisi), iz T10",
  "test_tmux_send_raw_semicolon.RealTmux": "gerçek tmux gidiş-dönüşü, rs/tmux izinde `real_tmux::literal_text_raw_and_special_keys_arrive_unchanged` (dal rs/tmux 6ce6a135, docs/rs-tmux.md)",
- "test_tmux_send_raw_semicolon.SemicolonArgv": "`tmux_backend.tmux_send_raw` sondaki `;` kaçışı, rs/tmux izinde `argv::raw_escapes_only_a_trailing_semicolon` (dal rs/tmux 6ce6a135, docs/rs-tmux.md)",
  "test_todo_triage.Sha": "`web_steward._todo_sha_of` yerel TODO.md içerik özeti, uzak/bilinmeyen boş; dosya okuma, iz T10",
  "test_ucli_brain_mcp.BuildWithMcpTests": "ucli argv'sinde `--with-mcp`/maliyet bayrağı, rs/prov `parity_ucli` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",
  "test_ucli_brain_mcp.MaxCostArgsTests": "`ucli_provider._max_cost_args`, rs/prov `ucli.rs::apply_cli_opts` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",

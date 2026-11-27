@@ -4108,6 +4108,30 @@
 "test_review_store.StoreCommitGateTest.test_secret_written_between_scan_and_add_is_unstaged": [],
 "test_review_store.StoreCommitGateTest.test_unpushed_local_commit_is_pushed_on_next_run": [],
 "test_review_store.StoreCommitGateTest.test_visibility_cache_is_bounded": [],
+"test_review_where_deleted.ReviewWhereDeletedProjectTest.test_deleted_project_is_not_recreated": [
+"_from_dict",
+"_log_dedup",
+"_pp",
+"find_question",
+"is_reviewer",
+"mark_delivered",
+"paths_for",
+"reviewer_ids",
+"upsert_project",
+"valid_name"
+],
+"test_review_where_deleted.ReviewWhereDeletedProjectTest.test_existing_project_still_gets_the_answer": [
+"_from_dict",
+"_log_dedup",
+"_pp",
+"is_reviewer",
+"mark_delivered",
+"normalize_host",
+"paths_for",
+"reviewer_ids",
+"upsert_project",
+"valid_name"
+],
 "test_stated_next.Helper.test_marker_next_work": [
 "_bare_marker",
 "_is_no_work_value",
