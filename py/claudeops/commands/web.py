@@ -59,7 +59,7 @@ from .. import dist_check as _dist_check
 from .. import extensions, read_ticket, term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades, open_dialog_reason
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from .. import build_info
 from .. import authz
@@ -3088,7 +3088,7 @@ def _session_facts(names: List[str]) -> dict:
             text = str((get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}).get("assistant") or "")
         except Exception:
             text = ""
-        question_open, owner_at = web_steward.owner_dialog_for(s.cwd, s.sid, s.cli)
+        question_open, owner_at = web_steward.owner_dialog_for(s.cwd, s.sid, s.cli, s.pid)
         out[name] = {"running": True, "question_open": question_open,
                      "owner_input_age_s": max(0.0, time.time() - owner_at) if owner_at else None,
                      "started_age_s": max(0.0, time.time() - started) if started else None,
@@ -3396,10 +3396,11 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     if extra:      # değnekçi: oturumun açık soruları (`steward.handover_questions_note`)
         message = message + "\n\n" + extra
-    if web_steward.owner_dialog_for(procs[0].cwd, procs[0].sid, procs[0].cli)[0]:    # tuşlar diyaloğa yazılırdı (27 Kas)
-        diag_log("handover_refused_dialog", name=name)
+    blocked = open_dialog_reason(procs[0].cli, procs[0].cwd, procs[0].sid, procs[0].pid)
+    if blocked:    # tuşlar diyaloğa yazılırdı (27 Kas)
+        diag_log("handover_refused_dialog", name=name, reason=blocked)
         return _err(lang, "question_open", name=name)
-    diag_log("handover_start", name=name)
+    diag_log("handover_start", name=name, sid=procs[0].sid)    # sid: sinyaller kaçarsa hangi transkripte bakıldığı
 
     # Model + effort düşürmesi `handover.apply_handover_downgrades`te, `handover_faz1`
     # (CLI yolu) ile TEK kopya. Orada: canlı (jsonl-doğrulanmış) model, sonra
