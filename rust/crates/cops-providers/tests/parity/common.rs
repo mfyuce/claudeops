@@ -155,8 +155,28 @@ impl Drop for Py {
     }
 }
 
+/// `std_fixtures` ikililerinin içeriği ve izni.
+const STUB: &[u8] = b"#!/bin/false\n";
+const STUB_MODE: u32 = 0o755;
+
+/// Çalıştırılacak dosyayı ALT SÜREÇ yazar. Aileler paralel koşar: testin kendisi yazma tanıtıcısı açsaydı başka iş
+/// parçacığının o anki `fork`u tanıtıcıyı taşır ve betiğin `exec`i `ETXTBSY` alırdı (bir tarafta "bayrak yok" ya da
+/// `ucli_mcp_register_failed`, yani rastgele parite farkı).
+fn write_script(path: &str, content: &[u8]) {
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"", "sh", path])
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("sh çalıştırılamadı");
+    child.stdin.take().unwrap().write_all(content).unwrap();
+    assert!(child.wait().unwrap().success(), "betik yazılamadı: {path}");
+}
+
 pub struct Env {
     _tmp: TempDir,
+    /// Kök DIŞINDA duran saplama ikili: her vakada yeniden yazılmaz, sert bağlanır.
+    _stub_dir: TempDir,
+    stub: String,
     pub root: String,
     pub home: String,
     pub state: String,
@@ -185,6 +205,13 @@ impl Env {
             .unwrap()
             .to_string_lossy()
             .into_owned();
+        let stub_dir = tempfile::Builder::new()
+            .prefix("cops-parity-stub-")
+            .tempdir()
+            .unwrap();
+        let stub = format!("{}/false", stub_dir.path().to_string_lossy());
+        write_script(&stub, STUB);
+        fs::set_permissions(&stub, fs::Permissions::from_mode(STUB_MODE)).unwrap();
         let mut e = Env {
             home: format!("{root}/home"),
             state: format!("{root}/state"),
@@ -193,6 +220,8 @@ impl Env {
             root,
             repo: repo_dir(),
             _tmp: tmp,
+            _stub_dir: stub_dir,
+            stub,
             py: None,
         };
         e.reset();
@@ -242,11 +271,7 @@ impl Env {
             Fx::Dir("home/.claude/claudeops".into(), 0o700),
         ];
         for b in ["claude", "codex", "agy", "copilot", "ucli"] {
-            v.push(Fx::File(
-                format!("bin/{b}"),
-                b"#!/bin/false\n".to_vec(),
-                0o755,
-            ));
+            v.push(Fx::File(format!("bin/{b}"), STUB.to_vec(), STUB_MODE));
         }
         v.push(Fx::Dir("work/p1".into(), 0o755));
         v
@@ -272,7 +297,15 @@ impl Env {
                 Fx::File(rel, content, mode) => {
                     let p = format!("{}/{rel}", self.root);
                     fs::create_dir_all(Path::new(&p).parent().unwrap()).unwrap();
-                    fs::write(&p, content).unwrap();
+                    // önceki dosya (saplamaya sert bağ olabilir) üstüne yazılmaz, yenisi açılır
+                    let _ = fs::remove_file(&p);
+                    if content == STUB && mode == STUB_MODE {
+                        fs::hard_link(&self.stub, &p).unwrap();
+                    } else if mode & 0o111 != 0 {
+                        write_script(&p, &content);
+                    } else {
+                        fs::write(&p, content).unwrap();
+                    }
                     fs::set_permissions(&p, fs::Permissions::from_mode(mode)).unwrap();
                 }
                 Fx::Remove(rel) => {
