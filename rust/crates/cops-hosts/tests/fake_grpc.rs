@@ -305,6 +305,57 @@ async fn grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not() {
     .await
 }
 
+/// Red, reddeden relay'in adresine yazılır: kayıt o arada düzenlendiyse yeni adres gRPC'den denenir.
+#[tokio::test]
+async fn grpc_term_refusal_is_remembered_for_the_refusing_address_only() {
+    deadline(async {
+        let old = GrpcFake::start(None).await;
+        old.refuse_term(true);
+        let new = GrpcFake::start(None).await;
+        let w = WsFake::start(rest_status(), default_opener(), None).await;
+        let src = MemSource::new(vec![grpc_host(&w.url(), &old.url())]);
+        let (fed, ev) = fed_with(client(), &src);
+        grpc_tier(&fed);
+        let o = TermOpts::default();
+        fed.term_output("a", "s1", "en", &o);
+        wait_until("refused stream ends", Duration::from_secs(5), || {
+            !deaths(&ev).is_empty()
+        })
+        .await;
+        src.hosts.lock().unwrap()[0].grpc_url = new.url();
+        let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+        assert_eq!(v["text"], "s1/en#grpc", "{v}");
+        assert_eq!(new.count("StreamTermOutput"), 1);
+        assert_eq!(w.upgrades(), 0);
+    })
+    .await
+}
+
+/// Kademe gRPC iken kayıttan `grpc_url` kaldırılırsa relay ve durum akışı beklemeden WS'ten kurulur.
+#[tokio::test]
+async fn removed_grpc_url_moves_streams_to_websocket_at_once() {
+    deadline(async {
+        let w = WsFake::start(rest_status(), default_opener(), None).await;
+        let src = MemSource::new(vec![host("a", &w.url())]);
+        let (fed, ev) = fed_with(client(), &src);
+        grpc_tier(&fed);
+        let o = TermOpts::default();
+        let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+        assert!(!v["text"].as_str().unwrap().contains("#grpc"), "{v}");
+        assert_eq!(fed.tiers.get("a"), Tier::Ws);
+
+        grpc_tier(&fed);
+        fed.ensure_status_consumer(&host("a", &w.url()));
+        wait_until("status websocket", Duration::from_secs(5), || {
+            w.count_path("/ws") == 1
+        })
+        .await;
+        assert_eq!(fed.tiers.get("a"), Tier::Ws);
+        assert!(deaths(&ev).is_empty());
+    })
+    .await
+}
+
 #[tokio::test]
 async fn grpc_message_limit_is_4_mib() {
     deadline(async {

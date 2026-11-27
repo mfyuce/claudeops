@@ -136,6 +136,7 @@ class ClientFallbackTest(_GrpcBase):
         self.addCleanup(self.ws.shutdown)
         host = {"name": "h1", "base_url": f"http://127.0.0.1:{self.ws.socket.getsockname()[1]}",
                 "grpc_url": self.url, "token": TOKEN}
+        self.host = host
         for p in (mock.patch.object(web_hosts.hosts_mod, "get_host", lambda n: host if n == "h1" else None),
                   mock.patch.object(web_hosts, "get_tier", lambda n: "grpc"),
                   mock.patch.object(web_hosts, "diag_log", lambda *a, **k: None)):
@@ -175,6 +176,20 @@ class ClientFallbackTest(_GrpcBase):
                 web_hosts._grpc_term_refused[k] = time.monotonic() - 1
         got = _wait(web_hosts.term_output_relay("h1", "s3", "en"), lambda v: v.get("ok"))
         self.assertTrue(got["text"].startswith("s3#grpc"), got)
+
+    def test_refusal_is_remembered_for_the_refusing_address_only(self):
+        authz.set_grpc_term_gate(lambda: False)
+        fetch = web_hosts.term_output_relay("h1", "s1", "en")
+        fetch()
+        relay = web_hosts._term_relays[("h1", "s1", "en", False)]
+        self.assertTrue(_wait(lambda: {"ok": not relay.is_alive()}, lambda v: v["ok"])["ok"])
+        old_url = self.host["grpc_url"]
+        self.host["grpc_url"] = old_url.replace("127.0.0.1", "localhost")   # kayıt düzenlendi: yeni adres
+        with mock.patch.object(web_grpc, "open_term_stream", side_effect=RuntimeError("x")) as op:
+            fetch()
+            _wait(lambda: {"ok": op.called}, lambda v: v["ok"])
+        self.assertEqual(op.call_args[0][0], self.host["grpc_url"])          # yeni adres gRPC'den denenir
+        self.assertEqual(list(web_hosts._grpc_term_refused), [("h1", old_url)])
 
     def test_other_grpc_failure_does_not_move_to_websocket(self):
         self.server.stop(0).wait(5)

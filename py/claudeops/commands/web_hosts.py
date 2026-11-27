@@ -1368,6 +1368,20 @@ def get_tier(name: str) -> str:
         return _tier.get(name, "rest")
 
 
+def _stream_tier(host: Dict[str, str]) -> str:
+    """Akış kurulurken kullanılan kademe. Kayıtta `grpc_url` yoksa (kaldırılmış) `grpc` kademesi o anda `ws`e iner:
+    yoklayıcının düşme toleransı beklenirse akışlar boş adrese gRPC dener."""
+    name = host["name"]
+    tier = get_tier(name)
+    if tier != "grpc" or host.get("grpc_url"):
+        return tier
+    with _tier_lock:
+        if _tier.get(name) == "grpc":
+            _tier[name] = "ws"
+            _tier_downgrade_streak[name] = 0
+    return "ws"
+
+
 def _capability_prober_loop() -> None:
     while True:
         try:
@@ -1574,7 +1588,7 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
     iyileşir, host ASLA "gitti" gibi görünmez, sadece bir tick'lik ek
     gecikme olur."""
     name = host["name"]
-    tier = get_tier(name)
+    tier = _stream_tier(host)
     if tier == "rest":
         with _status_consumer_lock:
             old = _status_consumers.pop(name, None)
@@ -1651,6 +1665,7 @@ class _TermRelay:
     def __init__(self, tier: str, make_call: Callable[[], Any], parse_item: Callable[[Any], Optional[dict]],
                  label: str = ""):
         self.latest: Optional[dict] = None
+        self.grpc_url = ""    # kurulduğu andaki gRPC adresi (red bu adrese yazılır)
         self.created_mono = time.monotonic()
         self.last_read_mono = self.created_mono
         self._lock = threading.Lock()
@@ -1773,7 +1788,8 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
         with _term_relay_lock:
             relay = _term_relays.get(key)
             if relay is not None and not relay.is_alive() and relay.grpc_refused():
-                _grpc_term_refused[refused_key] = time.monotonic() + _GRPC_TERM_REFUSED_TTL_SECONDS
+                # reddeden, relay'in KENDİ adresi: kayıt o arada düzenlendiyse yeni adres engellenmez
+                _grpc_term_refused[(host_name, relay.grpc_url)] = time.monotonic() + _GRPC_TERM_REFUSED_TTL_SECONDS
                 dead = relay            # taşıma değişiyor: yeniden kurma arası beklenmez
                 del _term_relays[key]
                 relay = None
@@ -1791,7 +1807,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                 del _term_relays[key]
                 relay = None
             if relay is None:
-                tier = get_tier(host_name)
+                tier = _stream_tier(host)
                 if tier == "grpc" and time.monotonic() < _grpc_term_refused.get(refused_key, 0.0):
                     tier = "ws"
                 token = host["token"]
@@ -1812,6 +1828,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
                                    + (f"@{interval:g}s" if interval is not None else "")
                                    + ("+viewport" if viewport else ""))
+                relay.grpc_url = host.get("grpc_url") or ""
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()

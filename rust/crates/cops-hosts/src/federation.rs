@@ -68,6 +68,10 @@ impl StreamEndpoint {
         self.tier
     }
 
+    pub(crate) fn grpc_url(&self) -> &str {
+        &self.grpc_url
+    }
+
     /// Kademe hariç (term relay: Python gibi kademe değişimi tek başına akışı yenilemez).
     pub(crate) fn same_address(&self, o: &StreamEndpoint) -> bool {
         (&self.base_url, &self.grpc_url, &self.token) == (&o.base_url, &o.grpc_url, &o.token)
@@ -261,10 +265,18 @@ impl Federation {
         )
     }
 
+    /// Akış kurulurken kullanılan kademe (Python `_stream_tier`): `grpc_url` yoksa `Grpc` o anda `Ws`e iner.
+    pub(crate) fn stream_tier(&self, host: &HostRecord) -> Tier {
+        if host.grpc_url.is_empty() {
+            self.tiers.drop_grpc(&host.name);
+        }
+        self.tiers.get(&host.name)
+    }
+
     /// `true` = canlı ve veri getirmiş push akışı var, bu tur REST'e gitme. Yeni kurulan, ölen ya da sessiz akışın
     /// turu REST ile yoklanır (host asla sessizce bayatlamaz).
     pub fn ensure_status_consumer(&self, host: &HostRecord) -> bool {
-        let tier = self.tiers.get(&host.name);
+        let tier = self.stream_tier(host);
         let mut map = lock(&self.consumers);
         if tier == Tier::Rest {
             map.remove(&host.name);

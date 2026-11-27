@@ -98,7 +98,7 @@ impl Federation {
             interval: interval.clone(),
             viewport: opts.viewport,
         };
-        let endpoint = StreamEndpoint::of(self.tiers.get(host_name), host);
+        let endpoint = StreamEndpoint::of(self.stream_tier(host), host);
         let mut map = self.relays.map.lock().unwrap_or_else(|e| e.into_inner());
         let refused_key = (host_name.to_string(), host.grpc_url.clone());
         let mut refused = self
@@ -110,7 +110,9 @@ impl Federation {
         if let Some(r) = map.get(&key) {
             if r.grpc_refused() {
                 // Taşıma değişiyor: yeniden kurma arası beklenmez.
-                refused.insert(refused_key.clone(), Instant::now() + GRPC_TERM_REFUSED_TTL);
+                // Reddeden, relay'in KENDİ adresi: kayıt o arada düzenlendiyse yeni adres engellenmez.
+                let by = (host_name.to_string(), r.endpoint.grpc_url().to_string());
+                refused.insert(by, Instant::now() + GRPC_TERM_REFUSED_TTL);
                 map.remove(&key);
             } else if !r.endpoint.same_address(&endpoint) {
                 map.remove(&key);

@@ -44,6 +44,16 @@ impl TierBook {
         }
     }
 
+    /// gRPC artık denenemez (kayıttan `grpc_url` kaldırıldı): düşme toleransı beklenmeden `Ws`.
+    pub(crate) fn drop_grpc(&self, name: &str) {
+        let mut m = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(e) = m.get_mut(name) {
+            if e.0 == Tier::Grpc {
+                *e = (Tier::Ws, 0);
+            }
+        }
+    }
+
     pub fn get(&self, name: &str) -> Tier {
         self.map
             .lock()
