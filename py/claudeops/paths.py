@@ -85,6 +85,20 @@ def ucli_key_file(service: str = "") -> str:
     return os.path.expanduser(f"~/.claude/claudeops/{name}")
 
 
+def shared_write_allowed(path: str) -> bool:
+    """Ortak durum kökü (`~/.claude/claudeops`) altındaki anahtar/kullanım yolu bu süreçte yazılıp silinebilir mi
+    (TBD#412 b). `CLAUDEOPS_DIR` başka dizini gösteriyorsa (deneme/ikinci örnek) HAYIR: ortak dosyalar yalnız okunur.
+    Kök dışındaki yol serbest. Sembolik bağ iki yönde de sayılır (sözcüksel ya da çözülmüş yol kökteyse ortak)."""
+    shared = os.path.expanduser("~/.claude/claudeops")
+    if os.path.realpath(CLAUDEOPS_DIR) == os.path.realpath(shared):
+        return True
+    for norm in (os.path.abspath, os.path.realpath):
+        root, p = norm(shared), norm(path)
+        if p == root or p.startswith(root + os.sep):
+            return False
+    return True
+
+
 GUARD_LOCK = f"/tmp/claudeops-{os.getuid()}/guard.lock"   # kullanıcıya özel: çok kullanıcılı makinede ikinci kullanıcı PermissionError almaz
 
 
