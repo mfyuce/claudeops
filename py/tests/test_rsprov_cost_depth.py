@@ -91,9 +91,45 @@ class DepthLimit(_Dir):
 
     def test_recursion_error_inside_the_limit_is_not_silent(self):
         path = self.put(_deep(3))
-        stub = mock.Mock(**{"loads.side_effect": RecursionError})      # yalnız `review`in gördüğü `json`
+        stub = mock.Mock(JSONDecodeError=json.JSONDecodeError,      # yalnız `review`in gördüğü `json`
+                         **{"loads.side_effect": RecursionError})
         with mock.patch.object(rv, "json", stub):
             self.assertEqual(rv._scan_usage(path, "", 0.0, 1.0), (0.0, "çok derin satır"))
+
+
+class LongIntegers(_Dir):
+    """Python 4300 basamaktan uzun tam sayıyı ayrıştırmaz: satır eskiden sessizce 0 sayılıyordu."""
+
+    def line(self, number):
+        return '{"usage": {"input_tokens": 1000}, "x": %s}' % number
+
+    def test_a_longer_integer_is_not_silent(self):
+        if not hasattr(sys, "set_int_max_str_digits"):
+            self.skipTest("bu yorumlayıcıda basamak sınırı yok")
+        for number in ("9" * 4301, "-" + "9" * 4301):
+            rv._BAD_SEEN.clear()
+            self.events.clear()
+            self.assertEqual(rv._scan_usage(self.put(self.line(number)), "", 0.0, 1.0), (0.0, "çok uzun sayı"))
+            self.assertEqual(self.events, ["usage.number"])
+            with self.cap(100.0), self.assertRaises(ValueError):
+                ucli_cost.reserve("s", base=self.base)
+
+    def test_countable_numbers_are_unchanged(self):
+        long = "9" * 4301
+        for number in ("9" * 4300, long + ".5", "1." + long, long + "e-4300", '"%s"' % long):
+            usd, problem = rv._scan_usage(self.put(self.line(number)), "", 0.0, 1.0)
+            self.assertGreater(usd, 0, number[:20])
+            self.assertEqual(problem, "", number[:20])
+
+    def test_a_broken_line_stays_a_torn_line(self):
+        self.assertEqual(rv._scan_usage(self.put('{"usage": {"input_tokens": 1'), "", 0.0, 1.0), (0.0, ""))
+
+    def test_it_closes_the_review_budget(self):
+        if not hasattr(sys, "set_int_max_str_digits"):
+            self.skipTest("bu yorumlayıcıda basamak sınırı yok")
+        reviews = os.path.join(self.root, "reviews")
+        self.put(self.line("9" * 4301), reviews, "p", "anthropic", "claude-sonnet-5-5", "a.usage.jsonl")
+        self.assertEqual(rv.anthropic_spent_usd(reviews), rv._UNCOUNTABLE_SPENT_USD)
 
 
 class ReviewBudgetGate(_Dir):

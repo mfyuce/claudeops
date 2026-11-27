@@ -1861,6 +1861,7 @@ def _usage_number(v: Any) -> bool:
 _MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `report::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
 _DEPTH_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.S)      # dize (yarım da olur) içindeki ayraç sayılmaz
 _UNCOUNTABLE_SPENT_USD = 1e18      # sayılamayan satır varken bütçe kapısının gördüğü harcama (sonlu: günlüğe JSON olarak yazılır)
+_UNCOUNTABLE_KINDS = ("usage.depth", "usage.number")      # atlanan satır türlerinden harcaması bilinemeyenler
 
 
 def _too_deep(line: str) -> bool:
@@ -1887,8 +1888,8 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
 
 def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tuple[float, str]:
     """(usd, sorun). `sorun` boş değilse toplama GÜVENİLMEZ (dosya okunamadı, normal dosya değil, bir istek kaydında
-    geçersiz sayı ya da `_MAX_LINE_DEPTH`ten derin satır): açık bir harcama tavanı bunu "izin" saymamalı. Olmayan dosya ve
-    ayrıştırılamayan (yarım yazılmış) satır sorun sayılmaz."""
+    geçersiz sayı, `_MAX_LINE_DEPTH`ten derin ya da basamak sınırını aşan tam sayılı satır): açık bir harcama tavanı bunu
+    "izin" saymamalı. Olmayan dosya ve ayrıştırılamayan (yarım yazılmış) satır sorun sayılmaz."""
     usd, problem, skipped = _scan_usage_windows(path, model, (since_ms,), write_mult)[since_ms]
     for what in skipped:
         _log_bad(what, path)
@@ -1941,7 +1942,11 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
                     rec = json.loads(line)
                     if not isinstance(rec, dict):
                         continue
-                except ValueError:
+                except json.JSONDecodeError:
+                    continue
+                except ValueError:      # yorumlayıcının tam sayı basamak sınırı (4300): satır geçerli olabilir ama sayılamadı
+                    _fail("çok uzun sayı", every)
+                    _skip("usage.number", every)
                     continue
                 except RecursionError:      # sınır içinde ama çağıranın yığını yetmedi: yine sayılamadı
                     _fail("çok derin satır", every)
@@ -2008,8 +2013,8 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
 
 def anthropic_spent_usd(reviews_root: str) -> float:
     """Tüm `anthropic` koşularının toplam $ (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik SABİT varsayılmaz
-    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği yüzünden sayılamayan
-    satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
+    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği ya da sayı uzunluğu
+    yüzünden sayılamayan satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
     import glob
     tot = 0.0
     uncountable = False
@@ -2026,7 +2031,7 @@ def anthropic_spent_usd(reviews_root: str) -> float:
                 for what in skipped:
                     _log_bad(what, f)
                 tot += usd
-                uncountable = uncountable or "usage.depth" in skipped
+                uncountable = uncountable or any(what in skipped for what in _UNCOUNTABLE_KINDS)
     return _UNCOUNTABLE_SPENT_USD if uncountable else tot
 
 
