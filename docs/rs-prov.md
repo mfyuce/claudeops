@@ -1,6 +1,6 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (eşleme tablosunda EKSİK G9 ve ders listesi açık; G1, G2, G3,
+Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G9 YARIM: kod var, testsiz, aşağıdaki "G9" bölümü; eşleme tablosunda EKSİK G9 ve ders listesi açık; G1, G2, G3,
 G4, G5, G6, G7, G8 (iki parça), G10 ve G11 taşındı). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
 `cargo test -p cops-providers` 175/175 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 19, TUI
 sözleşmesi 18; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16, SearXNG 8,
@@ -113,7 +113,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo`: `real/modelio.rs` (G8) |
 | G8 `Probe` ve `Effect` gerçek uygulayıcısı | `real/` (dosya, süreç, HTTP, belge, günlük, token, MCP, checks, `agy_sids`), maliyet defteri (`cost.rs`, `real/ledger.rs`), SearXNG spawn yolu (`real/searxng.rs`) | 0 (53 TAŞINDI) | 0 (47 TAŞINDI, 5 kapsam dışı) | bitti: parite `parity_real`, `parity_ledger`, `parity_searxng`; `tests/real_{fs,process,http,ledger,searxng,fd,agy_store}.rs` |
-| G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 14 | zor: rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
+| G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 14 | YARIM: kod `spawn_exec.rs`, `hooks.rs`, `real/{launch,routing_sync,runtime}.rs`, testsiz ("G9" bölümü); rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` yazılan kısım), bütçe notu | 0 (26 TAŞINDI, 18 kapsam dışı) | 0 (41 TAŞINDI, 8 kapsam dışı) | bitti: `oneshot.rs`, `approval.rs`, `real/{oneshot,approval}.rs`; parite `parity_oneshot`, `tests/real_oneshot.rs` |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
 
@@ -750,6 +750,40 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | 2.5 env beyaz listesi | AÇIK: çocuk ortamı Python gibi miras (yalnız `*_API_KEY` eklenir; aday 1) |
 | H8, 3.7 sınırlı bekleme | süreç süre sınırlı, `flock` 30 sn |
 | Uygulanmaz | H3, H10, H11, H15, H18, H19, H21 |
+
+## G9: spawn yürütme ve küresel yönerge (YARIM, 27 Kas devir)
+
+### Nerede kaldı
+- Kodda (derleniyor, clippy temiz, G9'a özel testi YOK; eşleme tablosundaki EKSİK(G9) satırları bu yüzden DEĞİŞMEDİ):
+  - `spawn.rs`: `plan_spawn_with` + `HookFn` (kanca ortamı Python sırasında: MCP argümanlarından sonra, komuttan önce);
+    `plan_spawn` ona sarmalayıcı (mevcut parite değişmedi).
+  - `hooks.rs`: `authz.spawn_env` (ret aynen, başka hata `authz_spawn_hook_failed` + `hook_error`), `session_mcp_spec`,
+    `mcp_ext.default_spec`, `Hooks`/`SpawnHooks`.
+  - `spawn_exec.rs`: `spawn_session` akışı, `reclaim_ghost_session`, `fallback_watchdog` (+ `FALLBACK_*` sabitleri),
+    `open_window`, `open_mirror_window`; sınırlar `SpawnTmux` (gerçek: `cops-tmux`), `Terminal`, `Clock`, `DiagSink`,
+    `SessionScan` (rs/proc), `ResumeResolver` (`Live`), `CostRelease`. Kuru ya da hatalı başlatmada `release` burada
+    (Python'da web çağıranları yapar). `SpawnFailure::web_refusal` = `cost::refusal`. Bekçi `Watchdog` (join edilmeli:
+    Python `daemon=False`).
+  - `real/launch.rs`: `GnomeTerminal` (env miras yok, NUL/`=` -> `ValueError` karşılığı, çocuk arka planda toplanır),
+    `SystemClock`, `DiagLog: DiagSink`, `repo_dir_of` (`REPO_DIR`).
+  - `real/routing_sync.rs`: `_sync_one` dosya adımları + `sync_global_files` (`copy2` yedeği, realpath'e atomik yazım).
+  - `real/runtime.rs`: `SpawnRuntime` (süreç başına tek `CostLedger`/`ManagedSearch`/`HelpCache`, `settings_saved` =
+    `invalidate`, `Provision::python` panel Python'u).
+  - `Paths::{codex_agents_md, agy_gemini_md}` (`CODEX_AGENTS`, `AGY_GEMINI`).
+- `rs/prov-g9-wip` dalında (sınanmamış): parite koşucusuna (`harness.py`) `g9_spawn`, `g9_window`, `g9_mirror`,
+  `g9_reclaim`, `g9_sync`, `g9_repo_dir` işlemleri (sahte tmux/Popen/saat/tarama, GERÇEK `authz.spawn_env` +
+  `extensions.session_mcp_spec` vaka kayıtlarıyla, iş parçacıkları eşzamanlı).
+
+### İlk yapılacak
+1. `rs/prov-g9-wip`teki koşucu işlemlerini al; Rust tarafı `tests/parity/fam_g9.rs` yaz (sahte `SpawnTmux`/`Terminal`/
+   `Clock` çağrı günlüğü Python'un `calls` listesiyle aynı biçimde; `fam_spawn::parent_env` paylaşılmalı; `release`
+   yalnız Rust'ta: ayrıca denetle). `fam_misc::rs_sync_one`i `routing_sync::sync_one` ile değiştir.
+2. Birim testleri: ReclaimTest x4, `GnomeTerminal` sahte betikle (env'deki PATH, Popen hatası false), bekçi sahte saatle,
+   `copy2` zaman/izin, `repo_dir_of` bağlantıyla.
+3. Sonra EKSİK(G9) satırlarını TAŞINDI yap; Python hatası adayları: hayalet son ekranı diag'a (sır olabilir), kırık bağlantılı
+   `.bak-routing` hedefine yazım, `Popen` `ValueError`ı spawn'ı düşürür ama bekçide iş parçacığını sessizce öldürür,
+   gizli + tmux'suz başlatma sessizce hiçbir şey açmaz (hepsi davranış değiştirir: UYGULANMADI).
+4. Gerçek `Pane` (G4) ve `SpawnTmux` uygulayıcısı `cops-tmux` birleşince; sözleşme yukarıdaki trait belgelerinde.
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;

@@ -1,5 +1,5 @@
 //! `spawn.py`nin saf kısmı: effort çözümü, ortam öneki, nice, kabuk satırı, alt süreç ortamı, pencere argv'si.
-//! Süreç başlatma ve tmux komutları burada YOK (tmux: `cops-tmux`).
+//! Süreç başlatma, tmux, pencere ve bekçi akışı [`crate::spawn_exec`]te (tmux uygulayıcısı `cops-tmux`).
 
 use crate::probe::{BuildOutput, SpawnError};
 use crate::provider::{BuildArgs, Cli, McpSpec, Providers};
@@ -114,6 +114,9 @@ pub struct SpawnRequest {
     pub dry_run: bool,
 }
 
+/// Kanca ortamını veren geri çağrı ([`plan_spawn_with`]).
+pub type HookFn<'a> = dyn FnMut(&mut BuildOutput) -> Result<Vec<(String, String)>, SpawnError> + 'a;
+
 /// Başlatmaya hazır plan.
 #[derive(Debug)]
 pub struct SpawnPlan {
@@ -137,10 +140,23 @@ impl SpawnPlan {
 /// birikir; HATA dönse bile birikenler uygulanmalı/günlüğe yazılmalı (Python hatadan önce yazdıklarını bırakır).
 /// `req.dry_run` ya da `output.dry_run` ise bu çağrı `output`a hiçbir şey eklemez.
 pub fn plan_spawn(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -> Result<SpawnPlan, SpawnError> {
+    plan_spawn_with(p, req, &mut |_| Ok(req.hook_env.clone()), output)
+}
+
+/// [`plan_spawn`]; kanca ortamı `req.hook_env` yerine `hook`tan, Python'daki SIRADA (MCP bağlama argümanlarından SONRA,
+/// komut kurulmadan ÖNCE) alınır. `hook` hata dönerse plan o noktada düşer (Python `SpawnRefused`): o ana dek biriken
+/// Effect/diag (ör. ucli `mcp add` kaydı) `output`ta kalır. `hook`a verilen `BuildOutput`a eklenen diag'lar da kuru
+/// çalıştırmada atılır.
+pub fn plan_spawn_with(
+    p: &Providers<'_>,
+    req: &SpawnRequest,
+    hook: &mut HookFn<'_>,
+    output: &mut BuildOutput,
+) -> Result<SpawnPlan, SpawnError> {
     let outer = output.dry_run;
     output.dry_run |= req.dry_run;
     let (effects, diags) = (output.effects.len(), output.diags.len());
-    let plan = plan_inner(p, req, output);
+    let plan = plan_inner(p, req, hook, output);
     if output.dry_run {
         output.effects.truncate(effects);
         output.diags.truncate(diags);
@@ -149,7 +165,12 @@ pub fn plan_spawn(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutpu
     plan
 }
 
-fn plan_inner(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -> Result<SpawnPlan, SpawnError> {
+fn plan_inner(
+    p: &Providers<'_>,
+    req: &SpawnRequest,
+    hook: &mut HookFn<'_>,
+    output: &mut BuildOutput,
+) -> Result<SpawnPlan, SpawnError> {
     let cli = Cli::parse(&req.cli);
     let resume = req.resume_id.as_deref();
     let kind = match resume {
@@ -165,7 +186,8 @@ fn plan_inner(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -
     }
     let mcp = req.mcp_server.as_ref().or_else(|| req.extension_mcp.as_ref().filter(|_| req.cli == "claude"));
     let extra = mcp.map(|s| p.mcp_launch_args(cli, s, &req.cwd, output)).unwrap_or_default();
-    let mut hook_env = req.hook_env.clone();
+    // Kanca (çok kullanıcı) build'DEN ÖNCE: ret erken yükselir, oturum USD tavanı ucli argv'sine girebilir.
+    let mut hook_env = hook(output)?;
     let cli_opts = apply_hook_session_cap(&mut hook_env, req.cli_opts.clone(), cli, p.settings);
     let args = BuildArgs {
         cwd: &req.cwd,

@@ -103,6 +103,14 @@ impl Paths {
     pub fn routing_override(&self) -> String {
         format!("{}/routing-guidance.md", self.claudeops_dir)
     }
+    /// `routing.CODEX_AGENTS` (`~/.codex/AGENTS.md`; `CODEX_HOME`a bakmaz).
+    pub fn codex_agents_md(&self) -> String {
+        format!("{}/.codex/AGENTS.md", self.home)
+    }
+    /// `routing.AGY_GEMINI` (`~/.gemini/GEMINI.md`).
+    pub fn agy_gemini_md(&self) -> String {
+        format!("{}/.gemini/GEMINI.md", self.home)
+    }
 }
 
 /// Komut kurulurken okunan olgular. Uygulama G/Ç yapar; crate yapmaz.
