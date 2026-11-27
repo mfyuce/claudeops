@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+from . import bg_work, owner_dialog, paths
 from .diaglog import diag_log
 from .discovery import find_sessions
 from .needs_ho import needs_ho
@@ -287,6 +288,21 @@ class Faz1Summary:
         return sum(1 for r in self.results if r.status.startswith("skipped"))
 
 
+def open_dialog_reason(cli: str, cwd: str, sid: Optional[str], pid: int) -> str:
+    """Oturuma tuş basılırsa bir diyaloğa gidecekse nedeni (`session:<waitingFor>` ya da `transcript`), değilse "".
+    İki bağımsız sinyal: sürecin kendi kaydı (her tür bekleme) ve transkriptteki cevapsız soru/plan onayı."""
+    if cli != "claude":
+        return ""
+    waiting = owner_dialog.session_waiting_for(paths.SESSIONS_DIR, pid)
+    if waiting:
+        return f"session:{waiting}"
+    try:
+        lines = bg_work.tail_lines(str(jsonl_path_for(cwd, sid) or ""))
+        return "transcript" if owner_dialog.owner_dialog_state(lines)[0] else ""
+    except Exception:
+        return ""
+
+
 def handover_faz1(
     message: str = HANDOVER_MSG_DEFAULT,
     dry_run: bool = False,
@@ -445,6 +461,13 @@ def handover_faz1(
         # effort kararı `apply_handover_downgrades`te (web'in `_handover`ıyla TEK
         # kopya): önbellek sıcaksa model bırakılır (sıcakken `/model` bağlamın
         # tamamını yeniden yazdırır), soğuksa Sonnet'e düşülür; effort hep high.
+        blocked = open_dialog_reason(session.cli, session.cwd, session.sid, session.pid)
+        if blocked:      # model/effort komutu da mesaj da diyaloğa yazılırdı
+            diag_log("handover_refused_dialog", name=session.name, reason=blocked)
+            print(" skip (oturum bir diyalogda cevap bekliyor)")
+            summary.results.append(Faz1Result(session.name, "skipped-dialog", blocked))
+            continue
+
         provider = get_provider(session.cli)
         apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
                                   session.model, session.effort, pid=session.pid)

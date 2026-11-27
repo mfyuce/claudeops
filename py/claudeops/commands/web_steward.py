@@ -31,6 +31,7 @@ import psutil
 
 from .. import bg_work
 from .. import owner_dialog
+from .. import paths as paths_mod
 from .. import settings as settings_mod
 from .. import hosts as hosts_mod
 from .. import instances as inst_mod
@@ -1336,15 +1337,18 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
     return False
 
 
-def owner_dialog_for(cwd: str, sid: Optional[str], cli: str = "claude") -> Tuple[bool, float]:
-    """(kullanıcı diyaloğu açık mı, son kullanıcı girdisi epoch'u) claude transkriptinin kuyruğundan; bilinmiyorsa (False, 0)."""
+def owner_dialog_for(cwd: str, sid: Optional[str], cli: str = "claude", pid: Optional[int] = None) -> Tuple[bool, float]:
+    """(kullanıcı diyaloğu açık mı, son kullanıcı girdisi epoch'u): claude transkriptinin kuyruğu ya da sürecin kendi kaydı
+    "input needed" diyorsa açık; bilinmiyorsa (False, 0). Öteki beklemeler (izin vb.) planlayıcıyı dondurmaz."""
     if cli != "claude":
         return False, 0.0
+    asking = owner_dialog.session_waiting_for(paths_mod.SESSIONS_DIR, pid) == "input needed"
     try:
         from ..providers.claude_provider import jsonl_path_for
-        return owner_dialog.owner_dialog_state(bg_work.tail_lines(str(jsonl_path_for(cwd, sid) or "")))
+        is_open, last = owner_dialog.owner_dialog_state(bg_work.tail_lines(str(jsonl_path_for(cwd, sid) or "")))
+        return is_open or asking, last
     except Exception:
-        return False, 0.0
+        return asking, 0.0
 
 
 def _undo_refused_handover(name: str, res: Dict[str, Any], sid: str) -> Dict[str, Any]:
@@ -1431,7 +1435,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                     v.context_tokens = provider.live_context(s.cwd, s.sid)
                 except Exception:
                     v.context_tokens = None
-            v.question_open, v.owner_input_at = owner_dialog_for(s.cwd, s.sid, s.cli)
+            v.question_open, v.owner_input_at = owner_dialog_for(s.cwd, s.sid, s.cli, s.pid)
             try:
                 v.subagent_active = subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli)
             except Exception:
