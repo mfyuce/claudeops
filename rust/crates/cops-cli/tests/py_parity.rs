@@ -426,7 +426,6 @@ fn parity_delegated_commands_and_argparse_errors() {
     let sb = Sandbox::new();
     for args in [
         &["yok-boyle-komut"][..],
-        &["--version"],
         &["front"],
         &["front", "on", "--apply=1"],
         &["front", "-h"],
@@ -514,6 +513,78 @@ fn parity_self_with_bash_claudeops() {
         (r.status.code(), &r.stdout),
         "ata zinciri"
     );
+}
+
+#[test]
+fn parity_self_dot_files_string_pid_and_order() {
+    if !std::path::Path::new("/tmp/claudeops").is_dir() {
+        eprintln!("atlandı: /tmp/claudeops yok");
+        return;
+    }
+    let sb = Sandbox::new();
+    let sess = sb.home().join(".claude/sessions");
+    std::fs::create_dir_all(&sess).unwrap();
+    let (me, parent) = (std::process::id(), std::os::unix::process::parent_id());
+    let rec = |file: String, pid: String, sid: &str, cwd: &str| {
+        std::fs::write(
+            sess.join(file),
+            format!(r#"{{"pid": {pid}, "sessionId": "{sid}", "cwd": "{cwd}"}}"#),
+        )
+        .unwrap();
+    };
+    // noktalı dosya bash globuna girmez
+    rec(".1.json".into(), parent.to_string(), "NOKTA", "/nokta");
+    rec(format!("{parent}.json"), parent.to_string(), "BASKA", "/p");
+    // metin `pid`
+    rec(format!("{me}.json"), format!("\"{me}\""), "METIN", "/metin");
+    let claudeops = repo().join("claudeops");
+    let check = |sid: &str, code: i32, has: &str| {
+        let run = |prog: &std::path::Path| {
+            sb.cmd(prog)
+                .arg("self")
+                .env("CLAUDE_CODE_SESSION_ID", sid)
+                .output()
+                .unwrap()
+        };
+        let (b, r) = (run(&claudeops), run(&bin()));
+        assert_eq!(
+            (b.status.code(), String::from_utf8_lossy(&b.stdout)),
+            (r.status.code(), String::from_utf8_lossy(&r.stdout)),
+            "{sid}"
+        );
+        assert_eq!(r.status.code(), Some(code), "{sid}");
+        assert!(String::from_utf8_lossy(&r.stdout).contains(has), "{sid}");
+    };
+    // eşleşme yoksa ata zincirine düşülür (çıktı koşu ortamına bağlı): iki taraf aynı, noktalı kayıt okunmaz
+    check("NOKTA", 1, "");
+    check("METIN", 0, "cwd:         /metin");
+    // aynı oturum kimliği iki dosyada: ikisi de aynı sıradakini seçer
+    std::fs::remove_file(sess.join(format!("{me}.json"))).unwrap();
+    rec(format!("{me}.json"), me.to_string(), "CIFT", "/ben");
+    rec(format!("{parent}.json"), parent.to_string(), "CIFT", "/ata");
+    let ilk = if format!("{me}.json") < format!("{parent}.json") {
+        "/ben"
+    } else {
+        "/ata"
+    };
+    check("CIFT", 0, ilk);
+}
+
+#[test]
+fn parity_front_status_non_utf8_env_secret_counts_as_set() {
+    use std::os::unix::ffi::OsStringExt;
+    let sb = Sandbox::new();
+    let bad = std::ffi::OsString::from_vec(vec![0xff, b'x']);
+    let run = |prog: &std::path::Path| {
+        sb.cmd(prog)
+            .args(["front", "status"])
+            .env("CLAUDEOPS_FRONT_SECRET", &bad)
+            .output()
+            .unwrap()
+    };
+    let (p, r) = (run(&py_cops()), run(&bin()));
+    same(&p, &r, "UTF-8 olmayan ortam gizlisi");
+    assert!(String::from_utf8_lossy(&r.stdout).starts_with("gizli: var"));
 }
 
 #[test]

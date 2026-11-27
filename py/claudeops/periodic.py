@@ -420,7 +420,8 @@ def _is_db(path: str, head: bytes) -> bool:
 
 
 def _local_sources() -> List[Tuple[str, ...]]:
-    """(kaynak yol, repo içi hedef öneki[, tür]) demetleri. tür: "text" (jsonl, sır maskelenir) | "bin" (ham, büyükse parçalanır).
+    """(kaynak yol, repo içi hedef öneki[, tür]) demetleri. tür: "text" (jsonl, sır maskelenir) | "bin" (ham, büyükse parçalanır)
+    | "raw" (her dosya gerçek haliyle, MASKESİZ; büyük ikili ve veritabanı `raw_remote`'a; bkz. `_brain_sources`).
     Ayna (chat-mirror) canlı dizinden SİLİNMİŞ eski sohbetleri de taşır; aynı hedef yolda mtime'ı yeni olan kazanır.
     Hedef yol = özgün göreli yol (tarih/oturum/proje yolu korunur). Grup = önekin ikinci parçası (claude|codex|gemini) -> kendi repo'su."""
     home = os.path.expanduser("~")
@@ -455,6 +456,7 @@ def _local_sources() -> List[Tuple[str, ...]]:
         out.append((os.path.join(hdir, ".claude", "history.jsonl"), os.path.join("local", f"claude-{rh}-history"), "text"))
         out.append((os.path.join(hdir, ".codex", "sessions"), os.path.join("local", f"codex-{rh}-sessions"), "text"))
     out.extend(_memory_sources(home, mir))
+    out.extend(_brain_sources(home, mir))
     return out
 
 
@@ -506,6 +508,25 @@ def _memory_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
     return out
 
 
+def _brain_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
+    """Antigravity sohbet yan dosyaları (`<kök>/brain/`: plan/not, betik, görsel, `.env`). Sahip kararı 26 Kas: HEPSİ private
+    gemini yedeğine gerçek haliyle (maskesiz) girer; maskeleme yalnız public verilecek kopyada."""
+    subs = ("antigravity", "antigravity-cli", "antigravity-ide", "antigravity-backup")
+    out: List[Tuple[str, ...]] = []
+    for base in (os.path.join(home, ".gemini"), os.path.join(mir, "gemini")):
+        out.extend((os.path.join(base, s, "brain"), os.path.join("local", "gemini-brain", s), "raw") for s in subs)
+    for hdir in sorted(glob.glob(os.path.join(mir, "*", "extract"))):          # uzak host arşivleri
+        rh = re.sub(r"[^A-Za-z0-9._-]+", "-", os.path.basename(os.path.dirname(hdir)))
+        out.extend((os.path.join(hdir, ".gemini", s, "brain"), os.path.join("local", "gemini-brain-hosts", rh, s), "raw") for s in subs)
+    return out
+
+
+def _safe_rel(rel: str) -> str:
+    """Ham kaynak yolu -> git'in kabul edeceği yol: `.git`/`.gitmodules` bileşeni yeniden adlandırılır, UTF-8 dışı bayt kaçışlanır."""
+    parts = rel.encode("utf-8", "backslashreplace").decode("utf-8").split(os.sep)
+    return os.sep.join("_" + p if p.lower() in (".git", ".gitmodules") else p for p in parts)
+
+
 def _group_of(prefix: str) -> str:
     parts = prefix.replace("\\", "/").split("/")
     if parts[0] == "memory" and len(parts) > 2:        # memory/<host>/<cli>/<proje>: grup = cli; copilot claude reposuna gider
@@ -526,7 +547,9 @@ def _walk_files(src: str, kind: str) -> List[str]:
     exts = TEXT_EXT if kind == "text" else BIN_EXT + TEXT_EXT
     out: List[str] = []
     for root, _d, files in os.walk(src):
-        if kind == "mem":      # hafıza: her dosya (md/json/sqlite...), geçici/yedek/shm hariç
+        if kind == "raw":      # her düz dosya; sembolik bağ/FIFO değil (bağ hedefi klasörün içeriği değil, FIFO okuma takılır)
+            out.extend(p for p in (os.path.join(root, f) for f in files) if os.path.isfile(p) and not os.path.islink(p))
+        elif kind == "mem":      # hafıza: her dosya (md/json/sqlite...), geçici/yedek/shm hariç
             out.extend(os.path.join(root, f) for f in files if not f.endswith(MEM_SKIP) and ".pre-update-backup" not in f and ".bak-" not in f)
         else:
             out.extend(os.path.join(root, f) for f in files if f.endswith(exts))
@@ -557,7 +580,7 @@ def plan_chat_backup(cfg: Dict[str, Any], manifest: Dict[str, str]) -> Dict[str,
                 continue
             seen += 1
             rel = os.path.relpath(f, src) if os.path.isdir(src) else os.path.basename(f)
-            dest = os.path.join(prefix, rel)
+            dest = os.path.join(prefix, _safe_rel(rel) if kind == "raw" else rel)
             cur = best.get(dest)
             if cur is not None and (cur["mt"], cur["size"]) >= (stt.st_mtime, stt.st_size):
                 continue
@@ -607,7 +630,7 @@ def _put(dest: str, blob: bytes) -> bool:
         except OSError:
             pass
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    tmp = dest + ".tmp"
+    tmp = dest + ".copstmp"        # ".tmp" değil: ham kaynakta "x" ve "x.tmp" kardeş dosyalar olabilir
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "wb") as f:
         f.write(blob)
@@ -622,7 +645,7 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
     chunk = CHUNK_MB * 1024 * 1024
     written: List[str] = []
     sigs: Dict[str, str] = {}
-    stats: Dict[str, Any] = {"redacted": 0, "skipped_big": [], "unchanged": 0, "days": {}, "skipped_group": {}, "db": []}
+    stats: Dict[str, Any] = {"redacted": 0, "skipped_big": [], "unchanged": 0, "days": {}, "skipped_group": {}, "db": [], "write_err": []}
     for ent in plan["changed"]:
         group = ent.get("group", "claude")
         repo = _group_repo(cfg, group)
@@ -639,6 +662,11 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
             continue
         if ent.get("kind") == "mem":
             ent = dict(ent, kind="bin" if b"\0" in raw[:8192] else "text")
+        if ent.get("kind") == "raw":
+            if len(raw) > chunk and b"\0" in raw[:8192]:
+                stats["db"].append(ent)   # büyük ikili: repoyu şişirmesin, `raw_remote`'a (aynı yükleme/imza kuralı)
+                continue
+            ent = dict(ent, kind="bin")
         elif ent["src"].endswith(".zst"):
             ent = dict(ent, kind="bin")
         if ent.get("kind") == "bin":
@@ -655,17 +683,27 @@ def _write_changed(plan: Dict[str, Any], cfg: Dict[str, Any]) -> Tuple[List[str]
         changed = False
         keep = {rel for rel, _d in blobs}
         base = ent["dest"]
-        for stale in [base] + [os.path.relpath(x, repo) for x in sorted(glob.glob(glob.escape(os.path.join(repo, base)) + ".part*"))]:
+        parts = [x for x in sorted(glob.glob(glob.escape(os.path.join(repo, base)) + ".part*")) if re.search(r"\.part\d{3,}$", x)]
+        for stale in [base] + [os.path.relpath(x, repo) for x in parts]:
             if stale not in keep and os.path.isfile(os.path.join(repo, stale)):   # boyut sınıfı değişti: eski parça/bütün dosya kalmasın (birleştirme bozulur)
                 os.remove(os.path.join(repo, stale))
                 written.append(stale)
                 stats["days"].setdefault(group, {}).setdefault(ent["day"], []).append(stale)
                 changed = True
+        failed = ""
         for rel, data in blobs:
-            if _put(os.path.join(repo, rel), data):
+            try:
+                wrote = _put(os.path.join(repo, rel), data)
+            except OSError as e:          # ör. aynı yol bir kaynakta dosya, ötekinde dizin: koşu düşmesin, imza kaydedilmesin
+                failed = f"{rel}: {type(e).__name__}"
+                break
+            if wrote:
                 changed = True
                 written.append(rel)
                 stats["days"].setdefault(group, {}).setdefault(ent["day"], []).append(rel)
+        if failed:
+            stats["write_err"].append(failed)
+            continue
         if not changed:
             stats["unchanged"] += 1
         sigs[ent["src"]] = ent["sig"]
@@ -730,6 +768,55 @@ def _check_repo(repo: str, cfg: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]
     if bad:
         return None, "private doğrulanamadı: " + ", ".join(bad)
     return rems, ""
+
+
+BATCH_FILES = 500                    # tek git komutuna en çok bu kadar yol (argüman listesi sınırı)
+BATCH_BYTES = 300 * 1024 * 1024      # tek commit'e en çok bu kadar içerik (adımlı push 2 GB sınırına takılmasın)
+
+
+def _literal(path: str) -> str:
+    """Adında glob karakteri olan yol (ör. `a[1].png`) başka dosyalarla eşleşmesin."""
+    return ":(literal)" + path if any(c in path for c in "*?[\\") or path.startswith(":") else path
+
+
+def _batches(repo: str, files: List[str]) -> List[List[str]]:
+    out: List[List[str]] = []
+    cur: List[str] = []
+    size = 0
+    for f in files:
+        try:
+            n = os.lstat(os.path.join(repo, f)).st_size
+        except OSError:
+            n = 0
+        if cur and (len(cur) >= BATCH_FILES or size + n > BATCH_BYTES):
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(f)
+        size += n
+    if cur:
+        out.append(cur)
+    return out
+
+
+_RAW_ATTR = "local/gemini-brain*/** -text -filter -ident -working-tree-encoding"
+
+
+def _raw_attributes(repo: str) -> None:
+    """Ham yan dosyalar bayt bayt girsin: içlerindeki `.gitattributes` satır sonu/filtre uygulayamasın (info/attributes önceliklidir)."""
+    if not os.path.isdir(os.path.join(repo, "local")) or not os.path.isdir(os.path.join(repo, ".git")):
+        return
+    p = os.path.join(repo, ".git", "info", "attributes")
+    try:
+        old = ""
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                old = f.read()
+        if _RAW_ATTR not in old:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(("" if not old or old.endswith("\n") else "\n") + _RAW_ATTR + "\n")
+    except OSError as e:
+        diag_log(f"periodic chat_backup: info/attributes yazılamadı: {e}")
 
 
 def _porcelain_z_paths(por: str) -> list:
@@ -831,10 +918,12 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         wcfg["repo_dir"] = ""             # doğrulanmamış (public olabilir) repo_dir'e ASLA yazma
     written, sigs, stats = _write_changed(plan, wcfg)
     res.update(applied=True, written=len(written), redacted=stats["redacted"], skipped_big=stats["skipped_big"], missing=missing)
-    if stats["db"]:                      # repoya girmeyen veritabanları: ham yedek
+    if stats["write_err"]:
+        warns.append(f"{len(stats['write_err'])} dosya yazılamadı: {stats['write_err'][0]}"[:160])
+    if stats["db"]:                      # repoya girmeyen veritabanları ve büyük ham ikililer: ham yedek
         raw_remote = str(cfg.get("raw_remote") or "").strip()
         if not raw_remote:
-            warns.append(f"{len(stats['db'])} veritabanı YEDEKLENMEDİ (repoya girmez, raw_remote boş)")
+            warns.append(f"{len(stats['db'])} veritabanı/büyük ikili YEDEKLENMEDİ (repoya girmez, raw_remote boş)")
         else:
             from . import chat_dump
             bad = chat_dump.upload_files(raw_remote, [(e["src"], e["dest"]) for e in stats["db"]])
@@ -843,34 +932,37 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
                     sigs[e["src"]] = e["sig"]
                     sigs[_DEST_PFX + e["dest"]] = str(int(e["mt"]))
             if bad:
-                warns.append(f"{len(bad)} veritabanı ham yedeğe yüklenemedi: {next(iter(bad.values()))}"[:160])
+                warns.append(f"{len(bad)} veritabanı/büyük ikili ham yedeğe yüklenemedi: {next(iter(bad.values()))}"[:160])
     for g in sorted(remotes):
         stats["days"].setdefault(g, {})
     for g, days in sorted(stats["days"].items()):
         if g not in remotes:
             continue
         repo, rems = _group_repo(cfg, g), remotes[g]
-        rc, por = _git(repo, "status", "--porcelain", "-z", "--untracked-files=all", "--", "local", "memory")
+        _raw_attributes(repo)
+        # --ignored: ham kaynaktaki `.gitignore` yarım koşudan kalan dosyayı gizlemesin
+        rc, por = _git(repo, "status", "--porcelain", "-z", "--untracked-files=all", "--ignored", "--", "local", "memory")
         if rc == 0:                       # önceki yarım çalışmadan kalan (içerik aynı olduğu için _put'un yazmadığı) dosyaları da commit'le
+            planned = {f for v in days.values() for f in v}
             for rel in _porcelain_z_paths(por):   # -z: Türkçe/boşluklu adlar tırnaksız gelir
-                if rel and not any(rel in v for v in days.values()):
+                if rel and not rel.endswith(".copstmp") and rel not in planned:
                     try:
                         d = _day_of(os.path.getmtime(os.path.join(repo, rel)))
                     except OSError:
                         d = datetime.date.today().isoformat()
                     days.setdefault(d, []).append(rel)
         for day in sorted(days):          # her takvim günü ayrı commit, eskiden yeniye
-            files = _addable_paths(repo, days[day])
-            if not files:
-                continue
-            rc, out = _git(repo, "add", "--", *files)
-            if rc != 0:
-                res.update(ok=False, msg=f"{g} git add: " + out[-200:])
-                return res
-            rc, out = _git_dated(repo, day, "commit", "-q", "-m", f"sohbet yedegi {day}: {len(files)} dosya", "--", *files)
-            if rc != 0:
-                res.update(ok=False, msg=f"{g} git commit: " + out[-200:])
-                return res
+            for files in _batches(repo, _addable_paths(repo, days[day])):
+                # -f: ham kaynaktaki `.gitignore` (ör. `.env`) dosyayı dışarıda bırakmasın
+                spec = [_literal(f) for f in files]
+                rc, out = _git(repo, "add", "-f", "--", *spec)
+                if rc != 0:
+                    res.update(ok=False, msg=f"{g} git add: " + out[-200:])
+                    return res
+                rc, out = _git_dated(repo, day, "commit", "-q", "-m", f"sohbet yedegi {day}: {len(files)} dosya", "--", *spec)
+                if rc != 0:
+                    res.update(ok=False, msg=f"{g} git commit: " + out[-200:])
+                    return res
         try:                              # INDEX.jsonl/INDEX.md (yalnız açık yollar); hata yedeği durdurmaz
             from . import chat_index
             import socket

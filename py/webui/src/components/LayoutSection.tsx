@@ -72,6 +72,17 @@ export function LayoutSection() {
     refresh();
   }
 
+  async function handleSpawnDesktopChange(n: number) {
+    try {
+      const res = await apiSaveSettings({ spawn_desktop: n, lang });
+      if (!res.ok) setResult(`✗ ${res.error}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) showToast(t.authErrorShort);
+      else setResult(`✗ ${friendlyError(describeApiError(e, t), lang)}`);
+    }
+    refresh();
+  }
+
   async function handleApply() {
     setBusy(true);
     setResult("");
@@ -122,6 +133,20 @@ export function LayoutSection() {
             {[0, 1, 2, 3].filter((n) => n < data.settings.layout_grid).map((n) => (
               <option key={n} value={n}>
                 {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label title={t.spawnDesktopHint}>
+          {t.spawnDesktopLabel}
+          <select
+            value={data.settings.spawn_desktop ?? 1}
+            onChange={(e) => void handleSpawnDesktopChange(Number(e.target.value))}
+          >
+            <option value={-1}>{t.spawnDesktopOff}</option>
+            {Array.from({ length: 20 }, (_, i) => i).map((n) => (
+              <option key={n} value={n}>
+                {n + 1}
               </option>
             ))}
           </select>

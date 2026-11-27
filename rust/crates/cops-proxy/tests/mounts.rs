@@ -511,10 +511,10 @@ async fn without_mount_file_everything_goes_to_python() {
 
 #[tokio::test]
 async fn dead_app_upstream_is_502() {
-    let dead = {
-        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        l.local_addr().unwrap()
-    };
+    // Bağlı ama DİNLEMEYEN soket: bağlantı reddedilir ve port test boyunca başka teste verilemez.
+    let hold = tokio::net::TcpSocket::new_v4().unwrap();
+    hold.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let dead = hold.local_addr().unwrap();
     let (p, _d) = start(dead, Some((GRAFANA, 0o600))).await;
     let r = raw(
         p,

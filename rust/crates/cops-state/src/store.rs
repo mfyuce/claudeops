@@ -198,6 +198,24 @@ impl Store {
         })
     }
 
+    /// Salt okunur açılış: DB dosyasına yazmaz, pragma değiştirmez, kapanışta WAL'ı ana dosyaya aktarmaz. Yazma
+    /// yöntemleri hata verir.
+    pub fn open_read_only(path: &Path) -> Result<Store> {
+        if !path.is_file() {
+            return Err(StoreError::Missing(path.to_path_buf()));
+        }
+        let c = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        c.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS))?;
+        check(&c)?;
+        Ok(Store {
+            path: path.to_path_buf(),
+            conn: Mutex::new(c),
+        })
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

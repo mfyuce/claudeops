@@ -79,6 +79,7 @@ from .. import periodic
 from .. import audio_stream
 from .. import remote_desktop
 from .. import trust_dialog
+from ..review import redact_secrets
 from .. import routing as routing_mod
 from ..session import Session
 from ..paths import CLAUDEOPS_DIR, MODELS_TSV, REPO_DIR, ROSTER_TSV, ensure_private_state_dir
@@ -2107,6 +2108,23 @@ def _settings_byok(data: dict) -> dict:
     return {"ok": True, "byok": _redact_settings_for_wire(new).get("byok") or {}}
 
 
+def _with_ucli_error(out: dict, cli: str, name: str) -> dict:
+    """Açılışta ölen ucli'nin pane'deki (CLI çıkınca `exec bash`le açık kalır) son `error:` satırını yanıta ekler.
+    Yalnız o satır, maskelenmiş ve kısaltılmış; pane okunamaz ya da satır yoksa yanıt değişmez. Fırlatmaz."""
+    if cli != "ucli":
+        return out
+    try:
+        text = strip_ansi(tmux_capture(name, lines=40, join=True) or "")
+        hits = [ln.strip() for ln in text.splitlines() if ln.strip().lower().startswith("error:")]
+        if hits:
+            line = redact_secrets(hits[-1])[:300]      # maske kısaltmadan ÖNCE: yarım kalan sır desene uymaz
+            diag_log("ucli_start_error", name=name, error=line)
+            out["error"] = f"{out['error']} | ucli: {line}"
+    except Exception:      # noqa: BLE001  tanı eki başlatma yanıtını bozamaz
+        pass
+    return out
+
+
 def _start(name: str, model: str = "", permission_mode: str = "", effort: str = "", fresh: bool = False,
            cli: str = "", hidden: bool = False, lang: str = "tr", cli_opts: Optional[dict] = None) -> dict:
     """Aktif bir blueprint'i ya da (Geçmiş'ten) durmuş bir instance'ı başlat/devam ettir."""
@@ -2193,10 +2211,11 @@ def _start(name: str, model: str = "", permission_mode: str = "", effort: str = 
     if not opened and died:
         diag_log("start_failed", name=name, reason="died_early", secs=EARLY_DEATH_SECONDS, trust=trust)
         ucli_cost.release(name)     # ucli başlatma payı (günlük tavan rezervasyonu) TTL'i (120 sn) beklemesin; ucli dışı = no-op
-        return _err(lang, "start_died_early", name=name, kind=kind, secs=int(EARLY_DEATH_SECONDS))
+        return _with_ucli_error(_err(lang, "start_died_early", name=name, kind=kind, secs=int(EARLY_DEATH_SECONDS)),
+                                chosen_cli, name)
     if not opened:
         ucli_cost.release(name)
-        return _err(lang, "start_no_proc", name=name, kind=kind)
+        return _with_ucli_error(_err(lang, "start_no_proc", name=name, kind=kind), chosen_cli, name)
     if rec is not None:
         inst_mod.mark_started(name, cli=chosen_cli, model=chosen_model,
                               permission_mode=chosen_mode, effort=chosen_effort,
