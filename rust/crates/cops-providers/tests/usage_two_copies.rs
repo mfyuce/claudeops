@@ -2,7 +2,7 @@
 //! aynı günlükten AYNI toplamı vermeli: elle yazılmış sınır satırları ve rastgele dosyalar.
 
 use cops_providers::real::ledger::scan_usage;
-use cops_review_core::report::usage_cost_usd;
+use cops_review_core::report::{anthropic_spent_usd, usage_cost_usd, UNCOUNTABLE_SPENT_USD};
 use std::fs;
 
 const MODELS: [&str; 4] = ["", "claude-haiku-5-5", "claude-sonnet-5-5", "bilinmeyen"];
@@ -70,17 +70,27 @@ fn edge_lines() -> Vec<(String, Vec<u8>)> {
         add(&format!("t={t}"), rec(&format!("\"t\":{t},")));
     }
     for depth in [
-        10, 100, 127, 128, 200, 500, 511, 512, 513, 600, 990, 1100, 5000,
+        10, 100, 127, 128, 200, 500, 510, 511, 512, 513, 600, 990, 1100, 5000,
     ] {
-        add(
-            &format!("derin-{depth}"),
-            rec(&format!(
-                "\"d\":{}{},",
-                "[".repeat(depth),
-                "]".repeat(depth)
-            )),
-        );
+        for inner in ["", "1"] {
+            add(
+                &format!("derin-{depth}-{inner}"),
+                rec(&format!(
+                    "\"d\":{}{inner}{},",
+                    "[".repeat(depth),
+                    "]".repeat(depth)
+                )),
+            );
+        }
     }
+    add("derin-yarim", "[".repeat(100_000));
+    let many = "[{".repeat(600);
+    add("ayrac-dizede", rec(&format!("\"a\":\"x\\\"{many}\",")));
+    add("ayrac-yarim-dizede", format!("{{\"a\":\"{many}"));
+    add(
+        "ayrac-sig",
+        rec(&format!("\"a\":[{}1],", "[],".repeat(600))),
+    );
     for n in [
         "0",
         "-1",
@@ -236,33 +246,42 @@ fn random_files(count: usize) -> Vec<(String, Vec<u8>)> {
         .collect()
 }
 
-/// Bilinen TEK fark: kayıt nesnesiyle birlikte 513 katlı satır. Defter ayrıştırıcısının sınırı 512: saymaz ama
-/// `problem` ile açık tavanı KAPATIR; review (ve Python) sayar. Sınırlar eşitlenirse bu test düşer.
-const KNOWN_DEEP: &str = "derin-512";
-
+/// Derinlik sınırında üç yol aynı karara varır: kayıt nesnesiyle birlikte 512 kat sayılır; daha derini toplama girmez,
+/// defterde `problem` (açık tavan kapanır), review bütçe kapısında "sayılamadı" (Python `test_rsprov_cost_depth`).
 #[test]
-fn the_only_known_difference_is_refused_by_the_ledger() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("a.jsonl").to_string_lossy().into_owned();
-    let (_, data) = edge_lines()
-        .into_iter()
-        .find(|(id, _)| id == KNOWN_DEEP)
-        .unwrap();
-    fs::write(&path, data).unwrap();
-    let ledger = scan_usage(&path, "", 0.0, 1.0);
-    let report = usage_cost_usd(&path, "", 0.0, 1.0).unwrap();
-    assert_eq!(
-        (ledger.total, ledger.problem),
-        (0.0, Some("çok derin satır"))
-    );
-    assert!(report > 0.0);
+fn both_copies_draw_the_depth_limit_at_the_same_line() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("p/anthropic/claude-sonnet-5-5");
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.usage.jsonl");
+    let path = file.to_string_lossy().into_owned();
+    let reviews = root.path().to_string_lossy().into_owned();
+    // `levels`: kayıt nesnesi dahil iç içe kat
+    for (levels, inner) in [(512, ""), (512, "1"), (513, ""), (513, "1"), (5000, "")] {
+        let (open, close) = ("[".repeat(levels - 1), "]".repeat(levels - 1));
+        fs::write(&file, format!("{{{USAGE},\"d\":{open}{inner}{close}}}\n")).unwrap();
+        let ledger = scan_usage(&path, "", 0.0, 1.0);
+        let report = usage_cost_usd(&path, "", 0.0, 1.0).unwrap();
+        let spent = anthropic_spent_usd(&reviews).unwrap();
+        assert_eq!(ledger.total.to_bits(), report.to_bits(), "{levels} {inner}");
+        if levels <= 512 {
+            assert!(report > 0.0, "{levels} {inner}");
+            assert_eq!(ledger.problem, None, "{levels} {inner}");
+            assert!(spent > 0.0 && spent < 1.0, "{levels} {inner}: {spent}");
+        } else {
+            assert_eq!(
+                (report, ledger.problem),
+                (0.0, Some("çok derin satır")),
+                "{levels} {inner}"
+            );
+            assert_eq!(spent, UNCOUNTABLE_SPENT_USD, "{levels} {inner}");
+        }
+    }
 }
 
 #[test]
 fn edge_lines_cost_the_same_in_both_copies() {
-    let mut cases = edge_lines();
-    cases.retain(|(id, _)| id != KNOWN_DEEP);
-    let found = differences(&cases);
+    let found = differences(&edge_lines());
     assert!(
         found.is_empty(),
         "{} fark:\n{}",

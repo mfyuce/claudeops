@@ -425,12 +425,57 @@ fn read_regular_nonblocking(path: &str) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// Python `_MAX_LINE_DEPTH`: bir kullanım satırında iç içe dizi/nesne sınırı (gerçek kayıt 2-3 katlı).
+pub const MAX_LINE_DEPTH: usize = 512;
+
+/// Sayılamayan satır varken bütçe kapısının gördüğü harcama (Python `_UNCOUNTABLE_SPENT_USD`).
+pub const UNCOUNTABLE_SPENT_USD: f64 = 1e18;
+
+/// Python `_too_deep`: satır [`MAX_LINE_DEPTH`]ten derin mi. Dize (yarım da olsa) içindeki ayraç sayılmaz; ayrıştırmadan
+/// önce bakılır, sonuç ayrıştırıcıya bağlı değildir.
+pub fn too_deep(line: &str) -> bool {
+    let opens = line.bytes().filter(|b| matches!(b, b'[' | b'{')).count();
+    if opens <= MAX_LINE_DEPTH {
+        return false;
+    }
+    let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
+    for b in line.bytes() {
+        if in_string {
+            match b {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                depth += 1;
+                if depth > MAX_LINE_DEPTH {
+                    return true;
+                }
+            }
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    false
+}
+
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
+    Ok(scan_report(path, model, since_ms, write_mult).0)
+}
+
+/// (toplam, sayılamayan derinlikte satır var mı).
+fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64, bool) {
     let [mut pi, mut po, mut pr, mut pw] =
         anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
+    let mut uncountable = false;
     let Some(bytes) = read_regular_nonblocking(path) else {
-        return Ok(0.0);
+        return (0.0, false);
     };
     for raw in bytes.split(|b| *b == b'\n') {
         let Ok(line) = std::str::from_utf8(raw) else {
@@ -438,6 +483,11 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             continue;
         };
         let line = line.trim_end_matches('\r');
+        if too_deep(line) {
+            uncountable = true;
+            badrec::log_bad("usage.depth", path);
+            continue;
+        }
         // Python `json.loads` eşlenmemiş vekili kabul eder: satır sayımdan düşmez.
         let Ok((Json::Object(rec), _)) = Json::parse_lossy(line) else {
             continue;
@@ -528,12 +578,13 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             + cw * write_price * write_mult)
             / 1e6;
     }
-    Ok(total)
+    (total, uncountable)
 }
 
 /// Tüm `anthropic` koşularının toplam $.
 pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
     let mut total = 0.0;
+    let mut uncountable = false;
     let Ok(rd) = std::fs::read_dir(if reviews_root.is_empty() {
         "."
     } else {
@@ -561,10 +612,16 @@ pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
                 if parts.len() < 2 {
                     continue;
                 }
-                total += usage_cost_usd(&path, parts[0], 0.0, 1.0)?;
+                let (usd, deep) = scan_report(&path, parts[0], 0.0, 1.0);
+                total += usd;
+                uncountable |= deep;
             }
             Ok(())
         })?;
     }
-    Ok(total)
+    Ok(if uncountable {
+        UNCOUNTABLE_SPENT_USD
+    } else {
+        total
+    })
 }

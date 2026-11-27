@@ -92,6 +92,10 @@ MAP = {
     "_log_bad": _m("badrec", "log_bad"),
     "_finite": _m("report", "usage_cost_usd"),
     "_MAX_USAGE_TOKENS": _m("report", "MAX_USAGE_TOKENS"),
+    "_MAX_LINE_DEPTH": _m("report", "MAX_LINE_DEPTH"),
+    "_DEPTH_TOKEN_RE": _m("report", "too_deep"),
+    "_UNCOUNTABLE_SPENT_USD": _m("report", "UNCOUNTABLE_SPENT_USD"),
+    "_too_deep": _m("report", "too_deep"),
     "_USAGE_COUNT_KEYS": _m("report", "usage_cost_usd"),
     "_usage_number": _m("report", "usage_cost_usd"),
     "_scan_usage": _m("report", "usage_cost_usd"),
@@ -115,6 +119,9 @@ NOTES = {
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
     "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
                          "sorun bayrağı ve tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
+    "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
+    "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
+                 "`tests/usage_two_copies.rs`",
     "_usage_number": "Rust'ta ayrı yardımcı yok: `usage_cost_usd` içindeki `numeric` kapanışı (bool değil, 0..=1e15)",
     "_scan_usage": "maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) bu crate'te yok: `cops-providers` "
                    "`cost.rs::UsageScan` (rs/prov, `parity_ledger`). FIFO/normal olmayan dosya Rust'ta da bloklamadan 0",
@@ -176,7 +183,8 @@ TESTS = {}
 
 # Bu koşucunun sarmadığı özel adlar, yalnız adı verilen test modülünde: karşılaştırmaları o testte (dondurulmuş eski
 # Python'a karşı) ve `cops-providers`ta.
-ELSEWHERE = {"test_rsprov_cost_one_pass": {"_finite", "_log_bad", "_usage_number", "_scan_usage", "_scan_usage_windows"}}
+ELSEWHERE = {"test_rsprov_cost_one_pass": {"_finite", "_log_bad", "_usage_number", "_scan_usage", "_scan_usage_windows"},
+             "test_rsprov_cost_depth": {"_scan_usage"}}
 
 
 def classes(module, value, names):
@@ -222,6 +230,9 @@ classes("test_rsprov_cost_ledger", out("rs/prov + T7 `ucli_cost.py`", "günlük 
 classes("test_rsprov_cost_one_pass", out("rs/prov + T7 `ucli_cost.py`", "günlük tavan açılış denetimi (tek okuma, eski "
                                          "davranışla eşlik)"), "EveryLogIsReadOnce SameDecisionAsBefore")
 classes("test_review_anthropic", _runner, "TestTrialComplete")
+classes("test_rsprov_cost_depth", out("rs/prov + T7 `ucli_cost.py`", "derin satırın tavan kapısındaki sonucu (`sorun` "
+                                      "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit")
+classes("test_rsprov_cost_depth", CORE, "ReviewBudgetGate")
 classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
 tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),
       "corrupt_backup_not_repeated")

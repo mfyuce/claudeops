@@ -5,7 +5,7 @@
 //! kuralları satır satır besleyip toplamın güvenilirliğini (`problem`) de bildirir. Kural değişirse İKİSİ de güncellenir.
 
 use crate::pyfmt::parse_float;
-use crate::pyjson::{Py, MAX_DEPTH};
+use crate::pyjson::Py;
 use crate::settings::UcliCostConfig;
 use serde_json::{json, Map, Value};
 use std::fmt;
@@ -27,6 +27,7 @@ pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
 /// Fiyat tablosu ve `review.anthropic_price` tek kaynaktan (`cops-review-core`); burada ikinci kopya YOK.
 pub use cops_review_core::report::anthropic_price;
+use cops_review_core::report::too_deep;
 use cops_review_core::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
 
 /// `ucli_cost.write_mult`.
@@ -149,11 +150,6 @@ fn timestamp(v: Option<&Py>) -> (f64, bool) {
     parsed.map_or((0.0, false), |t| (t, t.is_finite()))
 }
 
-/// Metindeki toplam açılış ayracı [`MAX_DEPTH`]i aşıyor mu (ayrıştırılamayan satır derinlik yüzünden olabilir).
-fn maybe_too_deep(line: &str) -> bool {
-    line.bytes().filter(|b| matches!(b, b'[' | b'{')).count() > MAX_DEPTH
-}
-
 /// `review._scan_usage`: satır satır beslenen toplayıcı.
 #[derive(Debug, Clone)]
 pub struct UsageScan {
@@ -166,7 +162,7 @@ pub struct UsageScan {
     pub total: f64,
     /// Boş değilse toplama güvenilmez.
     pub problem: Option<&'static str>,
-    /// Atlanan bozuk kayıtların türü (`usage.record`), görülme sırasıyla.
+    /// Atlanan bozuk kayıtların türü (`usage.record`, `usage.depth`), görülme sırasıyla.
     pub skipped: Vec<&'static str>,
 }
 
@@ -203,13 +199,15 @@ impl UsageScan {
         else {
             return;
         };
-        let Some(rec) = Py::parse(line) else {
-            // Python 512'den derin satırı da (~1000'e dek) okur: sayılamayan kayıt sessizce 0 olmasın
-            if maybe_too_deep(line) {
-                for scan in scans {
-                    scan.problem = Some("çok derin satır");
-                }
+        if too_deep(line) {
+            // sayılamayan kayıt sessizce 0 olmasın: pencere bilinmediği için hepsi güvenilmez
+            for scan in scans {
+                scan.problem = Some("çok derin satır");
+                scan.skipped.push("usage.depth");
             }
+            return;
+        }
+        let Some(rec) = Py::parse(line) else {
             return;
         };
         if !rec.is_object() {
