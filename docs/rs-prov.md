@@ -1,18 +1,19 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `5015abed` birleşimi `6b188046`):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 718 satır (TAŞINDI 644, KAPSAM DIŞI 74) ve test tablosu
-1551 satır (TAŞINDI 761, KAPSAM DIŞI 790), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
+Durum (27 Kas 2026, `origin/main` `e04e9b18` birleşimi `ad3fa094`, G6 eşitlemesi `887bc8ba`):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 721 satır (TAŞINDI 647, KAPSAM DIŞI 74) ve test tablosu
+1561 satır (TAŞINDI 765, KAPSAM DIŞI 796), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
 ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı, uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise
 deposunda değişiklik bekliyor; S5 = (b) onaylandı, uygulandı ("S5" bölümü); sahipte iki soru (S4, S6). §3.5 ve §2.5.2
 27 Kas'ta cops kabulüyle kapandı (kod değişmedi).
-Son ağaçta ölçülen (kod `8caa1e25`; sonrasında yalnız bu belge değişti): `cargo test --workspace --no-fail-fast` 1279
+Son ağaçta ölçülen (kod `887bc8ba`; sonrasında yalnız belgeler değişti): `cargo test --workspace --no-fail-fast` 1291
 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check -p cops-providers
--p cops-state -p cops-review-core` temiz; Python tam paket 6411 OK (23 atlanan, 440 sn); eşleme denetimleri çıkış 0 (hosts
-`--check` ve rs-proc `--check --strict`: `main` birleşiminde yeniden üretildi, rs-proc ve rev yeni testle bir kez daha;
-steward `map.py --check`; rev `map_table.py <rapor> --check`). rs-tmux tablosu bu turda denetlenmedi; daha önceki bir turda
-geçici bir betikle denetlenmişti (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda
-denetim betiği yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
+-p cops-state -p cops-review-core -p cops-hosts -p cops-cli -p cops-procscan -p cops-steward-core` temiz; Python tam
+paket 6445 OK (23 atlanan, 534 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict` (tablo yeni
+test satır numaralarıyla yeniden üretildi), steward `map.py --check`, rev `map_table.py <rapor> --check`). rs-tmux
+tablosu bu turda denetlenmedi (main `tmux_backend.py`yi değiştirmedi); daha önceki bir turda geçici bir betikle
+denetlenmişti (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği yok).
+Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
 `real_fs::concurrent_issue_keeps_file_and_digest_consistent`,
 `test_review_io_history::test_real_pipes_stream_and_heartbeat`; bu turda bir ara koşuda bir kez `parity_real`
 (`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi). S5 turunun ilk
@@ -27,8 +28,8 @@ sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 9276 vaka (27 Kas; `bfdb55cc`de ölçülen 9245 + üçüncü turda eklenen 43 örnek kipi vakası - rs/stew'e taşınan 12; toplam hesapla, koşucudan yeniden sayılmadı): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 388 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
-  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 376, ucli 368 + tırnaklama 5, spawn 390, misc 438, usage 16 (G5; 6 sağlayıcı
+- 9291 vaka (27 Kas; `bfdb55cc`de ölçülen 9245 + üçüncü turda eklenen 43 örnek kipi vakası - rs/stew'e taşınan 12 + `e04e9b18` eşitlemesinde `bg_work`e eklenen 15; toplam hesapla, yalnız `bg_work` ailesi yeniden sayıldı): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 388 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 88 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 376, ucli 368 + tırnaklama 5, spawn 390, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 30 "bilinen ayrışma" (1i G1, 3ü G7, 3ü G3, 2si G2, 5i G6, 2si G4, 4ü ayar/pyfmt, 8i misc, 2si model/effort; `url-nfkc`, `byok-sozluk`, `servis-models-ic-liste` rs/state okuyucularına devirle kapandı) testte
@@ -1033,6 +1034,17 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Gözlem (sınanmadı, kod değişmedi): BYOK anahtarı ayardan kaldırılınca anahtar dosyası silinemez ama `.managed` damgası
   silinirse sonraki açılış dosyayı "elle bırakılmış" sayar (copilot ve ucli, iki dilde).
 
+## `origin/main` `e04e9b18` eşitlemesi (27 Kas)
+- G6 (`29e3299f`): `bg_work.rs` `TaskStop`/`KillShell` sonucunu (hata değilse hedef görev bitmiş) ve tur ortasında gelen
+  `queue-operation` / `attachment` bildirimini tanır; satır süzgeci Python `_LINE_MARKS` ile aynı. Parite `bg-transkript-`
+  (yeni transkriptler) ve `bg-sekil-` (üç yeni bozuk satır); `bg_work` ailesi 88 vaka, 0 bilinen ayrışma.
+- Birleştirme çakışması `bg_work.py`: bu dalın bozuk satır korumaları main'in yeni durdurma dalına da uygulandı (liste
+  `name`, sözlük olmayan `input`, anahtar olamayan kimlik yalnız o bloğu atlatır; `test_rsprov_live_readers.py`).
+- Kapsam dışı kalan `py/claudeops` değişiklikleri (Rust karşılıkları, olanlar, `main`den geldi): `authz.py`/`extensions.py`
+  gRPC terminal kapısı (gate/T9; bu crate'in kullandığı `spawn_env` ve `session_mcp_spec` değişmedi), `hosts.py`,
+  `web_hosts.py`, `web_grpc.py` (rs/hosts), `front_cmd.py`, `test_cmd.py` (rs/cli), `review.py` (rs/rev),
+  `web_review.py` (`17385845` ders yazımı ve `_provider_failure`: T8 reviewer koşucusu), `steward.py` (rs/stew).
+
 ## `origin/main` `d0054ada` eşitlemesi (27 Kas, TBD#412 b)
 - İkinci örnek (`CLAUDEOPS_DIR` ortak kök değil): ucli ve copilot BYOK dosyası yazılmaz/silinmez, ayar dosyadan farklıysa
   kullanılmaz (`shared_key_readonly`); kullanım günlüğü ve `ucli-state` kendi dizinine; maliyet toplamı ortak + kendi
@@ -1050,7 +1062,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 715 satır: TAŞINDI 641, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 718 satır: TAŞINDI 644, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1793,9 +1805,17 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `read_dirs` (py/claudeops/ucli_cost.py, `d0054ada`) | `probe.rs::Paths::usage_read_dirs`; `real/ledger.rs::CostLedger::with_write_dir` | `parity.rs::parity_ledger` `defter-ornek-` | TAŞINDI |
 | `_logs` (py/claudeops/ucli_cost.py, `d0054ada`) | `real/ledger.rs::logs_in` | `parity.rs::parity_ledger` `defter-ornek-` | TAŞINDI |
 
+### main `e04e9b18` eşitlemesinin satırları (27 Kas)
+
+| Python (dosya:satır) | Rust karşılığı | parite testi | durum |
+|---|---|---|---|
+| `_STOP_TOOLS` (py/claudeops/bg_work.py:30) | `bg_work.rs::STOP_TOOLS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_LINE_MARKS` (py/claudeops/bg_work.py:31) | `bg_work.rs::LINE_MARKS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_notification_text` (py/claudeops/bg_work.py:58) | `bg_work.rs::notification_text` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+
 ## TEST EŞLEME TABLOSU
 
-Güncel sayım (27 Kas): 1532 satır: TAŞINDI 747, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 785, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 791, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -3358,3 +3378,18 @@ Güncel sayım (27 Kas): 1532 satır: TAŞINDI 747, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `SharedStateTest.test_unreadable_own_ledger_is_a_problem_in_a_second_instance` (py/tests/test_shared_state_readonly.py) | `parity_ledger` `defter-ornek-kendi-bozuk` `-kendi-okunamaz` | TAŞINDI |
 | `SharedStateTest.test_default_instance_uses_shared_usage` (py/tests/test_shared_state_readonly.py) | `parity_ledger` `defter-ornek-*-true` | TAŞINDI |
 | `SharedStateTest.test_state_dir_own_and_shared_read_last` (py/tests/test_shared_state_readonly.py) | `parity_misc` `ucli-misc`, `parity_live` | TAŞINDI |
+
+### main `e04e9b18` eşitlemesinin testleri (27 Kas)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` (py/tests/test_bg_work.py:105) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` (py/tests/test_bg_work.py:110) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` (py/tests/test_bg_work.py:115) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` (py/tests/test_bg_work.py:121) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `RulesTest.test_adhoc_session_answer_waits_for_running_subagent` (py/tests/test_steward_core_a.py:394) | rs/stew: rs-stew.md eşleme satırı (`tick/slots.rs`) | KAPSAM DIŞI |
+| `ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner` (py/tests/test_steward_core_a.py:794) | rs/stew: rs-stew.md: `pytests::owner_only_bare_number_after_token_stays_owner` | KAPSAM DIŞI |
+| `SmartTickTest.test_tbd_only_question_counts_once` (py/tests/test_steward_core_b.py:925) | rs/stew: rs-stew.md eşleme satırı | KAPSAM DIŞI |
+| `TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` (py/tests/test_web_review_runner.py:593) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestProviderErrorNoLesson.test_other_failures_still_write_lesson` (py/tests/test_web_review_runner.py:602) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` (py/tests/test_web_review_runner.py:608) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |

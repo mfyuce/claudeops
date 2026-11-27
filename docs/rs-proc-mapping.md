@@ -1622,17 +1622,17 @@ Yok.
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
 | `test_rsprov_live_readers.py::BadLineTest.test_claude_one_bad_line_does_not_drop_the_scan` | 33 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::BadLineTest.test_codex_one_bad_line_does_not_drop_the_scan` | 46 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::FailedRecordNameTest.test_a_superscript_digit_name_does_not_hide_the_records` | 68 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::StatusFileTest.test_huge_number_or_deep_document_means_unreadable` | 77 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::StatusFileTest.test_deep_or_huge_failed_record_keeps_the_count` | 87 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::CodexContextTest.test_boolean_and_negative_counts_are_skipped` | 107 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::CodexContextTest.test_zero_still_means_unknown` | 113 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::CodexContextTest.test_deep_line_is_skipped` | 116 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::CopilotContextTest.test_non_number_means_unknown` | 134 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::CopilotContextTest.test_numbers_still_work` | 139 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::ListToolResultTest.test_id_at_line_start_is_found_in_list_content` | 152 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
-| `test_rsprov_live_readers.py::ListToolResultTest.test_non_text_blocks_do_not_supply_an_id` | 163 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::BadLineTest.test_codex_one_bad_line_does_not_drop_the_scan` | 49 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::FailedRecordNameTest.test_a_superscript_digit_name_does_not_hide_the_records` | 71 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::StatusFileTest.test_huge_number_or_deep_document_means_unreadable` | 80 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::StatusFileTest.test_deep_or_huge_failed_record_keeps_the_count` | 90 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::CodexContextTest.test_boolean_and_negative_counts_are_skipped` | 110 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::CodexContextTest.test_zero_still_means_unknown` | 116 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::CodexContextTest.test_deep_line_is_skipped` | 119 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::CopilotContextTest.test_non_number_means_unknown` | 137 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::CopilotContextTest.test_numbers_still_work` | 142 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::ListToolResultTest.test_id_at_line_start_is_found_in_list_content` | 155 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
+| `test_rsprov_live_readers.py::ListToolResultTest.test_non_text_blocks_do_not_supply_an_id` | 166 | kapsam dışı | yok | durum dosyası/transkriptten canlı satır alanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T1 (durum) |
 
 ### `py/tests/test_rsprov_model_reader.py`
 
