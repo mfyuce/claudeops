@@ -27,7 +27,7 @@ pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
 /// Fiyat tablosu ve `review.anthropic_price` tek kaynaktan (`cops-review-core`); burada ikinci kopya YOK.
 pub use cops_review_core::report::anthropic_price;
-use cops_review_core::report::too_deep;
+use cops_review_core::report::{long_integer, too_deep};
 use cops_review_core::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
 
 /// `ucli_cost.write_mult`.
@@ -162,7 +162,7 @@ pub struct UsageScan {
     pub total: f64,
     /// Boş değilse toplama güvenilmez.
     pub problem: Option<&'static str>,
-    /// Atlanan bozuk kayıtların türü (`usage.record`, `usage.depth`), görülme sırasıyla.
+    /// Atlanan bozuk kayıtların türü (`usage.record`, `usage.depth`, `usage.number`), görülme sırasıyla.
     pub skipped: Vec<&'static str>,
 }
 
@@ -199,11 +199,18 @@ impl UsageScan {
         else {
             return;
         };
-        if too_deep(line) {
+        let uncountable = if too_deep(line) {
+            Some(("çok derin satır", "usage.depth"))
+        } else if long_integer(line) {
+            Some(("çok uzun sayı", "usage.number"))
+        } else {
+            None
+        };
+        if let Some((why, what)) = uncountable {
             // sayılamayan kayıt sessizce 0 olmasın: pencere bilinmediği için hepsi güvenilmez
             for scan in scans {
-                scan.problem = Some("çok derin satır");
-                scan.skipped.push("usage.depth");
+                scan.problem = Some(why);
+                scan.skipped.push(what);
             }
             return;
         }

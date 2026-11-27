@@ -464,11 +464,48 @@ pub fn too_deep(line: &str) -> bool {
     false
 }
 
+/// Python'un tam sayı basamak sınırı: daha uzununu `json.loads` ayrıştırmaz.
+const MAX_INT_DIGITS: usize = 4300;
+
+/// Satırda [`MAX_INT_DIGITS`]ten uzun bir tam sayı değişmezi var mı (ondalıklı/üslü sayı ve dize içi sayılmaz). Python
+/// bunu ayrıştırma hatasından anlar; burada ayrıştırıcıdan önce bakılır.
+pub fn long_integer(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    if bytes.len() <= MAX_INT_DIGITS {
+        return false;
+    }
+    let (mut i, mut in_string) = (0usize, false);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if in_string => i += 1,
+            b'"' => in_string = !in_string,
+            b'0'..=b'9' if !in_string => {
+                let start = i;
+                while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                }
+                let before = &bytes[..start];
+                let tail_of_float = matches!(before.last(), Some(b'.' | b'e' | b'E' | b'+'))
+                    || before.ends_with(b"e-")
+                    || before.ends_with(b"E-");
+                let head_of_float = matches!(bytes.get(i), Some(b'.' | b'e' | b'E'));
+                if i - start > MAX_INT_DIGITS && !tail_of_float && !head_of_float {
+                    return true;
+                }
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
     Ok(scan_report(path, model, since_ms, write_mult).0)
 }
 
-/// (toplam, sayılamayan derinlikte satır var mı).
+/// (toplam, harcaması sayılamayan satır var mı).
 fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64, bool) {
     let [mut pi, mut po, mut pr, mut pw] =
         anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
@@ -486,6 +523,11 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
         if too_deep(line) {
             uncountable = true;
             badrec::log_bad("usage.depth", path);
+            continue;
+        }
+        if long_integer(line) {
+            uncountable = true;
+            badrec::log_bad("usage.number", path);
             continue;
         }
         // Python `json.loads` eşlenmemiş vekili kabul eder: satır sayımdan düşmez.

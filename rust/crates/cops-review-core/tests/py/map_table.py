@@ -96,6 +96,7 @@ MAP = {
     "_DEPTH_TOKEN_RE": _m("report", "too_deep"),
     "_UNCOUNTABLE_SPENT_USD": _m("report", "UNCOUNTABLE_SPENT_USD"),
     "_too_deep": _m("report", "too_deep"),
+    "_UNCOUNTABLE_KINDS": _m("report", "scan_report"),
     "_USAGE_COUNT_KEYS": _m("report", "usage_cost_usd"),
     "_usage_number": _m("report", "usage_cost_usd"),
     "_scan_usage": _m("report", "usage_cost_usd"),
@@ -119,6 +120,8 @@ NOTES = {
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
     "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
                          "sorun bayrağı ve tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
+    "_UNCOUNTABLE_KINDS": "Rust'ta liste yok: `scan_report` iki türde de `uncountable` bayrağını kurar; "
+                          "`long_integer` Python'da yorumlayıcının `ValueError`ıdır",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
                  "`tests/usage_two_copies.rs`",
@@ -231,7 +234,7 @@ classes("test_rsprov_cost_one_pass", out("rs/prov + T7 `ucli_cost.py`", "günlü
                                          "davranışla eşlik)"), "EveryLogIsReadOnce SameDecisionAsBefore")
 classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_rsprov_cost_depth", out("rs/prov + T7 `ucli_cost.py`", "derin satırın tavan kapısındaki sonucu (`sorun` "
-                                      "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit")
+                                      "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit LongIntegers")
 classes("test_rsprov_cost_depth", CORE, "ReviewBudgetGate")
 classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
 tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),

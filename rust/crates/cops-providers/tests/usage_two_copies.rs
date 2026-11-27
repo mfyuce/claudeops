@@ -156,6 +156,19 @@ fn edge_lines() -> Vec<(String, Vec<u8>)> {
             format!("{{\"event\":\"task_start\",\"model\":{m},{USAGE}}}\n{{{USAGE}}}"),
         );
     }
+    let long = "9".repeat(4301);
+    for (id, number) in [
+        ("sinirda", "9".repeat(4300)),
+        ("uzun", long.clone()),
+        ("eksi-uzun", format!("-{long}")),
+        ("ondalik", format!("{long}.5")),
+        ("kesir", format!("1.{long}")),
+        ("uslu", format!("{long}e-4300")),
+        ("us", format!("1e-{long}")),
+        ("dizede", format!("\"{long}\"")),
+    ] {
+        add(&format!("sayi-{id}"), rec(&format!("\"n\":{number},")));
+    }
     add("task_end", rec(r#""event":"task_end","#));
     add("bom", format!("\u{feff}{{{USAGE}}}"));
     add("cr-sonu", format!("{{{USAGE}}}\r"));
@@ -275,6 +288,44 @@ fn both_copies_draw_the_depth_limit_at_the_same_line() {
                 "{levels} {inner}"
             );
             assert_eq!(spent, UNCOUNTABLE_SPENT_USD, "{levels} {inner}");
+        }
+    }
+}
+
+#[test]
+fn an_integer_python_cannot_parse_is_uncountable_in_both_copies() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("p/anthropic/claude-sonnet-5-5");
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.usage.jsonl");
+    let path = file.to_string_lossy().into_owned();
+    let reviews = root.path().to_string_lossy().into_owned();
+    let long = "9".repeat(4301);
+    for (number, countable) in [
+        ("9".repeat(4300), true),
+        (long.clone(), false),
+        (format!("-{long}"), false),
+        (format!("{long}.5"), true),
+        (format!("1.{long}"), true),
+        (format!("{long}e-4300"), true),
+        (format!("\"{long}\""), true),
+    ] {
+        fs::write(&file, format!("{{{USAGE},\"n\":{number}}}\n")).unwrap();
+        let ledger = scan_usage(&path, "", 0.0, 1.0);
+        let report = usage_cost_usd(&path, "", 0.0, 1.0).unwrap();
+        let spent = anthropic_spent_usd(&reviews).unwrap();
+        let head = &number[..8];
+        assert_eq!(ledger.total.to_bits(), report.to_bits(), "{head}");
+        if countable {
+            assert!(report > 0.0 && ledger.problem.is_none(), "{head}");
+            assert!(spent < 1.0, "{head}");
+        } else {
+            assert_eq!(
+                (report, ledger.problem),
+                (0.0, Some("çok uzun sayı")),
+                "{head}"
+            );
+            assert_eq!(spent, UNCOUNTABLE_SPENT_USD, "{head}");
         }
     }
 }
