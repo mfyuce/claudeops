@@ -268,10 +268,10 @@ ERR = {
                           "en": "{name}: no conversation found to compact (no jsonl)"},
     "compact_send_failed": {"tr": "{name}: compact komutu gönderilemedi (tmux session gitmiş olabilir)",
                              "en": "{name}: failed to send the compact command (tmux session may be gone)"},
-    "question_open": {"tr": "{name}: oturum bir soru diyaloğunda cevap bekliyor; devir mesajı diyaloğa yazılacağı için gönderilmedi. "
+    "question_open": {"tr": "{name}: oturum bir diyalogda cevap bekliyor; mesaj diyaloğa yazılacağı için gönderilmedi. "
                             "Önce soruyu cevaplayın ya da kapatın.",
-                      "en": "{name}: the session is waiting on a question dialog; the handover message would be typed into it, so it "
-                            "was not sent. Answer or dismiss the question first."},
+                      "en": "{name}: the session is waiting on a dialog; the message would be typed into it, so it "
+                            "was not sent. Answer or dismiss the dialog first."},
     "handover_send_failed": {"tr": "{name}: wrap-up mesajı gönderilemedi (tmux session gitmiş olabilir)",
                               "en": "{name}: failed to send the wrap-up message (tmux session may be gone)"},
     "handover_switch_blocked": {"tr": "{name}: model/effort geçişi güvenli bitmedi ({reason}); ekranda diyalog ya da "
@@ -2881,6 +2881,10 @@ def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False, aut
         if masked is not False:
             diag_log("send_refused_mask", name=s.name, state="masked" if masked else "unknown", via="term_input")
             return dict(_err(lang, "term_mask_blocked", name=name), code="mask_blocked")
+        blocked = open_dialog_reason(s.cli, getattr(s, "cwd", ""), getattr(s, "sid", None), getattr(s, "pid", None))
+        if blocked:      # motor metni açık diyaloğa cevap olurdu
+            diag_log("send_refused_dialog", name=s.name, reason=blocked, via="term_input")
+            return dict(_err(lang, "question_open", name=name), code="question_open")
     guard = {} if auto else {"guard": False}
     ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay(), **guard)
     if ok:

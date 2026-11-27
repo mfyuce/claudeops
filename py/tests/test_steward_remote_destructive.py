@@ -349,6 +349,13 @@ class TestRemoteRespawn(_Destructive):
         self.assertEqual([(e["name"], e["host"]) for e in self.log("restart")], [("oiso", HOST)])
         self.assertEqual((self.calls, self.touched), ([], []))
 
+    def test_restart_leaves_open_remote_question_alone(self):
+        self.act()
+        self.fake.set(HOST, [_row("oiso")])
+        self.fake.facts["oiso"] = dict(_facts(), question_open=True)
+        r = ws.http_post("/api/steward/restart", {"name": "oiso", "text": "x", "actor": "brain"})
+        self.assertEqual((r["ok"], r.get("code"), self.paths_posted()), (False, "question_open", []))
+
     def test_restart_without_confirmed_stop_sends_nothing_more(self):
         self.act()
         self.fake.close_on_stop = False

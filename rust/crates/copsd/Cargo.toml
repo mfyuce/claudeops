@@ -10,9 +10,15 @@ cops-auth = { path = "../cops-auth" }
 tokio.workspace = true
 cops-metrics = { path = "../cops-metrics" }
 cops-progress = { path = "../cops-progress" }
+# B0: durum bağlamı (salt okuma yüzü `state::ReadDocs`) ve tmux yutulan hata günlüğü. `cops-steward-core` BAĞLANMAZ
+# (serde_json `preserve_order` copsd ikilisine yayılır: docs/rs-b0.md R1).
+cops-state = { path = "../cops-state" }
+cops-tmux = { path = "../cops-tmux" }
 
 [dev-dependencies]
 serde_json = "1"
+cops-parity = { path = "../cops-parity" }
+rusqlite = { version = "0.37", features = ["bundled"] }
 
 [[test]]
 name = "ctx_front"
