@@ -972,8 +972,8 @@ fn on_map(opts: &Map<String, Value>, key: &str) -> bool {
     opts.get(key).is_some_and(truthy)
 }
 
+/// `ucli_ask._SAFE.fullmatch` (main `a59e7850`: sondaki satır sonu da reddedilir).
 fn valid_ask_name(name: &str) -> bool {
-    let name = name.strip_suffix('\n').unwrap_or(name);
     name.len() <= 100
         && name
             .bytes()
