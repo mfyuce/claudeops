@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 608 | 153 | 455 | 0 |
-| test durumu (154 dosya) | 1920 | 115 | 1805 | 0 |
+| test durumu (154 dosya) | 1922 | 115 | 1807 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -794,31 +794,33 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_bg_work.py::ScreenFixture.test_busy_screens` | 39 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ScreenFixture.test_idle_screen_with_prose_numbers` | 43 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::TranscriptFixture.test_pending_without_notification` | 69 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::TranscriptFixture.test_completed_by_tool_use_id_or_task_id` | 72 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::TranscriptFixture.test_foreground_and_stale` | 77 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::TranscriptFixture.test_errored_call_is_not_pending` | 81 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::TranscriptFixture.test_one_of_two_pending` | 87 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` | 105 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 110 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 115 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 121 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` | 134 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` | 138 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` | 151 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` | 156 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` | 159 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SessionRecordSignal.test_live_footers` | 199 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` | 205 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SessionRecordSignal.test_broken_record_and_missing_dir` | 214 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 225 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 231 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 246 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 259 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 283 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 290 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ScreenFixture.test_busy_screens` | 40 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ScreenFixture.test_idle_screen_with_prose_numbers` | 44 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::TranscriptFixture.test_pending_without_notification` | 70 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::TranscriptFixture.test_completed_by_tool_use_id_or_task_id` | 73 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::TranscriptFixture.test_foreground_and_stale` | 78 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::TranscriptFixture.test_errored_call_is_not_pending` | 82 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::TranscriptFixture.test_one_of_two_pending` | 88 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` | 106 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 111 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 116 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 122 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` | 135 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` | 139 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` | 152 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` | 157 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` | 160 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_live_footers` | 200 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` | 206 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_broken_record_and_missing_dir` | 215 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_fifo_record_does_not_block` | 224 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_non_finite_pid_and_oversized_record_are_skipped` | 240 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 252 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 258 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 273 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 286 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 310 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 317 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 
 ### `py/tests/test_brain_permission_ucli.py`
 

@@ -4,6 +4,7 @@
 //! `None` her yerde "bilinmiyor" demektir; 0, `false` ya da boş listeyle karıştırılmaz.
 
 use crate::bg_work::{self, Clock, TRANSCRIPT_TAIL_BYTES};
+use crate::claude_resume::py_int;
 use crate::probe::{Paths, Probe};
 use crate::provider::Cli;
 use crate::pyfmt::{parse_int, splitlines};
@@ -110,7 +111,8 @@ impl Live<'_> {
         match cli {
             Cli::Claude => Some(match bg_work::screen_bg_count(pane_text) {
                 0 => u64::from(
-                    self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref()),
+                    self.session_record_active(sid)
+                        || self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref()),
                 ),
                 n => n,
             }),
@@ -186,6 +188,33 @@ impl Live<'_> {
     pub fn transcript_pending_path(&self, path: Option<&str>) -> bool {
         let lines = self.tail_lines(path);
         bg_work::transcript_pending(lines.iter().map(String::as_str), self.clock)
+    }
+
+    /// claude'un süreç kaydı (`sessions/<pid>.json`) bu konuşma için çalışan iş bildiriyor mu: `busy` (tur ya da
+    /// devredilen ajan) ya da `shell` (tur bitti, kabuk/Monitor açık). Süreç yaşamıyorsa, pid yeniden kullanılmışsa
+    /// (`procStart` tutmuyorsa) ya da kayıt okunamıyorsa `false`.
+    pub fn session_record_active(&self, sid: Option<&str>) -> bool {
+        let Some(sid) = sid.filter(|s| !s.is_empty()) else {
+            return false;
+        };
+        let names = self
+            .probe
+            .list_dir(&self.paths.claude_sessions_dir())
+            .unwrap_or_default();
+        names.iter().filter(|n| n.ends_with(".json")).any(|name| {
+            let Some(data) = self.session_file(name) else {
+                return false;
+            };
+            let text = |key: &str| data.get(key).and_then(Py::as_str);
+            if text("sessionId") != Some(sid) || !matches!(text("status"), Some("busy" | "shell")) {
+                return false;
+            }
+            // `str(d.get("procStart"))`: kırpılmaz
+            data.get("pid")
+                .and_then(py_int)
+                .and_then(|pid| self.proc_start(pid))
+                .is_some_and(|start| data.get("procStart").is_some_and(|w| w.py_str() == start))
+        })
     }
 
     /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean ve negatif değer sayaç

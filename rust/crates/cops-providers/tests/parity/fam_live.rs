@@ -4,6 +4,7 @@
 
 use crate::common::*;
 use crate::fam_bg::{pending_use, screens, sub_agent, Rng, T};
+use crate::fam_resume::proc_stat;
 use cops_providers::bg_work::Clock;
 use cops_providers::ucli::state_dir_for;
 use cops_providers::ucli_status::{PHASE_INT_FIELDS, STATUS_MAX_BYTES, USAGE_FIELDS};
@@ -662,6 +663,7 @@ fn background(b: &mut Build<'_>) {
             .file(file(rollout, &agents, 0o600));
         b.push(c);
     }
+    session_records(b, &projects, &pend);
     // diğer CLI'lar: ekran ve sid ne olursa olsun varsayılanlar
     for cli in [
         "claude", "agy", "codex", "copilot", "ucli", "shell", "bogus",
@@ -672,6 +674,199 @@ fn background(b: &mut Build<'_>) {
             Some("sid"),
             "1 shell · esc to interrupt",
         );
+        b.push(c);
+    }
+}
+
+/// Süreç kaydı kanıtı (`sessions/<pid>.json`, 27 Kas). `/proc` iki tarafta da `proc_stat` olgusudur.
+fn session_records(b: &mut Build<'_>, projects: &str, pend: &str) {
+    const DIR: &str = "home/.claude/sessions";
+    const IDLE: &str = "❯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent   /rc\n";
+    let stats = json!({"proc_stat": {"42": proc_stat(42, "777"), "1": proc_stat(1, "5")}});
+    let good = r#"{"pid":42,"sessionId":"abc","status":"busy","procStart":"777"}"#;
+    let case = |b: &Build<'_>, id: &str, pane: &str| {
+        b.case(&format!("kayit-{id}"), "claude", Some("abc"), pane)
+            .facts(stats.clone())
+    };
+    let mut bodies: Vec<String> = Vec::new();
+    for (key, values) in [
+        (
+            "status",
+            vec![
+                r#""busy""#,
+                r#""shell""#,
+                r#""idle""#,
+                r#""BUSY""#,
+                r#"" busy""#,
+                r#""""#,
+                "null",
+                "true",
+                "1",
+                r#"["busy"]"#,
+                r#"{"busy":1}"#,
+            ],
+        ),
+        (
+            "sessionId",
+            vec![
+                r#""baska""#,
+                r#""abc ""#,
+                r#""""#,
+                "null",
+                "7",
+                r#"["abc"]"#,
+            ],
+        ),
+        (
+            "procStart",
+            vec![
+                "777",
+                r#""778""#,
+                r#"" 777""#,
+                r#""777 ""#,
+                "777.0",
+                "true",
+                "null",
+                r#""""#,
+                r#""None""#,
+                r#"["777"]"#,
+            ],
+        ),
+        (
+            "pid",
+            vec![
+                r#""42""#,
+                r#"" 42 ""#,
+                r#""4_2""#,
+                "42.9",
+                r#""42.0""#,
+                "43",
+                "true",
+                "false",
+                "null",
+                "[42]",
+                "{}",
+                r#""x""#,
+                r#""""#,
+                "-1",
+                "0",
+                "1e300",
+                "Infinity",
+                "-Infinity",
+                "NaN",
+                "123456789012345678901234567890",
+                r#""123456789012345678901234567890""#,
+            ],
+        ),
+    ] {
+        for v in values {
+            // yinelenen anahtarda son değer geçerli
+            bodies.push(good.replace('}', &format!(",\"{key}\":{v}}}")));
+        }
+        let mut m = map(serde_json::from_str(good).unwrap());
+        m.remove(key);
+        bodies.push(Value::Object(m).to_string());
+    }
+    // `pid: true` = 1 numaralı süreç
+    bodies.push(r#"{"pid":true,"sessionId":"abc","status":"shell","procStart":"5"}"#.into());
+    bodies.extend(["", "[1", "[]", "null", "\"abc\"", "7", "{}"].map(String::from));
+    bodies.push(format!("\u{feff}{good}"));
+    bodies.push(format!("{good} x"));
+    bodies.push(format!(" \r\n{good}\r\n"));
+    bodies.push(format!("{good}{}", " ".repeat(1024 * 1024 - good.len())));
+    bodies.push(format!(
+        "{good}{}",
+        " ".repeat(1024 * 1024 - good.len() + 1)
+    ));
+    for (i, body) in bodies.iter().enumerate() {
+        let c =
+            case(b, &format!("govde-{i}"), IDLE).file(file(&format!("{DIR}/42.json"), body, 0o600));
+        b.push(c);
+    }
+    let c = case(b, "utf8", IDLE).file(Fx::File(
+        format!("{DIR}/42.json"),
+        [good.as_bytes(), b"\xff"].concat(),
+        0o600,
+    ));
+    b.push(c);
+    // dosya adı: yalnız `.json` ile biten (pid dosyanın İÇİNDEN)
+    for name in [
+        "x.json",
+        ".json",
+        "42.JSON",
+        "42.json.bak",
+        "42",
+        "alt/42.json",
+    ] {
+        let c = case(b, &format!("ad-{}", name.replace('/', "_")), IDLE).file(file(
+            &format!("{DIR}/{name}"),
+            good,
+            0o600,
+        ));
+        b.push(c);
+    }
+    // bozuk komşular sağlam kaydı gölgelemez
+    let c = case(b, "komsu", IDLE)
+        .file(file(&format!("{DIR}/1.json"), "[1", 0o600))
+        .file(file(&format!("{DIR}/2.json"), "[]", 0o600))
+        .file(Fx::Dir(format!("{DIR}/3.json"), 0o755))
+        .file(Fx::Link(format!("{DIR}/4.json"), "yok".into()))
+        .file(file(
+            &format!("{DIR}/5.json"),
+            r#"{"pid":Infinity,"sessionId":"abc","status":"busy"}"#,
+            0o600,
+        ))
+        .file(file(&format!("{DIR}/42.json"), good, 0o600));
+    b.push(c);
+    let c = case(b, "dizin-yok", IDLE);
+    b.push(c);
+    let c = case(b, "dizin-dosya", IDLE).file(file(DIR, good, 0o600));
+    b.push(c);
+    // /proc: yok, parantezsiz, kısa, parantezli ad
+    for (id, stat) in [
+        ("yok", Value::Null),
+        ("parantezsiz", json!("42 c S 1")),
+        ("kisa", json!("42 (c) S 1 2 3")),
+        (
+            "adli",
+            json!(format!(
+                "42 (a) b) {}",
+                proc_stat(42, "777").split_once(") ").unwrap().1
+            )),
+        ),
+    ] {
+        let c = case(b, &format!("proc-{id}"), IDLE)
+            .file(file(&format!("{DIR}/42.json"), good, 0o600))
+            .facts(json!({"proc_stat": {"42": stat}}));
+        b.push(c);
+    }
+    // sıra: ekran sayısı > süreç kaydı > transkript; sid yoksa kayıt sorulmaz; diğer CLI kayda bakmaz
+    for (id, cli, sid, pane) in [
+        (
+            "ekran",
+            "claude",
+            Some("abc"),
+            "2 background tasks · ↓ to manage",
+        ),
+        ("sidsiz", "claude", None, IDLE),
+        ("bos-sid", "claude", Some(""), IDLE),
+        ("codex", "codex", Some("abc"), IDLE),
+        ("agy", "agy", Some("abc"), IDLE),
+    ] {
+        let c = b
+            .case(&format!("kayit-{id}"), cli, sid, pane)
+            .facts(stats.clone())
+            .file(file(&format!("{DIR}/42.json"), good, 0o600));
+        b.push(c);
+    }
+    for (id, status) in [("bos-transkript", "idle"), ("dolu-transkript", "busy")] {
+        let c = case(b, id, IDLE)
+            .file(file(
+                &format!("{DIR}/42.json"),
+                &good.replace("busy", status),
+                0o600,
+            ))
+            .file(file(&format!("{projects}/abc.jsonl"), pend, 0o600));
         b.push(c);
     }
 }

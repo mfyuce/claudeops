@@ -42,8 +42,8 @@ sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 9291 vaka (27 Kas; `bfdb55cc`de ölçülen 9245 + üçüncü turda eklenen 43 örnek kipi vakası - rs/stew'e taşınan 12 + `e04e9b18` eşitlemesinde `bg_work`e eklenen 15; toplam hesapla, yalnız `bg_work` ailesi yeniden sayıldı): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 388 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
-  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 88 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 376, ucli 368 + tırnaklama 5, spawn 390, misc 438, usage 16 (G5; 6 sağlayıcı
+- 9410 vaka (28 Kas: aşağıdaki 9291 + `bg_work` 33 + `live` 86, toplam hesapla; 9291 vaka, 27 Kas; `bfdb55cc`de ölçülen 9245 + üçüncü turda eklenen 43 örnek kipi vakası - rs/stew'e taşınan 12 + `e04e9b18` eşitlemesinde `bg_work`e eklenen 15; toplam hesapla, yalnız `bg_work` ailesi yeniden sayıldı): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 388 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 121 ve live 740 (G6; 28 Kas ölçümü), model/effort 105, settings/pyfmt 89, build 376, ucli 368 + tırnaklama 5, spawn 390, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 30 "bilinen ayrışma" (1i G1, 3ü G7, 3ü G3, 2si G2, 5i G6, 2si G4, 4ü ayar/pyfmt, 8i misc, 2si model/effort; `url-nfkc`, `byok-sozluk`, `servis-models-ic-liste` rs/state okuyucularına devirle kapandı) testte
@@ -1256,6 +1256,26 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `ValidateOutputShape.test_non_object_output_rejects` (py/tests/test_ucli_checks_probe_failure.py:66) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
 | `ValidateOutputShape.test_ok_true_with_failing_exit_rejects` (py/tests/test_ucli_checks_probe_failure.py:71) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
 
+## main `8613e2b1` eşitlemesi: `bg_work` (28 Kas)
+- `bg_work.rs`: alt satırdaki `← N agent` iş sayısından silinir (`NAV`; `\s` ve sözcük sonu Python gibi); araç çağrısı ve
+  sonucu yalnız türsüz, `assistant` ya da `user` kaydından okunur (`RECORD_TYPES`; bildirim her türden sayılmaya devam eder).
+  Bozuk yapıdaki satırın atlanması kuralı aynen.
+- `live.rs::Live::session_record_active`: claude'da ekran sayısı yoksa önce süreç kaydı (`busy`/`shell`, `procStart` canlı
+  sürecin başlangıç tikine eşit, kırpılmadan), sonra transkript. `/proc` ve dizin okuması var olan `LiveProbe` yöntemleriyle
+  (`list_dir`, `read_bytes`, `proc_stat`); yeni `Probe`/`Effect` yok.
+- Python hataları (iki tarafta; `d9ce526f`): `sessions/` altındaki FIFO okuyucuyu bloklıyordu; `pid: Infinity`
+  `OverflowError` ile `background_work` çağrısını düşürüyordu. Python da artık yalnız 1 MiB'ı aşmayan normal dosyayı okur.
+- Parite: `bg-ekran`, `bg-ekran-rastgele`, `bg-transkript-` (kayıt türü), `live-kayit-`; koşucu `bg_work`ün `/proc/<pid>/stat`
+  açılışını da `proc_stat` olgusuna bağlar. Gerçek uygulayıcı: `tests/real_bg_record.rs` (yalnız testin kendi süreci).
+- Ölçülen (28 Kas): `bg_work` 121 vaka, 0 bilinen ayrışma; `live` 740 vaka, 5 bilinen ayrışma (sayı değişmedi);
+  `cargo test -p cops-providers --no-fail-fast` 281 geçti / 0 kaldı / 0 atlandı, clippy ve fmt temiz.
+- Bilinen fark (vaka yok): UTF-8 olmayan adlı `*.json` kaydı Rust'ta atlanır (`list_dir`), 512'den derin belge okunmaz.
+- `data/routing.md` metni (aynı birleşim): Rust dosyayı depodan okur (`Paths::routing_bundled`), gömülü kopya yok; değişiklik
+  gerekmedi.
+- Satır sayımı (bu turda ölçülen; başlığı `Python testi` ile başlayan tablolar test, ötekiler eşleme): eşleme 762 (TAŞINDI
+  684, KAPSAM DIŞI 78), test 1645 (TAŞINDI 818, KAPSAM DIŞI 827); bu turun eklediği 4 + 10 satır dahil, EKSİK ve
+  TAŞINDI-TESTSİZ 0.
+
 ## EŞLEME TABLOSU
 
 26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 718 satır: TAŞINDI 644, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
@@ -2040,6 +2060,15 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 |---|---|---|---|
 | `CodexProvider._exact_rollout` (py/claudeops/providers/codex_provider.py:340) | `codex_resume.rs::Live::codex_exact_rollout` | `parity.rs::parity_chat` `codex-sid-yok` `codex-yanlis-sid` | TAŞINDI |
 | `_argv_conversation` (py/claudeops/stuck.py:90) | yok: `find_stuck`/`recover_stuck` akışı T4 | yok | KAPSAM DIŞI |
+
+### main `8613e2b1` eşitlemesinin satırları (28 Kas)
+
+| Python (dosya:satır) | Rust karşılığı | parite testi | durum |
+|---|---|---|---|
+| `_NAV_RE` (py/claudeops/bg_work.py:21) | `bg_work.rs::{NAV, without_nav}` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `_RECORD_TYPES` (py/claudeops/bg_work.py:22) | `bg_work.rs::{RECORD_TYPES, transcript_pending}` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_SESSION_RECORD_MAX_BYTES` (py/claudeops/bg_work.py:27) | `claude_resume.rs::{SESSION_FILE_MAX_BYTES, Live::session_file}` | `parity.rs::parity_live` `kayit-govde-`; `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
+| `session_record_active` (py/claudeops/bg_work.py:180) | `live.rs::Live::session_record_active`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
 
 ## TEST EŞLEME TABLOSU
 
@@ -3695,3 +3724,18 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `AgyTest.test_unreadable_or_reused_process_means_unknown` (py/tests/test_rsprov_stuck_other_providers.py:187) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+
+### main `8613e2b1` eşitlemesinin testleri (28 Kas)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` (py/tests/test_bg_work.py:135) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` (py/tests/test_bg_work.py:139) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` (py/tests/test_bg_work.py:152) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` (py/tests/test_bg_work.py:157) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` (py/tests/test_bg_work.py:160) | `parity.rs::parity_bg_work` `bg-transkript-` (6 saat sonrası dahil) | TAŞINDI |
+| `SessionRecordSignal.test_live_footers` (py/tests/test_bg_work.py:200) | `tests/real_bg_record.rs::live_footers`; `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` (py/tests/test_bg_work.py:206) | `tests/real_bg_record.rs::record_of_dead_reused_or_other_session_is_ignored`; `parity.rs::parity_live` `kayit-` | TAŞINDI |
+| `SessionRecordSignal.test_broken_record_and_missing_dir` (py/tests/test_bg_work.py:215) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-komsu` `kayit-dizin-yok` | TAŞINDI |
+| `SessionRecordSignal.test_fifo_record_does_not_block` (py/tests/test_bg_work.py:224) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
+| `SessionRecordSignal.test_non_finite_pid_and_oversized_record_are_skipped` (py/tests/test_bg_work.py:240) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-govde-` `kayit-komsu` | TAŞINDI |

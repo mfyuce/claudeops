@@ -7,6 +7,7 @@ kota, token, araç zinciri) sahte değerlerle değiştirilir; GERÇEK süreç ba
 Protokol: stdin'den satır başına bir JSON vaka, stdout'a satır başına bir JSON sonuç. Dosya düzenini (fixture) ve
 anlık görüntüyü Rust tarafı kurar/alır; bu süreç yalnız çağrıyı yapar.
 """
+import io
 import json
 import os
 import pathlib
@@ -218,6 +219,20 @@ def _fake_proc_stat(pid):
 
 
 claude_p.proc_stat_fields = _fake_proc_stat
+
+
+def _fake_bg_open(path, *a, **k):
+    """`bg_work`ün süreç kaydı okuyucusu `/proc`u kendisi açar: aynı vaka olgusu; diğer yollar gerçek dosya."""
+    m = re.fullmatch(r"/proc/(-?[0-9]+)/stat", str(path))
+    if m is None:
+        return open(path, *a, **k)
+    raw = (FACTS.get("proc_stat") or {}).get(m.group(1))
+    if raw is None:
+        raise OSError("sahte /proc: yok")
+    return io.StringIO(raw)
+
+
+bg_work.open = _fake_bg_open
 
 
 def _spec(d):

@@ -95,6 +95,17 @@ fn file_name(path: &str) -> &str {
     crate::pyfmt::basename(path)
 }
 
+/// `int(değer)`: sayıya çevrilemeyen tip, sonsuz/NaN ve sayı olmayan metin None.
+pub(crate) fn py_int(v: &Py) -> Option<i64> {
+    match v {
+        Py::Int(n) => Some(*n),
+        Py::Float(f) if f.is_finite() => Some(f.trunc() as i64),
+        Py::Bool(b) => Some(i64::from(*b)),
+        Py::Str(s) => parse_int(s),
+        _ => None,
+    }
+}
+
 fn json_line(raw: &[u8]) -> Option<Py> {
     Py::parse(&String::from_utf8_lossy(raw)).filter(Py::is_object)
 }
@@ -140,22 +151,34 @@ impl Live<'_> {
         self.session_record(pid).map(|(sid, _)| sid)
     }
 
+    /// `sessions/<name>`: yalnız normal, sınırı aşmayan, UTF-8 ve nesne olan kayıt.
+    pub(crate) fn session_file(&self, name: &str) -> Option<Py> {
+        let path = join_path(&self.paths.claude_sessions_dir(), name);
+        let bytes = self.probe.read_bytes(&path, SESSION_FILE_MAX_BYTES)?;
+        Py::parse(std::str::from_utf8(&bytes).ok()?).filter(Py::is_object)
+    }
+
+    /// Canlı sürecin başlangıç tiki (`/proc/<pid>/stat` 19. alan).
+    pub(crate) fn proc_start(&self, pid: i64) -> Option<String> {
+        let stat = self.probe.proc_stat(pid)?;
+        let stat = String::from_utf8_lossy(&stat);
+        // comm boşluk/parantez içerebilir: SON `)` sonrası; 19. alan starttime.
+        let fields = &stat[stat.rfind(')')? + 1..];
+        fields
+            .split(crate::pyfmt::py_isspace)
+            .filter(|f| !f.is_empty())
+            .nth(19)
+            .map(String::from)
+    }
+
     /// [`Live::session_file_sid`]in doğruladığı kayıt: (sid, kaydın bildirdiği cwd).
     pub(crate) fn session_record(&self, pid: i64) -> Option<(String, Option<String>)> {
         if pid == 0 {
             return None;
         }
-        let path = join_path(&self.paths.claude_sessions_dir(), &format!("{pid}.json"));
-        let bytes = self.probe.read_bytes(&path, SESSION_FILE_MAX_BYTES)?;
-        let data = Py::parse(std::str::from_utf8(&bytes).ok()?).filter(Py::is_object)?;
+        let data = self.session_file(&format!("{pid}.json"))?;
         // `int(data.get("pid") or 0)`
-        let recorded = match data.get("pid").filter(|v| v.truthy())? {
-            Py::Int(n) => *n,
-            Py::Float(f) if f.is_finite() => f.trunc() as i64,
-            Py::Bool(b) => i64::from(*b),
-            Py::Str(s) => parse_int(s)?,
-            _ => return None,
-        };
+        let recorded = data.get("pid").filter(|v| v.truthy()).and_then(py_int)?;
         if recorded != pid {
             return None;
         }
@@ -165,14 +188,7 @@ impl Live<'_> {
         if sid.is_empty() || want.is_empty() {
             return None;
         }
-        let stat = self.probe.proc_stat(pid)?;
-        let stat = String::from_utf8_lossy(&stat);
-        // comm boşluk/parantez içerebilir: SON `)` sonrası; 19. alan starttime.
-        let fields = &stat[stat.rfind(')')? + 1..];
-        let start = fields
-            .split(crate::pyfmt::py_isspace)
-            .filter(|f| !f.is_empty())
-            .nth(19)?;
+        let start = self.proc_start(pid)?;
         let cwd = data.get("cwd").and_then(Py::as_str);
         let cwd = cwd.filter(|c| !c.is_empty()).map(String::from);
         (start == want).then(|| (sid.to_string(), cwd))

@@ -1,5 +1,5 @@
 //! Arka plan işi tespiti (`py/claudeops/bg_work.py`): ekran işaretleri ve transkriptte bildirimi gelmemiş iş. SAF
-//! işlevler; dosya okuma `live` modülündedir.
+//! işlevler; dosya okuma (süreç kaydı kanıtı `session_record_active` dahil) `live` modülündedir.
 //!
 //! İki tarafta da beklenmeyen tipte bir satır (nesne olmayan belge, nesne olmayan `message`/`input`/`payload`/`item`,
 //! anahtar olamayan kimlik) yalnız o satırı/bloğu atlatır.
@@ -8,6 +8,7 @@ use crate::pyfmt::{decimal_value, strip};
 use crate::pyjson::Py;
 use crate::usage::d_in;
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -26,7 +27,10 @@ pub struct Clock {
 /// Python `\w` (harf, rakam, `_`) sınıfının içi.
 const W_IN: &str = r"\p{L}\p{N}_";
 
-/// `{W}` -> Python `\w` sınıfı, `{D}` -> Python `\d` sınıfı. `re.I`nin `i` ↔ `İ`/`ı` eşlemesi desende açık yazılır.
+/// Python `\s`: Unicode boşlukları ve U+001C..U+001F.
+const S: &str = r"[\s\x1c-\x1f]";
+
+/// `{W}` -> Python `\w` sınıfı, `{D}` -> Python `\d` sınıfı, `{S}` -> Python `\s` sınıfı. `re.I`nin `i` ↔ `İ`/`ı` eşlemesi desende açık yazılır.
 ///
 /// Python'un geriye bakışı `(?<![..])` burada "satır başı ya da sınıf dışı bir karakter" olarak TÜKETİLİR, sondaki `\b`
 /// ise eşleşmeden sonra elle bakılır: `regex` doğrusal zamanlıdır (geri izlemeli motor uzun satırda sınıra takılıp
@@ -34,7 +38,8 @@ const W_IN: &str = r"\p{L}\p{N}_";
 fn rx(pat: &str) -> Regex {
     let p = pat
         .replace("{W}", W_IN)
-        .replace("{D}", &format!("[{}]", d_in()));
+        .replace("{D}", &format!("[{}]", d_in()))
+        .replace("{S}", S);
     Regex::new(&p).expect("sabit desen")
 }
 
@@ -51,6 +56,8 @@ static WAIT: LazyLock<Regex> = LazyLock::new(|| {
 });
 static CODEX_BG: LazyLock<Regex> =
     LazyLock::new(|| rx(r"(?i)(?:^|[^{W}.])([1-9]{D}*) background term[iİı]nals? runn[iİı]ng"));
+/// Alt satırdaki ajan görünümü ipucu (`← N agent`): boş oturumlarda da var, iş sayısı değil.
+static NAV: LazyLock<Regex> = LazyLock::new(|| rx(r"(?i)←{S}*{D}+ agents?"));
 static NOTIF_ID: LazyLock<Regex> = LazyLock::new(|| rx(r"<tool-use-id>([^<]+)</tool-use-id>"));
 static TASK_ID: LazyLock<Regex> = LazyLock::new(|| rx(r"<task-id>([^<]+)</task-id>"));
 static STATUS: LazyLock<Regex> = LazyLock::new(|| rx(r"<status>([^<]+)</status>"));
@@ -63,6 +70,8 @@ const DONE_STATUSES: [&str; 6] = [
     "canceled",
     "stopped",
 ];
+/// Araç çağrısı yalnız ileti kaydından (ya da türsüz satırdan); `api-request-blob` isteğin kopyasıdır.
+const RECORD_TYPES: [&str; 2] = ["assistant", "user"];
 /// Elle durdurulan iş için `<task-notification>` GELMEZ.
 const STOP_TOOLS: [&str; 2] = ["TaskStop", "KillShell"];
 const LINE_MARKS: [&str; 7] = [
@@ -86,6 +95,24 @@ fn screen_tail(text: &str) -> impl Iterator<Item = &str> {
 fn groups<'a>(re: &'a Regex, s: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     re.captures_iter(s)
         .filter_map(|c| c.get(1).map(|m| m.as_str()))
+}
+
+/// Satırın gezinme ipuçları (sözcük sınırıyla biten `NAV` eşleşmeleri) silinmiş hali.
+fn without_nav(line: &str) -> Cow<'_, str> {
+    let mut out = String::new();
+    let mut kept = 0;
+    for m in NAV
+        .find_iter(line)
+        .filter(|m| !WORD_CHAR.is_match(&line[m.end()..]))
+    {
+        out.push_str(&line[kept..m.start()]);
+        kept = m.end();
+    }
+    if kept == 0 {
+        return Cow::Borrowed(line);
+    }
+    out.push_str(&line[kept..]);
+    Cow::Owned(out)
 }
 
 /// Satırdaki iş sayıları (sözcüğün hemen ardından harf/rakam gelmeyen eşleşmeler).
@@ -120,7 +147,7 @@ pub fn screen_bg_count(text: &str) -> u64 {
     for line in screen_tail(text) {
         waiting |= WAIT.is_match(line);
         if HINT.is_match(line) {
-            total = total.saturating_add(sum_counts(counts(line)));
+            total = total.saturating_add(sum_counts(counts(&without_nav(line))));
         }
     }
     if total > 0 || waiting {
@@ -132,8 +159,9 @@ pub fn screen_bg_count(text: &str) -> u64 {
 
 /// ANSI'si ayıklanmış ekranda arka plan işi göstergesi var mı.
 pub fn screen_bg_work(text: &str) -> bool {
-    screen_tail(text)
-        .any(|line| WAIT.is_match(line) || (HINT.is_match(line) && counts(line).next().is_some()))
+    screen_tail(text).any(|line| {
+        WAIT.is_match(line) || (counts(&without_nav(line)).next().is_some() && HINT.is_match(line))
+    })
 }
 
 /// codex alt durum satırı: `N background terminal(s) running`.
@@ -236,6 +264,13 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
                 done_use.extend(groups(&NOTIF_ID, note).map(|s| Key::Str(s.to_string())));
                 done_task.extend(groups(&TASK_ID, note).map(str::to_string));
             }
+            continue;
+        }
+        let message_record = match o.get("type") {
+            None | Some(Py::Null) => true,
+            Some(kind) => kind.as_str().is_some_and(|k| RECORD_TYPES.contains(&k)),
+        };
+        if !message_record {
             continue;
         }
         let Some(Py::Array(blocks)) = message.get("content") else {

@@ -99,6 +99,36 @@ pub fn screens() -> Vec<(&'static str, String)> {
             "x waiting on 1 shell waiting on 2 shells",
             "0 background terminal running",
             "12 background terminals runningx",
+            // 27 Kas: `← N agent` gezinme ipucu iş sayısı değil
+            "⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent                               /rc",
+            "⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent · ↓ to manage                 /rc",
+            "⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 1 agent            /rc",
+            "⏵⏵ auto mode on · 1 shell · ← 1 agent · ↓ to manage                            /rc",
+            "⏵⏵ auto mode on · 3 background tasks · ← 1 agent · ↓ to manage                 /rc",
+            "← 3 agents · esc to interrupt",
+            "← 2 agents · ↓ to manage",
+            "←2 AGENTS to manage",
+            "←\u{a0}2 agents to manage",
+            "←\u{1c}\u{1f}2 agents to manage",
+            "←\t\u{3000}2 agents to manage",
+            "←\u{200b}2 agents to manage",
+            "← ١ agent to manage",
+            "← 0 agents · 1 shell to manage",
+            "← 1 agentx to manage",
+            "← 1 agentsx to manage",
+            "← 1 agentğ to manage",
+            "← 1 agent_ to manage",
+            "← 1 agent\u{301} to manage",
+            "← 1 agent. to manage",
+            "← 1  agent to manage",
+            "← 1\u{a0}agent to manage",
+            "← 2 agentſ to manage",
+            "→ 1 agent to manage",
+            "2← 1 agent shells to manage",
+            "← 1 agent← 2 agents 3 agents to manage",
+            "← 1 agent waiting on 1 shell",
+            "waiting on ← 1 agent",
+            "← 4 agents",
         ]
         .iter()
         .map(|s| ("kenar", s.to_string())),
@@ -326,6 +356,38 @@ fn transcripts() -> Vec<Vec<String>> {
     ] {
         v.push([started(), vec![record.to_string()]].concat());
     }
+    // 27 Kas: araç çağrısı/sonucu yalnız ileti kaydından (türsüz, `assistant`, `user`); `api-request-blob` isteğin kopyası
+    for kind in [
+        json!(null),
+        json!("assistant"),
+        json!("user"),
+        json!("api-request-blob"),
+        json!("attachment"),
+        json!("queue-operation"),
+        json!("system"),
+        json!("Assistant"),
+        json!(""),
+        json!(0),
+        json!(false),
+        json!(["assistant"]),
+        json!({"a": "user"}),
+    ] {
+        let typed = |line: &str| line.replacen('{', &format!("{{\"type\":{kind},"), 1);
+        let refused = res("t1", json!("no verdict"), json!(true));
+        v.push(vec![typed(&u("t1"))]);
+        v.push(vec![typed(&u("t1")), refused.clone()]);
+        v.push(vec![u("t1"), refused, typed(&u("t1"))]);
+        v.push(vec![u("t1"), typed(&res("t1", json!("x"), json!(true)))]);
+        v.push(vec![
+            u("t1"),
+            typed(&res("t1", json!("ID: b1"), json!(null))),
+            done("b1"),
+        ]);
+        let mut stopped = started();
+        stopped.extend(by_id.iter().map(|l| typed(l)));
+        v.push(stopped);
+        v.push(vec![u("t1"), typed(&notif("completed", Some("t1"), None))]);
+    }
     // zaman damgası biçimleri (yaş sınırı 6 saat)
     for stamp in [
         "2026-11-23T10:00:00.123Z",
@@ -499,6 +561,11 @@ fn random_screens() -> Vec<String> {
         "esc to interrupt",
         "to view",
         "ctrl+b",
+        "←",
+        "←",
+        "agents",
+        " 2 agents",
+        "\u{1c}",
         "İ",
         "ſ",
         "\u{301}",
