@@ -690,305 +690,305 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `card_lines` (steward.py:2668) | `prompts::card_lines` | prompts::card_lines_vectors | tamam |
 | `build_tour_prompt` (steward.py:2689) | `prompts::build_tour_prompt` | prompts::build_tour_prompt_vectors | tamam |
 | `MODEL_RULE_TR` (steward.py:2791) | `consts_gen::MODEL_RULE_TR` | generated::generated_files_are_current | tamam |
-| `MODEL_RULE_EN` (steward.py:2826) | `consts_gen::MODEL_RULE_EN` | generated::generated_files_are_current | tamam |
-| `identity_section` (steward.py:2864) | `prompts::identity_section` | prompts::identity_section_vectors | tamam |
-| `MEMORY_TR` (steward.py:2885) | `consts_gen::MEMORY_TR` | generated::generated_files_are_current | tamam |
-| `MEMORY_EN` (steward.py:2891) | `consts_gen::MEMORY_EN` | generated::generated_files_are_current | tamam |
-| `REMOTE_NOTE_TR` (steward.py:2898) | `consts_gen::REMOTE_NOTE_TR` | generated::generated_files_are_current | tamam |
-| `REMOTE_NOTE_EN` (steward.py:2903) | `consts_gen::REMOTE_NOTE_EN` | generated::generated_files_are_current | tamam |
-| `build_workspace_claude_md` (steward.py:2911) | `prompts::build_workspace_claude_md` | prompts::build_workspace_claude_md_vectors | tamam |
-| `_is_project_session` (steward.py:2964) | `prompts::is_project_session` | prompts::p_is_project_session | tamam |
-| `phase_model_effort` (steward.py:2968) | `prompts::phase_model_effort` | prompts::phase_model_effort_vectors | tamam |
-| `main_session_model_effort` (steward.py:2977) | `prompts::main_session_model_effort` | prompts::main_session_model_effort_vectors | tamam |
-| `SKIP_QUIET_SECONDS` (steward.py:2989) | `consts_gen::SKIP_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
-| `STALE_ANSWER_SECONDS` (steward.py:2990) | `consts_gen::STALE_ANSWER_SECONDS` | generated::generated_files_are_current | tamam |
-| `BLOCKED_MAX_TOURS` (steward.py:2991) | `consts_gen::BLOCKED_MAX_TOURS` | generated::generated_files_are_current | tamam |
-| `item_signature` (steward.py:2994) | `prompts::item_signature` | prompts::item_signature_vectors | tamam |
-| `stale_answers` (steward.py:3006) | `prompts::stale_answers` | prompts::stale_answers_vectors | tamam |
-| `NOTE_PID_RE` (steward.py:3023) | `consts_gen::NOTE_PID_RE` | generated::generated_files_are_current | tamam |
-| `NOTE_GATE_RE` (steward.py:3024) | `consts_gen::NOTE_GATE_RE` | generated::generated_files_are_current | tamam |
-| `note_claims` (steward.py:3027) | `prompts::note_claims` | prompts::note_claims_vectors | tamam |
-| `check_note_claims` (steward.py:3033) | `prompts::check_note_claims` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors | tamam |
-| `cut_tour_items` (steward.py:3052) | `prompts::cut_tour_items` | prompts::cut_tour_items_vectors | tamam |
-| `mark_ask_seen` (steward.py:3064) | `prompts::mark_ask_seen` | prompts::mark_ask_seen_vectors | tamam |
-| `review_items` (steward.py:3075) | `tour::review_items` | tour::review_items_vectors | tamam |
-| `OWNER_TODO_LINE_RE` (steward.py:3177) | `consts_gen::OWNER_TODO_LINE_RE` | generated::generated_files_are_current | tamam |
-| `TODO_TRIAGE_TEXT` (steward.py:3178) | `consts_gen::TODO_TRIAGE_TEXT` | generated::generated_files_are_current | tamam |
-| `OWNER_TODO_MOVE_SECONDS` (steward.py:3181) | `consts_gen::OWNER_TODO_MOVE_SECONDS` | generated::generated_files_are_current | tamam |
-| `OWNER_WAIT_LINE_RE` (steward.py:3182) | `consts_gen::OWNER_WAIT_LINE_RE` | generated::generated_files_are_current | tamam |
-| `BRAIN_STOP_COOLDOWN_SECONDS` (steward.py:3184) | `consts_gen::BRAIN_STOP_COOLDOWN_SECONDS` | generated::generated_files_are_current | tamam |
-| `DERIVED_TAIL_RE` (steward.py:3187) | `consts_gen::DERIVED_TAIL_RE` | generated::generated_files_are_current | tamam |
-| `derived_of` (steward.py:3190) | `identity::derived_of` | identity::derived_of_vectors | tamam |
-| `_project_key` (steward.py:3197) | `identity::project_key` | identity::p_project_key | tamam |
-| `_DENY` (steward.py:3209) | `consts_gen::P_DENY` | generated::generated_files_are_current | tamam |
-| `World` (steward.py:3213) | `types::World` | generated::generated_files_are_current | tamam |
-| `World.start_held` (steward.py:3233) | `world::World::start_held` | world::world_start_held | tamam |
-| `World.host_of` (steward.py:3237) | `world::World::host_of` | world::world_host_of | tamam |
-| `World.owner_of` (steward.py:3241) | `world::World::owner_of` | world::world_owner_of | tamam |
-| `World.owns` (steward.py:3245) | `world::World::owns` | world::world_owns | tamam |
-| `World.own_projects` (steward.py:3248) | `world::World::own_projects` | world::world_own_projects | tamam |
-| `World._owner_tag` (steward.py:3252) | `world::World::owner_tag` | world::world_p_owner_tag | tamam |
-| `World.resolve` (steward.py:3255) | `world::World::resolve` | world::world_resolve | tamam |
-| `World._class` (steward.py:3274) | `world::World::class` | world::world_p_class | tamam |
-| `World.name_class` (steward.py:3286) | `world::World::name_class` | world::world_name_class | tamam |
-| `World.session_class` (steward.py:3290) | `world::World::session_class` | world::world_session_class | tamam |
-| `World.owned_key` (steward.py:3312) | `world::World::owned_key` | world::world_owned_key | tamam |
-| `World.is_manual` (steward.py:3318) | `world::World::is_manual` | world::world_is_manual | tamam |
-| `World.project_key` (steward.py:3324) | `world::World::project_key` | world::world_project_key | tamam |
-| `world_for` (steward.py:3330) | `world::world_for` | world::world_for_vectors | tamam |
-| `OWNED_EVIDENCE_EVENTS` (steward.py:3344) | `consts_gen::OWNED_EVIDENCE_EVENTS` | generated::generated_files_are_current | tamam |
-| `_OWNED_EVIDENCE_KINDS` (steward.py:3345) | `consts_gen::P_OWNED_EVIDENCE_KINDS` | generated::generated_files_are_current | tamam |
-| `owned_evidence` (steward.py:3348) | `world::owned_evidence` | world::owned_evidence_vectors | tamam |
-| `update_owned` (steward.py:3373) | `world::update_owned` | world::update_owned_vectors | tamam |
-| `select_rows` (steward.py:3407) | `world::select_rows` | world::select_rows_vectors | tamam |
-| `_sibling_running` (steward.py:3432) | `world::sibling_running` | world::p_sibling_running | tamam |
-| `plan_deliveries` (steward.py:3446) | `world::plan_deliveries` | world::plan_deliveries_vectors | tamam |
-| `pick_delivery_view` (steward.py:3473) | `world::pick_delivery_view` | world::pick_delivery_view_vectors | tamam |
-| `context_threshold` (steward.py:3485) | `closing::context_threshold` | closing::context_threshold_vectors | tamam |
-| `handover_defer_decision` (steward.py:3492) | `closing::handover_defer_decision` | closing::handover_defer_decision_vectors | tamam |
-| `SHUTDOWN_QUIET_SECONDS` (steward.py:3516) | `consts_gen::SHUTDOWN_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
-| `SHUTDOWN_WAIT_MAX_SECONDS` (steward.py:3517) | `consts_gen::SHUTDOWN_WAIT_MAX_SECONDS` | generated::generated_files_are_current | tamam |
-| `SHUTDOWN_HO_MAX_SECONDS` (steward.py:3518) | `consts_gen::SHUTDOWN_HO_MAX_SECONDS` | generated::generated_files_are_current | tamam |
-| `SHUTDOWN_ACTION_FAIL_MAX` (steward.py:3519) | `consts_gen::SHUTDOWN_ACTION_FAIL_MAX` | generated::generated_files_are_current | tamam |
-| `_SD_TERMINAL` (steward.py:3520) | `consts_gen::P_SD_TERMINAL` | generated::generated_files_are_current | tamam |
-| `shutdown_note_result` (steward.py:3523) | `closing::shutdown_note_result` | closing::bad_state_types_are_errors, closing::shutdown_note_result_vectors | tamam |
-| `plan_shutdown` (steward.py:3544) | `closing::plan_shutdown` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
-| `plan_shutdown._is_own` (steward.py:3561) | `closing::plan_shutdown (içinde)` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
-| `plan_shutdown._step` (steward.py:3578) | `closing::plan_shutdown (içinde)` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
-| `_CTX_Q_SESSION_RE` (steward.py:3627) | `consts_gen::P_CTX_Q_SESSION_RE` | generated::generated_files_are_current | tamam |
-| `_CTX_Q_HANDOVER_RE` (steward.py:3628) | `consts_gen::P_CTX_Q_HANDOVER_RE` | generated::generated_files_are_current | tamam |
-| `_CTX_Q_EXCLUDE_RE` (steward.py:3629) | `consts_gen::P_CTX_Q_EXCLUDE_RE` | generated::generated_files_are_current | tamam |
-| `_CTX_NUM` (steward.py:3632) | `consts_gen::P_CTX_NUM` | generated::generated_files_are_current | tamam |
-| `_CTX_TOKEN_MEASURE_RE` (steward.py:3633) | `consts_gen::P_CTX_TOKEN_MEASURE_RE` | generated::generated_files_are_current | tamam |
-| `_context_owner_topic` (steward.py:3639) | `closing::context_owner_topic` | closing::p_context_owner_topic | tamam |
-| `is_context_question` (steward.py:3645) | `closing::is_context_question` | closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits | tamam |
-| `context_answer` (steward.py:3652) | `closing::context_answer` | closing::context_answer_vectors | tamam |
-| `tour_delivery` (steward.py:3666) | `tour::tour_delivery` | iocore::tour_delivery_io_cases | tamam |
-| `SLOT_RECENT_SECONDS` (steward.py:3689) | `consts_gen::SLOT_RECENT_SECONDS` | generated::generated_files_are_current | tamam |
-| `DIRECTIVE_MIN_GAP_SECONDS` (steward.py:3690) | `consts_gen::DIRECTIVE_MIN_GAP_SECONDS` | generated::generated_files_are_current | tamam |
-| `OWNER_ONLY_RE` (steward.py:3696) | `consts_gen::OWNER_ONLY_RE` | generated::generated_files_are_current | tamam |
-| `_JOB_RED_RE` (steward.py:3699) | `consts_gen::P_JOB_RED_RE` | generated::generated_files_are_current | tamam |
-| `JOB_RED_MIN_CHARS` (steward.py:3700) | `consts_gen::JOB_RED_MIN_CHARS` | generated::generated_files_are_current | tamam |
-| `panic_path` (steward.py:3703) | `gates::panic_path` | gates::panic_path_is_under_default_root | tamam |
-| `panic_active` (steward.py:3708) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `set_panic` (steward.py:3712) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `job_request_gate` (steward.py:3725) | `gates::job_request_gate` | gates::bad_values_are_errors, gates::job_request_gate_vectors | tamam |
-| `READONLY_JOB_KINDS` (steward.py:3744) | `consts_gen::READONLY_JOB_KINDS` | generated::generated_files_are_current | tamam |
-| `is_readonly_job_request` (steward.py:3747) | `gates::is_readonly_job_request` | gates::is_readonly_job_request_vectors | tamam |
-| `brain_may_answer` (steward.py:3755) | `gates::brain_may_answer` | gates::brain_may_answer_vectors, gates::long_texts_stay_within_regex_limits | tamam |
-| `owner_pending_block` (steward.py:3765) | `gates::owner_pending_block` | gates::owner_pending_block_vectors | tamam |
-| `directive_defer_reason` (steward.py:3777) | `gates::directive_defer_reason` | gates::directive_defer_reason_vectors | tamam |
-| `GENERIC_MODEL` (steward.py:3789) | `consts_gen::GENERIC_MODEL` | generated::generated_files_are_current | tamam |
-| `GENERIC_EFFORT` (steward.py:3790) | `consts_gen::GENERIC_EFFORT` | generated::generated_files_are_current | tamam |
-| `UPPER_MODEL_RE` (steward.py:3791) | `consts_gen::UPPER_MODEL_RE` | generated::generated_files_are_current | tamam |
-| `UPPER_EFFORTS` (steward.py:3792) | `consts_gen::UPPER_EFFORTS` | generated::generated_files_are_current | tamam |
-| `UPPER_MODEL_SOURCE` (steward.py:3793) | `consts_gen::UPPER_MODEL_SOURCE` | generated::generated_files_are_current | tamam |
-| `APPROVE_WORDS` (steward.py:3794) | `consts_gen::APPROVE_WORDS` | generated::generated_files_are_current | tamam |
-| `GENERIC_BACKLOG_ITEMS` (steward.py:3795) | `consts_gen::GENERIC_BACKLOG_ITEMS` | generated::generated_files_are_current | tamam |
-| `_TODO_DONE_RE` (steward.py:3796) | `consts_gen::P_TODO_DONE_RE` | generated::generated_files_are_current | tamam |
-| `_TBD_DECIDED_RE` (steward.py:3797) | `consts_gen::P_TBD_DECIDED_RE` | generated::generated_files_are_current | tamam |
-| `is_generic` (steward.py:3800) | `generic::is_generic` | gates::is_generic_vectors | tamam |
-| `is_upper_tier` (steward.py:3804) | `generic::is_upper_tier` | gates::is_upper_tier_vectors | tamam |
-| `is_claude_model` (steward.py:3809) | `generic::is_claude_model` | gates::is_claude_model_vectors | tamam |
-| `upper_main_views` (steward.py:3815) | `generic::upper_main_views` | gates::upper_main_views_vectors | tamam |
-| `upper_main_text` (steward.py:3840) | `generic::upper_main_text` | gates::upper_main_text_vectors | tamam |
-| `upper_tier_tag` (steward.py:3854) | `generic::upper_tier_tag` | gates::upper_tier_tag_vectors | tamam |
-| `upper_tier_question_text` (steward.py:3859) | `generic::upper_tier_question_text` | gates::upper_tier_question_text_vectors | tamam |
-| `upper_tier_approved` (steward.py:3868) | `generic::upper_tier_approved` | gates::upper_tier_approved_vectors | tamam |
-| `generic_backlog` (steward.py:3878) | `generic::generic_backlog` | gates::generic_backlog_vectors | tamam |
-| `generic_backlog._add` (steward.py:3886) | `generic::generic_backlog (içinde)` | gates::generic_backlog_vectors | tamam |
-| `GENERIC_RULE_TR` (steward.py:3908) | `consts_gen::GENERIC_RULE_TR` | generated::generated_files_are_current | tamam |
-| `GENERIC_RULE_EN` (steward.py:3924) | `consts_gen::GENERIC_RULE_EN` | generated::generated_files_are_current | tamam |
-| `_JOB_KIND_RE` (steward.py:3942) | `consts_gen::P_JOB_KIND_RE` | generated::generated_files_are_current | tamam |
-| `_JOB_STATUS_NOTE_RE` (steward.py:3944) | `consts_gen::P_JOB_STATUS_NOTE_RE` | generated::generated_files_are_current | tamam |
-| `JOB_NOTE_TEXT` (steward.py:3946) | `consts_gen::JOB_NOTE_TEXT` | generated::generated_files_are_current | tamam |
-| `job_marker_verdict` (steward.py:3950) | `gates::job_marker_verdict` | gates::job_marker_verdict_vectors | tamam |
-| `_ASK_STATUS_RE` (steward.py:3969) | `consts_gen::P_ASK_STATUS_RE` | generated::generated_files_are_current | tamam |
-| `_ask_is_status_line` (steward.py:3972) | `gates::ask_is_status_line` | gates::p_ask_is_status_line | tamam |
-| `_DATED_NAME_RE` (steward.py:3979) | `consts_gen::P_DATED_NAME_RE` | generated::generated_files_are_current | tamam |
-| `_ask_base` (steward.py:3982) | `tour::ask_base` | tour::p_ask_base | tamam |
-| `start_decision_event` (steward.py:3989) | `tour::start_decision_event` | tour::bad_state_types_are_errors, tour::start_decision_event_vectors | tamam |
-| `marker_record_actions` (steward.py:4005) | `tour::marker_record_actions` | tour::marker_record_actions_vectors | tamam |
-| `note_project_next` (steward.py:4034) | `tour::note_project_next` | tour::bad_state_types_are_errors, tour::note_project_next_vectors | tamam |
-| `plan_markers` (steward.py:4047) | `tour::plan_markers` | tour::bad_state_types_are_errors, tour::plan_markers_vectors | tamam |
-| `holds_total_slot` (steward.py:4076) | `world::holds_total_slot` | world::holds_total_slot_vectors | tamam |
-| `DONE_CONFIRM_TEXT_TR` (steward.py:4089) | `consts_gen::DONE_CONFIRM_TEXT_TR` | generated::generated_files_are_current | tamam |
-| `DONE_CONFIRM_TEXT_EN` (steward.py:4092) | `consts_gen::DONE_CONFIRM_TEXT_EN` | generated::generated_files_are_current | tamam |
-| `BRAIN_MCP_FILE` (steward.py:4098) | `consts_gen::BRAIN_MCP_FILE` | generated::generated_files_are_current | tamam |
-| `BRAIN_MCP_RESTART_COOLDOWN` (steward.py:4099) | `consts_gen::BRAIN_MCP_RESTART_COOLDOWN` | generated::generated_files_are_current | tamam |
-| `BRAIN_NOTOOLS_MIN_AGE` (steward.py:4100) | `consts_gen::BRAIN_NOTOOLS_MIN_AGE` | generated::generated_files_are_current | tamam |
-| `_NO_TOOLS_RE` (steward.py:4101) | `consts_gen::P_NO_TOOLS_RE` | generated::generated_files_are_current | tamam |
-| `brain_mcp_path` (steward.py:4109) | `gates::brain_mcp_path` | gates::brain_mcp_path_vectors | tamam |
-| `read_brain_mcp` (steward.py:4113) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `touch_brain_mcp` (steward.py:4123) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
-| `brain_tools_missing_text` (steward.py:4139) | `gates::brain_tools_missing_text` | gates::brain_tools_missing_text_vectors | tamam |
-| `brain_notools_verdict` (steward.py:4144) | `gates::brain_notools_verdict` | gates::brain_notools_verdict_vectors | tamam |
-| `DONE_ANSWER_TTL` (steward.py:4159) | `consts_gen::DONE_ANSWER_TTL` | generated::generated_files_are_current | tamam |
-| `_DONE_NO_RE` (steward.py:4160) | `consts_gen::P_DONE_NO_RE` | generated::generated_files_are_current | tamam |
-| `_DONE_HEDGE_RE` (steward.py:4162) | `consts_gen::P_DONE_HEDGE_RE` | generated::generated_files_are_current | tamam |
-| `_DONE_YES_RE` (steward.py:4164) | `consts_gen::P_DONE_YES_RE` | generated::generated_files_are_current | tamam |
-| `done_conflict_answer` (steward.py:4167) | `closing::done_conflict_answer` | closing::done_conflict_answer_vectors | tamam |
-| `_confirm_action` (steward.py:4183) | `closing::confirm_action` | closing::p_confirm_action | tamam |
-| `_WRAP_UP_RE` (steward.py:4189) | `consts_gen::P_WRAP_UP_RE` | generated::generated_files_are_current | tamam |
-| `_WRAP_UP_ACT_RE` (steward.py:4190) | `consts_gen::P_WRAP_UP_ACT_RE` | generated::generated_files_are_current | tamam |
-| `PAUSE_CLOSE_EXPIRE_SECONDS` (steward.py:4191) | `consts_gen::PAUSE_CLOSE_EXPIRE_SECONDS` | generated::generated_files_are_current | tamam |
-| `is_wrap_up_directive` (steward.py:4194) | `closing::is_wrap_up_directive` | closing::is_wrap_up_directive_vectors | tamam |
-| `directive_keeps_phase` (steward.py:4201) | `closing::directive_keeps_phase` | closing::directive_keeps_phase_vectors | tamam |
-| `request_pause_close` (steward.py:4206) | `closing::request_pause_close` | closing::bad_state_types_are_errors, closing::request_pause_close_vectors | tamam |
-| `plan_tick` (steward.py:4213) | `tick::plan_tick` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._mine` (steward.py:4242) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._unavail` (steward.py:4261) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._managed` (steward.py:4266) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._threshold_handover` (steward.py:4281) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._halted_phase` (steward.py:4300) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._close_done` (steward.py:4424) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._quiet_idle` (steward.py:4442) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._active_busy` (steward.py:4599) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `plan_tick._slots` (steward.py:4605) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
-| `_API_ERR_RE` (steward.py:4907) | `consts_gen::P_API_ERR_RE` | generated::generated_files_are_current | tamam |
-| `_API_RETRY_HEAD_RE` (steward.py:4908) | `consts_gen::P_API_RETRY_HEAD_RE` | generated::generated_files_are_current | tamam |
-| `_API_RETRY_WORD_RE` (steward.py:4913) | `consts_gen::P_API_RETRY_WORD_RE` | generated::generated_files_are_current | tamam |
-| `API_NUDGE_TEXT` (steward.py:4917) | `consts_gen::API_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `API_NUDGE_DELAYS` (steward.py:4918) | `consts_gen::API_NUDGE_DELAYS` | generated::generated_files_are_current | tamam |
-| `API_NUDGE_MAX` (steward.py:4919) | `consts_gen::API_NUDGE_MAX` | generated::generated_files_are_current | tamam |
-| `API_GIVEUP_AFTER` (steward.py:4920) | `consts_gen::API_GIVEUP_AFTER` | generated::generated_files_are_current | tamam |
-| `API_QUIET_SECONDS` (steward.py:4921) | `consts_gen::API_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
-| `API_OUTAGE_MIN` (steward.py:4922) | `consts_gen::API_OUTAGE_MIN` | generated::generated_files_are_current | tamam |
-| `API_OUTAGE_PROBE_SECONDS` (steward.py:4923) | `consts_gen::API_OUTAGE_PROBE_SECONDS` | generated::generated_files_are_current | tamam |
-| `API_WAKE_GROUP` (steward.py:4924) | `consts_gen::API_WAKE_GROUP` | generated::generated_files_are_current | tamam |
-| `api_error_kind` (steward.py:4927) | `recovery::api_error_kind` | recovery::api_error_kind_vectors | tamam |
-| `LOOP_MAX` (steward.py:4941) | `consts_gen::LOOP_MAX` | generated::generated_files_are_current | tamam |
-| `LOOP_PAUSE_SECONDS` (steward.py:4942) | `consts_gen::LOOP_PAUSE_SECONDS` | generated::generated_files_are_current | tamam |
-| `LOOP_PAUSE_TOUR_SECONDS` (steward.py:4943) | `consts_gen::LOOP_PAUSE_TOUR_SECONDS` | generated::generated_files_are_current | tamam |
-| `LOOP_PAUSE_DELIVER_SECONDS` (steward.py:4944) | `consts_gen::LOOP_PAUSE_DELIVER_SECONDS` | generated::generated_files_are_current | tamam |
-| `LOOP_FORGET_SECONDS` (steward.py:4945) | `consts_gen::LOOP_FORGET_SECONDS` | generated::generated_files_are_current | tamam |
-| `LOOP_KINDS` (steward.py:4946) | `consts_gen::LOOP_KINDS` | generated::generated_files_are_current | tamam |
-| `_loop_sig` (steward.py:4949) | `recovery::loop_sig` | recovery::p_loop_sig | tamam |
-| `loop_guard` (steward.py:4958) | `recovery::loop_guard` | recovery::loop_guard_vectors | tamam |
-| `VERIFY_KINDS` (steward.py:5013) | `consts_gen::VERIFY_KINDS` | generated::generated_files_are_current | tamam |
-| `VERIFY_WINDOW_SECONDS` (steward.py:5014) | `consts_gen::VERIFY_WINDOW_SECONDS` | generated::generated_files_are_current | tamam |
-| `VERIFY_MAX_PENDING` (steward.py:5015) | `consts_gen::VERIFY_MAX_PENDING` | generated::generated_files_are_current | tamam |
-| `_outcome_views` (steward.py:5020) | `recovery::outcome_views` | recovery::p_outcome_views | tamam |
-| `_DATED_TAIL_RE` (steward.py:5027) | `consts_gen::P_DATED_TAIL_RE` | generated::generated_files_are_current | tamam |
-| `_outcome_project` (steward.py:5030) | `recovery::outcome_project` | recovery::p_outcome_project | tamam |
-| `outcome_baseline` (steward.py:5039) | `recovery::outcome_baseline` | recovery::outcome_baseline_vectors | tamam |
-| `_via` (steward.py:5051) | `recovery::via` | recovery::p_via | tamam |
-| `check_outcomes` (steward.py:5055) | `recovery::check_outcomes` | recovery::check_outcomes_vectors | tamam |
-| `loop_paused` (steward.py:5086) | `recovery::loop_paused` | recovery::loop_paused_vectors | tamam |
-| `api_error_brief` (steward.py:5096) | `recovery::api_error_brief` | recovery::api_error_brief_vectors | tamam |
-| `plan_api_recovery` (steward.py:5106) | `recovery::plan_api_recovery` | recovery::plan_api_recovery_vectors | tamam |
-| `plan_api_recovery._nudge` (steward.py:5132) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
-| `plan_api_recovery._due_single` (steward.py:5138) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
-| `plan_api_recovery._giveup` (steward.py:5146) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
-| `_observe_cluster` (steward.py:5198) | `recovery::observe_cluster` | recovery::p_observe_cluster | tamam |
-| `_AJ_CHILD_RE` (steward.py:5210) | `consts_gen::P_AJ_CHILD_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NOTE_RE` (steward.py:5211) | `consts_gen::P_NEXT_NOTE_RE` | generated::generated_files_are_current | tamam |
-| `_NO_WORK_VALUES` (steward.py:5212) | `consts_gen::P_NO_WORK_VALUES` | generated::generated_files_are_current | tamam |
-| `_NEXT_DONE_VALUE_RE` (steward.py:5214) | `consts_gen::P_NEXT_DONE_VALUE_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_DONE_THEN_RE` (steward.py:5217) | `consts_gen::P_NEXT_DONE_THEN_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_IDLE_REST_RE` (steward.py:5221) | `consts_gen::P_NEXT_IDLE_REST_RE` | generated::generated_files_are_current | tamam |
-| `_is_no_work_value` (steward.py:5224) | `markers::is_no_work` | markers::done_then_work_is_work, markers::p_is_no_work_value | tamam |
-| `marker_next_work` (steward.py:5237) | `markers::marker_next_work` | tour::marker_next_work_vectors | tamam |
-| `_DONE_TEXT_RE` (steward.py:5247) | `consts_gen::P_DONE_TEXT_RE` | generated::generated_files_are_current | tamam |
-| `_NEGATED_TAIL_RE` (steward.py:5248) | `consts_gen::P_NEGATED_TAIL_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NONE_LINE_RE` (steward.py:5250) | `consts_gen::P_NEXT_NONE_LINE_RE` | generated::generated_files_are_current | tamam |
-| `CLAUDE_IDLE_NUDGE_TEXT` (steward.py:5251) | `consts_gen::CLAUDE_IDLE_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `next_none_stated` (steward.py:5255) | `idletext::next_none_stated` | idletext::next_none_stated_vectors | tamam |
-| `_NO_WORK_PHRASES` (steward.py:5262) | `consts_gen::P_NO_WORK_PHRASES` | generated::generated_files_are_current | tamam |
-| `_GATE_WAIT_RE` (steward.py:5268) | `consts_gen::P_GATE_WAIT_RE` | generated::generated_files_are_current | tamam |
-| `IDLE_STALE_NOTE_ESCAPE` (steward.py:5274) | `consts_gen::IDLE_STALE_NOTE_ESCAPE` | generated::generated_files_are_current | tamam |
-| `_TODO_HINT_PREFIX` (steward.py:5275) | `consts_gen::P_TODO_HINT_PREFIX` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_RE` (steward.py:5280) | `consts_gen::P_TURN_FAILED_RE` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_STATUS_RE` (steward.py:5283) | `consts_gen::P_TURN_FAILED_STATUS_RE` | generated::generated_files_are_current | tamam |
-| `_TURN_FAILED_WORD_RE` (steward.py:5284) | `consts_gen::P_TURN_FAILED_WORD_RE` | generated::generated_files_are_current | tamam |
-| `turn_failed` (steward.py:5287) | `idletext::turn_failed` | idletext::turn_failed_vectors | tamam |
-| `waiting_for_gate` (steward.py:5295) | `idletext::waiting_for_gate` | idletext::waiting_for_gate_vectors | tamam |
-| `one_line` (steward.py:5300) | `idletext::one_line` | idletext::one_line_vectors | tamam |
-| `clip_words` (steward.py:5305) | `markers::clip_words` | tour::clip_words_vectors | tamam |
-| `notes_wait` (steward.py:5316) | `idletext::notes_wait` | idletext::notes_wait_vectors | tamam |
-| `ucli_idle_threshold` (steward.py:5321) | `idletext::ucli_idle_threshold` | idletext::ucli_idle_threshold_vectors | tamam |
-| `_COND_RE` (steward.py:5326) | `consts_gen::P_COND_RE` | generated::generated_files_are_current | tamam |
-| `_NEG_ANSWER_RE` (steward.py:5330) | `consts_gen::P_NEG_ANSWER_RE` | generated::generated_files_are_current | tamam |
-| `NEG_ANSWER_MAX_CHARS` (steward.py:5333) | `consts_gen::NEG_ANSWER_MAX_CHARS` | generated::generated_files_are_current | tamam |
-| `is_negative_answer` (steward.py:5336) | `idletext::is_negative_answer` | idletext::is_negative_answer_vectors | tamam |
-| `_OPEN_LEAD_RE` (steward.py:5343) | `consts_gen::P_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
-| `_OPEN_ANY_RE` (steward.py:5344) | `consts_gen::P_OPEN_ANY_RE` | generated::generated_files_are_current | tamam |
-| `_HOLD_ANY_RE` (steward.py:5345) | `consts_gen::P_HOLD_ANY_RE` | generated::generated_files_are_current | tamam |
-| `_OPT_NUM_RE` (steward.py:5346) | `consts_gen::P_OPT_NUM_RE` | generated::generated_files_are_current | tamam |
-| `_NEG_OPEN` (steward.py:5348) | `consts_gen::P_NEG_OPEN` | generated::generated_files_are_current | tamam |
-| `_NEG_OPEN_RE` (steward.py:5351) | `consts_gen::P_NEG_OPEN_RE` | generated::generated_files_are_current | tamam |
-| `_NEG_OPEN_LEAD_RE` (steward.py:5352) | `consts_gen::P_NEG_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
-| `is_open_answer` (steward.py:5355) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
-| `_HELD_ANSWER_PREFIX` (steward.py:5372) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
-| `_held_instruction_item` (steward.py:5375) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
-| `CARD_NOTE_MAX_CHARS` (steward.py:5388) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
-| `expired_handover_note` (steward.py:5391) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
-| `is_conditional_note` (steward.py:5404) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
-| `_FABLE_POLISH_RE` (steward.py:5409) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
-| `is_fable_polish` (steward.py:5412) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
-| `next_work_hint` (steward.py:5417) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
-| `_TODO_ITEM_RE` (steward.py:5452) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_WORD_RE` (steward.py:5453) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
-| `_NOTE_STOPWORDS` (steward.py:5454) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MIN_WORDS` (steward.py:5455) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_CLOSED_MIN` (steward.py:5456) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_MARGIN` (steward.py:5457) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
-| `STALE_NOTE_DONE_MIN` (steward.py:5458) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
-| `_DONE_BULLET_RE` (steward.py:5459) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
-| `_note_words` (steward.py:5462) | `idletext::note_words` | idletext::p_note_words | tamam |
-| `stale_next_note` (steward.py:5466) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
-| `without_stale_note` (steward.py:5498) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
-| `_OWNER_WAIT_PHRASES` (steward.py:5514) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
-| `_NEXT_LINE_RE` (steward.py:5517) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
-| `_NEXT_NONE_RE` (steward.py:5518) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
-| `_last_next_line` (steward.py:5521) | `idletext::last_next_line` | idletext::p_last_next_line | tamam |
-| `next_line` (steward.py:5531) | `idletext::next_line` | idletext::next_line_vectors | tamam |
-| `_STATED_NEXT_RE` (steward.py:5542) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
-| `stated_next_work` (steward.py:5548) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
-| `owner_wait` (steward.py:5567) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
-| `_done_at_line_end` (steward.py:5573) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
-| `idle_finish_marker` (steward.py:5579) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
-| `plan_ucli_idle` (steward.py:5610) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
-| `_ASK_MARKERS` (steward.py:5706) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
-| `_forced_open_nudge` (steward.py:5709) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
-| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5722) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
-| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5723) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
-| `plan_claude_idle` (steward.py:5728) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
-| `_WHY_TR` (steward.py:5899) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
-| `_WHY_EN` (steward.py:5918) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
-| `_START_BLOCK_TR` (steward.py:5936) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
-| `_why` (steward.py:5941) | `explain::why` | explain::p_why | tamam |
-| `explain_idle` (steward.py:5947) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
-| `explain_idle_all` (steward.py:6061) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:6088) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
-| `daily_path` (steward.py:6139) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6143) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
-| `DRY_KIPS` (steward.py:6166) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
-| `DRY_REPORT_HOURS` (steward.py:6168) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `_count_or_zero` (steward.py:6171) | `report::count_or_zero` | report::p_count_or_zero | tamam |
-| `dry_report` (steward.py:6179) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
-| `dry_report_text` (steward.py:6213) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
-| `dry_ask_due` (steward.py:6225) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
-| `summary_due` (steward.py:6236) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6243) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
-| `_NO_LOG_DAYS` (steward.py:6267) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
-| `_SUMMARY_TXT` (steward.py:6270) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6294) | `report::names_line` | report::p_names | tamam |
-| `_kind_counts` (steward.py:6299) | `report::kind_counts` | report::p_kind_counts | tamam |
-| `_ask_gate_lines` (steward.py:6304) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
-| `daily_summary` (steward.py:6323) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6408) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
-| `write_daily` (steward.py:6426) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6433) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
+| `MODEL_RULE_EN` (steward.py:2827) | `consts_gen::MODEL_RULE_EN` | generated::generated_files_are_current | tamam |
+| `identity_section` (steward.py:2866) | `prompts::identity_section` | prompts::identity_section_vectors | tamam |
+| `MEMORY_TR` (steward.py:2887) | `consts_gen::MEMORY_TR` | generated::generated_files_are_current | tamam |
+| `MEMORY_EN` (steward.py:2893) | `consts_gen::MEMORY_EN` | generated::generated_files_are_current | tamam |
+| `REMOTE_NOTE_TR` (steward.py:2900) | `consts_gen::REMOTE_NOTE_TR` | generated::generated_files_are_current | tamam |
+| `REMOTE_NOTE_EN` (steward.py:2905) | `consts_gen::REMOTE_NOTE_EN` | generated::generated_files_are_current | tamam |
+| `build_workspace_claude_md` (steward.py:2913) | `prompts::build_workspace_claude_md` | prompts::build_workspace_claude_md_vectors | tamam |
+| `_is_project_session` (steward.py:2966) | `prompts::is_project_session` | prompts::p_is_project_session | tamam |
+| `phase_model_effort` (steward.py:2970) | `prompts::phase_model_effort` | prompts::phase_model_effort_vectors | tamam |
+| `main_session_model_effort` (steward.py:2979) | `prompts::main_session_model_effort` | prompts::main_session_model_effort_vectors | tamam |
+| `SKIP_QUIET_SECONDS` (steward.py:2992) | `consts_gen::SKIP_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
+| `STALE_ANSWER_SECONDS` (steward.py:2993) | `consts_gen::STALE_ANSWER_SECONDS` | generated::generated_files_are_current | tamam |
+| `BLOCKED_MAX_TOURS` (steward.py:2994) | `consts_gen::BLOCKED_MAX_TOURS` | generated::generated_files_are_current | tamam |
+| `item_signature` (steward.py:2997) | `prompts::item_signature` | prompts::item_signature_vectors | tamam |
+| `stale_answers` (steward.py:3009) | `prompts::stale_answers` | prompts::stale_answers_vectors | tamam |
+| `NOTE_PID_RE` (steward.py:3026) | `consts_gen::NOTE_PID_RE` | generated::generated_files_are_current | tamam |
+| `NOTE_GATE_RE` (steward.py:3027) | `consts_gen::NOTE_GATE_RE` | generated::generated_files_are_current | tamam |
+| `note_claims` (steward.py:3030) | `prompts::note_claims` | prompts::note_claims_vectors | tamam |
+| `check_note_claims` (steward.py:3036) | `prompts::check_note_claims` | prompts::check_note_claims_branches, prompts::check_note_claims_vectors | tamam |
+| `cut_tour_items` (steward.py:3055) | `prompts::cut_tour_items` | prompts::cut_tour_items_vectors | tamam |
+| `mark_ask_seen` (steward.py:3067) | `prompts::mark_ask_seen` | prompts::mark_ask_seen_vectors | tamam |
+| `review_items` (steward.py:3078) | `tour::review_items` | tour::review_items_vectors | tamam |
+| `OWNER_TODO_LINE_RE` (steward.py:3180) | `consts_gen::OWNER_TODO_LINE_RE` | generated::generated_files_are_current | tamam |
+| `TODO_TRIAGE_TEXT` (steward.py:3181) | `consts_gen::TODO_TRIAGE_TEXT` | generated::generated_files_are_current | tamam |
+| `OWNER_TODO_MOVE_SECONDS` (steward.py:3184) | `consts_gen::OWNER_TODO_MOVE_SECONDS` | generated::generated_files_are_current | tamam |
+| `OWNER_WAIT_LINE_RE` (steward.py:3185) | `consts_gen::OWNER_WAIT_LINE_RE` | generated::generated_files_are_current | tamam |
+| `BRAIN_STOP_COOLDOWN_SECONDS` (steward.py:3187) | `consts_gen::BRAIN_STOP_COOLDOWN_SECONDS` | generated::generated_files_are_current | tamam |
+| `DERIVED_TAIL_RE` (steward.py:3190) | `consts_gen::DERIVED_TAIL_RE` | generated::generated_files_are_current | tamam |
+| `derived_of` (steward.py:3193) | `identity::derived_of` | identity::derived_of_vectors | tamam |
+| `_project_key` (steward.py:3200) | `identity::project_key` | identity::p_project_key | tamam |
+| `_DENY` (steward.py:3212) | `consts_gen::P_DENY` | generated::generated_files_are_current | tamam |
+| `World` (steward.py:3216) | `types::World` | generated::generated_files_are_current | tamam |
+| `World.start_held` (steward.py:3236) | `world::World::start_held` | world::world_start_held | tamam |
+| `World.host_of` (steward.py:3240) | `world::World::host_of` | world::world_host_of | tamam |
+| `World.owner_of` (steward.py:3244) | `world::World::owner_of` | world::world_owner_of | tamam |
+| `World.owns` (steward.py:3248) | `world::World::owns` | world::world_owns | tamam |
+| `World.own_projects` (steward.py:3251) | `world::World::own_projects` | world::world_own_projects | tamam |
+| `World._owner_tag` (steward.py:3255) | `world::World::owner_tag` | world::world_p_owner_tag | tamam |
+| `World.resolve` (steward.py:3258) | `world::World::resolve` | world::world_resolve | tamam |
+| `World._class` (steward.py:3277) | `world::World::class` | world::world_p_class | tamam |
+| `World.name_class` (steward.py:3289) | `world::World::name_class` | world::world_name_class | tamam |
+| `World.session_class` (steward.py:3293) | `world::World::session_class` | world::world_session_class | tamam |
+| `World.owned_key` (steward.py:3315) | `world::World::owned_key` | world::world_owned_key | tamam |
+| `World.is_manual` (steward.py:3321) | `world::World::is_manual` | world::world_is_manual | tamam |
+| `World.project_key` (steward.py:3327) | `world::World::project_key` | world::world_project_key | tamam |
+| `world_for` (steward.py:3333) | `world::world_for` | world::world_for_vectors | tamam |
+| `OWNED_EVIDENCE_EVENTS` (steward.py:3347) | `consts_gen::OWNED_EVIDENCE_EVENTS` | generated::generated_files_are_current | tamam |
+| `_OWNED_EVIDENCE_KINDS` (steward.py:3348) | `consts_gen::P_OWNED_EVIDENCE_KINDS` | generated::generated_files_are_current | tamam |
+| `owned_evidence` (steward.py:3351) | `world::owned_evidence` | world::owned_evidence_vectors | tamam |
+| `update_owned` (steward.py:3376) | `world::update_owned` | world::update_owned_vectors | tamam |
+| `select_rows` (steward.py:3410) | `world::select_rows` | world::select_rows_vectors | tamam |
+| `_sibling_running` (steward.py:3435) | `world::sibling_running` | world::p_sibling_running | tamam |
+| `plan_deliveries` (steward.py:3449) | `world::plan_deliveries` | world::plan_deliveries_vectors | tamam |
+| `pick_delivery_view` (steward.py:3476) | `world::pick_delivery_view` | world::pick_delivery_view_vectors | tamam |
+| `context_threshold` (steward.py:3488) | `closing::context_threshold` | closing::context_threshold_vectors | tamam |
+| `handover_defer_decision` (steward.py:3495) | `closing::handover_defer_decision` | closing::handover_defer_decision_vectors | tamam |
+| `SHUTDOWN_QUIET_SECONDS` (steward.py:3519) | `consts_gen::SHUTDOWN_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
+| `SHUTDOWN_WAIT_MAX_SECONDS` (steward.py:3520) | `consts_gen::SHUTDOWN_WAIT_MAX_SECONDS` | generated::generated_files_are_current | tamam |
+| `SHUTDOWN_HO_MAX_SECONDS` (steward.py:3521) | `consts_gen::SHUTDOWN_HO_MAX_SECONDS` | generated::generated_files_are_current | tamam |
+| `SHUTDOWN_ACTION_FAIL_MAX` (steward.py:3522) | `consts_gen::SHUTDOWN_ACTION_FAIL_MAX` | generated::generated_files_are_current | tamam |
+| `_SD_TERMINAL` (steward.py:3523) | `consts_gen::P_SD_TERMINAL` | generated::generated_files_are_current | tamam |
+| `shutdown_note_result` (steward.py:3526) | `closing::shutdown_note_result` | closing::bad_state_types_are_errors, closing::shutdown_note_result_vectors | tamam |
+| `plan_shutdown` (steward.py:3547) | `closing::plan_shutdown` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
+| `plan_shutdown._is_own` (steward.py:3564) | `closing::plan_shutdown (içinde)` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
+| `plan_shutdown._step` (steward.py:3581) | `closing::plan_shutdown (içinde)` | closing::bad_state_types_are_errors, closing::plan_shutdown_vectors | tamam |
+| `_CTX_Q_SESSION_RE` (steward.py:3630) | `consts_gen::P_CTX_Q_SESSION_RE` | generated::generated_files_are_current | tamam |
+| `_CTX_Q_HANDOVER_RE` (steward.py:3631) | `consts_gen::P_CTX_Q_HANDOVER_RE` | generated::generated_files_are_current | tamam |
+| `_CTX_Q_EXCLUDE_RE` (steward.py:3632) | `consts_gen::P_CTX_Q_EXCLUDE_RE` | generated::generated_files_are_current | tamam |
+| `_CTX_NUM` (steward.py:3635) | `consts_gen::P_CTX_NUM` | generated::generated_files_are_current | tamam |
+| `_CTX_TOKEN_MEASURE_RE` (steward.py:3636) | `consts_gen::P_CTX_TOKEN_MEASURE_RE` | generated::generated_files_are_current | tamam |
+| `_context_owner_topic` (steward.py:3642) | `closing::context_owner_topic` | closing::p_context_owner_topic | tamam |
+| `is_context_question` (steward.py:3648) | `closing::is_context_question` | closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits | tamam |
+| `context_answer` (steward.py:3655) | `closing::context_answer` | closing::context_answer_vectors | tamam |
+| `tour_delivery` (steward.py:3669) | `tour::tour_delivery` | iocore::tour_delivery_io_cases | tamam |
+| `SLOT_RECENT_SECONDS` (steward.py:3692) | `consts_gen::SLOT_RECENT_SECONDS` | generated::generated_files_are_current | tamam |
+| `DIRECTIVE_MIN_GAP_SECONDS` (steward.py:3693) | `consts_gen::DIRECTIVE_MIN_GAP_SECONDS` | generated::generated_files_are_current | tamam |
+| `OWNER_ONLY_RE` (steward.py:3699) | `consts_gen::OWNER_ONLY_RE` | generated::generated_files_are_current | tamam |
+| `_JOB_RED_RE` (steward.py:3702) | `consts_gen::P_JOB_RED_RE` | generated::generated_files_are_current | tamam |
+| `JOB_RED_MIN_CHARS` (steward.py:3703) | `consts_gen::JOB_RED_MIN_CHARS` | generated::generated_files_are_current | tamam |
+| `panic_path` (steward.py:3706) | `gates::panic_path` | gates::panic_path_is_under_default_root | tamam |
+| `panic_active` (steward.py:3711) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `set_panic` (steward.py:3715) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `job_request_gate` (steward.py:3728) | `gates::job_request_gate` | gates::bad_values_are_errors, gates::job_request_gate_vectors | tamam |
+| `READONLY_JOB_KINDS` (steward.py:3747) | `consts_gen::READONLY_JOB_KINDS` | generated::generated_files_are_current | tamam |
+| `is_readonly_job_request` (steward.py:3750) | `gates::is_readonly_job_request` | gates::is_readonly_job_request_vectors | tamam |
+| `brain_may_answer` (steward.py:3758) | `gates::brain_may_answer` | gates::brain_may_answer_vectors, gates::long_texts_stay_within_regex_limits | tamam |
+| `owner_pending_block` (steward.py:3768) | `gates::owner_pending_block` | gates::owner_pending_block_vectors | tamam |
+| `directive_defer_reason` (steward.py:3780) | `gates::directive_defer_reason` | gates::directive_defer_reason_vectors | tamam |
+| `GENERIC_MODEL` (steward.py:3794) | `consts_gen::GENERIC_MODEL` | generated::generated_files_are_current | tamam |
+| `GENERIC_EFFORT` (steward.py:3795) | `consts_gen::GENERIC_EFFORT` | generated::generated_files_are_current | tamam |
+| `UPPER_MODEL_RE` (steward.py:3796) | `consts_gen::UPPER_MODEL_RE` | generated::generated_files_are_current | tamam |
+| `UPPER_EFFORTS` (steward.py:3797) | `consts_gen::UPPER_EFFORTS` | generated::generated_files_are_current | tamam |
+| `UPPER_MODEL_SOURCE` (steward.py:3798) | `consts_gen::UPPER_MODEL_SOURCE` | generated::generated_files_are_current | tamam |
+| `APPROVE_WORDS` (steward.py:3799) | `consts_gen::APPROVE_WORDS` | generated::generated_files_are_current | tamam |
+| `GENERIC_BACKLOG_ITEMS` (steward.py:3800) | `consts_gen::GENERIC_BACKLOG_ITEMS` | generated::generated_files_are_current | tamam |
+| `_TODO_DONE_RE` (steward.py:3801) | `consts_gen::P_TODO_DONE_RE` | generated::generated_files_are_current | tamam |
+| `_TBD_DECIDED_RE` (steward.py:3802) | `consts_gen::P_TBD_DECIDED_RE` | generated::generated_files_are_current | tamam |
+| `is_generic` (steward.py:3805) | `generic::is_generic` | gates::is_generic_vectors | tamam |
+| `is_upper_tier` (steward.py:3809) | `generic::is_upper_tier` | gates::is_upper_tier_vectors | tamam |
+| `is_claude_model` (steward.py:3815) | `generic::is_claude_model` | gates::is_claude_model_vectors | tamam |
+| `upper_main_views` (steward.py:3821) | `generic::upper_main_views` | gates::upper_main_views_vectors | tamam |
+| `upper_main_text` (steward.py:3846) | `generic::upper_main_text` | gates::upper_main_text_vectors | tamam |
+| `upper_tier_tag` (steward.py:3861) | `generic::upper_tier_tag` | gates::upper_tier_tag_vectors | tamam |
+| `upper_tier_question_text` (steward.py:3866) | `generic::upper_tier_question_text` | gates::upper_tier_question_text_vectors | tamam |
+| `upper_tier_approved` (steward.py:3876) | `generic::upper_tier_approved` | gates::upper_tier_approved_vectors | tamam |
+| `generic_backlog` (steward.py:3886) | `generic::generic_backlog` | gates::generic_backlog_vectors | tamam |
+| `generic_backlog._add` (steward.py:3894) | `generic::generic_backlog (içinde)` | gates::generic_backlog_vectors | tamam |
+| `GENERIC_RULE_TR` (steward.py:3916) | `consts_gen::GENERIC_RULE_TR` | generated::generated_files_are_current | tamam |
+| `GENERIC_RULE_EN` (steward.py:3932) | `consts_gen::GENERIC_RULE_EN` | generated::generated_files_are_current | tamam |
+| `_JOB_KIND_RE` (steward.py:3950) | `consts_gen::P_JOB_KIND_RE` | generated::generated_files_are_current | tamam |
+| `_JOB_STATUS_NOTE_RE` (steward.py:3952) | `consts_gen::P_JOB_STATUS_NOTE_RE` | generated::generated_files_are_current | tamam |
+| `JOB_NOTE_TEXT` (steward.py:3954) | `consts_gen::JOB_NOTE_TEXT` | generated::generated_files_are_current | tamam |
+| `job_marker_verdict` (steward.py:3958) | `gates::job_marker_verdict` | gates::job_marker_verdict_vectors | tamam |
+| `_ASK_STATUS_RE` (steward.py:3977) | `consts_gen::P_ASK_STATUS_RE` | generated::generated_files_are_current | tamam |
+| `_ask_is_status_line` (steward.py:3980) | `gates::ask_is_status_line` | gates::p_ask_is_status_line | tamam |
+| `_DATED_NAME_RE` (steward.py:3987) | `consts_gen::P_DATED_NAME_RE` | generated::generated_files_are_current | tamam |
+| `_ask_base` (steward.py:3990) | `tour::ask_base` | tour::p_ask_base | tamam |
+| `start_decision_event` (steward.py:3997) | `tour::start_decision_event` | tour::bad_state_types_are_errors, tour::start_decision_event_vectors | tamam |
+| `marker_record_actions` (steward.py:4013) | `tour::marker_record_actions` | tour::marker_record_actions_vectors | tamam |
+| `note_project_next` (steward.py:4042) | `tour::note_project_next` | tour::bad_state_types_are_errors, tour::note_project_next_vectors | tamam |
+| `plan_markers` (steward.py:4055) | `tour::plan_markers` | tour::bad_state_types_are_errors, tour::plan_markers_vectors | tamam |
+| `holds_total_slot` (steward.py:4084) | `world::holds_total_slot` | world::holds_total_slot_vectors | tamam |
+| `DONE_CONFIRM_TEXT_TR` (steward.py:4097) | `consts_gen::DONE_CONFIRM_TEXT_TR` | generated::generated_files_are_current | tamam |
+| `DONE_CONFIRM_TEXT_EN` (steward.py:4100) | `consts_gen::DONE_CONFIRM_TEXT_EN` | generated::generated_files_are_current | tamam |
+| `BRAIN_MCP_FILE` (steward.py:4106) | `consts_gen::BRAIN_MCP_FILE` | generated::generated_files_are_current | tamam |
+| `BRAIN_MCP_RESTART_COOLDOWN` (steward.py:4107) | `consts_gen::BRAIN_MCP_RESTART_COOLDOWN` | generated::generated_files_are_current | tamam |
+| `BRAIN_NOTOOLS_MIN_AGE` (steward.py:4108) | `consts_gen::BRAIN_NOTOOLS_MIN_AGE` | generated::generated_files_are_current | tamam |
+| `_NO_TOOLS_RE` (steward.py:4109) | `consts_gen::P_NO_TOOLS_RE` | generated::generated_files_are_current | tamam |
+| `brain_mcp_path` (steward.py:4117) | `gates::brain_mcp_path` | gates::brain_mcp_path_vectors | tamam |
+| `read_brain_mcp` (steward.py:4121) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `touch_brain_mcp` (steward.py:4131) | - | - | kapsam dışı: G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı |
+| `brain_tools_missing_text` (steward.py:4147) | `gates::brain_tools_missing_text` | gates::brain_tools_missing_text_vectors | tamam |
+| `brain_notools_verdict` (steward.py:4152) | `gates::brain_notools_verdict` | gates::brain_notools_verdict_vectors | tamam |
+| `DONE_ANSWER_TTL` (steward.py:4167) | `consts_gen::DONE_ANSWER_TTL` | generated::generated_files_are_current | tamam |
+| `_DONE_NO_RE` (steward.py:4168) | `consts_gen::P_DONE_NO_RE` | generated::generated_files_are_current | tamam |
+| `_DONE_HEDGE_RE` (steward.py:4170) | `consts_gen::P_DONE_HEDGE_RE` | generated::generated_files_are_current | tamam |
+| `_DONE_YES_RE` (steward.py:4172) | `consts_gen::P_DONE_YES_RE` | generated::generated_files_are_current | tamam |
+| `done_conflict_answer` (steward.py:4175) | `closing::done_conflict_answer` | closing::done_conflict_answer_vectors | tamam |
+| `_confirm_action` (steward.py:4191) | `closing::confirm_action` | closing::p_confirm_action | tamam |
+| `_WRAP_UP_RE` (steward.py:4197) | `consts_gen::P_WRAP_UP_RE` | generated::generated_files_are_current | tamam |
+| `_WRAP_UP_ACT_RE` (steward.py:4198) | `consts_gen::P_WRAP_UP_ACT_RE` | generated::generated_files_are_current | tamam |
+| `PAUSE_CLOSE_EXPIRE_SECONDS` (steward.py:4199) | `consts_gen::PAUSE_CLOSE_EXPIRE_SECONDS` | generated::generated_files_are_current | tamam |
+| `is_wrap_up_directive` (steward.py:4202) | `closing::is_wrap_up_directive` | closing::is_wrap_up_directive_vectors | tamam |
+| `directive_keeps_phase` (steward.py:4209) | `closing::directive_keeps_phase` | closing::directive_keeps_phase_vectors | tamam |
+| `request_pause_close` (steward.py:4214) | `closing::request_pause_close` | closing::bad_state_types_are_errors, closing::request_pause_close_vectors | tamam |
+| `plan_tick` (steward.py:4221) | `tick::plan_tick` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._mine` (steward.py:4250) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._unavail` (steward.py:4269) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._managed` (steward.py:4274) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._threshold_handover` (steward.py:4289) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._halted_phase` (steward.py:4308) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._close_done` (steward.py:4432) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._quiet_idle` (steward.py:4450) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._active_busy` (steward.py:4607) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `plan_tick._slots` (steward.py:4613) | `tick::plan_tick (içinde)` | tick::bad_state_types_are_errors, tick::golden_default_world, tick::golden_default_world_built_index | tamam |
+| `_API_ERR_RE` (steward.py:4915) | `consts_gen::P_API_ERR_RE` | generated::generated_files_are_current | tamam |
+| `_API_RETRY_HEAD_RE` (steward.py:4916) | `consts_gen::P_API_RETRY_HEAD_RE` | generated::generated_files_are_current | tamam |
+| `_API_RETRY_WORD_RE` (steward.py:4921) | `consts_gen::P_API_RETRY_WORD_RE` | generated::generated_files_are_current | tamam |
+| `API_NUDGE_TEXT` (steward.py:4925) | `consts_gen::API_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `API_NUDGE_DELAYS` (steward.py:4926) | `consts_gen::API_NUDGE_DELAYS` | generated::generated_files_are_current | tamam |
+| `API_NUDGE_MAX` (steward.py:4927) | `consts_gen::API_NUDGE_MAX` | generated::generated_files_are_current | tamam |
+| `API_GIVEUP_AFTER` (steward.py:4928) | `consts_gen::API_GIVEUP_AFTER` | generated::generated_files_are_current | tamam |
+| `API_QUIET_SECONDS` (steward.py:4929) | `consts_gen::API_QUIET_SECONDS` | generated::generated_files_are_current | tamam |
+| `API_OUTAGE_MIN` (steward.py:4930) | `consts_gen::API_OUTAGE_MIN` | generated::generated_files_are_current | tamam |
+| `API_OUTAGE_PROBE_SECONDS` (steward.py:4931) | `consts_gen::API_OUTAGE_PROBE_SECONDS` | generated::generated_files_are_current | tamam |
+| `API_WAKE_GROUP` (steward.py:4932) | `consts_gen::API_WAKE_GROUP` | generated::generated_files_are_current | tamam |
+| `api_error_kind` (steward.py:4935) | `recovery::api_error_kind` | recovery::api_error_kind_vectors | tamam |
+| `LOOP_MAX` (steward.py:4949) | `consts_gen::LOOP_MAX` | generated::generated_files_are_current | tamam |
+| `LOOP_PAUSE_SECONDS` (steward.py:4950) | `consts_gen::LOOP_PAUSE_SECONDS` | generated::generated_files_are_current | tamam |
+| `LOOP_PAUSE_TOUR_SECONDS` (steward.py:4951) | `consts_gen::LOOP_PAUSE_TOUR_SECONDS` | generated::generated_files_are_current | tamam |
+| `LOOP_PAUSE_DELIVER_SECONDS` (steward.py:4952) | `consts_gen::LOOP_PAUSE_DELIVER_SECONDS` | generated::generated_files_are_current | tamam |
+| `LOOP_FORGET_SECONDS` (steward.py:4953) | `consts_gen::LOOP_FORGET_SECONDS` | generated::generated_files_are_current | tamam |
+| `LOOP_KINDS` (steward.py:4954) | `consts_gen::LOOP_KINDS` | generated::generated_files_are_current | tamam |
+| `_loop_sig` (steward.py:4957) | `recovery::loop_sig` | recovery::p_loop_sig | tamam |
+| `loop_guard` (steward.py:4966) | `recovery::loop_guard` | recovery::loop_guard_vectors | tamam |
+| `VERIFY_KINDS` (steward.py:5021) | `consts_gen::VERIFY_KINDS` | generated::generated_files_are_current | tamam |
+| `VERIFY_WINDOW_SECONDS` (steward.py:5022) | `consts_gen::VERIFY_WINDOW_SECONDS` | generated::generated_files_are_current | tamam |
+| `VERIFY_MAX_PENDING` (steward.py:5023) | `consts_gen::VERIFY_MAX_PENDING` | generated::generated_files_are_current | tamam |
+| `_outcome_views` (steward.py:5028) | `recovery::outcome_views` | recovery::p_outcome_views | tamam |
+| `_DATED_TAIL_RE` (steward.py:5035) | `consts_gen::P_DATED_TAIL_RE` | generated::generated_files_are_current | tamam |
+| `_outcome_project` (steward.py:5038) | `recovery::outcome_project` | recovery::p_outcome_project | tamam |
+| `outcome_baseline` (steward.py:5047) | `recovery::outcome_baseline` | recovery::outcome_baseline_vectors | tamam |
+| `_via` (steward.py:5059) | `recovery::via` | recovery::p_via | tamam |
+| `check_outcomes` (steward.py:5063) | `recovery::check_outcomes` | recovery::check_outcomes_vectors | tamam |
+| `loop_paused` (steward.py:5094) | `recovery::loop_paused` | recovery::loop_paused_vectors | tamam |
+| `api_error_brief` (steward.py:5104) | `recovery::api_error_brief` | recovery::api_error_brief_vectors | tamam |
+| `plan_api_recovery` (steward.py:5114) | `recovery::plan_api_recovery` | recovery::plan_api_recovery_vectors | tamam |
+| `plan_api_recovery._nudge` (steward.py:5140) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
+| `plan_api_recovery._due_single` (steward.py:5146) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
+| `plan_api_recovery._giveup` (steward.py:5154) | `recovery::plan_api_recovery (içinde)` | recovery::plan_api_recovery_vectors | tamam |
+| `_observe_cluster` (steward.py:5206) | `recovery::observe_cluster` | recovery::p_observe_cluster | tamam |
+| `_AJ_CHILD_RE` (steward.py:5218) | `consts_gen::P_AJ_CHILD_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NOTE_RE` (steward.py:5219) | `consts_gen::P_NEXT_NOTE_RE` | generated::generated_files_are_current | tamam |
+| `_NO_WORK_VALUES` (steward.py:5220) | `consts_gen::P_NO_WORK_VALUES` | generated::generated_files_are_current | tamam |
+| `_NEXT_DONE_VALUE_RE` (steward.py:5222) | `consts_gen::P_NEXT_DONE_VALUE_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_DONE_THEN_RE` (steward.py:5225) | `consts_gen::P_NEXT_DONE_THEN_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_IDLE_REST_RE` (steward.py:5229) | `consts_gen::P_NEXT_IDLE_REST_RE` | generated::generated_files_are_current | tamam |
+| `_is_no_work_value` (steward.py:5232) | `markers::is_no_work` | markers::done_then_work_is_work, markers::p_is_no_work_value | tamam |
+| `marker_next_work` (steward.py:5245) | `markers::marker_next_work` | tour::marker_next_work_vectors | tamam |
+| `_DONE_TEXT_RE` (steward.py:5255) | `consts_gen::P_DONE_TEXT_RE` | generated::generated_files_are_current | tamam |
+| `_NEGATED_TAIL_RE` (steward.py:5256) | `consts_gen::P_NEGATED_TAIL_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NONE_LINE_RE` (steward.py:5258) | `consts_gen::P_NEXT_NONE_LINE_RE` | generated::generated_files_are_current | tamam |
+| `CLAUDE_IDLE_NUDGE_TEXT` (steward.py:5259) | `consts_gen::CLAUDE_IDLE_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `next_none_stated` (steward.py:5263) | `idletext::next_none_stated` | idletext::next_none_stated_vectors | tamam |
+| `_NO_WORK_PHRASES` (steward.py:5270) | `consts_gen::P_NO_WORK_PHRASES` | generated::generated_files_are_current | tamam |
+| `_GATE_WAIT_RE` (steward.py:5276) | `consts_gen::P_GATE_WAIT_RE` | generated::generated_files_are_current | tamam |
+| `IDLE_STALE_NOTE_ESCAPE` (steward.py:5282) | `consts_gen::IDLE_STALE_NOTE_ESCAPE` | generated::generated_files_are_current | tamam |
+| `_TODO_HINT_PREFIX` (steward.py:5283) | `consts_gen::P_TODO_HINT_PREFIX` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_RE` (steward.py:5288) | `consts_gen::P_TURN_FAILED_RE` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_STATUS_RE` (steward.py:5291) | `consts_gen::P_TURN_FAILED_STATUS_RE` | generated::generated_files_are_current | tamam |
+| `_TURN_FAILED_WORD_RE` (steward.py:5292) | `consts_gen::P_TURN_FAILED_WORD_RE` | generated::generated_files_are_current | tamam |
+| `turn_failed` (steward.py:5295) | `idletext::turn_failed` | idletext::turn_failed_vectors | tamam |
+| `waiting_for_gate` (steward.py:5303) | `idletext::waiting_for_gate` | idletext::waiting_for_gate_vectors | tamam |
+| `one_line` (steward.py:5308) | `idletext::one_line` | idletext::one_line_vectors | tamam |
+| `clip_words` (steward.py:5313) | `markers::clip_words` | tour::clip_words_vectors | tamam |
+| `notes_wait` (steward.py:5324) | `idletext::notes_wait` | idletext::notes_wait_vectors | tamam |
+| `ucli_idle_threshold` (steward.py:5329) | `idletext::ucli_idle_threshold` | idletext::ucli_idle_threshold_vectors | tamam |
+| `_COND_RE` (steward.py:5334) | `consts_gen::P_COND_RE` | generated::generated_files_are_current | tamam |
+| `_NEG_ANSWER_RE` (steward.py:5338) | `consts_gen::P_NEG_ANSWER_RE` | generated::generated_files_are_current | tamam |
+| `NEG_ANSWER_MAX_CHARS` (steward.py:5341) | `consts_gen::NEG_ANSWER_MAX_CHARS` | generated::generated_files_are_current | tamam |
+| `is_negative_answer` (steward.py:5344) | `idletext::is_negative_answer` | idletext::is_negative_answer_vectors | tamam |
+| `_OPEN_LEAD_RE` (steward.py:5351) | `consts_gen::P_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
+| `_OPEN_ANY_RE` (steward.py:5352) | `consts_gen::P_OPEN_ANY_RE` | generated::generated_files_are_current | tamam |
+| `_HOLD_ANY_RE` (steward.py:5353) | `consts_gen::P_HOLD_ANY_RE` | generated::generated_files_are_current | tamam |
+| `_OPT_NUM_RE` (steward.py:5354) | `consts_gen::P_OPT_NUM_RE` | generated::generated_files_are_current | tamam |
+| `_NEG_OPEN` (steward.py:5356) | `consts_gen::P_NEG_OPEN` | generated::generated_files_are_current | tamam |
+| `_NEG_OPEN_RE` (steward.py:5359) | `consts_gen::P_NEG_OPEN_RE` | generated::generated_files_are_current | tamam |
+| `_NEG_OPEN_LEAD_RE` (steward.py:5360) | `consts_gen::P_NEG_OPEN_LEAD_RE` | generated::generated_files_are_current | tamam |
+| `is_open_answer` (steward.py:5363) | `idletext::is_open_answer` | idletext::is_open_answer_vectors | tamam |
+| `_HELD_ANSWER_PREFIX` (steward.py:5380) | `consts_gen::P_HELD_ANSWER_PREFIX` | generated::generated_files_are_current | tamam |
+| `_held_instruction_item` (steward.py:5383) | `idletext::held_instruction_item` | idletext::p_held_instruction_item | tamam |
+| `CARD_NOTE_MAX_CHARS` (steward.py:5396) | `consts_gen::CARD_NOTE_MAX_CHARS` | generated::generated_files_are_current | tamam |
+| `expired_handover_note` (steward.py:5399) | `idletext::expired_handover_note` | idletext::expired_handover_note_vectors | tamam |
+| `is_conditional_note` (steward.py:5412) | `markers::is_conditional_note` | tour::is_conditional_note_vectors | tamam |
+| `_FABLE_POLISH_RE` (steward.py:5417) | `consts_gen::P_FABLE_POLISH_RE` | generated::generated_files_are_current | tamam |
+| `is_fable_polish` (steward.py:5420) | `idletext::is_fable_polish` | idletext::is_fable_polish_vectors | tamam |
+| `next_work_hint` (steward.py:5425) | `idletext::next_work_hint` | idletext::next_work_hint_vectors | tamam |
+| `_TODO_ITEM_RE` (steward.py:5460) | `consts_gen::P_TODO_ITEM_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_WORD_RE` (steward.py:5461) | `consts_gen::P_NOTE_WORD_RE` | generated::generated_files_are_current | tamam |
+| `_NOTE_STOPWORDS` (steward.py:5462) | `consts_gen::P_NOTE_STOPWORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MIN_WORDS` (steward.py:5463) | `consts_gen::STALE_NOTE_MIN_WORDS` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_CLOSED_MIN` (steward.py:5464) | `consts_gen::STALE_NOTE_CLOSED_MIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_MARGIN` (steward.py:5465) | `consts_gen::STALE_NOTE_MARGIN` | generated::generated_files_are_current | tamam |
+| `STALE_NOTE_DONE_MIN` (steward.py:5466) | `consts_gen::STALE_NOTE_DONE_MIN` | generated::generated_files_are_current | tamam |
+| `_DONE_BULLET_RE` (steward.py:5467) | `consts_gen::P_DONE_BULLET_RE` | generated::generated_files_are_current | tamam |
+| `_note_words` (steward.py:5470) | `idletext::note_words` | idletext::p_note_words | tamam |
+| `stale_next_note` (steward.py:5474) | `idletext::stale_next_note` | idletext::stale_next_note_vectors | tamam |
+| `without_stale_note` (steward.py:5506) | `idletext::without_stale_note` | idletext::without_stale_note_vectors | tamam |
+| `_OWNER_WAIT_PHRASES` (steward.py:5522) | `consts_gen::P_OWNER_WAIT_PHRASES` | generated::generated_files_are_current | tamam |
+| `_NEXT_LINE_RE` (steward.py:5525) | `consts_gen::P_NEXT_LINE_RE` | generated::generated_files_are_current | tamam |
+| `_NEXT_NONE_RE` (steward.py:5526) | `consts_gen::P_NEXT_NONE_RE` | generated::generated_files_are_current | tamam |
+| `_last_next_line` (steward.py:5529) | `idletext::last_next_line` | idletext::p_last_next_line | tamam |
+| `next_line` (steward.py:5539) | `idletext::next_line` | idletext::next_line_vectors | tamam |
+| `_STATED_NEXT_RE` (steward.py:5550) | `consts_gen::P_STATED_NEXT_RE` | generated::generated_files_are_current | tamam |
+| `stated_next_work` (steward.py:5556) | `idletext::stated_next_work` | idletext::stated_next_work_vectors | tamam |
+| `owner_wait` (steward.py:5575) | `idletext::owner_wait` | idletext::owner_wait_vectors | tamam |
+| `_done_at_line_end` (steward.py:5581) | `idletext::done_at_line_end` | idletext::p_done_at_line_end | tamam |
+| `idle_finish_marker` (steward.py:5587) | `idletext::idle_finish_marker` | idletext::idle_finish_marker_vectors | tamam |
+| `plan_ucli_idle` (steward.py:5618) | `idle::plan_ucli_idle` | idle::plan_ucli_idle_vectors | tamam |
+| `_ASK_MARKERS` (steward.py:5714) | `consts_gen::P_ASK_MARKERS` | generated::generated_files_are_current | tamam |
+| `_forced_open_nudge` (steward.py:5717) | `idle::forced_open_nudge` | idle::p_forced_open_nudge | tamam |
+| `OWNER_CLAIM_MIN_IDLE_SECS` (steward.py:5730) | `consts_gen::OWNER_CLAIM_MIN_IDLE_SECS` | generated::generated_files_are_current | tamam |
+| `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5731) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
+| `plan_claude_idle` (steward.py:5736) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
+| `_WHY_TR` (steward.py:5907) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
+| `_WHY_EN` (steward.py:5926) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
+| `_START_BLOCK_TR` (steward.py:5944) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
+| `_why` (steward.py:5949) | `explain::why` | explain::p_why | tamam |
+| `explain_idle` (steward.py:5955) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
+| `explain_idle_all` (steward.py:6069) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
+| `observe_filter` (steward.py:6096) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:6147) | `report::daily_path` | report::daily_path_vectors | tamam |
+| `log_entries_for_date` (steward.py:6151) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
+| `DRY_KIPS` (steward.py:6174) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
+| `DRY_REPORT_HOURS` (steward.py:6176) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
+| `_count_or_zero` (steward.py:6179) | `report::count_or_zero` | report::p_count_or_zero | tamam |
+| `dry_report` (steward.py:6187) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
+| `dry_report_text` (steward.py:6221) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6233) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6244) | `report::summary_due` | report::summary_due_vectors | tamam |
+| `missed_summary_dates` (steward.py:6251) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
+| `_NO_LOG_DAYS` (steward.py:6275) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
+| `_SUMMARY_TXT` (steward.py:6278) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
+| `_names` (steward.py:6302) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6307) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6312) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6331) | `report::daily_summary` | report::daily_summary_vectors | tamam |
+| `summary_text` (steward.py:6416) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
+| `write_daily` (steward.py:6434) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summarize_projects` (steward.py:6441) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1977 satır)
+### Python testleri (1984 satır)
 
-Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1984 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1862,6 +1862,7 @@ Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_brain_respawn_after_handover_is_a_new_conversation` | identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order, identity::p_pp (+8); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward._apply |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_context_tokens_trigger_handover` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+14) |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_line_count_is_only_a_fallback_and_ignores_young_sessions` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+16) |
+| `test_steward_core_b.OneLiveSessionPerProjectTest.test_workspace_claude_md_main_session_is_opus_medium` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` | prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, identity::derived_of_vectors, identity::p_pp (+14) |
 | `test_steward_core_b.OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward.context_tokens_for` transkript kuyruğundan bağlam token'ı; dosya okuma, iz T10/T1 |
@@ -1992,7 +1993,7 @@ Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_explain_idle.Explain.test_all_and_lang` | explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_new_ui_keys` | identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors (+3); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_config, web_steward.steward_config |
 | `test_steward_explain_idle.ConfigAndLoopReset.test_loop_reset_human_only` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, logdedup::old_subjects_are_evicted_past_the_cap (+1); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, steward.save_state, web_steward.http_loop_reset, web_steward.loop_guard_list |
-| `test_steward_generic.TestConfig.test_generic_defaults_to_sonnet_medium` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, steward.load_projects |
+| `test_steward_generic.TestConfig.test_generic_defaults_to_main_default_medium` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, steward.load_projects |
 | `test_steward_generic.TestConfig.test_own_block_is_the_owners_explicit_choice` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.save_settings, settings.steward_config |
 | `test_steward_generic.TestConfig.test_default_can_never_be_generic` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.save_settings, settings.steward_config |
 | `test_steward_generic.TestCreate.test_http_create_with_role_generic` | identity::brain_name_for_vectors, identity::name_rules_edges, identity::p_pp, identity::paths_for_vectors (+5); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward.http_identity_create |
@@ -2007,8 +2008,9 @@ Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_generic.TestUpperTier.test_approval_is_specific_to_project_model_effort` | gates::upper_tier_approved_vectors, gates::upper_tier_question_text_vectors, gates::upper_tier_tag_vectors |
 | `test_steward_generic.TestUpperGate.test_brain_directive_to_opus_refused_and_question_opened_once` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::brain_may_answer_vectors, gates::is_generic_vectors (+57); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_questions, steward.tail_log, web_steward.http_directive |
 | `test_steward_generic.TestUpperGate.test_owner_approval_opens_the_gate` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::is_generic_vectors, gates::is_upper_tier_vectors (+58); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_directive |
+| `test_steward_generic.TestUpperGate.test_opus_medium_passes_gate_opus_high_and_fable_do_not` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::is_generic_vectors, gates::is_upper_tier_vectors (+55); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_questions, web_steward.http_directive |
 | `test_steward_generic.TestUpperGate.test_owner_rejection_keeps_it_closed` | gates::is_generic_vectors, gates::is_upper_tier_vectors, gates::panic_path_is_under_default_root, gates::upper_tier_approved_vectors (+55); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_directive |
-| `test_steward_generic.TestUpperGate.test_human_and_non_generic_are_free` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::is_generic_vectors, gates::is_upper_tier_vectors (+34); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_questions, web_steward.http_directive |
+| `test_steward_generic.TestUpperGate.test_human_and_non_generic_are_free` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, gates::is_upper_tier_vectors, gates::panic_path_is_under_default_root (+33); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_questions, web_steward.http_directive |
 | `test_steward_generic.TestUpperGate.test_restart_refused_before_stop` | gates::is_generic_vectors, gates::is_upper_tier_vectors, gates::upper_tier_approved_vectors, gates::upper_tier_question_text_vectors (+51); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_restart |
 | `test_steward_generic.TestUpperGate.test_set_project_gate` | cards::card_one_liner_vectors, cards::card_path_vectors, gates::is_generic_vectors, gates::is_upper_tier_vectors (+40); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_projects, web_steward.http_project_upsert |
 | `test_steward_generic.TestUpperGate.test_register_gate_before_side_effects` | gates::is_generic_vectors, gates::is_upper_tier_vectors, gates::upper_tier_approved_vectors, gates::upper_tier_question_text_vectors (+38); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_register |
@@ -2259,6 +2261,10 @@ Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_main_model.MainSessionModel.test_remote_unknown_cli_only_claude_models` | prompts::main_session_model_effort_vectors |
 | `test_steward_main_model.MainSessionModel.test_non_claude_model_on_claude_cli_untouched` | prompts::main_session_model_effort_vectors |
 | `test_steward_main_model.MainSessionModel.test_no_sonnet_known_is_noop` | prompts::main_session_model_effort_vectors |
+| `test_steward_main_model.MainModelFromSettings.test_empty_setting_gives_opus_medium` | identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::main_session_model_effort_vectors, prompts::phase_model_effort_vectors |
+| `test_steward_main_model.MainModelFromSettings.test_setting_wins_and_can_revert_to_sonnet` | identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::main_session_model_effort_vectors, prompts::phase_model_effort_vectors |
+| `test_steward_main_model.MainModelFromSettings.test_invalid_setting_falls_back_to_opus` | prompts::main_session_model_effort_vectors, prompts::phase_model_effort_vectors |
+| `test_steward_main_model.MainModelFromSettings.test_no_opus_in_list_falls_back_to_provider_default` | identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::main_session_model_effort_vectors, prompts::phase_model_effort_vectors |
 | `test_steward_multi.TestGolden.test_world_none_is_byte_identical` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+45) |
 | `test_steward_multi.TestGolden.test_default_world_is_identical` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+62) |
 | `test_steward_multi.TestGolden.test_default_world_from_disk_index_is_identical` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+66); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.ownership_index, steward.save_projects |
@@ -2827,20 +2833,21 @@ Test satırı özeti: 1977 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_ui_api.UiServiceJobTest.test_add_list_hides_token_and_rm` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+10); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_service_add, web_steward.http_service_rm, web_steward.http_services |
 | `test_steward_ui_api.UiServiceJobTest.test_add_validates_and_brain_refused` | identity::name_rules_edges, identity::valid_name_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_job_ack, web_steward.http_service_add, web_steward.http_service_rm |
 | `test_steward_ui_api.UiServiceJobTest.test_rm_refused_with_open_job_and_ack_only_terminal` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+10); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward_jobs.new_record, steward_jobs.save_record, web_steward.http_job_ack, web_steward.http_service_add, web_steward.http_service_rm; AÇIK (Rust'ta yok): steward_jobs.new_record, steward_jobs.save_record |
-| `test_steward_upper_main.TestPure.test_picks_only_running_main_sessions_above_sonnet_medium` | gates::is_claude_model_vectors, gates::is_upper_tier_vectors, gates::upper_main_views_vectors, prompts::phase_model_effort_vectors |
+| `test_steward_upper_main.TestPure.test_picks_only_running_main_sessions_above_main_default` | gates::is_claude_model_vectors, gates::is_upper_tier_vectors, gates::upper_main_views_vectors, prompts::phase_model_effort_vectors |
 | `test_steward_upper_main.TestPure.test_owners_explicit_upper_choice_is_not_flagged` | gates::is_claude_model_vectors, gates::is_upper_tier_vectors, gates::upper_main_views_vectors, prompts::phase_model_effort_vectors |
 | `test_steward_upper_main.TestPure.test_only_claude_family_models_are_audited` | gates::is_claude_model_vectors, gates::is_upper_tier_vectors, gates::upper_main_views_vectors, prompts::phase_model_effort_vectors |
 | `test_steward_upper_main.TestPure.test_is_upper_tier_itself_stays_model_family_agnostic` | gates::is_upper_tier_vectors |
+| `test_steward_upper_main.TestPure.test_opus_medium_is_the_main_default_not_upper` | gates::is_claude_model_vectors, gates::is_upper_tier_vectors, gates::upper_main_text_vectors, gates::upper_main_views_vectors (+3) |
 | `test_steward_upper_main.TestPure.test_reviewer_role_is_not_audited` | gates::upper_main_views_vectors |
 | `test_steward_upper_main.TestPure.test_reminder_text_is_a_reminder_not_an_order` | gates::upper_main_text_vectors |
-| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_setting_off_disables` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+72); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward.tick_once |
-| `test_steward_upper_main.TestTick.test_sonnet_medium_main_is_silent` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+75); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_upper_main_logged_once_and_never_sent_to_the_session` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_flapping_unknown_live_reading_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_unknown_effort_on_known_upper_model_is_not_a_change` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_known_change_or_back_and_up_again_logs_again` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_new_process_same_combo_logs_once_more` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_observe_mode_logs_too` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+77); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_setting_off_disables` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+73); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward.tick_once |
+| `test_steward_upper_main.TestTick.test_opus_or_sonnet_medium_main_is_silent` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+76); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, web_steward.tick_once |
 | `test_steward_upper_main.TestCollectViews.test_status_row_live_values_reach_the_view` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::normalize_host_edges (+14); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward.configure |
 | `test_steward_upper_main.TestCollectViews.test_dated_local_session_without_instance_resolves_to_its_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+24); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): settings.steward_config, web_steward.configure |
 | `test_steward_upper_main.TestCollectViews.test_remote_row_live_values_reach_the_view` | AÇIK (taşınmadı ya da kısmen): `web_steward._remote_view` uzak satırdan live_model/live_effort aktarımı; saf dönüşüm, iz T10 |

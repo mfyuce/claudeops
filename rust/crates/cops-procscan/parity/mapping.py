@@ -985,6 +985,7 @@ FILES = {
     "steward_ho_on_open": (_STEW, f"{T10}; {T4}"),
     "steward_http": (_STEW, T10),
     "steward_job_gate_and_qcap": (_STEW, T10),
+    "steward_main_model": (_STEW, T10),
     "steward_open_dialog": (_STEW, f"{T10}; {T1}"),
     "steward_owned": (_STEW, T10),
     "steward_remote_facts": (_STEW + " ve uzak olgu ucu", f"{T10}; {T5}"),
@@ -1463,7 +1464,7 @@ rsprov_cost_one_pass:12:5220e6a9d5
 rsprov_child_group:13:1224408fb8
 rsprov_help_utf8:6:88fc88f6f4
 review_self_verify:18:4b125a8002
-routing_guidance:13:964131411b
+routing_guidance:15:e045f05d44
 rsprov_chat_readers:15:6e732c13dd
 rsprov_g10_keyfile:2:ed7cc40e18
 rsprov_g10_oneshot:6:18f99b20b8
@@ -1496,13 +1497,14 @@ steward_api_recovery:17:f79402b74c
 steward_audit_p9:24:36a9eb8914
 steward_brain:34:b4c732deb9
 steward_core_a:122:f4f49eaa0c
-steward_core_b:77:5bbaded29d
+steward_core_b:78:400a04ffd3
 steward_ctx:21:12df78f872
-steward_generic:25:f4969150e9
+steward_generic:26:09b9cc7fd0
 steward_ho_on_open:9:d3f0301c62
 steward_http:55:d144bd3c53
-steward_open_dialog:16:cb4f15474e
 steward_job_gate_and_qcap:17:3a0173c206
+steward_main_model:10:5c2a25c53b
+steward_open_dialog:16:cb4f15474e
 steward_owned:17:c39a25372d
 steward_remote_facts:19:8999b83aa6
 steward_ucli_idle:49:3d78a38764

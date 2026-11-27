@@ -48,13 +48,13 @@ def _sha_text(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-# Başlangıçta P5 ÖNCESİ kodla (41428ce) üretilmişti; model kuralı eklemeleriyle bilerek güncellenir (default yapı değişmemeli ama kural metni değişebilir). Üretilmiş `build_workspace_claude_md` çıktılarının (bayt sayısı, sha256): default CLAUDE.md
+# Başlangıçta P5 ÖNCESİ kodla (41428ce) üretilmişti; model kuralı eklemeleriyle bilerek güncellenir (son: 28 Kas 2026 ana oturum Opus medium) (default yapı değişmemeli ama kural metni değişebilir). Üretilmiş `build_workspace_claude_md` çıktılarının (bayt sayısı, sha256): default CLAUDE.md
 # değişmemeli (her beyin açılışında yeniden yazıldığı için fark = gereksiz yeniden yazım). "PERSONA" ve paketlenmiş persona.
 GOLDEN_MD = {
-    ("tr", "PERSONA"): (7131, "54c910e1dd6012dc3ac1ddfc0bf9f77f5d41380838a753c3e795d520be41a10b"),
-    ("tr", "BUNDLED"): (12135, "9bb9063390275db49408a96a41591c79b9cef2b46ba1c5e616f7f1696ef74901"),
-    ("en", "PERSONA"): (5601, "07462de9d88da60b96380bb64f250077a0b77721206df2712ccaafafa7ad31cf"),
-    ("en", "BUNDLED"): (10605, "b6b0dff7a659a1a9294173d73b56f257cd7364705a2724f8cb1486944415fcf1"),
+    ("tr", "PERSONA"): (7269, "05f8243a4d215bf490f4d2d596704444ca1a28bac75b138824d4b7b386aef5fa"),
+    ("tr", "BUNDLED"): (12424, "ae23af1b00742ba1d31cbe76287f194cf38fd88c3a22437e4f8bd14c4a7cb81a"),
+    ("en", "PERSONA"): (5737, "24bf59456ef97208e35084d38b915cc3dc52805ca1fa66d27c70cad9542d8932"),
+    ("en", "BUNDLED"): (10892, "28358afad08e81f423f5aaaf53140db93ab046feae7e0fa0a04b6e7230004a46"),
 }
 
 

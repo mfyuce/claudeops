@@ -1,6 +1,6 @@
-"""TODO 1233 (5): değnekçi denetimi "proje ANA oturumu fiilen Sonnet medium dışına çıktı mı" (canlı model/effort).
+"""TODO 1233 (5): değnekçi denetimi "proje ANA oturumu fiilen ana oturum varsayılanı dışına çıktı mı" (canlı model/effort).
 
-Kural (sahip): ana oturum HEP claude-sonnet-5-5 + medium; bilinçli ağır adımda geçici yükselme olabilir. Bu yüzden
+Kural (sahip): ana oturum HEP `sw.GENERIC_MODEL` + medium (28 Kas 2026'dan beri claude-opus-5-5; önce Sonnet); bilinçli ağır adımda geçici yükselme olabilir. Bu yüzden
 denetim ZORLAMAZ ve oturuma YAZMAZ: yalnız `upper_main` olayı loglanır (sahibe/panele görünür), kalıcı kayıtla
 aynı oturum + aynı model/effort için tekrar etmez. Ayar `upper_main_warn` (varsayılan AÇIK, `off` ile kapanır).
 
@@ -23,21 +23,21 @@ class TestPure(unittest.TestCase):
         self.cfg = sw.Config()
         self.projects = {n: sw.Project(name=n, phase="planned") for n in ("a", "b", "c", "d", "e")}
 
-    def test_picks_only_running_main_sessions_above_sonnet_medium(self):
+    def test_picks_only_running_main_sessions_above_main_default(self):
         views = [
-            _view("a", live_model="claude-opus-5-5", live_effort="medium"),          # model üst kademe
+            _view("a", live_model="claude-fable-5-1", live_effort="medium"),         # model üst kademe
             _view("b", live_model="claude-sonnet-5-5", live_effort="high"),          # effort üst kademe
-            _view("c", live_model="claude-sonnet-5-5", live_effort="medium"),        # kurala uygun
-            _view("d", running=False, live_model="claude-opus-5-5"),                 # çalışmıyor
+            _view("c", live_model="claude-opus-5-5", live_effort="medium"),          # kurala uygun (ana oturum varsayılanı)
+            _view("d", running=False, live_model="claude-fable-5-1"),                # çalışmıyor
             _view("d_2", blueprint="d", live_model="claude-fable-5-1"),              # instance (ana oturum değil)
-            _view("zz", live_model="claude-opus-5-5"),                               # kayıtlı proje değil
+            _view("zz", live_model="claude-fable-5-1"),                              # kayıtlı proje değil
         ]
         got = [v.name for v in sw.upper_main_views(views, self.projects, self.cfg)]
         self.assertEqual(got, ["a", "b"])
 
     def test_owners_explicit_upper_choice_is_not_flagged(self):
-        self.projects["e"] = sw.Project(name="e", phase="planned", model="claude-opus-5-5")
-        views = [_view("e", live_model="claude-opus-5-5", live_effort="medium")]
+        self.projects["e"] = sw.Project(name="e", phase="planned", model="claude-fable-5-1")
+        views = [_view("e", live_model="claude-fable-5-1", live_effort="medium")]
         self.assertEqual(sw.upper_main_views(views, self.projects, self.cfg), [])
         cfg = sw.Config(planned_effort="high")      # kimliğin faz ayarı bilerek üst kademe
         views = [_view("a", live_model="claude-sonnet-5-5", live_effort="high")]
@@ -47,8 +47,10 @@ class TestPure(unittest.TestCase):
         """Claude dışı model (ucli/evren deepseek vb.) effort high olsa da uyarılmaz; boş model de uyarılmaz."""
         cases = [
             ("deepseek-v4-flash", "high", False),
-            ("claude-opus-5-5", "", True),
-            ("claude-opus-5-5", "medium", True),
+            ("claude-opus-5-5", "", False),           # 28 Kas 2026: Opus ana oturum varsayılanı, üst değil
+            ("claude-opus-5-5", "medium", False),
+            ("claude-opus-5-5", "high", True),
+            ("claude-fable-5-1", "medium", True),
             ("claude-sonnet-5-5", "max", True),
             ("claude-sonnet-5-5", "medium", False),
             ("", "high", False),
@@ -65,8 +67,25 @@ class TestPure(unittest.TestCase):
         self.assertTrue(sw.is_upper_tier("deepseek-v4-flash", "high"))
         self.assertTrue(sw.is_upper_tier("", "high"))
 
+    def test_opus_medium_is_the_main_default_not_upper(self):
+        """Sahip kararı 28 Kas 2026: ana oturum Opus + medium; Opus artık üst kademe DEĞİL. Fable ve high/xhigh/max üst kalır."""
+        self.assertEqual(sw.GENERIC_MODEL, "claude-opus-5-5")
+        self.assertFalse(sw.is_upper_tier("claude-opus-5-5", "medium"))
+        self.assertFalse(sw.is_upper_tier("claude-opus-5-5", ""))
+        self.assertTrue(sw.is_upper_tier("claude-opus-5-5", "high"))
+        self.assertTrue(sw.is_upper_tier("claude-fable-5-1", "medium"))
+        views = [_view("a", live_model="claude-opus-5-5", live_effort="medium"),
+                 _view("b", live_model="claude-fable-5-1", live_effort="medium"),
+                 _view("c", live_model="claude-opus-5-5", live_effort="max")]
+        self.assertEqual([v.name for v in sw.upper_main_views(views, self.projects, self.cfg)], ["b", "c"])
+        for lang in ("tr", "en"):
+            t = sw.upper_main_text("b", "claude-fable-5-1", "medium", lang)
+            self.assertIn("`/model claude-opus-5-5`", t)
+            self.assertNotIn("sonnet", t.lower())
+            self.assertNotIn("Sonnet", sw.upper_tier_question_text("b", "claude-fable-5-1", "high", lang))
+
     def test_reviewer_role_is_not_audited(self):
-        views = [_view("a", live_model="claude-opus-5-5")]
+        views = [_view("a", live_model="claude-fable-5-1")]
         self.assertEqual(sw.upper_main_views(views, self.projects, sw.Config(role="reviewer")), [])
 
     def test_reminder_text_is_a_reminder_not_an_order(self):
@@ -148,12 +167,12 @@ class TestTick(_Tick):
 
     def test_known_change_or_back_and_up_again_logs_again(self):
         calls = self.notified()
-        self.views = [_view("a", live_model="claude-opus-5-5", live_effort="medium")]
+        self.views = [_view("a", live_model="claude-opus-5-5", live_effort="high")]
         ws.tick_once("timer")
         self.views = [_view("a", live_model="claude-fable-5-1", live_effort="medium")]
         ws.tick_once("timer")
         self.assertEqual(len(calls), 2)
-        self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="medium")]     # BİLİNEN uyumlu: kayıt düşer
+        self.views = [_view("a", live_model="claude-opus-5-5", live_effort="medium")]       # BİLİNEN uyumlu: kayıt düşer
         ws.tick_once("timer")
         self.assertNotIn("a", self.seen())
         self.views = [_view("a", live_model="claude-fable-5-1", live_effort="medium")]
@@ -172,7 +191,7 @@ class TestTick(_Tick):
 
     def test_observe_mode_logs_too(self):
         self.settings(default={"mode": "observe"})
-        self.views = [_view("a", live_model="claude-opus-5-5")]
+        self.views = [_view("a", live_model="claude-fable-5-1")]
         ws.tick_once("timer")
         self.assertEqual(len(self.events()), 1)
         self.assertEqual(self.directives, [])
@@ -181,13 +200,14 @@ class TestTick(_Tick):
         self.assertTrue(settings.steward_config().upper_main_warn)     # varsayılan AÇIK
         self.settings(default={"upper_main_warn": "off"})
         self.assertFalse(settings.steward_config().upper_main_warn)
-        self.views = [_view("a", live_model="claude-opus-5-5")]
+        self.views = [_view("a", live_model="claude-fable-5-1")]
         ws.tick_once("timer")
         self.assertEqual(self.events(), [])
 
-    def test_sonnet_medium_main_is_silent(self):
-        self.views = [_view("a", live_model="claude-sonnet-5-5", live_effort="medium")]
-        ws.tick_once("timer")
+    def test_opus_or_sonnet_medium_main_is_silent(self):
+        for model in ("claude-opus-5-5", "claude-sonnet-5-5"):
+            self.views = [_view("a", live_model=model, live_effort="medium")]
+            ws.tick_once("timer")
         self.assertEqual(self.events(), [])
         self.assertEqual(self.seen(), {})
 
