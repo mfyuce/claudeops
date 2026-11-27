@@ -11,14 +11,14 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
-| tanım | 367 | 251 | 116 | 0 |
-| test durumu (66 dosya) | 939 | 172 | 767 | 0 |
+| tanım | 368 | 251 | 117 | 0 |
+| test durumu (67 dosya) | 942 | 173 | 769 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
 | `commands/web_hosts.py` | TAM | 159 | 159 | 0 | 0 |
 | `hosts.py` | TAM | 31 | 23 | 8 | 0 |
-| `commands/web_grpc.py` | TAM | 43 | 22 | 21 | 0 |
+| `commands/web_grpc.py` | TAM | 44 | 22 | 22 | 0 |
 | `commands/web_steward.py` | seçili (`(?i)remote\|host\|caps\|facts\|backoff\|backing_off\|transport\|_HEALTH\|_RECOVERED_DOWN`) | 125 | 38 | 87 | 0 |
 | `authz.py` | seçili (giden imza) | 9 | 9 | 0 | 0 |
 
@@ -261,20 +261,21 @@ Yok.
 | `commands/web_grpc.py::_HostBridgeServicer.Ping` | işlev:274 | kapsam dışı | yok | yok | sunucu tarafı (kimlik denetimi, servis). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
 | `commands/web_grpc.py::_HostBridgeServicer.StreamStatus` | işlev:277 | kapsam dışı | yok | yok | sunucu tarafı (kimlik denetimi, servis). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
 | `commands/web_grpc.py::_HostBridgeServicer.StreamTermOutput` | işlev:296 | kapsam dışı | yok | yok | sunucu tarafı (kimlik denetimi, servis). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
-| `commands/web_grpc.py::start_grpc_server` | işlev:320 | kapsam dışı | yok | yok | sunucu tarafı (kimlik denetimi, servis). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
-| `commands/web_grpc.py::_KEEPALIVE_OPTIONS` | sabit:341 | karşılandı | `grpc.rs::GrpcClient::channel` | `tests/parity.rs::shared_constants_and_error_texts_equal_python` | 20 sn / 5 sn / boştayken açık |
-| `commands/web_grpc.py::_channel_lock` | sabit:347 | karşılandı | `grpc.rs::GrpcClient.channels` | `tests/fake_grpc.rs::dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_channel` | Rust kaydı silinen adresin kanalını bırakır (Python tutar) |
-| `commands/web_grpc.py::_channels` | sabit:348 | karşılandı | `grpc.rs::GrpcClient.channels` | `tests/fake_grpc.rs::dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_channel` | Rust kaydı silinen adresin kanalını bırakır (Python tutar) |
-| `commands/web_grpc.py::_check_grpc_host` | işlev:351 | karşılandı | `net.rs::Connector::tcp` | `tests/fake_grpc.rs::grpc_dns_name_resolving_to_loopback_is_refused_before_connecting`<br>`tests/fake_grpc.rs::grpc_unresolvable_name_is_fail_closed` | denetim her bağlanışta (Python yalnız kanal kurulurken) |
-| `commands/web_grpc.py::_channel_for` | işlev:368 | karşılandı | `grpc.rs::GrpcClient::channel` | `tests/fake_tls.rs::grpc_over_https_works_through_own_dial_and_origin`<br>`tests/fake_tls.rs::grpc_plain_http_sends_http_scheme` | yok |
-| `commands/web_grpc.py::_stub_for` | işlev:384 | karşılandı | `grpc.rs::GrpcClient::ready` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
-| `commands/web_grpc.py::_auth_metadata` | işlev:388 | karşılandı | `grpc.rs::GrpcClient::request` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
-| `commands/web_grpc.py::probe` | işlev:392 | karşılandı | `grpc.rs::GrpcClient::probe` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
-| `commands/web_grpc.py::open_status_stream` | işlev:403 | karşılandı | `grpc.rs::GrpcClient::status_stream` | `tests/fake_grpc.rs::grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest` | yok |
-| `commands/web_grpc.py::open_term_stream` | işlev:415 | karşılandı | `grpc.rs::GrpcClient::term_stream` | `tests/fake_grpc.rs::grpc_term_relay_serves_frames_and_error_updates` | yok |
-| `commands/web_grpc.py::is_term_refused` | işlev:422 | karşılandı | `grpc.rs::stream_error`<br>`grpc.rs::REFUSED_BY_HOST` | `tests/fake_grpc.rs::grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later`<br>`tests/fake_grpc.rs::grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not` | yok |
-| `commands/web_grpc.py::stream_status` | işlev:428 | karşılandı | `grpc.rs::GrpcClient::status_stream` | `tests/fake_grpc.rs::grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest` | yok |
-| `commands/web_grpc.py::stream_term_output` | işlev:437 | karşılandı | `grpc.rs::GrpcClient::term_stream` | `tests/fake_grpc.rs::grpc_term_relay_serves_frames_and_error_updates` | yok |
+| `commands/web_grpc.py::_server_options` | işlev:320 | kapsam dışı | yok | yok | sunucu keepalive payı (istemci aralığı `shared_constants…` ile sabit). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
+| `commands/web_grpc.py::start_grpc_server` | işlev:331 | kapsam dışı | yok | yok | sunucu tarafı (kimlik denetimi, servis). İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
+| `commands/web_grpc.py::_KEEPALIVE_OPTIONS` | sabit:353 | karşılandı | `grpc.rs::GrpcClient::channel` | `tests/parity.rs::shared_constants_and_error_texts_equal_python` | 20 sn / 5 sn / boştayken açık |
+| `commands/web_grpc.py::_channel_lock` | sabit:359 | karşılandı | `grpc.rs::GrpcClient.channels` | `tests/fake_grpc.rs::dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_channel` | Rust kaydı silinen adresin kanalını bırakır (Python tutar) |
+| `commands/web_grpc.py::_channels` | sabit:360 | karşılandı | `grpc.rs::GrpcClient.channels` | `tests/fake_grpc.rs::dropped_grpc_consumers_cancel_streams_and_removed_hosts_close_the_channel` | Rust kaydı silinen adresin kanalını bırakır (Python tutar) |
+| `commands/web_grpc.py::_check_grpc_host` | işlev:363 | karşılandı | `net.rs::Connector::tcp` | `tests/fake_grpc.rs::grpc_dns_name_resolving_to_loopback_is_refused_before_connecting`<br>`tests/fake_grpc.rs::grpc_unresolvable_name_is_fail_closed` | denetim her bağlanışta (Python yalnız kanal kurulurken) |
+| `commands/web_grpc.py::_channel_for` | işlev:380 | karşılandı | `grpc.rs::GrpcClient::channel` | `tests/fake_tls.rs::grpc_over_https_works_through_own_dial_and_origin`<br>`tests/fake_tls.rs::grpc_plain_http_sends_http_scheme` | yok |
+| `commands/web_grpc.py::_stub_for` | işlev:396 | karşılandı | `grpc.rs::GrpcClient::ready` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
+| `commands/web_grpc.py::_auth_metadata` | işlev:400 | karşılandı | `grpc.rs::GrpcClient::request` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
+| `commands/web_grpc.py::probe` | işlev:404 | karşılandı | `grpc.rs::GrpcClient::probe` | `tests/fake_grpc.rs::grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python` | yok |
+| `commands/web_grpc.py::open_status_stream` | işlev:415 | karşılandı | `grpc.rs::GrpcClient::status_stream` | `tests/fake_grpc.rs::grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest` | yok |
+| `commands/web_grpc.py::open_term_stream` | işlev:427 | karşılandı | `grpc.rs::GrpcClient::term_stream` | `tests/fake_grpc.rs::grpc_term_relay_serves_frames_and_error_updates` | yok |
+| `commands/web_grpc.py::is_term_refused` | işlev:434 | karşılandı | `grpc.rs::stream_error`<br>`grpc.rs::REFUSED_BY_HOST` | `tests/fake_grpc.rs::grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later`<br>`tests/fake_grpc.rs::grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not` | yok |
+| `commands/web_grpc.py::stream_status` | işlev:440 | karşılandı | `grpc.rs::GrpcClient::status_stream` | `tests/fake_grpc.rs::grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest` | yok |
+| `commands/web_grpc.py::stream_term_output` | işlev:449 | karşılandı | `grpc.rs::GrpcClient::term_stream` | `tests/fake_grpc.rs::grpc_term_relay_serves_frames_and_error_updates` | yok |
 
 ### `py/claudeops/commands/web_steward.py`
 
@@ -380,31 +381,31 @@ Yok.
 | `commands/web_steward.py::_remote_stop_and_wait` | işlev:3457 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::_remote_respawn` | işlev:3484 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::_remote_respawn.failed` | işlev:3495 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_advance_candidates.remote_todo_of` | işlev:4391 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_read_full` | işlev:5833 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_append_idea` | işlev:5845 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_in_remote_roster` | işlev:6039 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_register_remote` | işlev:6174 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_REMOTE_CREATABLE` | sabit:6723 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_before` | işlev:6726 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_edit_doc` | işlev:6740 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8607 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8614 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8616 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8621 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8625 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8628 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8637 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8643 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8655 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8662 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8665 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8704 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8715 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8730 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8741 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8788 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8800 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::_advance_candidates.remote_todo_of` | işlev:4393 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_read_full` | işlev:5835 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_append_idea` | işlev:5847 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_in_remote_roster` | işlev:6041 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_register_remote` | işlev:6176 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_REMOTE_CREATABLE` | sabit:6725 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_before` | işlev:6728 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_edit_doc` | işlev:6742 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8609 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8616 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8618 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8623 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8627 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8630 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8639 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8645 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8657 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8664 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8667 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8706 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8717 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8732 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8743 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8790 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8802 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
 
 ### `py/claudeops/authz.py`
 
@@ -474,6 +475,14 @@ Yok.
 | `test_graphical_session.py::Setting.test_default_off` | 121 | kapsam dışı | yok | uzak grafik oturum ucu. İz: T7 (periyodik) |
 | `test_graphical_session.py::Setting.test_on_words_only` | 127 | kapsam dışı | yok | uzak grafik oturum ucu. İz: T7 (periyodik) |
 | `test_graphical_session.py::Routing.test_paths_registered` | 134 | kapsam dışı | yok | uzak grafik oturum ucu. İz: T7 (periyodik) |
+
+### `py/tests/test_grpc_keepalive.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_grpc_keepalive.py::KeepAliveTest.test_silent_stream_is_not_cut_for_pinging` | 52 | kapsam dışı | yok | sunucunun ping kabulü. İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
+| `test_grpc_keepalive.py::KeepAliveTest.test_idle_channel_keeps_its_connection` | 59 | kapsam dışı | yok | sunucunun ping kabulü. İz: T5 sunucu rolü (uzak panelin kendi gRPC sunucusu; copsd'de ayrı iş, bu crate istemci) |
+| `test_grpc_keepalive.py::KeepAliveValuesTest.test_server_allows_pings_more_often_than_the_client_sends_them` | 69 | karşılandı | `tests/parity.rs::shared_constants_and_error_texts_equal_python` | Rust istemci aralığı Python istemci sabitiyle aynı |
 
 ### `py/tests/test_grpc_term_gate.py`
 

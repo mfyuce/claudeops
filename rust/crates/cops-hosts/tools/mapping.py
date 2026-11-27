@@ -144,6 +144,7 @@ _GRPC_TERM = f"{FG}grpc_term_relay_serves_frames_and_error_updates"
 _GRPC_REF = f"{FG}grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later"
 _GRPC_MID = f"{FG}grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not"
 DEFS["commands/web_grpc.py"] = [
+    oos("_server_options", "sunucu keepalive payı (istemci aralığı `shared_constants…` ile sabit)", SRV),
     ok("is_term_refused", "grpc.rs::stream_error grpc.rs::REFUSED_BY_HOST", f"{_GRPC_REF} {_GRPC_MID}"),
     oos("_GRPC_MAX_WORKERS _STATUS_TICK_SECONDS _STATUS_DICT_KEYS _reduce_status _dict_to_session_row "
         "_cli_options_to_proto _extras_to_proto _status_dict_to_proto _term_dict_to_proto",
@@ -617,6 +618,12 @@ CASES["test_ucli_checks_host_routing.py"] = [
     t_ok("Routing.test_sets", P_ROUTES),
     t_oos(cls("Routing", "test_get_branches_proxy_when_host_given test_metrics_routed test_compare_routed"),
           "`web.py` GET dalının vekile bağlanması", GATE),
+]
+CASES["test_grpc_keepalive.py"] = [
+    t_oos(cls("KeepAliveTest", "test_silent_stream_is_not_cut_for_pinging test_idle_channel_keeps_its_connection"),
+          "sunucunun ping kabulü", SRV),
+    t_ok("KeepAliveValuesTest.test_server_allows_pings_more_often_than_the_client_sends_them", P_CONST,
+         "Rust istemci aralığı Python istemci sabitiyle aynı"),
 ]
 CASES["test_web_grpc_ucli_flags.py"] = [
     t_ok(cls("GrpcUcliFlagsTest", "test_roundtrip_never_raises_and_keeps_core_fields test_no_flags_means_none "
