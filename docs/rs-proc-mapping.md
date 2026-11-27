@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 557 | 153 | 404 | 0 |
-| test durumu (124 dosya) | 1637 | 115 | 1522 | 0 |
+| test durumu (125 dosya) | 1642 | 115 | 1527 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -784,6 +784,16 @@ Yok.
 | `test_cache_info.py::CacheInfoTests.test_retired_sessions_do_not_pile_up_in_the_cache` | 114 | kapsam dışı | yok | `cache` satır alanı. İz: T1 (durum) |
 | `test_cache_info.py::StatusPayloadCacheTests.test_both_running_row_builders_carry_the_cache_info` | 146 | kapsam dışı | yok | `cache` satır alanı. İz: T1 (durum) |
 | `test_cache_info.py::StatusPayloadCacheTests.test_a_stopped_row_has_none` | 151 | kapsam dışı | yok | `cache` satır alanı. İz: T1 (durum) |
+
+### `py/tests/test_chat_backup_instance_dirs.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_second_instance_files_are_backed_up_apart_from_shared_ones` | 57 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_default_instance_backs_up_shared_state_once` | 74 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_deleted_state_chat_comes_from_the_mirror` | 84 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_linked_state_child_is_not_followed` | 89 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_mirror_script_copies_shared_state_dir` | 96 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
 
 ### `py/tests/test_chat_compaction_view.py`
 

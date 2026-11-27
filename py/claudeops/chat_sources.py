@@ -60,6 +60,8 @@ def default_sources() -> List[Source]:
                excludes=["*.rc"] + sec),
         Source("reviewer-claude-p", "claude_p", "reviewer", f"{REVIEWER_ROOT}/claude_cfg/projects", "reviewer/claude_cfg-projects"),
         Source("ucli-usage", "ucli", "main", f"{HOME}/.claude/claudeops/ucli_usage", "ucli-usage"),
+        # `--state-dir` açıkken ucli sohbetleri proje kökünde değil burada (ikinci örneğinki yedeğe `periodic`ten girer)
+        Source("ucli-state", "ucli", "main", f"{HOME}/.claude/claudeops/ucli-state", "ucli-state"),
     ]
 
 

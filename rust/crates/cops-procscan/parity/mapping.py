@@ -891,6 +891,7 @@ FILES = {
     "bg_work": ("arka plan işi tespiti (ekran + transkript)", f"{T2}; {T1}"),
     "brain_permission_ucli": ("değnekçi beyninin ucli izinleri", f"{T10}; {SAG}"),
     "cache_info": ("`cache` satır alanı", T1),
+    "chat_backup_instance_dirs": ("ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412)", T7),
     "chat_compaction_view": (_HIST, CHAT),
     "check_cmd": ("`cops check` komutu", T6),
     "claude_models_store": ("model listesi belgesi", f"{W0A}; {SAG}"),
@@ -1381,6 +1382,7 @@ agy_models_swr:1:9166783f75
 bg_work:17:7b2ea2092b
 brain_permission_ucli:2:d5d3096328
 cache_info:12:9f2b8b4e3c
+chat_backup_instance_dirs:5:ba2c994403
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
