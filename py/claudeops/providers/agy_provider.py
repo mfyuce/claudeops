@@ -219,8 +219,8 @@ _ABSENT = object()
 
 
 def _load_agy_sids_for_write() -> Optional[Dict[str, str]]:
-    """Yazımdan önce (kilit altında) okuma: belge yoksa `{}`; var ama okunamıyor, UTF-8/JSON değil ya da nesne değilse
-    None. `_load_agy_sids` bozuk belgeyi `{}` sayar: yazım ona dayanırsa öğrenilen bütün eşleşmeler yedeksiz ezilirdi."""
+    """Yazımdan önce (kilit altında) okuma: belge yoksa `{}`; var ama okunamıyor, UTF-8/JSON değil, nesne değil ya da
+    geri yazılamıyorsa (eşlenmemiş vekil) None. `_load_agy_sids` bozuk belgeyi `{}` sayar: yazım ona dayanırsa öğrenilen bütün eşleşmeler yedeksiz ezilirdi."""
     from .. import statedocs
     bad: List[str] = []
     data = statedocs.read_json("agy_sids", AGY_SIDS_JSON, _ABSENT, on_corrupt=bad.append)
@@ -228,7 +228,13 @@ def _load_agy_sids_for_write() -> Optional[Dict[str, str]]:
         return None
     if data is _ABSENT:
         return None if os.path.lexists(AGY_SIDS_JSON) else {}      # var ama açılamıyor (izin, dizin)
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    try:
+        json.dumps(data, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    return data
 
 
 def _remember_agy_sid(session_name: str, sid: str) -> None:

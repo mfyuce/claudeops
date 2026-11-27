@@ -18,6 +18,7 @@ from claudeops.providers import agy_provider as ap  # noqa: E402
 from claudeops.providers import claude_provider as cp  # noqa: E402
 from claudeops.providers import codex_provider as xp  # noqa: E402
 from claudeops.providers import copilot_provider as cop  # noqa: E402
+from claudeops.store import Store  # noqa: E402
 
 U1 = "11111111-2222-3333-4444-555555555555"
 U2 = "01234567-89ab-cdef-0123-456789abcdef"
@@ -194,6 +195,23 @@ class AgyTest(AgyBase):
         self.assertIsNone(self.prov.resolve_resume_id(self.cwd))
         info = self.prov.extract_info(["agy"], cwd=self.cwd, session_name="inst")
         self.assertIsNone(info["sid"])
+
+    def test_document_that_cannot_be_written_back_does_not_drop_the_scan(self):
+        # eşlenmemiş vekil: JSON okunur ama UTF-8'e yazılamaz; keşif turu `UnicodeEncodeError` ile düşmesin
+        before = b'{"baska": "\\ud800"}'
+        for backend in ("files", "dual", "db"):
+            with self.subTest(backend=backend), mock.patch.dict(os.environ, {"CLAUDEOPS_STORE_BACKEND": backend}), \
+                    mock.patch.object(statedocs, "_log", lambda msg: None), \
+                    mock.patch("claudeops.store.default_store",
+                               lambda st=Store(os.path.join(self.state, f"{backend}.db")): st):
+                self.diags.clear()
+                statedocs._SYNCED.clear()
+                with open(self.sids, "wb") as f:
+                    f.write(before)
+                ap._remember_agy_sid("yeni", "s1")
+                with open(self.sids, "rb") as f:
+                    self.assertEqual(f.read(), before)
+                self.assertEqual(self.diags, [("agy_sids_unreadable", {"name": "yeni"})])
 
     def test_broken_document_is_not_overwritten(self):                     # aday 7
         for doc in ("{bozuk", "[1]", "", "\udcff"):
