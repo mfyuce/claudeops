@@ -1538,6 +1538,8 @@ def run_job(paths: Any, cfg: Any, project: str, cwd: str, target: rv.ReviewTarge
             os.makedirs(os.path.dirname(rpath), exist_ok=True)
             if sf(binary, "--usage-log"):           # token ekonomisi ölçümü: istek başına sayılar (istem/cevap/araç sonucu YOK)
                 budget += ["--usage-log", rpath[:-3] + ".usage.jsonl"]
+            if sf(binary, "--status-path"):         # anlık durum (etkinlik, tur, bayt): SIGKILL'de son canlı hâl kalır (TBD#357)
+                budget += ["--status-path", os.path.realpath(rpath[:-3] + ".status.json")]   # ucli bağlı yolu reddeder
             if sf(binary, "--effort"):
                 # HER Evren koşusunda effort gider (ucli'nin "output limit used up by reasoning" -> low yeniden denemesi bunu şart
                 # koşar); model alanı kabul ettiği kanıtlı değilse (gemma-4-31b 400) `reasoning_effort_for` None verir.

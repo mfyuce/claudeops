@@ -36,7 +36,7 @@ MAP = {
     **_same("targets", """WINDOW_SECONDS HISTORY_VERSION HISTORY_RUNS_MAX MAX_ATTEMPTS MODE_MAX_ATTEMPTS CAPACITY_ERROR_PREFIX
         CAPACITY_RETRY_MIN CAPACITY_RETRY_MAX CAPACITY_MAX_TRIES _CAPACITY_RE _RETRY_AFTER_RE is_capacity_error
         capacity_retry_seconds UNCOUNTED_ERRORS counts_as_attempt max_attempts MODES UCLI_MODES ANTHROPIC_ENDPOINT
-        ANTHROPIC_PRICES parse_slots PAIR_STATUSES SEVERITIES FINDING_STATES FORBIDDEN_PATHS ReviewTarget slug_model
+        ANTHROPIC_PRICES HAIKU_LONG_PRICE HAIKU_LONG_PROMPT parse_slots PAIR_STATUSES SEVERITIES FINDING_STATES FORBIDDEN_PATHS ReviewTarget slug_model
         split_spec _split_models excluded_keys toggle_excluded SUBSCRIPTION_FABLE_EFFORTS claude_specs
         claude_is_subscription targets_from_config review_title"""),
     "claude_catalog": _m("targets", "claude_catalog_from"),
@@ -264,6 +264,7 @@ classes("test_steward_review_api", out(WS, "reviewer HTTP uçları"), "TestPool 
 classes("test_steward_review_api", out(CLI, "CLI argümanından API'ye eşleme ve çıktı"), "TestCli")
 classes("test_usage_cost_prompt_tokens", CORE, "UsageCost")
 classes("test_usage_cost_robust", CORE, "UsageCostRobustTest")
+classes("test_usage_cost_task_end", CORE, "TaskEndNotCountedTest HaikuTierTest")
 classes("test_web_review_runner", _runner, "TestEvren TestCancel TestAgy TestBannerLimit TestBodyless TestRecover TestDetached")
 tests("test_web_review_runner.TestBannerLimit", CORE, "month_start_helper")
 tests("test_web_review_runner.TestBodyless", CORE, "report_bodyless_rule")
