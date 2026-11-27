@@ -87,7 +87,9 @@ fn run_front(fa: &cops_cli::argp::FrontArgs) -> i32 {
     let mut out = stdout.lock();
     let mut ctx = Ctx {
         paths: Paths::new(&roots, dist),
-        env_secret: std::env::var("CLAUDEOPS_FRONT_SECRET").ok(),
+        // UTF-8 olmayan değer Python gibi "dolu" sayılır (yok sayılıp dosyaya düşülmez)
+        env_secret: std::env::var_os("CLAUDEOPS_FRONT_SECRET")
+            .map(|v| v.to_string_lossy().into_owned()),
         net: &net,
         sc: &mut sc,
         out: &mut out,
@@ -144,6 +146,10 @@ fn run_self() -> i32 {
 
 fn main() {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    // İkilinin kaynak sürümü (canlı ikili = main HEAD denetimi); stdout ve çıkış kodu devredilen Python'unkidir.
+    if args.len() == 1 && args[0] == "--version" {
+        eprintln!("cops-rs {}", env!("COPSD_GIT_SHA"));
+    }
     match route(&args) {
         Route::Delegate(_) => run_delegate(&args),
         Route::Front(fa) => exit(run_front(&fa)),

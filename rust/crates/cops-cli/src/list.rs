@@ -44,7 +44,7 @@ pub fn agy_mirror_reason(docs: &StateDocs, mirror: &Path) -> Option<&'static str
     if docs.backend() != Backend::Db {
         return None;
     }
-    let Ok(doc) = docs.store().and_then(|s| s.get_doc("agy_sids")) else {
+    let Ok(doc) = docs.read_only_store().and_then(|s| s.get_doc("agy_sids")) else {
         return Some("agy_sids DB'den okunamadı");
     };
     let same = match (doc, read_file(mirror).into_option()) {
@@ -55,18 +55,28 @@ pub fn agy_mirror_reason(docs: &StateDocs, mirror: &Path) -> Option<&'static str
     (!same).then_some("agy_sids aynası DB ile aynı değil")
 }
 
-/// Tarar; `Ok` = yazılacak metin, `Err` = devir nedeni.
+/// Tarar; `Ok` = yazılacak metin, `Err` = devir nedeni. CPU ölçülecekse önce ölçümsüz tarama yapılır: devir belliyse
+/// bekleme olmaz (Python kendi ölçümünü yapar); asıl taramada çıkan kuşku yine devreder.
 pub fn run(cfg: &Config, args: &ListArgs) -> Result<String, &'static str> {
-    let cpu = if args.no_cpu {
-        CpuMode::Skip
-    } else {
-        CpuMode::Sleep
+    run_with(args, |cpu| find_sessions(cfg, cpu))
+}
+
+fn run_with(
+    args: &ListArgs,
+    mut find: impl FnMut(CpuMode<'static>) -> Scan,
+) -> Result<String, &'static str> {
+    let mut checked = |cpu| {
+        let scan = find(cpu);
+        match delegate_reason(&scan) {
+            Some(why) => Err(why),
+            None => Ok(scan),
+        }
     };
-    let scan = find_sessions(cfg, cpu);
-    match delegate_reason(&scan) {
-        Some(why) => Err(why),
-        None => Ok(render(scan.sessions, args.base.as_deref(), args.json)),
+    let mut scan = checked(CpuMode::Skip)?;
+    if !args.no_cpu {
+        scan = checked(CpuMode::Sleep)?;
     }
+    Ok(render(scan.sessions, args.base.as_deref(), args.json))
 }
 
 #[cfg(test)]
@@ -104,6 +114,73 @@ mod tests {
             change(&mut s);
             assert!(delegate_reason(&s).is_some(), "durum {i}");
         }
+    }
+
+    #[test]
+    fn doubtful_scan_is_delegated_without_cpu_wait() {
+        let mut calls = Vec::new();
+        let r = run_with(&ListArgs::default(), |cpu| {
+            calls.push(matches!(cpu, CpuMode::Sleep));
+            let mut s = Scan::default();
+            s.diag.session_files_invalid = 1;
+            s
+        });
+        assert!(r.is_err());
+        assert_eq!(
+            calls,
+            [false],
+            "şüpheli taramada CPU beklemesi olmaz (Python zaten bekler)"
+        );
+    }
+
+    #[test]
+    fn clean_scan_is_measured_and_rechecked() {
+        let scans = |doubt_on_second: bool, no_cpu: bool| {
+            let mut calls = Vec::new();
+            let args = ListArgs {
+                no_cpu,
+                ..Default::default()
+            };
+            let r = run_with(&args, |cpu| {
+                calls.push(matches!(cpu, CpuMode::Sleep));
+                let mut s = Scan::default();
+                if doubt_on_second && calls.len() == 2 {
+                    s.diag.session_files_invalid = 1;
+                }
+                s
+            });
+            (r.is_ok(), calls)
+        };
+        assert_eq!(scans(false, false), (true, vec![false, true]));
+        assert_eq!(scans(true, false), (false, vec![false, true]));
+        assert_eq!(scans(false, true), (true, vec![false]));
+    }
+
+    #[test]
+    fn mirror_check_does_not_write_the_database() {
+        use cops_state::{store::SCHEMA_VERSION, StateDir};
+        let t = tempfile::tempdir().expect("tempdir");
+        let dir = StateDir::at(t.path());
+        let mirror = t.path().join("agy_sids.json");
+        std::fs::write(&mirror, r#"{"a": "s"}"#).unwrap();
+        {
+            // WAL dışı kip: okuma-yazma açılış başlığı WAL'a çevirir
+            let c = rusqlite::Connection::open(dir.db()).unwrap();
+            c.execute_batch(
+                "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);
+                 INSERT INTO docs VALUES('agy_sids', '{\"a\": \"s\"}', 1, 2.5);",
+            )
+            .unwrap();
+            c.pragma_update(None, "user_version", SCHEMA_VERSION)
+                .unwrap();
+        }
+        let before = std::fs::read(dir.db()).unwrap();
+        let docs = StateDocs::isolated(dir.clone(), Some(Backend::Db), "");
+        assert_eq!(agy_mirror_reason(&docs, &mirror), None);
+        assert!(
+            std::fs::read(dir.db()).unwrap() == before,
+            "DB dosyası değişti"
+        );
     }
 
     #[test]

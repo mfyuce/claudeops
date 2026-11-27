@@ -571,6 +571,55 @@ class P3Rollback(Env):
         self.assertEqual(sorted(x for x in os.listdir(self.root) if x.startswith(".")), [])
 
 
+class P10WebAddrAbbrevAndDropins(Env):
+    """10: `off` web adresini argparse kısaltmalarından ve ExecStart'ı ezen drop-in'lerden de okusun."""
+
+    def addr(self, text):
+        r = f._web_addr(text)
+        return f._fmt(r) if r else None
+
+    def test_argparse_abbreviations(self):
+        self.assertEqual(self.addr("ExecStart=/x web --po 9001"), "127.0.0.1:9001")
+        self.assertEqual(self.addr("ExecStart=/x web --por=9002 --ho 127.0.0.3"), "127.0.0.3:9002")
+        self.assertEqual(self.addr("ExecStart=/x web --hos=127.0.0.4"), "127.0.0.4:8765")
+        for amb in ("--p 9001", "--p=9001", "--h 127.0.0.3"):       # argparse "ambiguous option": birim açılmaz
+            self.assertIsNone(self.addr(f"ExecStart=/x web {amb}"), amb)
+
+    def test_option_list_matches_web_parser(self):
+        import argparse
+        from claudeops.commands import web
+        p = argparse.ArgumentParser()
+        sub = p.add_subparsers()
+        web.register(sub)
+        opts = {o for a in sub.choices["web"]._actions for o in a.option_strings if o.startswith("--")}
+        self.assertEqual(set(f._WEB_LONG_OPTS), opts)
+
+    def test_last_execstart_wins_and_empty_resets(self):
+        self.assertEqual(self.addr(LIVE + "[Service]\nExecStart=\nExecStart=/x web --port 9003\n"), "127.0.0.1:9003")
+        self.assertIsNone(self.addr(LIVE + "[Service]\nExecStart=\n"))
+
+    def off_with(self, files, port):
+        self.front_on()
+        for name, body in files.items():
+            (self.dropin.parent / name).write_bytes(body)
+        alt = f"127.0.0.1:{port}"
+        self.w.owners[alt] = unit(f.FRONT_UNIT_NAME)
+        self.w.effects = [("disable --now claudeops-front.service", alt, ("none",)),
+                          ("restart claudeops-web.service", alt, unit(f.WEB_UNIT_NAME))]
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.endswith("kapandı\n"), out)
+
+    def test_off_follows_overriding_dropins_in_name_order(self):
+        ex = lambda p: f"[Service]\nExecStart=\nExecStart=/x web --port {p}\n".encode()
+        self.off_with({"b.conf": ex(9005), "a.conf": ex(9004), "z.conf.bak": ex(9006),
+                       "env.conf": b"[Service]\nEnvironment=A=1\n"}, 9005)
+
+    def test_off_ignores_front_dropin_and_falls_back_on_unreadable_dropin(self):
+        self.front.write_text("x")
+        self.off_with({"bozuk.conf": b"\xff"}, 8765)
+
+
 class P9SlowWebAndSymlinkUnits(Env):
     """9 (rs/cli kapı notu): web yeniden başlatılırken `front_up` yetmez; sembolik bağlı birim dosyası düz dosyaya dönmesin."""
 

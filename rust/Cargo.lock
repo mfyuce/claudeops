@@ -241,6 +241,7 @@ dependencies = [
  "cops-proxy",
  "cops-state",
  "libc",
+ "rusqlite",
  "serde_json",
  "tempfile",
 ]

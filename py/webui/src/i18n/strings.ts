@@ -472,6 +472,9 @@ export interface Strings {
   layoutGridHint: string;
   layoutReserveLabel: string;
   layoutReserveHint: string;
+  spawnDesktopLabel: string;
+  spawnDesktopHint: string;
+  spawnDesktopOff: string;
   fleetSortLabel: string;
   fleetSortHint: string;
   fleetSortByName: string;
@@ -1494,6 +1497,9 @@ export const STRINGS: Record<Lang, Strings> = {
     layoutGridHint: "Yerleşim sekmesinin desktop başına açacağı pencere sayısı: 2 (yan yana iki yarı), 4 (2×2, varsayılan), 8 (4×2, yoğun)",
     layoutReserveLabel: "boş bırakılan yuva",
     layoutReserveHint: "Her desktop'ta SON bu kadar yuva boş kalır (2×2'de 1 = sağ alt köşe). 0 = kapalı (varsayılan).",
+    spawnDesktopLabel: "yeni CLI masaüstü",
+    spawnDesktopHint: "Yeni açılan CLI penceresi doğrudan bu masaüstünde açılır, baktığın masaüstü değişmez. O masaüstü yoksa 2'ye, o da yoksa 1'e düşer. Varsayılan 2.",
+    spawnDesktopOff: "kapalı (baktığım masaüstü)",
     fleetSortLabel: "fleet sıralaması",
     fleetSortHint: "Running/Registered/Disabled/Retired tablolarındaki grupların birincil sıralama anahtarı — isme göre (varsayılan, ekranda gördüğün kısa isim) ya da klasör yoluna göre (projenin tam cwd'si — aynı klasördeki session'lar yan yana durur, ama isim klasör adıyla her zaman örtüşmeyebilir)",
     fleetSortByName: "isme göre",
@@ -2540,6 +2546,9 @@ export const STRINGS: Record<Lang, Strings> = {
     layoutGridHint: "how many windows the Layout tab opens per desktop: 2 (side-by-side halves), 4 (2×2, default), 8 (4×2, dense)",
     layoutReserveLabel: "empty slots",
     layoutReserveHint: "Leave the LAST this-many slots empty on every desktop (1 on 2×2 = bottom-right corner). 0 = off (default).",
+    spawnDesktopLabel: "new CLI desktop",
+    spawnDesktopHint: "A newly started CLI window opens directly on this desktop; the desktop you are looking at does not change. If it does not exist, falls back to 2, then 1. Default 2.",
+    spawnDesktopOff: "off (current desktop)",
     fleetSortLabel: "fleet sort",
     fleetSortHint: "primary sort key for groups in the Running/Registered/Disabled/Retired tables — by name (default, the short name shown on screen) or by folder path (the project's full cwd — keeps sessions in the same folder next to each other, but the name doesn't always track the folder)",
     fleetSortByName: "by name",

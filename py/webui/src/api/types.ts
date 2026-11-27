@@ -386,6 +386,8 @@ export interface Settings {
    * 4→2x2 [varsayılan], 8→4x2). */
   layout_grid: number;
   layout_reserve?: number;
+  /** TBD#409: yeni CLI penceresinin açılacağı masaüstü (0 tabanlı; -1 = kapalı; varsayılan 1). */
+  spawn_desktop?: number;
   /** {cli: {ENV_VAR: set?}} — bir provider'ın BYOK env değişkenlerinin
    * (ör. ucli'nin `UCLI_API_KEY`'i) SADECE "ayarlı mı" durumu, `true`/eksik.
    * GERÇEK DEĞER asla buraya gelmez (`web.py`'nin `_redact_settings_for_wire`'ı
