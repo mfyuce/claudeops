@@ -11,6 +11,8 @@ Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 12
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
 denetlenmedi (`tmux_backend.py` değişmedi).
+27 Kas `main` `da6e993c` birleşimi (`cdea6d34`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
+Python 6529 OK (23 atlanan, 332 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 27 Kas `main` `8239e0d5` birleşimi (`13340f26`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
 Python 6522 OK (23 atlanan, 333 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 Oynak görülenler: `parity_real`, iki `flock` testi ve
@@ -3476,6 +3478,26 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` (py/tests/test_web_review_runner.py:593) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_other_failures_still_write_lesson` (py/tests/test_web_review_runner.py:602) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` (py/tests/test_web_review_runner.py:608) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+
+### main `da6e993c` eşitlemesinin satırları ve testleri (27 Kas)
+
+`494fbd67` (sürdürülmüş onay kartı bekleyen sayılmasın): yalnız listeleme ve sürdürme yolu değişti (`pending`,
+`recover_resuming`); bu crate onay defterinde yalnız yazılan kısmı taşır (`register`, `set_state`, `slot_free`,
+`parse_suspended`), kart dosyalarını okuyan Rust kodu yok. `da6e993c` (SQLite salt okunur adresi): `chat_dump` ve
+`ucli_metrics` okuyucuları taşınmadı; `real/sqlite.rs` yolu zaten adres diye ayrıştırmaz. Rust kodu değişmedi.
+
+| Python (dosya:satır) | Rust karşılığı / neden gereksiz | durum |
+|---|---|---|
+| `_pending_files` (py/claudeops/ucli_approval.py:244) | T7: onay listeleme | KAPSAM DIŞI |
+| `_resume_started` (py/claudeops/ucli_approval.py:265) | T7: açılışta yarım koşu kapatma | KAPSAM DIŞI |
+| `ro_sqlite_uri` (py/claudeops/sqlite_uri.py:8) | T7: yalnız `chat_dump` ve `ucli_metrics` okuyucuları kullanır | KAPSAM DIŞI |
+| `ResumedApproval.test_resumed_card_is_not_pending_or_answerable` (py/tests/test_ucli_approval_resumed.py:38) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ResumedApproval.test_run_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:43) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ResumedApproval.test_already_suspended_record_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:49) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ResumedApproval.test_chained_suspension_keeps_only_the_new_card` (py/tests/test_ucli_approval_resumed.py:55) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ResumedApproval.test_untouched_card_stays_resumable` (py/tests/test_ucli_approval_resumed.py:60) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ReadOnlyUri.test_openers_read_the_exact_file_read_only` (py/tests/test_sqlite_ro_uri.py:46) | T7: `chat_dump` / `ucli_metrics` okuyucuları | KAPSAM DIŞI |
+| `ReadOnlyUri.test_double_slash_path_is_not_a_host` (py/tests/test_sqlite_ro_uri.py:55) | T7: `chat_dump` / `ucli_metrics` okuyucuları | KAPSAM DIŞI |
 
 ### TBD#419 ve S6 testleri (27 Kas)
 
