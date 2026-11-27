@@ -509,8 +509,8 @@ fn cases() -> Vec<Case> {
         }
     }
     v.push(case("kredi".into(), steps));
-    // İkinci örnek (TBD#412 b): harcama ortak + kendi dizininden toplanır; sayılabilirlik denetimi (`_ledger_problem`)
-    // yalnız ortak dizine bakar (iki dilde). Varsayılan örnekte tek dizin.
+    // İkinci örnek (TBD#412 b): harcama toplamı da sayılabilirlik denetimi de ortak + kendi dizinine bakar.
+    // Varsayılan örnekte tek dizin.
     for (id, own, mode) in [
         ("iki-dizin", rec(ms, 800_000), 0o600),
         (
@@ -643,7 +643,7 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
                     ok(json!([float_repr(r.total), r.problem.unwrap_or("")]))
                 }
                 "problem" => ok(json!(
-                    ledger::ledger_problem(num(1), &base, mult).unwrap_or_default()
+                    ledger::ledger_problem_in(num(1), &dirs, mult).unwrap_or_default()
                 )),
                 "gate" => gated(book.check_and_reserve_at(text(1), num(2))),
                 "cap" => ok(json!(book.cap_exceeded(num(1)).unwrap())),

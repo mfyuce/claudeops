@@ -367,21 +367,28 @@ pub fn total_in(dirs: &[String], mult: f64, since_ms: f64) -> f64 {
 
 /// `_ledger_problem`: bugünün harcaması sayılamıyorsa nedeni (yalnız dosya adı; içerik yok).
 pub fn ledger_problem(now: f64, base: &str, mult: f64) -> Option<String> {
+    ledger_problem_in(now, &[base.to_string()], mult)
+}
+
+/// [`ledger_problem`], toplamın okuduğu bütün dizinlerde ([`crate::Paths::usage_read_dirs`]).
+pub fn ledger_problem_in(now: f64, dirs: &[String], mult: f64) -> Option<String> {
     let since = day_start_ms(now);
-    let all = match entries(base) {
-        Ok(n) => n,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return None,
-        Err(_) => return Some("günlük dizini okunamadı".into()),
-    };
-    for log in all {
-        let why = match mtime_ms(&log.path) {
-            Ok(t) if t < since => continue,
-            Ok(_) => scan_usage(&log.path, "", since, mult).problem,
+    for dir in dirs {
+        let all = match entries(dir) {
+            Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-            Err(_) => Some("okunamadı"),
+            Err(_) => return Some("günlük dizini okunamadı".into()),
         };
-        if let Some(why) = why {
-            return Some(format!("{}.jsonl: {why}", log.stem));
+        for log in all {
+            let why = match mtime_ms(&log.path) {
+                Ok(t) if t < since => continue,
+                Ok(_) => scan_usage(&log.path, "", since, mult).problem,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(_) => Some("okunamadı"),
+            };
+            if let Some(why) = why {
+                return Some(format!("{}.jsonl: {why}", log.stem));
+            }
         }
     }
     None
@@ -410,8 +417,7 @@ fn rounded_sum(rates: &[(String, f64)]) -> Value {
 
 /// `ucli_cost` modül durumu: önbellek (`_CACHE`) + başlatma payları (`_RESERVED`, `_RESERVE_LOCK`).
 pub struct CostLedger {
-    base: String,
-    /// Okunan dizinler (`ucli_cost.read_dirs`): `base`, ikinci örnekte ek olarak kendi yazma dizini.
+    /// Okunan dizinler (`ucli_cost.read_dirs`): ilki `base`, ikinci örnekte ek olarak kendi yazma dizini.
     dirs: Vec<String>,
     settings: CostSettings,
     clock: WallClock,
@@ -423,10 +429,8 @@ pub struct CostLedger {
 impl CostLedger {
     /// `base` = [`crate::Paths::ucli_usage_dir`].
     pub fn new(base: impl Into<String>, settings: CostSettings) -> CostLedger {
-        let base = base.into();
         CostLedger {
-            dirs: vec![base.clone()],
-            base,
+            dirs: vec![base.into()],
             settings,
             clock: system_clock(),
             cache: Mutex::new(None),
@@ -434,10 +438,10 @@ impl CostLedger {
         }
     }
 
-    /// Yazma dizini ([`crate::Paths::usage_write_dir`]) `base`ten farklıysa harcama ikisinden toplanır. Defterin
-    /// SAYILABİLİRLİK denetimi Python gibi yalnız `base`e bakar.
+    /// Yazma dizini ([`crate::Paths::usage_write_dir`]) `base`ten farklıysa harcama da sayılabilirlik denetimi de
+    /// ikisine bakar.
     pub fn with_write_dir(mut self, dir: String) -> CostLedger {
-        if dir != self.base {
+        if !self.dirs.contains(&dir) {
             self.dirs.push(dir);
         }
         self
@@ -568,7 +572,7 @@ impl CostLedger {
             held.retain(|(n, _, _)| n != session);
             return Ok(());
         }
-        if let Some(why) = ledger_problem(now, &self.base, write_mult(&cfg)) {
+        if let Some(why) = ledger_problem_in(now, &self.dirs, write_mult(&cfg)) {
             return Err(CostRefusal::Unverifiable(why));
         }
         let others = held
