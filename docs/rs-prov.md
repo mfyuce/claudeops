@@ -1,19 +1,23 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `414821e5` birleşimi `a48098a0`):
+Durum (27 Kas 2026, `origin/main` `5015abed` birleşimi `6b188046`):
 **BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 718 satır (TAŞINDI 644, KAPSAM DIŞI 74) ve test tablosu
 1551 satır (TAŞINDI 761, KAPSAM DIŞI 790), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
 ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı, uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise
-deposunda değişiklik bekliyor; sahipte üç soru (S4-S6).
-Son ağaçta ölçülen (kod `845f867e`; sonrasında yalnız `docs/` değişti): `cargo test --workspace --no-fail-fast` 1276
+deposunda değişiklik bekliyor; S5 = (b) onaylandı, uygulandı ("S5" bölümü); sahipte iki soru (S4, S6). §3.5 ve §2.5.2
+27 Kas'ta cops kabulüyle kapandı (kod değişmedi).
+Son ağaçta ölçülen (kod `8caa1e25`; sonrasında yalnız bu belge değişti): `cargo test --workspace --no-fail-fast` 1279
 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check -p cops-providers
--p cops-state` temiz; Python tam paket 6397 OK (23 atlanan, 832 sn, makine yüklü); eşleme denetimleri çıkış 0 (hosts
-`--check`: `main` birleşiminden sonra bayattı, yeniden üretildi; rs-proc `--check --strict`, steward `map.py --check`,
-rev `map_table.py <rapor> --check`). rs-tmux tablosu bu turda denetlenmedi; önceki turda geçici bir betikle denetlenmişti
-(69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
+-p cops-state -p cops-review-core` temiz; Python tam paket 6411 OK (23 atlanan, 440 sn); eşleme denetimleri çıkış 0 (hosts
+`--check` ve rs-proc `--check --strict`: `main` birleşiminde yeniden üretildi, rs-proc ve rev yeni testle bir kez daha;
+steward `map.py --check`; rev `map_table.py <rapor> --check`). rs-tmux tablosu bu turda denetlenmedi; daha önceki bir turda
+geçici bir betikle denetlenmişti (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda
+denetim betiği yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
 `real_fs::concurrent_issue_keeps_file_and_digest_consistent`,
 `test_review_io_history::test_real_pipes_stream_and_heartbeat`; bu turda bir ara koşuda bir kez `parity_real`
-(`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi).
+(`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi). S5 turunun ilk
+tam koşusunda (yük ~25) `real_oneshot::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` bir kez
+`flock` zaman aşımıyla düştü; tek başına ve son tam koşuda yeşil.
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
 27 Kas ikinci tur: `726888f1` ve `ec82eac5` eşitlemesi, X gönderimi ve yabancı kilit testleri, G3 3 ve 5, G7 8 (`agy models`),
 G9 5, TBD#401, TBD#411 kaydı, maliyet toplayıcısı eşlik testi (aşağıda ilgili bölümler).
@@ -90,7 +94,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): cops kabulü bekleyenler, S3 (enterprise) ve sorular S4-S6.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), sorular S4 ve S6, kalan AÇIK satırlar.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -107,13 +111,10 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 |---|---|---|
 | §3.1 (a), §2.5.8 | model/effort okuması kapandı (S1); sid'siz `jsonl_path_for` (sohbet, son mesaj rolü) ve codex rollout okuması hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
-| §3.5 | atlanan bozuk aday, `Effect::Remove` hatası ve günlüğün kendi yazım hatası günlüğe girmiyor (TBD#404: bilerek açık) | cops kabulü |
-| §3.7 | maliyet günlüğü taramasının SÜRESİ dosya boyutuyla sınırsız (bellek sabit, ölçüldü) | sahip (S5), sonra iz |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
 | §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | sahip (S4), sonra iz |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
 | §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
-| §2.5.2 | ikilinin sürümü günlüğe yazılmaz (ders maddesi istiyor; Python da yazmaz, eklemek Python'a yeni günlük olayı = özellik) | cops kabulü |
 
 Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops);
 `d0054ada` sonrası ikinci örnekte hizmet anahtar dosyası sorusu (S6).
@@ -161,6 +162,54 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 | `_live_transcript` (py/claudeops/providers/claude_provider.py:483) | `claude_transcript.rs::Live::live_transcript` | `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
 | `_effort_of_answering_model` (py/claudeops/providers/claude_provider.py:390) | `claude_transcript.rs::Live::last_assistant_effort` (kapama) | `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
 
+## S5: açılış denetimi her harcama dosyasını tek geçişte okur (sahip adına cops, 27 Kas, (b); iki tarafta)
+- Karar: ret kuralı AYNEN, her dosya TEK geçişte okunur; boyut sınırı eklenmez. Süre düşer ama yine boyutla artar.
+- Önce: izin verilen açılışta bugünün her dosyası 9 kez baştan okunuyordu: iki adım x dört pencere (bugün, kredi
+  toplamı, son 60 dk, son 15 dk) + sayılabilirlik denetimi (tavan reddinde Python 8, Rust 4 kez). Şimdi 1 kez: satır bir kez ayrıştırılır, dört
+  pencereye birlikte toplanır (`review._scan_usage_windows`, `UsageScan::feed_all`).
+- Okuma yalnız denetim süresince saklanır (dosya başına pencere başına toplam, sorun, atlanan türler; satır saklanmaz).
+  Python `ucli_cost._one_read` (iş parçacığına özel), Rust `ReadPass` (`check_and_reserve_at` içinde). Pencerelerin saati
+  ilk taramanınki; gün değişirse yeni gün yeniden okunur. Başlatma payının ömrü eskisi gibi rezervasyon anından.
+- Aynı kalan: karar, hata metni, `review_bad_record` olayları, toplamlar (bit bit), önbellek, paylar. Karşılaştırma:
+  Python'da dondurulmuş eski tarayıcı + eski çağrı sırası (`SameDecisionAsBefore`); Rust'ta ayrı okuyan
+  `cap_exceeded` + `reserve` ile 400 rastgele ağaç (`the_start_gate_decides_like_the_separate_reads`). Ayrıca bir kerelik
+  (commit'lenmeyen) döküm: eski ve yeni Rust derlemesi aynı 3000 rastgele ağaçta tarama, toplam, kapı sonucu ve olaylar
+  için bayt bayt aynı çıktıyı verdi.
+- Tek davranış penceresi: dosya DENETİM SÜRERKEN büyürse (ya da okunamaz olursa) eski akış sonraki okumada bunu
+  görebiliyordu; yenisi dosyanın tek okunduğu andaki içeriğe göre karar verir (eskisi de son okumasından sonrasını
+  görmüyordu). Ret kuralı değişmez.
+- Bu turda görülen, değiştirilmeyen eski fark: nesneyle birlikte 513 kattan derin satırı (en içte bir değer varsa
+  513 katlı olanı da) `cops-review-core` saymıyor (0 USD), Python sayıyor (rev parite koşucusu yeni Python testindeki
+  çağrılarda yakaladı; test satırları iki tarafın uyuştuğu derinliğe çekildi). Defter 512'den derinini zaten
+  "sayılamıyor" diye reddediyor.
+- Kapsam dışı (değişmedi): panel özeti `state` (30 sn önbellek) her yenilemede dosyaları pencere başına okur; tek başına
+  `reserve`/`cap_exceeded` çağrısı da öyle. Üretimde açılış yolu yalnız `_claude_service_flags` / `check_and_reserve_at`.
+
+Ölçüm (27 Kas; tek günlük dosyası, bütün satırlar bugüne ait ve 126 bayt, geçici dizin, release derleme, 8 çekirdek,
+eski ve yeni art arda; açılış denetiminin tamamı):
+
+| Dosya | Rust eski -> yeni (sn) | Python eski -> yeni (sn) |
+|---|---|---|
+| 100 MB | 35,1 -> 4,9 | 322,8 -> 39,6 |
+| 500 MB | 169,2 -> 26,5 | eski ölçülmedi (koşu durduruldu) -> 115,3 |
+
+Makine yüklüydü (1 dk yük ortalaması 15-35), sayılar koşudan koşuya oynar. Bugünkü toplam eski ve yeni koşularda aynı
+(100 MB 10552,26 USD; 500 MB Rust 52748,01 USD). Tepe bellek 100 MB'ta eski/yeni: Rust 2,8/2,8 MB, Python 28/28 MB; 500 MB: Rust 2,8/2,7 MB, yeni
+Python 31 MB.
+
+| Python testi | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `EveryLogIsReadOnce.test_allowed_start` / `test_refused_over_the_cap` / `test_unreadable_ledger_and_cap_off` / `test_credit_period_skips_files_written_before_it` | `real_ledger::every_log_is_opened_once_per_start` (inotify ile açılış sayımı) | TAŞINDI |
+| `EveryLogIsReadOnce.test_nothing_is_kept_between_two_starts` | `real_ledger::nothing_is_kept_between_two_starts` | TAŞINDI |
+| `EveryLogIsReadOnce.test_a_moving_clock_does_not_cause_a_second_read`, `test_midnight_between_the_two_checks_reads_the_new_day` | Rust'ta denetim tek `now` alır, saat ilerlemez | KAPSAM DIŞI |
+| `SameDecisionAsBefore.*` | `real_ledger::the_start_gate_decides_like_the_separate_reads`; `parity.rs::parity_ledger` `gate` (iki taraf da tek okumayla) | TAŞINDI |
+
+| Python öğesi | Rust karşılığı | sınayan | durum |
+|---|---|---|---|
+| `review._scan_usage_windows` | `real/ledger.rs::read_windows`, `cost.rs::UsageScan::feed_all` | `SameDecisionAsBefore.test_the_scanner_matches_the_old_one_for_every_window`, `real_ledger`, `usage_two_copies` | TAŞINDI |
+| `ucli_cost._ReadPass`, `_one_read`, `_scan`, `_usd` | `real/ledger.rs::ReadPass`, `usage_of`, `check_and_reserve_at` | yukarıdaki testler | TAŞINDI |
+| `ucli_cost._rate_since`, `_window_clock` | `real/ledger.rs::rate_since`, `CostLedger::state_with` | `parity.rs::parity_ledger` | TAŞINDI |
+
 ## Bekleyen sorular (sahip)
 - **S1 (sid'siz transkript okuma): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
 - **S2 (eski satırdan effort): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
@@ -175,14 +224,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
   sır içermiyor; enterprise kancasının döndürdükleri bu turda incelenmedi. (a) adı `_KEY`/`_TOKEN`/`_SECRET` ile biten
   değerler 0600 dosyaya yazılıp oradan yüklensin (copilot anahtarındaki yöntem): açılış komutu değişir. (b) kanca böyle
   bir ad döndürürse oturum açılmasın. (c) aynen kalsın, kural olarak "kanca sır döndürmez" yazılsın. Öneri: (a).
-- **S5 (maliyet günlüğü taramasının süresi).** Günlük USD tavanı açıkken Claude hizmetli ucli oturumu açılmadan önce
-  harcama günlükleri iki dilde de baştan sona, açılış başına birden çok kez okunuyor; bellek sabit, süre dosya boyutuyla
-  artıyor. Ölçüm (tek günlük dosyası, bütün satırlar bugüne ait, release derleme, yük ~10): 10 / 100 / 500 MB için tek
-  tarama Rust 0,22 / 1,70 / 17,6 sn, Python 1,09 / 13,0 / 43,0 sn; Rust açılış denetimi 1,25 / 15,7 / 69,2 sn (Python
-  açılış denetimi ölçülmedi). Rust tarama süresince tepe bellek 3,1-3,4 MB, Python 20 MB. (a) günlük dosyasına boyut
-  sınırı; aşan dosya tavan açıkken "sayılamıyor" sayılıp açılış reddedilsin: süre sınırlanır, bugün açılan oturum
-  reddedilebilir. (b) ret kuralı aynen; açılış denetimi her dosyayı tek geçişte okusun: sonuç aynı, süre düşer ama yine
-  boyutla artar, iki dilde kod değişir. (c) aynen. Öneri: (b).
+- **S5 (maliyet günlüğü taramasının süresi): onaylandı, uygulandı** (27 Kas, (b); "S5" bölümü).
 - **S6 (ikinci örnekte hizmet anahtar dosyası, `d0054ada` sonrası).** `CLAUDEOPS_DIR` başka dizinden açılan örnek Evren
   ve copilot anahtar dosyasını artık yazmıyor, ama Claude ve öteki hizmetlerin `ucli_key_<hizmet>` dosyasını hâlâ ortak
   dizine yazıyor (kod okuması: `ucli_provider._apply_cli_opts`; Rust aynı): deneme örneğindeki farklı anahtar canlı
@@ -227,9 +269,9 @@ sır-argv birim testleri.
 | §3.2 atomik yazım; çok yazarlı belgede kilit sözleşmesi (H2) | `real_fs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `concurrent_atomic_writes_never_expose_a_partial_file` (dosya `sync_all`, aynı dizinde benzersiz tmp); Python'la aynı `flock`: `real_agy_store::rust_and_python_writers_across_processes_lose_nothing`, `the_lock_is_the_one_python_takes_and_waiting_is_bounded`, `real_oneshot::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing`, `concurrent_registrations_lose_nothing_and_one_key_has_one_winner`, `real_searxng::the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`; pay: `real_ledger::concurrent_starts_cannot_oversubscribe_the_cap`; token: `real_fs::concurrent_issue_keeps_file_and_digest_consistent`; `resume::value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing`; belge deposu `real/docs.rs::StateDocStore` (rs/state `StateDocs`): `parity_docs::state_docs_match_python_in_every_backend` (files, dual, db), `a_fifo_document_is_never_opened_or_replaced`, `the_backend_comes_from_settings_and_db_ignores_the_stale_mirror` | TAMAM |
 | §3.3 belirsiz / okunamayan durum `Allow`, başarı ya da "yok" olmaz (H13, H10, H9) | pane maskesi bilinmiyor = hiçbir şey gönderilmez: `real_pane::hung_tmux_times_out_to_false_and_none`, `masked_pane_gets_no_command_and_no_enter`; okunamayan defter/ayar tavanı kapatır: `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`; kanca hatası ret: `parity_g9` `kanca-hata`, `kanca-hata-uzun`; `/proc` okunamazsa tarama düşer: `real_scan::unreadable_process_list_drops_the_scan_and_writes_nothing`; okunamayan transkript "bilinmiyor": `claude_transcript::truncated_file_and_read_errors_mean_unknown`; okunamayan `--help` = bayrak yok: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAMAM (27 Kas: açılamayan ucli anahtar dosyası ret, `real_oneshot::an_unreadable_key_file_is_refused_not_treated_as_missing`; bozuk `agy_sids` belgesi ezilmez, `parity_resume` `agy-yaz-bozuk`/`-liste`, `parity_real` `agy-belge1..3`; başarısız hizmet çekimi iyi listeyi ezmez). Uzak host (H10) UYGULANMAZ: crate uzak çağrı yapmaz |
 | §3.4 eylem sonucu tipte; NEGATİF test (H9) | `#[must_use] SwitchOutcome`; `tui::a_failed_send_returns_without_waiting`, `permission_dialog_is_never_confirmed_even_with_switch_text_above_it`, `no_enter_unless_the_cursor_is_seen_on_no`; gerçek tmux: `real_pane::masked_pane_gets_no_command_and_no_enter` (`DialogOpen`, tuş reddi `LeftOpen`); `Effect` uygulaması `Result`: `real_fs::apply_all_stops_at_the_first_failure_and_reports_where`; `register_mcp` hata metni: `real_process::register_mcp_errors_carry_python_reprs`; spawn `SpawnFailure` + pay iadesi (`parity_g9` her vakada `release`) | TAMAM (27 Kas, TBD#399: eski sonuç satırı sayılmaz, onay Enter'ının sonucuna bakılır, `Done` yalnız yeni işaret + hazır giriş kutusu) |
-| §3.5 hata yutma / panik yok; yutulana sayaç ya da günlük (H9, H20) | üretim kodunda `panic!`/`unreachable!` yok; `unwrap`/`expect` yalnız sabit desen derlemesi ve önceden denetlenmiş değişmez (`py_re` kaçışları sınır denetiminden sonra; `claude.rs::refresh_stored_model`, `ucli.rs` ön ayar, `ucli_opts.rs` elenmiş `None`). Rastgele girdi: `py_re::tests::random_patterns_never_panic`, `*::truncated_and_mutated_input_never_panics` (`claude_transcript`, `resume`, `chat`, `bg_work`), `model_sources::broken_and_mutated_model_answers_never_panic`. Bu turda bulunan panik: `SystemClock::sleep(1e300)` (`g9::system_clock_is_monotonic_and_ignores_bad_sleeps`), `TmuxPane` geçersiz `settle` (`real::pane::tests::settle_maps_python_values_and_never_panics`). `let _ =` olanlar Python'un `except: pass` dallarının karşılığı (çocuğu öldür+topla, tmp sil, dizin fsync, `kill-session`, iş parçacığı başlatma: `a_background_job_that_cannot_start_keeps_the_old_list`) | TAMAM (panik). 27 Kas: model kaynağı çekim hatası `models_fetch_failed`, okunamayan `agy_sids` `agy_sids_unreadable` olarak iki tarafta günlükte (`parity_model_sources`, `parity_misc` `live5`, `parity_resume`, `model_sources::service_models_keep_the_good_list_and_follow_the_key`). AÇIK (bilerek, TBD#404; cops kabulü bekliyor): (1) atlanan bozuk rollout/transkript adayı: panelin 4 sn'lik yoklamasında her turda yinelenir, tekilleştirmesiz günlük `diag.log`u şişirir ve 5 MiB döndürmesi öbür olayları atar; (2) `Effect::Remove` hatası: Python `except OSError: pass` (copilot ve ucli anahtar dosyası silme), TBD#404 "üç hata" kapsamında; bu hata yoklamada değil yalnız açılışta olur, istenirse iki tarafta küçük bir `fix:` ile günlüğe alınabilir; (3) `DiagLog`un kendi yazım hatası: yazılacak yer yok |
+| §3.5 hata yutma / panik yok; yutulana sayaç ya da günlük (H9, H20) | üretim kodunda `panic!`/`unreachable!` yok; `unwrap`/`expect` yalnız sabit desen derlemesi ve önceden denetlenmiş değişmez (`py_re` kaçışları sınır denetiminden sonra; `claude.rs::refresh_stored_model`, `ucli.rs` ön ayar, `ucli_opts.rs` elenmiş `None`). Rastgele girdi: `py_re::tests::random_patterns_never_panic`, `*::truncated_and_mutated_input_never_panics` (`claude_transcript`, `resume`, `chat`, `bg_work`), `model_sources::broken_and_mutated_model_answers_never_panic`. Bu turda bulunan panik: `SystemClock::sleep(1e300)` (`g9::system_clock_is_monotonic_and_ignores_bad_sleeps`), `TmuxPane` geçersiz `settle` (`real::pane::tests::settle_maps_python_values_and_never_panics`). `let _ =` olanlar Python'un `except: pass` dallarının karşılığı (çocuğu öldür+topla, tmp sil, dizin fsync, `kill-session`, iş parçacığı başlatma: `a_background_job_that_cannot_start_keeps_the_old_list`) | TAMAM (panik). 27 Kas: model kaynağı çekim hatası `models_fetch_failed`, okunamayan `agy_sids` `agy_sids_unreadable` olarak iki tarafta günlükte (`parity_model_sources`, `parity_misc` `live5`, `parity_resume`, `model_sources::service_models_keep_the_good_list_and_follow_the_key`). KAPALI (cops kabulü, 27 Kas; gerekçe: Python da aynı davranıyor, her yoklamada günlük gürültü olur; kod değişmedi; TBD#404). Günlüğe girmeyenler: (1) atlanan bozuk rollout/transkript adayı: panelin 4 sn'lik yoklamasında her turda yinelenir, tekilleştirmesiz günlük `diag.log`u şişirir ve 5 MiB döndürmesi öbür olayları atar; (2) `Effect::Remove` hatası: Python `except OSError: pass` (copilot ve ucli anahtar dosyası silme), TBD#404 "üç hata" kapsamında; bu hata yoklamada değil yalnız açılışta olur, (3) `DiagLog`un kendi yazım hatası: yazılacak yer yok |
 | §3.6 önbellek / ayar bayatlamaz; hata `last_good`u ezmez (H3) | `model_sources::repeated_errors_never_replace_the_last_good_list`, `a_background_job_that_cannot_start_keeps_the_old_list`, `codex_choices_are_cached_but_effort_levels_read_the_current_file`; ayar her çağrıda: `real_ledger::settings_are_read_on_every_call_and_an_unreadable_document_refuses`, `the_state_is_cached_until_ttl_or_invalidate`; dosya imzası: `resume::unchanged_files_are_not_reread_but_changed_ones_are`, `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`; canlı model/effort jsonl'den (G3): `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM |
-| §3.7 her bekleme sınırlı; bildirim durumu kalıcı (H8) | `tui::every_wait_ends_on_its_budget_even_when_the_pane_stops_being_readable`; gerçek tmux: `real_pane::no_dialog_means_no_keys_on_either_side` (6 sn), `hung_tmux_times_out_to_false_and_none` (5 sn); bekçi `g9::watchdog_retries_then_falls_back_to_headless_tmux`; süreç: `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_hits_the_deadline_like_python` (`Spec.timeout` zorunlu alan); HTTP: `real_http::the_timeout_is_the_total_time_not_per_read`, `an_endless_body_stops_at_the_limit`; docker: `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (kalıcı "down"); `flock` 30 sn: `real_agy_store::the_lock_is_the_one_python_takes_and_waiting_is_bounded`. Üretim `loop`ları okuma sınırı ya da son tarihle biter | TAMAM. AÇIK: maliyet günlüğü taramasının SÜRESİ dosya boyutuyla sınırsız (Python gibi). Bellek sınırlı: satır satır okunur, satır tavanı 16 MiB (`real_ledger`), ölçülen tepe 10-500 MB dosyada 3,1-3,4 MB; süre sınırı ret/harcama davranışını değiştirir ("Bekleyen sorular" S5). Nag/bildirim UYGULANMAZ |
+| §3.7 her bekleme sınırlı; bildirim durumu kalıcı (H8) | `tui::every_wait_ends_on_its_budget_even_when_the_pane_stops_being_readable`; gerçek tmux: `real_pane::no_dialog_means_no_keys_on_either_side` (6 sn), `hung_tmux_times_out_to_false_and_none` (5 sn); bekçi `g9::watchdog_retries_then_falls_back_to_headless_tmux`; süreç: `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_hits_the_deadline_like_python` (`Spec.timeout` zorunlu alan); HTTP: `real_http::the_timeout_is_the_total_time_not_per_read`, `an_endless_body_stops_at_the_limit`; docker: `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (kalıcı "down"); `flock` 30 sn: `real_agy_store::the_lock_is_the_one_python_takes_and_waiting_is_bounded`. Üretim `loop`ları okuma sınırı ya da son tarihle biter | TAMAM. KABUL EDİLDİ (sahip adına cops, 27 Kas, S5 = (b): ret kuralı aynen, her dosya tek geçişte, boyut sınırı YOK): açılış denetiminin SÜRESİ hâlâ günlük dosyalarının boyutuyla doğrusal artar (100 MB'ta Rust 4,9 sn, Python 39,6 sn; 500 MB'ta 26,5 sn ve 115,3 sn; "S5" bölümü). Tek geçiş: `real_ledger::every_log_is_opened_once_per_start`, `py/tests/test_rsprov_cost_one_pass.py`. Bellek sınırlı: satır satır okunur, satır tavanı 16 MiB (`real_ledger`). Nag/bildirim UYGULANMAZ |
 | §3.8 dış TUI davranışı fixture ile; `Unknown` ekranda gönderim yok (H4) | kelime kelime ANSI'li diyalog basan sahte claude TUI'sine Python `ClaudeProvider` ve Rust `TmuxPane` aynı baytları gönderir: `real_pane::model_switch_confirms_the_dialog_like_python`, `model_switch_without_dialog_sends_no_extra_enter_like_python`, `effort_switch_confirms_the_dialog_like_python`, `stray_dialog_is_declined_with_down_enter_like_python`; `parity_tui` 1079 (sahte pane); diyalog görünmüyorsa Enter yok: `tui::applied_without_dialog_sends_no_key`, `an_old_result_line_does_not_count`; maske bilinmiyorsa metin ve tuş yok (yukarıda) | AÇIK: gerçek claude sürümünden yakalanmış ekran fixture'ı yok (canlı claude ister: cops/sahip; teslim doğrulaması ve mod tespiti çağıran izlerde, T4/T10). Diyalog artık yalnız ekranın SONUNDA tanınır (TBD#399) |
 | §3.9 süreç / bağlantı sahipliği, fd sızıntısı (H1) | `real_fd::a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child`; `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `closed_pipes_with_a_running_child_still_time_out`, `bounded_capture_overflows_and_tail_capture_keeps_the_end` (akışlar boşaltılır); `real_oneshot::timeouts_kill_the_whole_group_and_return_promptly`; `g9::gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again`. Sinyal yalnız kendi başlattığı çocuğun grubuna (`real/process.rs`, `process_group(0)`); oturum öldürme yok (`kill.py` kuralı); tmux istemcisi `cops-tmux`ta öldür+topla | TAMAM. Bekçi iş parçacığı: kısa ömürlü çağıran `Watchdog`u `join` etmeli (G9; bağlayan uç) |
 | §3.10 girdi sınırları: boş, negatif, NaN/inf, bozuk UTF-8, tip (H5) | NaN/inf: `real::pane::tests::settle_maps_python_values_and_never_panics`, `g9::system_clock_is_monotonic_and_ignores_bad_sleeps`, `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap` (NaN, negatif, metin), `ucli_opts::tests::validate_opts_matches_python` (`nan`, `inf`, `-1`), `parity_panel` `metrics-nan`; UTF-8: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached`, `real_ledger::a_log_with_a_non_utf8_name_still_counts`, `real_pane::capture_matches_python_and_keeps_ansi`; başlık olamayan anahtar: `model_sources::a_key_that_cannot_be_a_header_value_sends_nothing`; FIFO: `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo`, `real_oneshot::a_fifo_key_file_or_index_is_refused_without_blocking`; bozuk/kesik girdi: §3.5 rastgele testleri | TAMAM (27 Kas, G1 7: bozuk `agy_sids` belgesi üzerine YAZILMAZ, `parity_resume` `agy-yaz-bozuk`; bozuk `ucli_agents` kopyalanır, `real_fs::a_corrupt_agent_registry_is_copied_aside_and_an_unreadable_one_is_not_overwritten`) |
@@ -244,7 +286,7 @@ sır-argv birim testleri.
 | §3.19 ikili sürümü, canlı = main, restart'ta yarım iş (H11) | kütüphane crate, ikili yok | UYGULANMAZ (copsd). Bekçi iş parçacığı süreçle ölür (G9, bağlayan uç `join`) |
 | §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. AÇIK: spawn kancası kuru koşuda da çağrılır (G9 aday 6, Python gibi; S3 onaylandı, enterprise deposunda değişiklik bekliyor) |
 | §2.5.1 sağlayıcı başına tek modül, if-zinciri yok (H4) | `claude.rs`, `agy.rs`, `codex.rs`, `copilot.rs`, `shell.rs`, `ucli.rs`; dağıtım tek `match Cli` (`Providers::build_inner_command`, `tui.rs` `Cli` yöntemleri); `tui::only_claude_touches_the_pane`, `parity_build` | TAMAM |
-| §2.5.2 bayrak desteği `--help`'ten; desteklenmeyen eklenmez (H4) | `real/help.rs` (anahtar yol + mtime + boyut): `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`, `empty_failed_slow_huge_or_non_utf8_help_is_not_cached`; tanınmayan bayrak eklenmez + `ucli_flag_unsupported` (`parity_g8`), güvenlik izni bayrağı tanınmazsa spawn reddi (`Ctx::require`, `parity_ucli`) | TAMAM. AÇIK (cops kabulü bekliyor): ikilinin SÜRÜMÜ günlüğe yazılmaz. Ders maddesi istiyor; Python yazmıyor, eşlik için Python'a yeni günlük olayı (özellik) gerekir ve eklenmedi |
+| §2.5.2 bayrak desteği `--help`'ten; desteklenmeyen eklenmez (H4) | `real/help.rs` (anahtar yol + mtime + boyut): `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`, `empty_failed_slow_huge_or_non_utf8_help_is_not_cached`; tanınmayan bayrak eklenmez + `ucli_flag_unsupported` (`parity_g8`), güvenlik izni bayrağı tanınmazsa spawn reddi (`Ctx::require`, `parity_ucli`) | TAMAM. KAPALI (cops kabulü, 27 Kas): ikilinin SÜRÜMÜ günlüğe yazılmaz (ders maddesi istiyor); gerekçe: Python da aynı davranıyor, her yoklamada günlük gürültü olur; kod değişmedi |
 | §2.5.3 effort / model tek geçit; agy kademesi (H4) | `resolve_effort` tek giriş; agy `-high` kademesi `effort::split_tier`; `parity_model_effort`, `effort::tests::tiers_sorting_and_nearest_match_python`; ana oturum Sonnet + medium: rs/stew `prompts.rs::main_session_model_effort` (`cops-steward-core` `main_session_model_effort_vectors`) | TAMAM |
 | §2.5.4 gerçek model kanıtı sağlayıcının kendi logundan (agy `Propagating ... label=`) (H4, H21) | crate agy günlüğü okumaz; Python'da bu okuma yalnız `review.py`de (review izi) | UYGULANMAZ (rs/rev) |
 | §2.5.5 canlı model / effort jsonl'den (H3) | G3 `claude_transcript.rs`; `parity_transcript`; `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM (sid'siz model/effort düşüşü 27 Kas kapandı, S1; effort yalnız son yanıtın modelinden, S2: `claude_transcript::effort_never_outlives_its_model`, `parity_transcript` `esit-effort-`; öbür sid'siz okumalar §3.1 AÇIK) |
