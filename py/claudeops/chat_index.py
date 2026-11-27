@@ -53,7 +53,7 @@ def _iso(v: Any) -> str:
 
 def _valid_day(d: Any) -> str:
     """Yol parçasındaki gün 'YYYY-MM-DD' değilse ('bilinmiyor' vb.) boş: tarih sütununu ve sıralamayı bozmasın."""
-    return d if isinstance(d, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", d) else ""
+    return d if isinstance(d, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) else ""
 
 
 def classify(rel: str) -> Optional[Dict[str, str]]:

@@ -598,7 +598,7 @@ def cmd_log(args) -> int:
 def cmd_dry_report(args) -> int:
     """`would:*` (ölçüm kipi) olaylarının son N saatlik dökümü (yalnız okur); TBD#138 a."""
     rep = sw.dry_report(sw.paths_for(_sid(args)), hours=args.hours)
-    print(sw.dry_report_text(rep, args.hours), end="")
+    print(sw.dry_report_text(rep, args.hours, steward_config(_sid(args)).lang), end="")
     return 0
 
 

@@ -236,7 +236,7 @@ def parse_suspended(stdout: str) -> Optional[Dict[str, Any]]:
         except (ValueError, RecursionError):
             continue
         s = d.get("suspended") if isinstance(d, dict) else None
-        if isinstance(s, dict) and isinstance(s.get("id"), str) and _ID.match(s["id"]):
+        if isinstance(s, dict) and isinstance(s.get("id"), str) and _ID.fullmatch(s["id"]):
             return {"id": s["id"]}
     return None
 
@@ -259,7 +259,7 @@ def pending(run_key: str, now: Optional[float] = None) -> List[Dict[str, Any]]:
                 q = json.load(f)
         except (OSError, ValueError):
             continue
-        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not _ID.match(q["id"]):
+        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not _ID.fullmatch(q["id"]):
             continue
         exp = q.get("expires_at")
         out.append({"id": q["id"], "kind": str(q.get("kind") or ""), "tool": str(q.get("tool") or ""),
@@ -282,7 +282,7 @@ def answer(run_key: str, approval_id: str, decision: str, edited_arguments: Any 
             return False, "edited_arguments too large"
     if len((note or "").encode("utf-8")) > MAX_NOTE_BYTES:
         return False, "note too large"
-    if not _ID.match(approval_id or ""):
+    if not _ID.fullmatch(approval_id or ""):
         return False, "invalid id"
     match = [p for p in pending(run_key, now) if p["id"] == approval_id]
     if not match:

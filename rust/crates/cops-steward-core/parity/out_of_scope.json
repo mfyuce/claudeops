@@ -1,0 +1,67 @@
+{
+ "G/Ç (saat/rastgele kimlik): crate saat ve kimliği parametre alır; T10 uygulama katmanı": [
+  "_now",
+  "_new_id",
+  "_unique_question_key"
+ ],
+ "G/Ç (dosya deposu, kilit, DB aynası): rs/state (cops-state) + T10": [
+  "_corrupt_backup",
+  "_load_json",
+  "_save_json",
+  "_flock",
+  "steward_lock",
+  "ownership_lock",
+  "load_projects",
+  "save_projects",
+  "load_ideas",
+  "save_ideas",
+  "load_questions",
+  "save_questions",
+  "load_state",
+  "save_state",
+  "load_card",
+  "save_card",
+  "load_cards"
+ ],
+ "G/Ç sarmalayıcı (depodan okuyup yazan işlem): T10 uygulama katmanı": [
+  "project_owner",
+  "discover_steward_ids",
+  "_project_meta",
+  "_project_names",
+  "ownership_index",
+  "auto_remove_labels",
+  "remove_project"
+ ],
+ "G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı": [
+  "_log_guard",
+  "log_event",
+  "_rewrite_log",
+  "rotate_log",
+  "tail_log",
+  "write_daily"
+ ],
+ "G/Ç (proje/beyin dosyaları, alt süreç): T10 uygulama katmanı": [
+  "_read_doc_head",
+  "panic_active",
+  "set_panic",
+  "read_brain_mcp",
+  "touch_brain_mcp"
+ ],
+ "yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10": [
+  "STEWARD_DIR",
+  "PROJECTS_JSON",
+  "IDEAS_JSON",
+  "QUESTIONS_JSON",
+  "STATE_JSON",
+  "LOG_JSONL",
+  "WORKSPACE_DIR",
+  "BUNDLED_PERSONA",
+  "_HELD",
+  "_OWN_CACHE",
+  "_LOG_LOCK",
+  "_LOG_SEEN",
+  "_NO_LOG_DAYS",
+  "LOCK_TIMEOUT",
+  "_LOCK_POLL"
+ ]
+}

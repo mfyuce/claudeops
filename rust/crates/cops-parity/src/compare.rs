@@ -115,11 +115,15 @@ fn canonical(v: &Value, path: &mut Vec<String>, r: &Rules) -> Value {
         out
     };
     match v {
-        Value::Object(o) => Value::Object(
-            o.iter()
+        Value::Object(o) => {
+            let mut kept: Vec<(String, Value)> = o
+                .iter()
                 .filter_map(|(k, v)| child(k.clone(), v).map(|v| (k.clone(), v)))
-                .collect(),
-        ),
+                .collect();
+            // sırasız dizi kıyası metne bakar: `serde_json/preserve_order` (çalışma alanında açılabilir) sırayı etkilemesin
+            kept.sort_by(|x, y| x.0.cmp(&y.0));
+            Value::Object(kept.into_iter().collect())
+        }
         Value::Array(a) => {
             let mut out: Vec<Value> = a
                 .iter()

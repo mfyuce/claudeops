@@ -3297,9 +3297,16 @@ def maybe_dry_ask(cfg: sw.Config, now: float) -> Optional[str]:
     if not due:
         return None
     rep = sw.dry_report(paths, now=now)
-    text = (f"Ölçüm (dry) kipleri {sw.DRY_REPORT_HOURS} saattir çalışıyor, act'e geçelim mi? Kipler: {', '.join(due)}.\n"
-            + sw.dry_report_text(rep) + "Rapor: py/cops steward dry-report. Öneri: sayılar makulse act, değilse dry kalsın.")
-    q, how = sw.add_question_ex("", text, source="dry-report", options=["act aç", "dry kalsın"], paths=paths)
+    if cfg.lang == "en":
+        head = f"Measurement (dry) modes have been running for {sw.DRY_REPORT_HOURS} hours, switch to act? Modes: {', '.join(due)}.\n"
+        tail = "Report: py/cops steward dry-report. Suggestion: act if the numbers look reasonable, otherwise keep dry."
+        options = ["enable act", "keep dry"]
+    else:
+        head = f"Ölçüm (dry) kipleri {sw.DRY_REPORT_HOURS} saattir çalışıyor, act'e geçelim mi? Kipler: {', '.join(due)}.\n"
+        tail = "Rapor: py/cops steward dry-report. Öneri: sayılar makulse act, değilse dry kalsın."
+        options = ["act aç", "dry kalsın"]
+    text = head + sw.dry_report_text(rep, lang=cfg.lang) + tail
+    q, how = sw.add_question_ex("", text, source="dry-report", options=options, paths=paths)
     with sw.steward_lock(paths):
         state = sw.load_state(paths)
         state["dry_asked"] = sorted(set(state.get("dry_asked") or []) | set(due))
@@ -7235,7 +7242,7 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
     """Oturum kapalıyken başlatma yolu: HEMEN `queued` + arka planda teslim (zaman aşımı yok). Sonuç `directive/status?id=`."""
     import uuid
     cdid = str(data.get("_did") or "")
-    if cdid and not _DID_RE.match(cdid):
+    if cdid and not _DID_RE.fullmatch(cdid):
         return {"ok": False, "error": "bad _did (12 hex)"}
     with _ctx(sid).lock:
         if cdid and (sid, cdid) in _DID_DONE:     # kuyruklu yol da istemci kimliğiyle yinelenmeyi ayıklar (review R-1)
@@ -7359,7 +7366,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             and not _name_host(name) and not _live_sessions(name, sid)):
         return _queue_directive(data, sid)       # insan/CLI başlatma yolu: zaman aşımı yok, durum izlenir
     cdid = str(data.get("_did") or "")
-    if cdid and not _DID_RE.match(cdid):
+    if cdid and not _DID_RE.fullmatch(cdid):
         return {"ok": False, "error": "bad _did (12 hex)"}      # TODO satırına yazılır: serbest metin enjekte edilemez
     with _ctx(sid).lock:
         if cdid and (sid, cdid) in _DID_DONE:     # aynı istemci kimliği zaten iletildi (zaman aşımı sonrası yeniden deneme / hayalet yürütme)
