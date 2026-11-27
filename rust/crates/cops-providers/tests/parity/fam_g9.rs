@@ -26,6 +26,9 @@ use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+/// Python `tmux_backend` `ValueError` metni (gerçek uygulayıcı da aynısını döner).
+const BAD_NAME: &str = "tmux hedefi olamayan oturum adı";
+
 struct St {
     calls: Vec<Value>,
     has: VecDeque<bool>,
@@ -76,10 +79,16 @@ impl SpawnTmux for Fake {
     }
     fn new_session_fragment(&self, name: &str, cwd: &str, inner: &str) -> Result<String, String> {
         self.call(json!(["frag", name, cwd, inner]));
+        if self.flag("bad_name", false) {
+            return Err(BAD_NAME.into());
+        }
         Ok(format!("TMUXFRAG<{name}|{cwd}|{inner}>"))
     }
     fn attach_fragment(&self, name: &str) -> Result<String, String> {
         self.call(json!(["attach", name]));
+        if self.flag("bad_name", false) {
+            return Err(BAD_NAME.into());
+        }
         Ok(format!("TMUXATTACH<{name}>"))
     }
     fn spawn_direct(&self, name: &str, cwd: &str, inner: &str, env: &[(String, String)]) -> bool {
@@ -135,7 +144,8 @@ impl Clock for Fake {
 }
 
 impl SessionScan for Fake {
-    fn live_sessions(&self) -> Option<Vec<(String, Option<String>)>> {
+    fn live_sessions(&self, preview: bool) -> Option<Vec<(String, Option<String>)>> {
+        self.call(json!(["scan", preview]));
         match self.facts.get("live") {
             Some(Value::String(s)) if s == "raise" => None,
             Some(Value::Array(rows)) => Some(
@@ -324,6 +334,9 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
         v.push(base(format!("{cli}-kanca"), cli, json!({"hidden": true}))
             .facts(json!({"hook": {"env": [["PROVIDER_DIR", "/p d"], ["COPS_NAME", "ezilir"], ["PROVIDER_DIR", "/son"], ["lower", "x"]]}})));
         v.push(base(format!("{cli}-kanca-red"), cli, json!({})).facts(json!({"hook": {"refuse": ["no_login", "ayrıntı"]}})));
+        // tmux'ta hedeflenemeyen ad: parça `ValueError`, spawn `spawn_bad_name` ile hiçbir şey açmadan döner.
+        v.push(base(format!("{cli}-kotu-ad"), cli, json!({"name": "a#(touch x)", "force_new": true}))
+            .facts(json!({"bad_name": true, "ghost": true})));
     }
     // Ekran: açık değer yoksa ortamdan (X soketi yoklaması sistemin /tmp'sine bakar, iki tarafta aynı).
     v.push(base("ekran-ortam".into(), "claude", json!({"display": null})).env("DISPLAY", ":9"));
@@ -384,6 +397,7 @@ fn window_cases(e: &Env) -> Vec<Case> {
     {
         v.push(Case::new(format!("pencere-{i}"), "g9_window", json!({"name": "s1", "cwd": w, "display": ":4"})).facts(facts.clone()));
     }
+    v.push(Case::new("pencere-kotu-ad", "g9_window", json!({"name": "s1", "cwd": w, "display": ":4"})).facts(json!({"bad_name": true})));
     v.push(Case::new("pencere-ortam", "g9_window", json!({"name": "a b", "cwd": w})).env("DISPLAY", ":8").env("CLAUDE_X", "1"));
     for (i, facts) in [json!({}), json!({"popen": ["oserror"]}), json!({"popen": ["value"]})].iter().enumerate() {
         v.push(Case::new(format!("ayna-{i}"), "g9_mirror", json!({"host": "ulak31", "name": "proje 1", "port": 8765, "display": ":0"}))

@@ -41,9 +41,9 @@ pub trait SpawnTmux: Send + Sync {
     /// `tmux_available`: `PATH`te `tmux` var mı.
     fn available(&self) -> bool;
     /// `tmux_new_session_shell_fragment(ad, cwd, inner)` (ÇALIŞTIRILMAZ, gnome-terminal komutuna girer). `Err` =
-    /// hedeflenemeyen ad (rs/tmux sonrası Python `ValueError`): spawn reddedilir.
+    /// hedeflenemeyen ad (Python `ValueError`): spawn `spawn_bad_name` günlüğüyle hiçbir şey açmadan döner.
     fn new_session_fragment(&self, name: &str, cwd: &str, inner: &str) -> Result<String, String>;
-    /// `tmux_attach_shell_fragment(ad)`; `Err` [`SpawnTmux::new_session_fragment`] gibi.
+    /// `tmux_attach_shell_fragment(ad)`; `Err` = hedeflenemeyen ad (Python `ValueError`): `open_window` reddedilir.
     fn attach_fragment(&self, name: &str) -> Result<String, String>;
     /// `tmux_spawn_direct`: `new-session -d -A`, `env` sürecin TÜM ortamı, `inner` tek argv elemanı (+ `; exec bash`).
     /// Her hata ve zaman aşımı false.
@@ -91,9 +91,11 @@ pub trait DiagSink: Send + Sync {
     fn log(&self, diag: &Diag);
 }
 
-/// Canlı süreç taraması (rs/proc `find_sessions(measure_cpu=False)`): (ad, `--resume` kimliği). None = tarama düştü.
+/// Canlı süreç taraması (rs/proc `find_sessions(measure_cpu=False)`; gerçek [`crate::real::scan::ProcScan`]):
+/// (ad, `--resume` kimliği). None = tarama düştü. `preview` = kuru çalıştırma (Python `preview.active()`): taramanın
+/// yan etkisi (öğrenilen agy kimliğinin yazımı) yapılmaz.
 pub trait SessionScan {
-    fn live_sessions(&self) -> Option<Vec<(String, Option<String>)>>;
+    fn live_sessions(&self, preview: bool) -> Option<Vec<(String, Option<String>)>>;
 }
 
 /// `provider.resolve_resume_id(cwd, in_use=, session_name=)`.
@@ -283,7 +285,7 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
     let resume_id = if req.force_new {
         None
     } else {
-        let live = deps.scan.live_sessions();
+        let live = deps.scan.live_sessions(req.dry_run);
         let rows: Option<Vec<LiveSession<'_>>> = live
             .as_ref()
             .map(|v| v.iter().map(|(name, sid)| LiveSession { name, sid: sid.as_deref() }).collect());
@@ -355,7 +357,15 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
     }
 
     let fragment = if launcher.tmux.available() {
-        Some(launcher.tmux.new_session_fragment(&req.name, &req.cwd, &plan.inner).map_err(refused)?)
+        match launcher.tmux.new_session_fragment(&req.name, &req.cwd, &plan.inner) {
+            Ok(f) => Some(f),
+            Err(_) => {
+                // tmux'ta hedeflenemeyen ad: hiçbir şey açılmaz (pencere de bekçi de yok); çağıran süreç yokluğundan
+                // "olmadı" görür (Python `spawn_bad_name`, `bb26564e`).
+                launcher.log("spawn_bad_name", vec![("name", json!(req.name)), ("cwd", json!(req.cwd))]);
+                return Ok(Started { kind: plan.kind, watchdog: None });
+            }
+        }
     } else {
         None
     };

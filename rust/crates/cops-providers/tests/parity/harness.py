@@ -1285,10 +1285,14 @@ class _G9:
 
         def frag(n, cwd, inner):
             c.append(["frag", n, cwd, inner])
+            if f.get("bad_name"):
+                raise ValueError("tmux hedefi olamayan oturum adı")
             return f"TMUXFRAG<{n}|{cwd}|{inner}>"
 
         def attach(n):
             c.append(["attach", n])
+            if f.get("bad_name"):
+                raise ValueError("tmux hedefi olamayan oturum adı")
             return f"TMUXATTACH<{n}>"
 
         def direct(n, cwd, inner, env):
@@ -1345,6 +1349,8 @@ class _G9:
         live = f.get("live")
 
         def find_sessions(**kw):
+            from claudeops import preview as _preview
+            c.append(["scan", _preview.active()])
             if live == "raise":
                 raise RuntimeError("tarama düştü")
             return [types.SimpleNamespace(name=n, sid=s) for n, s in (live or [])]
