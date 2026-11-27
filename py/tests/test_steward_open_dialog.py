@@ -131,7 +131,7 @@ class Send(unittest.TestCase):
         sent = []
         with mock.patch.object(web, "_find_running_for_action", lambda n: ("exact", [proc])), \
                 mock.patch.object(web, "is_tmux_backed", lambda p: True), \
-                mock.patch.object(web.web_steward, "owner_dialog_for", lambda *a: (True, 0.0), create=True), \
+                mock.patch.object(web, "open_dialog_reason", lambda *a: "transcript"), \
                 mock.patch.object(web, "apply_handover_downgrades", lambda *a, **k: sent.append("model")), \
                 mock.patch.object(web, "tmux_send_keys", lambda *a, **k: sent.append("keys") or True):
             res = web._handover("a")

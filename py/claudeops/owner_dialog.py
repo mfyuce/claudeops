@@ -1,9 +1,11 @@
-"""Claude transkriptinden "sahip diyaloğu açık mı" ve "kullanıcı en son ne zaman cevap verdi" (SAF).
+"""Claude transkriptinden "sahip diyaloğu açık mı" ve "kullanıcı en son ne zaman cevap verdi"; süreç kaydından "pencere
+girdi bekliyor mu".
 
 Açık diyalog = cevabı (`tool_result`) gelmemiş `AskUserQuestion` / `ExitPlanMode` çağrısı. O sırada oturuma tuş basılırsa mesaj
 diyaloğa yazılır; oturum kapatılırsa kullanıcı konuşmanın ortasında kalır. İzin diyalogları transkriptten görünmez."""
 from __future__ import annotations
 import json
+import os
 from datetime import datetime
 from typing import Dict, Iterable, Tuple
 
@@ -15,6 +17,20 @@ def _epoch(v: object) -> float:
         return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return 0.0
+
+
+def session_waiting_for(sessions_dir: str, pid: object) -> str:
+    """claude'un süreç kaydı (`<pid>.json`): pencere kullanıcıdan girdi bekliyorsa `waitingFor` (boşsa "waiting"), değilse
+    ya da okunamıyorsa "". Transkriptten ve oturum kimliğinden bağımsız: soru diyaloğunda "input needed", başka
+    diyaloglarda "dialog open" vb. (claude 2.1.332)."""
+    try:
+        with open(os.path.join(sessions_dir, f"{int(pid)}.json"), encoding="utf-8") as f:
+            d = json.load(f)
+        if d.get("pid") != int(pid) or d.get("status") != "waiting":
+            return ""
+        return str(d.get("waitingFor") or "waiting")
+    except (OSError, ValueError, TypeError, AttributeError, RecursionError):
+        return ""
 
 
 def owner_dialog_state(lines: Iterable[str]) -> Tuple[bool, float]:

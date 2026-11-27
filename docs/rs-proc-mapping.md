@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 608 | 153 | 455 | 0 |
-| test durumu (152 dosya) | 1884 | 115 | 1769 | 0 |
+| test durumu (153 dosya) | 1890 | 115 | 1775 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -735,13 +735,13 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `commands/web.py::_find_gnome_terminal_server` | işlev:1140 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
-| `commands/web.py::_diag_status` | işlev:1156 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1647 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1699 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1706 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1709 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1738 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_find_gnome_terminal_server` | işlev:1141 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
+| `commands/web.py::_diag_status` | işlev:1157 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1648 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1700 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1707 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1710 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1739 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
@@ -1115,6 +1115,17 @@ Yok.
 | `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` | 535 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
 | `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` | 549 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
 | `test_handover_cache_policy.py::CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` | 567 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
+
+### `py/tests/test_handover_session_wait.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_handover_session_wait.py::WebHandover.test_waiting_session_gets_no_keys_even_if_transcript_is_silent` | 52 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::WebHandover.test_other_states_do_not_block` | 59 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::SteerView.test_waiting_for_input_counts_as_open_question` | 71 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::SteerView.test_other_waits_do_not_freeze_the_planner` | 76 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::BatchHandover.test_batch_skips_waiting_session` | 95 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::BatchHandover.test_batch_skips_open_question_in_transcript` | 99 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
 
 ### `py/tests/test_input_box_typed.py`
 
