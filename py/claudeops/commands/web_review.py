@@ -1336,7 +1336,10 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             fields["retry_at"] = now() + wait
         elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
                 and (bodyless or not text.strip() or (timed_out and not _REPORT_HEAD_RE.search(text))):      # kurtarılmış rapor varsa ders (= araştırma turu) açma
-            _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
+            if not timed_out and not bodyless and _provider_failure(jerr, err):
+                sw.log_event("review_lesson_skipped_provider", paths=sw._pp(paths), project=project, model=target.model, status=status)
+            else:
+                _write_lesson(sw._pp(paths), project, target, status, error, live.learned())
         if target.mode == "agy" and status in ("done", "partial"):
             ok, seen = rv.agy_label_ok(_first_new_agy_log(agy_log_dir, started, agy_before), target.model)
             fields["label_seen"] = seen
@@ -1425,6 +1428,22 @@ def _recover_findings(path: str, learned: Sequence[str] = ()) -> str:
         if red.strip():
             parts.append(red.strip())
     return "\n\n".join(parts)
+
+
+# Sağlayıcı/ağ arızası ucli'nin düzeltebileceği bir şey değil: ders açılmaz. İstek sunucuya ULAŞTIKTAN sonra kopma, zaman aşımı ve
+# boş cevap ders olarak KALIR (ucli/vekil kaynaklı olabilir).
+_PROVIDER_FAILURE_RE = re.compile(
+    r"\b(?:429 Too Many Requests|500 Internal Server Error|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)\b"
+    r"|returned HTTP (?:429|5\d\d)\b|\(HTTP 429\)"
+    r"|model_capacity_exhausted|rate_limit_error|overloaded_error|fair_share_limit_exceeded|concurrency_limit_exceeded"
+    r"|before any request reached the server", re.I)
+
+
+def _provider_failure(jerr: str, err: str) -> bool:
+    """Hata sağlayıcıdan/ağdan mı. `jerr` (ucli'nin yapılı hatası) esas; yoksa stderr yalnız KISA mesajsa taranır (uzun stderr
+    modelin canlı akışını taşır, alıntı yanlış pozitif verir)."""
+    text = jerr or (err if rv.is_short_banner(err) else "")
+    return bool(_PROVIDER_FAILURE_RE.search(str(text or "")))
 
 
 def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str, learned: Sequence[str] = ()) -> None:

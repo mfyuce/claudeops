@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 553 | 153 | 400 | 0 |
-| test durumu (124 dosya) | 1624 | 115 | 1509 | 0 |
+| test durumu (124 dosya) | 1631 | 115 | 1516 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -746,12 +746,16 @@ Yok.
 | `test_bg_work.py::TranscriptFixture.test_foreground_and_stale` | 77 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_errored_call_is_not_pending` | 81 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_one_of_two_pending` | 87 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 92 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 98 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 113 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 126 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 157 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` | 105 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 110 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 115 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 121 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 129 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 135 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 163 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 187 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 194 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 
 ### `py/tests/test_brain_permission_ucli.py`
 
@@ -2917,18 +2921,21 @@ Yok.
 | `test_web_review_runner.py::TestBodyless.test_failed_run_with_junk_body_is_error` | 551 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestBodyless.test_successful_exit_with_junk_body_is_error` | 555 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestBodyless.test_report_bodyless_rule` | 559 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 570 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 578 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 590 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 608 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 647 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 664 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 689 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 704 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 712 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 717 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 728 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 739 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` | 593 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_other_failures_still_write_lesson` | 602 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` | 608 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 614 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 622 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 634 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 652 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 691 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 708 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 733 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 748 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 756 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 761 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 772 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 783 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 
 ### `py/tests/test_web_ucli_flags.py`
 

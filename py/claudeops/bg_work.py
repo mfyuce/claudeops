@@ -27,6 +27,8 @@ _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
 _STATUS_RE = re.compile(r"<status>([^<]+)</status>")
 _RUNNING_ID_RE = re.compile(r"\bID: ([A-Za-z0-9]+)")
 _DONE_STATUSES = {"completed", "failed", "killed", "cancelled", "canceled", "stopped"}
+_STOP_TOOLS = {"TaskStop", "KillShell"}      # elle durdurulan iş için `<task-notification>` GELMEZ
+_LINE_MARKS = ("run_in_background", "task-notification", "ackground", '"is_error"', "TaskStop", "KillShell", "Successfully")
 
 
 def screen_bg_count(text: str) -> int:
@@ -53,37 +55,59 @@ def screen_bg_work(text: str) -> bool:
     return False
 
 
+def _notification_text(o: dict) -> str:
+    """Kayıttaki iş bildirimi metni ("" = yok). Boşta gelen bildirim `user` metni; tur ortasında gelen `queue-operation` ya da
+    `attachment` (`commandMode=task-notification`) kaydıdır. Kuyruktaki kullanıcı yazısı bildirimi alıntılarsa sayılmaz."""
+    if o.get("type") == "queue-operation":
+        c = o.get("content")
+        return c if isinstance(c, str) and c.startswith("<task-notification>") else ""
+    a = o.get("attachment")
+    if isinstance(a, dict):
+        c = a.get("prompt")
+        return c if a.get("commandMode") == "task-notification" and isinstance(c, str) else ""
+    c = (o.get("message") or {}).get("content")
+    return c if isinstance(c, str) and "<task-notification>" in c else ""
+
+
 def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> bool:
     """Transkript satırlarında bildirimi gelmemiş `run_in_background` işi var mı."""
     now = time.time() if now is None else now
     pending: dict = {}          # tool_use_id -> (epoch, task_id|None)
     done_use: Set[str] = set()
     done_task: Set[str] = set()
+    stops: dict = {}            # durdurma çağrısı tool_use_id -> hedef task_id
     for ln in lines:
-        if "run_in_background" not in ln and "task-notification" not in ln and "ackground" not in ln and '"is_error"' not in ln:
+        if not any(m in ln for m in _LINE_MARKS):
             continue
         try:
             o = json.loads(ln)
         except ValueError:
             continue
         ts = _epoch(o.get("timestamp"))
-        c = (o.get("message") or {}).get("content")
-        if isinstance(c, str):
-            if "<task-notification>" in c:
-                st = _STATUS_RE.search(c)
-                if st and st.group(1).strip().lower() in _DONE_STATUSES:
-                    for m in _NOTIF_ID_RE.finditer(c):
-                        done_use.add(m.group(1))
-                    for m in _TASK_ID_RE.finditer(c):
-                        done_task.add(m.group(1))
+        note = _notification_text(o)
+        if note:
+            st = _STATUS_RE.search(note)
+            if st and st.group(1).strip().lower() in _DONE_STATUSES:
+                for m in _NOTIF_ID_RE.finditer(note):
+                    done_use.add(m.group(1))
+                for m in _TASK_ID_RE.finditer(note):
+                    done_task.add(m.group(1))
             continue
+        c = (o.get("message") or {}).get("content")
         if not isinstance(c, list):
             continue
         for b in c:
             if not isinstance(b, dict):
                 continue
-            if b.get("type") == "tool_use" and (b.get("input") or {}).get("run_in_background") is True and b.get("id"):
+            if b.get("type") == "tool_use" and b.get("name") in _STOP_TOOLS and b.get("id"):
+                inp = b.get("input") or {}
+                stops[b["id"]] = str(inp.get("task_id") or inp.get("shell_id") or "")
+            elif b.get("type") == "tool_use" and (b.get("input") or {}).get("run_in_background") is True and b.get("id"):
                 pending[b["id"]] = [ts or now, None]
+            elif b.get("type") == "tool_result" and b.get("tool_use_id") in stops:
+                target = stops.pop(b["tool_use_id"])
+                if target and b.get("is_error") is not True:
+                    done_task.add(target)
             elif b.get("type") == "tool_result" and b.get("tool_use_id") in pending:
                 if b.get("is_error") is True:      # çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
                     del pending[b["tool_use_id"]]

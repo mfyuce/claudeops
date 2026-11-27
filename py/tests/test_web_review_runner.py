@@ -566,6 +566,50 @@ class TestBodyless(Base):
         self.assertFalse(rv.report_bodyless(""))
 
 
+class TestProviderErrorNoLesson(Base):
+    """Sağlayıcı/ağ hatası ucli dersi DEĞİL (canlı ders dosyası 19-22 Kas: bağlantı ve 5xx satırları cli oturumuna "düzelt" diye gitti)."""
+    PROVIDER = (
+        "could not connect (DNS/TCP/TLS failure before any request reached the server), ~99451 byte request: error sending request",
+        "Cannot reach model endpoint after 10 attempts (could not connect (timed out opening the connection, before any request reached the server))",
+        'Model endpoint returned HTTP 502 Bad Gateway 10 times in a row: {"error":{"type":"api_error"}}',
+        '500 Internal Server Error 10 times in a row: {"error":{"type":"api_error"}}',
+    )
+    OURS = ("Model returned neither text nor tool calls",
+            "The model gave no answer within 120 s after the wall-clock budget (2100 s, --max-wall-secs) ran out",
+            "connection failed after the request reached the server (reset, closed, or blocked mid-request -- not necessarily unreachable)")
+
+    def _lesson_count(self):
+        try:
+            with open(os.path.join(self.paths.root, wr.sl.LESSONS_FILE), encoding="utf-8") as f:
+                return f.read().count(wr.sl.AUTO_TAG)
+        except OSError:
+            return 0
+
+    def _fail(self, error="", err=""):
+        FakeProc.instances = []
+        self.ev(popen=self.popen(out=json.dumps({"error": error}) if error else "", err=err, rc=1))
+        self.assertEqual(self.pair(EV)["status"], "error")
+
+    def test_provider_errors_write_no_lesson(self):
+        for msg in self.PROVIDER:
+            with self.subTest(msg=msg[:60]):
+                self._fail(msg)
+                self.assertEqual(self._lesson_count(), 0)
+        with self.subTest("yalnız stderr, kısa sağlayıcı mesajı"):
+            self._fail(err="UnifiedCLI: " + self.PROVIDER[0])
+            self.assertEqual(self._lesson_count(), 0)
+
+    def test_other_failures_still_write_lesson(self):
+        for n, msg in enumerate(self.OURS, 1):
+            with self.subTest(msg=msg[:60]):
+                self._fail(msg)
+                self.assertEqual(self._lesson_count(), n)
+
+    def test_model_quoting_provider_error_in_long_stderr_still_writes_lesson(self):
+        self._fail(err="incelenen yorum: before any request reached the server\n" * 40 + "panic: beklenmeyen durum")
+        self.assertEqual(self._lesson_count(), 1)
+
+
 class TestRecover(Base):
     def test_recover_on_start(self):
         rv.update_pair(self.paths, "proj", EV, status="running", started_at=1.0)
