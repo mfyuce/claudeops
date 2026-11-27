@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1946 satır)
+### Python testleri (1947 satır)
 
-Test satırı özeti: 1946 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1947 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2836,6 +2836,7 @@ Test satırı özeti: 1946 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_todo_triage.Plan.test_explain_reason` | explain::explain_idle_vectors, explain::p_why, idletext::idle_finish_marker_vectors, idletext::next_line_vectors (+15) |
 | `test_todo_triage.Plan.test_observe_list_and_preamble_rule` | Rust testi: pytests::todo_triage_is_observe_skipped_and_protocol_has_rule |
 | `test_todo_triage.Sha.test_sha_changes_with_content_and_unknown_is_empty` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._todo_sha_of` yerel TODO.md içerik özeti, uzak/bilinmeyen boş; dosya okuma, iz T10 |
+| `test_todo_triage.Sha.test_shared_todo_does_not_reopen_other_projects_closed_as_no_work` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._todo_sha_of` yerel TODO.md içerik özeti, uzak/bilinmeyen boş; dosya okuma, iz T10 |
 | `test_ucli_brain_mcp.ValidateMaxCostTests.test_valid_values` | gereksiz (bu crate'te sınanacak saf çağrı yok): `ucli_session_opts.validate_opts` maliyet tavanı, rs/prov `ucli_opts.rs::validate_opts` (dal rs/prov 7ce46ef9, docs/rs-prov.md) |
 | `test_ucli_brain_mcp.ValidateMaxCostTests.test_zero_or_empty_drops_the_key` | gereksiz (bu crate'te sınanacak saf çağrı yok): `ucli_session_opts.validate_opts` maliyet tavanı, rs/prov `ucli_opts.rs::validate_opts` (dal rs/prov 7ce46ef9, docs/rs-prov.md) |
 | `test_ucli_brain_mcp.ValidateMaxCostTests.test_invalid_values_rejected` | gereksiz (bu crate'te sınanacak saf çağrı yok): `ucli_session_opts.validate_opts` maliyet tavanı, rs/prov `ucli_opts.rs::validate_opts` (dal rs/prov 7ce46ef9, docs/rs-prov.md) |

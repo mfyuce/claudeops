@@ -109,6 +109,34 @@ class Sha(unittest.TestCase):
             finally:
                 ws._cwd_resolver = orig
 
+    def test_shared_todo_does_not_reopen_other_projects_closed_as_no_work(self):
+        """27 Kas: Rust izlerinin TODO.md'si ana projenin dosyasına symlink; her düzenleme "iş yok" kapatılan hepsini `todo_changed`
+        ile yeniden açtı (günde 51 açılış). Başka projenin TODO'su bu projenin tetiği değildir (açık iş sayacıyla aynı kural)."""
+        with tempfile.TemporaryDirectory() as d:
+            main, iz = os.path.join(d, "ana"), os.path.join(d, "iz")
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", main]
+            subprocess.run(["git", "init", "-q", main], check=True)
+            subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "ilk"], check=True)
+            subprocess.run(git + ["worktree", "add", "-q", iz, "-b", "iz"], check=True)
+            todo = os.path.join(main, "TODO.md")
+            open(todo, "w", encoding="utf-8").write("- [ ] a\n")
+            os.symlink(todo, os.path.join(iz, "TODO.md"))
+            projs = {"ana": sw.Project(name="ana", phase="paused"), "iz": sw.Project(name="iz", phase="paused")}
+            orig = ws._cwd_resolver
+            ws._cwd_resolver = lambda: {"ana": main, "iz": iz}.get
+            try:
+                f = ws._todo_sha_of(projs)
+                before = {n: f(n) for n in projs}
+                state = {"no_work_paused": {n: {"at": NOW, "sha": before[n] or "eski-kayit"} for n in projs}}
+                open(todo, "a", encoding="utf-8").write("- [ ] ana projenin yeni maddesi\n")
+                acts = ws.snw.plan_no_work_reopen(projs, state, NOW + 60, {}, f)
+                self.assertEqual([(a.name, a.payload["trigger"]) for a in acts], [("ana", "todo_changed")])
+                self.assertEqual(f("iz"), "")
+                # ana proje kayıtlı değilse dosyanın tek sahibi iz: tetik sürer
+                self.assertEqual(len(ws._todo_sha_of({"iz": projs["iz"]})("iz")), 64)
+            finally:
+                ws._cwd_resolver = orig
+
 
 if __name__ == "__main__":
     unittest.main()
