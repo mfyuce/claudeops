@@ -21,7 +21,7 @@ class AgyBinaryTest(unittest.TestCase):
 
         def run(argv, **k):
             seen.append(argv)
-            return mock.Mock(stdout="Fetching\nm1\tM One\n")
+            return mock.Mock(returncode=0, stdout="Fetching\nm1\tM One\n")
         p = AgyProvider()
         p._cache_ts = 0.0
         with mock.patch.object(agy_provider, "resolved_binary", lambda n: "/opt/agy"), \

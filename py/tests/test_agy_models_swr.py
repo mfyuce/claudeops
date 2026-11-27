@@ -12,7 +12,7 @@ from claudeops.providers import agy_provider as ap  # noqa: E402
 
 class _Out:
     def __init__(self, text):
-        self.stdout = text
+        self.returncode, self.stdout = 0, text
 
 
 class AgyModelsSwr(unittest.TestCase):

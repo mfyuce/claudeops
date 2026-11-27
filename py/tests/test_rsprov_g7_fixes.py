@@ -32,7 +32,7 @@ class BootTest(unittest.TestCase):
     """Aday 1: `_cache_ts = 0.0` + `time.monotonic()` açılıştan sonraki ilk 300 sn hiç çekmiyordu."""
 
     def test_agy_fetches_right_after_boot(self):
-        out = types.SimpleNamespace(stdout="Fetching...\nm1\tM1\n")
+        out = types.SimpleNamespace(returncode=0, stdout="Fetching...\nm1\tM1\n")
         with mock.patch.object(ap.time, "monotonic", lambda: 5.0), \
                 mock.patch.object(ap, "_run_grouped", lambda *a, **k: out), \
                 mock.patch.object(ap, "resolved_binary", lambda n: n):
@@ -139,7 +139,7 @@ class AgyColdTest(unittest.TestCase):
         def slow_run(*a, **k):
             started.set()
             release.wait(5)
-            return types.SimpleNamespace(stdout="m1\tM1\n")
+            return types.SimpleNamespace(returncode=0, stdout="m1\tM1\n")
         prov = ap.AgyProvider()
         got = {}
         with mock.patch.object(ap, "_run_grouped", slow_run), mock.patch.object(ap, "resolved_binary", lambda n: n):
@@ -162,6 +162,18 @@ class AgyColdTest(unittest.TestCase):
         with mock.patch.object(ap, "_run_grouped", boom), mock.patch.object(ap, "resolved_binary", lambda n: n), \
                 mock.patch.object(ap, "diag_log", lambda ev, **kw: diags.append((ev, kw))):
             self.assertEqual(ap.AgyProvider().model_choices(), [])
+        self.assertEqual(diags, [("models_fetch_failed", {"source": "agy"})])
+
+    def test_non_zero_exit_keeps_the_old_list_and_is_logged(self):      # aday 8
+        rows = types.SimpleNamespace(returncode=1, stdout="hata\tAyrıntı\n")
+        diags = []
+        with mock.patch.object(ap, "_run_grouped", lambda *a, **k: rows), \
+                mock.patch.object(ap, "resolved_binary", lambda n: n), \
+                mock.patch.object(ap, "diag_log", lambda ev, **kw: diags.append((ev, kw))):
+            prov = ap.AgyProvider()
+            prov._cache_models = ["m-eski"]
+            prov._fetch_models()
+        self.assertEqual(prov._cache_models, ["m-eski"])
         self.assertEqual(diags, [("models_fetch_failed", {"source": "agy"})])
 
 
