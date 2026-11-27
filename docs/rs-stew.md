@@ -237,13 +237,31 @@ diğerleri aynen taşındı:
 
 - Python düzeltildi: `290f6a3`. `valid_name`, `valid_custom_id`, `valid_steward_id`, `reviewer_ids`: `^...$` + `match` sondaki TEK
   satır sonunu geçiriyordu (`"default\n"` rezerve listesini aşıyordu). Python `fullmatch`; Rust `is_match` (`$` metin sonu).
-  Aynı kalıbı (`^...$` + `match`) kullanan başka doğrulayıcılar var, DOKUNULMADI (girdinin önceden kırpılıp kırpılmadığı
-  incelenmedi): `commands/web._NAME_VALID_RE`, `hosts`/`session` `_NAME_RE`, `labels.NAME_RE` ve `_COLOR_RE`, `review._LENS_NAME_RE`,
-  `periodic._ID_RE`, `settings` (`_SVC_ID_RE`, `_SVC_ENV_RE`, `_HOST_RE`, tarih ve URL desenleri), `ucli_agents._SAFE_NAME_RE`,
-  `ucli_approval` (`_KEY`, `_ID`), `ucli_ask._SAFE`, `ucli_checks` (`_OWNER`, `_NAME`), `ucli_session_opts` (`_CMD_RE`,
-  `_PATTERN_CHARS`, `_GLOB_RE`, `_BIND_RE`), `ucli_client._SAFE_ENV_NAME_RE`, `providers/ucli_provider._MCP_TOOL_RE`,
-  `chat_remote._TAG`, `graphical_session._DIGITS`, `window_actions._MODEL_RE`, `commands/web._MIRROR_ARG_RE`,
-  `commands/web_steward` (`_DID_RE`, `_MODEL_LIST_RE`, satır içi model/ad desenleri), `steward._JOB_KIND_RE`.
+  Aynı kalıbı kullanan öteki doğrulayıcılar çağrı yollarıyla incelendi (`rs/stew-validators`).
+  - AÇIKTI, `fullmatch` yapıldı (testler `py/tests/test_newline_*.py`):
+    - `5580e9e9` `labels.NAME_RE`, `_COLOR_RE`: `/api/labels` gövdesi kırpılmıyor (`"stuck\n"` ayrı etiket oluyordu); renk
+      yalnız elle düzenlenen dosyadan.
+    - `e2ae91b2` `periodic._ID_RE`: `/api/periodic` ve CLI kimliği kırpılmıyor (`"disk_clean\n"` yerleşik ad denetimini aşıyordu).
+    - `5a3cf962` `chat_remote._TAG` (`remote_pull` ayar anahtarı kabuk satırına girer; gün deseni de aynı satırda),
+      `chat_index._valid_day` (arşiv yolundan; listede yoktu).
+    - `02ff2109` `settings` hizmet URL deseni: `".../v1\n/"` sondaki `/` kırpılınca geçiyordu. Rust `cops-state` zaten reddediyor.
+    - `226f93f4` `web_steward._DID_RE`: istemcinin `_did`i kırpılmadan TODO satırına yazılıyordu.
+    - `a59e7850`, `b81aac19` `ucli_ask._SAFE` (`/api/ucli/ask`), `ucli_approval._ID` (istek gövdesi, ucli çıktısı ve dosyası),
+      `ucli_checks._NAME` (`/api/ucli/checks`), `ucli_client._SAFE_ENV_NAME_RE` (`/api/io/ask`),
+      `ucli_session_opts.path_executables`taki `_CMD_RE` (PATH dosya adı).
+    - `e260c43c` `window_actions._MODEL_RE`: panel durum satırındaki model.
+  - GÜVENLİ, değiştirilmedi:
+    - Girdi her çağrı yolunda kırpılıyor: `web._NAME_VALID_RE`, `web._MIRROR_ARG_RE`, `hosts._NAME_RE`, `settings`
+      `_SVC_ID_RE`/`_SVC_ENV_RE`/`_HOST_RE`/tarih, `ucli_session_opts` `validate_opts` (`_CMD_RE`, `_PATTERN_CHARS`, `_GLOB_RE`,
+      `_BIND_RE`), `web_steward` `_MODEL_LIST_RE`, `brain_model`, `brain_service`, inceleme hedefi ve `_DIGEST_NAME_RES` (HTTP
+      `name` kırpılır), `review_store._URL_RE`, `memory_backup` ve `review._worktree_main` desenleri.
+    - Girdi boşluktan bölünüyor: `graphical_session._DIGITS`, `steward._JOB_KIND_RE`.
+    - Önce kayıtta tam ad araması var ya da ad claudeops'un kendi kaydından geliyor: `ucli_approval._KEY`,
+      `ucli_checks._OWNER`, `ucli_agents._SAFE_NAME_RE`.
+    - Yalnız koddan ya da claudeops'un ürettiği dizin adından: `review._LENS_NAME_RE` (eklenti kaydı; Rust `register_lens`
+      aynen taklit ediyor), `ucli_provider._MCP_TOOL_RE`, `web_review._STORE_TS`, `review_store._FABLE_TS_RE`.
+    - Doğrulayıcı değil, ayrıştırıcı: `session._NAME_RE`, `instances.AUTO_NAME_RE`/`DERIVED_NAME_RE`, `labels._DERIVED_RE`,
+      `claude_provider._SONNET_PIN_RE`.
 - Python düzeltildi: `6097ed9`. `scan_markers`: düzyazıdaki `STEWARD-DONE-CONFIRMED yazmıyorum, ...` `confirmed` dolduruyordu.
   Kural (`_is_confirm_line`): işaretin ardında `:` varsa teyit; yoksa işaret satır başında (ya da `…:` ardında) olmalı ve
   ardından commit hash'i gelmeli ya da hiçbir şey gelmemeli. `:`siz "son commit abc1234 ..." biçimi artık sayılmaz.
