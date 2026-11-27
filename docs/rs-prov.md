@@ -1,15 +1,16 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `d0054ada` birleşimi `04f4f23f`):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 715 satır (TAŞINDI 641, KAPSAM DIŞI 74) ve test tablosu
-1532 satır (TAŞINDI 747, KAPSAM DIŞI 785), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
-("Birleştirme engelleri": kim kapatır); sahipte altı soru (S1-S6).
-Son ağaçta ölçülen: `cargo test --workspace` 1273 geçti, 0 kaldı, 1 atlandı (`c18580a2`); `clippy --workspace --all-targets -D warnings` temiz (`771df9be`; sonraki test commit'inde
-`-p cops-providers` temiz) ve `cargo fmt --check -p cops-providers -p cops-state` temiz; Python tam paket 6376 OK (23
-atlanan, 308 sn, `771df9be`; sonrasında Python kodu değişmedi); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc
-`--check --strict`, steward `map.py --check`, rev parite raporu + `map_table.py --check`). rs-tmux tablosu geçici bir
-betikle denetlendi (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği
-yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
+Durum (27 Kas 2026, `origin/main` `414821e5` birleşimi `a48098a0`):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 718 satır (TAŞINDI 644, KAPSAM DIŞI 74) ve test tablosu
+1551 satır (TAŞINDI 761, KAPSAM DIŞI 790), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
+("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı, uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise
+deposunda değişiklik bekliyor; sahipte üç soru (S4-S6).
+Son ağaçta ölçülen (kod `845f867e`; sonrasında yalnız `docs/` değişti): `cargo test --workspace --no-fail-fast` 1276
+geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check -p cops-providers
+-p cops-state` temiz; Python tam paket 6397 OK (23 atlanan, 832 sn, makine yüklü); eşleme denetimleri çıkış 0 (hosts
+`--check`: `main` birleşiminden sonra bayattı, yeniden üretildi; rs-proc `--check --strict`, steward `map.py --check`,
+rev `map_table.py <rapor> --check`). rs-tmux tablosu bu turda denetlenmedi; önceki turda geçici bir betikle denetlenmişti
+(69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
 `real_fs::concurrent_issue_keeps_file_and_digest_consistent`,
 `test_review_io_history::test_real_pipes_stream_and_heartbeat`; bu turda bir ara koşuda bir kez `parity_real`
 (`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi).
@@ -89,7 +90,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): cops kabulü bekleyenler ve sorular S1-S6.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): cops kabulü bekleyenler, S3 (enterprise) ve sorular S4-S6.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -104,32 +105,66 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 
 | Ders satırı | Açık | Kim kapatabilir |
 |---|---|---|
-| §3.1 (a), §2.5.8 | sid'siz okuma cwd'deki en yeni transkripte düşer | sahip (S1), sonra iz |
+| §3.1 (a), §2.5.8 | model/effort okuması kapandı (S1); sid'siz `jsonl_path_for` (sohbet, son mesaj rolü) ve codex rollout okuması hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.5 | atlanan bozuk aday, `Effect::Remove` hatası ve günlüğün kendi yazım hatası günlüğe girmiyor (TBD#404: bilerek açık) | cops kabulü |
 | §3.7 | maliyet günlüğü taramasının SÜRESİ dosya boyutuyla sınırsız (bellek sabit, ölçüldü) | sahip (S5), sonra iz |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
 | §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | sahip (S4), sonra iz |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
-| §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | sahip (S3), sonra enterprise/iz |
+| §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
 | §2.5.2 | ikilinin sürümü günlüğe yazılmaz (ders maddesi istiyor; Python da yazmaz, eklemek Python'a yeni günlük olayı = özellik) | cops kabulü |
 
 Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops);
 `d0054ada` sonrası ikinci örnekte hizmet anahtar dosyası sorusu (S6).
 
+## S1/S2 (sahip onayı (a), 27 Kas; iki tarafta uygulandı)
+- **S1** (`836fe85d`): kimliği bilinmeyen claude oturumunda devir (`apply_handover_downgrades`,
+  `downgrade_effort_for_handover`) ve `stuck.recover_stuck` model/effort'u önce sürecin kendi `sessions/<pid>.json`
+  kaydından çözülen konuşmadan, çözülemezse açılış değerinden alır. Kayıt reddedilir: başka pid, tutmayan ya da boş
+  `procStart`, ölü süreç, hedeften farklı cwd (kayıtta ya da transkriptte), dosyası olmayan ya da yol dışı sid.
+  `recover_stuck` değerleri öldürmeden önce okur. Açılış değeri yoksa eski varsayılanlar (sağlayıcı modeli, `max`).
+- **S2** (`7f1331b5`, ad düzeltmesi `845f867e`): `last_assistant_effort` geriye okurken başka model görünce durur;
+  `<synthetic>`, alt ajan ve modelsiz satır ne effort verir ne taramayı bitirir. Aynı okuyucuyu kullanan panel satırı,
+  Bilgi sekmesi ve kapanış anlık görüntüsü de bu kuralı alır (effort bilinmiyorsa komut satırı değeri; Bilgi sekmesi
+  `no_assistant_turn` der).
+- **Kapsam dışı kalan sid'siz okumalar:** `jsonl_path_for` (sohbet geçmişi, `last_exchange`, `last_message_role`) ve
+  codex rollout. `stuck.find_stuck` takılma kararını `last_message_role`dan verir; sid'siz oturumda kardeşin dosyasına
+  bakabilir (kod okuması, sınanmadı). `recover_stuck`ın devam kimliği (`resolve_resume_id`) de bu işte değişmedi.
+  Sid'i keşfin kendisi verdiğinde keşif kuralı geçerli (`procStart`sız kayıt kabul edilir; değişmedi).
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `OwnSessionRecordTest.test_sibling_newest_transcript_is_never_used` (py/tests/test_rsprov_s1_own_session.py:69) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_no_pid_means_spawn_values` (py/tests/test_rsprov_s1_own_session.py:72) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_own_record_resolves_the_conversation` (py/tests/test_rsprov_s1_own_session.py:76) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_known_sid_wins_over_the_record` (py/tests/test_rsprov_s1_own_session.py:82) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_untrusted_records_are_refused` (py/tests/test_rsprov_s1_own_session.py:88) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_dead_process_record_is_refused` (py/tests/test_rsprov_s1_own_session.py:98) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `OwnSessionRecordTest.test_transcript_of_another_cwd_with_the_same_folder_name_is_refused` (py/tests/test_rsprov_s1_own_session.py:104) | `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`; `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `CallersTest.test_handover_reads_the_own_conversation` (py/tests/test_rsprov_s1_own_session.py:128) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_handover_without_a_record_uses_spawn_values` (py/tests/test_rsprov_s1_own_session.py:136) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_effort_wrapper_passes_the_pid` (py/tests/test_rsprov_s1_own_session.py:142) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_recovery_reads_the_own_record_before_the_kill` (py/tests/test_rsprov_s1_own_session.py:163) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_recovery_without_a_record_keeps_spawn_values` (py/tests/test_rsprov_s1_own_session.py:168) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `EffortFollowsTheModelTest.test_effort_of_the_previous_model_is_not_carried_over` (py/tests/test_rsprov_s2_effort_model.py:37) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_same_model_keeps_the_older_effort` (py/tests/test_rsprov_s2_effort_model.py:40) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_scan_stops_at_a_model_change_even_if_the_model_returns` (py/tests/test_rsprov_s2_effort_model.py:43) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_rows_without_a_real_model_neither_give_nor_stop` (py/tests/test_rsprov_s2_effort_model.py:46) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_no_answer_row_with_a_model_means_unknown` (py/tests/test_rsprov_s2_effort_model.py:51) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_the_rule_holds_across_the_growing_window` (py/tests/test_rsprov_s2_effort_model.py:54) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+| `EffortFollowsTheModelTest.test_live_or_spawn_falls_back_to_the_spawn_effort` (py/tests/test_rsprov_s2_effort_model.py:59) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+
+| Python öğesi (dosya:satır) | Rust karşılığı | sınayan | durum |
+|---|---|---|---|
+| `_session_record` (py/claudeops/providers/claude_provider.py:450) | `claude_resume.rs::Live::session_record` | `parity.rs::parity_transcript` `canli-kimlik`; `parity_resume` `devam-kayit-` | TAŞINDI |
+| `_live_transcript` (py/claudeops/providers/claude_provider.py:483) | `claude_transcript.rs::Live::live_transcript` | `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
+| `_effort_of_answering_model` (py/claudeops/providers/claude_provider.py:390) | `claude_transcript.rs::Live::last_assistant_effort` (kapama) | `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
+
 ## Bekleyen sorular (sahip)
-- **S1 (sid'siz transkript okuma).** Claude oturumunun konuşma kimliği (sid) bilinmiyorsa (`--resume`suz taze açılış) devir
-  kararı ve takılan oturumun yeniden açılışı, o dizindeki EN YENİ konuşma dosyasından model/effort okur; aynı dizinde iki
-  oturum varsa kardeşinki alınabilir. (a) sid yoksa dosya okunmasın, açılıştaki `--model/--effort` kullanılsın: karışma
-  biter, ama terminalden `/model` ile değiştirilmiş taze oturumda devir düşürmesi tetiklenmez ve yeniden açılış eski
-  değerle olur. (b) önce `~/.claude/sessions/<pid>.json`dan sid çözülsün (kodda `session_file_sid` var), bulunamazsa açılış
-  değeri: tahmin kalkar, taze oturumlar doğru kalır. (c) aynen. Öneri: (b).
-- **S2 (eski satırdan effort).** Son yanıt satırında `effort` alanı yoksa (ör. effort desteklemeyen modele geçiş) daha eski
-  satırın effort'u "canlı" sayılıp devir ve yeniden açılışta kullanılıyor. (a) yalnız son yanıt satırı sayılsın, yoksa
-  açılış değeri: güncel claude'un her satıra effort yazdığı ölçülmedi, yazmıyorsa canlı effort sık sık açılış değerine
-  döner. (b) effort yalnız son satırla AYNI modele ait satırlardan alınsın: model değişince eski effort taşınmaz, aynı
-  modelde davranış değişmez. (c) aynen. Öneri: (b).
-- **S3 (kuru koşuda spawn kancası).** `spawn_session(dry_run=True)` çok kullanıcı kancasını yine çağırıyor; TODO'daki kod
+- **S1 (sid'siz transkript okuma): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
+- **S2 (eski satırdan effort): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
+- **S3 (kuru koşuda spawn kancası): onaylandı ((a), 27 Kas), enterprise deposunda değişiklik bekliyor.** `spawn_session(dry_run=True)` çok kullanıcı kancasını yine çağırıyor; TODO'daki kod
   okumasına göre enterprise kancası bu sırada dizin açıyor, ret denetim kaydı yazıyor ve bellekte kota ayırıyor (bu turda
   ölçülmedi). Panel, oturumu başka CLI ile devralırken eski oturumu kapatmadan önce reddi bu kuru koşuyla görüyor. (a)
   çağrı kalsın, enterprise kancası kuru koşuyu (`preview.active()`) görünce yazmasın: ön denetim korunur, çekirdek
@@ -188,7 +223,7 @@ sır-argv birim testleri.
 
 | Madde | Karşılama (test ya da gerekçe) | Durum |
 |---|---|---|
-| §3.1 hedef `Unique`; yıkıcı eylem ön ek / "en yeni" ile çalışmaz (H7) | tmux hedefi hep `=ad:` (`cops-tmux`), hedeflenemeyen ad hiçbir tmux komutu çalıştırmaz: `real_tmux::unaddressable_names_run_no_tmux_command_and_open_nothing`; ön ek kardeşe dokunulmaz: `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`, `real_pane::prefix_name_never_reaches_another_session`, `real_tmux::reclaim_kills_only_the_exact_old_childless_shell`, `open_window_attaches_to_the_exact_existing_session`; sid verilince tahmin yok: `resume::only_a_sidless_lookup_guesses_the_newest_transcript`, `claude_transcript::cache_candidates_are_exact_files_and_newest_wins` | TAMAM (yıkıcı yollar; 27 Kas: agy önbellek kimliği başka ada öğrenilmişse alınmaz, codex `sid` tam eşleşir, G1 5 ve 4). AÇIK: (a) sid'siz okumalar (`jsonl_path_for`, codex rollout, `live_or_spawn_*`) Python gibi cwd'deki en yeniye düşer (G3 şüphe 4; kaldırmak devir davranışını değiştirir: sahipte, "Bekleyen sorular" S1); (c) `ids_held_by_others` taraması ile spawn arasındaki yarış: kilit çağıranın (`guard.lock`, `guard.py` taşıması; G9 bölümü) |
+| §3.1 hedef `Unique`; yıkıcı eylem ön ek / "en yeni" ile çalışmaz (H7) | tmux hedefi hep `=ad:` (`cops-tmux`), hedeflenemeyen ad hiçbir tmux komutu çalıştırmaz: `real_tmux::unaddressable_names_run_no_tmux_command_and_open_nothing`; ön ek kardeşe dokunulmaz: `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`, `real_pane::prefix_name_never_reaches_another_session`, `real_tmux::reclaim_kills_only_the_exact_old_childless_shell`, `open_window_attaches_to_the_exact_existing_session`; sid verilince tahmin yok: `resume::only_a_sidless_lookup_guesses_the_newest_transcript`, `claude_transcript::cache_candidates_are_exact_files_and_newest_wins` | TAMAM (yıkıcı yollar; 27 Kas: agy önbellek kimliği başka ada öğrenilmişse alınmaz, codex `sid` tam eşleşir, G1 5 ve 4). 27 Kas (S1, iki tarafta): sid'siz `live_or_spawn_*` (devir, takılan oturumun yeniden açılışı) yalnız sürecin kendi `sessions/<pid>.json` kaydını okur, çözülemezse açılış değeri: `claude_transcript::sidless_live_values_come_only_from_the_processes_own_record`, `parity_transcript` `canli-kimlik`. AÇIK: (a) sid'siz `jsonl_path_for` (sohbet geçmişi, `last_message_role`) ve codex rollout okumaları Python gibi cwd'deki en yeniye düşer; (c) `ids_held_by_others` taraması ile spawn arasındaki yarış: kilit çağıranın (`guard.lock`, `guard.py` taşıması; G9 bölümü) |
 | §3.2 atomik yazım; çok yazarlı belgede kilit sözleşmesi (H2) | `real_fs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `concurrent_atomic_writes_never_expose_a_partial_file` (dosya `sync_all`, aynı dizinde benzersiz tmp); Python'la aynı `flock`: `real_agy_store::rust_and_python_writers_across_processes_lose_nothing`, `the_lock_is_the_one_python_takes_and_waiting_is_bounded`, `real_oneshot::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing`, `concurrent_registrations_lose_nothing_and_one_key_has_one_winner`, `real_searxng::the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`; pay: `real_ledger::concurrent_starts_cannot_oversubscribe_the_cap`; token: `real_fs::concurrent_issue_keeps_file_and_digest_consistent`; `resume::value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing`; belge deposu `real/docs.rs::StateDocStore` (rs/state `StateDocs`): `parity_docs::state_docs_match_python_in_every_backend` (files, dual, db), `a_fifo_document_is_never_opened_or_replaced`, `the_backend_comes_from_settings_and_db_ignores_the_stale_mirror` | TAMAM |
 | §3.3 belirsiz / okunamayan durum `Allow`, başarı ya da "yok" olmaz (H13, H10, H9) | pane maskesi bilinmiyor = hiçbir şey gönderilmez: `real_pane::hung_tmux_times_out_to_false_and_none`, `masked_pane_gets_no_command_and_no_enter`; okunamayan defter/ayar tavanı kapatır: `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`; kanca hatası ret: `parity_g9` `kanca-hata`, `kanca-hata-uzun`; `/proc` okunamazsa tarama düşer: `real_scan::unreadable_process_list_drops_the_scan_and_writes_nothing`; okunamayan transkript "bilinmiyor": `claude_transcript::truncated_file_and_read_errors_mean_unknown`; okunamayan `--help` = bayrak yok: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAMAM (27 Kas: açılamayan ucli anahtar dosyası ret, `real_oneshot::an_unreadable_key_file_is_refused_not_treated_as_missing`; bozuk `agy_sids` belgesi ezilmez, `parity_resume` `agy-yaz-bozuk`/`-liste`, `parity_real` `agy-belge1..3`; başarısız hizmet çekimi iyi listeyi ezmez). Uzak host (H10) UYGULANMAZ: crate uzak çağrı yapmaz |
 | §3.4 eylem sonucu tipte; NEGATİF test (H9) | `#[must_use] SwitchOutcome`; `tui::a_failed_send_returns_without_waiting`, `permission_dialog_is_never_confirmed_even_with_switch_text_above_it`, `no_enter_unless_the_cursor_is_seen_on_no`; gerçek tmux: `real_pane::masked_pane_gets_no_command_and_no_enter` (`DialogOpen`, tuş reddi `LeftOpen`); `Effect` uygulaması `Result`: `real_fs::apply_all_stops_at_the_first_failure_and_reports_where`; `register_mcp` hata metni: `real_process::register_mcp_errors_carry_python_reprs`; spawn `SpawnFailure` + pay iadesi (`parity_g9` her vakada `release`) | TAMAM (27 Kas, TBD#399: eski sonuç satırı sayılmaz, onay Enter'ının sonucuna bakılır, `Done` yalnız yeni işaret + hazır giriş kutusu) |
@@ -207,15 +242,15 @@ sır-argv birim testleri.
 | §3.17 test yalıtımı (H16) | her test `TempDir` (RAII); parite koşucusu boş ortam, geçici HOME/CLAUDEOPS_DIR, ağ kapalı (`parity_searxng` `arama-ag-engeli`); tmux yalnız özel sunucu (geçici `TMUX_TMPDIR` + rastgele soket; `real_tmux`, `real_pane`), kapanış o soketle; çalıştırılan betikler alt süreçle (`write_exe`, `spawn_guard`); `/proc` sahte ve sıralı (`real_scan`); HTTP `127.0.0.1:0`; üretim kodu durum yolunu kendisi türetmez (`Paths`) | TAMAM |
 | §3.18 uzak host sürüm / devre kesici / deploy (H10, H11) | crate uzak host çağırmaz | UYGULANMAZ. Not: bu dalın `py/` `fix:` commit'leri (61) canlıya web restart ve uzak deploy ile ulaşır (cops) |
 | §3.19 ikili sürümü, canlı = main, restart'ta yarım iş (H11) | kütüphane crate, ikili yok | UYGULANMAZ (copsd). Bekçi iş parçacığı süreçle ölür (G9, bağlayan uç `join`) |
-| §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. AÇIK: spawn kancası kuru koşuda da çağrılır (G9 aday 6, Python gibi; "Bekleyen sorular" S3) |
+| §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. AÇIK: spawn kancası kuru koşuda da çağrılır (G9 aday 6, Python gibi; S3 onaylandı, enterprise deposunda değişiklik bekliyor) |
 | §2.5.1 sağlayıcı başına tek modül, if-zinciri yok (H4) | `claude.rs`, `agy.rs`, `codex.rs`, `copilot.rs`, `shell.rs`, `ucli.rs`; dağıtım tek `match Cli` (`Providers::build_inner_command`, `tui.rs` `Cli` yöntemleri); `tui::only_claude_touches_the_pane`, `parity_build` | TAMAM |
 | §2.5.2 bayrak desteği `--help`'ten; desteklenmeyen eklenmez (H4) | `real/help.rs` (anahtar yol + mtime + boyut): `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`, `empty_failed_slow_huge_or_non_utf8_help_is_not_cached`; tanınmayan bayrak eklenmez + `ucli_flag_unsupported` (`parity_g8`), güvenlik izni bayrağı tanınmazsa spawn reddi (`Ctx::require`, `parity_ucli`) | TAMAM. AÇIK (cops kabulü bekliyor): ikilinin SÜRÜMÜ günlüğe yazılmaz. Ders maddesi istiyor; Python yazmıyor, eşlik için Python'a yeni günlük olayı (özellik) gerekir ve eklenmedi |
 | §2.5.3 effort / model tek geçit; agy kademesi (H4) | `resolve_effort` tek giriş; agy `-high` kademesi `effort::split_tier`; `parity_model_effort`, `effort::tests::tiers_sorting_and_nearest_match_python`; ana oturum Sonnet + medium: rs/stew `prompts.rs::main_session_model_effort` (`cops-steward-core` `main_session_model_effort_vectors`) | TAMAM |
 | §2.5.4 gerçek model kanıtı sağlayıcının kendi logundan (agy `Propagating ... label=`) (H4, H21) | crate agy günlüğü okumaz; Python'da bu okuma yalnız `review.py`de (review izi) | UYGULANMAZ (rs/rev) |
-| §2.5.5 canlı model / effort jsonl'den (H3) | G3 `claude_transcript.rs`; `parity_transcript`; `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM (sid'siz düşüş §3.1 AÇIK) |
+| §2.5.5 canlı model / effort jsonl'den (H3) | G3 `claude_transcript.rs`; `parity_transcript`; `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM (sid'siz model/effort düşüşü 27 Kas kapandı, S1; effort yalnız son yanıtın modelinden, S2: `claude_transcript::effort_never_outlives_its_model`, `parity_transcript` `esit-effort-`; öbür sid'siz okumalar §3.1 AÇIK) |
 | §2.5.6 kuru çalıştırma yan etkisiz, pay iadesi (H9, H21) | §3.20 testleri; `release` kuru ve hatalı başlatmada tam bir kez (`parity_g9` her vaka) | TAMAM (§3.20 AÇIK aday 6) |
 | §2.5.7 spawn env beyaz liste, sırlar argv'de değil (H12, H17) | `spawn::filter_env_overrides` (`parity_spawn` `filter`, `kanca`), çocuk ortamı CLI kimlik değişkeni süpürme (`parity_g9` `ortam-supurme`, `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`); sır testleri §3.13 | TAMAM (27 Kas, TBD#401: tek atımlık çağrıda `api_key_env` beyaz listesi, `real_oneshot::only_known_key_env_names_start_a_child`, `parity_oneshot` `tbd401-`; çocuk ortamı Python gibi miras). AÇIK: kanca ortamı argv'de (§3.13). `endpoint` serbestliği TBD#401 kararının dışında kaldı ("Bekleyen sorular" altında not) |
-| §2.5.8 cwd başına tek konuşma kimliği; kardeş oturumlar (H4, H7) | `parity_resume` `tutulan`, `agy-sahipli-*`, `devam-claude-kardes`, `devam-agy-onbellek-tutulan`; `parity_transcript` `istek-` (`sibling`, `onek`) | TAMAM. AÇIK: §3.1 (a), (c) |
+| §2.5.8 cwd başına tek konuşma kimliği; kardeş oturumlar (H4, H7) | `parity_resume` `tutulan`, `agy-sahipli-*`, `devam-claude-kardes`, `devam-agy-onbellek-tutulan`; `parity_transcript` `istek-` (`sibling`, `onek`), `canli-kimlik` (model/effort kardeşten okunmaz) | TAMAM. AÇIK: §3.1 (a), (c) |
 | §2.5.9 trust / izin diyaloğu sürüm fixture'ları (H4) | diyalog işleyicisi (`trust_dialog.py`) bu crate'te değil; crate yalnız copilot `trustedFolders` düzenlemesini yazar (`parity_build` copilot vakaları) | UYGULANMAZ (T4/T10) |
 | §2.5.10 başarısız spawn'da kayıt temizliği (H9, H2) | pay iadesi `parity_g9` `release`; tavan reddi `real_ledger::a_claude_service_build_is_refused_over_the_cap`; instance kaydı çağıranın | TAMAM (crate payı) |
 | §2.5.11 kota / maliyet: önbellek token sayımı, kaynak yoksa "bilinmiyor" (H3, H21) | defter önbellek alanlarını sayar (`parity_ledger` `cache_read_*`), okunamayan defter sıfır değil RED (`an_unreadable_or_invalid_ledger_closes_an_open_cap`); kota ayrıştırıcıları eşleşme yoksa `None` (`parity_usage`) | TAMAM |
@@ -235,7 +270,7 @@ satırları gruplara dağıtılmadı. Güncel toplamlar iki tablonun başında.
 |---|---|---|---|---|
 | G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 0 (39 TAŞINDI) | 0 (24 TAŞINDI, 11 kapsam dışı) | bitti: `resume.rs`, `claude_resume.rs`, `codex_resume.rs`, `agy_resume.rs`, `copilot.rs`; parite `parity_resume`, `tests/resume.rs` |
 | G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 0 (38 TAŞINDI) | 0 (17 TAŞINDI, 8 kapsam dışı) | bitti: `chat.rs`, parite `parity_chat` |
-| G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 0 (18 TAŞINDI) | 0 (23 TAŞINDI, 31 kapsam dışı) | bitti: `claude_transcript.rs`, parite `parity_transcript` |
+| G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 0 (21 TAŞINDI) | 0 (37 TAŞINDI, 36 kapsam dışı) | bitti: `claude_transcript.rs`, parite `parity_transcript` |
 | G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 0 (37 TAŞINDI) | 0 (16 TAŞINDI, 1 kapsam dışı) | bitti: `tui.rs`, `real/pane.rs`; parite `parity_tui`, `tests/{tui,real_pane}.rs` |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
@@ -421,8 +456,9 @@ bu ize yönlendirilmeli.
   `_row_epoch` = `bg_work::iso_epoch` (ayrı kopya yok).
 - Pencere Python'la aynı: 64 KiB, x4, en çok 4 MiB; boyut bir kez okunur (`Probe::file_size`), her adım `[boyut-pencere, boyut)`.
 - `LiveProbe`a eklenen (gerçek uygulama `real/`, G8): `read_range(path, start, len)` (yalnız normal dosya; hata None).
-- `live_or_spawn_*` transkript yolunu `Live::jsonl_path_for`dan alır (G1; "cwd'deki en yeni" düşüşü Python gibi).
-  `last_request_epoch` düşüş kullanmaz, yalnız tam `<sid>.jsonl`; pid kimliği `Live::session_file_sid`.
+- `live_or_spawn_*`: sid biliniyorsa `Live::jsonl_path_for`; bilinmiyorsa yalnız `pid`in kendi kayıt dosyası (`pid`,
+  `procStart`, kaydın ve transkriptin cwd'si doğrulanır), "cwd'deki en yeni" düşüşü yok (S1). Süreci öldüren çağıran
+  değeri öldürmeden önce okumalı (T4). `last_request_epoch` yalnız tam `<sid>.jsonl`; pid kimliği `Live::session_file_sid`.
 - Saat dilimsiz damga `Clock::utc_offset_secs` ile yorumlanır (G6 ile aynı sınır).
 - Taşınmayan: `web._live_model_effort` önbelleği ve
   `_live_model`/`_live_effort` uçları (T1: "yalnız tam `<sid>.jsonl`, yalnız süreç başlangıcından sonrası" kuralını T1
@@ -433,19 +469,16 @@ bu ize yönlendirilmeli.
 - 512'den derin satır, eşlenmemiş vekil, 1. yılın ilk günü dilimsiz damga (1'er).
 - Testsiz fark: i128'e sığmayan birbirini götüren token sayaçları (doygun toplam); yaz saati geçişli dilimsiz damga.
 
-### Python hatası şüpheleri (1, 2, 3, 5, 7 DÜZELDİ; 4 ve 6 sahipte: "Bekleyen sorular" S1, S2)
+### Python hatası şüpheleri (hepsi DÜZELDİ; 4 ve 6 sahip onayıyla, S1 ve S2)
 1. DÜZELDİ (TBD#386): `last_assistant_model` `<synthetic>` yer tutucusunu atlar (`test_rsprov_model_reader.py`, parite
    `esit-sentetik-yalniz-yeni`, `canli-sentetik`).
 2. DÜZELDİ (TBD#386): `_last_assistant_value` nesne olmayan satırı, model okuyucu nesne olmayan `message`i atlar (`esit-`).
 3. DÜZELDİ (27 Kas, `fdfa1f91`): metin olmayan model okuyucuda atlanır (`test_rsprov_g3_fixes.py`, parite `esit-model-`).
-4. SAHİPTE (S1). `live_or_spawn_*` sid yoksa (dosyası olmayan sid'de DÜŞMEZ, TBD#365) cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
-   modeli/effort'u devir kararına ve takılan oturumun yeniden açılışına girer (aynı modüldeki `last_request_epoch` bu
-   düşüşü bilerek reddediyor). G1 birebir taşıdı (düşüş korundu).
+4. DÜZELDİ (S1, `836fe85d`): `live_or_spawn_*` sid yoksa cwd'deki en yeni transkripti okumaz ("S1/S2" bölümü).
 5. DÜZELDİ (27 Kas, `fdfa1f91` + `37fd9676`): `last_assistant_model`/`_effort` alt ajan (`isSidechain`) satırını atlar
    (parite `esit-alt-ajan-`). Güncel claude'un ana dosyaya bu satırı yazıp yazmadığı ölçülmedi (canlı transkript
    okunmadı); yazmıyorsa davranış değişmez.
-6. SAHİPTE (S2). Effort ayrı taranır: en son satır effort taşımıyorsa (ör. effort desteklemeyen modele geçiş) eski modelin effort'u
-   döner. Rust aynı (parite `effort-eski-satirda`).
+6. DÜZELDİ (S2, `7f1331b5`): effort yalnız son yanıt satırının modelinden (parite `esit-effort-`, `effort-eski-satirda`).
 7. DÜZELDİ (27 Kas, G1 9. madde ile): `last_request_epoch`/`jsonl_path_for` aşırı uzun sid'i yok sayar (parite
    `transkript-sapma-uzun-sid` eşit); `/` ya da NUL taşıyan aday proje dizininin dışını açmaz (`istek-mutlak`).
 
@@ -928,7 +961,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | 3 | Gizli başlatma, gnome-terminal var, tmux yok: hiçbir şey açılmıyor, iz yok | `spawn_hidden_no_tmux` olayı; başka davranış aynı | `HiddenWithoutTmuxTest`; `{cli}-gizli-tmuxsuz` |
 | 4 | Bekçideki `Popen` `ValueError`ı iş parçacığını iz bırakmadan bitiriyordu (üretimde ulaşılamaz görünüyor, OKUNDU) | `spawn_retry_launch_error` (yalnız sınıf adı, metin yok); bekçi yine biter, yedek açılmaz | `WatchdogValueErrorTest`; `bekci-valueerror`; `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it` |
 
-### Python hatası adayları (5 DÜZELDİ; 6 sahipte: "Bekleyen sorular" S3)
+### Python hatası adayları (5 DÜZELDİ; 6: S3 onaylandı, enterprise deposunda değişiklik bekliyor)
 | # | Aday | Sonuç |
 |---|---|---|
 | 5 | Hayalet temizliği başlatmadan ÖNCE: ilk `Popen` `ValueError` ile reddedilse de eski oturum kapatılıyordu (argv/ortamda NUL) | DÜZELDİ (27 Kas): ad, cwd, iç komut ya da ekranda NUL varsa temizlik yapılmaz; ret/akış aynı. Yalnız başlayamayacak açılışta fark. `test_rsprov_g9_fixes.py::GhostKeptWhenLaunchCannotStartTest`, parite `nul-` |
