@@ -3686,7 +3686,8 @@ DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap 
 # Sahibin kararı olan konular (commit/push/merge/build/deploy 2026-10-27'de KALICI İZİNLE çıkarıldı; force-push, kurulum/apt/sudo, silme,
 # harcama, parola/token/yetki kalır): beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
 # Kelime sınırlı (workforce/enforce, silsile, "kuruldu mu" sahte pozitifti); "bağlam token'ı" bir bütçe ölçüsüdür, kimlik bilgisi değil.
-OWNER_ONLY_RE = re.compile(r"\bforce\b|\bforce[- ]push|\binstall|\bkurulum|\bkurul(?:sun|mal|ac|ur|mas)|\bapt\b|\bsudo\b|\bsil(?:ey|in|el|se|ec|me|mi|di|dı|ik|ip|er)\w*|\bsil\b|\bdelete|\bharca|\bspend|\bpassword|\bparola|(?<!bağlam )(?<!baglam )(?<!context )\btokens?\b(?!'?[ıiuü]?\s*(?:\d|[a-zçğıöşü]*\s*(?:bütçe|limit|eşik)))|\byetki|\bcredential", re.I)
+# "token"dan sonraki sayı yalnız ölçü biçimindeyse (`_CTX_NUM`) muaf: "token 2'yi paylaşayım mı?" sahibindir.
+OWNER_ONLY_RE = re.compile(r"\bforce\b|\bforce[- ]push|\binstall|\bkurulum|\bkurul(?:sun|mal|ac|ur|mas)|\bapt\b|\bsudo\b|\bsil(?:ey|in|el|se|ec|me|mi|di|dı|ik|ip|er)\w*|\bsil\b|\bdelete|\bharca|\bspend|\bpassword|\bparola|(?<!bağlam )(?<!baglam )(?<!context )\btokens?\b(?!'?[ıiuü]?\s*(?:" + _CTX_NUM + r"|[a-zçğıöşü]*\s*(?:bütçe|limit|eşik)))|\byetki|\bcredential", re.I)
 
 
 _JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)

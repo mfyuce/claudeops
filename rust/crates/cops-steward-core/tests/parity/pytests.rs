@@ -100,6 +100,32 @@ fn owner_only_pattern_false_positives() {
     }
 }
 
+/// py: test_steward_core_a.ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner
+#[test]
+fn owner_only_bare_number_after_token_stays_owner() {
+    let re = pyc::py_regex(OWNER_ONLY_RE.as_str()).expect("desen");
+    let hit = |t: &str| re.is_match(&pyc::ci_input(t)).expect("arama");
+    for t in [
+        "token 2'yi paylaşayım mı?",
+        "token 2 anahtarını sunucuya yazayım mı?",
+        "API token'ı 3 kişiye vereyim mi?",
+        "token 2026 yenilensin mi?",
+        "token 2 mi kullanılsın?",
+    ] {
+        assert!(hit(t), "{t}");
+    }
+    for t in [
+        "token 300K eşiği aşıldı, devir yapayım mı?",
+        "token 150000 oldu",
+        "token 250,000 civarında",
+        "token 1.5 milyon",
+        "token 300 bin",
+        "token'ı 200K geçti",
+    ] {
+        assert!(!hit(t), "{t}");
+    }
+}
+
 /// py: test_steward_core_b.BrainAuthorityAndDeferTest.test_rules_text_no_longer_reserves_commit_push_for_owner
 #[test]
 fn rules_do_not_reserve_commit_push_for_owner() {

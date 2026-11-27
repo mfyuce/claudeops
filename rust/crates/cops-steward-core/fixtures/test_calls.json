@@ -8339,6 +8339,7 @@
 "normalize_options",
 "paths_for"
 ],
+"test_steward_core_a.ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner": [],
 "test_steward_core_a.ReviewFindings20261029Test.test_owner_only_false_positives": [],
 "test_steward_core_a.RosterGateTest.test_active_phase_needs_roster_but_idea_does_not": [
 "_from_dict",
@@ -32695,6 +32696,7 @@
 "normalize_options",
 "paths_for"
 ],
+"test_steward_multi.DefaultWorld_ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner": [],
 "test_steward_multi.DefaultWorld_ReviewFindings20261029Test.test_owner_only_false_positives": [],
 "test_steward_multi.DefaultWorld_RosterGateTest.test_active_phase_needs_roster_but_idea_does_not": [
 "_from_dict",
