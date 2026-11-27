@@ -273,7 +273,6 @@ DEFS["providers/__init__.py"] = [
 
 DEFS["providers/base.py"] = [
     ok("cmd_arg", "providers.rs::arg", f"{G_INFO} U:providers.rs::claude_info"),
-    oos("_ro_sqlite_uri", "sağlayıcı SQLite deposunu salt okunur açma (agy/copilot sohbet ve model okuma)", f"{SAG}; {CHAT}"),
     oos("_open_private_target", "sır/damga dosyasını 0600 ve bloklamadan yazma (açılış ortamı)", SAG),
     oos("_path_part_ok", "oturum adı/kimlik dosya yoluna tek parça olarak eklenebilir mi (sağlayıcı dosya yolları)", SAG),
     ok("CliProvider", "providers.rs::Cli", DISC, "yalnız tanıma/ayrıştırma yüzeyi; kalan metotlar kendi satırında"),

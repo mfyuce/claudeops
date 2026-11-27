@@ -75,7 +75,8 @@ import threading
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok, _ro_sqlite_uri
+from ..sqlite_uri import ro_sqlite_uri
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..atomic_json import LockError, atomic_write_json, file_lock
 from ..childgroup import _run_grouped
 from ..diaglog import diag_log
@@ -579,7 +580,7 @@ class AgyProvider(CliProvider):
             # aktif yazılıyor olabilir) yanlışlıkla dokunmak/var-olmayan bir
             # dosya yaratmak İSTENMİYOR (sqlite3.connect normal modda dosya
             # yoksa SESSİZCE boş bir dosya YARATIR — ro modu bunu da engeller).
-            conn = sqlite3.connect(_ro_sqlite_uri(db_path), uri=True, timeout=2.0)
+            conn = sqlite3.connect(ro_sqlite_uri(db_path), uri=True, timeout=2.0)
             try:
                 rows = conn.execute(
                     "SELECT step_type, step_payload FROM steps WHERE step_type IN (?, ?, ?) "
@@ -603,7 +604,7 @@ class AgyProvider(CliProvider):
         if not os.path.isfile(db_path):
             return
         try:
-            conn = sqlite3.connect(_ro_sqlite_uri(db_path), uri=True, timeout=2.0)
+            conn = sqlite3.connect(ro_sqlite_uri(db_path), uri=True, timeout=2.0)
         except sqlite3.Error:
             return
         try:

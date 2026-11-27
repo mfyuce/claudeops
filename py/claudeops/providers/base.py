@@ -13,7 +13,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
-from urllib.parse import quote
 
 import psutil
 
@@ -47,14 +46,6 @@ def _path_part_ok(s: Any) -> bool:
     kimliği): boş olmayan metin, `/` ve NUL yok. Mutlak ya da `../` taşıyan değer dizinin dışını açmasın; bugünkü geçerli
     adların (harf, rakam, `.`, `-`, `_`) hiçbiri reddedilmez. Rust `pyfmt::is_path_part`."""
     return isinstance(s, str) and bool(s) and "/" not in s and "\0" not in s
-
-
-def _ro_sqlite_uri(path: str) -> str:
-    """`path`i salt okunur açan SQLite URI'si. Yol kaçışlanır: ham `#`/`?`/`%` başka bir dosya açtırıyor, `mode=ro`yu
-    düşürüp boş dosya yarattırıyordu."""
-    quoted = quote(os.fsencode(path))
-    prefix = "//" if quoted.startswith("//") else ""      # `//x` yolu URI'de sunucu adı sanılmasın
-    return f"file:{prefix}{quoted}?mode=ro"
 
 
 class OneshotError(RuntimeError):

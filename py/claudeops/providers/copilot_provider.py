@@ -101,7 +101,8 @@ import shlex
 import sqlite3
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _open_private_target, _ro_sqlite_uri
+from ..sqlite_uri import ro_sqlite_uri
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _open_private_target
 from ..diaglog import diag_log
 from ..paths import shared_write_allowed
 from ..settings import byok_env_for, resolved_binary
@@ -262,7 +263,7 @@ def _connect_ro() -> sqlite3.Connection:
     # mode=ro: SADECE okuma — copilot'un kendi canlı DB'sine (aktif yazılıyor
     # olabilir) yanlışlıkla dokunmak/var-olmayan bir dosya yaratmak İSTENMİYOR
     # (agy_provider.py'deki AYNI gerekçe/desen).
-    return sqlite3.connect(_ro_sqlite_uri(SESSION_STORE_DB), uri=True, timeout=2.0)
+    return sqlite3.connect(ro_sqlite_uri(SESSION_STORE_DB), uri=True, timeout=2.0)
 
 
 def _cell_value(value):

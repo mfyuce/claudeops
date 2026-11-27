@@ -61,7 +61,7 @@ sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının
   Eklenen özel yardımcılar (Rust karşılığı): `claude_provider._row_model` (`claude_transcript::assistant_model`),
   `_row_content`, `codex_provider._codex_item` (`chat.rs`), `copilot_provider._cell_value` (`chat.rs::cell_or_empty`),
   `ucli_client._read_turns` (`chat.rs::ucli_turns`), `bg_work.{_result_text, _hashable}` (`bg_work.rs::{result_text, key}`),
-  `base._ro_sqlite_uri` (Rust yolu URI diye ayrıştırmaz), `ucli_session_opts._open_no_redirect` (`real/http.rs`). Tablodaki
+  `sqlite_uri.ro_sqlite_uri` (eski `base._ro_sqlite_uri`; Rust yolu URI diye ayrıştırmaz), `ucli_session_opts._open_no_redirect` (`real/http.rs`). Tablodaki
   Python satır numaraları bu düzeltmelerden önceki konumlardır.
 - TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
   `settings.json`) rs/state'in işi. Kalan fark: var olan ama izin yüzünden okunamayan yönerge override dosyasında Python üzerine
@@ -498,7 +498,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
 2. claude/codex: nesne olmayan satır, `message`/`payload`/`compactMetadata`, metin olmayan `text`, aşırı derin ya da dev sayılı
    satır yalnız atlanır. Son asistan satırının `message`i bozuksa yanıt "" (önceki yanıt güncel diye sunulmaz). ucli'de aşırı
    derin ya da dev sayılı satır None (`sekil-`).
-3. agy ve copilot SQLite URI'sinde yol kaçışlanır (`base._ro_sqlite_uri`; parite `agy-uri-`, copilot yalnız Python testi).
+3. agy ve copilot SQLite URI'sinde yol kaçışlanır (`sqlite_uri.ro_sqlite_uri`; parite `agy-uri-`, copilot yalnız Python testi).
 4. agy: yalnız BLOB yük çekilir; bozuk metin hücresi ne önceki satırı ne tam geçmişi düşürür (`utf8-hucre`).
 5. claude `last_exchange`: sıkıştırma özeti (`isCompactSummary`) kullanıcı mesajı sayılmaz (`ozet-`). KAPANDI (TBD#395
    soru 2, sahip adına cops 27 Kas: aynen kalsın): son asistan satırı yalnız `tool_use` ise yanıt "" döner (iki tarafta);
@@ -3597,11 +3597,12 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 
 `494fbd67` (sürdürülmüş onay kartı bekleyen sayılmasın): sonraki turda taşındı ("Onay kartları ve açılış kurtarması"
 bölümü; satırlar ana tablolarda). `da6e993c` (SQLite salt okunur adresi): `chat_dump` ve
-`ucli_metrics` okuyucuları taşınmadı; `real/sqlite.rs` yolu zaten adres diye ayrıştırmaz.
+`ucli_metrics` okuyucuları taşınmadı; `real/sqlite.rs` yolu zaten adres diye ayrıştırmaz. agy ve copilot da artık
+aynı Python işlevini kullanır (`base`deki kopya silindi).
 
 | Python (dosya:satır) | Rust karşılığı / neden gereksiz | durum |
 |---|---|---|
-| `ro_sqlite_uri` (py/claudeops/sqlite_uri.py:8) | T7: yalnız `chat_dump` ve `ucli_metrics` okuyucuları kullanır | KAPSAM DIŞI |
+| `ro_sqlite_uri` (py/claudeops/sqlite_uri.py:8) | `real/sqlite.rs::open` (yol URI diye ayrıştırılmaz, salt okur bayrak); agy parite `agy-uri-` (`chat_dump` ve `ucli_metrics` okuyucuları T7) | TAŞINDI |
 | `ResumedApproval.test_resumed_card_is_not_pending_or_answerable` (py/tests/test_ucli_approval_resumed.py:38) | `tests/real_approval.rs::a_resumed_card_is_not_pending` (cevap yazma `answer` T7, bu crate'te yok) | TAŞINDI |
 | `ResumedApproval.test_run_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:43) | `tests/real_approval.rs::a_run_with_only_a_resumed_card_is_closed` (`begin_resume` T7) | TAŞINDI |
 | `ResumedApproval.test_already_suspended_record_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:49) | `tests/real_approval.rs::an_already_suspended_record_with_only_a_resumed_card_is_closed` | TAŞINDI |
