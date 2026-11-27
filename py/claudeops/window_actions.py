@@ -214,7 +214,7 @@ _MODEL_RE = re.compile(r"^[\w.\-:/\[\]]+$")
 
 def _plausible_model(model: str) -> bool:
     """Panel kayıtsız satırlara model yerine "?" yazıyor; böyle bir değer spawn'a `--model ?` diye gitmesin."""
-    return bool(model) and bool(_MODEL_RE.match(model))
+    return bool(model) and bool(_MODEL_RE.fullmatch(model))
 
 
 def spawn_fields(status: dict, row: dict, host: str) -> Dict[str, str]:
