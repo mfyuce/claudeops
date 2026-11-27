@@ -462,6 +462,15 @@ def op_resolve_ucli(a):
     return ucli_client.resolve_binary()
 
 
+def op_resolve_ucli_own(a):
+    old = ucli_client.OWN_UCLI
+    ucli_client.OWN_UCLI = pathlib.Path(_ROOT) / "work" / "repo" / "bin" / "ucli"
+    try:
+        return ucli_client.resolve_binary()
+    finally:
+        ucli_client.OWN_UCLI = old
+
+
 def op_resolved_binary(a):
     return settings.resolved_binary(a["cli"])
 

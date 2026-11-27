@@ -262,6 +262,15 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         ("bayraklar", json!({"no_prompt_cache": true, "show_usage": "on", "instructions_user": "1", "checkpoint": "yes"})),
         ("bayrak-gecersiz", json!({"show_usage": "evet"})),
         ("yetenek", json!({"allow_image": true, "allow_scholar": "on"})),
+        ("yetenek-hayir", json!({"allow_image": "false", "ask_edit": 0})),
+        ("yetenek-hayir-2", json!({"allow_scholar": false, "allow_image": "0", "ask_edit": "", "checkpoint": null})),
+        ("checkpoint-hayir-false", json!({"checkpoint": false})),
+        ("checkpoint-hayir-yazi", json!({"checkpoint": "false"})),
+        ("checkpoint-hayir-0", json!({"checkpoint": "0"})),
+        ("checkpoint-hayir-bos", json!({"checkpoint": ""})),
+        ("checkpoint-hayir-null", json!({"checkpoint": null})),
+        ("checkpoint-evet", json!({"checkpoint": true})),
+        ("talimat", json!({"instructions_user": true, "instructions_max_kib": 64})),
         ("ask-edit-yazmasiz", json!({"ask_edit": true})),
         ("ask-edit", json!({"exec_cmds": "cargo", "exec_write": true, "ask_edit": "yes"})),
         ("approval", json!({"exec_cmds": "cargo", "exec_write": true, "ask_edit": 1, "approval_dir": true})),
@@ -271,6 +280,8 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         ("ste", json!({"search_token_env": " SEARX_TOKEN "})),
         ("ste-deger", json!({"search_token_env": "sk-abc"})),
         ("ste-uzun", json!({"search_token_env": "A".repeat(65)})),
+        ("ste-bos", json!({"search_token_env": ""})),
+        ("ste-bosluk", json!({"search_token_env": "   "})),
         ("price", json!({"price": "3, 15"})),
         ("price-4", json!({"price": "3,15,0.3,3.75"})),
         ("price-3", json!({"price": "1,2,3"})),
@@ -386,6 +397,16 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         .file(file("work/p1/.ucli/chat/s1.jsonl", "{}", 0o600)));
     v.push(opts(e, "checks-kayit-hata", json!({"ucli_checks": {"mode": "restricted"}}))
         .facts(json!({"checks_err": "kayıt 0600 değil"})));
+    // `--instructions-*` bayrağını tanımayan ikili: bayraklar atlanır.
+    v.push(opts(e, "talimat-desteksiz", json!({"instructions_user": true, "instructions_max_kib": 64}))
+        .facts(json!({"ucli_help": help(&["--instructions-user", "--instructions-max-kib"], &[], false)})));
+    // Web bayrakları: kabuk metakarakterli adres, salt okunur oturum, anahtar sarmalı (sır argv'ye girmez).
+    let web = json!({"search_url": "http://127.0.0.1:8888/search?lang=tr&safe=1", "allow_fetch_domains": "en.wikipedia.org, docs.rs"});
+    v.push(ucase(e, "web-metakarakter", json!({"perm": "allow-edit"}))
+        .settings_json(json!({"ucli_web": {"search_url": "http://127.0.0.1:8888/search?q=a&b=$(x);c"}})));
+    v.push(ucase(e, "web-salt-okunur", json!({"perm": "read-only"})).settings_json(json!({"ucli_web": {"allow_fetch_domains": "docs.rs"}})));
+    v.push(ucase(e, "web-anahtar-sarmal", json!({"perm": "allow-edit"}))
+        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "sk-gizli-deger"}}, "ucli_web": web})));
     // Doğrulanmamış (kayıttan gelen) cli_opts: float dönüşümü.
     v.push(ucase(e, "ham-cost-yazi", json!({"cli_opts": {"max_cost_usd": "abc"}})));
     v.push(ucase(e, "ham-cost-liste", json!({"cli_opts": {"max_session_usd": [1]}})));

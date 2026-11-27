@@ -87,6 +87,19 @@ fn rs_resolve_ucli(e: &Env, c: &Case) -> RsOut {
     })
 }
 
+/// `resolve_binary`, claudeops'un KENDİ kopyası vaka ağacında (`<kök>/work/repo/bin/ucli`; Python `OWN_UCLI` aynı yola çevrilir).
+fn rs_resolve_ucli_own(e: &Env, c: &Case) -> RsOut {
+    let settings = e.settings();
+    let catalog = e.catalog(c);
+    let paths = cops_providers::Paths { repo_dir: format!("{}/work/repo", e.root), ..e.paths() };
+    let probe = FsProbe::new(e, c);
+    let p = cops_providers::Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &probe };
+    match resolve_binary(&p) {
+        Ok(b) => RsOut::ret(json!(b)),
+        Err(err) => RsOut { exc: Some(err.0), ..Default::default() },
+    }
+}
+
 fn bcase(id: String, cli: &str, args: Value) -> Case {
     let mut base = json!({"cli": cli, "cwd": "", "model": "m", "perm": "auto", "effort": "high", "name": "s1"});
     base.as_object_mut().unwrap().extend(args.as_object().unwrap().clone());
@@ -289,7 +302,25 @@ fn binary_cases(e: &Env) -> Vec<Case> {
     v.push(ru("kardes-dizin").env("PATH", "").file(Fx::Dir("home/work/projects/tmp/unified-cli/target/release/ucli".into(), 0o755)));
     v.push(ru("override-tip").settings_json(json!({"provider_bin": {"ucli": null}})));
     v.push(ru("override-tip-sayi").settings_json(json!({"provider_bin": {"ucli": 5}})).env("UCLI_BIN", "/env/ucli"));
-    let _ = e;
+    // Kaynaklar birlikteyken öncelik (Python `ResolveBinaryTests`): ayar > `UCLI_BIN` > kendi kopya > PATH > kardeş
+    // release > kardeş debug. Kendi kopya vaka ağacında (`repo/bin/ucli`).
+    let own = |id: &str| Case::new(format!("ru-kendi-{id}"), "resolve_ucli_own", json!({}));
+    let rel = "home/work/projects/tmp/unified-cli/target/release/ucli";
+    let dbg = "home/work/projects/tmp/unified-cli/target/debug/ucli";
+    let sh = "#!/bin/sh\n";
+    v.push(own("path-ve-kardesleri-yener").file(file("work/repo/bin/ucli", sh, 0o755)).file(file(rel, sh, 0o755)).file(file(dbg, sh, 0o755)));
+    v.push(own("yoksa-path-kardesleri-yener").file(file(rel, sh, 0o755)).file(file(dbg, sh, 0o755)));
+    v.push(own("yoksa-pathsiz-release").env("PATH", "").file(file(rel, sh, 0o755)).file(file(dbg, sh, 0o755)));
+    v.push(own("calistirilamaz-da-sayilir").env("PATH", "").file(file("work/repo/bin/ucli", sh, 0o644)));
+    v.push(own("dizin-sayilmaz").env("PATH", "").file(Fx::Dir("work/repo/bin/ucli".into(), 0o755)).file(file(dbg, sh, 0o755)));
+    v.push(own("env-yener").file(file("work/repo/bin/ucli", sh, 0o755)).env("UCLI_BIN", "/from/env/ucli"));
+    v.push(own("ayar-env-yener").file(file("work/repo/bin/ucli", sh, 0o755)).env("UCLI_BIN", "/from/env/ucli")
+        .settings_json(json!({"provider_bin": {"ucli": "/from/settings/ucli"}})));
+    v.push(own("ayar-debuga-zorlar").file(file("work/repo/bin/ucli", sh, 0o755)).file(file(rel, sh, 0o755)).file(file(dbg, sh, 0o755))
+        .settings_json(json!({"provider_bin": {"ucli": format!("{}/{dbg}", e.root)}})));
+    v.push(own("env-debuga-zorlar").file(file("work/repo/bin/ucli", sh, 0o755)).file(file(rel, sh, 0o755)).file(file(dbg, sh, 0o755))
+        .env("UCLI_BIN", &format!("{}/{dbg}", e.root)));
+    v.push(own("hic").env("PATH", ""));
     v
 }
 
@@ -301,6 +332,10 @@ pub fn run() {
     let cases = mcp_cases(&r.e);
     r.run(cases, &[], rs_mcp);
     let cases = binary_cases(&r.e);
-    r.run(cases, &[], |e, c| if c.op == "resolve_ucli" { rs_resolve_ucli(e, c) } else { rs_resolved_binary(e, c) });
+    r.run(cases, &[], |e, c| match c.op {
+        "resolve_ucli" => rs_resolve_ucli(e, c),
+        "resolve_ucli_own" => rs_resolve_ucli_own(e, c),
+        _ => rs_resolved_binary(e, c),
+    });
     r.finish("build");
 }
