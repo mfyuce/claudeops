@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1960 satır)
+### Python testleri (1973 satır)
 
-Test satırı özeti: 1960 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1973 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1065,6 +1065,19 @@ Test satırı özeti: 1960 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_extension_directive_park.ExtensionDirectivePark.test_live_active_session_goes_through` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::name_rules_edges, identity::valid_name_vectors (+1); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_directive |
 | `test_extension_directive_park.ExtensionDirectivePark.test_drain_blocks_extension` | identity::name_rules_edges, identity::valid_name_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_directive |
 | `test_extension_directive_park.ExtensionDirectivePark.test_repeated_note_not_duplicated` | identity::name_rules_edges, identity::valid_name_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_directive |
+| `test_handover_session_wait.WebHandover.test_waiting_session_gets_no_keys_even_if_transcript_is_silent` | gereksiz (bu crate'te sınanacak saf çağrı yok): süreç kaydı `waiting` olan oturuma web devri gitmez; web ucu, iz T10 |
+| `test_handover_session_wait.WebHandover.test_other_states_do_not_block` | gereksiz (bu crate'te sınanacak saf çağrı yok): süreç kaydı `waiting` olan oturuma web devri gitmez; web ucu, iz T10 |
+| `test_handover_session_wait.SteerView.test_waiting_for_input_counts_as_open_question` | gereksiz (bu crate'te sınanacak saf çağrı yok): `owner_dialog_for` süreç kaydı okur; Rust'ta yok, iz T10 |
+| `test_handover_session_wait.SteerView.test_other_waits_do_not_freeze_the_planner` | gereksiz (bu crate'te sınanacak saf çağrı yok): `owner_dialog_for` süreç kaydı okur; Rust'ta yok, iz T10 |
+| `test_handover_session_wait.BatchHandover.test_batch_skips_waiting_session` | gereksiz (bu crate'te sınanacak saf çağrı yok): CLI toplu devri diyaloglu oturumu atlar; Rust'ta yok, iz T10 |
+| `test_handover_session_wait.BatchHandover.test_batch_skips_open_question_in_transcript` | gereksiz (bu crate'te sınanacak saf çağrı yok): CLI toplu devri diyaloglu oturumu atlar; Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_directive` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_directive_goes_through_when_idle` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_nudges` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_brain_tour` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_refusal_does_not_use_up_lesson_or_job_attempts` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.EngineDelivery.test_unregistered_answer_is_kept_and_not_reported` | gereksiz (bu crate'te sınanacak saf çağrı yok): direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10 |
+| `test_handover_session_wait.TermInput.test_engine_input_is_refused_but_owner_typing_is_not` | gereksiz (bu crate'te sınanacak saf çağrı yok): `/api/term/input` motor metnini diyaloğa yazmaz; web ucu, iz T10 |
 | `test_idea_project.IdeaProject.test_idea_with_project_and_unknown_project` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+16); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_idea |
 | `test_input_box_typed.TypedBoxTest.test_empty_box_is_not_typed` | gereksiz (bu crate'te sınanacak saf çağrı yok): `tmux_backend.typed_input_in_box`, rs/tmux izinde `text::typed_input_in_box` (dal rs/tmux 6ce6a135, docs/rs-tmux.md) |
 | `test_input_box_typed.TypedBoxTest.test_grey_suggestion_is_not_typed` | gereksiz (bu crate'te sınanacak saf çağrı yok): `tmux_backend.typed_input_in_box`, rs/tmux izinde `text::typed_input_in_box` (dal rs/tmux 6ce6a135, docs/rs-tmux.md) |

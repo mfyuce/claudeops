@@ -31,6 +31,7 @@ import psutil
 
 from .. import bg_work
 from .. import owner_dialog
+from ..handover import open_dialog_reason
 from .. import paths as paths_mod
 from .. import settings as settings_mod
 from .. import hosts as hosts_mod
@@ -1502,6 +1503,16 @@ def _transient_host_error(res: Dict[str, Any]) -> bool:
     return res.get("code") in ("host_down", "host_unreachable") or " unreachable: " in err or "Connection reset by peer" in err
 
 
+def _dialog_refusal(s: Any, sid: str) -> Optional[Dict[str, Any]]:
+    """Motorun YEREL oturuma yazacağı her metinden önce: tuşlar açık bir diyaloğa gidecekse (devir kapısıyla aynı ölçüt)
+    `question_open` sonucu, değilse None. Teslim denemesi sayılmaz; sonraki tick yeniden dener."""
+    blocked = open_dialog_reason(s.cli, getattr(s, "cwd", ""), getattr(s, "sid", None), s.pid)
+    if not blocked:
+        return None
+    sw.log_event("send_refused_dialog", paths=sid, name=s.name, reason=blocked)
+    return {"ok": False, "error": "question_open", "code": "question_open", "name": s.name}
+
+
 def _send(name: str, cli: str, text: str, sid: str = "default") -> bool:
     provider = get_provider(cli)
     if not provider.has_conversation():
@@ -2580,6 +2591,10 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
                                 paths=paths)
     if not started_here and _wake_gate(cfg, paths, sname, reason, answer, message, actor):
         return {"ok": True, "name": sname, "skipped": "wake_repeat"}
+    if not host:
+        refused = _dialog_refusal(s, cfg.sid)
+        if refused is not None:
+            return refused
     if host:
         try:
             conversational = get_provider(scli).has_conversation()
@@ -3229,6 +3244,9 @@ def run_tour(items: Optional[List[Dict[str, Any]]] = None, force: bool = False,
     s = _running(cfg.brain_name)
     if s is None or not is_tmux_backed(s.pid):
         return {"ok": False, "error": "brain session not reachable"}
+    refused = _dialog_refusal(s, cfg.sid)
+    if refused is not None:
+        return refused
     enriched = [_enrich_item(it, projects, world) for it in items]
     answered = [q for q in sw.load_questions(paths) if q.status == "answered"]
     for it in enriched:     # karar hafızası: rutin/takılma maddelerine sahibin benzer geçmiş cevapları
@@ -3682,6 +3700,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
                 if i in by_id and by_id[i].answer and not by_id[i].delivered_at]
         res = _give_directive(p, extra, answer=q, more=more, start_if_stopped=False, reason="answer", session_name=name, cfg=cfg,
                               host=host, rt=rt, actor="engine")
+        if res.get("code") == "question_open":      # diyalog kapanınca gider: cevap bırakılmaz, hata sayılmaz
+            return res
         if not res.get("ok") and q.project not in projects:
             # Kayıtlı proje olmayan (ad hoc) oturum kapanmış ya da yazı kabul etmiyor: her tick yeniden deneme,
             # bırak (cevap kayıtta durur, kimse beklemiyor).
@@ -3797,6 +3817,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
+        refused = _dialog_refusal(s, cfg.sid)
+        if refused is not None:
+            return refused
         if _box_has_typed_input(s.name, s.cli):    # 2026-10-29 danisppr: kutudaki gönderilmemiş direktife "ok" eklenip tek mesaj gitti
             sw.log_event("keepwarm_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
@@ -3812,6 +3835,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if host or s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not a local running tmux session"}
+        refused = _dialog_refusal(s, cfg.sid)
+        if refused is not None:
+            return refused
         if _box_has_typed_input(s.name, s.cli):
             sw.log_event(k + "_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
@@ -3844,6 +3870,9 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         s = _running(name)
         if s is None or not is_tmux_backed(s.pid):
             return {"ok": False, "error": "not running or not tmux-backed"}
+        refused = _dialog_refusal(s, cfg.sid)
+        if refused is not None:
+            return refused
         if _box_has_typed_input(s.name, s.cli):      # kutudaki gönderilmemiş metne "devam" eklenip tek mesaj gitmesin
             sw.log_event("api_nudge_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
@@ -3978,7 +4007,7 @@ def _deliver_job(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Proje
     if res.get("ok"):
         _mark_after_send(mark, cfg.sid, f"job:{stage}", f"{svc}#{jid}")      # mesaj gitti: kilit zaman aşımı yinelenmeye yol açmasın
         sw.log_event("job_delivered", paths=paths, service=svc, id=jid, project=p.name, stage=stage, session=action.name)
-    elif sj.mark_attempt(jid, svc, paths) >= sj.DELIVER_MAX_ATTEMPTS:
+    elif res.get("code") != "question_open" and sj.mark_attempt(jid, svc, paths) >= sj.DELIVER_MAX_ATTEMPTS:
         sw.log_event("job_undeliverable", paths=paths, service=svc, id=jid, project=p.name, error=str(res.get("error") or ""))
     return res
 
@@ -4015,7 +4044,7 @@ def _deliver_lesson(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Pr
     if res.get("ok"):
         _mark_after_send(mark, cfg.sid, "lesson", ident)
         sw.log_event("lesson_delivered", paths=paths, project=p.name, session=action.name, n=len(hashes))
-    else:
+    elif res.get("code") != "question_open":
         try:
             sl.mark_failed(hashes, paths)
         except sw.LockTimeout as e:      # sayaç yazılamadı: iletim sonucu (res) yine döner, tick düşmesin
@@ -6572,7 +6601,7 @@ def _job_marker_gate(action: "sw.Action", cfg: "sw.Config", name: str, host: str
         note += f" `{bad}` geçerli bir tür değil; en yakın 3: {', '.join(sj.closest_kinds(bad, kinds))}."
     if name not in _JOB_NOTE_SENT and not host:
         s = _running(name)
-        if s is not None and is_tmux_backed(s.pid) and not _box_has_typed_input(s.name, s.cli):
+        if s is not None and is_tmux_backed(s.pid) and _dialog_refusal(s, cfg.sid) is None and not _box_has_typed_input(s.name, s.cli):
             noted = bool(_send(s.name, s.cli, sw.one_line(note, 1200), sid=cfg.sid))
             if noted:
                 _JOB_NOTE_SENT[name] = now
