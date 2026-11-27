@@ -514,3 +514,47 @@ pub fn compile(pat: &str, wrap: impl Fn(&str) -> String) -> Result<fancy_regex::
     let t = translate(pat)?;
     fancy_regex::Regex::new(&wrap(&t)).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// H5: kullanıcının yazdığı desen (`exec_cmds` `re:`) çevirmeni panik atmaz; her sonuç `Ok` ya da Python biçimli
+    /// hata. Belirlenimli sözde rastgele: metakarakter ağırlıklı 5 000 desen, en çok 12 karakter.
+    #[test]
+    fn random_patterns_never_panic() {
+        const ALPHA: &[char] = &[
+            '\\', '(', ')', '[', ']', '{', '}', '?', '*', '+', '|', '^', '$', '.', '-', ',', ':',
+            '<', '>', '=', '!', 'P', 'x', 'u', 'U', '0', '1', '7', '8', '9', 'a', 'f', 'b', 'B',
+            'Z', 'd', 's', 'w', 'ş', '\u{d7ff}',
+        ];
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..5_000 {
+            let len = (next() % 13) as usize;
+            let pat: String = (0..len)
+                .map(|_| ALPHA[(next() % ALPHA.len() as u64) as usize])
+                .collect();
+            let _ = compile(&pat, str::to_string);
+        }
+        for pat in [
+            r"\x",
+            r"\x4",
+            r"\u12",
+            r"\U0010ffff",
+            r"\U00110000",
+            r"\ud800",
+            r"\400",
+            r"\777",
+            r"[\777]",
+            r"\0",
+        ] {
+            let _ = compile(pat, str::to_string);
+        }
+    }
+}

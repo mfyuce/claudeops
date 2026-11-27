@@ -362,7 +362,7 @@ fn system_clock_is_monotonic_and_ignores_bad_sleeps() {
     let c = SystemClock;
     let a = c.monotonic();
     let started = Instant::now();
-    for s in [f64::NAN, -1.0, f64::INFINITY, f64::NEG_INFINITY, 0.0] {
+    for s in [f64::NAN, -1.0, f64::INFINITY, f64::NEG_INFINITY, 0.0, 1e300] {
         c.sleep(s);
     }
     assert!(started.elapsed() < Duration::from_secs(1));
