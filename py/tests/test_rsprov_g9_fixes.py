@@ -97,24 +97,25 @@ class GhostScreenNotLoggedTest(unittest.TestCase):
         self.assertEqual(self._reclaim(None)[0][1], {"name": "p", "cli": "claude", "screen_lines": 0, "screen_chars": 0})
 
 
-def _spawn(gnome_terminal=True, tmux=True, **kw):
+def _spawn(gnome_terminal=True, tmux=True, reclaimed=None, inner="sahte-cli", cwd="/w", display=":9", **kw):
     """`spawn_session`, her dış sınır sahte: (dönüş, günlük, açılan şeyler)."""
     logs, opened = [], []
     provider = mock.Mock(accepts_cli_opts=False, mcp_needs_cwd=False)
     provider.resolve_effort.return_value = "high"
     provider.env_overrides.return_value = {}
-    provider.build_inner_command.return_value = "sahte-cli"
+    provider.build_inner_command.return_value = inner
     which = SimpleNamespace(which=lambda n: "/usr/bin/gnome-terminal" if gnome_terminal else None)
     with mock.patch.object(spawn, "get_provider", lambda cli: provider), \
             mock.patch.object(authz, "spawn_env", lambda *a: {}), \
             mock.patch.object(spawn, "spawn_priority_prefix", lambda n: ""), \
-            mock.patch.object(spawn, "_reclaim_ghost_session", lambda n, c: None), \
+            mock.patch.object(spawn, "_reclaim_ghost_session",
+                              lambda n, c: None if reclaimed is None else reclaimed.append(n)), \
             mock.patch.object(spawn, "tmux_available", lambda: tmux), \
             mock.patch.object(spawn, "tmux_spawn_direct", lambda *a: opened.append("tmux") or True), \
             mock.patch.object(spawn, "_launch_gnome_terminal", lambda *a: opened.append("pencere") or True), \
             mock.patch.object(spawn, "shutil", which), \
             mock.patch.object(spawn, "diag_log", lambda ev, **k: logs.append((ev, k))):
-        ret = spawn.spawn_session("p", "/w", "m", display=":9", effort="high", force_new=True, cli="x", **kw)
+        ret = spawn.spawn_session("p", cwd, "m", display=display, effort="high", force_new=True, cli="x", **kw)
     return ret, logs, opened
 
 
@@ -136,6 +137,23 @@ class HiddenWithoutTmuxTest(unittest.TestCase):
             _, logs, opened = _spawn(gnome_terminal=False, tmux=False, hidden=hidden)
             self.assertEqual(opened, [])
             self.assertEqual([e for e, _ in logs], ["spawn_no_gnome_terminal"])
+
+
+class GhostKeptWhenLaunchCannotStartTest(unittest.TestCase):
+    """Aday 5: NUL taşıyan açılışı `Popen` reddeder; hayalet temizliği ondan ÖNCE eski oturumu kapatıyordu."""
+
+    def test_nul_anywhere_in_the_launch_leaves_the_old_session(self):
+        for kw in ({"inner": "sahte-cli 'a\0b'"}, {"cwd": "/w\0"}, {"display": ":9\0"}):
+            for hidden in (False, True):
+                with self.subTest(kw=kw, hidden=hidden):
+                    reclaimed = []
+                    _spawn(reclaimed=reclaimed, hidden=hidden, **kw)
+                    self.assertEqual(reclaimed, [])
+
+    def test_normal_launch_still_reclaims(self):
+        reclaimed = []
+        _spawn(reclaimed=reclaimed)
+        self.assertEqual(reclaimed, ["p"])
 
 
 class WatchdogValueErrorTest(unittest.TestCase):

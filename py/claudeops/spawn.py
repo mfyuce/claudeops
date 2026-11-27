@@ -266,7 +266,8 @@ def spawn_session(
     if dry_run:
         return f"[dry-run] {kind}  cmd: {_dry_run_preview(cwd, overrides, cli_invocation)}"
 
-    _reclaim_ghost_session(name, cli)
+    if not any("\0" in s for s in (name, cwd, inner, display)):     # NUL'lu açılış başlayamaz: eski oturuma dokunulmaz
+        _reclaim_ghost_session(name, cli)
 
     # CLAUDE*/GEMINI*/ANTIGRAVITY*-prefixed env (CLAUDECODE, CLAUDE_CODE_SESSION_ID,
     # CLAUDE_CODE_CHILD_SESSION, messaging socket/token, pinned EXECPATH,
