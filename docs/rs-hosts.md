@@ -1,6 +1,10 @@
 # İz T5 federasyon istemcisi (`rs/hosts`, crate `cops-hosts`)
 
-## Durum (27 Kas 2026 01:20): `main`de (`e1c57b40`, kapı notu düzeltmesi `796e5812`); copsd sonrası e2e açık
+## Durum (27 Kas 2026 16:13): `main`de (`bbdb0735`), yerel panel yeniden başlatıldı; uzak deploy ve copsd sonrası e2e açık
+
+`rs/hosts` `b789491b`, `bbdb0735` ile birleşti. Yerel `claudeops-web` 15:14:32'de ve yeniden 15:54:45'te açıldı; Python
+tarafındaki düzeltmeler yerelde yüklü. Uzak hostlara (yuhem, ulak_31) deploy `TODO.md`de açık (cops). 16:13 civarında
+`e04e9b18`de eşleme `--check` temiz (AÇIK 0, hata 0). Aşağıdaki test sayıları önceki turun ölçümüdür.
 
 `796e5812` (devirli uzak durdurmada `ambiguous_sessions` + bayat durumda yeniden yoklama; Rust kodu değişmedi): tam
 Python 5861 test OK (23 atlanan), eşleme tablosu `--check` temiz (test durumu 910). Birleştirme öncesi ağaçta
@@ -12,12 +16,13 @@ Python 5861 test OK (23 atlanan), eşleme tablosu `--check` temiz (test durumu 9
 - eşleme tablosu `docs/rs-hosts-mapping.md` (`rust/crates/cops-hosts/tools/mapping.py --check`): tanım 361, Python
   test durumu 906, 0 AÇIK, 0 hata.
 
-Hiçbir yere bağlanmadı (copsd/cops-proxy bu crate'i henüz çağırmıyor). Gerçek uzak host'a istek atılmadı. Canlıya
-alınınca web restart + uzak deploy gerekir (TBD#372/#376/#380/#384/#390 düzeltmeleri Python davranışını değiştirir).
+Rust crate hiçbir yere bağlanmadı (copsd/cops-proxy `cops-hosts`u henüz çağırmıyor). Bu turlarda gerçek uzak host'a
+istek atılmadı. TBD#372/#376/#380/#384/#390 düzeltmeleri Python davranışını değiştirir: uzakta etkili olmaları için
+uzak deploy gerekir.
 
 Kalan:
 - Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
-- TBD#392 (a) UYGULANDI (27 Kas, canlıda değil): çekirdek kancası `authz.set_grpc_term_gate`; kapalıysa (ya da kanca
+- TBD#392 (a) UYGULANDI (27 Kas; yerelde yüklü, uzak deploy açık; kapı yalnız `ent_fwd_mode=require` iken etkili): çekirdek kancası `authz.set_grpc_term_gate`; kapalıysa (ya da kanca
   hata verirse) gRPC `StreamTermOutput` `PERMISSION_DENIED` döner, açık akış da kesilir; `Ping`/`StreamStatus`
   etkilenmez. İstemci (Python `web_hosts.term_output_relay`, Rust `relay.rs`) red görünce o host'ta 60 sn term
   relay'ini WS'ten kurar, sonra gRPC'yi yeniden dener; başka gRPC hatası WS'e geçirmez. WS de olmazsa tarayıcının
