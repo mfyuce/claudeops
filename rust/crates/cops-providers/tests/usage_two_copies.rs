@@ -4,7 +4,9 @@
 
 use cops_providers::real::ledger::scan_usage;
 use cops_review_core::report::{anthropic_spent_usd, usage_cost_usd, UNCOUNTABLE_SPENT_USD};
+use cops_review_core::usage::{next_line, Raw, MAX_LINE_BYTES};
 use std::fs;
+use std::io::{self, BufReader, Read};
 
 const MODELS: [&str; 4] = ["", "claude-haiku-5-5", "claude-sonnet-5-5", "bilinmeyen"];
 
@@ -327,6 +329,73 @@ fn an_integer_python_cannot_parse_is_uncountable_in_both_copies() {
                 "{head}"
             );
             assert_eq!(spent, UNCOUNTABLE_SPENT_USD, "{head}");
+        }
+    }
+}
+
+/// Satır sonu HARİÇ tam `size` baytlık istek satırı.
+fn line_of(size: usize) -> String {
+    let head = format!("{{{USAGE},\"x\":\"");
+    let pad = size - head.len() - 2;
+    format!("{head}{}\"}}", "x".repeat(pad))
+}
+
+/// Satır sınırında üç yol aynı karara varır: tam 16 MiB sayılır; bir bayt fazlası (satır sonu olsa da dosya sonunda
+/// bitmese de) toplama girmez, defterde `problem`, review bütçe kapısında "sayılamadı"; sonraki satır yine okunur
+/// (Python `test_rsprov_cost_line_length`).
+#[test]
+fn both_copies_draw_the_line_length_limit_at_the_same_byte() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("p/anthropic/claude-sonnet-5-5");
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.usage.jsonl");
+    let path = file.to_string_lossy().into_owned();
+    let reviews = root.path().to_string_lossy().into_owned();
+    let short = format!("{{{USAGE}}}");
+    fs::write(&file, format!("{short}\n")).unwrap();
+    let one = usage_cost_usd(&path, "", 0.0, 1.0).unwrap();
+    let (fits, over) = (line_of(MAX_LINE_BYTES), line_of(MAX_LINE_BYTES + 1));
+    assert_eq!(fits.len(), MAX_LINE_BYTES);
+    for (id, data, lines, long) in [
+        ("sinirda", format!("{fits}\n"), 1.0, false),
+        ("sinirda-sonsuz", fits.clone(), 1.0, false),
+        ("fazla", format!("{over}\n"), 0.0, true),
+        ("fazla-sonsuz", over.clone(), 0.0, true),
+        ("fazla-sonra-kisa", format!("{over}\n{short}\n"), 1.0, true),
+        ("kisa-sonra-fazla", format!("{short}\n{over}"), 1.0, true),
+    ] {
+        fs::write(&file, data).unwrap();
+        let ledger = scan_usage(&path, "", 0.0, 1.0);
+        let report = usage_cost_usd(&path, "", 0.0, 1.0).unwrap();
+        let spent = anthropic_spent_usd(&reviews).unwrap();
+        assert_eq!(ledger.total.to_bits(), report.to_bits(), "{id}");
+        // dolgulu satırın sayaçları kısa satırla aynı
+        assert_eq!(report, one * lines, "{id}");
+        assert_eq!(ledger.problem, long.then_some("çok uzun satır"), "{id}");
+        if long {
+            assert_eq!(spent, UNCOUNTABLE_SPENT_USD, "{id}");
+        } else {
+            assert!(spent > 0.0 && spent < 1.0, "{id}: {spent}");
+        }
+    }
+}
+
+/// Satır sonu olmayan dev satır belleğe alınmaz: tampon sınır + 1 bayttan (ayırma payıyla iki katından) büyümez, kalanı
+/// akarken atılır; sonraki satır ve dosya sonu doğru görülür.
+#[test]
+fn a_huge_line_streams_through_a_bounded_buffer() {
+    let huge = || io::repeat(b'x').take(20 * MAX_LINE_BYTES as u64);
+    let mut reader = BufReader::new(huge().chain(&b"\nson\n"[..]).chain(huge()));
+    let mut buf = Vec::new();
+    for want in [Raw::TooLong, Raw::Line, Raw::TooLong, Raw::End] {
+        assert_eq!(next_line(&mut reader, &mut buf).unwrap(), want);
+        assert!(
+            buf.capacity() <= 2 * (MAX_LINE_BYTES + 1),
+            "{}",
+            buf.capacity()
+        );
+        if want == Raw::Line {
+            assert_eq!(buf, b"son\n");
         }
     }
 }

@@ -19,17 +19,15 @@ use crate::pyfmt::parse_int;
 use crate::pyjson::Py;
 use crate::real::{docs::DOC_MAX_BYTES, fsio};
 use crate::settings::{Settings, UcliCostConfig, BAD_CAP, BAD_COST_BLOCK};
+use cops_review_core::usage::{self, Raw};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{self, BufReader};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// Tek günlük satırının sınırı (Python sınırsız); aşan satır sayılamaz (sorun).
-pub const LINE_MAX_BYTES: usize = 16 << 20;
 
 /// `time.time()`.
 pub type WallClock = Arc<dyn Fn() -> f64 + Send + Sync>;
@@ -229,32 +227,21 @@ fn read_windows(path: &Path, scans: &mut [UsageScan]) {
     let mut reader = BufReader::new(file);
     let mut line = Vec::new();
     loop {
-        line.clear();
-        let read = (&mut reader)
-            .take(LINE_MAX_BYTES as u64 + 1)
-            .read_until(b'\n', &mut line);
-        match read {
-            Ok(0) => break,
-            Ok(_) => {}
+        match usage::next_line(&mut reader, &mut line) {
+            Ok(Raw::End) => break,
+            Ok(Raw::TooLong) => UsageScan::apply(scans, usage::too_long()),
+            // Python ikili okur: yalnız `\n` satır ayırır; UTF-8 olmayan satır atlanır
+            Ok(Raw::Line) => match std::str::from_utf8(&line) {
+                Ok(text) => UsageScan::feed_all(scans, text),
+                Err(_) => {
+                    for scan in scans.iter_mut() {
+                        scan.skipped.push("usage.line");
+                    }
+                }
+            },
             Err(_) => {
                 fail(scans, "okunamadı");
                 break;
-            }
-        }
-        if line.len() > LINE_MAX_BYTES && !line.ends_with(b"\n") {
-            fail(scans, "çok uzun satır");
-            if reader.skip_until(b'\n').is_err() {
-                break;
-            }
-            continue;
-        }
-        // Python ikili okur: yalnız `\n` satır ayırır; UTF-8 olmayan satır atlanır
-        match std::str::from_utf8(&line) {
-            Ok(text) => UsageScan::feed_all(scans, text),
-            Err(_) => {
-                for scan in scans.iter_mut() {
-                    scan.skipped.push("usage.line");
-                }
             }
         }
         // bozuk satır sayısı kadar büyümesin

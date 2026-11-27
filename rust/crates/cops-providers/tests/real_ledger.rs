@@ -348,7 +348,7 @@ fn an_unreadable_or_invalid_ledger_closes_an_open_cap() {
         "a.jsonl",
         &format!(
             "{}\n{}",
-            "x".repeat(ledger::LINE_MAX_BYTES + 10),
+            "x".repeat(cops_review_core::usage::MAX_LINE_BYTES + 10),
             rec(noon(), 1000)
         ),
     );

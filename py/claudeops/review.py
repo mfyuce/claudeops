@@ -18,7 +18,7 @@ import unicodedata
 from .diaglog import diag_log
 from .textutil import collapse_ws
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 from . import steward as sw
 
@@ -1861,7 +1861,26 @@ def _usage_number(v: Any) -> bool:
 _MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `usage::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
 _DEPTH_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.S)      # dize (yarım da olur) içindeki ayraç sayılmaz
 _UNCOUNTABLE_SPENT_USD = 1e18      # sayılamayan satır varken bütçe kapısının gördüğü harcama (sonlu: günlüğe JSON olarak yazılır)
-_UNCOUNTABLE_KINDS = ("usage.depth", "usage.number")      # atlanan satır türlerinden harcaması bilinemeyenler
+_UNCOUNTABLE_KINDS = ("usage.depth", "usage.number", "usage.length")      # atlanan satır türlerinden harcaması bilinemeyenler
+_MAX_LINE_BYTES = 16 << 20      # tek kullanım satırının (satır sonu hariç) bayt sınırı (Rust `usage::MAX_LINE_BYTES` ile aynı)
+
+
+def _usage_lines(f) -> Iterator[Optional[bytes]]:
+    """İkili günlüğün satırları. `_MAX_LINE_BYTES`i aşan satır belleğe alınmaz: yerine `None` verilir, kalanı parça parça
+    okunup atılır."""
+    while True:
+        raw = f.readline(_MAX_LINE_BYTES + 1)
+        if not raw:
+            return
+        if len(raw) <= _MAX_LINE_BYTES or raw.endswith(b"\n"):
+            yield raw
+            continue
+        del raw
+        yield None      # atlamadan ÖNCE: kalanı okurken hata olsa da satır sayılamadı olarak kalır
+        while True:
+            rest = f.readline(1 << 16)
+            if not rest or rest.endswith(b"\n"):
+                break
 
 
 def _too_deep(line: str) -> bool:
@@ -1888,8 +1907,8 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
 
 def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tuple[float, str]:
     """(usd, sorun). `sorun` boş değilse toplama GÜVENİLMEZ (dosya okunamadı, normal dosya değil, bir istek kaydında
-    geçersiz sayı, `_MAX_LINE_DEPTH`ten derin ya da basamak sınırını aşan tam sayılı satır): açık bir harcama tavanı bunu
-    "izin" saymamalı. Olmayan dosya ve ayrıştırılamayan (yarım yazılmış) satır sorun sayılmaz."""
+    geçersiz sayı, `_MAX_LINE_DEPTH`ten derin, `_MAX_LINE_BYTES`ten uzun ya da basamak sınırını aşan tam sayılı satır):
+    açık bir harcama tavanı bunu "izin" saymamalı. Olmayan dosya ve ayrıştırılamayan (yarım yazılmış) satır sorun sayılmaz."""
     usd, problem, skipped = _scan_usage_windows(path, model, (since_ms,), write_mult)[since_ms]
     for what in skipped:
         _log_bad(what, path)
@@ -1928,7 +1947,11 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
             os.close(fd)
             raise
         with f:
-            for raw in f:
+            for raw in _usage_lines(f):
+                if raw is None:      # sayılamayan satır: toplama girmez, pencere bilinmediği için hepsi güvenilmez
+                    _fail("çok uzun satır", every)
+                    _skip("usage.length", every)
+                    continue
                 try:
                     line = raw.decode("utf-8")
                 except UnicodeDecodeError:
@@ -2013,8 +2036,8 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
 
 def anthropic_spent_usd(reviews_root: str) -> float:
     """Tüm `anthropic` koşularının toplam $ (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik SABİT varsayılmaz
-    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği ya da sayı uzunluğu
-    yüzünden sayılamayan satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
+    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği, satır ya da sayı
+    uzunluğu yüzünden sayılamayan satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
     import glob
     tot = 0.0
     uncountable = False

@@ -111,7 +111,8 @@ pub struct UsageScan {
     pub total: f64,
     /// Boş değilse toplama güvenilmez.
     pub problem: Option<&'static str>,
-    /// Atlanan bozuk kayıtların türü (`usage.record`, `usage.depth`, `usage.number`), görülme sırasıyla.
+    /// Atlanan bozuk kayıtların türü (`usage.record`, `usage.depth`, `usage.number`, `usage.length`), görülme
+    /// sırasıyla.
     pub skipped: Vec<&'static str>,
 }
 
@@ -142,13 +143,18 @@ impl UsageScan {
     /// Satırı BİR kez ayrıştırıp yalnız zaman penceresi (`since_ms`) farklı toplayıcılara besler; her birinin sonucu tek
     /// başına [`UsageScan::feed`] ile aynıdır. Model ve yazma çarpanı hepsinde aynı olmalı.
     pub(crate) fn feed_all(scans: &mut [UsageScan], line: &str) {
-        let Some((price, fixed_model, write_mult)) = scans
-            .first()
-            .map(|s| (s.price, s.fixed_model, s.write_mult))
-        else {
+        let Some(fixed_model) = scans.first().map(|s| s.fixed_model) else {
             return;
         };
-        match usage::read_line(line, !fixed_model) {
+        UsageScan::apply(scans, usage::read_line(line, !fixed_model));
+    }
+
+    /// Anlamı bilinen satırı (ya da okunmadan atlananı, [`usage::too_long`]) toplayıcılara işler.
+    pub(crate) fn apply(scans: &mut [UsageScan], line: Line) {
+        let Some((price, write_mult)) = scans.first().map(|s| (s.price, s.write_mult)) else {
+            return;
+        };
+        match line {
             Line::Ignored => {}
             // sayılamayan kayıt sessizce 0 olmasın: pencere bilinmediği için hepsi güvenilmez
             Line::Uncountable { problem, kind } => {

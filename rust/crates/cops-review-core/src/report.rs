@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::py::{self, S};
 use crate::store::round_to;
 use crate::targets::{ci, ANTHROPIC_PRICES};
-use crate::usage::{self, Line};
+use crate::usage::{self, Line, Raw};
 use cops_state::json::{Json, Map};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -405,21 +405,15 @@ pub fn anthropic_price(model: &str) -> [f64; 4] {
 }
 
 /// Python `_scan_usage` açılışı: `O_NONBLOCK` (FIFO açılışta bloklamaz), açılan tanıtıcı normal dosya değilse ya da
-/// okunamazsa None (maliyet 0).
-fn read_regular_nonblocking(path: &str) -> Option<Vec<u8>> {
-    use std::io::Read;
+/// açılamazsa None (maliyet 0).
+fn open_regular_nonblocking(path: &str) -> Option<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
-    let mut f = std::fs::OpenOptions::new()
+    let f = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK)
         .open(path)
         .ok()?;
-    if !f.metadata().ok()?.is_file() {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    f.read_to_end(&mut bytes).ok()?;
-    Some(bytes)
+    f.metadata().ok()?.is_file().then_some(f)
 }
 
 /// Sayılamayan satır varken bütçe kapısının gördüğü harcama (Python `_UNCOUNTABLE_SPENT_USD`).
@@ -435,15 +429,25 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
     let mut price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
     let mut uncountable = false;
-    let Some(bytes) = read_regular_nonblocking(path) else {
+    let Some(file) = open_regular_nonblocking(path) else {
         return (0.0, false);
     };
-    for raw in bytes.split(|b| *b == b'\n') {
-        let Ok(line) = std::str::from_utf8(raw) else {
-            badrec::log_bad("usage.line", path); // yalnız bozuk satır atlanır; kalan istekler maliyete girer
-            continue;
+    let mut reader = std::io::BufReader::new(file);
+    let mut raw = Vec::new();
+    loop {
+        let read = match usage::next_line(&mut reader, &mut raw) {
+            Ok(Raw::End) => break,
+            Ok(Raw::TooLong) => usage::too_long(),
+            Ok(Raw::Line) => {
+                let Ok(line) = std::str::from_utf8(raw.strip_suffix(b"\n").unwrap_or(&raw)) else {
+                    badrec::log_bad("usage.line", path); // yalnız bozuk satır atlanır; kalan istekler maliyete girer
+                    continue;
+                };
+                usage::read_line(line, model.is_empty())
+            }
+            Err(_) => return (0.0, false), // okunamayan dosya
         };
-        let record = match usage::read_line(line, model.is_empty()) {
+        let record = match read {
             Line::Ignored => continue,
             Line::Uncountable { kind, .. } => {
                 uncountable = true;

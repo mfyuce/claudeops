@@ -1,17 +1,57 @@
 //! Bir `.usage.jsonl` satırının TEK değerlendirmesi (Python `review._scan_usage_windows` döngü gövdesi). İki tüketicisi
 //! var: `report::usage_cost_usd` (yalnız toplam) ve `cops-providers` `cost::UsageScan` (toplam + güvenilirlik). Dosya
-//! okuma, zaman penceresi ve günlük kaydı çağırandadır; fiyat, sayaç ve sınır kuralları yalnız burada.
+//! açma, zaman penceresi ve günlük kaydı çağırandadır; satır sınırı ([`next_line`]), fiyat, sayaç ve sınır kuralları
+//! yalnız burada.
 
 use crate::py;
 use crate::report::anthropic_price;
 use crate::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
 use cops_state::json::{Json, Map};
+use std::io::{self, BufRead, Read};
 
 /// Python `_MAX_USAGE_TOKENS`: tek istek sayacı için akla yatkın üst sınır (üstü bozuk kayıt).
 pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
 /// Python `_MAX_LINE_DEPTH`: bir kullanım satırında iç içe dizi/nesne sınırı (gerçek kayıt 2-3 katlı).
 pub const MAX_LINE_DEPTH: usize = 512;
+
+/// Python `_MAX_LINE_BYTES`: tek kullanım satırının (satır sonu hariç) bayt sınırı.
+pub const MAX_LINE_BYTES: usize = 16 << 20;
+
+/// [`next_line`]ın sonucu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Raw {
+    End,
+    /// Satır tamponda (varsa satır sonuyla).
+    Line,
+    /// [`MAX_LINE_BYTES`]i aşan satır: atlandı; anlamı [`too_long`].
+    TooLong,
+}
+
+/// Python `_usage_lines`: sıradaki satırı `buf`a okur (yalnız `\n` ayırır). Sınırı aşan satır belleğe alınmaz: tampon en
+/// çok sınır + 1 bayt olur, kalanı satır sonuna (ya da dosya sonuna) dek atılır. Atlarken çıkan okuma hatası
+/// yutulur (satır yine sayılamadı); kalıcıysa sonraki çağrı bildirir.
+pub fn next_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> io::Result<Raw> {
+    buf.clear();
+    let limit = MAX_LINE_BYTES as u64 + 1;
+    if reader.by_ref().take(limit).read_until(b'\n', buf)? == 0 {
+        return Ok(Raw::End);
+    }
+    if buf.len() <= MAX_LINE_BYTES || buf.ends_with(b"\n") {
+        return Ok(Raw::Line);
+    }
+    buf.clear();
+    let _ = reader.skip_until(b'\n');
+    Ok(Raw::TooLong)
+}
+
+/// [`Raw::TooLong`] satırının anlamı.
+pub fn too_long() -> Line {
+    Line::Uncountable {
+        problem: "çok uzun satır",
+        kind: "usage.length",
+    }
+}
 
 /// Python'un tam sayı basamak sınırı: daha uzununu `json.loads` ayrıştırmaz.
 const MAX_INT_DIGITS: usize = 4300;
