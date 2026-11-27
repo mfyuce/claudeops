@@ -11,6 +11,8 @@ Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 12
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
 denetlenmedi (`tmux_backend.py` değişmedi).
+27 Kas `main` `8239e0d5` birleşimi (`13340f26`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
+Python 6522 OK (23 atlanan, 333 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 Oynak görülenler: `parity_real`, iki `flock` testi ve
 `test_review_io_history::test_real_pipes_stream_and_heartbeat` giderildi ("Oynak testler" bölümü).
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
