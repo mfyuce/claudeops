@@ -41,6 +41,13 @@ pub fn py_strip(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
 }
 
+/// Baştaki boşluk ve sondaki "/" + boşluk karışımı atılır (Python `_clean_url`).
+fn clean_url(raw: &str) -> &str {
+    py_strip(raw).trim_end_matches(|c: char| {
+        c == '/' || c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
+    })
+}
+
 /// İstekten gelen `host` alanı (query ya da gövde): boş/yok = yerel.
 pub fn normalize_host(raw: Option<&str>) -> &str {
     match raw.map(py_strip) {
@@ -239,7 +246,7 @@ impl Draft {
         extra_urls: &str,
         reach_ports: &BTreeSet<u16>,
     ) -> Result<Draft, RecordError> {
-        let clean = |u: &str| py_strip(u).trim_end_matches('/').to_string();
+        let clean = |u: &str| clean_url(u).to_string();
         let d = Draft {
             name: py_strip(name).to_string(),
             base_url: clean(base_url),
