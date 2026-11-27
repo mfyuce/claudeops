@@ -21,6 +21,7 @@ import os
 import re
 import signal
 import shutil
+import stat
 import subprocess
 import threading
 import time
@@ -3614,6 +3615,26 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
             "commit": "not done (no remote shell API); commit/push the remote repo manually" if written else ""}
 
 
+def _export_write_path(root: str, fname: str) -> str:
+    """Dışa aktarımın yazacağı yol. Hedef sembolik bağsa bağ KOPARILMAZ: yalnız worktree'nin ANA checkout'undaki aynı adlı,
+    bize ait normal dosyayı gösteriyorsa oraya yazılır (worktree not bağları); başka her bağda "" (yazma yok)."""
+    target = os.path.join(root, fname)
+    if not os.path.islink(target):
+        return target
+    real = os.path.realpath(target)
+    try:
+        with open(os.path.join(root, ".git"), encoding="utf-8") as f:
+            gitdir = f.read(4096).strip()
+        st = os.stat(real)
+    except (OSError, UnicodeDecodeError):
+        return ""
+    worktrees = os.path.join(os.path.realpath(os.path.dirname(real)), ".git", "worktrees") + os.sep
+    if (os.path.basename(real) != fname or not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid()
+            or not gitdir.startswith("gitdir: ") or not os.path.realpath(gitdir[8:]).startswith(worktrees)):
+        return ""
+    return real
+
+
 def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = None, by: str = "",
                     states: Sequence[str] = ("approved",), only: Optional[Callable[[Dict[str, Any]], bool]] = None,
                     note: str = "") -> Dict[str, Any]:
@@ -3679,7 +3700,13 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
         already: List[str] = []
         targets: List[str] = []
         for root, grp in groups.items():
-            target = os.path.join(root, fname)
+            target = _export_write_path(root, fname)
+            if not target:
+                sw.log_event("review_export_symlink_refused", paths=p, project=project, file=fname, root=root,
+                             ids=[r["id"] for r in grp])
+                warn = (f"{warn}; " if warn else "") + f"{os.path.join(root, fname)} beklenmeyen bir sembolik bağ, yazılmadı"
+                unresolved += [r["id"] for r in grp]
+                continue
             try:
                 with open(target, encoding="utf-8") as f:
                     text = f.read()
@@ -3702,6 +3729,9 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 if by:
                     data[fid]["exported_by"] = by
         rv.save_findings(p, data)
+    if not targets:
+        return {"ok": False, "error": "no writable target for findings", "project": project, "warning": warn,
+                "unresolved": unresolved}
     sw.log_event("review_export", paths=p, project=project, file=fname, written=written, already=already,
                  **({"by": by} if by else {}))
     res = {"ok": True, "project": project, "file": targets[0], "files": targets, "written": written, "already": already}
