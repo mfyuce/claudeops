@@ -138,5 +138,29 @@ class HiddenWithoutTmuxTest(unittest.TestCase):
             self.assertEqual([e for e, _ in logs], ["spawn_no_gnome_terminal"])
 
 
+class WatchdogValueErrorTest(unittest.TestCase):
+    """Bekçide `Popen` `ValueError`ı iş parçacığını iz bırakmadan öldürüyordu."""
+
+    def test_is_logged_without_the_message_and_ends_the_watchdog(self):
+        logs, direct, clock = [], [], [0.0]
+
+        def launch(*a):
+            raise ValueError("illegal environment variable name: API_KEY=sk-cok-gizli")
+
+        def sleep(s):
+            clock[0] += s
+
+        with mock.patch.object(spawn, "tmux_has_session", lambda n: False), \
+                mock.patch.object(spawn, "tmux_spawn_direct", lambda *a: direct.append(a) or True), \
+                mock.patch.object(spawn, "_launch_gnome_terminal", launch), \
+                mock.patch.object(spawn, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)), \
+                mock.patch.object(spawn, "diag_log", lambda ev, **k: logs.append((ev, k))):
+            spawn._fallback_watchdog("p", "/w", "inner", {"API_KEY": "sk-cok-gizli"}, "cmd")
+        self.assertEqual(direct, [])
+        self.assertEqual(logs, [
+            ("spawn_retry", {"name": "p", "cwd": "/w", "attempt": 1}),
+            ("spawn_retry_launch_error", {"name": "p", "cwd": "/w", "attempt": 1, "error": "ValueError"})])
+
+
 if __name__ == "__main__":
     unittest.main()

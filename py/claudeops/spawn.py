@@ -409,7 +409,12 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
             time.sleep(0.5)
         if attempt < FALLBACK_RETRY_COUNT:
             diag_log("spawn_retry", name=name, cwd=cwd, attempt=attempt + 1)
-            if not _launch_gnome_terminal(name, cwd, window_cmd, env):
+            try:
+                launched = _launch_gnome_terminal(name, cwd, window_cmd, env)
+            except ValueError as e:     # argv/ortam reddi: bekçi biter (yedek de aynı girdiyi taşır). Metin değer içerebilir: yalnız sınıf adı
+                diag_log("spawn_retry_launch_error", name=name, cwd=cwd, attempt=attempt + 1, error=type(e).__name__)
+                return
+            if not launched:
                 diag_log("spawn_retry_launch_failed", name=name, cwd=cwd, attempt=attempt + 1)
     if tmux_has_session(name):
         return

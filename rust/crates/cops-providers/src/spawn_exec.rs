@@ -401,7 +401,8 @@ pub fn reclaim_ghost_session(launcher: &Launcher, name: &str, cli: &str) {
 }
 
 /// `_fallback_watchdog`: ilk gnome-terminal denemesi tmux oturumunu getirmezse [`FALLBACK_RETRY_COUNT`] kez yeniden
-/// dener; hepsi biterse ANCAK O ZAMAN penceresiz tmux. `Popen` istisnası (Python'da iş parçacığını öldürür) bekçiyi bitirir.
+/// dener; hepsi biterse ANCAK O ZAMAN penceresiz tmux. `Popen` istisnası bekçiyi bitirir; `ValueError`
+/// `spawn_retry_launch_error` günlüğüne yalnız sınıf adıyla yazılır (metin argv/ortam değeri taşıyabilir).
 pub fn fallback_watchdog(
     launcher: &Launcher,
     name: &str,
@@ -434,7 +435,20 @@ pub fn fallback_watchdog(
                     "spawn_retry_launch_failed",
                     vec![("name", json!(name)), ("cwd", json!(cwd)), ("attempt", json!(next))],
                 ),
-                Err(_) => return,
+                Err(LaunchError::Value(_)) => {
+                    launcher.log(
+                        "spawn_retry_launch_error",
+                        vec![
+                            ("name", json!(name)),
+                            ("cwd", json!(cwd)),
+                            ("attempt", json!(next)),
+                            ("error", json!("ValueError")),
+                        ],
+                    );
+                    return;
+                }
+                // Python `RuntimeError`ı yakalamaz (iş parçacığı izini stderr'e basar).
+                Err(LaunchError::Runtime(_)) => return,
             }
         }
     }

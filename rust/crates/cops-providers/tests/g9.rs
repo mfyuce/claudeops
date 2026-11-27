@@ -270,10 +270,13 @@ fn watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it() {
     let names: Vec<&str> = r.events().iter().map(|e| e.0).collect();
     assert_eq!(names, ["spawn_retry", "spawn_retry_launch_failed", "spawn_retry", "spawn_fallback_used"]);
     assert_eq!(r.events()[3].1[2], ("ok", json!(false)));
-    // Python: `Popen` `ValueError`ı iş parçacığını sessizce öldürür; penceresiz yedek de açılmaz.
-    let r = rig(|_| {}, vec![Err(LaunchError::Value("embedded null byte".into()))]);
+    // `ValueError` bekçiyi bitirir, penceresiz yedek açılmaz; günlüğe hata metni DEĞİL sınıf adı girer.
+    let r = rig(|_| {}, vec![Err(LaunchError::Value("API_KEY=sk-cok-gizli".into()))]);
     watch(&r);
-    assert_eq!(r.events().iter().map(|e| e.0).collect::<Vec<_>>(), ["spawn_retry"]);
+    let ev = r.events();
+    assert_eq!(ev.iter().map(|e| e.0).collect::<Vec<_>>(), ["spawn_retry", "spawn_retry_launch_error"]);
+    assert_eq!(ev[1].1[2..], [("attempt", json!(1)), ("error", json!("ValueError"))]);
+    assert!(!format!("{ev:?}").contains("gizli"));
     assert!(!r.calls().iter().any(|c| c.starts_with("direct")));
 }
 
