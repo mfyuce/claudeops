@@ -11,6 +11,10 @@ Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 12
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
 denetlenmedi (`tmux_backend.py` değişmedi).
+27 Kas `main` `e5171ba3` birleşimi (`41b91b7e`, TBD#422 commit'leri dahil): cargo 1305 geçti / 0 kaldı / 1 atlandı,
+clippy ve fmt temiz, Python 6552 OK (23 atlanan, 429 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
+`e5171ba3`ün değiştirdiği `ucli_checks.binary_supports_checks` ve `ucli_validate`ın karşılığı `real/checks.rs`te
+görülmedi (kod okuması: yalnız kayıt okuma); Rust değişmedi.
 27 Kas `main` `da6e993c` birleşimi (`cdea6d34`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
 Python 6529 OK (23 atlanan, 332 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 27 Kas `main` `8239e0d5` birleşimi (`13340f26`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
