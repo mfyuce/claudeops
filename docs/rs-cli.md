@@ -174,6 +174,13 @@ Devir koşulları (hiçbir çıktı yazılmadan aynı argv Python'a; `list` Rust
 (`db` kipi) `list --no-cpu --json` yerelde cevaplandı, Python/Rust/Python çıktısı aynı. `cargo test -p cops-cli` geçti,
 clippy temiz. Karşılaştırma sırasında ayna yazılırsa en kötü sonuç gereksiz devirdir.
 
+27 Kas (salt okunur DB, tek CPU beklemesi): `db` kipi denetimi DB'yi salt okunur açar
+(`StateDocs::read_only_store`, `Store::open_read_only`); CPU ölçülecekse önce ölçümsüz tarama yapılır, devir belliyse
+bekleme olmaz (yalnız ikinci taramada çıkan kuşkuda iki bekleme kalır). Testler uygulamadan önce kırmızıydı:
+`doubtful_scan_is_delegated_without_cpu_wait`, `clean_scan_is_measured_and_rechecked`,
+`mirror_check_does_not_write_the_database`; ayrıca `read_only_store_reads_wal_and_never_writes`. Canlı filoda
+`list --no-cpu --json` Python/Rust/Python bayt bayt aynı; workspace testleri 1012/0, clippy temiz.
+
 ### Python testleri: `py/tests/test_front_cmd.py`
 
 | Python adı (satır) | Rust karşılığı / neden | Rust testi | durum |
