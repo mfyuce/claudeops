@@ -384,6 +384,7 @@ fn plan_blockers() {
     };
     assert_eq!(rc, 1);
     assert!(out.contains("ikili yok: /yok/copsd"), "{out}");
+    assert!(out.contains("cargo build --release -p copsd"), "{out}");
     assert!(out.matches("\n  ").count() >= 5);
     std::fs::write(&e.paths.web_unit, "[Service]\nExecStart=/x\n").unwrap();
     let (rc, out) = e.run(Action::On, false, L, I);

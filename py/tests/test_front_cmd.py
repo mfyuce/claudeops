@@ -23,6 +23,7 @@ class T(unittest.TestCase):
     def test_plan_blockers(self):
         steps, bl = f.plan_on("127.0.0.1:8765", "127.0.0.1:28765", "/yok/copsd", LIVE)
         self.assertTrue(any("ikili yok" in b for b in bl))
+        self.assertTrue(any("cargo build --release -p copsd" in b for b in bl), bl)
         self.assertGreaterEqual(len(steps), 5)
         _, bl = f.plan_on("127.0.0.1:8765", "127.0.0.1:28765", sys.executable, "[Service]\nExecStart=/x\n")
         self.assertTrue(any("tanınmadı" in b for b in bl))

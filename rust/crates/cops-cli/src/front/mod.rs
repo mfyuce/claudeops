@@ -292,7 +292,7 @@ pub fn plan_on(
     let mut blockers = Vec::new();
     if !exists(binp) {
         blockers.push(format!(
-            "ikili yok: {binp} (rust/ altında `cargo build --release`, sonra kopyala)"
+            "ikili yok: {binp} (rust/ altında `cargo build --release -p copsd`, sonra kopyala)"
         ));
     } else if !is_exec_file(binp) {
         blockers.push(format!("ikili çalıştırılabilir dosya değil: {binp}"));
