@@ -1,12 +1,13 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `9e5bcf24` birleşimi `3aee9ac7` + TBD#399 düzeltmesi):
+Durum (27 Kas 2026, `origin/main` `f4679f51` birleşimi; ayrıntı "main `f4679f51` eşitlemesi"):
 **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve TAŞINDI-TESTSİZ satır yok. Açık: ders
 tablosundaki gerekçeli AÇIK satırlar, sahip/cops kararı bekleyen Python farkları (G10 aday 1; G9 aday 5, 6;
-G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `8bef883a`): `cargo test --workspace` 1243
-geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings` ve `cargo fmt --check -p cops-providers` temiz;
-Python tam paket 6305 OK (23 atlanan); eşleme denetimleri (hosts `--check`, rs-proc `--check --strict`, steward
-`map.py --check`) temiz. Oynak testler (yük altında bir kez): `parity_live`
+G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `f4679f51` birleşim ağacı): `cargo test
+--workspace` 1261 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings` ve `cargo fmt --check -p
+cops-providers -p cops-tmux` temiz; Python tam paket 6336 OK (23 atlanan, 924 sn); eşleme denetimleri (hosts `--check`,
+rs-proc `--check --strict`, steward `map.py --check`, rev `map_table.py --check`) temiz; rs-tmux tablosunda `ast`
+karşılaştırması tanım ve (`tmux_backend` anan dosyalarda) test farkı 0. Önceki turlarda oynak (yük altında bir kez): `parity_live`
 `live-codex-ctx-dev` (önceki turda) ve `real_fs::concurrent_issue_keeps_file_and_digest_consistent` (yük ortalaması ~20 iken
 30 sn kilit sınırı aşıldı; tek başına üç koşuda ve tam koşuda yeşil).
 27 Kas düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
@@ -15,8 +16,8 @@ denetimi, yutulan model çekimi ve `agy_sids` hatalarının günlüğü; her bir
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 7325 vaka: spawn yürütme 172 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 334 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
-  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 344 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
+- 9207 vaka (27 Kas, `f4679f51` birleşim ağacı): spawn yürütme 243 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 370 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 355 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 38 "bilinen ayrışma" (1i G1, 3ü G7, 8i G3, 2si G2, 5i G6, 2si G4, 7si ayar/pyfmt, 8i misc, 2si model/effort) testte
@@ -584,8 +585,9 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 ## G8 (ikinci parça): maliyet defteri ve SearXNG
 
 ### Sahiplik
-`rs/rev` fiyat tablosunu ve `usage_cost_usd`i de taşıyor (o dal bu dalda yok): birleşimde `cost.rs::{anthropic_price,
-UsageScan}` ile tek kopya kalmalı. Eşitleme kaynağı Python'un 27 Kas düzeltmeli hâli.
+Fiyat tablosu, Haiku dilim sabitleri ve `anthropic_price` tek kaynaktan: `cops-review-core` (`targets.rs`, `report.rs`);
+`cost.rs` ve `ucli.rs` oradan alır (`f4679f51` eşitlemesi). Toplayıcı İKİ kopya: `report.rs::usage_cost_usd` yalnız toplam,
+`cost.rs::UsageScan` toplam + güvenilirlik (`problem`); kural değişirse ikisi de güncellenir (açık iş).
 
 ### Maliyet defteri (`cost.rs` saf, `real/ledger.rs` G/Ç)
 - Defterin yazarı claudeops değil: `<durum>/ucli_usage/<oturum>.jsonl` dosyalarına yalnız `ucli` ekler; Python ve Rust yalnız
@@ -651,6 +653,27 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 claude hizmetinde claudeops tablosundan `--price` (dilimli modelde en pahalı dilim), tur tavanı `--price` verilen modelde de
 eklenir, fiyatı bilinmeyen modele oturum tavanı `SpawnError`. Rust `ucli.rs` (`claudeops_price`, `has_price`), parite
 `parity_ucli` `fiyat-*`. TBD#397 günlük tavan reddiyle çakışmaz (biri `settings.json`, öbürü argv fiyatı).
+
+## main `f4679f51` eşitlemesi (27 Kas)
+Tek çakışma `py/claudeops/review.py` `_scan_usage`: dalın "güvenilmez toplam" dönüşü (`problem`, `FileNotFoundError` ayrımı)
+ile main'in `task_end` atlaması ve Haiku dilimi BİRLİKTE korundu. `task_end` satırı toplama ve sayaç denetimine girmez;
+zaman damgası bozuksa dalın kuralıyla yine `problem` olur.
+
+| Python davranışı (main) | Rust | Sınama |
+|---|---|---|
+| ucli `task_end` toplamı iki kez faturalanmaz; Haiku 5.5 100K üstü istem pahalı dilimden (`78b05780`) | `cops-review-core` `report.rs` payı main'de; defter toplayıcısı `cost.rs::UsageScan` bu turda | `parity_ledger` `dilim*` ve rastgele satırlar (`task_end`, eşik sayıları) |
+| fiyat tek kaynak (`HAIKU_LONG_PRICE`) | `TOP_TIER_PRICES` ve `cost.rs::PRICES` silindi; `cops-review-core` | `parity_ucli` `fiyat-*` |
+| yeni pencere hedef masaüstünde (`startup_desktop.py`, `796b3acb`) | `startup_desktop.rs`, `real/startup_desktop.rs`, `Terminal::startup_env` + `Launcher::launch_window` (dört pencere yolu), `SpawnRuntime::launcher` bağlar | `parity_g9` `masaustu-*` (iki tarafta gerçek mantık, sahte sayım/gönderim), `tests/g9.rs`, yapı düzeni birim testi |
+| `settings.spawn_desktop` varsayılanı | `cops-state` `default_settings.json` (main'de eksikti) | `cops-state` parite |
+| `tmux_capture(join=True)` (`6aee83bd`) | `cops-tmux` `Tmux::capture_joined` | `cops-tmux` parite (gerçek ve sahte tmux) |
+| açılışta ölen ucli'nin hata satırı (`_with_ucli_error`) | taşınmadı: `web._start` bu crate'te yok (bağlayan uç) | |
+
+- **TBD#399 canlı geçiş `-J`den ETKİLENMEZ:** `join` varsayılanı kapalı; Python'da tek `join=True` çağıranı
+  `web._with_ucli_error`. `Pane::capture` (giriş kutusu, diyalog, sonuç satırı) iki dilde de sarılmış satırlarla okur.
+- Parite koşucusu X sunucusuna ve `wmctrl`e dokunmaz (`harness.py` `startup_env`i varsayılan kapatır). Gerçek X gönderimi
+  (`send_startup_x11`) Rust'ta CANLI DENENMEDİ; yalnız yapı düzeni, kitaplık yükleme ve açılamayan ekran sınandı.
+- Bilinen ayrışma (yalnız bozuk `spawn_desktop`, testte vaka yok): `Infinity` Python'da `startup_desktop_error`, Rust'ta
+  `settings.json` ayrıştırılamaz (varsayılanlar); `i64`a sığmayan eksi sayı METNİ Python'da kapalı, Rust'ta varsayılan.
 
 ## G10: tek atımlık çağrı ve onay
 
@@ -747,7 +770,8 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
   denetlenir (kuru ya da hatalı başlatmada tam bir kez).
 - `parity_misc` `sync*` artık gerçek `sync_one` ile (önceden test koşucusunda yazılmış kopya).
 - Kötü ad (27 Kas): `{cli}-kotu-ad` 7 + `pencere-kotu-ad` 1 (Python `bb26564e` `spawn_bad_name`; Rust önceden reddediyordu,
-  `d1bf8ff5` ile düzeltildi). Paritede `parity_g9` artık 172 vaka.
+  `d1bf8ff5` ile düzeltildi). Paritede `parity_g9` artık 172 vaka (`f4679f51` birleşiminden sonra `masaustu-*` 71 vakayla
+  243).
 - `tests/real_tmux.rs` 8 (yalıtılmış sunucu: tam ad/ön ek, miras almayan ortam, kötü adlarda tmux çalışmaz, sunucusuz
   durum, `PATH` yoklaması, Python parça metniyle bayt eşitliği, gerçek hayalet temizliği, bekçinin gerçek penceresiz
   yedeği, `open_window` tam hedef); `tests/real_scan.rs` 6 (sahte `/proc`: satırlar, öğrenilen agy kaydı, kuru kip,
@@ -1069,8 +1093,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_switch_label_matches` (py/claudeops/providers/claude_provider.py:130) | `tui.rs::label_matches` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
 | `_switch_pane_state` (py/claudeops/providers/claude_provider.py:137) | `tui.rs::pane_state` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
 | `_live_switch` (py/claudeops/providers/claude_provider.py:163) | `tui.rs::{run_switch, Run::look}` | `parity.rs::parity_tui` `g4-ekran-` `g4-pane-` | TAŞINDI |
-| `_TOP_TIER_PRICES` (py/claudeops/providers/ucli_provider.py:616) | `ucli.rs::TOP_TIER_PRICES` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `_claudeops_price` (py/claudeops/providers/ucli_provider.py:619) | `ucli.rs::claudeops_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_claudeops_price` (py/claudeops/providers/ucli_provider.py:614) | `ucli.rs::claudeops_price` (tablo `cops_review_core::targets`) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `_argv_model` (py/claudeops/providers/ucli_provider.py:627) | `ucli.rs::{value_after, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `_has_price` (py/claudeops/providers/ucli_provider.py:631) | `ucli.rs::has_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `ClaudeProvider.matches_proc` (py/claudeops/providers/claude_provider.py:970) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
@@ -1542,6 +1565,30 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `tmux_send_special_key` (py/claudeops/tmux_backend.py:284) | `rs/tmux` `keys.rs::send_special_key` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
 | `tmux_spawn_direct` (py/claudeops/tmux_backend.py:81) | `cops-tmux` `shell.rs::spawn_direct` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
 
+### main `f4679f51` eşitlemesinin satırları (27 Kas)
+
+| Python (dosya:satır) | Rust karşılığı | parite testi | durum |
+|---|---|---|---|
+| `DEFAULT_DESKTOP` (py/claudeops/startup_desktop.py:21) | `startup_desktop.rs::DEFAULT_DESKTOP` | `parity.rs::parity_g9` `masaustu-` `yok-` | TAŞINDI |
+| `resolve_desktop` (py/claudeops/startup_desktop.py:24) | `startup_desktop.rs::resolve_desktop` | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `wanted_desktop` (py/claudeops/startup_desktop.py:39) | `startup_desktop.rs::wanted_desktop` (`pyfmt::py_int`) | `parity.rs::parity_g9` `masaustu-` | TAŞINDI |
+| `desktop_count` (py/claudeops/startup_desktop.py:50) | `real/startup_desktop.rs::X11Desktop::desktop_count` | `tests/g9.rs::desktop_count_reads_wmctrl_and_unopenable_display_sends_nothing` (parite sahte sayım kullanır) | TAŞINDI |
+| `_quote` (py/claudeops/startup_desktop.py:63) | `startup_desktop.rs::quote` | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `build_message` (py/claudeops/startup_desktop.py:67) | `startup_desktop.rs::build_message` | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `chunks` (py/claudeops/startup_desktop.py:71) | `startup_desktop.rs::chunks` | `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `new_startup_id` (py/claudeops/startup_desktop.py:76) | `startup_desktop.rs::startup_id` + `X11Desktop::new_startup_id` | `tests/g9.rs::desktop_resolution_message_and_chunks` (paritede iki tarafta sabit kimlik) | TAŞINDI |
+| `_XClientData` (py/claudeops/startup_desktop.py:81) | `real/startup_desktop.rs::ClientData` | `real::startup_desktop::tests::client_message_layout_matches_xlib` | TAŞINDI |
+| `_XClientMessageEvent` (py/claudeops/startup_desktop.py:87) | `real/startup_desktop.rs::ClientMessageEvent` | `real::startup_desktop::tests::client_message_layout_matches_xlib` | TAŞINDI |
+| `_XEvent` (py/claudeops/startup_desktop.py:93) | `real/startup_desktop.rs::Event` | `real::startup_desktop::tests::client_message_layout_matches_xlib` | TAŞINDI |
+| `_CLIENT_MESSAGE` (py/claudeops/startup_desktop.py:97) | `real/startup_desktop.rs::CLIENT_MESSAGE` | gerçek X gönderimi testsiz | TAŞINDI-TESTSİZ |
+| `_PROPERTY_CHANGE_MASK` (py/claudeops/startup_desktop.py:98) | `real/startup_desktop.rs::PROPERTY_CHANGE_MASK` | gerçek X gönderimi testsiz | TAŞINDI-TESTSİZ |
+| `send_startup_x11` (py/claudeops/startup_desktop.py:101) | `real/startup_desktop.rs::send_startup_x11` (`dlopen` libX11) | gerçek X gönderimi testsiz (yalnız açılamayan ekran: `tests/g9.rs::desktop_count_reads_wmctrl_and_unopenable_display_sends_nothing`); yapı düzeni `real::startup_desktop::tests::client_message_layout_matches_xlib` | TAŞINDI-TESTSİZ |
+| `startup_env` (py/claudeops/startup_desktop.py:146) | `startup_desktop.rs::startup_env`; çağrı `spawn_exec.rs::Launcher::launch_window` (`Terminal::startup_env`, gerçek `GnomeTerminal::with_desktop`) | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::gnome_terminal_desktop_is_off_by_default_and_reads_settings_each_time` | TAŞINDI |
+| `HAIKU_LONG_PRICE` (py/claudeops/review.py:111) | `cops-review-core` `targets.rs::HAIKU_LONG_PRICE` (`cost.rs`, `ucli.rs` oradan) | `parity.rs::parity_ledger` `dilim`; `parity_ucli` `fiyat-` | TAŞINDI |
+| `HAIKU_LONG_PROMPT` (py/claudeops/review.py:112) | `cops-review-core` `targets.rs::HAIKU_LONG_PROMPT` | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `_scan_usage` (py/claudeops/review.py:1864) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına) | `parity.rs::parity_ledger` `dilim` `satir` | TAŞINDI |
+| `_with_ucli_error` (py/claudeops/commands/web.py:2116) | bağlayan uç (copsd/panel `_start`); pane okuması için `cops-tmux` `query.rs::Tmux::capture_joined` hazır | rs/tmux `reads_match_python` (`-J`) | KAPSAM DIŞI |
+
 ## TEST EŞLEME TABLOSU
 
 1461 satır: TAŞINDI 694, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 767, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
@@ -1821,7 +1868,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` (py/tests/test_mirror_window.py:360) | T7: pencere yerleşimi | KAPSAM DIŞI |
 | `LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` (py/tests/test_mirror_window.py:365) | T7: pencere yerleşimi | KAPSAM DIŞI |
 | `WebNeedsHoCachedTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:64) | T1: web önbelleği; `needs_ho` rs/proc | KAPSAM DIŞI |
-| `WebNeedsHoCachedTests.test_without_a_sid_or_a_matching_file_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:68) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `web._needs_ho_cached` bağlaması T1 | TAŞINDI |
+| `WebNeedsHoCachedTests.test_only_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:68) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `web._needs_ho_cached` bağlaması T1 | TAŞINDI |
 | `HandoverBatchTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:89) | T4: devir toplu akışı; `needs_ho` rs/proc | KAPSAM DIŞI |
 | `HandoverBatchTests.test_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:93) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `handover_faz1` bağlaması T4 | TAŞINDI |
 | `MatchesProcTest.test_repl_is_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:15) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
@@ -3016,3 +3063,49 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `FileLockFailsClosed.test_unusable_directory_is_logged_too` (py/tests/test_state_lock_fail_closed.py:59) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
 | `FileLockFailsClosed.test_refusal_reaches_the_real_diag_log_even_for_the_settings_file` (py/tests/test_state_lock_fail_closed.py:64) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
 | `FileLockFailsClosed.test_success_logs_nothing` (py/tests/test_state_lock_fail_closed.py:75) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+
+### main `f4679f51` eşitlemesinin testleri (27 Kas)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `ResolveTest.test_target_exists` (py/tests/test_startup_desktop.py:14) | `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `ResolveTest.test_missing_falls_to_1_then_0` (py/tests/test_startup_desktop.py:19) | `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `ResolveTest.test_off_or_unknown` (py/tests/test_startup_desktop.py:24) | `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `ResolveTest.test_wanted_desktop` (py/tests/test_startup_desktop.py:31) | `parity.rs::parity_g9` `masaustu-` | TAŞINDI |
+| `MessageTest.test_message_and_chunks` (py/tests/test_startup_desktop.py:41) | `tests/g9.rs::desktop_resolution_message_and_chunks` | TAŞINDI |
+| `MessageTest.test_client_message_layout_matches_xlib` (py/tests/test_startup_desktop.py:49) | `real::startup_desktop::tests::client_message_layout_matches_xlib` | TAŞINDI |
+| `MessageTest.test_desktop_count` (py/tests/test_startup_desktop.py:56) | `tests/g9.rs::desktop_count_reads_wmctrl_and_unopenable_display_sends_nothing` | TAŞINDI |
+| `StartupEnvTest.test_sets_startup_id_and_desktop` (py/tests/test_startup_desktop.py:78) | `parity.rs::parity_g9` `masaustu-` | TAŞINDI |
+| `StartupEnvTest.test_fallback_desktop` (py/tests/test_startup_desktop.py:85) | `parity.rs::parity_g9` `masaustu-tasan-` | TAŞINDI |
+| `StartupEnvTest.test_disabled_no_display_send_fail` (py/tests/test_startup_desktop.py:89) | `parity.rs::parity_g9` `masaustu-kapali-` `masaustu-gonderilemedi` (ekransız ortam: `child_env` hep `DISPLAY` yazar, ayrı vaka yok) | TAŞINDI |
+| `StartupEnvTest.test_never_raises` (py/tests/test_startup_desktop.py:95) | `parity.rs::parity_g9` `masaustu-gonderim-hata` `masaustu-sayim-hata` | TAŞINDI |
+| `StartupEnvTest.test_real_x_untouched_under_tests` (py/tests/test_startup_desktop.py:101) | `tests/g9.rs::gnome_terminal_desktop_is_off_by_default_and_reads_settings_each_time` (Rust'ta açıkça `with_desktop` ister) | TAŞINDI |
+| `LaunchTest.test_launch_passes_startup_env` (py/tests/test_startup_desktop.py:109) | `parity.rs::parity_g9` `masaustu-` (`launch` ortamı) | TAŞINDI |
+| `StartErrorLineTests.test_died_early_carries_last_error_line` (py/tests/test_ucli_start_error_line.py:34) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_no_proc_carries_last_error_line` (py/tests/test_ucli_start_error_line.py:42) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_secret_is_masked` (py/tests/test_ucli_start_error_line.py:47) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_pane_without_error_line_adds_nothing` (py/tests/test_ucli_start_error_line.py:53) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_capture_failure_never_breaks_start_answer` (py/tests/test_ucli_start_error_line.py:58) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_other_cli_pane_is_not_read` (py/tests/test_ucli_start_error_line.py:63) | bağlayan uç: `web._start` yanıtı (`_with_ucli_error`) bu crate'te yok | KAPSAM DIŞI |
+| `StartErrorLineTests.test_capture_joins_wrapped_lines` (py/tests/test_ucli_start_error_line.py:68) | `cops-tmux` `tests/parity.rs::reads_match_python` (`capture_joined`) | TAŞINDI |
+| `TaskEndNotCountedTest.test_task_end_total_is_not_billed_again` (py/tests/test_usage_cost_task_end.py:38) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `TaskEndNotCountedTest.test_one_hour_write` (py/tests/test_usage_cost_task_end.py:41) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `HaikuTierTest.test_up_to_100k_is_the_cheap_tier` (py/tests/test_usage_cost_task_end.py:46) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `HaikuTierTest.test_above_100k_is_the_expensive_tier` (py/tests/test_usage_cost_task_end.py:49) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `HaikuTierTest.test_cached_tokens_count_toward_the_threshold` (py/tests/test_usage_cost_task_end.py:52) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+| `HaikuTierTest.test_tier_is_per_request_not_summed` (py/tests/test_usage_cost_task_end.py:57) | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
+
+### Önceki turlardan eksik kalan test satırları (27 Kas taramasında bulundu)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `HttpTest.test_new_chat_resource_is_base_not_name` (py/tests/test_authz.py:279) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `FileLockFailsClosed.test_s1_timeout_raises` (py/tests/test_state_lock_fail_closed.py:43) | `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+| `FileLockFailsClosed.test_s5_symlink_lock_raises_and_target_untouched` (py/tests/test_state_lock_fail_closed.py:49) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written` | TAŞINDI |
+| `FileLockFailsClosed.test_s5_foreign_owner_raises` (py/tests/test_state_lock_fail_closed.py:55) | `real/lock.rs` sahip denetimi (`uid`); başka kullanıcının dosyası testte kurulamıyor | TAŞINDI-TESTSİZ |
+| `FileLockFailsClosed.test_error_inside_body_is_not_converted` (py/tests/test_state_lock_fail_closed.py:82) | gereksiz: Rust kilidi bekçi değeri döner, gövde hatası tür olarak ayrıdır | KAPSAM DIŞI |
+| `ReadModifyWrite.test_set_mode_seq_counts_every_write` (py/tests/test_ucli_checks_opts.py:105) | T7: yazım uçları (`set_mode`) | KAPSAM DIŞI |
+| `ReadModifyWrite.test_two_deletes_both_stick` (py/tests/test_ucli_checks_opts.py:109) | T7: yazım uçları (`delete_check`) | KAPSAM DIŞI |
+| `StartTests.test_unsupported_effort_is_ignored_not_rejected` (py/tests/test_web_agents.py:157) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_ignored_effort_is_reported_to_the_client` (py/tests/test_web_agents.py:166) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_omitted_effort_is_medium_only_when_supported` (py/tests/test_web_agents.py:179) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
