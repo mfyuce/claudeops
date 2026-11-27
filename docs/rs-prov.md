@@ -3160,3 +3160,12 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `UnsureSettingsTest.test_non_utf8_and_non_regular_settings_allow_only_the_default_name` (py/tests/test_tbd401_api_key_env.py:101) | `tests/real_oneshot.rs::only_known_key_env_names_start_a_child` (UTF-8 olmayan, FIFO) | TAŞINDI |
 | `IoAskTest.test_panel_request_is_refused_before_anything_runs` (py/tests/test_tbd401_api_key_env.py:110) | T7: `/api/io/ask` ve `io_providers` bu crate'te yok; kuralın kendisi `ucli_chat_once` satırında sınanır | KAPSAM DIŞI |
 | `IoAskTest.test_panel_request_without_a_name_uses_the_default` (py/tests/test_tbd401_api_key_env.py:120) | T7: `/api/io/ask` alan varsayılanı (`io_providers`) bu crate'te yok | KAPSAM DIŞI |
+
+### main `ec82eac5` eşitlemesinin testleri (27 Kas)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `CostCacheRace.test_invalidate_between_scan_and_read_keeps_cap_closed` (py/tests/test_uzops_review_fixes.py:16) | `tests/real_ledger.rs::the_state_is_cached_until_ttl_or_invalidate`; yarış Rust'ta yapısal olarak yok (`CostLedger::state_with` yanıtı yerel `Snapshot` kopyasından kurar) | TAŞINDI |
+| `CorruptDraft.test_corrupt_draft_is_copied_before_next_save_overwrites_it` (py/tests/test_uzops_review_fixes.py:31) | rs/state / T7: `orch_store` taslak dosyası; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ModelCheckBinary.test_uses_resolved_claude_binary` (py/tests/test_uzops_review_fixes.py:49) | T7: `model_freshness` periyodik yoklaması bu crate'te yok | KAPSAM DIŞI |
+| `OneStartPerProject.test_two_answers_one_start_and_slot_left_for_other_project` (py/tests/test_steward_one_start_per_project.py:20) | rs/stew: `cops-steward-core` `tick/slots.rs` (main `ec82eac5` ile aynı commit) | KAPSAM DIŞI |
