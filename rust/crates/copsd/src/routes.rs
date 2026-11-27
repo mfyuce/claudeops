@@ -33,6 +33,9 @@ pub struct RouteCtx {
     pub state: Arc<StateDocs>,
     /// `HOME`/`PATH` okuyan `cops-state` okuyucuları için süreç ortamı (açılışta bir kez alınır).
     pub env: SysEnv,
+    /// B2a: terminal okuma uçlarının tmux istemcisi. Canlıda Python `tmux_backend.TMUX_SOCKET` ile aynı soket (`-L cops`;
+    /// soket dizini süreç ortamındaki `TMUX_TMPDIR`); `--tmux-socket` yalnız yalıtılmış deneme/parite için.
+    pub tmux: cops_tmux::Tmux,
 }
 
 impl RouteCtx {
@@ -46,11 +49,38 @@ impl RouteCtx {
                     .with_logger(|m| eprintln!("copsd: statedocs {m}")),
             ),
             env: SysEnv::from_process(),
+            tmux: cops_tmux::Tmux::cops(),
             state_dir,
             db,
             instances,
         }
     }
+}
+
+/// B2a (`cops-ep-term`, `docs/rs-ep-term.md`): `GET /api/term/output` ve `GET /api/term/history`, yalnız yerel pane (uzak
+/// `host` ve imzalı iletim başlığı Python'a). `HOME` yoksa (süreç taraması kurulamaz, Python parola veritabanına düşer)
+/// KAYDEDİLMEZ. İki uç tek çözüm önbelleğini paylaşır (Python'da da öyle).
+fn register_term(table: &mut RouteTable, ctx: &RouteCtx) {
+    let Some(home) = ctx.env.home.as_deref().filter(|h| !h.is_empty()) else {
+        eprintln!("copsd: /api/term/ Python'da: HOME yok");
+        return;
+    };
+    let term = cops_ep_term::Term::new(
+        Box::new(cops_ep_term::SysProbe {
+            scan: cops_procscan::Config::for_dirs(std::path::Path::new(home), &ctx.state_dir),
+            docs: ctx.state.clone(),
+            tmux: ctx.tmux.clone(),
+        }),
+        ctx.tmux.clone(),
+    );
+    table.get(
+        cops_ep_term::OUTPUT_PATH,
+        Arc::new(cops_ep_term::OutputHook(term.clone())),
+    );
+    table.get(
+        cops_ep_term::HISTORY_PATH,
+        Arc::new(cops_ep_term::HistoryHook(term)),
+    );
 }
 
 /// Çekirdek rota tablosu (Dalga 2 izleri satırlarını buraya ekler).
@@ -77,6 +107,7 @@ pub fn register(table: &mut RouteTable, ctx: &RouteCtx) {
             ctx.instances.display()
         );
     }
+    register_term(table, ctx);
     let diag =
         cops_ep_state::diag::diag_log_path(&ctx.state_dir, std::env::var_os("CLAUDEOPS_DIAG_LOG"));
     table.get(

@@ -12,7 +12,8 @@
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 //! `--force-proxy-file` (varsayılan [`state_dir`]`/front_force_proxy`): listedeki yol önekleri Rust'ta karşılığı olsa bile
 //! Python'a aktarılır ([`cops_proxy::force`]); açılışta ve SIGHUP'ta okunur. `GET /api/front/stats`: uç başına yerel/aktarım
-//! sayaçları. Çekirdek yerel uçları [`routes::register`]de kaydedilir.
+//! sayaçları. Çekirdek yerel uçları [`routes::register`]de kaydedilir. `--tmux-socket AD`: terminal okuma uçlarının tmux soketi
+//! (varsayılan `cops`, Python ile aynı; yalnız yalıtılmış deneme için).
 //!
 //! Kütüphane + ince ikili: `copsd` ikilisi [`run`]'ı çağırır. Başka bir ikili (ör. enterprise) [`run_with`] ile yerel uç
 //! kimlik/yetki kancası ([`cops_proxy::gate::LocalAuth`]), [`run_with_hooks`] ile ek olarak vekillenen istek ön süzgeci
@@ -347,10 +348,13 @@ where
     });
     // Çoklu rota tablosu: panel kimlikli kayıtlar web.token ister; yoksa tablo AÇILMAZ (istek Python'a gider).
     let mut table = cops_proxy::routes::RouteTable::new();
-    routes::register(
-        &mut table,
-        &routes::RouteCtx::new(state_dir(), db_path.clone(), instances.clone()),
-    );
+    let mut rctx = routes::RouteCtx::new(state_dir(), db_path.clone(), instances.clone());
+    // Yalıtılmış deneme/parite: canlı soket (`cops`) yerine verilen ad (soket dizini yine `TMUX_TMPDIR`).
+    if let Some(sock) = arg("--tmux-socket").filter(|s| !s.is_empty()) {
+        eprintln!("copsd: tmux soketi: {sock}");
+        rctx.tmux = cops_tmux::Tmux::with_socket(sock);
+    }
+    routes::register(&mut table, &rctx);
     let proxy = if table.is_empty() {
         proxy
     } else {
