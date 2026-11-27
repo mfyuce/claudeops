@@ -128,6 +128,8 @@ DEFS["hosts.py"] = [
     ok("save_host", "record.rs::Draft::new record.rs::Draft::apply",
        f"U:record.rs::validation_order U:record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals {P_SAVE}",
        "yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark"),
+    ok("_clean_url", "record.rs::Draft::new",
+       f"U:record.rs::trailing_slashes_and_whitespace_are_all_removed {P_SAVE}"),
     ok("save_host::re1", "record.rs::Draft::new", f"{P_SAVE}", "`[,\\n]+` bölme"),
     ok("promote_base_url", "record.rs::promote_base_url",
        f"U:record.rs::promote_and_remove {FP}extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure"),
@@ -315,6 +317,8 @@ DEFS["commands/web_hosts.py"] = [
     ok("_tier_lock _tier _tier_downgrade_streak _update_tier get_tier",
        "tier.rs::TierBook::update tier.rs::TierBook::get",
        f"U:tier.rs::upgrade_is_immediate_downgrade_is_tolerated {P_POLL} {_WSPROBE}"),
+    ok("_stream_tier", "federation.rs::Federation::stream_tier tier.rs::TierBook::drop_grpc",
+       f"{FG}removed_grpc_url_moves_streams_to_websocket_at_once"),
     ok("_ws_url", "ws.rs::HostClient::ws_connect", f"{FW}base_path_is_kept_for_ws_and_signed_over_it",
        "taban yolu korunur (belgeli fark)"),
     ok("_probe_ws", "ws.rs::HostClient::ws_probe", _WSPROBE),
@@ -487,6 +491,8 @@ CASES["test_hosts.py"] = [
     t_ok("ReachLoopbackTest.test_https_base_may_fall_back_to_reach_loopback",
          f"U:guard.rs::https_never_downgrades_to_public_http {P_ADDR}"),
     t_ok(cls("ReachLoopbackTest", "test_helper test_setting_overrides_ports"), f"U:guard.rs::reach_ports_setting {P_ADDR}"),
+    t_ok("UrlCleanupTest.test_trailing_slashes_and_whitespace_are_all_removed",
+         f"U:record.rs::trailing_slashes_and_whitespace_are_all_removed {P_SAVE}"),
     t_oos("DbModeIrregularTest.test_irregular_detected_from_db_not_stale_file", "DB kipi okuma", W0A),
 ]
 CASES["test_hosts_corrupt.py"] = [
@@ -560,6 +566,8 @@ CASES["test_grpc_term_gate.py"] = [
     t_ok("ClientFallbackTest.test_refused_grpc_term_stream_falls_back_to_websocket", _GRPC_REF),
     t_ok("ClientFallbackTest.test_other_session_goes_straight_to_websocket_then_grpc_is_retried_after_ttl", _GRPC_REF),
     t_ok("ClientFallbackTest.test_other_grpc_failure_does_not_move_to_websocket", _GRPC_MID),
+    t_ok("ClientFallbackTest.test_refusal_is_remembered_for_the_refusing_address_only",
+         f"{FG}grpc_term_refusal_is_remembered_for_the_refusing_address_only"),
 ]
 CASES["test_web_hosts_keepalive_idle_close.py"] = [
     t_ok("KeepAliveIdleCloseTests.test_peer_closed_idle_connection_is_replaced_silently", _IDLE_CLOSE),
@@ -676,6 +684,8 @@ CASES["test_web_hosts_term_relay.py"] = [
     t_ok(cls("TermRelayTests", "test_consumer_death_is_logged_once_per_label test_lite_relay_death_is_logged_under_its_own_label"),
          f"U:push.rs::consumer_death_is_logged_once_a_minute_per_label {_DEAD}"),
     t_ok("TermRelayTests.test_intentional_stop_is_not_logged_as_death", f"{_SILR} {_REAP}"),
+    t_ok(cls("RemovedGrpcUrlTests", "test_term_relay_uses_websocket test_status_consumer_uses_websocket"),
+         f"{FG}removed_grpc_url_moves_streams_to_websocket_at_once"),
 ]
 CASES["test_outbound_signer.py"] = [
     t_ok("OutboundSignerTest.test_no_signer_no_header", f"{FX}unbound_caller_is_never_signed {_POOL}",
