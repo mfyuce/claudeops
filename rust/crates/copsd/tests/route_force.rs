@@ -155,6 +155,9 @@ fn ctx() -> (cops_state::TestEnv, copsd::routes::RouteCtx) {
     let home = env.root().join("home");
     std::fs::create_dir_all(&home).unwrap();
     ctx.env.home = Some(home.to_string_lossy().into_owned());
+    // B2a terminal uçları: canlı `cops` soketi değil, var olmayan özel soket (istek adsız: tmux'a hiç gidilmez)
+    ctx.tmux =
+        cops_tmux::Tmux::with_socket(format!("cxrf-{}", std::process::id())).tmpdir(env.root());
     (env, ctx)
 }
 

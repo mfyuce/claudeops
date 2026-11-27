@@ -5,6 +5,12 @@
     {"name": "B1 oturum kayıtları (host=local)", "path": "/api/instances?host=local&lang=en", "expect": "local"},
     {"name": "B1 oturum kayıtları (boş host)", "path": "/api/instances?host=", "expect": "local"},
     {"name": "B1 tanı günlüğü", "path": "/api/diag/log", "expect": "local"},
-    {"name": "B1 tanı günlüğü (sorgu yok sayılır)", "path": "/api/diag/log?lang=en", "expect": "local"}
+    {"name": "B1 tanı günlüğü (sorgu yok sayılır)", "path": "/api/diag/log?lang=en", "expect": "local"},
+    {"name": "B2a terminal çıktısı (ad yok: 400)", "path": "/api/term/output?lang=en", "expect": "local"},
+    {"name": "B2a terminal çıktısı (olmayan oturum, lite)", "path": "/api/term/output?name=qqb2ayok&lite=1", "expect": "local"},
+    {"name": "B2a terminal çıktısı (olmayan oturum, viewport, host=local)", "path": "/api/term/output?name=qqb2ayok&viewport=1&lang=en&host=local", "expect": "local"},
+    {"name": "B2a terminal geçmişi (sayı değil: 400)", "path": "/api/term/history?name=qqb2ayok&start=x&end=1", "expect": "local"},
+    {"name": "B2a terminal geçmişi (ters aralık)", "path": "/api/term/history?name=qqb2ayok&start=5&end=1", "expect": "local"},
+    {"name": "B2a terminal geçmişi (olmayan oturum)", "path": "/api/term/history?name=qqb2ayok&start=-10&end=0&lang=en", "expect": "local"}
   ]
 }

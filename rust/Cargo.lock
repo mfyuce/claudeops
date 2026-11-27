@@ -260,6 +260,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-ep-term"
+version = "0.1.0"
+dependencies = [
+ "cops-auth",
+ "cops-ep-state",
+ "cops-procscan",
+ "cops-proxy",
+ "cops-state",
+ "cops-tmux",
+ "regex",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "cops-hosts"
 version = "0.1.0"
 dependencies = [
@@ -434,6 +449,7 @@ version = "0.1.0"
 dependencies = [
  "cops-auth",
  "cops-ep-state",
+ "cops-ep-term",
  "cops-metrics",
  "cops-parity",
  "cops-procscan",

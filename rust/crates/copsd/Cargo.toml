@@ -17,6 +17,8 @@ cops-tmux = { path = "../cops-tmux" }
 # B1: salt okuma durum uçları (`/api/instances` yerel dalı, `/api/diag/log`); `cops-state` salt okuma kipiyle.
 cops-ep-state = { path = "../cops-ep-state" }
 cops-procscan = { path = "../cops-procscan" }
+# B2a: terminal okuma uçları (`/api/term/output|history` yerel dalı); yazan uç yok.
+cops-ep-term = { path = "../cops-ep-term" }
 
 [dev-dependencies]
 serde_json = "1"
