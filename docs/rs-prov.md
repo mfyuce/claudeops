@@ -1,24 +1,18 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `e04e9b18` birleşimi `ad3fa094`, G6 eşitlemesi `887bc8ba`):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 721 satır (TAŞINDI 647, KAPSAM DIŞI 74) ve test tablosu
-1561 satır (TAŞINDI 765, KAPSAM DIŞI 796), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
-("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı, uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise
-deposunda değişiklik bekliyor; S5 = (b) onaylandı, uygulandı ("S5" bölümü); sahipte iki soru (S4, S6). §3.5 ve §2.5.2
-27 Kas'ta cops kabulüyle kapandı (kod değişmedi).
-Son ağaçta ölçülen (kod `887bc8ba`; sonrasında yalnız belgeler değişti): `cargo test --workspace --no-fail-fast` 1291
+Durum (27 Kas 2026, `origin/main` `9de561e7` birleşimi `4c2e6712`):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 725 satır (TAŞINDI 650, KAPSAM DIŞI 75) ve test tablosu
+1567 satır (TAŞINDI 765, KAPSAM DIŞI 802; önceki sayıma bu turda eklenen 4 + 6 satır), ikisinde de EKSİK ve
+TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
+uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) onaylandı, uygulandı
+("S5" bölümü); sahipte iki soru (S4, S6). §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı (kod değişmedi).
+Son ağaçta ölçülen (`4c2e6712`; sonrasında yalnız bu belge değişti): `cargo test --workspace --no-fail-fast` 1293
 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check -p cops-providers
--p cops-state -p cops-review-core -p cops-hosts -p cops-cli -p cops-procscan -p cops-steward-core` temiz; Python tam
-paket 6445 OK (23 atlanan, 534 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict` (tablo yeni
-test satır numaralarıyla yeniden üretildi), steward `map.py --check`, rev `map_table.py <rapor> --check`). rs-tmux
-tablosu bu turda denetlenmedi (main `tmux_backend.py`yi değiştirmedi); daha önceki bir turda geçici bir betikle
-denetlenmişti (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği yok).
-Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
-`real_fs::concurrent_issue_keeps_file_and_digest_consistent`,
-`test_review_io_history::test_real_pipes_stream_and_heartbeat`; bu turda bir ara koşuda bir kez `parity_real`
-(`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi). S5 turunun ilk
-tam koşusunda (yük ~25) `real_oneshot::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` bir kez
-`flock` zaman aşımıyla düştü; tek başına ve son tam koşuda yeşil.
+-p cops-review-core -p cops-cli` temiz; Python tam paket 6473 OK (23 atlanan, 351 sn); eşleme denetimleri çıkış 0
+(hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`, rev `map_table.py <rapor> --check`). rs-tmux
+tablosu bu turda denetlenmedi (`tmux_backend.py` değişmedi).
+Oynak görülenler: `parity_real` ve iki `flock` testi bu turda giderildi ("Oynak testler" bölümü);
+`test_review_io_history::test_real_pipes_stream_and_heartbeat` incelenmedi.
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
 27 Kas ikinci tur: `726888f1` ve `ec82eac5` eşitlemesi, X gönderimi ve yabancı kilit testleri, G3 3 ve 5, G7 8 (`agy models`),
 G9 5, TBD#401, TBD#411 kaydı, maliyet toplayıcısı eşlik testi (aşağıda ilgili bölümler).
@@ -815,6 +809,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   782 212 çıktı satırı.
 - Süre (100 MB tek günlük, release, 5'er koşuda 3 tur, art arda eski/yeni, yük 4-5): açılış denetimi ortancası eski
   1,28 sn, yeni 1,33 sn; review toplamı 1,49 -> 1,40 sn (koşudan koşuya oynama bundan büyük).
+  Python tarafında derinlik denetiminin payı (20 MB tarama, CPU, 5 koşu ortancası): 1,77 -> 1,86 sn (aralıklar örtüşüyor).
 - AÇIK kalan fark: 16 MiB üstü satır (yalnız defter reddeder); BOZUK bir satırda 4300 basamağı Rust metinden, Python
   ayrıştırma hatasından gördüğü için Rust daha sık reddedebilir (hiçbir yönde sayılmayan satır).
   Ayrıca review bütçe kapısı başka güvenilmezlikleri
