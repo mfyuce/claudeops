@@ -1028,6 +1028,84 @@ fn web_addr_follows_web_unit_flags() {
 }
 
 #[test]
+fn web_addr_resolves_argparse_abbreviations() {
+    let a = |t: &str| web_addr(t).map(|a| a.to_string());
+    assert_eq!(
+        a("ExecStart=/x web --po 9001").as_deref(),
+        Some("127.0.0.1:9001")
+    );
+    assert_eq!(
+        a("ExecStart=/x web --por=9002 --ho 127.0.0.3").as_deref(),
+        Some("127.0.0.3:9002")
+    );
+    assert_eq!(
+        a("ExecStart=/x web --hos=127.0.0.4").as_deref(),
+        Some("127.0.0.4:8765")
+    );
+    for amb in ["--p 9001", "--p=9001", "--h 127.0.0.3"] {
+        assert_eq!(a(&format!("ExecStart=/x web {amb}")), None, "{amb}");
+    }
+}
+
+#[test]
+fn web_addr_last_execstart_wins_and_empty_resets() {
+    let over = format!("{LIVE}[Service]\nExecStart=\nExecStart=/x web --port 9003\n");
+    assert_eq!(
+        web_addr(&over).map(|a| a.to_string()).as_deref(),
+        Some("127.0.0.1:9003")
+    );
+    assert_eq!(web_addr(&format!("{LIVE}[Service]\nExecStart=\n")), None);
+}
+
+fn off_with_dropins(files: &[(&str, &[u8])], port: u16) {
+    let e = env();
+    e.front_on();
+    let dir = std::path::Path::new(&e.paths.dropin).parent().unwrap();
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+    let alt: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    {
+        let mut w = e.w.0.borrow_mut();
+        w.owners.insert(alt, unit(FRONT_UNIT_NAME));
+        w.effects = vec![
+            (
+                "disable --now claudeops-front.service".into(),
+                alt,
+                PortOwner::NoListener,
+            ),
+            (
+                "restart claudeops-web.service".into(),
+                alt,
+                unit(WEB_UNIT_NAME),
+            ),
+        ];
+    }
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    assert!(out.ends_with("kapandı\n"), "{out}");
+}
+
+#[test]
+fn off_follows_overriding_dropins_in_name_order() {
+    let ex = |p: u16| format!("[Service]\nExecStart=\nExecStart=/x web --port {p}\n").into_bytes();
+    off_with_dropins(
+        &[
+            ("b.conf", &ex(9005)),
+            ("a.conf", &ex(9004)),
+            ("z.conf.bak", &ex(9006)),
+            ("env.conf", b"[Service]\nEnvironment=A=1\n"),
+        ],
+        9005,
+    );
+}
+
+#[test]
+fn off_falls_back_on_unreadable_dropin() {
+    off_with_dropins(&[("bozuk.conf", b"\xff")], 8765);
+}
+
+#[test]
 fn relative_bin_is_a_blocker() {
     let mut e = env();
     std::fs::write(e.root.join("rel-copsd"), "").unwrap();

@@ -136,7 +136,45 @@ fn state_dir_link_finds_python() {
         .arg("--version")
         .output()
         .unwrap();
-    same(&p, &r, "durum dizini bağlantısıyla devir");
+    assert_eq!(
+        (p.status.code(), &p.stdout),
+        (r.status.code(), &r.stdout),
+        "durum dizini bağlantısıyla devir"
+    );
+}
+
+/// `--version`: stdout ve çıkış kodu Python'unki; ikilinin kaynak sürümü ayrıca stderr'de (Python bulunmasa da).
+#[test]
+fn version_reports_binary_git_sha_without_changing_python_stdout() {
+    let sb = Sandbox::new();
+    let p = sb.run(&py_cops(), ["--version"]);
+    let r = sb.run(&bin(), ["--version"]);
+    assert_eq!((p.status.code(), &p.stdout), (r.status.code(), &r.stdout));
+    let line = |o: &std::process::Output| {
+        String::from_utf8_lossy(&o.stderr)
+            .lines()
+            .find_map(|l| l.strip_prefix("cops-rs ").map(str::to_string))
+    };
+    let sha = line(&r).expect("stderr'de sürüm satırı");
+    let head = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo())
+        .args(["rev-parse", "--short=12", "HEAD"])
+        .output()
+        .unwrap();
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    assert!(
+        sha == head || sha == format!("{head}-dirty"),
+        "{sha} / {head}"
+    );
+    let lone = sb
+        .cmd(&bin())
+        .env("COPS_PY", "/yok/py/cops")
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert_eq!(lone.status.code(), Some(125));
+    assert_eq!(line(&lone), Some(sha));
 }
 
 #[test]

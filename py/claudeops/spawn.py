@@ -338,7 +338,12 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> b
     ediyor, bu sadece TOCTOU/nadir edge-case içindir) exception YUKARI SIZDIRILMAZ —
     çağıran (spawn_session/_fallback_watchdog) her durumda gerçek sonucu
     `tmux_has_session()` pollingiyle belirliyor, burada sadece False dönüp devam
-    etmesi yeterli."""
+    etmesi yeterli.
+
+    TBD#409: pencere `settings.spawn_desktop` masaüstünde DOĞRUDAN açılır (başlangıç bildirimi,
+    `startup_desktop.startup_env`); uygulanamazsa eskisi gibi bakılan masaüstünde açılır."""
+    from .startup_desktop import startup_env
+    env = startup_env(env, name)
     try:
         proc = subprocess.Popen(
             # --geometry: GNOME Terminal'in profil varsayılanı bu makinede 500
@@ -386,6 +391,24 @@ def _reclaim_ghost_session(name: str, cli: str) -> None:
         diag_log("spawn_ghost_reclaim_error", name=name, error=str(e)[:200])
 
 
+def _window_titled(name: str, display: str) -> bool:
+    """Bu başlıkta (tam eşleşme) bir pencere var mı (`wmctrl -l`). Okunamazsa False (eski davranış: yeniden dene)."""
+    if not display:
+        return False
+    try:
+        r = subprocess.run(["wmctrl", "-l"], env=dict(os.environ, DISPLAY=display), capture_output=True,
+                           text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if r.returncode != 0:
+        return False
+    for ln in r.stdout.splitlines():
+        parts = ln.split(None, 3)
+        if len(parts) == 4 and parts[3] == name:
+            return True
+    return False
+
+
 def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: str) -> None:
     """İlk gnome-terminal denemesi (spawn_session'da zaten atıldı) tmux session'ı
     getirmezse, aynı komutu FALLBACK_RETRY_COUNT kez daha dener (ara sıra tek
@@ -402,6 +425,11 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
                 return  # gnome-terminal (bu denemede ya da önceki bir çağrıda) başardı
             time.sleep(0.5)
         if attempt < FALLBACK_RETRY_COUNT:
+            # 27 Kas (done20261127): yük altında ilk pencere 4 sn'de oturumu kuramadı, tekrar deneme İKİNCİ pencere
+            # açtı, ikisi de aynı oturuma bağlandı. Bu adlı pencere zaten açıksa yeni pencere açılmaz, beklenir.
+            if _window_titled(name, env.get("DISPLAY") or ""):
+                diag_log("spawn_retry_window_exists", name=name, cwd=cwd, attempt=attempt + 1)
+                continue
             diag_log("spawn_retry", name=name, cwd=cwd, attempt=attempt + 1)
             if not _launch_gnome_terminal(name, cwd, window_cmd, env):
                 diag_log("spawn_retry_launch_failed", name=name, cwd=cwd, attempt=attempt + 1)

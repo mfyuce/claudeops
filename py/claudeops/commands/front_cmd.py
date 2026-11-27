@@ -565,10 +565,41 @@ def _front_listen(fallback: str) -> str:
     return fallback
 
 
+# `web` alt komutunun uzun seçenekleri (argparse kısaltmaları için; `web.register` ile eşitliği testte denetlenir)
+_WEB_LONG_OPTS = ("--help", "--port", "--host", "--print-token", "--tunnel", "--grpc-port")
+
+
+def _effective_execstart(text: str) -> Optional[str]:
+    """Birim + drop-in metinlerinde (sırayla birleştirilmiş) geçerli `ExecStart=`: sonuncu kazanır, boş atama sıfırlar."""
+    cur = None
+    for m in re.finditer(r"^ExecStart=(.*)$", text, re.M):
+        cur = m.group(1).strip() or None
+    return cur
+
+
+def _web_dropins() -> Optional[str]:
+    """Web biriminin `front.conf` dışındaki drop-in'leri, ad sırasıyla birleşik; biri okunamazsa None."""
+    out = []
+    try:
+        names = sorted(os.listdir(DROPIN.parent), key=os.fsencode)
+    except FileNotFoundError:
+        return ""
+    except OSError:
+        return None
+    for n in names:
+        if not n.endswith(".conf") or n.startswith(".") or n == DROPIN.name:
+            continue
+        try:
+            out.append("\n" + (DROPIN.parent / n).read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return None
+    return "".join(out)
+
+
 def _web_addr(web_unit_text: str):
     """`off` sonrası web'in döneceği adres: web biriminin ExecStart'ındaki `--host`/`--port` (ya da `=`li), yoksa web
     varsayılanı 127.0.0.1:8765; joker ya da ad olan host loopback'ten yoklanır. Biçim tanınmazsa None."""
-    es = web_execstart(web_unit_text)
+    es = _effective_execstart(web_unit_text)
     if es is None:
         return None
     if es.endswith("'"):
@@ -578,6 +609,13 @@ def _web_addr(web_unit_text: str):
     i = 0
     while i < len(toks):
         t = toks[i]
+        name, eq, val = t.partition("=")
+        if len(name) > 2 and name.startswith("--") and name not in _WEB_LONG_OPTS:
+            full = [o for o in _WEB_LONG_OPTS if o.startswith(name)]
+            if len(full) > 1:           # argparse "ambiguous option": web açılmaz, adres bilinmiyor
+                return None
+            if full:
+                t = full[0] + eq + val
         if t in ("--host", "--port"):
             if i + 1 < len(toks):
                 if t == "--host":
@@ -735,7 +773,8 @@ def _off(args) -> int:
         print("(plan; uygulamak için --apply)")
         return 0
     text, read_err = _read_web_unit()
-    wa = _web_addr(text) if read_err is None else None
+    extra = _web_dropins()
+    wa = _web_addr(text + extra) if read_err is None and extra is not None else None
     if wa is None:
         try:
             wa = _parse_listen(_front_listen(args.listen))
