@@ -14,6 +14,7 @@ type Fancy = LazyLock<Option<fancy_regex::Regex>>;
 
 static NEXT_DONE_VALUE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_DONE_VALUE_RE.as_str()));
 static NEXT_DONE_THEN_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_DONE_THEN_RE.as_str()));
+static CONFIRM_DENIAL_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_CONFIRM_DENIAL_RE.as_str()));
 static NEXT_IDLE_REST_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_IDLE_REST_RE.as_str()));
 
 /// `needs_ho._RFH`
@@ -186,7 +187,7 @@ fn odd_ticks(s: &str) -> bool {
     s.matches('`').count() % 2 == 1
 }
 
-/// `STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda anma mı? `:` varsa teyit; yoksa işaret satır başında (ya da `…:`
+/// `STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda anma mı? Açık inkâr anmadır; yoksa `:` varsa teyit; yoksa işaret satır başında (ya da `…:`
 /// ardında) olmalı ve ardından commit hash'i gelmeli ya da hiçbir şey gelmemeli.
 ///
 /// py: _is_confirm_line
@@ -195,6 +196,12 @@ pub fn is_confirm_line(prefix: &str, tail: &str) -> bool {
     let spaced = tail.replace('\u{1f}', " ");
     // Python `match`: yalnız baştaki eşleşme
     let leads = |re: &Regex| re.find(&spaced).is_some_and(|m| m.start() == 0);
+    // desen `^` taşımaz: Python `match` gibi yalnız baştaki eşleşme sayılır
+    let denial =
+        CONFIRM_DENIAL_RE.as_ref().and_then(|re| re.find(&pyc::ci_input(&spaced)).ok().flatten().map(|m| m.start()));
+    if denial == Some(0) {
+        return false;
+    }
     if leads(&P_CONFIRM_COLON_RE) {
         return true;
     }

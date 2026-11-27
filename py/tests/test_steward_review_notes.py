@@ -33,5 +33,27 @@ class DoneThenWorkTest(unittest.TestCase):
                 self.assertEqual(sw.marker_next_work(f"Rapor.\nSTEWARD-NEXT: {v}"), "")
 
 
+class ConfirmColonMentionTest(unittest.TestCase):
+    """`:` ile yazılmış olsa da "yazmıyorum" diyen satır teyit değildir (kanıt süzgecinden geçip projeyi kapatabiliyordu)."""
+
+    DENIALS = ("yazmıyorum, iş sürüyor", "yazmıyorum; abc1234 sonrası 0 değil 3 iş var", "henüz yazamıyorum (abc1234, kalan 0 değil)",
+               "Bunu YAZMAYACAĞIM: abc1234 0", "henüz değil, abc1234 sonrası 0 test eksik", "not yet, abc1234 leaves 0 reviews done",
+               "I am not writing this; abc1234 0", "veremiyorum, abc1234 0", "** yazmadım, abc1234 0")
+    CLAIMS = ("abc1234 kalan açık iş 0, kanıt", "abc1234 kalan açık iş 0, push yapılamadı değil, yapıldı",
+              "kalan açık iş 0, son commit abc1234", "abc1234 kalan 0; STEWARD-NEXT yazmıyorum", "bitti", "")
+
+    def test_denial_is_not_confirmation(self):
+        for body in self.DENIALS:
+            for text in (f"STEWARD-DONE-CONFIRMED: {body}", f"**STEWARD-DONE-CONFIRMED**: {body}"):
+                with self.subTest(text):
+                    self.assertIsNone(sw.scan_markers(text)["confirmed"])
+                    self.assertFalse(sw.scan_markers(text)["done"])
+
+    def test_claims_still_read(self):
+        for body in self.CLAIMS:
+            with self.subTest(body):
+                self.assertEqual(sw.scan_markers(f"STEWARD-DONE-CONFIRMED: {body}")["confirmed"], body)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -150,6 +150,10 @@ _CONFIRM_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 _CONFIRM_ZERO_RE = re.compile(r"(?<![\w.])0(?![\w.])")
 _CONFIRM_COLON_RE = re.compile(r"[`*_\s]*[:：]")      # işaretin hemen ardında `:` (biçimlendirme arada olabilir)
 _CONFIRM_LEAD_HASH_RE = re.compile(r"[`*_\s]*(?:[(\[,;=→>\-–—][`*_\s]*)*[0-9a-f]{7,40}\b")   # `:`siz biçim: doğrudan commit hash'i
+# İşaretin ardındaki İLK tümce parçası "yazmıyorum / henüz değil" diyorsa `:` olsa da anmadır, teyit değil.
+_CONFIRM_DENIAL_RE = re.compile(
+    r"[`*_:：\s]*[^,;:.()\n]*?(?<![^\W\d_])(?:yazm[ıi]yor|yazmayaca|yazam|yazmad[ıi]|demiyorum|diyem|veremiyor|vermiyor|henüz değil|"
+    r"not yet|not writing|(?:cannot|can['’]t|won['’]t) (?:write|confirm))", re.IGNORECASE)
 NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 from .needs_ho import rfh_marker_in
@@ -2365,9 +2369,11 @@ def _bare_marker(line: str, mark: str) -> bool:
 
 def _is_confirm_line(prefix: str, tail: str) -> bool:
     """`STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda ANMA mı ("… yazmıyorum", "… geldi ama")? `_bare_marker`ın eşi,
-    bilinçli olarak ondan gevşek (canlı motor: gerçek teyit kaybolmasın). İşaretin ardında `:` varsa satırın neresinde
+    açık inkâr (`_CONFIRM_DENIAL_RE`) dışında bilinçli olarak ondan gevşek (canlı motor: gerçek teyit kaybolmasın). İşaretin ardında `:` varsa satırın neresinde
     olursa olsun teyit; `:` yoksa işaret satır başında (ya da `…:` ardında) olmalı ve ardından commit hash'i gelmeli
     ya da hiçbir şey gelmemeli (boş teyit denemesi)."""
+    if _CONFIRM_DENIAL_RE.match(tail):
+        return False
     if _CONFIRM_COLON_RE.match(tail):
         return True
     head = prefix.strip("`*_#.) 0123456789✅✔")     # başlık/kalın/numaralı madde/onay imi düzyazı değil

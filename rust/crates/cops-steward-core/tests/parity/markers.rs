@@ -50,6 +50,37 @@ fn done_then_work_is_work() {
     }
 }
 
+/// Beklenen değerler `py/tests/test_steward_review_notes.py` ile aynı.
+/// py: _is_confirm_line
+#[test]
+fn denial_with_colon_is_not_confirmation() {
+    let confirmed = |text: String| scan_markers(&text).confirmed;
+    for body in [
+        "yazmıyorum, iş sürüyor",
+        "yazmıyorum; abc1234 sonrası 0 değil 3 iş var",
+        "henüz yazamıyorum (abc1234, kalan 0 değil)",
+        "Bunu YAZMAYACAĞIM: abc1234 0",
+        "henüz değil, abc1234 sonrası 0 test eksik",
+        "not yet, abc1234 leaves 0 reviews done",
+        "I am not writing this; abc1234 0",
+        "veremiyorum, abc1234 0",
+        "** yazmadım, abc1234 0",
+    ] {
+        assert_eq!(confirmed(format!("STEWARD-DONE-CONFIRMED: {body}")), None, "{body}");
+        assert_eq!(confirmed(format!("**STEWARD-DONE-CONFIRMED**: {body}")), None, "{body}");
+    }
+    for body in [
+        "abc1234 kalan açık iş 0, kanıt",
+        "abc1234 kalan açık iş 0, push yapılamadı değil, yapıldı",
+        "kalan açık iş 0, son commit abc1234",
+        "abc1234 kalan 0; STEWARD-NEXT yazmıyorum",
+        "bitti",
+        "",
+    ] {
+        assert_eq!(confirmed(format!("STEWARD-DONE-CONFIRMED: {body}")).as_deref(), Some(body));
+    }
+}
+
 parity!("scan_markers", scan_markers_vectors, |c| scan_markers(&c.opt::<String>("text").unwrap_or_default()));
 parity!("_is_confirm_line", is_confirm_line_vectors, |c| is_confirm_line(&c.str("prefix"), &c.str("tail")));
 parity!("reply_language_line", reply_language_line_vectors, |c| { reply_language_line(&c.str("lang")) });

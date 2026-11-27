@@ -33,6 +33,7 @@ pub static P_CONFIRM_HASH_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::R
 pub static P_CONFIRM_ZERO_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?<![\\w.])0(?![\\w.])").expect("_CONFIRM_ZERO_RE"));
 pub static P_CONFIRM_COLON_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("[`*_\\s]*[:：]").expect("_CONFIRM_COLON_RE"));
 pub static P_CONFIRM_LEAD_HASH_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("[`*_\\s]*(?:[(\\[,;=→>\\-–—][`*_\\s]*)*[0-9a-f]{7,40}\\b").expect("_CONFIRM_LEAD_HASH_RE"));
+pub static P_CONFIRM_DENIAL_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?i)[`*_:：\\s]*[^,;:.()\\n]*?(?<![^\\W\\d_])(?:yazm[ıi]yor|yazmayaca|yazam|yazmad[ıi]|demiyorum|diyem|veremiyor|vermiyor|henüz değil|not yet|not writing|(?:cannot|can['’]t|won['’]t) (?:write|confirm))").expect("_CONFIRM_DENIAL_RE"));
 pub const NO_DONE_TAG: &str = "NO-STEWARD-DONE";
 pub const READY_FOR_HANDOVER: &str = "READY FOR HANDOVER";
 pub static P_NAME_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$").expect("_NAME_RE"));
