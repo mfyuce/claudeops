@@ -149,6 +149,15 @@ fn cs_path() -> String {
     String::from_utf8_lossy(&buf).into_owned()
 }
 
+/// Python `envnames.is_safe_env_name` (`[A-Z_][A-Z0-9_]*`, tam eşleşme).
+pub fn is_safe_env_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    !b.is_empty()
+        && (b[0] == b'_' || b[0].is_ascii_uppercase())
+        && b.iter()
+            .all(|c| *c == b'_' || c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
 /// `_valid_http_url`: http(s) şeması + host adı; boşluk/denetim karakteri yok; `urlsplit` ve `.port` `ValueError` vermez.
 pub fn valid_http_url(url: &str) -> bool {
     if url.is_empty()

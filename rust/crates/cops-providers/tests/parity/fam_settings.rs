@@ -335,8 +335,7 @@ fn settings_cases() -> Vec<Case> {
     );
     v.push(
         Case::new("byok-sozluk", "settings", json!({}))
-            .settings_json(json!({"byok": {"copilot": {"D": {"a": 1}}}}))
-            .known("str(dict) Python repr (`{'a': 1}`), Rust JSON metni (`{\"a\":1}`); yalnız bozuk elle düzenlenmiş ayarda"),
+            .settings_json(json!({"byok": {"copilot": {"D": {"a": 1}}}})),
     );
     v.push(
         Case::new("rtext-liste", "settings", json!({}))
@@ -349,8 +348,7 @@ fn settings_cases() -> Vec<Case> {
     );
     v.push(
         Case::new("servis-models-ic-liste", "settings", json!({}))
-            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": [["a"], {"b": 1}]}]}))
-            .known("str(list/dict) Python repr, Rust JSON metni (model adında); yalnız bozuk elle düzenlenmiş ayarda"),
+            .settings_json(json!({"ucli_services": [{"id": "m1", "env": "M1_KEY", "endpoint": "https://m", "models": [["a"], {"b": 1}]}]})),
     );
     v.push(
         Case::new("buyuk-int", "settings", json!({}))
@@ -418,8 +416,11 @@ fn url_cases() -> Vec<Case> {
     ];
     vec![
         Case::new("url", "valid_url", json!({"urls": urls.as_slice()})),
-        Case::new("url-nfkc", "valid_url", json!({"urls": ["http://a\u{ff03}b", "http://a\u{ff1a}80"]}))
-            .known("urlsplit NFKC ağ konumu denetimi (tam genişlik `＃`/`：` normalleşince ayraç olur) taşınmadı: Python geçersiz, Rust geçerli sayar"),
+        Case::new(
+            "url-nfkc",
+            "valid_url",
+            json!({"urls": ["http://a\u{ff03}b", "http://a\u{ff1a}80"]}),
+        ),
     ]
 }
 

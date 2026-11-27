@@ -8,7 +8,8 @@
 //! `rs/state` (`cops-state::json::Json`) aynı ailenin okuyup YAZAN sürümü; o dal birleşince bu dosya onunla
 //! tekleştirilmeli.
 
-use crate::pyfmt::{float_repr, py_isspace};
+use crate::pyfmt::float_repr;
+use cops_state::pycompat::repr_str;
 use std::collections::HashMap;
 
 /// İç içe dizi/nesne sınırı.
@@ -120,7 +121,7 @@ impl Py {
             Py::Int(i) => out.push_str(&i.to_string()),
             Py::BigInt(s) => out.push_str(s),
             Py::Float(f) => out.push_str(&float_repr(*f)),
-            Py::Str(s) => repr_str(s, out),
+            Py::Str(s) => out.push_str(&repr_str(s)),
             Py::Array(a) => {
                 out.push('[');
                 for (i, v) in a.iter().enumerate() {
@@ -137,7 +138,7 @@ impl Py {
                     if i > 0 {
                         out.push_str(", ");
                     }
-                    repr_str(k, out);
+                    out.push_str(&repr_str(k));
                     out.push_str(": ");
                     v.repr_into(out);
                 }
@@ -250,40 +251,6 @@ fn dumps_str(s: &str, out: &mut String) {
         }
     }
     out.push('"');
-}
-
-/// `str.isprintable()` yaklaşığı: `C*` ve `Z*` (düz boşluk dışında) yazdırılamaz.
-static UNPRINTABLE: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| regex::Regex::new(r"^[\p{C}\p{Z}]$").expect("sabit desen"));
-
-fn repr_str(s: &str, out: &mut String) {
-    let q = if s.contains('\'') && !s.contains('"') {
-        '"'
-    } else {
-        '\''
-    };
-    out.push(q);
-    let mut buf = [0u8; 4];
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c == q => {
-                out.push('\\');
-                out.push(c);
-            }
-            ' '..='~' => out.push(c),
-            c if py_isspace(c) || UNPRINTABLE.is_match(c.encode_utf8(&mut buf)) => match c as u32 {
-                n @ 0..=0xff => out.push_str(&format!("\\x{n:02x}")),
-                n @ 0x100..=0xffff => out.push_str(&format!("\\u{n:04x}")),
-                n => out.push_str(&format!("\\U{n:08x}")),
-            },
-            c => out.push(c),
-        }
-    }
-    out.push(q);
 }
 
 struct Parser<'a> {

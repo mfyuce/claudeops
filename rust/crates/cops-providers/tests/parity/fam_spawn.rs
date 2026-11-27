@@ -1,12 +1,11 @@
 //! Aile: `spawn.py` (plan_spawn = `spawn_session`ın komut kuran kısmı; dry-run satırı; gizli/gnome-terminal başlatmanın
 //! komutu, ortamı ve pencere argv'si), `_apply_hook_session_cap`, `spawn_priority_prefix`, `_dry_run_preview`,
-//! `_filter_env_overrides`, `detect_display`, `open_mirror_window`, `steward.main_session_model_effort`.
+//! `_filter_env_overrides`, `detect_display`, `open_mirror_window`.
 
 use crate::common::*;
 use crate::fam_build::spec_of;
 use crate::fam_model::with;
 use crate::fam_ucli::full_help;
-use cops_providers::provider::main_session_model_effort;
 use cops_providers::spawn::{
     apply_hook_session_cap, child_env, detect_display, dry_run_preview, filter_env_overrides,
     gnome_terminal_argv, mirror_child_env, mirror_window_command, plan_spawn, priority_prefix,
@@ -352,10 +351,6 @@ fn rs_misc(e: &Env, c: &Case) -> RsOut {
                 .map(|(_, v)| v.as_str());
             json!(detect_display(d, &|p| Path::new(p).exists()))
         }
-        "main_session" => {
-            let (m, ef) = main_session_model_effort(s("model"), s("effort"), s("cli"), s("sonnet"));
-            json!([m, ef])
-        }
         "mirror" => {
             let (host, name, port) = (s("host"), s("name"), a["port"].as_u64().unwrap() as u16);
             let mut rs = RsOut::ret(json!({"ok": true}));
@@ -443,27 +438,6 @@ fn misc_cases() -> Vec<Case> {
     v.push(Case::new("display-env", "detect_display", json!({})).env("DISPLAY", ":9"));
     v.push(Case::new("display-bos", "detect_display", json!({})).env("DISPLAY", ""));
     v.push(Case::new("display-yok", "detect_display", json!({})));
-    let ms = [
-        ("claude-sonnet-5-5", "max", "claude", "claude-sonnet-6"),
-        ("", "high", "claude", "claude-sonnet-6"),
-        ("gpt-5.5", "high", "claude", "claude-sonnet-6"),
-        ("Claude-Opus", "max", "", "claude-sonnet-6"),
-        ("  claude-x ", "low", "", "s"),
-        ("glm", "low", "", "s"),
-        ("", "low", "", "s"),
-        ("claude-opus", "max", "ucli", "s"),
-        ("claude-opus", "max", "claude", ""),
-        ("\u{1f}claude", "max", "", "s"),
-        ("CLAUDE", "x", "Claude", "s"),
-        ("İclaude", "x", "", "s"),
-    ];
-    for (i, (m, ef, cli, son)) in ms.iter().enumerate() {
-        v.push(Case::new(
-            format!("ana-oturum{i}"),
-            "main_session",
-            json!({"model": m, "effort": ef, "cli": cli, "sonnet": son}),
-        ));
-    }
     v.push(
         Case::new(
             "ayna",

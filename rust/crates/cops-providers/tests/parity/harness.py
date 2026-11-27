@@ -90,7 +90,6 @@ import claudeops.effort as effort  # noqa: E402
 import claudeops.routing as routing  # noqa: E402
 import claudeops.spawn as spawn  # noqa: E402
 import claudeops.startup_desktop as startup_desktop  # noqa: E402
-import claudeops.steward as steward  # noqa: E402
 import claudeops.review as review  # noqa: E402
 import claudeops.tmux_backend as tmux_backend  # noqa: E402
 import claudeops.extensions as extensions  # noqa: E402
@@ -398,10 +397,6 @@ def op_detect_display(a):
 def op_mirror(a):
     ok = spawn.open_mirror_window(a["host"], a["name"], a["port"], display=a.get("display", ":7"))
     return {"ok": ok}
-
-
-def op_main_session(a):
-    return list(steward.main_session_model_effort(a["model"], a["effort"], a["cli"], a["sonnet"]))
 
 
 def op_with_block(a):

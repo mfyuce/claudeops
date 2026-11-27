@@ -332,20 +332,3 @@ impl Providers<'_> {
         })
     }
 }
-
-/// Sahip kuralı: değnekçinin açtığı claude ana oturumu hep en yeni Sonnet + `medium`.
-pub fn main_session_model_effort(
-    model: &str,
-    effort: &str,
-    cli: &str,
-    sonnet: &str,
-) -> (String, String) {
-    let m = crate::pyfmt::strip(model);
-    let claude_model = m.to_lowercase().starts_with("claude");
-    let is_claude = cli == "claude" || (cli.is_empty() && claude_model);
-    if !is_claude || sonnet.is_empty() || (!m.is_empty() && !claude_model) {
-        (model.to_string(), effort.to_string())
-    } else {
-        (sonnet.to_string(), "medium".to_string())
-    }
-}

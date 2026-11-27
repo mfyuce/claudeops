@@ -150,6 +150,11 @@ for sid, label, lang in itertools.product(("default", "ab"), ("", "L"), ("tr", "
 # ── motor yardımcıları ──
 for model, effort, cli, sonnet in itertools.product(("", " Claude-Opus ", "gpt", "claude-fable"), ("", "high"), ("", "claude", "codex"), ("", "claude-sonnet-x")):
     add("main_session_model_effort", {"model": model, "effort": effort, "cli": cli, "sonnet": sonnet})
+for model, effort, cli, sonnet in (("claude-sonnet-5-5", "max", "claude", "claude-sonnet-6"), ("", "high", "claude", "claude-sonnet-6"),
+        ("gpt-5.5", "high", "claude", "claude-sonnet-6"), ("Claude-Opus", "max", "", "claude-sonnet-6"), ("  claude-x ", "low", "", "s"), ("glm", "low", "", "s"),
+        ("", "low", "", "s"), ("claude-opus", "max", "ucli", "s"), ("claude-opus", "max", "claude", ""), ("\u001fclaude", "max", "", "s"),
+        ("CLAUDE", "x", "Claude", "s"), ("\u0130claude", "x", "", "s")):                       # rs/prov'un eski parite vakaları
+    add("main_session_model_effort", {"model": model, "effort": effort, "cli": cli, "sonnet": sonnet})
 for last, bp, src in itertools.product(["", "ok", " OK. ", "Tamam.", "tamam..", "oK\n", "o\u212a", "ok bitti", LONG], [None, "", "bp"], ["p1", "x"]):
     v = V("p1", True, blueprint=bp, last_assistant=last)
     qs = [Q('qı"\\\n\u007f😀', "bp", "t", source="z"), Q("a", "p1", "t", status="answered"), Q("b", "zz", "t", source=src), Q("a0", "", "t", source="p1")]
