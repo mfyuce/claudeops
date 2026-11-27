@@ -183,12 +183,12 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     """{today_usd, cap_usd (0 = yok), pct (tavan yoksa None), cache_ttl}. 30 sn önbellekli (her /api/status'ta disk taraması yok)."""
     t = time.time() if now is None else now
     cfg = ucli_cost_config()
-    snap = dict(_CACHE)     # yerel kopya: eşzamanlı `invalidate()` okuma sırasında harcamayı sıfır göstermesin
+    snap = dict(_CACHE)     # yanıt YALNIZ bu kopyadan okunur: arada gelen invalidate() tavan denetimine 0 USD göstermesin
     if not use_cache or t - snap["at"] > _TTL or snap["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = write_mult(cfg)
         by = per_session_usd(t, base, mult)
         snap = dict(at=t, total=total_usd(base, mult, _date_ms(cfg.get("credit_since") or "")), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
-                    rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
+                      rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
         _CACHE.update(snap)
     cap = float(cfg["daily_cap_usd"])
     usd = float(snap["usd"])

@@ -15,7 +15,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from .atomic_json import atomic_write_json
+from .atomic_json import _write_corrupt_copy, atomic_write_json
 from .paths import CLAUDEOPS_DIR
 
 ORCH_DIR = os.path.join(CLAUDEOPS_DIR, "orchestration")
@@ -31,11 +31,20 @@ def _atomic_write_json(path: str, obj: Any) -> None:
         atomic_write_json(path, obj, mode=0o600)
 
 
+def _keep_corrupt(path: str) -> None:
+    """Bozuk belgenin 0600 kopyası (`<yol>.corrupt`): sonraki otomatik kayıt üstüne yazsa da içerik kalır. Fırlatmaz."""
+    try:
+        with open(path, "rb") as f:
+            _write_corrupt_copy(path + ".corrupt", f.read())
+    except OSError as e:
+        logging.getLogger(__name__).warning("orch_store: %s bozuk kopyasi yazilamadi: %s", path, e)
+
+
 def _load_json(path: str, default: Any) -> Any:
     from . import statedocs
     if statedocs._db_ok(path):
         # DB-tek-kaynak (`db` kipi, orchestration/ öneki DB_READY) ya da dual: statedocs karar verir
-        return statedocs.read_json(statedocs.name_for(path), path, default)
+        return statedocs.read_json(statedocs.name_for(path), path, default, on_corrupt=_keep_corrupt)
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
@@ -43,6 +52,7 @@ def _load_json(path: str, default: Any) -> Any:
         return default
     except json.JSONDecodeError as e:     # bozuk JSON "yok" sayılıp sessizce yutulmasın (review 2 Kas: load_draft)
         logging.getLogger(__name__).warning("orch_store: %s bozuk JSON, varsayilan kullaniliyor: %s", path, e)
+        _keep_corrupt(path)
         return default
     except OSError as e:      # okunamayan (izin/G-Ç) dosya "yok" sayılıp sessizce yutulmasın
         logging.getLogger(__name__).warning("orch_store: %s okunamadi: %s", path, e)
