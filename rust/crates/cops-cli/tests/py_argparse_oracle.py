@@ -15,9 +15,9 @@ sys.path.insert(0, sys.argv[1])
 from claudeops import cli  # noqa: E402
 
 cases = json.load(open(sys.argv[2], encoding="utf-8"))
-# Hepsi `front` ile başlar: `build_parser` argv'ye yalnız eklenti komutları için bakar (çekirdek komutta eklenti yüklenmez);
+# Hepsi çekirdek komutla (`front`, `list`, `ls`) başlar: `build_parser` argv'ye yalnız eklenti komutları için bakar (çekirdek komutta eklenti yüklenmez);
 # ayrıştırıcı bir kez kurulur (argparse ayrıştırıcısı yeniden kullanılabilir).
-assert all(c and c[0] == "front" for c in cases)
+assert all(c and c[0] in ("front", "list", "ls") for c in cases)
 parser = cli.build_parser(["front"])
 for argv in cases:
     try:
@@ -25,6 +25,7 @@ for argv in cases:
             ns = parser.parse_args(argv)
         print(json.dumps({"ok": True, "action": getattr(ns, "action", None), "apply": getattr(ns, "apply", None),
                           "listen": getattr(ns, "listen", None), "internal": getattr(ns, "internal", None),
-                          "bin": getattr(ns, "bin", None)}))
+                          "bin": getattr(ns, "bin", None), "no_cpu": getattr(ns, "no_cpu", None),
+                          "base": getattr(ns, "base", None), "json": getattr(ns, "json", None)}))
     except SystemExit as e:
         print(json.dumps({"ok": False, "exit": e.code}))
