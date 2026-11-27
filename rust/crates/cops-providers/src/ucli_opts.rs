@@ -533,3 +533,36 @@ pub fn parse_service_models(body: &[u8]) -> Vec<String> {
     let ids: BTreeSet<String> = rows.iter().filter_map(|m| m.get("id")).filter(|id| id.truthy()).map(Py::py_str).collect();
     ids.into_iter().collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Beklenenler Python `ucli_session_opts.validate_opts`un aynı girdideki çıktısı (27 Kas elle koşuldu; geniş kapsam
+    /// `parity_ucli`). Toolchain yalnız `exec_toolchain` istenirse çağrılır.
+    #[test]
+    fn validate_opts_matches_python() {
+        let s = Settings::default();
+        let no_tc = || -> Result<Toolchain, String> { panic!("toolchain çağrılmamalı") };
+        let run = |raw: Value| validate_opts(&raw, &s, &no_tc);
+        assert_eq!(run(Value::Null), Ok(Map::new()));
+        assert_eq!(run(json!({})), Ok(Map::new()));
+        assert_eq!(run(json!([])), Ok(Map::new()));
+        assert_eq!(run(json!("x")), Err("cli_opts nesne olmalı".into()));
+        assert_eq!(run(json!({"service": "YOK"})), Err("bilinmeyen hizmet: yok".into()));
+        assert_eq!(run(json!({"exec_cmds": ["re:"]})), Err("geçersiz regex (1-60 karakter): re:".into()));
+        assert_eq!(
+            run(json!({"exec_cmds": ["re:("]})),
+            Err("geçersiz regex (missing ), unterminated subpattern at position 0): re:(".into())
+        );
+        let ok = run(json!({"exec_cmds": ["ls", "re:^git( |$)"]})).unwrap();
+        assert_eq!(Value::Object(ok), json!({"exec_cmds": ["ls", "re:^git( |$)"]}));
+        assert_eq!(Value::Object(run(json!({"max_cost_usd": "1,5"})).unwrap()), json!({"max_cost_usd": 1.5}));
+        assert_eq!(run(json!({"max_cost_usd": "0"})), Ok(Map::new()));
+        for bad in ["-1", "nan", "inf"] {
+            assert_eq!(run(json!({"max_cost_usd": bad})), Err("max_cost_usd 0-100 USD arası".into()), "{bad}");
+        }
+        assert_eq!(run(json!({"max_cost_usd": "abc"})), Err("max_cost_usd sayı olmalı".into()));
+        assert_eq!(run(json!({"exec_toolchain": true})), Err("bilinmeyen exec_toolchain: true (yalnız rust)".into()));
+    }
+}

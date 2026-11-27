@@ -109,3 +109,27 @@ pub fn sync_plan(settings: &Settings, bundled: Option<&str>, current: Option<&[u
         SyncAction::Write { content: new, backup: exists, removed: !has_body }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Beklenenler Python `routing._with_block`un aynı girdideki çıktısı (27 Kas elle koşuldu; geniş kapsam
+    /// `parity_misc` `sync*`).
+    #[test]
+    fn with_block_matches_python() {
+        let (b, e) = (BLOCK_BEGIN, BLOCK_END);
+        let block = |body: &str| format!("{b}\n{body}\n{e}\n");
+        assert_eq!(with_block("ust\n", Some("govde\n\n")), format!("ust\n\n{}", block("govde")));
+        assert_eq!(with_block(&format!("a\n{b}\neski\n{e}\nb"), None), "a\n\nb\n");
+        assert_eq!(with_block("", None), "");
+        assert_eq!(with_block("x", None), "x\n");
+        // Yetim BEGIN kullanıcı metni sayılır, silinmez.
+        assert_eq!(
+            with_block(&format!("{b}\nyetim\n{b}\neski\n{e}\n"), Some("yeni")),
+            format!("{b}\nyetim\n\n{}", block("yeni"))
+        );
+        assert_eq!(with_block("  \n", Some("g")), block("g"));
+        assert_eq!(with_block(&format!("a\n\n{b}\nx\n{e}\n\n\nb\n"), Some("y")), format!("a\n\nb\n\n{}", block("y")));
+    }
+}

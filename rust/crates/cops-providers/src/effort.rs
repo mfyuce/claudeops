@@ -45,3 +45,27 @@ pub fn nearest_effort(requested: &str, levels: &[String]) -> Option<String> {
     let wanted = effort_rank(requested).or_else(|| effort_rank("medium")).unwrap_or(0);
     ranked.iter().filter(|(r, _)| *r <= wanted).max().or_else(|| ranked.iter().min()).map(|(_, l)| (*l).clone())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(l: &[&str]) -> Vec<String> {
+        l.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Beklenenler Python `effort.py`nin aynı girdideki çıktısı (27 Kas elle koşuldu; geniş kapsam `parity_model_effort`).
+    #[test]
+    fn tiers_sorting_and_nearest_match_python() {
+        assert_eq!(split_tier("gemini-3.8-flash-high"), ("gemini-3.8-flash", Some("high")));
+        assert_eq!(split_tier("-high"), ("-high", None));
+        assert_eq!(split_tier("x-ultra"), ("x-ultra", None));
+        assert_eq!(split_tier("abc"), ("abc", None));
+        assert_eq!(sort_levels(v(&["max", "foo", "low", "", "low", "high"])), v(&["low", "high", "max", "foo"]));
+        assert_eq!(nearest_effort("high", &v(&["low", "medium"])).as_deref(), Some("medium"));
+        assert_eq!(nearest_effort("low", &v(&["medium", "max"])).as_deref(), Some("medium"));
+        assert_eq!(nearest_effort("weird", &v(&["low", "high"])).as_deref(), Some("low"));
+        assert_eq!(nearest_effort("x", &v(&["a", "b"])).as_deref(), Some("a"));
+        assert_eq!(nearest_effort("x", &[]), None);
+    }
+}
