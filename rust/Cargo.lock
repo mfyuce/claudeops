@@ -379,6 +379,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-tmux"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "regex",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "copsd"
 version = "0.1.0"
 dependencies = [

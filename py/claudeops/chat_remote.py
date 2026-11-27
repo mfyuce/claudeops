@@ -151,7 +151,8 @@ class PanelTransport:
 
     def send(self, cmd: str) -> None:
         from .commands import web_hosts as H
-        r, _s = H.proxy_action("/api/term/input", self.host, {"name": self.session, "text": cmd}, timeout=self.TO)
+        r, _s = H.proxy_action("/api/term/input", self.host, {"name": self.session, "text": cmd, "auto": True},
+                               timeout=self.TO)
         if not r.get("ok"):
             raise RuntimeError(f"term/input: {r}"[:150])
 

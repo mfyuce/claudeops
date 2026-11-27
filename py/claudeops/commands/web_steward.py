@@ -1679,7 +1679,7 @@ def _ucli_box_recheck(name: str, sid: str = "default") -> bool:
             empties = 0
             if enters >= UCLI_BOX_MAX_ENTERS:
                 break
-            tmux_send_raw(name, "\r")          # yalnız Enter
+            tmux_send_raw(name, "\r", guard=True)          # yalnız Enter
             enters += 1
         if left:
             sw.log_event("ucli_send_stuck", paths=sw.paths_for(sid or "default"), name=name, left=left[:120], enters=enters)
@@ -2044,7 +2044,7 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
     """`instances.json`daki SON başlatma kaydı (TBD#156): `name`in kendi kaydı, yoksa blueprint'i `name` olan en son
     başlatılan/oluşturulan unutulmamış kayıt. Yoksa None (çağıran roster/varsayılana düşer). Fırlatmaz."""
     try:
-        recs = inst_mod.load_instances()
+        recs = inst_mod.view_instances()
     except Exception:
         return None
     rec = recs.get(name)
@@ -2052,7 +2052,9 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
         cands = [r for r in recs.values()
                  if isinstance(r, dict) and r.get("blueprint") == name and not r.get("forgotten")]
         rec = max(cands, key=lambda r: float(r.get("last_started_at") or r.get("created_at") or 0), default=None)
-    return rec if isinstance(rec, dict) and rec.get("cli") in PROVIDERS else None
+    if not (isinstance(rec, dict) and rec.get("cli") in PROVIDERS):
+        return None
+    return inst_mod.get_instance(next(n for n, r in recs.items() if r is rec))     # yalnız dönen kayıt kopyalanır
 
 
 def _main_model_effort(project: "sw.Project", cfg: "sw.Config", name: str = "", host: str = "",
@@ -2550,7 +2552,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
             conversational = False
         if not conversational:
             return {"ok": False, "error": "send failed", "host": host}
-        sent = _remote_post(host, "/api/term/input", {"name": sname, "text": message, "exact": True},
+        sent = _remote_post(host, "/api/term/input", {"name": sname, "text": message, "exact": True, "auto": True},
                             REMOTE_INPUT_TIMEOUT_SECONDS, rt)
         if not sent.get("ok"):
             return dict(sent, ok=False, error=str(sent.get("error") or "send failed"), host=host)
@@ -3343,7 +3345,7 @@ def _remote_nudge(name: str, host: str, action: sw.Action, cfg: sw.Config, paths
         return {"ok": False, "error": "not tmux-backed (cannot inject)", "host": host}
     sname = str(row.get("name") or name)
     sent = _remote_post(host, "/api/term/input", {"name": sname, "text": str(action.payload.get("text") or sw.API_NUDGE_TEXT),
-                                                   "exact": True}, REMOTE_INPUT_TIMEOUT_SECONDS, rt)
+                                                   "exact": True, "auto": True}, REMOTE_INPUT_TIMEOUT_SECONDS, rt)
     ok = bool(sent.get("ok"))
     sw.log_event("done_confirm_asked" if action.payload.get("confirm") else "api_nudge", paths=paths, name=sname, host=host,
                  n=action.payload.get("n"), reason=action.reason, ok=ok)
@@ -7215,9 +7217,9 @@ def _send_verified(name: str, cli: str, message: str, sid: str = "default",
             if enters >= DELIVERY_MAX_ENTERS:
                 return "failed"
             if enters:      # yalın Enter yetmedi: boşluk yazıp (ayrı yazım) yeniden Enter (sahip gözlemi, 16 Kas)
-                tmux_send_raw(name, " ")
+                tmux_send_raw(name, " ", guard=True)
                 sleep(DELIVERY_NUDGE_DELAY)
-            tmux_send_raw(name, "\r")
+            tmux_send_raw(name, "\r", guard=True)
             enters += 1
             continue
         if _pane_norm(outside).count(head) > before:
@@ -8683,7 +8685,7 @@ class RemoteReviewDriver:
             if r is not None and r.get("busy") is False:
                 # ucli `--session rvw_<proje>` önceki koşunun konuşmasını diskten DEVRALIR (`fresh` bunu sıfırlamaz; canlı
                 # denemede 146 KiB eski bağlam taşındı): `/clear` bellek içi geçmişi VE oturum dosyasını siler.
-                clr = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": "/clear", "exact": True},
+                clr = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": "/clear", "exact": True, "auto": True},
                                    REMOTE_INPUT_TIMEOUT_SECONDS)
                 if not clr.get("ok"):
                     return {"ok": False, "error": f"clear: {clr.get('error') or clr.get('code') or 'failed'}"}
@@ -8699,7 +8701,7 @@ class RemoteReviewDriver:
         why = self._ambiguous()
         if why:
             return {"ok": False, "error": why}
-        res = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": text, "exact": True},
+        res = _remote_post(self.host, "/api/term/input", {"name": self.session, "text": text, "exact": True, "auto": True},
                            REMOTE_INPUT_TIMEOUT_SECONDS)
         return {"ok": bool(res.get("ok")), "error": str(res.get("error") or res.get("code") or "")}
 
@@ -8771,7 +8773,7 @@ class RemoteReviewDriver:
         out["session_open"] = row is not None
         out["notified"] = False
         if notify and row is not None and row.get("busy") is False:
-            r = _remote_post(self.host, "/api/term/input", {"name": name, "text": " ".join(notify.split()), "exact": True},
+            r = _remote_post(self.host, "/api/term/input", {"name": name, "text": " ".join(notify.split()), "exact": True, "auto": True},
                              REMOTE_INPUT_TIMEOUT_SECONDS)
             out["notified"] = bool(r.get("ok"))
         return out

@@ -214,7 +214,7 @@ class StatusPayloadPhaseTests(StatusDirCase):
             mock.patch.object(web, "is_tmux_backed", lambda pid: False),
             mock.patch.object(web, "_needs_ho_cached", lambda s: None),     # git alt süreci yok
             mock.patch.object(web, "ucli_usage_warn_thresholds", lambda: (1_000_000, 3_000_000)),   # gerçek ayar sızmasın
-            mock.patch.object(web.inst_mod, "load_instances", lambda: {}),
+            mock.patch.object(web.inst_mod, "view_instances", lambda: {}),
             mock.patch.object(web_hosts.hosts_mod, "load_hosts", lambda: []),
         ):
             p.start()

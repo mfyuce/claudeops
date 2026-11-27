@@ -14,12 +14,13 @@ class SendTimeoutTest(unittest.TestCase):
     def _timeouts(self, text):
         seen = []
 
-        def fake_run(argv, capture_output=True, timeout=None):
+        def fake_run(argv, capture_output=True, timeout=None, input=None):
             seen.append(timeout)
             return subprocess.CompletedProcess(argv, 0)
 
         with mock.patch.object(tmux_backend.subprocess, "run", fake_run), \
-                mock.patch.object(tmux_backend, "_exact", lambda n: n):
+                mock.patch.object(tmux_backend, "_exact", lambda n: n), \
+            mock.patch.object(tmux_backend, "pane_is_masked_input", lambda n: False):
             self.assertTrue(tmux_backend.tmux_send_keys("x", text))
         return seen
 

@@ -33,7 +33,7 @@ import { useLang } from "../../i18n/LangContext";
 import { isViewable } from "./fileViewerKind";
 
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
 }
 
 // Same regex as the original's TERM_URL_RE (web.py ~2281).

@@ -19,9 +19,10 @@ def _proc(pid, name, cmdline, parent=None, ct=1.0):
 
 
 def _listed(pid, name, cmdline, ct=1.0):
-    """`process_iter(["pid", "name"])` öğesi: `.info` yalnız bunlarda."""
+    """`process_iter(["pid", "name", "uids"])` öğesi: `.info` yalnız bunlarda. Süreç bu kullanıcınındır (TBD#366 P7
+    yedek taramayı kullanıcıya göre süzer)."""
     p = _proc(pid, name, cmdline, ct=ct)
-    p.info = {"pid": pid, "name": name}
+    p.info = {"pid": pid, "name": name, "uids": SimpleNamespace(real=os.getuid())}
     return p
 
 

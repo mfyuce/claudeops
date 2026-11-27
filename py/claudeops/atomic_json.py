@@ -121,6 +121,34 @@ def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> No
         raise
 
 
+def _write_corrupt_copy(dest: str, raw: bytes) -> bool:
+    """Bozuk belgenin 0600 kanıt kopyası; geçici ad + `os.replace`: yarım yedek kalmaz. `dest` aynı içerikli normal
+    dosyaysa dokunulmaz (False), eksik/farklıysa değiştirilir (True). Hata `OSError`."""
+    try:
+        if stat.S_ISREG(os.lstat(dest).st_mode):
+            with open(dest, "rb") as f:
+                if f.read() == raw:
+                    return False
+    except FileNotFoundError:
+        pass
+    tmp = f"{dest}.{os.getpid()}-{threading.get_ident()}.tmp"
+    try:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(raw)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, dest)
+        _fsync_dir(dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+    return True
+
+
 LOCK_TIMEOUT_SECONDS = 30.0     # süreçler-arası flock bekleme sınırı
 _LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict = {}

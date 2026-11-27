@@ -38,6 +38,16 @@ class CacheCopy(unittest.TestCase):
                 rec["cwd"] = "/kirli"
                 rec["cli_opts"]["x"].append(2)
         self.assertIsNone(instances.get_instance("yok"))
+        from claudeops.commands import web, web_steward
+        with mock.patch.object(web, "find_sessions", lambda **kw: []):
+            with mock.patch.object(instances, "_copy", side_effect=AssertionError("kopya")):
+                self.assertIn("a", web._all_known_names())          # salt okuyucu kopyalamaz
+            row = web._instances_list()["instances"][0]
+        row["cwd"] = "/kirli"
+        rec = web_steward._last_launch("a")
+        rec["cli_opts"]["x"].append(3)                              # dönen kayıt çağıranındır
+        self.assertEqual(instances.get_instance("a")["cli_opts"], {"x": [1]})
+        self.assertEqual(instances.get_instance("a")["cwd"], "/c")
 
     def test_db(self):
         self.run_mode("db")

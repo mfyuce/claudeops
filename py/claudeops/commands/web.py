@@ -228,6 +228,8 @@ ERR = {
                          "en": "{name}: this CLI (e.g. a plain shell) has no conversation to inject into"},
     "term_session_gone": {"tr": "{name}: tmux session artık yok (kapanmış olabilir)",
                            "en": "{name}: tmux session no longer exists (may have closed)"},
+    "term_mask_blocked": {"tr": "{name}: pane parola bekliyor olabilir (durum kesin değil), otomatik gönderim yapılmadı",
+                           "en": "{name}: the pane may be waiting for a password (state not certain), automatic send skipped"},
     "invalid_key": {"tr": "geçersiz tuş", "en": "invalid key"},
     "invalid_range": {"tr": "geçersiz satır aralığı", "en": "invalid line range"},
     "window_already_attached": {"tr": "{name}: zaten bağlı {count} pencere var — ikincisi yeni bir session AÇMAZ, "
@@ -688,7 +690,7 @@ def _all_known_names() -> set:
     """roster.tsv'deki (aktif/kapalı/emekli FARK ETMEZ) TÜM isimler + şu an çalışan
     TÜM proc isimleri/base'leri — yeni chat ismi üretirken çakışma kontrolü için."""
     names = {r["name"] for r in _read_tsv_raw(ROSTER_TSV) if r["name"] != "name"}
-    names |= set(inst_mod.load_instances())
+    names |= set(inst_mod.view_instances())
     for s in find_sessions(measure_cpu=False):
         names.add(s.name)
         names.add(s.base)
@@ -1775,7 +1777,7 @@ def _status_payload() -> dict:
     # base-dict aynı base'in ikinci proc'unu yuttuğu için duplicates() hiç
     # tetiklenemiyordu — artık tüm canlı liste üzerinden sayılıyor.
     active_names = {n for n, i in fleet.items() if i["state"] == "active"}
-    registry = inst_mod.load_instances()
+    registry = inst_mod.view_instances()
     assigned = {}
     for s in all_live:
         if s.name in active_names:
@@ -2456,7 +2458,7 @@ class _AgentOps:
         return _stop(name, exact=True)
 
     def send(self, name: str, text: str) -> dict:
-        return _term_input(name, text, exact=True)
+        return _term_input(name, text, exact=True, auto=True)
 
 
 _AGENT_OPS = _AgentOps()
@@ -2837,12 +2839,20 @@ def _term_loop_seconds(host: str, interval: Optional[float]) -> Optional[float]:
     return interval
 
 
-def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False) -> dict:
+def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False, auto: bool = False) -> dict:
+    """`auto`: metni insan değil motor yolluyor (değnekçi, orkestrasyon, ajan): parola durumu "gizli girdi yok" diye
+    KESİN değilse gönderilmez (TBD#367). `auto` yoksa insanın panelden yazdığı girdidir (parola yazmak meşru)."""
     s, err = _term_resolve(name, lang, exact=True) if exact else _term_resolve(name, lang)
     if err:
         return err
     _prov = get_provider(s.cli)
-    ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay())
+    if auto:     # ikinci yoklama `tmux_send_keys`te (gönderime en yakın an); bu ilki çağırana nedeni söyler
+        masked = pane_is_masked_input(s.name)
+        if masked is not False:
+            diag_log("send_refused_mask", name=s.name, state="masked" if masked else "unknown", via="term_input")
+            return dict(_err(lang, "term_mask_blocked", name=name), code="mask_blocked")
+    guard = {} if auto else {"guard": False}
+    ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay(), **guard)
     if ok:
         web_ws.notify_term_activity(name)
     return {"ok": True} if ok else _err(lang, "term_session_gone", name=name)
@@ -2886,7 +2896,7 @@ def _term_key(name: str, key: str, lang: str = "tr") -> dict:
 # tamponunu her ~25ms'de boşaltıyor, yani bu sınıra ancak GERÇEKTEN büyük bir
 # yapıştırma çarpar. Amacı pane'i korumak değil (aynı metin komut kutusundan
 # da gönderilebilirdi), kazara/hatalı bir istemcinin megabaytlık bir gövdeyi
-# tmux argv'sine akıtmasını engellemek.
+# tmux tamponuna ve pane'e akıtmasını engellemek.
 MAX_TERM_RAW_CHARS = 8192
 
 
@@ -3914,8 +3924,13 @@ def _context(name: str, lang: str = "tr") -> dict:
         return {"ok": True, "available": False, "reason": "no_tmux"}
     if _is_busy_cached(s):
         return {"ok": True, "available": False, "reason": "busy"}
-    if pane_is_masked_input(s.name):
+    masked = pane_is_masked_input(s.name)
+    if masked:
         return {"ok": True, "available": False, "reason": "masked"}
+    if masked is None:
+        # TBD#367 (sahip, 26 Kas): parola durumu BİLİNMİYORSA (pty okunamadı, tmux cevap vermedi, oturum gitti)
+        # otomatik enjeksiyon YOK (kapalı yön); gönderildi sayılmaz, neden ayrı döner.
+        return {"ok": True, "available": False, "reason": "mask_unknown"}
     if not tmux_send_keys(s.name, command, settle_delay=provider.input_settle_delay()):
         return {"ok": True, "available": False, "reason": "send_failed"}
     time.sleep(CONTEXT_SETTLE_SECONDS)
@@ -4385,7 +4400,7 @@ def _instances_list() -> dict:
     """Geçmiş sekmesi: tüm instance kayıtları + şu an çalışıp çalışmadığı, en yeni önce."""
     live = {s.name for s in find_sessions(measure_cpu=False)}
     items = [dict(rec, name=name, running=name in live, host=LOCAL_HOST_NAME)
-             for name, rec in inst_mod.load_instances().items() if not rec.get("forgotten")]
+             for name, rec in inst_mod.view_instances().items() if not rec.get("forgotten")]
     items.sort(key=lambda r: r.get("last_started_at") or r.get("created_at") or 0, reverse=True)
     try:    # History rozeti (değnekçi beyni / yönetilen proje oturumu); yalnız ek bilgi, hata satırı bozmaz
         from .. import steward as _sw
@@ -6727,7 +6742,8 @@ class _Handler(BaseHTTPRequestHandler):
             if not name:
                 self._json(_err(lang, "name_required"), status=400)
                 return
-            self._json(self._term_dedup_result(path, data, _term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True)))
+            self._json(self._term_dedup_result(path, data, _term_input(name, text=str(data.get("text", "")), lang=lang, exact=data.get("exact") is True,
+                                                                   auto=data.get("auto") is True)))
             return
 
         if path == "/api/term/key":
