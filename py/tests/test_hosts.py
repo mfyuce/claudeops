@@ -45,6 +45,18 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class UrlCleanupTest(unittest.TestCase):
+    """Sondaki `/` ve boşluk iç içe olsa da (`x\n/`, `x/ /`) adres temiz kaydedilir."""
+
+    def test_trailing_slashes_and_whitespace_are_all_removed(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(hosts, "HOSTS_JSON", os.path.join(d, "hosts.json")):
+            r = hosts.save_host("a", "http://10.0.0.1\n/", "t", "http://10.0.0.1:2/ /\t/", "http://10.0.0.3 /")
+            self.assertTrue(r["ok"], r)
+            h = hosts.load_hosts()[0]
+        self.assertEqual((h["base_url"], h["grpc_url"], h["extra_urls"]),
+                         ("http://10.0.0.1", "http://10.0.0.1:2", ["http://10.0.0.3"]))
+
+
 class ReachLoopbackTest(unittest.TestCase):
     """menzil reach dinleyicisi (127.0.0.1:187xx) YALNIZ extra_urls'ta serbest; başka loopback hâlâ SSRF olarak reddedilir."""
 

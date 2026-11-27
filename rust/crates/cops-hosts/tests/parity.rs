@@ -874,6 +874,17 @@ async fn save_host_validation_and_upsert_match_python() {
         mk(json!(["1a", "http://10.0.0.1", "t", "", "", "en"]), None),
         mk(json!(["a.b", "http://10.0.0.1", "t", "", "", "en"]), None),
         mk(json!(["local", "http://10.0.0.1", "t", "", "", "tr"]), None),
+        mk(
+            json!([
+                "a",
+                "http://10.0.0.2\n/",
+                "t",
+                "http://10.0.0.1:2/ /\u{1f}/",
+                "http://10.0.0.3 /",
+                "tr"
+            ]),
+            None,
+        ),
         mk(json!(["a", "ftp://x", "t", "", "", "tr"]), None),
         mk(json!(["a", "HTTP://10.0.0.1", "t", "", "", "tr"]), None),
         mk(json!(["a", "10.0.0.1", "t", "", "", "en"]), None),
