@@ -191,10 +191,10 @@ fn rs_ucli_misc(e: &Env, c: &Case) -> RsOut {
         };
         RsOut::ret(json!({
             "state_dir_for": strs(a.get("cwds")).iter()
-                .map(|cwd| state_dir_for(&p.paths.ucli_state_root(), &probe.realpath(cwd))).collect::<Vec<_>>(),
+                .map(|cwd| state_dir_for(&p.paths.ucli_state_write_root(&|x| probe.realpath(x)), &probe.realpath(cwd))).collect::<Vec<_>>(),
             "is_child_name": names.iter().map(|n| is_child_name(n)).collect::<Vec<_>>(),
             "mcp_server_name": names.iter().map(|n| mcp_server_name(n)).collect::<Vec<_>>(),
-            "log_path": names.iter().map(|n| usage_log_path(&p.paths.ucli_usage_dir(), n)).collect::<Vec<_>>(),
+            "log_path": names.iter().map(|n| usage_log_path(&p.paths.usage_write_dir(&p.paths.ucli_usage_dir(), &|x| probe.realpath(x)), n)).collect::<Vec<_>>(),
             "flag_values": flags.iter().map(|f| flag_values(&help, f)).collect::<Vec<_>>(),
             "supports": flags.iter().map(|f| supports_flag(&help, f)).collect::<Vec<_>>(),
             "derives": derives_context(&help),

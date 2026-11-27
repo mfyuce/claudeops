@@ -3,9 +3,10 @@
 use crate::live::{Live, SqlCell};
 use crate::probe::{BuildOutput, Effect};
 use crate::provider::{BuildArgs, Providers};
-use crate::pyfmt::{float_repr, quote};
+use crate::pyfmt::{basename, float_repr, quote};
 use crate::settings::is_safe_env_name;
 use regex::Regex;
+use serde_json::json;
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
@@ -121,6 +122,20 @@ fn sync_byok_env_file(p: &Providers<'_>, out: &mut BuildOutput) -> bool {
         .filter(|(k, _)| is_safe_env_name(k))
         .map(|(k, v)| format!("export {k}={}\n", quote(v)))
         .collect();
+    // Ortak dosya salt okunur (TBD#412 b): ayar farklıysa dosya kullanılmaz.
+    if !p.shared_write_allowed(&file) {
+        if lines.is_empty() {
+            return p.probe.is_file(&file);
+        }
+        let same = p.probe.read_text(&file).is_some_and(|text| text == lines);
+        if !same {
+            out.diag(
+                "shared_key_readonly",
+                vec![("file", json!(basename(&file)))],
+            );
+        }
+        return same;
+    }
     if lines.is_empty() {
         // Dosyayı yalnız biz yazdıysak sileriz; elle bırakılana dokunulmaz.
         if p.probe.is_file(&marker) {

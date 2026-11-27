@@ -291,11 +291,30 @@ fn logs(base: &str, since_ms: Option<f64>) -> Vec<Log> {
 
 /// `per_session_usd`: bugünkü $, oturum başına.
 pub fn per_session_usd(now: f64, base: &str, mult: f64) -> Vec<(String, f64)> {
+    per_session_in(now, &[base.to_string()], mult)
+}
+
+/// Aynı oturum adı birden çok dizindeyse toplanır (ikinci örnek: ortak + kendi dizini, TBD#412 b).
+fn add_to(out: &mut Vec<(String, f64)>, name: String, usd: f64) {
+    match out.iter_mut().find(|(n, _)| *n == name) {
+        Some(slot) => slot.1 += usd,
+        None => out.push((name, usd)),
+    }
+}
+
+fn logs_in(dirs: &[String], since_ms: Option<f64>) -> impl Iterator<Item = Log> + '_ {
+    dirs.iter().flat_map(move |d| logs(d, since_ms))
+}
+
+/// `per_session_usd`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
+pub fn per_session_in(now: f64, dirs: &[String], mult: f64) -> Vec<(String, f64)> {
     let since = day_start_ms(now);
-    logs(base, Some(since))
-        .into_iter()
-        .map(|l| (l.stem, scan_usage(&l.path, "", since, mult).total))
-        .collect()
+    let mut out = Vec::new();
+    for l in logs_in(dirs, Some(since)) {
+        let usd = scan_usage(&l.path, "", since, mult).total;
+        add_to(&mut out, l.stem, usd);
+    }
+    out
 }
 
 /// `today_usd`.
@@ -307,17 +326,23 @@ pub fn today_usd(now: f64, base: &str, mult: f64) -> f64 {
 
 /// `rate_by_session`: son `window_min` dakikanın hızı (USD/saat), yalnız > 0 olanlar.
 pub fn rate_by_session(now: f64, window_min: f64, base: &str, mult: f64) -> Vec<(String, f64)> {
+    rate_in(now, window_min, &[base.to_string()], mult)
+}
+
+/// `rate_by_session`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
+pub fn rate_in(now: f64, window_min: f64, dirs: &[String], mult: f64) -> Vec<(String, f64)> {
     if window_min <= 0.0 {
         return Vec::new();
     }
     let since = now * 1000.0 - window_min * 60_000.0;
-    logs(base, Some(since))
-        .into_iter()
-        .filter_map(|l| {
-            let usd = scan_usage(&l.path, "", since, mult).total;
-            (usd > 0.0).then(|| (l.stem, usd * 60.0 / window_min))
-        })
-        .collect()
+    let mut out = Vec::new();
+    for l in logs_in(dirs, Some(since)) {
+        let usd = scan_usage(&l.path, "", since, mult).total;
+        if usd > 0.0 {
+            add_to(&mut out, l.stem, usd * 60.0 / window_min);
+        }
+    }
+    out
 }
 
 /// `rate_usd_per_hour`.
@@ -329,8 +354,13 @@ pub fn rate_usd_per_hour(now: f64, window_min: f64, base: &str, mult: f64) -> f6
 
 /// `total_usd`: birikmiş toplam; `since_ms` > 0 ise yalnız o andan sonrası.
 pub fn total_usd(base: &str, mult: f64, since_ms: f64) -> f64 {
+    total_in(&[base.to_string()], mult, since_ms)
+}
+
+/// `total_usd`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
+pub fn total_in(dirs: &[String], mult: f64, since_ms: f64) -> f64 {
     let filter = (since_ms > 0.0).then_some(since_ms);
-    logs(base, filter).into_iter().fold(0.0, |a, l| {
+    logs_in(dirs, filter).fold(0.0, |a, l| {
         a + scan_usage(&l.path, "", since_ms, mult).total
     })
 }
@@ -381,6 +411,8 @@ fn rounded_sum(rates: &[(String, f64)]) -> Value {
 /// `ucli_cost` modül durumu: önbellek (`_CACHE`) + başlatma payları (`_RESERVED`, `_RESERVE_LOCK`).
 pub struct CostLedger {
     base: String,
+    /// Okunan dizinler (`ucli_cost.read_dirs`): `base`, ikinci örnekte ek olarak kendi yazma dizini.
+    dirs: Vec<String>,
     settings: CostSettings,
     clock: WallClock,
     cache: Mutex<Option<Snapshot>>,
@@ -391,13 +423,24 @@ pub struct CostLedger {
 impl CostLedger {
     /// `base` = [`crate::Paths::ucli_usage_dir`].
     pub fn new(base: impl Into<String>, settings: CostSettings) -> CostLedger {
+        let base = base.into();
         CostLedger {
-            base: base.into(),
+            dirs: vec![base.clone()],
+            base,
             settings,
             clock: system_clock(),
             cache: Mutex::new(None),
             reserved: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Yazma dizini ([`crate::Paths::usage_write_dir`]) `base`ten farklıysa harcama ikisinden toplanır. Defterin
+    /// SAYILABİLİRLİK denetimi Python gibi yalnız `base`e bakar.
+    pub fn with_write_dir(mut self, dir: String) -> CostLedger {
+        if dir != self.base {
+            self.dirs.push(dir);
+        }
+        self
     }
 
     pub fn with_clock(mut self, clock: WallClock) -> CostLedger {
@@ -422,15 +465,15 @@ impl CostLedger {
             Some(s) => s,
             None => {
                 let mult = write_mult(cfg);
-                let by = per_session_usd(now, &self.base, mult);
+                let by = per_session_in(now, &self.dirs, mult);
                 let fresh = Snapshot {
                     at: now,
                     day: day_key(now),
-                    total: total_usd(&self.base, mult, date_ms(&cfg.credit_since, false)),
+                    total: total_in(&self.dirs, mult, date_ms(&cfg.credit_since, false)),
                     usd: by.iter().fold(0.0, |a, (_, v)| a + v),
                     by,
-                    rate_1h: rate_by_session(now, 60.0, &self.base, mult),
-                    rate_15m: rate_by_session(now, 15.0, &self.base, mult),
+                    rate_1h: rate_in(now, 60.0, &self.dirs, mult),
+                    rate_15m: rate_in(now, 15.0, &self.dirs, mult),
                 };
                 *self.cache.lock().unwrap_or_else(PoisonError::into_inner) = Some(fresh.clone());
                 fresh

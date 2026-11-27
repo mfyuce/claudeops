@@ -5,7 +5,7 @@
 //! dosya "okunamadı" sayılır.
 
 use crate::live::Live;
-use crate::pyfmt::{decimal_value, join_path, py_isspace, strip};
+use crate::pyfmt::{basename, decimal_value, join_path, py_isspace, strip};
 use crate::pyjson::Py;
 use crate::ucli::state_dir_for;
 
@@ -110,13 +110,21 @@ fn capped(s: &str, max: usize) -> String {
 impl Live<'_> {
     /// Okuyucuların sırayla bakacağı sohbet dizinleri: `--state-dir` açıksa ya da yeni dizin zaten varsa yeni + eski.
     pub fn chat_session_dirs(&self, cwd: &str) -> Vec<String> {
-        let new = state_dir_for(&self.paths.ucli_state_root(), &self.probe.realpath(cwd));
+        let realpath = |p: &str| self.probe.realpath(p);
+        let root = self.paths.ucli_state_write_root(&realpath);
+        let new = state_dir_for(&root, &self.probe.realpath(cwd));
         let old = join_path(&join_path(cwd, ".ucli"), "chat");
-        if self.settings.ucli_state_dir() || self.probe.is_dir(&new) {
-            vec![new, old]
+        let mut dirs = if self.settings.ucli_state_dir() || self.probe.is_dir(&new) {
+            vec![new.clone(), old]
         } else {
             vec![old]
+        };
+        // ikinci örnek: ortak durum dizini yalnız OKUNUR, en arkada
+        let shared = join_path(&self.paths.ucli_state_root(), basename(&new));
+        if shared != new && self.probe.is_dir(&shared) {
+            dirs.push(shared);
         }
+        dirs
     }
 
     /// `filename`in var olan ilk yolu; yoksa birincil dizindeki yol.

@@ -246,6 +246,26 @@ pub fn abspath(p: &str, cwd: &str) -> String {
     }
 }
 
+/// `os.path.relpath(path, start)` (POSIX; göreli girdiler `cwd`ye göre).
+pub fn relpath(path: &str, start: &str, cwd: &str) -> String {
+    let parts = |p: &str| -> Vec<String> {
+        abspath(p, cwd)
+            .split('/')
+            .filter(|c| !c.is_empty())
+            .map(String::from)
+            .collect()
+    };
+    let (from, to) = (parts(start), parts(path));
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut out = vec!["..".to_string(); from.len() - common];
+    out.extend(to[common..].iter().cloned());
+    if out.is_empty() {
+        ".".into()
+    } else {
+        out.join("/")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

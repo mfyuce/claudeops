@@ -382,6 +382,35 @@ fn build_cases(e: &Env) -> Vec<Case> {
         "with-mcp-yok",
         json!({"extra": ["--mcp-config", "x"]}),
     ));
+    // Varsayılan örnek: anahtar dosyası yazılır/silinir; ikinci örnekte (yukarıdakiler) yalnız okunur.
+    let shared = |id: &str, key: &str, files: &[(&str, &str)]| {
+        let mut c = ucase(e, format!("ornek-{id}"), json!({}));
+        if !key.is_empty() {
+            c = c.settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": key}}}));
+        }
+        for (rel, body) in files {
+            c = c.file(file(rel, body, 0o600));
+        }
+        c
+    };
+    const KEY: &str = "home/.claude/claudeops/ucli_api_key";
+    const MARK: &str = "home/.claude/claudeops/ucli_api_key.managed";
+    for (id, key, files) in [
+        ("yaz", "k", vec![]),
+        ("ustune", "k", vec![(KEY, "eski")]),
+        ("ayni", "k", vec![(KEY, " k\r\n")]),
+        ("sil", "", vec![(KEY, "eski"), (MARK, "")]),
+        ("elle", "", vec![(KEY, "eski")]),
+        ("yok", "", vec![]),
+    ] {
+        v.push(shared(&format!("varsayilan-{id}"), key, &files).default_instance());
+        v.push(shared(&format!("ikinci-{id}"), key, &files));
+    }
+    v.push(
+        ucase(e, "ornek-varsayilan-statedir", json!({}))
+            .settings_json(json!({"ucli_limits": {"state_dir": "on"}}))
+            .default_instance(),
+    );
     v
 }
 

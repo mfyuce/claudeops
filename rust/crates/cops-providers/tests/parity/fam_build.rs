@@ -470,6 +470,30 @@ fn build_cases(e: &Env) -> Vec<Case> {
                 "../../hedef".into(),
             )),
     );
+    // Varsayılan örnek: BYOK dosyası yazılır/silinir; ikinci örnekte yalnız okunur (TBD#412 b).
+    const ENV_FILE: &str = "home/.claude/claudeops/copilot_byok_env";
+    const MARK: &str = "home/.claude/claudeops/copilot_byok_env.managed";
+    for (id, setting, files) in [
+        ("yaz", Some("1"), vec![]),
+        ("ustune", Some("1"), vec![(ENV_FILE, "eski")]),
+        ("ayni", Some("1"), vec![(ENV_FILE, "export A=1\n")]),
+        ("ayni-crlf", Some("1"), vec![(ENV_FILE, "export A=1\r\n")]),
+        ("sil", None, vec![(ENV_FILE, "export A=1\n"), (MARK, "")]),
+        ("elle", None, vec![(ENV_FILE, "export A=1\n")]),
+    ] {
+        let make = |instance: &str| {
+            let mut c = cp(&format!("ornek-{instance}-{id}"));
+            if let Some(value) = setting {
+                c = c.settings_json(byok(json!({"A": value})));
+            }
+            for (rel, body) in &files {
+                c = c.file(file(rel, body, 0o600));
+            }
+            c
+        };
+        v.push(make("varsayilan").default_instance());
+        v.push(make("ikinci"));
+    }
     v
 }
 

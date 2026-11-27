@@ -8,6 +8,7 @@ use crate::real::docs::DocStore;
 use crate::real::help::HelpCache;
 use crate::real::launch::{GnomeTerminal, SystemClock};
 use crate::real::ledger::{file_cost_settings, CostLedger, CostSettings};
+use crate::real::pathexec;
 use crate::real::probe::{ProjectDirs, RealDeps};
 use crate::real::searxng::{ManagedSearch, Provision};
 use crate::real::startup_desktop::X11Desktop;
@@ -42,7 +43,13 @@ impl SpawnRuntime {
         let diag = DiagLog::from_env(paths, env);
         let provision = Provision::python(python, &paths.repo_dir);
         SpawnRuntime {
-            ledger: Arc::new(CostLedger::new(paths.ucli_usage_dir(), settings)),
+            ledger: Arc::new({
+                let cwd = std::env::current_dir()
+                    .map_or_else(|_| "/".into(), |p| p.to_string_lossy().into_owned());
+                let usage = paths.ucli_usage_dir();
+                let own = paths.usage_write_dir(&usage, &|p| pathexec::realpath(p, &cwd));
+                CostLedger::new(usage, settings).with_write_dir(own)
+            }),
             search: Arc::new(ManagedSearch::new(
                 &paths.home,
                 &paths.claudeops_dir,

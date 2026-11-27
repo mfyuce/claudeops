@@ -9,7 +9,7 @@ use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{
     basename, fmt_g, is_path_part, join_path, join_quoted, py_float, py_str_repr, quote, str_of,
-    truthy,
+    strip, truthy,
 };
 use crate::pyjson::Py;
 use crate::settings::Settings;
@@ -544,7 +544,8 @@ impl Ctx<'_, '_> {
 
     /// Geçmişi eski dizinde olan oturum eski dizinle açılır (konuşma kaybolmasın).
     fn state_dir_args(&mut self, argv: &mut Vec<String>, cwd: &str, force: bool) {
-        let sdir = state_dir_for(&self.p.paths.ucli_state_root(), &self.p.probe.realpath(cwd));
+        let root = self.p.ucli_state_write_root();
+        let sdir = state_dir_for(&root, &self.p.probe.realpath(cwd));
         let file = format!("{}.jsonl", self.session);
         // Yol parçası olamayan ad (`/`, NUL) hiçbir dizinde aranmaz.
         let named = is_path_part(self.session);
@@ -575,7 +576,7 @@ impl Ctx<'_, '_> {
             set_flag_value(argv, "--cache-ttl", self.p.settings.ucli_cache_ttl());
         }
         if self.known("--usage-log") {
-            let dir = self.p.paths.ucli_usage_dir();
+            let dir = self.p.usage_write_dir(&self.p.paths.ucli_usage_dir());
             let log = usage_log_path(&dir, self.session);
             self.out.effects.push(Effect::MkdirPrivate { path: dir });
             set_flag_value(argv, "--usage-log", &log);
@@ -673,7 +674,9 @@ impl Ctx<'_, '_> {
             }
         }
         if !argv.iter().any(|x| x == "--usage-log") && self.known("--usage-log") {
-            let dir = format!("{}/other", self.p.paths.ucli_usage_dir());
+            let dir = self
+                .p
+                .usage_write_dir(&format!("{}/other", self.p.paths.ucli_usage_dir()));
             let log = usage_log_path(&dir, self.session);
             match self
                 .out
@@ -1014,6 +1017,24 @@ impl Ctx<'_, '_> {
         let file = self.p.paths.ucli_key_file("");
         let marker = format!("{file}.managed");
         let key = self.p.settings.byok_value("ucli", "UCLI_API_KEY");
+        // Ortak dosya salt okunur (TBD#412 b): ayardaki anahtar dosyadakinden farklıysa dosya kullanılmaz.
+        if !self.p.shared_write_allowed(&file) {
+            if key.is_empty() {
+                return self.p.probe.is_file(&file);
+            }
+            let same = self
+                .p
+                .probe
+                .read_text(&file)
+                .is_some_and(|text| strip(&text) == key);
+            if !same {
+                self.out.diag(
+                    "shared_key_readonly",
+                    vec![("file", json!(basename(&file)))],
+                );
+            }
+            return same;
+        }
         if key.is_empty() {
             if self.p.probe.is_file(&marker) {
                 self.out.effects.push(Effect::Remove { path: file });

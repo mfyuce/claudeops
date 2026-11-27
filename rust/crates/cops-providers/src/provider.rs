@@ -171,6 +171,22 @@ impl Providers<'_> {
         }
     }
 
+    /// [`crate::Paths::shared_write_allowed`] (bağlantılar `Probe` ile çözülür).
+    pub(crate) fn shared_write_allowed(&self, path: &str) -> bool {
+        self.paths
+            .shared_write_allowed(path, &|p| self.probe.realpath(p))
+    }
+
+    pub(crate) fn usage_write_dir(&self, base: &str) -> String {
+        self.paths
+            .usage_write_dir(base, &|p| self.probe.realpath(p))
+    }
+
+    pub(crate) fn ucli_state_write_root(&self) -> String {
+        self.paths
+            .ucli_state_write_root(&|p| self.probe.realpath(p))
+    }
+
     /// `resolved_binary`: ayardaki override -> PATH -> bilinen konumlar -> çıplak ad.
     pub fn resolved_binary(&self, cli_name: &str) -> String {
         let over = self.settings.provider_bin(cli_name);

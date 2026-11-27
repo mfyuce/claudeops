@@ -1,6 +1,7 @@
 //! Dış dünya ile sınır: crate'in okuduğu olgular ([`Probe`]), istediği yan etkiler ([`Effect`]) ve sabit yollar.
 
 use crate::cost::CostRefusal;
+use crate::pyfmt::{abspath, join_path, relpath};
 use crate::real::effects::EffectError;
 use crate::ucli_opts::Toolchain;
 use serde_json::Value;
@@ -40,6 +41,45 @@ impl Paths {
     }
     pub fn ucli_state_root(&self) -> String {
         format!("{}/ucli-state", self.home_state())
+    }
+    /// `paths.shared_write_allowed` (TBD#412 b): ortak kök (`<home>/.claude/claudeops`) altındaki yol bu süreçte
+    /// yazılıp silinebilir mi. `claudeops_dir` başka dizini gösteriyorsa (ikinci örnek) HAYIR; kök dışı yol serbest.
+    /// Sözcüksel ya da çözülmüş yol kökteyse ortaktır.
+    pub fn shared_write_allowed(&self, path: &str, realpath: &dyn Fn(&str) -> String) -> bool {
+        let shared = self.home_state();
+        if realpath(&self.claudeops_dir) == realpath(&shared) {
+            return true;
+        }
+        let inside = |root: String, p: String| {
+            p == root || p.strip_prefix(&root).is_some_and(|r| r.starts_with('/'))
+        };
+        !(inside(abspath(&shared, "/"), abspath(path, "/"))
+            || inside(realpath(&shared), realpath(path)))
+    }
+    /// `ucli_cost.write_dir(base)`: günlüğün YAZILACAĞI dizin; ortak dizin salt okunursa `claudeops_dir` altındaki eşi.
+    pub fn usage_write_dir(&self, base: &str, realpath: &dyn Fn(&str) -> String) -> String {
+        if self.shared_write_allowed(base, realpath) {
+            return base.to_string();
+        }
+        join_path(&self.claudeops_dir, &relpath(base, &self.home_state(), "/"))
+    }
+    /// `ucli_cost.read_dirs(base)`: ortak dizin, yazma başka yere gidiyorsa o da.
+    pub fn usage_read_dirs(&self, base: &str, realpath: &dyn Fn(&str) -> String) -> Vec<String> {
+        let own = self.usage_write_dir(base, realpath);
+        if own == base {
+            vec![own]
+        } else {
+            vec![base.to_string(), own]
+        }
+    }
+    /// `ucli_client.state_dir_for`ın kök dizini: ucli bu dizine YAZAR.
+    pub fn ucli_state_write_root(&self, realpath: &dyn Fn(&str) -> String) -> String {
+        let shared = self.ucli_state_root();
+        if self.shared_write_allowed(&shared, realpath) {
+            shared
+        } else {
+            join_path(&self.claudeops_dir, "ucli-state")
+        }
     }
     /// copilot'un oturum deposu (`COPILOT_HOME`a bakmaz: Python `SESSION_STORE_DB`).
     pub fn copilot_session_db(&self) -> String {

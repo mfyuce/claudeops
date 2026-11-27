@@ -509,6 +509,50 @@ fn cases() -> Vec<Case> {
         }
     }
     v.push(case("kredi".into(), steps));
+    // İkinci örnek (TBD#412 b): harcama ortak + kendi dizininden toplanır; sayılabilirlik denetimi (`_ledger_problem`)
+    // yalnız ortak dizine bakar (iki dilde). Varsayılan örnekte tek dizin.
+    for (id, own, mode) in [
+        ("iki-dizin", rec(ms, 800_000), 0o600),
+        (
+            "kendi-bozuk",
+            format!("{{\"t\": {ms}, \"usage\": {{\"input_tokens\": -1}}}}\n"),
+            0o600,
+        ),
+        ("kendi-okunamaz", rec(ms, 800_000), 0o000),
+    ] {
+        for limit in [0.0, 5.0, 1000.0] {
+            for default in [false, true] {
+                let mut c = case(
+                    format!("ornek-{id}-{limit}-{default}"),
+                    vec![
+                        json!(["per", now]),
+                        json!(["today", now]),
+                        json!(["rate", now, 60.0]),
+                        json!(["total", 0.0]),
+                        json!(["problem", now]),
+                        json!(["state", now, false]),
+                        json!(["gate", "s", now]),
+                        json!(["held"]),
+                    ],
+                );
+                c.files = vec![log("bir.jsonl", rec(ms, 400_000).as_bytes(), 0o600)];
+                if !default {
+                    c.files.push(Fx::File(
+                        "state/ucli_usage/bir.jsonl".into(),
+                        own.clone().into_bytes(),
+                        mode,
+                    ));
+                    c.files.push(Fx::File(
+                        "state/ucli_usage/iki.jsonl".into(),
+                        own.clone().into_bytes(),
+                        mode,
+                    ));
+                }
+                let c = c.settings_json(cap(json!({"daily_cap_usd": limit})));
+                v.push(if default { c.default_instance() } else { c });
+            }
+        }
+    }
     v
 }
 
@@ -558,7 +602,15 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
     ledger::forget_bad_records();
     drop(ledger::take_bad_record_diags());
     let settings = file_cost_settings(format!("{}/settings.json", e.state));
-    let book = CostLedger::new(base.clone(), settings.clone());
+    let realpath = |p: &str| cops_providers::real::pathexec::realpath(p, "/");
+    let dirs = e.paths().usage_read_dirs(&base, &realpath);
+    let book = CostLedger::new(base.clone(), settings.clone())
+        .with_write_dir(e.paths().usage_write_dir(&base, &realpath));
+    let today = |now: f64, mult: f64| {
+        ledger::per_session_in(now, &dirs, mult)
+            .iter()
+            .fold(0.0, |a, (_, v)| a + v)
+    };
     let out: Vec<Value> = a["steps"]
         .as_array()
         .unwrap()
@@ -577,13 +629,14 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
             let ok = |v: Value| json!(["ok", v]);
             match op {
                 "state" => ok(book.state(num(1), s[2].as_bool().unwrap())),
-                "per" => ok(pairs(ledger::per_session_usd(num(1), &base, mult))),
-                "today" => ok(repr(ledger::today_usd(num(1), &base, mult))),
-                "rate" => ok(json!([
-                    pairs(ledger::rate_by_session(num(1), num(2), &base, mult)),
-                    repr(ledger::rate_usd_per_hour(num(1), num(2), &base, mult))
-                ])),
-                "total" => ok(repr(ledger::total_usd(&base, mult, num(1)))),
+                "per" => ok(pairs(ledger::per_session_in(num(1), &dirs, mult))),
+                "today" => ok(repr(today(num(1), mult))),
+                "rate" => {
+                    let by = ledger::rate_in(num(1), num(2), &dirs, mult);
+                    let sum = by.iter().fold(0.0, |a, (_, v)| a + v);
+                    ok(json!([pairs(by), repr(sum)]))
+                }
+                "total" => ok(repr(ledger::total_in(&dirs, mult, num(1)))),
                 "scan" => {
                     let r =
                         ledger::scan_usage(format!("{base}/{}", text(1)), text(2), num(3), num(4));

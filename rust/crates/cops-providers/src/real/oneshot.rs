@@ -162,7 +162,7 @@ impl OneShot<'_, '_> {
     /// değil ve ikili bayrağı tanıyor.
     fn state_dir_args(&self, binary: &str, root: &str, session: &str) -> Vec<String> {
         let p = self.providers;
-        let sdir = ucli::state_dir_for(&p.paths.ucli_state_root(), &p.probe.realpath(root));
+        let sdir = ucli::state_dir_for(&p.ucli_state_write_root(), &p.probe.realpath(root));
         let file = format!("{session}.jsonl");
         let in_new = p.probe.exists(&join_path(&sdir, &file));
         let in_old = p.probe.exists(&join_path(

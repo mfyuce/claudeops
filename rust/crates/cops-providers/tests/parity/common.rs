@@ -105,6 +105,16 @@ impl Case {
         self.files.push(f);
         self
     }
+    /// Varsayılan (canlı) örnek: ortak kök `home/.claude/claudeops` durum dizininin kendisi (bağlantı). Bu olmadan
+    /// vaka "ikinci örnek"tir (`CLAUDEOPS_DIR` başka dizin; ortak anahtar ve günlük dosyaları salt okunur, TBD#412 b).
+    pub fn default_instance(mut self) -> Self {
+        let link = [
+            Fx::Remove("home/.claude/claudeops".into()),
+            Fx::Link("home/.claude/claudeops".into(), "../../state".into()),
+        ];
+        self.files.splice(0..0, link);
+        self
+    }
     pub fn env(mut self, k: &str, v: &str) -> Self {
         self.env.push((k.into(), v.into()));
         self
