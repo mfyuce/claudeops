@@ -10,7 +10,7 @@ import re
 import stat
 import subprocess
 import tempfile
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from .atomic_json import atomic_write_text, file_lock
 from .paths import CLAUDEOPS_DIR
@@ -106,14 +106,22 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def binary_supports_checks(binary: str) -> bool:
+def probe_checks(binary: str) -> Tuple[Optional[bool], str]:
+    """`checks validate` yoklaması: True = alt komut var, False = yok (eski ikili: kullanım hatası, çıkış 2), None =
+    yoklanamadı (ikinci değer neden; çağıran doğrulanmış saymaz)."""
     try:
         # yalnız çıkış kodu: çıktı çözülmez (UTF-8 olmayan yardım metni "alt komut yok" sayılırsa doğrulama atlanırdı)
         r = subprocess.run([binary, "checks", "validate", "--help"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=10)
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, e.__class__.__name__
+    if r.returncode in (0, 2):
+        return r.returncode == 0, ""
+    return None, f"sinyal {-r.returncode}" if r.returncode < 0 else f"çıkış kodu {r.returncode}"
+
+
+def binary_supports_checks(binary: str) -> bool:
+    return probe_checks(binary)[0] is True
 
 
 def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
@@ -130,10 +138,14 @@ def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
             doc = json.loads(r.stdout or "{}")
         except ValueError:
             return False, (r.stderr or r.stdout or "doğrulama çıktısı okunamadı").strip()[:300]
-        if doc.get("ok"):
+        if not isinstance(doc, dict):
+            return False, "doğrulama çıktısı okunamadı (JSON nesnesi değil)"
+        if doc.get("ok") is True and r.returncode == 0:
             return True, ""
-        errs = doc.get("errors") or []
-        return False, "; ".join(f"{e.get('check') or '-'}.{e.get('field') or '-'}: {e.get('message')}" for e in errs)[:500] or "kayıt geçersiz"
+        errs = doc.get("errors")
+        errs = errs if isinstance(errs, list) else []
+        return False, "; ".join(f"{e.get('check') or '-'}.{e.get('field') or '-'}: {e.get('message')}" if isinstance(e, dict)
+                                else str(e) for e in errs)[:500] or "kayıt geçersiz"
     except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as e:
         return False, f"ucli çalıştırılamadı: {e.__class__.__name__}"
     finally:
@@ -145,15 +157,20 @@ def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
 
 def save_registry(data: Any, owner: str = "", binary: str = "") -> Tuple[bool, str]:
     """Biçim denetiminden geçen kaydı atomik yazar (0600, dizin 0700, O_NOFOLLOW). `binary` verilirse (ve `checks` alt komutunu
-    tanıyorsa) ucli'nin kendi doğrulaması YAZMADAN ÖNCE koşar; `version: 1` yoksa eklenir (ucli kaydı ister)."""
+    tanıyorsa) ucli'nin kendi doğrulaması YAZMADAN ÖNCE koşar; yoklanamayan ikilide hiçbir şey yazılmaz. `version: 1` yoksa
+    eklenir (ucli kaydı ister)."""
     ok, why = check_shape(data)
     if not ok:
         return False, why
     data = {"version": 1, **data}
-    if binary and binary_supports_checks(binary):
-        ok, why = ucli_validate(data, binary)
-        if not ok:
-            return False, why
+    if binary:
+        supported, why = probe_checks(binary)
+        if supported is None:
+            return False, f"ucli yoklanamadı ({why}): kayıt doğrulanamadığı için yazılmadı"
+        if supported:
+            ok, why = ucli_validate(data, binary)
+            if not ok:
+                return False, why
     try:
         path = registry_path(owner)
     except ValueError as e:
@@ -198,6 +215,8 @@ def delete_check(name: str, owner: str = "", binary: str = "") -> Tuple[bool, st
         items = [c for c in data["check"] if c.get("name") != name]
         if len(items) == len(data["check"]):
             return False, "kontrol bulunamadı"
+        if binary and probe_checks(binary)[0] is None:
+            binary = ""     # silme daraltmadır: bozuk ucli bir kontrolü kayıtta tutmasın
         return save_registry({**data, "check": items}, owner, binary=binary)
 
 

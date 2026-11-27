@@ -247,6 +247,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cops-ep-state"
+version = "0.1.0"
+dependencies = [
+ "cops-auth",
+ "cops-procscan",
+ "cops-proxy",
+ "cops-state",
+ "indexmap",
+ "rusqlite",
+ "tokio",
+]
+
+[[package]]
 name = "cops-hosts"
 version = "0.1.0"
 dependencies = [
@@ -420,8 +433,10 @@ name = "copsd"
 version = "0.1.0"
 dependencies = [
  "cops-auth",
+ "cops-ep-state",
  "cops-metrics",
  "cops-parity",
+ "cops-procscan",
  "cops-progress",
  "cops-proxy",
  "cops-state",

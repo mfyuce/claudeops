@@ -1358,6 +1358,9 @@ def _undo_refused_handover(name: str, res: Dict[str, Any], sid: str) -> Dict[str
     if res.get("code") == "question_open":
         with sw.steward_lock(sid):
             state = sw.load_state(sid)
+            closing = (state.get("ho_close") or {}).get(name)
+            if closing:      # done/paused kapanış devri reddedildi: istek düşmesin, faz uygunsa diyalog sonrası yeniden denenir
+                sw.request_pause_close(state, closing, time.time())
             for key in ("ho_pending", "ho_close", "ho_pause"):
                 if isinstance(state.get(key), dict):
                     state[key].pop(name, None)

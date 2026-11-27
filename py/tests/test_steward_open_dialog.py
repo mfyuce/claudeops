@@ -101,6 +101,47 @@ class Plan(unittest.TestCase):
         acts, _ = self.tick(_view(owner_input_at=NOW - 300, last_assistant="## READY FOR HANDOVER"), st)
         self.assertEqual([a.kind for a in acts], ["respawn"])
 
+    DONE_TEXT = "STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, testler geçti"
+
+    def closing(self, acts):
+        return [a.kind for a in acts if a.kind in ("handover", "stop")]
+
+    def confirmed_during_dialog(self):
+        acts, st = self.tick(_view(question_open=True, last_assistant=self.DONE_TEXT))
+        self.assertEqual(self.closing(acts), [])
+        self.assertEqual([a.payload["phase"] for a in sw.plan_tick(
+            [_view(question_open=True, last_assistant=self.DONE_TEXT)], self.projects, {}, self.cfg, NOW, [], [])[0]
+            if a.kind == "set_phase"], ["done"])
+        self.projects["a"].phase = "done"        # set_phase uygulandı
+        return st
+
+    def test_done_close_is_retried_after_the_dialog(self):
+        st = self.confirmed_during_dialog()
+        view = dict(last_assistant=self.DONE_TEXT)
+        acts, st = self.tick(_view(question_open=True, **view), st, now=NOW + 8 * 3600)      # cevap saatlerce gelmeyebilir
+        self.assertEqual(self.closing(acts), [])
+        answered = NOW + 8 * 3600 + 60
+        acts, st = self.tick(_view(owner_input_at=answered, **view), st, now=answered + 60)  # sahip az önce yazdı: bekle
+        self.assertEqual(self.closing(acts), [])
+        acts, st = self.tick(_view(owner_input_at=answered, **view), st, now=answered + 16 * 60)
+        self.assertEqual(self.closing(acts), ["handover"])
+        self.assertEqual((st["ho_close"], st.get("pause_close", {})), ({"a": "a"}, {}))
+
+    def test_done_close_is_dropped_when_project_reopens(self):
+        st = self.confirmed_during_dialog()
+        self.projects["a"].phase = "planned"
+        acts, st = self.tick(_view(last_assistant=self.DONE_TEXT), st, now=NOW + 60)
+        self.assertEqual((self.closing(acts), st.get("pause_close", {})), ([], {}))
+
+    def test_deferred_done_close_survives_a_dialog(self):
+        self.projects["a"].phase = "planned"
+        st = {"done_pending": {"a": "a"}}
+        acts, st = self.tick(_view(question_open=True), st)
+        self.assertEqual(self.closing(acts), [])
+        self.projects["a"].phase = "done"
+        acts, _ = self.tick(_view(), st, now=NOW + 60)
+        self.assertEqual(self.closing(acts), ["handover"])
+
     def test_pause_close_waits_for_the_dialog(self):
         self.cfg.done_handover = True
         self.projects["a"].phase = "paused"
@@ -150,6 +191,7 @@ class Send(unittest.TestCase):
             res = ws._undo_refused_handover("a", {"ok": False, "code": "question_open"}, "default")
         self.assertFalse(res["ok"])
         self.assertEqual((saved["ho_pending"], saved["ho_close"]), ({"b": NOW}, {}))
+        self.assertEqual(list(saved["pause_close"]), ["a"])      # kapanış isteği düşmez: diyalog kapanınca yeniden denenir
 
     def test_remote_facts_carry_the_dialog(self):
         v = sw.SessionView(name="a", running=True)

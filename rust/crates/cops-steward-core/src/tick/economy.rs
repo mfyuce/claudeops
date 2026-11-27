@@ -4,6 +4,7 @@ use super::{dict_of, float_of, float_or, Tick};
 use crate::cards::BadValue;
 use crate::closing::{
     context_answer, context_owner_topic, context_threshold, handover_defer_decision, is_context_question,
+    request_pause_close,
 };
 use crate::consts_gen::PAUSE_CLOSE_EXPIRE_SECONDS;
 use crate::idletext::expired_handover_note;
@@ -209,6 +210,11 @@ impl<'a> Tick<'a> {
     pub(super) fn close_done(&mut self, v: &SessionView, project: &str, why: &str) {
         let cfg = self.cfg;
         self.busy.insert(v.name.clone());
+        if v.question_open {
+            // devir de kapatma da diyalog kapandıktan sonra: istek durumda kalır (2b). Bozuk `pause_close` 2b'de hata verir.
+            let _ = request_pause_close(&mut self.st, project, self.now);
+            return;
+        }
         let warn = context_threshold(cfg, &v.model);
         let ctx = v.context_tokens.unwrap_or(0);
         let small = cfg.done_handover_min_ratio != 0.0
@@ -225,8 +231,9 @@ impl<'a> Tick<'a> {
         }
     }
 
-    /// Aşama 2b: Sahip/CLI projeyi paused yaptı (`state.pause_close`): boştaki oturum hemen devir + kapat, meşgulse sonraki
-    /// tick. Faz paused değilse, oturum yoksa ya da süre dolduysa istek düşer.
+    /// Aşama 2b: paused yapılan ya da diyalog yüzünden ertelenen done/paused kapanışı (`state.pause_close`): boştaki oturum
+    /// hemen devir + kapat, meşgulse sonraki tick. Diyalog açıkken istek eskimez, sahip yeni cevap verdiyse
+    /// `ho_grace_minutes` beklenir. Faz geri açıldıysa, oturum yoksa ya da süre dolduysa istek düşer.
     pub(super) fn pause_close(&mut self) -> Result<(), BadValue> {
         let (cfg, now) = (self.cfg, self.now);
         for (project, req_at) in dict_of(self.st.get("pause_close"))? {
@@ -237,25 +244,41 @@ impl<'a> Tick<'a> {
                 .views
                 .iter()
                 .filter(|v| v.running && v.name != cfg.brain_name && self.key_of(&v.name) == project)
+                .filter(|v| {
+                    p.is_none_or(|p| p.phase != "done")
+                        || self.inp.world.is_none_or(|w| w.session_class(&v.name, v.blueprint.as_deref()) != "manual")
+                })
                 .collect();
-            let gone = p.is_none_or(|p| p.phase != "paused")
+            let asking = mine.iter().any(|v| v.question_open);
+            let gone = p.is_none_or(|p| p.phase != "paused" && p.phase != "done")
                 || mine.is_empty()
-                || (now - float_of(&req_at)?) >= PAUSE_CLOSE_EXPIRE_SECONDS as f64;
+                || (!asking && (now - float_of(&req_at)?) >= PAUSE_CLOSE_EXPIRE_SECONDS as f64);
             if gone {
                 pc.shift_remove(&project);
                 self.st.insert("pause_close".into(), Value::Object(pc));
                 continue;
             }
+            if asking {
+                pc.insert(project.clone(), Value::from(now));
+                self.st.insert("pause_close".into(), Value::Object(pc.clone()));
+            }
+            let why = if p.is_some_and(|p| p.phase == "paused") {
+                "sahip paused yaptı: boşta oturum devir + kapat"
+            } else {
+                "ertelenen STEWARD-DONE kapanışı: boşta oturum devir + kapat"
+            };
             let mut left = false;
             for v in mine {
                 if self.busy.contains(&v.name) || self.ho_pending.contains_key(&v.name) {
                     continue;
                 }
-                if v.busy == Some(true) {
+                let answering =
+                    v.owner_input_at != 0.0 && (now - v.owner_input_at) < cfg.ho_grace_minutes as f64 * 60.0;
+                if v.busy == Some(true) || v.question_open || v.subagent_active || answering {
                     left = true;
                     continue;
                 }
-                self.close_done(v, &project, "sahip paused yaptı: boşta oturum devir + kapat");
+                self.close_done(v, &project, why);
             }
             if !left {
                 pc.shift_remove(&project);

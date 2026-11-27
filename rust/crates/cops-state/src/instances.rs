@@ -187,6 +187,9 @@ impl<'a> Instances<'a> {
     fn recover_mirror(&self, path: &std::path::Path) -> Option<Json> {
         let data = self.docs.db_truth(DOC, path)?;
         data.get("instances")?.as_object()?;
+        if self.docs.is_read_only() {
+            return Some(data); // salt okuma: kanıt yedeği ve günlük yazılmaz
+        }
         if let Ok(raw) = std::fs::read(path) {
             let mut known = path.as_os_str().to_owned();
             known.push(format!(
@@ -327,6 +330,9 @@ impl<'a> Instances<'a> {
         &self,
         f: impl FnOnce(&mut Map) -> Result<T, InstancesError>,
     ) -> Result<(T, WriteOutcome), InstancesError> {
+        if self.docs.is_read_only() {
+            return Err(InstancesError::Write(WriteError::ReadOnly)); // kilit dosyası da açılmaz
+        }
         let path = self.docs.dir().instances_json();
         let _lock = FileLock::exclusive(&self.docs.dir().join("instances.json.lock"))
             .map_err(InstancesError::Lock)?;

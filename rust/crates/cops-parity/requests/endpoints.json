@@ -1,4 +1,10 @@
 {
   "defaults": {"ignore": ["server_started_at"]},
-  "requests": []
+  "requests": [
+    {"name": "B1 oturum kayıtları (yerel)", "path": "/api/instances", "expect": "local"},
+    {"name": "B1 oturum kayıtları (host=local)", "path": "/api/instances?host=local&lang=en", "expect": "local"},
+    {"name": "B1 oturum kayıtları (boş host)", "path": "/api/instances?host=", "expect": "local"},
+    {"name": "B1 tanı günlüğü", "path": "/api/diag/log", "expect": "local"},
+    {"name": "B1 tanı günlüğü (sorgu yok sayılır)", "path": "/api/diag/log?lang=en", "expect": "local"}
+  ]
 }
