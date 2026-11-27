@@ -275,6 +275,7 @@ DEFS["providers/base.py"] = [
     ok("cmd_arg", "providers.rs::arg", f"{G_INFO} U:providers.rs::claude_info"),
     oos("_ro_sqlite_uri", "sağlayıcı SQLite deposunu salt okunur açma (agy/copilot sohbet ve model okuma)", f"{SAG}; {CHAT}"),
     oos("_open_private_target", "sır/damga dosyasını 0600 ve bloklamadan yazma (açılış ortamı)", SAG),
+    oos("_path_part_ok", "oturum adı/kimlik dosya yoluna tek parça olarak eklenebilir mi (sağlayıcı dosya yolları)", SAG),
     ok("CliProvider", "providers.rs::Cli", DISC, "yalnız tanıma/ayrıştırma yüzeyi; kalan metotlar kendi satırında"),
     ok("CliProvider.name", "providers.rs::Cli::as_str", G_INFO),
     ok("CliProvider.matches_proc", "providers.rs::Cli::detect", DISC),
@@ -381,7 +382,7 @@ DEFS["providers/codex_provider.py"] = [
         + " ".join(X + n for n in "__init__ build_inner_command mcp_launch_args env_overrides model_choices "
                    "permission_modes effort_levels model_effort_levels".split()),
         "açılış argv/env, model/effort/izin kuralları", SAG),
-    oos(X + "resolve_resume_id _session_meta", "devam kimliği", T4),
+    oos(X + "resolve_resume_id _session_meta _rollout_sid_matches", "devam kimliği ve rollout dosyası tam kimlik eşleşmesi", T4),
     oos("SESSIONS_DIR _ROLLOUT_UUID_RE _MAX_ROLLOUT_SCAN _safe_mtime _codex_text _is_real_codex_user_text _codex_item "
         + " ".join(X + n for n in "_rollout_path _transcript_lines last_exchange full_history "
                    "last_message_role".split()),
@@ -429,6 +430,9 @@ DEFS["providers/agy_provider.py"] = [
        f"yalnız 'yazılacak mı' kararı; KİLİTLİ YAZIM TAŞINMADI ({W0A}; {T1} bağlanmadan şart, sapma 3)"),
     ok("_sid_claimed_by_other", "providers.rs::AgyState::resolve",
        "U:providers.rs::agy_sid_rules I:fake_proc.rs::broken_agy_files"),
+    oos("_ABSENT _load_agy_sids_for_write", "agy_sids yazımından önce katı okuma (bozuk belge ezilmez); yazım rs/prov "
+        "`agy_resume::remember_agy_sid`", RESUME),
+    oos("_conversation_db_exists", "agy konuşma veritabanı duruyor mu (devam ve durmuş oturum)", RESUME),
     ok("AgyProvider", "providers.rs::Cli", DISC, "yalnız tanıma/ayrıştırma"),
     ok(A + "name", "providers.rs::Cli::as_str", G_INFO),
     ok(A + "matches_proc", "providers.rs::Cli::detect", DISC),
@@ -929,6 +933,11 @@ FILES = {
     "rsprov_live_readers": ("durum dosyası/transkriptten canlı satır alanları", f"{SAG}; {T1}"),
     "rsprov_model_reader": ("transkriptten canlı model", LIVE),
     "rsprov_models_redirect": ("model listesi isteğinde yönlendirme izlenmez", SAG),
+    "rsprov_g1_fixes": ("oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude)", RESUME),
+    "rsprov_g7_fixes": ("model kaynakları hata düzeltmeleri (önbellek, çekim günlüğü)", SAG),
+    "rsprov_g10_keyfile": ("tek atımlık çağrıda açılamayan anahtar dosyası", f"{SAG}; {T10}"),
+    "rsprov_paths": ("yola eklenen oturum adı/kimlik denetimi", SAG),
+    "rsprov_g5_fixes": ("kota/bağlam ayrıştırıcıları ve ucli ölçüm ayarı", SAG),
     "rsprov_sqlite_readers": ("agy/copilot SQLite deposu okuma", f"{SAG}; {CHAT}"),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
@@ -1419,12 +1428,17 @@ provider_wants_split:3:2d8ab8759a
 review_self_verify:18:4b125a8002
 routing_guidance:13:964131411b
 rsprov_chat_readers:15:6e732c13dd
+rsprov_g10_keyfile:2:ed7cc40e18
 rsprov_g10_oneshot:6:18f99b20b8
+rsprov_g1_fixes:17:0a489d084a
 rsprov_g4_dismiss:2:71df770dc0
+rsprov_g5_fixes:9:5e8c310c26
+rsprov_g7_fixes:10:4dbaae9b5e
 rsprov_g8_spawn_helpers:6:4aee24f4a0
 rsprov_live_readers:12:70167decbb
 rsprov_model_reader:6:fbceb023ec
 rsprov_models_redirect:2:e49e832742
+rsprov_paths:3:bc9d8d7efb
 rsprov_sqlite_readers:5:bebafe8f70
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
