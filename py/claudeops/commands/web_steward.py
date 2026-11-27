@@ -29,6 +29,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psutil
 
+from .. import bg_work
+from .. import owner_dialog
 from .. import settings as settings_mod
 from .. import hosts as hosts_mod
 from .. import instances as inst_mod
@@ -651,6 +653,10 @@ def _apply_facts(v: sw.SessionView, f: Dict[str, Any], now: float, row_history: 
         v.started_at = now - float(age)
     v.subagent_active = f.get("subagent_active") is True
     v.subagent_unknown = False
+    v.question_open = f.get("question_open") is True
+    oage = f.get("owner_input_age_s")
+    if isinstance(oage, (int, float)) and not isinstance(oage, bool) and oage >= 0:
+        v.owner_input_at = now - float(oage)
     tok = f.get("context_tokens")
     if isinstance(tok, (int, float)) and not isinstance(tok, bool) and tok > 0:
         v.context_tokens = int(tok)
@@ -1330,6 +1336,30 @@ def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = Non
     return False
 
 
+def owner_dialog_for(cwd: str, sid: Optional[str], cli: str = "claude") -> Tuple[bool, float]:
+    """(kullanıcı diyaloğu açık mı, son kullanıcı girdisi epoch'u) claude transkriptinin kuyruğundan; bilinmiyorsa (False, 0)."""
+    if cli != "claude":
+        return False, 0.0
+    try:
+        from ..providers.claude_provider import jsonl_path_for
+        return owner_dialog.owner_dialog_state(bg_work.tail_lines(str(jsonl_path_for(cwd, sid) or "")))
+    except Exception:
+        return False, 0.0
+
+
+def _undo_refused_handover(name: str, res: Dict[str, Any], sid: str) -> Dict[str, Any]:
+    """Motorun devri açık diyalog yüzünden REDDEDİLDİ (mesaj gitmedi): planlayıcının yazdığı bekleme izi silinir; yoksa süre
+    dolunca devir notu hiç istenmemiş oturum yeniden açılırdı. Diyalog kapanınca eşik yeniden devir planlar."""
+    if res.get("code") == "question_open":
+        with sw.steward_lock(sid):
+            state = sw.load_state(sid)
+            for key in ("ho_pending", "ho_close", "ho_pause"):
+                if isinstance(state.get(key), dict):
+                    state[key].pop(name, None)
+            sw.save_state(state, sid)
+    return res
+
+
 def _ucli_idle_info(s: Any) -> Tuple[float, str]:
     """(idle_since, cache_ttl) ucli oturumu için. idle_since: durum dosyası `activity=waiting_for_stdin` ise `last_activity_unix`
     (yoksa 0 = boşta değil/bilinmiyor). cache_ttl: çalışan sürecin `--cache-ttl` argümanı; okunamazsa Ayarlar `ucli_cost.cache_ttl`."""
@@ -1401,6 +1431,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                     v.context_tokens = provider.live_context(s.cwd, s.sid)
                 except Exception:
                     v.context_tokens = None
+            v.question_open, v.owner_input_at = owner_dialog_for(s.cwd, s.sid, s.cli)
             try:
                 v.subagent_active = subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli)
             except Exception:
@@ -3563,7 +3594,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if denied is not None:
             return denied
     if k == "handover":
-        return _remote_handover(name, host, rt, sid=cfg.sid, actor="engine") if host else _local_handover(name, cfg.sid, cfg.lang)
+        res = _remote_handover(name, host, rt, sid=cfg.sid, actor="engine") if host else _local_handover(name, cfg.sid, cfg.lang)
+        return _undo_refused_handover(name, res, cfg.sid)
     if host and k in ("stop", "respawn"):      # uzak yıkıcı: yerel yola (yerel adaşı öldüren `_act("stop")`) düşmez
         w = world or _world(cfg.sid, cfg)
         if k == "stop":

@@ -259,6 +259,8 @@ class SessionView:
     live_effort: str = ""               # aynı kaynaktan canlı effort ("" = bilinmiyor)
     idle_since: float = 0.0             # ucli: durum dosyası activity=waiting_for_stdin'e geçtiği an (epoch; 0 = bilinmiyor / boşta değil)
     cache_ttl: str = ""                 # ucli: oturumun `--cache-ttl` değeri ("5m" | "1h"; "" = bilinmiyor)
+    question_open: bool = False         # claude: sahibe sorulan diyalog (AskUserQuestion/plan onayı) cevap bekliyor: tuş basılmaz, kapatılmaz
+    owner_input_at: float = 0.0         # claude: son diyalog cevabı ya da kullanıcı yazısı (epoch, 0 = bilinmiyor)
 
     @property
     def project(self) -> str:
@@ -748,7 +750,7 @@ class HostChangeRefused(ValueError):
 
 # Host değişince o projenin oturum adlarıyla tutulan devir/iletim izleri silinir (eski host'taki oturumun izi yeni host'taki
 # aynı adlı oturuma taşınmasın: bekleyen devir yanlış oturumu yeniden açar, önsöz "gitti" sanılır, yanıt özeti tutmaz).
-_HOST_STATE_KEYS = ("ho_pending", "ho_close", "ho_pause", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
+_HOST_STATE_KEYS = ("ho_pending", "ho_close", "ho_pause", "ho_dialog", "done_pending", "preamble_sent", "seen_assistant", "ho_deferred")
 
 
 def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = None) -> List[str]:
@@ -3493,7 +3495,10 @@ def handover_defer_decision(v: "SessionView", cfg: "Config", now: float, since: 
     Oturum meşgulse (`busy` kesin True), alt ajanı çalışıyorsa ya da alt ajan durumu bilinmiyorsa devir ertelenir
     (devir yeni konuşma açar; arkadaki ajanın sonucu kaybolurdu). Sert tavan: bağlam eşiğin `handover_force_ratio`
     katını aştıysa (yalnız token biliniyorsa) ya da erteleme `since`ten beri `handover_defer_max_minutes` dakikayı
-    aştıysa "force". `handover_defer_max_minutes` 0 = erteleme kapalı (her zaman "go")."""
+    aştıysa "force". `handover_defer_max_minutes` 0 = erteleme kapalı (her zaman "go"). Kullanıcı diyaloğu açıksa her zaman
+    "defer" (devir mesajı diyaloğa yazılırdı; tavan/zorlama da uygulanmaz)."""
+    if v.question_open:
+        return "defer", "question_open"
     why = ",".join(n for n, on in (("busy", v.busy is True), ("subagent_active", bool(v.subagent_active)),
                                    ("subagent_unknown", bool(v.subagent_unknown))) if on)
     if not why or cfg.handover_defer_max_minutes <= 0:
@@ -3585,7 +3590,8 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
                 it["blocked"] = blockers[name]
             else:
                 it.pop("blocked", None)
-            if v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet and name not in blockers:
+            if (v.busy is not True and not v.subagent_active and not v.subagent_unknown and quiet and name not in blockers
+                    and not v.question_open):
                 actions.append(Action("handover", name, "shutdown"))
                 it["stage"], it["at"] = "ho", now
                 it.pop("ho_at", None)
@@ -4241,6 +4247,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     ho_pending: Dict[str, float] = dict(st.get("ho_pending") or {})
     ho_pause: Dict[str, str] = dict(st.get("ho_pause") or {})    # {oturum: gerekçe}: devir bitip oturum kapanınca proje paused olur (keepwarm zinciri)
     ho_close: Dict[str, str] = dict(st.get("ho_close") or {})    # {oturum: proje}: bu devir bitince oturum YENİDEN AÇILMAZ, kapanır (DONE)
+    ho_dialog: Dict[str, float] = dict(st.get("ho_dialog") or {})   # {oturum: ilk bekleme anı}: devir sürerken diyalog açık
     seen: Dict[str, str] = dict(st.get("seen_assistant") or {})
     done_pending: Dict[str, str] = dict(st.get("done_pending") or {})
     done_confirm: Dict[str, float] = {k: float(t) for k, t in dict(st.get("done_confirm") or {}).items()
@@ -4376,8 +4383,16 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             ho_pause.pop(name, None)     # devir bitmeden oturum gitti: pause YAZILMAZ
             busy_names.add(name)
             continue
+        if v.question_open:     # kullanıcı soru diyaloğunda: kapatma/yeniden açma bekler, bir kez kaydedilir
+            if name not in ho_dialog:
+                actions.append(Action("handover_deferred", name, "question_open", {"handover_reason": "handover pending"}))
+                ho_dialog[name] = now
+            busy_names.add(name)
+            continue
+        ho_dialog.pop(name, None)
         ready = rfh_marker_in(v.last_assistant or "")
-        expired = (now - float(sent_at)) >= cfg.ho_grace_minutes * 60
+        # süre, kullanıcının diyaloğa cevap verdiği/yazdığı andan yeniden işler
+        expired = (now - max(float(sent_at), v.owner_input_at)) >= cfg.ho_grace_minutes * 60
         # busy None (bu CLI'da sinyal yok) = "meşgul değil" sayılır; yalnız kesin True bekletir
         if v.busy is not True and (ready or expired):
             if _sibling_running(views, name, projects, cfg, world):
@@ -4411,6 +4426,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         Atlama: `done_handover` kapalı, devir zaten sürüyor, oturum tmux'suz/yönetilmeyen ya da bağlam bilinir ve
         eşiğin `done_handover_min_ratio` oranından küçük (küçük bağlamda devir israf)."""
         busy_names.add(v.name)
+        if v.question_open:      # devir de kapatma da diyalog kapandıktan sonra
+            return
         warn = context_threshold(cfg, v.model)
         small = bool(cfg.done_handover_min_ratio and warn and v.context_tokens
                      and v.context_tokens < cfg.done_handover_min_ratio * warn)
@@ -4442,7 +4459,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         for v in mine:
             if v.name in busy_names or v.name in ho_pending:
                 continue
-            if v.busy is True:
+            if v.busy is True or v.question_open:
                 left = True
                 continue
             _close_done(v, proj, "sahip paused yaptı: boşta oturum devir + kapat")
@@ -4755,7 +4772,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             if not v.running or not _mine(v) or v.name in busy_names or v.name in ho_pending:
                 continue
             idle_since = max(v.last_activity, last_directive_at.get(v.name, 0.0), v.started_at)
-            if v.busy is False and idle_since and (now - idle_since) >= cfg.stop_idle_minutes * 60:
+            if v.busy is False and not v.question_open and idle_since and (now - idle_since) >= cfg.stop_idle_minutes * 60:
                 actions.append(Action("stop", v.name, f"idle ≥ {cfg.stop_idle_minutes} dk, slot bekleyen var"))
                 busy_names.add(v.name)
 
@@ -4835,6 +4852,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
     st["pending_list"] = [{"kind": str(it.get("kind") or ""), "name": str(it.get("name") or ""),
                            "text": str(it.get("text") or "")[:300]} for it in all_items[:20]]
     st["ho_pending"] = ho_pending
+    ho_dialog = {n: t for n, t in ho_dialog.items() if n in ho_pending}
+    if ho_dialog:
+        st["ho_dialog"] = ho_dialog
+    else:
+        st.pop("ho_dialog", None)
     if ho_close:
         st["ho_close"] = ho_close
     else:
@@ -5722,7 +5744,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
             continue
         if v.name == cfg.brain_name or _AJ_CHILD_RE.search(v.name) or v.name in touched or v.name in ho_pending:
             continue
-        if v.busy is not False or v.subagent_active or v.subagent_unknown:
+        if v.busy is not False or v.subagent_active or v.subagent_unknown or v.question_open:
             continue
         proj = projects.get(v.project)
         if proj is None or proj.phase in ("done", "paused"):

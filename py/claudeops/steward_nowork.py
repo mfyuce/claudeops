@@ -53,7 +53,7 @@ def check_session(v: Any, proj: Any, state: Dict[str, Any], cfg: sw.Config, now:
         "no_work": no_work,                                                                  # iş yok (no_next_work/next_none)
         "idle": v.busy is False and since > 0 and idle_min >= min_idle,                      # boşta >= 30 dk
         "no_subagent": not (getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)),
-        "no_question": (((proj_name not in (ctx.get("open_q") or ())) or aged_q) and proj_name not in (ctx.get("answer_pending") or ())
+        "no_question": not getattr(v, "question_open", False) and (((proj_name not in (ctx.get("open_q") or ())) or aged_q) and proj_name not in (ctx.get("answer_pending") or ())
                         and not session_asked and (aged_q or not sw.waiting_for_gate(txt)) and (aged_q or not owner_claim_blocks)
                         and not sw.turn_failed(txt)),
         "no_review_item": not review_why and proj_name not in (ctx.get("jobs") or ()),       # bulgu/ders/koşan review/açık varaka işi YOK

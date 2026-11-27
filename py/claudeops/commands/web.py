@@ -267,6 +267,10 @@ ERR = {
                           "en": "{name}: no conversation found to compact (no jsonl)"},
     "compact_send_failed": {"tr": "{name}: compact komutu gönderilemedi (tmux session gitmiş olabilir)",
                              "en": "{name}: failed to send the compact command (tmux session may be gone)"},
+    "question_open": {"tr": "{name}: oturum bir soru diyaloğunda cevap bekliyor; devir mesajı diyaloğa yazılacağı için gönderilmedi. "
+                            "Önce soruyu cevaplayın ya da kapatın.",
+                      "en": "{name}: the session is waiting on a question dialog; the handover message would be typed into it, so it "
+                            "was not sent. Answer or dismiss the question first."},
     "handover_send_failed": {"tr": "{name}: wrap-up mesajı gönderilemedi (tmux session gitmiş olabilir)",
                               "en": "{name}: failed to send the wrap-up message (tmux session may be gone)"},
     "handover_switch_blocked": {"tr": "{name}: model/effort geçişi güvenli bitmedi ({reason}); ekranda diyalog ya da "
@@ -3089,7 +3093,9 @@ def _session_facts(names: List[str]) -> dict:
             text = str((get_provider(s.cli).last_exchange(s.cwd, s.sid) or {}).get("assistant") or "")
         except Exception:
             text = ""
-        out[name] = {"running": True,
+        question_open, owner_at = web_steward.owner_dialog_for(s.cwd, s.sid, s.cli)
+        out[name] = {"running": True, "question_open": question_open,
+                     "owner_input_age_s": max(0.0, time.time() - owner_at) if owner_at else None,
                      "started_age_s": max(0.0, time.time() - started) if started else None,
                      "subagent_active": sub, "context_tokens": tokens,
                      "context_warn": warn, "last_assistant": text[:SESSION_FACTS_TEXT_MAX], "sid_known": bool(s.sid)}
@@ -3395,6 +3401,9 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     message = HANDOVER_MSG_DEFAULT_EN if lang == "en" else HANDOVER_MSG_DEFAULT
     if extra:      # değnekçi: oturumun açık soruları (`steward.handover_questions_note`)
         message = message + "\n\n" + extra
+    if web_steward.owner_dialog_for(procs[0].cwd, procs[0].sid, procs[0].cli)[0]:    # tuşlar diyaloğa yazılırdı (27 Kas)
+        diag_log("handover_refused_dialog", name=name)
+        return _err(lang, "question_open", name=name)
     diag_log("handover_start", name=name)
 
     # Model + effort düşürmesi `handover.apply_handover_downgrades`te, `handover_faz1`

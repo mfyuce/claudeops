@@ -983,6 +983,7 @@ FILES = {
     "steward_ho_on_open": (_STEW, f"{T10}; {T4}"),
     "steward_http": (_STEW, T10),
     "steward_job_gate_and_qcap": (_STEW, T10),
+    "steward_open_dialog": (_STEW, f"{T10}; {T1}"),
     "steward_owned": (_STEW, T10),
     "steward_remote_facts": (_STEW + " ve uzak olgu ucu", f"{T10}; {T5}"),
     "steward_ucli_idle": (_STEW, T10),
@@ -1426,7 +1427,7 @@ agy_models_swr:1:9166783f75
 bg_work:17:7b2ea2092b
 brain_permission_ucli:2:d5d3096328
 cache_info:12:9f2b8b4e3c
-chat_backup_instance_dirs:5:ba2c994403
+chat_backup_instance_dirs:6:da9a8c9292
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
@@ -1496,6 +1497,7 @@ steward_ctx:21:12df78f872
 steward_generic:25:f4969150e9
 steward_ho_on_open:9:d3f0301c62
 steward_http:55:d144bd3c53
+steward_open_dialog:13:5d3f7bb467
 steward_job_gate_and_qcap:17:3a0173c206
 steward_owned:17:c39a25372d
 steward_remote_facts:19:8999b83aa6
