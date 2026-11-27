@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 553 | 153 | 400 | 0 |
-| test durumu (124 dosya) | 1627 | 115 | 1512 | 0 |
+| test durumu (124 dosya) | 1631 | 115 | 1516 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -746,12 +746,16 @@ Yok.
 | `test_bg_work.py::TranscriptFixture.test_foreground_and_stale` | 77 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_errored_call_is_not_pending` | 81 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_one_of_two_pending` | 87 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 92 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 98 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 113 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 126 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 157 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` | 105 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 110 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 115 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 121 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 129 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 135 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 163 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 187 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 194 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 
 ### `py/tests/test_brain_permission_ucli.py`
 

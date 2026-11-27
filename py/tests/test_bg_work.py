@@ -88,6 +88,43 @@ class TranscriptFixture(unittest.TestCase):
         self.assertTrue(bg_work.transcript_pending([_use("t1"), _use("t2"), _notif("completed", i="t1")], now=T))
 
 
+def _stop(use_id, target, tool="TaskStop", key="task_id", error=False):
+    res = {"type": "tool_result", "tool_use_id": use_id,
+           "content": "No task found" if error else json.dumps({"message": f"Successfully stopped task: {target} (x)", "task_id": target})}
+    if error:
+        res["is_error"] = True
+    return [json.dumps({"message": {"role": "assistant", "content": [{"type": "tool_use", "id": use_id, "name": tool, "input": {key: target}}]}}),
+            json.dumps({"message": {"role": "user", "content": [res]}})]
+
+
+class StoppedAndMidTurnNotifications(unittest.TestCase):
+    """27 Kas, copsdev: TaskStop ile durdurulan iş bildirim üretmedi; alt ajan bittiği hâlde direktif 6 sa `subagent_active` diye ertelendi.
+    Tur ortasında gelen bildirim de `user` satırı değil, `queue-operation` / `attachment` kaydıdır (aynı transkriptten)."""
+    BODY = "<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>t1</tool-use-id>\n<status>completed</status>\n</task-notification>"
+
+    def test_stopped_task_is_not_pending(self):
+        for tool, key in (("TaskStop", "task_id"), ("TaskStop", "shell_id"), ("KillShell", "shell_id")):
+            lines = [_use("t1"), _res("t1", "b1"), *_stop("s1", "b1", tool, key)]
+            self.assertFalse(bg_work.transcript_pending(lines, now=T), (tool, key))
+
+    def test_failed_stop_or_other_task_stays_pending(self):
+        self.assertTrue(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), *_stop("s1", "b1", error=True)], now=T))
+        self.assertTrue(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), *_stop("s1", "b2")], now=T))
+        self.assertTrue(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), _stop("s1", "b1")[0]], now=T))   # sonuç henüz yok
+
+    def test_notification_delivered_mid_turn(self):
+        queued = json.dumps({"type": "queue-operation", "operation": "enqueue", "content": self.BODY})
+        attached = json.dumps({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "task-notification", "prompt": self.BODY}})
+        for rec in (queued, attached):
+            self.assertFalse(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), rec], now=T), rec)
+
+    def test_quoted_notification_in_queued_user_text_does_not_count(self):
+        quoted = "şu bildirimi gördün mü: " + self.BODY
+        for rec in (json.dumps({"type": "queue-operation", "operation": "enqueue", "content": quoted}),
+                    json.dumps({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": self.BODY}})):
+            self.assertTrue(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), rec], now=T), rec)
+
+
 class SubagentActiveForUsesBoth(unittest.TestCase):
     def test_screen_makes_active_even_without_subagent_files(self):
         with mock.patch.object(web_steward, "tmux_capture", return_value=SCREEN_SHELL):
