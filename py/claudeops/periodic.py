@@ -692,8 +692,9 @@ def _private_remotes(repo: str) -> Tuple[Dict[str, str], List[str]]:
     bad: List[str] = []
     for name, url in rems.items():
         pr = mb.parse_remote(url)
-        if pr is None or not mb.is_private(*pr):
-            bad.append(name)
+        why: List[str] = [] if pr else ["tanınmayan remote adresi"]
+        if pr is None or not mb.is_private(*pr, why=why):
+            bad.append(name + "".join(f" ({w})" for w in why))
     return rems, bad
 
 
@@ -805,7 +806,10 @@ def run_chat_backup(cfg: Dict[str, Any], apply: bool, state: Dict[str, Any]) -> 
         else:
             remotes[g] = rems
     if "claude" in missing and not remotes:
-        res.update(ok=False, msg=missing["claude"] + f" (önce private {cfg.get('repo_name')} oluştur: gh/glab, iki remote)")
+        hint = f"önce private {cfg.get('repo_name')} oluştur: gh/glab, iki remote"
+        if "sorgu başarısız" in missing["claude"]:      # ağ kesintisinde repo büyük olasılıkla duruyor: "oluştur" yanıltır
+            hint = f"ağı ve girişi denetle; yalnız repo yoksa private {cfg.get('repo_name')} oluştur"
+        res.update(ok=False, msg=missing["claude"] + f" ({hint})")
         return res
     per = {g: sum(1 for e in plan["changed"] if e["group"] == g) for g in groups}
     if apply:                          # doğrulanamayan (private kapısı düşen) grup sessizce atlanmasın: koşu 'temiz ok' görünmesin
