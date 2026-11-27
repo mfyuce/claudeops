@@ -1120,12 +1120,12 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_handover_session_wait.py::WebHandover.test_waiting_session_gets_no_keys_even_if_transcript_is_silent` | 52 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
-| `test_handover_session_wait.py::WebHandover.test_other_states_do_not_block` | 59 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
-| `test_handover_session_wait.py::SteerView.test_waiting_for_input_counts_as_open_question` | 71 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
-| `test_handover_session_wait.py::SteerView.test_other_waits_do_not_freeze_the_planner` | 76 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
-| `test_handover_session_wait.py::BatchHandover.test_batch_skips_waiting_session` | 95 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
-| `test_handover_session_wait.py::BatchHandover.test_batch_skips_open_question_in_transcript` | 99 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::WebHandover.test_waiting_session_gets_no_keys_even_if_transcript_is_silent` | 53 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::WebHandover.test_other_states_do_not_block` | 60 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::SteerView.test_waiting_for_input_counts_as_open_question` | 72 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::SteerView.test_other_waits_do_not_freeze_the_planner` | 77 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::BatchHandover.test_batch_skips_waiting_session` | 97 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
+| `test_handover_session_wait.py::BatchHandover.test_batch_skips_open_question_in_transcript` | 101 | kapsam dışı | yok | diyalogda bekleyen oturuma devir yazılmaz (süreç kaydı ve transkript). İz: T4 (yaşam döngüsü); T10 (değnekçi) |
 
 ### `py/tests/test_input_box_typed.py`
 
