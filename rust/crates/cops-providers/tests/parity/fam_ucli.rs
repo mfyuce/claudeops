@@ -781,6 +781,59 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         "opts-cost-modelsiz",
         json!({"validate": true, "raw_opts": {"max_cost_usd": "0.5"}, "model": ""}),
     ));
+    // Fiyat ve USD tavanı: tablo fiyatı, açık fiyat, fiyatı bilinmeyen model, `--price` tanımayan ikili.
+    for (id, model, extra) in [
+        ("haiku", "claude-haiku-5-5", json!({"max_cost_usd": 2})),
+        ("fable", "claude-fable-5-1", json!({})),
+        ("sonnet", "claude-sonnet-5-5", json!({"max_cost_usd": 2})),
+        (
+            "acik",
+            "claude-haiku-5-5",
+            json!({"price": "1,5", "max_cost_usd": 2}),
+        ),
+        ("bilinmeyen", "nobody-knows-1", json!({})),
+        (
+            "bilinmeyen-tavansiz",
+            "nobody-knows-1",
+            json!({"max_session_usd": 0}),
+        ),
+        ("oneksiz", "haiku-5-5", json!({"max_cost_usd": 2})),
+        (
+            "tarihli",
+            "claude-haiku-5-5-20261101",
+            json!({"max_cost_usd": 2}),
+        ),
+    ] {
+        let mut o = extra.as_object().cloned().unwrap_or_default();
+        o.insert("service".into(), json!("claude"));
+        v.push(
+            ucase(
+                e,
+                &format!("fiyat-{id}"),
+                json!({"cli_opts": o, "model": model}),
+            )
+            .settings_json(byok.clone()),
+        );
+    }
+    v.push(
+        ucase(
+            e,
+            "fiyat-ikili-tanimiyor",
+            json!({"cli_opts": {"service": "claude"}, "model": "claude-haiku-5-5"}),
+        )
+        .settings_json(byok.clone())
+        .facts(json!({"ucli_help": help(&["--price"], &[], false)})),
+    );
+    v.push(ucase(
+        e,
+        "fiyat-evren-acik-tavan",
+        json!({"cli_opts": {"service": "evren", "max_session_usd": 3}, "model": "nobody-knows-1"}),
+    ));
+    v.push(ucase(
+        e,
+        "fiyat-evren-tavansiz",
+        json!({"cli_opts": {"max_cost_usd": 1}, "model": "nobody-knows-1"}),
+    ));
     v.push(
         opts(
             e,

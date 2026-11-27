@@ -25,7 +25,7 @@ pub const RESERVE_TTL: f64 = 120.0;
 pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
 /// `review.ANTHROPIC_PRICES` (sıra anlamlı: ilk alt dize eşleşmesi): girdi, çıktı, önbellek okuma, yazma ($/M).
-const PRICES: [(&str, [f64; 4]); 4] = [
+pub(crate) const PRICES: [(&str, [f64; 4]); 4] = [
     ("haiku-5-5", [0.10, 0.50, 0.01, 0.125]),
     ("sonnet-5-5", [2.0, 10.0, 0.10, 2.5]),
     ("opus-5-5", [4.0, 20.0, 0.20, 5.0]),

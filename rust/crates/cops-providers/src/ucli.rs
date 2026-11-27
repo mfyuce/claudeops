@@ -1,6 +1,7 @@
 //! ucli sağlayıcısı. Her isteğe bağlı bayrak YALNIZ ikilinin `chat --help`i listeliyorsa eklenir.
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
+use crate::cost::PRICES as ANTHROPIC_PRICES;
 use crate::model_sources::{
     bounded, fetch_failed, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES,
     LIVE_MODELS_TIMEOUT,
@@ -28,7 +29,10 @@ pub const DEFAULT_ENDPOINT: &str = "https://evren-llmapi.ssyz.org.tr/v1";
 const REQUEST_TIMEOUT_SECS: i64 = 600;
 const MAX_HISTORY_KIB: i64 = 128;
 const INSTRUCTIONS_MAX_BYTES: u64 = 40960;
+/// ucli'de YERLEŞİK fiyatı olan modeller; fiyatı olmayan modelde (`--price` de yoksa) ucli USD tavanı bayraklarını reddeder.
 const PRICED_MODELS: [&str; 2] = ["claude-opus-5-5", "claude-sonnet-5-5"];
+/// İstem boyutuna göre dilimli modelde EN PAHALI dilim: ucli tek fiyat alır, USD tavanı harcamayı eksik saymasın.
+const TOP_TIER_PRICES: [(&str, [f64; 4]); 1] = [("haiku-5-5", [0.50, 2.50, 0.05, 0.625])];
 const DERIVES_CONTEXT_MARK: &str = "advertises a large window";
 
 /// `--max-steps`, `--max-context-kib`, `--max-tool-calls`, `--max-output-tokens` ön ayarları (`_EFFORT_LIMITS`).
@@ -42,6 +46,23 @@ const LIMIT_KEYS: [&str; 4] = [
     "max_tool_calls",
     "max_output_tokens",
 ];
+
+/// `--price` değeri (`IN,OUT,CACHE_READ,CACHE_WRITE`); fiyat bilinmiyorsa `None`. Ad TAM eşleşir (`claude-` öneki şart).
+fn claudeops_price(model: &str) -> Option<String> {
+    let key = model.strip_prefix("claude-")?;
+    let row = TOP_TIER_PRICES
+        .iter()
+        .chain(ANTHROPIC_PRICES.iter())
+        .find(|(k, _)| *k == key)?
+        .1;
+    Some(row.map(fmt_g).join(","))
+}
+
+/// Fiyat argv'de (`--price`) ya da ucli'de yerleşik.
+fn has_price(argv: &[String]) -> bool {
+    argv.iter().any(|x| x == "--price")
+        || value_after(argv, "--model").is_some_and(|m| PRICED_MODELS.contains(&m))
+}
 
 /// Uç noktanın `/models` sonucu.
 #[derive(Debug, Clone, Default)]
@@ -682,25 +703,40 @@ impl Ctx<'_, '_> {
                     .ok_or_else(|| SpawnError(float_error(v))),
             }
         };
+        // Fiyat, tavanlardan ÖNCE: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu.
+        let mut price = opts
+            .get("price")
+            .filter(|v| truthy(v))
+            .map(str_of)
+            .unwrap_or_default();
+        if price.is_empty() && service == "claude" {
+            let model = value_after(argv, "--model").unwrap_or("");
+            if !PRICED_MODELS.contains(&model) {
+                price = claudeops_price(model).unwrap_or_default();
+            }
+        }
+        if !price.is_empty() && self.known("--price") {
+            set_flag_value(argv, "--price", &price);
+        }
         if let Some(usd) = as_usd("max_cost_usd")? {
             if self.known("--max-cost-usd") {
-                let model = value_after(argv, "--model").unwrap_or("").to_string();
-                if PRICED_MODELS.contains(&model.as_str()) {
+                if has_price(argv) {
                     set_flag_value(argv, "--max-cost-usd", &fmt_g(usd));
                 } else {
                     let name = self.session.to_string();
+                    let model = value_after(argv, "--model").unwrap_or("").to_string();
                     self.out.diag(
                         "ucli_max_cost_skipped",
                         vec![
                             ("name", json!(&name)),
                             ("model", json!(&model)),
-                            ("reason", json!("no built-in price")),
+                            ("reason", json!("no price")),
                         ],
                     );
                 }
             }
         }
-        // Evren (ücretsiz) hizmette varsayılan oturum tavanı eklenmez.
+        // Evren (ücretsiz) hizmette varsayılan oturum tavanı eklenmez; açıkça verilen tavan fiyat ister.
         let session_cap = as_usd("max_session_usd")?
             .filter(|v| *v != 0.0)
             .unwrap_or_else(|| {
@@ -711,6 +747,14 @@ impl Ctx<'_, '_> {
                 }
             });
         if session_cap != 0.0 && self.known("--max-session-usd") {
+            let model = value_after(argv, "--model").unwrap_or("");
+            if !model.is_empty() && !has_price(argv) {
+                // ucli bu halde hemen çıkar; tavan sessizce düşürülmez, nedeniyle ret.
+                return Err(SpawnError(format!(
+                    "{model}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. Başlatma \
+                     seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın."
+                )));
+            }
             set_flag_value(argv, "--max-session-usd", &fmt_g(session_cap));
         }
         for (key, flag) in [
@@ -728,7 +772,6 @@ impl Ctx<'_, '_> {
             ("max_consecutive_failures", "--max-consecutive-failures"),
             ("max_continuation_steps", "--max-continuation-steps"),
             ("exec_per_script", "--exec-per-script"),
-            ("price", "--price"),
             ("no_prompt_cache", "--no-prompt-cache"),
             ("show_usage", "--show-usage"),
             ("checkpoint", "--checkpoint"),
