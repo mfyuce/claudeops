@@ -4616,6 +4616,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             actions.append(Action("close_negative_answer", target, "olumsuz sahip cevabı",
                                   {"question_id": q.id, "held": _held_instruction_item(q)}))
         elif (projects[target].phase in ("done", "paused") and target not in (st.get("no_work_paused") or {})
+              and target not in busy_names      # aynı tick'te ikinci cevap ikinci kez açmasın (kalanı açılan oturuma sonra iletilir)
               and starts < max_starts and _slots() > 0 and not (world is not None and world.start_held(target))):
             # SAHİP CEVABI geldi (17 Kas, marwan): done/paused proje planned'a döner ve açılır (iş yok durdurması kendi yolundan: plan_no_work_reopen)
             actions.append(Action("set_phase", target, "sahip cevabı geldi", {"phase": "planned"}))
@@ -4623,7 +4624,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             starts += 1
             busy_names.add(target)
             last_directive_at[target] = now
-        elif (projects[target].phase in ACTIVE_PHASES
+        elif (projects[target].phase in ACTIVE_PHASES and target not in busy_names
               and starts < max_starts and _slots() > 0 and not (world is not None and world.start_held(target))):
             actions.append(Action("start", target, "answer → start", {"question_id": q.id}))
             starts += 1
