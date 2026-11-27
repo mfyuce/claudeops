@@ -1412,7 +1412,8 @@ proc08_model_switch_no_blind_enter:3:7cba6c87a9
 provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a
 review_self_verify:18:4b125a8002
-routing_guidance:13:964131411b
+routing_guidance:15:e045f05d44
+shared_state_readonly:7:a71ec45fbf
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
 state_backend_last_good:3:5531228f00
@@ -1426,13 +1427,14 @@ steward_api_recovery:17:f79402b74c
 steward_audit_p9:24:36a9eb8914
 steward_brain:34:b4c732deb9
 steward_core_a:122:f4f49eaa0c
-steward_core_b:77:5bbaded29d
+steward_core_b:78:400a04ffd3
 steward_ctx:21:12df78f872
-steward_generic:25:f4969150e9
+steward_generic:26:09b9cc7fd0
 steward_ho_on_open:9:d3f0301c62
 steward_http:55:d144bd3c53
-steward_open_dialog:16:cb4f15474e
 steward_job_gate_and_qcap:17:3a0173c206
+steward_main_model:10:5c2a25c53b
+steward_open_dialog:16:cb4f15474e
 steward_owned:17:c39a25372d
 steward_remote_facts:19:8999b83aa6
 steward_ucli_idle:49:3d78a38764
@@ -1475,7 +1477,6 @@ ucli_resolve_binary:9:02512466b3
 ucli_script:12:8e5e524edb
 ucli_search_token_env:7:fe35ffaa52
 ucli_show_reasoning:3:88a88fc6d4
-shared_state_readonly:7:a71ec45fbf
 ucli_start_opts:32:4f29133f96
 ucli_state_dir:9:83e53ca259
 ucli_stream:12:0b0c264c8d
