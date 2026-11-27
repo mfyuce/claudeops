@@ -1,5 +1,6 @@
 //! `claudeops.db` (Python `store.py`): `docs` belgeleri ve `tsv_rows` gölgesi. Rust DB OLUŞTURMAZ ve GÖÇ ÇALIŞTIRMAZ:
-//! sürüm [`SCHEMA_VERSION`] değilse açılış reddedilir; yazım işlemi içinde sürüm yeniden denetlenir. Yalnız SQLite
+//! sürüm [`SCHEMA_VERSION`] değilse yazma açılışı reddedilir; yazım işlemi içinde sürüm yeniden denetlenir. Salt okuma
+//! açılışı daha yeni sürümü de kabul eder (göçler yalnız sona eklenir; `check_read`). Yalnız SQLite
 //! (`CLAUDEOPS_DB_URL` Postgres ise [`StoreError::Unsupported`]; yanlış DB'ye sessizce yazılmaz).
 use crate::json::{Json, Map};
 use rusqlite::{
@@ -228,10 +229,27 @@ fn check(c: &Connection) -> Result<()> {
     }
 }
 
+/// Salt okuma açılışının şema denetimi: bilinen sürüm ya da DAHA YENİSİ. Python göçleri yalnız sona eklenir, var olan tablo
+/// ve sütun değiştirilmez (`store.py` sözleşmesi); bu yüzden yeni bir göç eski okuma sorgularını bozmaz. Yine de okunan
+/// `docs` sütunları açılışta hazırlanarak sınanır: yoksa `Schema` (çağıran dosya aynasına düşer ve günlüğe yazar). Daha ESKİ
+/// sürüm reddedilir (göç Python'da). YAZMA açılışı ([`Store::open`]) tam eşleşme ister: bilinmeyen şemaya yazılmaz.
+fn check_read(c: &Connection) -> Result<i64> {
+    let found = version(c)?;
+    if found == SCHEMA_VERSION || (found > SCHEMA_VERSION && c.prepare(READ_CONTRACT).is_ok()) {
+        return Ok(found);
+    }
+    Err(StoreError::Schema { found })
+}
+
+/// Salt okuma yolunun `docs` sözleşmesi ([`check_read`]).
+const READ_CONTRACT: &str = "SELECT name, body, version, updated FROM docs LIMIT 0";
+
 /// Süreç içinde paylaşılabilir (`Arc<Store>`); tek bağlantı, kilitli. Süreçler arası sıralama SQLite kilidiyle.
 pub struct Store {
     path: PathBuf,
     conn: Mutex<Connection>,
+    /// Açılışta okunan şema sürümü (salt okumada [`SCHEMA_VERSION`]ten büyük olabilir).
+    schema: i64,
 }
 
 impl Store {
@@ -252,6 +270,7 @@ impl Store {
         Ok(Store {
             path: path.to_path_buf(),
             conn: Mutex::new(c),
+            schema: SCHEMA_VERSION,
         })
     }
 
@@ -285,15 +304,21 @@ impl Store {
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         c.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS))?;
-        check(&c)?;
+        let schema = check_read(&c)?;
         Ok(Store {
             path: path.to_path_buf(),
             conn: Mutex::new(c),
+            schema,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Açılışta görülen şema sürümü.
+    pub fn schema(&self) -> i64 {
+        self.schema
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -886,6 +911,53 @@ mod tests {
             Err(StoreError::Io(_))
         ));
         assert_eq!(listing(&dir), vec!["claudeops.db", "claudeops.db-wal"]);
+    }
+
+    /// Şema sürümü: salt okuma daha yeni sürümü (okunan `docs` sütunları yerindeyse) kabul eder, eskisini ve sütunu
+    /// eksik yenisini reddeder; yazma açılışı yalnız tam eşleşme.
+    #[test]
+    fn read_only_accepts_newer_schema_with_the_docs_contract() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let db = |sub: &str, ver: i64, docs: &str| {
+            let dir = env.root().join(sub);
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("claudeops.db");
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(&format!(
+                "CREATE TABLE docs({docs}); INSERT INTO docs(name, body) VALUES('a', '{{\"x\": 1}}');
+                 CREATE TABLE yeni(x); PRAGMA user_version={ver};"
+            ))
+            .unwrap();
+            drop(c);
+            path
+        };
+        let full = "name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL";
+        let newer = db("yeni", SCHEMA_VERSION + 1, full);
+        let s = Store::open_read_only(&newer).unwrap();
+        assert_eq!(s.schema(), SCHEMA_VERSION + 1);
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("{\"x\": 1}"));
+        assert!(
+            matches!(Store::open(&newer), Err(StoreError::Schema { found }) if found == SCHEMA_VERSION + 1)
+        );
+        let older = db("eski", SCHEMA_VERSION - 1, full);
+        assert!(matches!(
+            Store::open_read_only(&older),
+            Err(StoreError::Schema { .. })
+        ));
+        let broken = db(
+            "bozuk",
+            SCHEMA_VERSION + 1,
+            "name TEXT PRIMARY KEY, body TEXT",
+        );
+        assert!(matches!(
+            Store::open_read_only(&broken),
+            Err(StoreError::Schema { .. })
+        ));
+        let same = db("ayni", SCHEMA_VERSION, full);
+        assert_eq!(
+            Store::open_read_only(&same).unwrap().schema(),
+            SCHEMA_VERSION
+        );
     }
 
     /// Yolda `%`, `?`, `#`, boşluk ve UTF-8: URI kaçışı doğru dosyayı açar.
