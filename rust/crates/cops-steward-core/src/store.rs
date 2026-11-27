@@ -553,6 +553,8 @@ pub enum UpsertError {
     Reserved(ReservedName),
     /// alan tipi uymuyor. Metin alanlarında Python da reddeder (`_BadFieldType`); sayı alanını Python saklar.
     BadType(String),
+    /// yalnız mevcut proje güncellenecekti (`must_exist`) ve proje yok
+    Missing(String),
 }
 
 impl fmt::Display for UpsertError {
@@ -568,6 +570,7 @@ impl fmt::Display for UpsertError {
                 write!(f, "bad field type: {n} (expected a string)")
             }
             UpsertError::BadType(n) => write!(f, "bad field type: {n}"),
+            UpsertError::Missing(n) => write!(f, "project {} no longer exists", pyc::repr_str(n)),
         }
     }
 }
@@ -647,6 +650,17 @@ pub fn upsert_project(
     fields: &Map<String, Value>,
     ctx: &UpsertContext<'_>,
 ) -> Result<Upserted, UpsertError> {
+    upsert(projects, name, fields, ctx, false)
+}
+
+/// `must_exist`: proje yoksa `Missing`, yeni kayıt açılmaz.
+fn upsert(
+    projects: &mut IndexMap<String, Project>,
+    name: &str,
+    fields: &Map<String, Value>,
+    ctx: &UpsertContext<'_>,
+    must_exist: bool,
+) -> Result<Upserted, UpsertError> {
     if !identity::valid_name(name) {
         return Err(UpsertError::InvalidName(name.to_string()));
     }
@@ -673,6 +687,9 @@ pub fn upsert_project(
         return Err(UpsertError::Owned(OwnedElsewhere::new(name, other)));
     }
     let existing = projects.get(name);
+    if must_exist && existing.is_none() {
+        return Err(UpsertError::Missing(name.to_string()));
+    }
     if existing.is_none() {
         // yeni talep: rezerve ad reddi (mevcut kayıt etkilenmez)
         let why = identity::reserved_reason(name, &(ctx.index)());
@@ -886,7 +903,8 @@ pub fn apply_review_where_answer(
     }
     let (mut upserted, mut failed) = (None, None);
     if !fields.is_empty() {
-        match upsert_project(projects, &q.project, &fields, ctx) {
+        // silinen proje geri gelmesin: yalnız mevcut kayıt güncellenir
+        match upsert(projects, &q.project, &fields, ctx, true) {
             Ok(u) => upserted = Some(u),
             Err(e) => {
                 failed = Some(e.to_string());

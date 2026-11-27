@@ -205,6 +205,7 @@ fn upsert(c: &Case) -> Value {
                 UpsertError::Owned(_) => "OwnedElsewhere",
                 UpsertError::Reserved(_) => "ReservedName",
                 UpsertError::BadType(_) => "_BadFieldType",
+                UpsertError::Missing(_) => "ValueError",
             };
             py_error(class, e)
         }
