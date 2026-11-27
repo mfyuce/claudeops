@@ -9692,6 +9692,15 @@
 "stale_answers",
 "undelivered_answers"
 ],
+"test_steward_core_b.SmartTickTest.test_tbd_only_question_counts_once": [
+"_pp",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
 "test_steward_core_b.StartDecisionEventTests.test_event_shape": [
 "start_decision_event"
 ],
@@ -34578,6 +34587,22 @@
 "build_ownership_index",
 "normalize_host",
 "notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers",
+"world_for"
+],
+"test_steward_multi.DefaultWorld_SmartTickTest.test_tbd_only_question_counts_once": [
+"World.own_projects",
+"World.owner_of",
+"World.owns",
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"normalize_host",
 "paths_for",
 "plan_api_recovery",
 "plan_tick",

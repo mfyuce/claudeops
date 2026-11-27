@@ -4697,11 +4697,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                for k, v in dict(st.get("brain_stopped") or {}).items()):
             continue     # beyin "kalan iş yok / sahip kararı bekliyor" diye durdurdu: cadence soğuk bağlamla hemen yeniden açmaz
         if visit_of(p) == 0 or p.name in todo_changed or (now - visit_of(p)) >= p.cadence_minutes * 60:
-            if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (open_tbd(p.name) or 0) > 0:
+            if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (tbd_n := open_tbd(p.name) or 0) > 0:
                 # yalnız TBD kaldı (yerel TODO'da açık iş yok): oturum açmak boşa tur; sahibe tek soru, cevap gelince `answer → start`
                 if now - tbd_asked.get(p.name, 0.0) >= 6 * 3600:      # günde en çok ~4 kez; aynı soru zaten açıksa birleşir
                     actions.append(Action("ask_user", p.name, "yalnız TBD kaldı",
-                                          {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {open_tbd(p.name)} "
+                                          {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {tbd_n} "
                                                                       f"açık karar var. Kararları verir misiniz? Cevap gelince oturumu açıp devam ederim."}))
                     tbd_asked[p.name] = now
                 continue

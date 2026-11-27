@@ -278,11 +278,12 @@ impl<'a> Tick<'a> {
                 continue;
             }
             if let (Some(ow), Some(tbd)) = (self.inp.open_work, self.inp.open_tbd) {
-                if ow(&p.name) == Some(0) && tbd(&p.name).unwrap_or(0) > 0 {
+                // sayı TEK kez okunur: ikinci okuma başarısız olursa metne "None" yazılırdı
+                let n = if ow(&p.name) == Some(0) { tbd(&p.name).unwrap_or(0) } else { 0 };
+                if n > 0 {
                     // yalnız TBD kaldı: oturum açmak boşa tur; sahibe tek soru (günde en çok ~4)
                     let asked = tbd_asked.get(&p.name).and_then(Value::as_f64).unwrap_or(0.0);
                     if now - asked >= 6.0 * 3600.0 {
-                        let n = tbd(&p.name).map_or("None".to_string(), |n| n.to_string());
                         let text = format!(
                             "{}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {n} açık karar var. Kararları verir \
                              misiniz? Cevap gelince oturumu açıp devam ederim.",

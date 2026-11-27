@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1933 satır)
+### Python testleri (1934 satır)
 
-Test satırı özeti: 1933 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1934 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1887,6 +1887,7 @@ Test satırı özeti: 1933 satır; doğrudan açık (aşağıda `AÇIK`) 190; pa
 | `test_steward_core_b.SmartTickTest.test_count_open_tbd` | markers::count_open_tbd_edges, markers::count_open_tbd_vectors |
 | `test_steward_core_b.SmartTickTest.test_routine_question_skips_tour_interval` | closing::context_threshold_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits, identity::derived_of_vectors (+18) |
 | `test_steward_core_b.SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` | closing::context_threshold_vectors, closing::done_conflict_answer_vectors, identity::derived_of_vectors, identity::p_pp (+28) |
+| `test_steward_core_b.SmartTickTest.test_tbd_only_question_counts_once` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::stale_answers_vectors (+8) |
 | `test_steward_core_b.SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, idletext::notes_wait_vectors (+9) |
 | `test_steward_core_b.SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+11) |
 | `test_steward_core_b.SmartTickTest.test_idle_session_without_open_todo_not_nudged` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors, prompts::item_signature_vectors (+5) |

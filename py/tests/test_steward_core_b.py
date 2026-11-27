@@ -922,6 +922,20 @@ class SmartTickTest(unittest.TestCase):
                                open_work=lambda p: 0, open_tbd=lambda p: 0)
         self.assertEqual([a.kind for a in acts if a.kind in ("set_phase", "stop")], ["set_phase", "stop"])
 
+    def test_tbd_only_question_counts_once(self):
+        projects = {"p": sw.Project(name="p", phase="planned", cadence_minutes=5)}
+        reads = []      # ikinci okuma başarısız (None): metne "None açık karar" yazılmamalı
+
+        def open_work(_p):
+            reads.clear()
+            return 0
+
+        def open_tbd(_p):
+            reads.append(1)
+            return 3 if len(reads) == 1 else None
+        acts, _ = sw.plan_tick([], projects, {}, _cfg(), self.now, [], [], open_work=open_work, open_tbd=open_tbd)
+        self.assertIn("3 açık karar", [a for a in acts if a.kind == "ask_user"][0].payload["text"])
+
     def test_tbd_only_project_not_started_owner_asked_once(self):
         projects = {"p": sw.Project(name="p", phase="planned", cadence_minutes=5)}
         kw = dict(open_work=lambda p: 0, open_tbd=lambda p: 3)
