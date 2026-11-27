@@ -13,6 +13,8 @@ use std::sync::LazyLock;
 type Fancy = LazyLock<Option<fancy_regex::Regex>>;
 
 static NEXT_DONE_VALUE_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_DONE_VALUE_RE.as_str()));
+static NEXT_DONE_THEN_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_DONE_THEN_RE.as_str()));
+static NEXT_IDLE_REST_RE: Fancy = LazyLock::new(|| pyc::py_regex(P_NEXT_IDLE_REST_RE.as_str()));
 
 /// `needs_ho._RFH`
 const RFH: &str = "READY FOR HANDOVER";
@@ -419,8 +421,18 @@ pub fn is_conditional_note(text: &str) -> bool {
 ///
 /// py: _is_no_work_value
 pub fn is_no_work(value: &str) -> bool {
-    P_NO_WORK_VALUES.contains(&pyc::strip_chars(value, " .`*_,;:!").to_lowercase().as_str())
-        || pyc::is_match(&NEXT_DONE_VALUE_RE, &pyc::ci_input(value))
+    if P_NO_WORK_VALUES.contains(&pyc::strip_chars(value, " .`*_,;:!").to_lowercase().as_str()) {
+        return true;
+    }
+    let folded = pyc::ci_input(value);
+    if !pyc::is_match(&NEXT_DONE_VALUE_RE, &folded) {
+        return false;
+    }
+    // "bitti, şimdi X": devamı (`rest`) sıradaki iştir
+    let then = NEXT_DONE_THEN_RE.as_ref().and_then(|re| re.captures(&folded).ok().flatten());
+    let Some(m) = then.and_then(|c| c.name("rest")) else { return true };
+    pyc::is_match(&NEXT_IDLE_REST_RE, &pyc::ci_input(m.as_str()))
+        || is_no_work(pyc::ci_span(value, &folded, m.start(), m.end()))
 }
 
 /// Son yanıttaki `STEWARD-NEXT: <iş>` gerçek (koşulsuz) bir işse o iş, değilse "".

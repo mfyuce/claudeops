@@ -44148,6 +44148,16 @@
 "valid_name",
 "valid_steward_id"
 ],
+"test_steward_review_notes.DoneThenWorkTest.test_continuation_is_work": [
+"_is_no_work_value",
+"marker_next_work",
+"next_line",
+"next_none_stated"
+],
+"test_steward_review_notes.DoneThenWorkTest.test_finished_without_work_stays_no_work": [
+"_is_no_work_value",
+"marker_next_work"
+],
 "test_steward_reviewer_gate.TestReviewerCreate.test_brain_cannot_create": [],
 "test_steward_reviewer_gate.TestReviewerCreate.test_cli_config_and_toggle_leave_an_audit_trail": [
 "_log_dedup",

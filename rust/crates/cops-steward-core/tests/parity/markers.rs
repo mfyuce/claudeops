@@ -13,6 +13,43 @@ parity!("count_open_tbd", count_open_tbd_vectors, |c| count_open_tbd(&c.opt::<St
 parity!("done_blocked", done_blocked_vectors, |c| done_blocked(c.opt::<Project>("project").as_ref()));
 parity!("_bare_marker", p_bare_marker, |c| bare_marker(&c.str("line"), &c.str("mark")));
 parity!("_is_no_work_value", p_is_no_work_value, |c| is_no_work(&c.str("value")));
+/// Beklenen değerler `py/tests/test_steward_review_notes.py` ile aynı.
+/// py: _is_no_work_value
+#[test]
+fn done_then_work_is_work() {
+    for v in [
+        "bitti, şimdi testleri koş",
+        "done; next: fix lint",
+        "Bitti. Sıradaki iş: raporu yaz",
+        "**bitti**, sırada F5 düzeltmesi",
+        "done - now run the tests",
+        "bitti; ŞİMDİ: eşlik koşusu",
+        "done, then update the docs",
+    ] {
+        assert!(!is_no_work(v), "{v}");
+        assert_eq!(marker_next_work(&format!("Rapor.\nSTEWARD-NEXT: {v}")), v);
+    }
+    for v in [
+        "bitti, şimdi yok",
+        "done; next: none",
+        "done; next: -",
+        "bitti, sıradaki: yok",
+        "bitti, şimdi.",
+        "done, now waiting",
+        "bitti, şimdi bekliyorum",
+        "bitti, sırada iş yok",
+        "done, next: done",
+        "done, nothing now",
+        "bitti, kalanlar TBD'de",
+        "bitti (devir yazıldı)",
+        "bitti, şimdilik bu kadar",
+        "done, nowhere else to go",
+        "bitti, sonrası sahipte",
+    ] {
+        assert!(is_no_work(v), "{v}");
+    }
+}
+
 parity!("scan_markers", scan_markers_vectors, |c| scan_markers(&c.opt::<String>("text").unwrap_or_default()));
 parity!("_is_confirm_line", is_confirm_line_vectors, |c| is_confirm_line(&c.str("prefix"), &c.str("tail")));
 parity!("reply_language_line", reply_language_line_vectors, |c| { reply_language_line(&c.str("lang")) });

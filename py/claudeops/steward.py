@@ -5173,11 +5173,25 @@ _NO_WORK_VALUES = {"yok", "none", "-", "—", "–", "n/a", "bitti", "done"}
 # TBD#387/2: "-", "n/a", "bitti", "done" ardında noktalama ya da açıklamayla da iş değildir; "done.md düzenle", "- testleri koş" iştir.
 _NEXT_DONE_VALUE_RE = re.compile(r"^[`*_\s]*(?:[-—–][`*_\s.,;:!]*$|(?:n/a|bitti|done)[`*_]*(?:\s*$|[.,;:!](?=[`*_\s]|$)|\s*\(|\s+[-—–]\s))",
                                  re.IGNORECASE)
+# "bitti, şimdi X" / "done; next: X": "bitti" önceki işi anlatır, devamı (`rest`) sıradaki iştir. Yalnız açık devam sözcüğüyle.
+_NEXT_DONE_THEN_RE = re.compile(
+    r"^[`*_\s]*(?:bitti|done)[`*_]*(?:\s*[.,;:!]|\s+[-—–])[`*_\s]*(?:şimdi|s[ıi]rada(?:ki)?|next|now|then)(?![^\W\d_])"
+    r"(?:\s+(?:iş|is|adım|adim|step|task)(?![^\W\d_]))?[`*_\s]*(?:[:：][`*_\s]*)?(?P<rest>(?=.*[^\W_])\S.*)$",
+    re.IGNORECASE | re.DOTALL)
+_NEXT_IDLE_REST_RE = re.compile(r"^(?:yok|none|nothing|iş yok|no work|bekliyor|bekleniyor|beklemede|waiting|wait|idle)", re.IGNORECASE)
 
 
 def _is_no_work_value(value: str) -> bool:
     """"sıradaki" değeri "iş yok" anlamında mı (yok/none/-/n/a/bitti/done). SAF."""
-    return value.strip(" .`*_,;:!").lower() in _NO_WORK_VALUES or bool(_NEXT_DONE_VALUE_RE.match(value))
+    if value.strip(" .`*_,;:!").lower() in _NO_WORK_VALUES:
+        return True
+    if not _NEXT_DONE_VALUE_RE.match(value):
+        return False
+    then = _NEXT_DONE_THEN_RE.match(value)
+    if then is None:
+        return True
+    rest = then.group("rest")
+    return bool(_NEXT_IDLE_REST_RE.match(rest)) or _is_no_work_value(rest)
 
 
 def marker_next_work(text: str) -> str:
