@@ -6,20 +6,43 @@
 //! ```
 //!
 //! Sözleşme [`cops_proxy::routes::RouteTable`] belgesinde; uç `front_force_proxy` dosyasıyla Python'a geri verilebilir.
+//! Yeni kayıt `cops-parity/requests/endpoints.json`a en az bir `"expect": "local"` isteği ister (`tests/route_force.rs`).
 
+use crate::state::ReadDocs;
 use cops_proxy::routes::RouteTable;
+use cops_state::settings_read::SysEnv;
+use cops_state::StateDir;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-/// Kanca kurucularına verilen, copsd'nin çözdüğü ayarlar.
+/// Kanca kurucularına verilen, copsd'nin çözdüğü ayarlar. Süreç başına BİR kez kurulur ([`RouteCtx::new`]); kancalar
+/// `docs`u `Arc` ile paylaşır (ikinci bir `StateDocs` kurmaz: kirli/eşitlendi kayıtları ve önbellekler tek yerde).
 #[derive(Debug, Clone)]
 pub struct RouteCtx {
-    /// Durum dizini ([`crate::state_dir`]).
+    /// Durum dizini ([`crate::state_dir`]); `docs.dir()` ile aynı.
     pub state_dir: PathBuf,
     /// `claudeops.db` (`--db`).
     pub db: PathBuf,
     /// `instances.json` (`--instances`).
     pub instances: PathBuf,
+    /// Durum belgeleri, YALNIZ okuma (R2: tek yazar Python; bkz. [`crate::state`]).
+    pub docs: Arc<ReadDocs>,
+    /// `HOME`/`PATH` okuyan `cops-state` okuyucuları için süreç ortamı (açılışta bir kez alınır).
+    pub env: SysEnv,
 }
 
-/// Çekirdek rota tablosu. Şimdilik boş: Dalga 1 izleri satırlarını buraya ekler.
+impl RouteCtx {
+    /// `state_dir` altındaki durum belgeleri + süreç ortamı. Dosya/DB'ye dokunmaz.
+    pub fn new(state_dir: PathBuf, db: PathBuf, instances: PathBuf) -> RouteCtx {
+        RouteCtx {
+            docs: Arc::new(ReadDocs::new(StateDir::at(&state_dir))),
+            env: SysEnv::from_process(),
+            state_dir,
+            db,
+            instances,
+        }
+    }
+}
+
+/// Çekirdek rota tablosu. Şimdilik boş: Dalga 2 izleri (B1+) satırlarını buraya ekler.
 pub fn register(_table: &mut RouteTable, _ctx: &RouteCtx) {}
