@@ -341,11 +341,19 @@ fn execstart_patch() {
         with_internal_port("/x web", "1.2.3.4:5").unwrap(),
         "/x web --host 1.2.3.4 --port 5"
     );
-    // ilk ExecStart satırı, `\r` strip ile atılır; satır başı olmayan eşleşmez
+    // ilk ExecStart satırı, `\r` strip ile atılır; yorum ve `ExecStartPre` eşleşmez
     assert_eq!(
-        web_execstart("a\n ExecStart=x\nExecStart= y \r\nExecStart=z").as_deref(),
+        web_execstart("a\nExecStart= y \r\nExecStart=z").as_deref(),
         Some("y")
     );
+    assert_eq!(
+        web_execstart("#ExecStart=a\n; ExecStart=b\nExecStartPre=c\n"),
+        None
+    );
+    // systemd satır başındaki ve `=` çevresindeki boşluğu yok sayar
+    for l in ["ExecStart =y", "  ExecStart=y", "\tExecStart \t= y"] {
+        assert_eq!(web_execstart(l).as_deref(), Some("y"), "{l:?}");
+    }
     assert_eq!(web_execstart("x").as_deref(), None);
 }
 
@@ -1225,6 +1233,25 @@ fn on_blocks_late_override_empty_execstart_and_unreadable_dropin() {
         assert!(!Path::new(&e.paths.dropin).exists());
         std::fs::remove_file(p).unwrap();
     }
+}
+
+#[test]
+fn on_sees_spaced_and_indented_execstart() {
+    let e = env();
+    for line in ["ExecStart =", "  ExecStart=", "\tExecStart \t= "] {
+        let body = format!(
+            "[Service]\n{}\n{line}/z -m claudeops web\n",
+            line.trim_end()
+        );
+        let p = other_dropin(&e, "zz.conf", body.as_bytes());
+        let (rc, out) = e.run(Action::On, true, L, I);
+        assert_eq!(rc, 1, "{line:?}: {out}");
+        assert!(out.contains("zz.conf"), "{out}");
+        assert!(e.calls().is_empty());
+        std::fs::remove_file(p).unwrap();
+    }
+    let over = format!("{LIVE}[Service]\n ExecStart =\n\tExecStart = /x web --port 9003\n");
+    assert_eq!(web_addr(&over).map(|a| a.port()), Some(9003));
 }
 
 #[test]

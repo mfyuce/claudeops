@@ -177,11 +177,21 @@ pub struct Ctx<'a> {
     pub timing: Timing,
 }
 
-/// `web_execstart`: ilk `^ExecStart=(.*)$` satırı (`re.M`; `.` yalnız `\n`i kapsamaz), `strip()`.
+/// Python `_EXECSTART_RE`: `ExecStart=` satırının değeri; systemd satır başındaki ve `=` çevresindeki boşluk/sekmeyi
+/// yok sayar.
+fn execstart_value(line: &str) -> Option<&str> {
+    const BLANK: [char; 2] = [' ', '\t'];
+    line.trim_start_matches(BLANK)
+        .strip_prefix("ExecStart")?
+        .trim_start_matches(BLANK)
+        .strip_prefix('=')
+}
+
+/// `web_execstart`: ilk `ExecStart=` satırı ([`execstart_value`]), `strip()`.
 pub fn web_execstart(unit_text: &str) -> Option<String> {
     unit_text
         .split('\n')
-        .find_map(|l| l.strip_prefix("ExecStart="))
+        .find_map(execstart_value)
         .map(|v| cops_auth::py_strip(v).to_string())
 }
 
@@ -818,7 +828,7 @@ const WEB_LONG_OPTS: [&str; 6] = [
 /// Python `_effective_execstart`: birim + drop-in metinlerinde son `ExecStart=` kazanır, boş atama sıfırlar.
 fn effective_execstart(text: &str) -> Option<String> {
     text.split('\n')
-        .filter_map(|l| l.strip_prefix("ExecStart="))
+        .filter_map(execstart_value)
         .map(cops_auth::py_strip)
         .next_back()
         .filter(|v| !v.is_empty())

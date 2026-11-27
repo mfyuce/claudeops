@@ -77,8 +77,12 @@ def _unit_text(binp: str, listen: str, internal: str) -> str:
                                       dist=_sd_quote_if_needed(str(DIST_DIR)), state=state)
 
 
+# systemd satır başındaki ve `=` çevresindeki boşluk/sekmeyi yok sayar.
+_EXECSTART_RE = re.compile(r"^[ \t]*ExecStart[ \t]*=(.*)$", re.M)
+
+
 def web_execstart(unit_text: str) -> Optional[str]:
-    m = re.search(r"^ExecStart=(.*)$", unit_text, re.M)
+    m = _EXECSTART_RE.search(unit_text)
     return m.group(1).strip() if m else None
 
 
@@ -327,7 +331,7 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err
         mine = os.fsencode(DROPIN.name)
         early = "".join("\n" + t for n, t in files if os.fsencode(n) < mine)
         es = _effective_execstart(web_unit_text + early)
-        late = [n for n, t in files if os.fsencode(n) > mine and re.search(r"^ExecStart=", t, re.M)]
+        late = [n for n, t in files if os.fsencode(n) > mine and web_execstart(t) is not None]
     new = with_internal_port(es, internal) if es else None
     if read_err is not None:
         blockers.append(f"claudeops-web.service okunamadı: {read_err}")
@@ -583,7 +587,7 @@ _WEB_LONG_OPTS = ("--help", "--port", "--host", "--print-token", "--tunnel", "--
 def _effective_execstart(text: str) -> Optional[str]:
     """Birim + drop-in metinlerinde (sırayla birleştirilmiş) geçerli `ExecStart=`: sonuncu kazanır, boş atama sıfırlar."""
     cur = None
-    for m in re.finditer(r"^ExecStart=(.*)$", text, re.M):
+    for m in _EXECSTART_RE.finditer(text):
         cur = m.group(1).strip() or None
     return cur
 

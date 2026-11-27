@@ -648,6 +648,22 @@ class P11OnUsesEffectiveExecStart(Env):
             self.assertFalse(self.front.exists() or self.dropin.exists())
             (self.dropin.parent / name).unlink()
 
+    def test_spaced_and_indented_execstart_is_seen(self):
+        """systemd satır başındaki ve `=` çevresindeki boşluğu yok sayar; ön kapı da görsün."""
+        for line in ("ExecStart =", "  ExecStart=", "\tExecStart \t= "):
+            with self.subTest(line=line):
+                self.other("zz.conf", f"[Service]\n{line.rstrip()}\n{line}/z -m claudeops web\n")
+                rc, out = self.run_front("on", True)
+                self.assertEqual(rc, 1, out)
+                self.assertIn("zz.conf", out)
+                self.assertEqual(self.w.calls, [])
+                (self.dropin.parent / "zz.conf").unlink()
+        a = f._web_addr(LIVE + "[Service]\n ExecStart =\n\tExecStart = /x web --port 9003\n")
+        self.assertEqual(a[1], 9003)
+        self.front.write_text("[Service]\n  ExecStart = /x/copsd --listen 127.0.0.1:9000 --upstream y\n")
+        self.assertEqual(f._front_listen("yedek:1"), "127.0.0.1:9000")
+        self.assertIsNone(f.web_execstart("#ExecStart=a\n; ExecStart=b\nExecStartPre=c\n"))
+
     def test_later_dropin_without_execstart_is_fine(self):
         self.other("zz.conf", "[Service]\nEnvironment=A=1\n")
         rc, out = self.run_front("on")

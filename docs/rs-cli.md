@@ -63,7 +63,7 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | `_sd_quote_if_needed` (68) | `src/front/mod.rs` `sd_quote_if_needed` | `bin_and_dist_with_spaces_are_quoted` | karşılandı |
 | `_unit_text` (73) | `src/front/mod.rs` `unit_text` | `unit_template_has_no_secret_and_passes_state_dir_quoted`, `bin_and_dist_with_spaces_are_quoted` | karşılandı |
 | `web_execstart` (80) | `src/front/mod.rs` `web_execstart` | `execstart_patch` | karşılandı |
-| `regex ^ExecStart=(.*)$` (81) | `web_execstart` (regex yerine satır bölme + `strip_prefix`, `py_strip`) | `execstart_patch` (ilk satır, `\r`, satır başı) | karşılandı |
+| `_EXECSTART_RE` (81) | `execstart_value` (regex yerine satır bölme + boşluk/sekme kırpma + `strip_prefix`, `py_strip`) | `execstart_patch` (ilk satır, `\r`, girinti, `=` çevresi boşluk, yorum), `on_sees_spaced_and_indented_execstart` | karşılandı |
 | `with_internal_port` (85) | `src/front/mod.rs` `with_internal_port` | `execstart_patch` | karşılandı |
 | `dropin_text` (96) | `src/front/mod.rs` `dropin_text` | `dropin_resets_execstart`, `applied_unit_passes_the_secret_state_dir` | karşılandı |
 | `_rdbg` (100) | std `Debug` (`{:?}`) biçimi (hata metinlerinde) | `parity_bad_addresses_are_blockers_on_both_sides`, `parity_control_characters_in_bin_block` | karşılandı |
