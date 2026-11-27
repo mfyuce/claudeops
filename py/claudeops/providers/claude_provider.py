@@ -387,7 +387,7 @@ def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Op
     satır (`<synthetic>`, alt ajan) ne effort verir ne taramayı bitirir."""
     answering: List[str] = []
 
-    def extract(obj: Dict[str, Any]):
+    def _effort_of_answering_model(obj: Dict[str, Any]):
         model = _row_model(obj)
         if not model:
             return None
@@ -397,7 +397,7 @@ def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Op
             return _OTHER_MODEL
         return _row_effort(obj)
 
-    value = _last_assistant_value(jsonl_path, extract, since)
+    value = _last_assistant_value(jsonl_path, _effort_of_answering_model, since)
     return None if value is _OTHER_MODEL else value
 
 

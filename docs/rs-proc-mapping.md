@@ -304,7 +304,7 @@ Yok.
 | `providers/claude_provider.py::_row_effort` | işlev:368 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::_OTHER_MODEL` | sabit:374 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::last_assistant_effort` | işlev:377 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::last_assistant_effort.extract` | işlev:390 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_assistant_effort._effort_of_answering_model` | işlev:390 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:408 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::_real_request_epoch` | işlev:411 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
 | `providers/claude_provider.py::last_real_request_epoch` | işlev:434 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |

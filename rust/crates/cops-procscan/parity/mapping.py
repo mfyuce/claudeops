@@ -348,7 +348,7 @@ DEFS["providers/claude_provider.py"] = [
         "devam kimliği, devir ve canlı model/effort değiştirme", T4),
     oos("session_file_sid _session_record " + C + "resolve_resume_id", "oturum kimliği ve devam kimliği", RESUME),
     oos("_LAST_MODEL_CHUNK_BYTES _LAST_MODEL_MAX_BYTES _row_epoch _row_model _row_effort _last_assistant_value last_assistant_model "
-        "_OTHER_MODEL last_assistant_effort last_assistant_effort.extract PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
+        "_OTHER_MODEL last_assistant_effort last_assistant_effort._effort_of_answering_model PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
         "_live_transcript live_or_spawn_model live_or_spawn_effort " + C + "prompt_cache_ttl_seconds " + C + "last_request_epoch",
         "transkriptten canlı model/effort ve önbellek yaşı", LIVE),
     oos("_extract_text _is_real_user_text _row_content "
