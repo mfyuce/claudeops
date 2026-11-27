@@ -10,5 +10,7 @@ export default defineConfig({
       "/ws": { target: "ws://127.0.0.1:8765", ws: true },
     },
   },
+  // Tek kopya: iki `node_modules`tan React paketlenirse derleme geçer ama panel boş açılır (27 Kas).
+  resolve: { dedupe: ["react", "react-dom", "scheduler"] },
   build: { sourcemap: true, outDir: "dist" },
 })
