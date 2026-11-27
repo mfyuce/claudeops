@@ -214,6 +214,9 @@ impl Probe for RealProbe {
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError> {
         effects::apply(effect)
     }
+    fn spawn_env_token(&self) -> String {
+        effects::spawn_env_token()
+    }
 }
 
 /// `repr(e)`: `subprocess.run`ın fırlattığı istisna.

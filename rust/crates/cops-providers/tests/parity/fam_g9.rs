@@ -664,6 +664,36 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
         )
         .facts(json!({"hook": {"env": [["CLAUDEOPS_SESSION_USD_CAP", "12"]]}})),
     );
+    // S4: sır adlı kanca ortamı dosyaya; dizin güvenle yazılamıyorsa (bağlantı, dosya, yazılamaz) oturum açılmaz.
+    let sir = json!({"hook": {"env": [["PROVIDER_DIR", "/p d"], ["API_KEY", "s'ır"], ["MY_TOKEN", "t"]]}});
+    v.push(base("sir-gizli".into(), "claude", json!({"hidden": true})).facts(sir.clone()));
+    v.push(base("sir-pencere".into(), "codex", json!({})).facts(sir.clone()));
+    v.push(base("sir-kuru".into(), "claude", json!({"dry_run": true})).facts(sir.clone()));
+    v.push(
+        base("sir-dizin-genis".into(), "claude", json!({"hidden": true}))
+            .file(Fx::Dir("state/spawn-env".into(), 0o755))
+            .facts(sir.clone()),
+    );
+    v.push(
+        base("sir-dizin-bag".into(), "claude", json!({"hidden": true}))
+            .file(Fx::Dir("work/baska".into(), 0o700))
+            .file(Fx::Link("state/spawn-env".into(), "../work/baska".into()))
+            .facts(sir.clone()),
+    );
+    v.push(
+        base("sir-dizin-dosya".into(), "claude", json!({"hidden": true}))
+            .file(file("state/spawn-env", "", 0o600))
+            .facts(sir.clone()),
+    );
+    v.push(
+        base(
+            "sir-dizin-yazilamaz".into(),
+            "claude",
+            json!({"hidden": true}),
+        )
+        .file(Fx::Dir("state/spawn-env".into(), 0o500))
+        .facts(sir),
+    );
     // Eklenti MCP'si: eşleşmeyen, hata veren, araç listesi bozuk, kayıtsız sunucu, açık `mcp_server`.
     let p1 = w.clone();
     let exts = [

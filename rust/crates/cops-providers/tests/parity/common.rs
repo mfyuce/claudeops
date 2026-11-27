@@ -699,7 +699,14 @@ impl Probe for FsProbe<'_> {
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError> {
         effects::apply(effect)
     }
+    /// Python koşucusu `spawn._spawn_env_token`ı aynı sabite bağlar (dosya adı iki görüntüde aynı olsun).
+    fn spawn_env_token(&self) -> String {
+        SPAWN_ENV_TOKEN.into()
+    }
 }
+
+/// Parite vakalarındaki sır ortam dosyası adı parçası (`harness.py` `_SPAWN_ENV_TOKEN`).
+pub const SPAWN_ENV_TOKEN: &str = "0123456789abcdef";
 
 // ------------------------------------------------------------------------------------------------------ karşılaştırma
 

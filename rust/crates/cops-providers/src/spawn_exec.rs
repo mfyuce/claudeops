@@ -10,14 +10,14 @@
 use crate::cost::CostRefusal;
 use crate::hooks::SpawnHooks;
 use crate::live::Live;
-use crate::probe::{BuildOutput, Diag, Paths, SpawnError};
+use crate::probe::{BuildOutput, Diag, Effect, Paths, SpawnError};
 use crate::provider::{Cli, McpSpec, Providers};
 use crate::pyfmt::{splitlines, strip};
 use crate::real::oserr;
 use crate::resume::{ids_held_by_others, LiveSession};
 use crate::spawn::{
     child_env, detect_display, gnome_terminal_argv, mirror_child_env, mirror_window_command,
-    plan_spawn_with, window_command, SpawnRequest,
+    plan_spawn_with, window_command, SpawnRequest, SPAWN_ENV_REFUSAL,
 };
 use crate::startup_desktop::StartupEnv;
 use crate::tui::strip_ansi;
@@ -437,9 +437,24 @@ fn run(
         launcher.diag.log(d);
     }
     for effect in &out.effects {
-        p.probe.apply_now(effect).map_err(|e| SpawnFailure::Error {
-            class: oserr::class_name(&e.error).into(),
-            message: e.to_string(),
+        p.probe.apply_now(effect).map_err(|e| {
+            let class = oserr::class_name(&e.error);
+            if matches!(effect, Effect::WriteSpawnEnv { .. }) {
+                // S4 kapalı yön: sır komut satırına düşmez, oturum açılmaz; metinde yalnız sınıf adı.
+                launcher.log(
+                    "spawn_env_file_refused",
+                    vec![
+                        ("name", json!(req.name)),
+                        ("cli", json!(req.cli)),
+                        ("error", json!(class)),
+                    ],
+                );
+                return refused(format!("{SPAWN_ENV_REFUSAL}: {class}"));
+            }
+            SpawnFailure::Error {
+                class: class.into(),
+                message: e.to_string(),
+            }
         })?;
     }
     let plan = plan.map_err(|error| SpawnFailure::Refused {

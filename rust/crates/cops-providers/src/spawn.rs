@@ -1,7 +1,7 @@
 //! `spawn.py`nin saf kısmı: effort çözümü, ortam öneki, nice, kabuk satırı, alt süreç ortamı, pencere argv'si.
 //! Süreç başlatma, tmux, pencere ve bekçi akışı [`crate::spawn_exec`]te (tmux uygulayıcısı `cops-tmux`).
 
-use crate::probe::{BuildOutput, SpawnError};
+use crate::probe::{BuildOutput, Effect, SpawnError};
 use crate::provider::{BuildArgs, Cli, McpSpec, Providers};
 use crate::pyfmt::{join_quoted, parse_float, py_float, quote, strip, truthy};
 use crate::settings::{is_safe_env_name, Settings};
@@ -40,6 +40,20 @@ fn fold_char(c: char) -> char {
 /// Değnekçi beyni düşük öncelikli açılmaz.
 const BRAIN_NAME_PREFIX: &str = "degnekci";
 pub const SESSION_USD_CAP_KEY: &str = "CLAUDEOPS_SESSION_USD_CAP";
+/// S4 (sahip, 27 Kas): bu son eklerle biten açılış ortamı komut satırına gömülmez; `CLAUDEOPS_DIR/spawn-env/<rastgele>.env`
+/// (dizin 0700, dosya 0600) dosyasına yazılır ([`Effect::WriteSpawnEnv`]), kabuk onu alt kabukta yükleyip siler. Yalnız
+/// başka Unix hesaplarına karşı korur: çok kullanıcı kipinde oturumlar aynı Unix kullanıcısında koştuğundan panel
+/// kullanıcıları arasında koruma DEĞİLDİR (enterprise `docs/MULTI-USER.md` S1, TBD#177).
+pub const SECRET_ENV_SUFFIXES: [&str; 3] = ["_KEY", "_TOKEN", "_SECRET"];
+/// Sır ortam dosyalarının dizini (`CLAUDEOPS_DIR` altında).
+pub const SPAWN_ENV_DIRNAME: &str = "spawn-env";
+/// [`SPAWN_ENV_DIRNAME`] altında dosya güvenle yazılamadığında spawn reddinin nedeni (Python `SpawnRefused` `reason`).
+pub const SPAWN_ENV_REFUSAL: &str = "secret_env_file";
+
+/// Adı [`SECRET_ENV_SUFFIXES`]ten biriyle bitiyor mu.
+pub fn is_secret_env_name(name: &str) -> bool {
+    SECRET_ENV_SUFFIXES.iter().any(|s| name.ends_with(s))
+}
 
 /// Geçerli ad + tehlikeli listede değil.
 pub fn filter_env_overrides(overrides: Vec<(String, String)>) -> Vec<(String, String)> {
@@ -254,12 +268,34 @@ fn plan_inner(
     }
     // Ortam komut satırına gömülür: tmux çalışan sunucuda Popen ortamını aktarmaz.
     let overrides = filter_env_overrides(overrides);
+    // S4: sır adlı değerler komut satırına girmez; 0600 dosya alt kabukta yüklenip silinir (sır yoksa komut aynı).
     let env_prefix: String = overrides
         .iter()
+        .filter(|(k, _)| !is_secret_env_name(k))
         .map(|(k, v)| format!("{k}={} ", quote(v)))
         .collect();
+    let secrets: String = overrides
+        .iter()
+        .filter(|(k, _)| is_secret_env_name(k))
+        .map(|(k, v)| format!("export {k}={}\n", quote(v)))
+        .collect();
+    let mut launch = format!("{env_prefix}{invocation}");
+    if !secrets.is_empty() {
+        let dir = format!(
+            "{}/{SPAWN_ENV_DIRNAME}",
+            p.paths.claudeops_dir.trim_end_matches('/')
+        );
+        let file = format!("{}.env", p.probe.spawn_env_token());
+        let q = quote(&format!("{dir}/{file}"));
+        launch = format!("( . {q} && rm -f {q} && {launch} )");
+        output.effects.push(Effect::WriteSpawnEnv {
+            dir,
+            file,
+            content: secrets,
+        });
+    }
     let inner = format!(
-        "cd {} && {}{env_prefix}{invocation}",
+        "cd {} && {}{launch}",
         quote(&req.cwd),
         priority_prefix(p.settings, &req.name)
     );

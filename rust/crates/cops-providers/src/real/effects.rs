@@ -54,6 +54,9 @@ pub fn apply(effect: &Effect) -> Result<(), EffectError> {
         Effect::ChmodPrivate { path } => {
             fs::set_permissions(path, Permissions::from_mode(0o700)).map_err(at(path))
         }
+        Effect::WriteSpawnEnv { dir, file, content } => {
+            write_spawn_env(dir, file, content.as_bytes())
+        }
     };
     done.map_err(|(path, error)| EffectError {
         index: 0,
@@ -186,4 +189,130 @@ pub fn atomic_write_text(path: &str, text: &str, mode: Option<u32>) -> io::Resul
             Err(e)
         }
     }
+}
+
+/// S4: yüklenmeden kalan sır ortam dosyalarının ömrü (Python `spawn._SPAWN_ENV_STALE_SECONDS`).
+pub const SPAWN_ENV_STALE_SECONDS: f64 = 3600.0;
+
+/// `spawn._spawn_env_token`: `/dev/urandom`dan 8 bayt, onaltılık. Okunamazsa süreç kimliği + saat + sayaç (benzersizlik
+/// yine sağlanır; yazım `O_EXCL`).
+pub fn spawn_env_token() -> String {
+    let mut buf = [0u8; 8];
+    let ok = File::open("/dev/urandom")
+        .and_then(|mut f| io::Read::read_exact(&mut f, &mut buf))
+        .is_ok();
+    if !ok {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos());
+        let mix = (u64::from(std::process::id()) << 32)
+            ^ u64::from(nanos)
+            ^ TMP_SEQ.fetch_add(1, Ordering::Relaxed).rotate_left(17);
+        buf = mix.to_be_bytes();
+    }
+    buf.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn cstr(s: &str) -> io::Result<std::ffi::CString> {
+    std::ffi::CString::new(s).map_err(|_| io::Error::from_raw_os_error(libc::EINVAL))
+}
+
+fn cvt(rc: libc::c_int) -> io::Result<libc::c_int> {
+    if rc < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(rc)
+    }
+}
+
+/// `_prune_spawn_env`: dizindeki eski `.env`/`.tmp` artıkları (bağlantı izlenmez, hata yutulur).
+fn prune_spawn_env(dir: &File, path: &str, now: f64) {
+    use std::os::fd::AsRawFd;
+    let Ok(rd) = fs::read_dir(path) else { return };
+    for ent in rd.flatten() {
+        let name = ent.file_name().to_string_lossy().into_owned();
+        if !(name.ends_with(".env") || name.ends_with(".tmp")) {
+            continue;
+        }
+        let Ok(c) = cstr(&name) else { continue };
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        // SAFETY: geçerli dizin tanıtıcısı, NUL sonlu ad, çağıranın stat tamponu.
+        let rc = unsafe {
+            libc::fstatat(
+                dir.as_raw_fd(),
+                c.as_ptr(),
+                &mut st,
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        };
+        if rc != 0 {
+            continue;
+        }
+        let mtime = st.st_mtime as f64 + st.st_mtime_nsec as f64 / 1e9;
+        if now - mtime > SPAWN_ENV_STALE_SECONDS {
+            // SAFETY: aynı tanıtıcı ve ad.
+            unsafe { libc::unlinkat(dir.as_raw_fd(), c.as_ptr(), 0) };
+        }
+    }
+}
+
+/// [`Effect::WriteSpawnEnv`] (Python `spawn._write_spawn_env_file`).
+pub fn write_spawn_env(dir: &str, file: &str, content: &[u8]) -> Result<(), Fail> {
+    // SAFETY: yan etkisiz sistem çağrısı.
+    write_spawn_env_as(unsafe { libc::geteuid() }, dir, file, content)
+}
+
+/// [`write_spawn_env`]; dizin sahibi `euid` ile karşılaştırılır (test başka sahip benzetir).
+pub fn write_spawn_env_as(euid: u32, dir: &str, file: &str, content: &[u8]) -> Result<(), Fail> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::fs::MetadataExt;
+    let (parent, _) = split(dir);
+    if !parent.is_empty() {
+        makedirs(parent, 0o700)?;
+    }
+    match DirBuilder::new().mode(0o700).create(dir) {
+        Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err((dir.into(), e)),
+        _ => {}
+    }
+    let d = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(dir)
+        .map_err(at(dir))?;
+    let meta = d.metadata().map_err(at(dir))?;
+    if meta.uid() != euid {
+        return Err((dir.into(), io::Error::from_raw_os_error(libc::EPERM)));
+    }
+    if meta.mode() & 0o077 != 0 {
+        d.set_permissions(Permissions::from_mode(0o700))
+            .map_err(at(dir))?;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |t| t.as_secs_f64());
+    prune_spawn_env(&d, dir, now);
+    let fd = d.as_raw_fd();
+    let tmp = format!(".{file}.tmp");
+    let (ctmp, cfile) = (cstr(&tmp).map_err(at(dir))?, cstr(file).map_err(at(dir))?);
+    let fail = |e| (format!("{dir}/{tmp}"), e);
+    // SAFETY: geçerli dizin tanıtıcısı ve NUL sonlu ad; dönen tanıtıcının sahibi `File`.
+    let raw = cvt(unsafe {
+        libc::openat(
+            fd,
+            ctmp.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    })
+    .map_err(fail)?;
+    // SAFETY: `openat`ın az önce döndürdüğü, başka sahibi olmayan tanıtıcı.
+    let mut f = unsafe { File::from_raw_fd(raw) };
+    let written = f.write_all(content).and_then(|()| {
+        drop(f);
+        // SAFETY: aynı dizin tanıtıcısı; `linkat` var olan hedefi EZMEZ (EEXIST).
+        cvt(unsafe { libc::linkat(fd, ctmp.as_ptr(), fd, cfile.as_ptr(), 0) }).map(drop)
+    });
+    // SAFETY: aynı dizin tanıtıcısı ve ad; hata yutulur (Python `try: os.unlink ... except OSError`).
+    unsafe { libc::unlinkat(fd, ctmp.as_ptr(), 0) };
+    written.map_err(|e| (format!("{dir}/{file}"), e))
 }

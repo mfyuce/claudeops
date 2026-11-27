@@ -226,6 +226,10 @@ pub trait Probe {
     /// Başarısızlığı KOMUTU değiştiren yazımlar için yan etkiyi HEMEN uygula (Python'da bayrak yazım başarılıysa
     /// eklenir). Kuru çalıştırmada çağrılmaz; bekleyen yan etkiler bu yolla önceden uygulanıp listeden düşer. Gerçek uygulama: [`crate::real::effects::apply`].
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError>;
+    /// S4 sır ortam dosyasının adındaki rastgele parça (Python `spawn._spawn_env_token`, 16 onaltılık karakter). Eşzamanlı
+    /// açılışlar birbirinin dosyasını ezmesin diye her çağrıda farklı olmalı (yazım ayrıca `O_EXCL`). Gerçek:
+    /// [`crate::real::effects::spawn_env_token`].
+    fn spawn_env_token(&self) -> String;
 }
 
 /// Komuttan ÖNCE çağıranın uygulaması gereken dosya işlemleri (verilen sırayla).
@@ -256,6 +260,14 @@ pub enum Effect {
     ChmodPrivate {
         path: String,
     },
+    /// S4 sır ortam dosyası `dir/file` (Python `spawn._write_spawn_env_file`): dizin 0700 (bağlantı, dizin olmayan ya da
+    /// başkasına ait ise hata; grup/diğer izni daraltılır), eski artıklar silinir, dosya geçici adla `O_EXCL|O_NOFOLLOW`
+    /// 0600 yazılıp var olanı EZMEDEN bağlanır. İçerik SIR. Uygulanamazsa spawn REDDEDİLİR (komut satırına düşülmez).
+    WriteSpawnEnv {
+        dir: String,
+        file: String,
+        content: String,
+    },
 }
 
 impl fmt::Debug for Effect {
@@ -268,6 +280,9 @@ impl fmt::Debug for Effect {
             Effect::Remove { path } => write!(f, "Remove({path})"),
             Effect::MkdirPrivate { path } => write!(f, "MkdirPrivate({path})"),
             Effect::ChmodPrivate { path } => write!(f, "ChmodPrivate({path})"),
+            Effect::WriteSpawnEnv { dir, file, .. } => {
+                write!(f, "WriteSpawnEnv({dir}/{file}, <redacted>)")
+            }
         }
     }
 }

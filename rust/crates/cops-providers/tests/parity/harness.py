@@ -200,6 +200,8 @@ _ORIG_SPAWN_ENV, _ORIG_EXT_MCP = authz.spawn_env, extensions.session_mcp_spec   
 authz.spawn_env = _fake_spawn_env
 extensions.session_mcp_spec = _fake_ext_mcp
 _ORIG_IDS_HELD = spawn._ids_held_by_others
+_SPAWN_ENV_TOKEN = "0123456789abcdef"      # S4 sır ortam dosyası adı; Rust `FsProbe::spawn_env_token` aynı sabit
+spawn._spawn_env_token = lambda: _SPAWN_ENV_TOKEN
 spawn._ids_held_by_others = lambda name: frozenset()      # spawn ailesi; gerçeği `resume` ailesinde
 # Parite koşucusu X sunucusuna ve `wmctrl`e DOKUNMAZ: masaüstü yönlendirmesi varsayılan kapalı; `g9_*` işlemleri gerçeğini
 # yalnız sahte `count_fn`/`send_fn` ile çağırır.

@@ -181,6 +181,9 @@ impl Probe for Which {
     ) -> Result<(), cops_providers::real::effects::EffectError> {
         unimplemented!()
     }
+    fn spawn_env_token(&self) -> String {
+        unimplemented!()
+    }
     fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<bool, McpRegisterError> {
         Ok(false)
     }
