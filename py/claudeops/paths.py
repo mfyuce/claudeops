@@ -1,5 +1,6 @@
 """Sabit yollar — tek kaynak (bash claudeops'taki dağınık path'lerin yerine)."""
 import os
+import stat
 from pathlib import Path
 
 HOME = os.path.expanduser("~")
@@ -61,6 +62,22 @@ CLAUDE_MODELS_JSON = os.path.join(CLAUDEOPS_DIR, "claude_models.json")  # {"mode
 SESSIONS_DIR = os.path.join(CLAUDE_DIR, "sessions")      # <pid>.json (gecikmeli yazılır!)
 PROJECTS_DIR = os.path.join(CLAUDE_DIR, "projects")      # <encoded-cwd>/<sid>.jsonl
 CONFIG_JSON = os.path.join(HOME, ".claude.json")         # bozulursa resume-hang
+
+_SESSION_RECORD_MAX_BYTES = 1024 * 1024      # Rust okuyucusunun sınırı
+
+
+def _read_session_record(path: str) -> str:
+    """`sessions/<pid>.json` metni: yalnız sınırı aşmayan normal dosya (FIFO açılışta bloklamaz); aksi halde `OSError`
+    (bozuk UTF-8 `ValueError`)."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    with open(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"normal dosya değil: {path}")
+        raw = f.read(_SESSION_RECORD_MAX_BYTES + 1)
+    if len(raw) > _SESSION_RECORD_MAX_BYTES:
+        raise OSError(f"süreç kaydı çok büyük: {path}")
+    return raw.decode("utf-8")
+
 
 def parse_proc_stat(raw: str) -> list:
     """`/proc/<pid>/stat` metninin comm'dan SONRAKİ alanları (0=state, 1=ppid, 19=starttime). comm boşluk/parantez

@@ -550,6 +550,8 @@ DEFS["paths.py"] = [
     oos("ucli_key_file", "ucli anahtar dosyası yolu", SAG),
     oos("shared_write_allowed", "ortak anahtar/kullanım dosyalarının yazım kapısı (açılış, TBD#412 b)", SAG),
     oos("REPO_DIR CONFIG_JSON GUARD_LOCK", "açılış/koruma yolu sabitleri", T4),
+    oos("_SESSION_RECORD_MAX_BYTES _read_session_record", "süreç kaydını yalnız normal ve sınırlı dosyadan okuma "
+        "(Rust: `cops-providers` `claude_resume.rs::Live::session_file`)", SAG),
 ]
 
 DEFS["commands/web.py"] = [
@@ -959,6 +961,7 @@ FILES = {
                                       f"{SAG}; {T4}"),
     "rsprov_stuck_other_providers": ("codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan",
                                      f"{SAG}; {T4}"),
+    "rsprov_session_record_regular": ("süreç kaydı okuyucuları FIFO ve büyük dosyada bloklanmaz", SAG),
     "rsprov_s1_own_session": ("sid'siz oturumda model/effort yalnız sürecin kendi kaydından (devir, yeniden açma)",
                               f"{LIVE}; {T4}"),
     "rsprov_g10_keyfile": ("tek atımlık çağrıda açılamayan anahtar dosyası", f"{SAG}; {T10}"),
@@ -1471,6 +1474,7 @@ rsprov_g10_oneshot:6:18f99b20b8
 rsprov_g1_fixes:20:ad2924daca
 rsprov_g4_dismiss:2:71df770dc0
 rsprov_g3_fixes:5:cd4ad4129c
+rsprov_session_record_regular:3:55c6033cef
 rsprov_s1_own_session:12:ceb2a32df2
 rsprov_stuck_own_conversation:13:cfea68f5d8
 rsprov_stuck_other_providers:12:cff2b06012

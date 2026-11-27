@@ -169,6 +169,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 | Python öğesi (dosya:satır) | Rust karşılığı | sınayan | durum |
 |---|---|---|---|
 | `_session_record` (py/claudeops/providers/claude_provider.py:450) | `claude_resume.rs::Live::session_record` | `parity.rs::parity_transcript` `canli-kimlik`; `parity_resume` `devam-kayit-` | TAŞINDI |
+| `_read_session_record`, `_SESSION_RECORD_MAX_BYTES` (py/claudeops/paths.py) | `claude_resume.rs::Live::session_file` (`read_bytes`: yalnız normal dosya, 1 MiB) | `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo` | TAŞINDI |
 | `_live_transcript` (py/claudeops/providers/claude_provider.py:483) | `claude_transcript.rs::Live::live_transcript` | `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
 | `_effort_of_answering_model` (py/claudeops/providers/claude_provider.py:390) | `claude_transcript.rs::Live::last_assistant_effort` (kapama) | `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
 
@@ -3740,3 +3741,6 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `SessionRecordSignal.test_broken_record_and_missing_dir` (py/tests/test_bg_work.py:215) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-komsu` `kayit-dizin-yok` | TAŞINDI |
 | `SessionRecordSignal.test_fifo_record_does_not_block` (py/tests/test_bg_work.py:224) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
 | `SessionRecordSignal.test_non_finite_pid_and_oversized_record_are_skipped` (py/tests/test_bg_work.py:240) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-govde-` `kayit-komsu` | TAŞINDI |
+| `SessionRecordReaders.test_regular_record_is_still_read` (py/tests/test_rsprov_session_record_regular.py) | `parity_resume` `devam-kayit-` | TAŞINDI |
+| `SessionRecordReaders.test_oversized_record_is_ignored` (py/tests/test_rsprov_session_record_regular.py) | Rust sınırı `SESSION_FILE_MAX_BYTES` (`read_bytes`) | TAŞINDI |
+| `SessionRecordReaders.test_fifo_does_not_block` (py/tests/test_rsprov_session_record_regular.py) | `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo` | TAŞINDI |

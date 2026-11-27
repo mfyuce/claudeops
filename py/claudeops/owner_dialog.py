@@ -9,6 +9,8 @@ import os
 from datetime import datetime
 from typing import Dict, Iterable, Tuple
 
+from .paths import _read_session_record
+
 DIALOG_TOOLS = ("AskUserQuestion", "ExitPlanMode")
 
 
@@ -24,8 +26,7 @@ def session_waiting_for(sessions_dir: str, pid: object) -> str:
     ya da okunamıyorsa "". Transkriptten ve oturum kimliğinden bağımsız: soru diyaloğunda "input needed", başka
     diyaloglarda "dialog open" vb. (claude 2.1.332)."""
     try:
-        with open(os.path.join(sessions_dir, f"{int(pid)}.json"), encoding="utf-8") as f:
-            d = json.load(f)
+        d = json.loads(_read_session_record(os.path.join(sessions_dir, f"{int(pid)}.json")))
         if d.get("pid") != int(pid) or d.get("status") != "waiting":
             return ""
         return str(d.get("waitingFor") or "waiting")

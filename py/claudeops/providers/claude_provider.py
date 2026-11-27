@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, _Switch, cmd_arg as _arg, _path_part_ok
-from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
+from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, _read_session_record, proc_stat_fields
 from .. import preview
 from ..childgroup import _run_grouped
 from ..diaglog import diag_log
@@ -453,8 +453,7 @@ def _session_record(pid: Optional[int]) -> Optional[Tuple[str, Optional[str]]]:
         return None
     try:
         pid = int(pid)
-        with open(os.path.join(SESSIONS_DIR, f"{pid}.json"), encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(_read_session_record(os.path.join(SESSIONS_DIR, f"{pid}.json")))
         if not isinstance(data, dict) or int(data.get("pid") or 0) != pid:
             return None
         sid = data.get("sessionId")
@@ -467,7 +466,7 @@ def _session_record(pid: Optional[int]) -> Optional[Tuple[str, Optional[str]]]:
             return None
         cwd = data.get("cwd")
         return sid.strip(), cwd if isinstance(cwd, str) and cwd else None
-    except (OSError, ValueError, TypeError, IndexError, OverflowError):     # OverflowError: `pid: Infinity`
+    except (OSError, ValueError, TypeError, IndexError, OverflowError, RecursionError):     # OverflowError: `pid: Infinity`
         return None
 
 

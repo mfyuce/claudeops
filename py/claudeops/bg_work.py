@@ -14,6 +14,8 @@ import re
 import time
 from typing import Iterable, Optional, Set
 
+from .paths import _read_session_record
+
 # Alt durum satırı: sayı + (background task|shell|agent) ve yönetim/kesme ipucu AYNI satırda (düzyazıdaki "2 agents" sayılmasın).
 _COUNT_RE = re.compile(r"(?<![\w.])([1-9]\d*) (?:background tasks?|shells?|agents?|monitors?)\b", re.I)
 _HINT_RE = re.compile(r"to manage|esc to interrupt|to view|ctrl\+b", re.I)
@@ -24,7 +26,6 @@ _RECORD_TYPES = (None, "assistant", "user")      # araç çağrısı yalnız ile
 SCREEN_TAIL_LINES = 14
 TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024
 PENDING_MAX_AGE_SECONDS = 6 * 3600.0      # bildirimi hiç gelmemiş (öldürülmüş oturum vb.) işi sonsuza dek meşgul sayma
-_SESSION_RECORD_MAX_BYTES = 1024 * 1024
 
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
@@ -191,11 +192,7 @@ def session_record_active(sessions_dir: str, sid: Optional[str]) -> bool:
             continue
         path = os.path.join(sessions_dir, n)
         try:
-            # yalnız normal dosya: FIFO açılışta bloklar
-            if not os.path.isfile(path) or os.path.getsize(path) > _SESSION_RECORD_MAX_BYTES:
-                continue
-            with open(path, encoding="utf-8") as f:
-                d = json.load(f)
+            d = json.loads(_read_session_record(path))
             if d.get("sessionId") != sid or d.get("status") not in ("busy", "shell"):
                 continue
             with open(f"/proc/{int(d['pid'])}/stat", encoding="utf-8", errors="replace") as f:
