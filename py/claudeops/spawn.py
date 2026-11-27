@@ -408,8 +408,8 @@ def _window_titled(name: str, display: str) -> bool:
         return False
     try:
         r = subprocess.run(["wmctrl", "-l"], env=dict(os.environ, DISPLAY=display), capture_output=True,
-                           text=True, timeout=3)
-    except (OSError, subprocess.SubprocessError):
+                           text=True, encoding="utf-8", errors="replace", timeout=3)
+    except (OSError, ValueError, subprocess.SubprocessError):
         return False
     if r.returncode != 0:
         return False

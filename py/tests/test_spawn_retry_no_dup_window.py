@@ -1,8 +1,10 @@
 """27 Kas (done20261127): yük altında ilk pencere geç kalınca tekrar deneme ikinci pencere açmasın.
 Gerçek pencere açmaz, gerçek wmctrl/tmux çağırmaz."""
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -29,6 +31,28 @@ class WindowTitledTest(unittest.TestCase):
         self.assertFalse(spawn._window_titled("x", ""))
         with mock.patch.object(spawn.subprocess, "run", side_effect=FileNotFoundError("wmctrl")):
             self.assertFalse(spawn._window_titled("x", ":1"))
+
+
+class UndecodableWindowListTest(unittest.TestCase):
+    """`wmctrl -l` çıktısında UTF-8 olmayan BAŞKA bir pencere başlığı bekçiyi istisnayla bitirmemeli."""
+
+    def _fake_wmctrl(self, body):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        path = os.path.join(d, "wmctrl")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\n" + body + "\n")
+        os.chmod(path, 0o755)
+        return mock.patch.dict(os.environ, {"PATH": d + os.pathsep + "/usr/bin" + os.pathsep + "/bin"})
+
+    def test_bad_bytes_in_another_title_still_finds_the_window(self):
+        with self._fake_wmctrl("printf '0x01  0 host caf\\351\\n0x02  1 host s1\\n'"):
+            self.assertTrue(spawn._window_titled("s1", ":1"))
+            self.assertFalse(spawn._window_titled("s2", ":1"))
+
+    def test_value_error_is_unreadable(self):
+        with mock.patch.object(spawn.subprocess, "run", side_effect=ValueError("embedded null byte")):
+            self.assertFalse(spawn._window_titled("s1", ":1\0"))
 
 
 class WatchdogTest(unittest.TestCase):
