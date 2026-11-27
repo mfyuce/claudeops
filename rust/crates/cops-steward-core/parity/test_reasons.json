@@ -260,6 +260,7 @@
  "test_handover_session_wait.BatchHandover": "CLI toplu devri diyaloglu oturumu atlar; Rust'ta yok, iz T10",
  "test_handover_session_wait.EngineDelivery": "direktif/cevap/ders/iş/dürtme/beyin turu açık diyaloğa yazmaz; motor yürütücüsü, Rust'ta yok, iz T10",
  "test_handover_session_wait.TermInput": "`/api/term/input` motor metnini diyaloğa yazmaz; web ucu, iz T10",
+ "test_steward_remote_destructive.TestRemoteRespawn.test_restart_leaves_open_remote_question_alone": "`http_restart` uzak `question_open` olgusunda durdurmaz; değnekçi HTTP ucu, Rust'ta yok, iz T10",
  "test_steward_open_dialog.Send": "`web._handover` reddi, `_undo_refused_handover`, uzak olgular; web ucu, iz T10",
  "test_todo_triage.Sha": "`web_steward._todo_sha_of` yerel TODO.md içerik özeti, uzak/bilinmeyen boş; dosya okuma, iz T10",
  "test_ucli_brain_mcp.BuildWithMcpTests": "ucli argv'sinde `--with-mcp`/maliyet bayrağı, rs/prov `parity_ucli` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",

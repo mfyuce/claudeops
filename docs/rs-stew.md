@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1973 satır)
+### Python testleri (1974 satır)
 
-Test satırı özeti: 1973 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1974 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2521,6 +2521,7 @@ Test satırı özeti: 1973 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_remote_destructive.TestRemoteRespawn.test_old_host_respawn_is_refused_without_any_post` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30) |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | closing::context_threshold_vectors, explain::explain_idle_all_vectors, explain::explain_idle_vectors, explain::p_why (+88); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_state, steward.save_state, web_steward.tick_once |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_stops_waits_then_directs` | closing::directive_keeps_phase_vectors, closing::is_wrap_up_directive_vectors, identity::brain_name_for_vectors, identity::build_ownership_index_vectors (+36); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_post |
+| `test_steward_remote_destructive.TestRemoteRespawn.test_restart_leaves_open_remote_question_alone` | gereksiz (bu crate'te sınanacak saf çağrı yok): `http_restart` uzak `question_open` olgusunda durdurmaz; değnekçi HTTP ucu, Rust'ta yok, iz T10 |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_without_confirmed_stop_sends_nothing_more` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+30); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_post |
 | `test_steward_remote_destructive.TestRemoteRespawn.test_restart_host_mismatch_is_denied` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_post |
 | `test_steward_remote_destructive.TestLocalUnchanged.test_local_stop_and_respawn_use_the_local_callbacks` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+31); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward.http_post |

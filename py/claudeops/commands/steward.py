@@ -1171,7 +1171,8 @@ def cmd_api(args) -> int:
     elif args.action == "restart":
         res = _api(port, "POST", "/api/steward/restart", {"name": args.name, "text": args.text or "",
                                                           "model": args.model or "", "effort": args.effort or "",
-                                                          "reason": args.reason or "cli"}, sid)
+                                                          "reason": args.reason or "cli",
+                                                          **({"force": True} if getattr(args, "force", False) else {})}, sid)
     elif args.action in ("skip", "handover"):
         res = _api(port, "POST", f"/api/steward/{args.action}", {"name": args.name, "reason": args.reason or "cli"}, sid)
     else:
@@ -1408,6 +1409,8 @@ def register(sub):
             px.add_argument("--model")
             px.add_argument("--effort")
             px.add_argument("--reason")
+        if name == "restart":
+            px.add_argument("--force", action="store_true", help="açık soru/izin diyaloğu olsa da durdur (soru kaybolur)")
         if name == "directive":
             px.add_argument("--did", help="istemci direktif kimliği (12 hex): zaman aşımından sonra AYNI id ile yeniden göndermek yinelenme yapmaz")
             px.add_argument("--keep-phase", action="store_true", help="paused/done projenin fazını AÇMA (toparla/commit+push/READY FOR HANDOVER direktifi; bu tür metin zaten otomatik tanınır)")
