@@ -1,4 +1,4 @@
-//! Yönlendirme kümeleri ve zaman aşımları (Python `web_hosts.py` ile AYNI olmalı; eşitlik testi henüz YOK, docs/rs-hosts.md).
+//! Yönlendirme kümeleri ve zaman aşımları (Python `web_hosts.py` ile AYNI olmalı; `tests/parity.rs` denetler).
 
 use std::time::Duration;
 

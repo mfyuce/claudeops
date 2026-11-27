@@ -1,5 +1,5 @@
 //! `host_bridge.proto` istemcisi (Python `web_grpc` istemci tarafı). Mesajlar elle tanımlı (derlemede protoc yok); alan
-//! numaralarını `.proto` ile karşılaştıran test henüz YOK (docs/rs-hosts.md). Bağlantı ortak kurucudan geçer (her bağlanışta peer
+//! numaralarını `tests/parity.rs` `.proto` ile karşılaştırır. Bağlantı ortak kurucudan geçer (her bağlanışta peer
 //! denetimi).
 
 use std::collections::HashMap;
