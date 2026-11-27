@@ -4,11 +4,13 @@ tarih = steps.metadata içindeki ilk makul unix-saniye alanı, bulunamazsa 'bili
 import json, os, re, shutil, sqlite3, tempfile, datetime
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from .sqlite_uri import ro_sqlite_uri
+
 UNKNOWN = "bilinmiyor"
 
 
 def _ro(path: str) -> sqlite3.Connection:
-    return sqlite3.connect("file:" + path + "?mode=ro", uri=True)
+    return sqlite3.connect(ro_sqlite_uri(path), uri=True)
 
 
 def _varint(b: bytes, i: int) -> Tuple[int, int]:
