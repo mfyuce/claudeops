@@ -40,7 +40,7 @@ class Unit(Base):
         self.assertEqual(uck.load_registry()[0]["version"], 1)
 
     def test_validation_failure_blocks_write(self):
-        with mock.patch.object(uck, "ucli_validate", return_value=(False, "bad env")), mock.patch.object(uck, "binary_supports_checks", return_value=True):
+        with mock.patch.object(uck, "ucli_validate", return_value=(False, "bad env")), mock.patch.object(uck, "probe_checks", return_value=(True, "")):
             ok, why = uck.save_registry({"check": [uck.TEMPLATES["git log"]]}, binary="/x/ucli")
         self.assertEqual((ok, why), (False, "bad env"))
         self.assertFalse(os.path.exists(uck.registry_path()))
