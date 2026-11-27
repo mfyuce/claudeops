@@ -8,8 +8,9 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from . import paths
 from . import review as rv
 from .settings import ucli_cost_config
 
@@ -39,7 +40,34 @@ def refusal(exc: BaseException) -> Dict[str, Any]:
     return out
 
 
-def log_path(session_name: str, base: str = USAGE_DIR) -> str:
+def write_dir(base: Optional[str] = None) -> str:
+    """Günlüğün YAZILACAĞI dizin: ortak dizin salt okunursa (TBD#412 b, ikinci örnek) `<CLAUDEOPS_DIR>` altındaki eşi."""
+    base = USAGE_DIR if base is None else base
+    if paths.shared_write_allowed(base):
+        return base
+    return os.path.join(paths.CLAUDEOPS_DIR, os.path.relpath(base, os.path.dirname(USAGE_DIR)))
+
+
+def read_dirs(base: str) -> List[str]:
+    """Okunacak dizinler: ortak dizin, yazma başka yere gidiyorsa o da (ikinci örnekte tavan ikisinin toplamını görür)."""
+    own = write_dir(base)
+    return [base] if own == base else [base, own]
+
+
+def _logs(base: str):
+    """`(oturum adı, yol)`: `read_dirs(base)` altındaki tüm `.jsonl` günlükleri."""
+    for d in read_dirs(base):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if n.endswith(".jsonl"):
+                yield n[:-len(".jsonl")], os.path.join(d, n)
+
+
+def log_path(session_name: str, base: Optional[str] = None) -> str:
+    base = write_dir() if base is None else base
     safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in str(session_name))[:100] or "session"
     return os.path.join(base, f"{safe}.jsonl")
 
@@ -51,7 +79,7 @@ def other_log_path(session_name: str) -> str:
     """Claude DIŞI hizmetlerin (Evren glm/gemma/qwen, öteki BYOK) oturum günlüğü. `USAGE_DIR` DIŞINDA tutulur: dolar tavanı
     (`per_session_usd`/`today_usd`) yalnız Claude günlüklerini okur, bilinmeyen modeli opus fiyatıyla saymasın (18 Kas Evren dersi:
     etkileşimli REPL oturumları günlük yazmıyordu, kendi sayımımızdan düşüyordu)."""
-    return log_path(session_name, OTHER_DIR)
+    return log_path(session_name, write_dir(OTHER_DIR))
 
 
 CACHE_1H_WRITE_MULT = 1.6   # 1 saatlik önbellek yazması 5 dk'lıktan pahalı (log'daki maliyet alt sınır); TEK yer
@@ -73,18 +101,13 @@ def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mu
     t = time.time() if now is None else now
     since = _day_start_ms(t)
     out: Dict[str, float] = {}
-    try:
-        names = os.listdir(base)
-    except OSError:
-        return out
-    for n in names:
-        p = os.path.join(base, n)
+    for name, p in _logs(base):
         try:
-            if not n.endswith(".jsonl") or os.path.getmtime(p) * 1000.0 < since:
+            if os.path.getmtime(p) * 1000.0 < since:
                 continue
         except OSError:
             continue
-        out[n[:-len(".jsonl")]] = rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
+        out[name] = out.get(name, 0.0) + rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
     return out
 
 
@@ -101,20 +124,15 @@ def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base:
         return {}
     since = t * 1000.0 - win * 60_000.0
     out: Dict[str, float] = {}
-    try:
-        names = os.listdir(base)
-    except OSError:
-        return out
-    for n in names:
-        p = os.path.join(base, n)
+    for name, p in _logs(base):
         try:
-            if not n.endswith(".jsonl") or os.path.getmtime(p) * 1000.0 < since:
+            if os.path.getmtime(p) * 1000.0 < since:
                 continue
         except OSError:
             continue
         usd = rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
         if usd > 0:
-            out[n[:-len(".jsonl")]] = usd * 60.0 / win
+            out[name] = out.get(name, 0.0) + usd * 60.0 / win
     return out
 
 
@@ -126,15 +144,8 @@ def rate_usd_per_hour(now: Optional[float] = None, window_min: float = 60.0, bas
 
 def total_usd(base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT, since_ms: float = 0.0) -> float:
     """BİRİKMİŞ toplam $: tüm oturum günlükleri; `since_ms` > 0 ise yalnız o andan sonrası (kredi dönemi). Dizin yoksa 0."""
-    try:
-        names = os.listdir(base)
-    except OSError:
-        return 0.0
     out = 0.0
-    for n in names:
-        if not n.endswith(".jsonl"):
-            continue
-        p = os.path.join(base, n)
+    for _, p in _logs(base):
         try:
             if since_ms > 0 and os.path.getmtime(p) * 1000.0 < since_ms:
                 continue        # dönem başlamadan önce son yazılmış günlük: o döneme harcama yazamaz

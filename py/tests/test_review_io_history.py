@@ -224,6 +224,17 @@ class TestRunWritesIo(Base):
         lg.feed_err("sadece sohbet\n")
         self.assertEqual(lg.streamed_report(), "")
 
+    def test_status_path_flag_per_run_only_when_binary_knows_it(self):
+        # TBD#357: anlık durum dosyası koşu klasörüne; eski ikili bayrağı tanımıyorsa gitmez
+        res = self.ev()
+        a = FakeProc.instances[0].argv
+        want = os.path.realpath(res["file"][:-3] + ".status.json")
+        self.assertEqual(a[a.index("--status-path") + 1], want)     # ucli bağlı (symlink) yolu reddeder: gerçek yol
+        self.assertNotIn("--status-file", a)                        # eski bayrak --repl/--session ister: tek seferlik koşu düşer
+        FakeProc.instances = []
+        self.ev(supports_flag=lambda b, f: f != "--status-path")
+        self.assertNotIn("--status-path", FakeProc.instances[0].argv)
+
     def test_report_and_draft_mask_password_learned_from_stream(self):
         # parola akışta DSN içinde görüldü (öğrenildi); rapor/taslakta yalnız çıplak geçer: ikisi de maskelenmeli
         pw = "zq8Pw0rdXyz"
