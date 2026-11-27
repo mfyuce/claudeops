@@ -157,8 +157,8 @@ fn same_report_never_dup_other_report_dup_and_undup() {
     assert!(data[dups[0]].get("dup_of").is_none());
 }
 
-/// 2.7 durum zinciri: karar yalnız `state`/`decided_by`/`decided_at`i değiştirir; doğrulama gerekçesi ve diğer alanlar
-/// kalır. Önceki durum (verified/unclear/refuted) AYRI alanda tutulmaz: Python ile aynı, "Python hatası?" 6.
+/// 2.7 durum zinciri: karar `state`/`decided_by`/`decided_at`i değiştirir, doğrulama gerekçesi ve diğer alanlar kalır.
+/// Önceki durum (verified/unclear/refuted) `verdict_state` alanında saklanır (Python ile aynı, TBD#375).
 #[test]
 fn decision_keeps_verdict_fields() {
     let d = tempfile::tempdir().unwrap();
@@ -435,4 +435,23 @@ fn broken_inputs_fail_loud_or_backup() {
     ))));
     assert!(targets::counts_as_attempt(Some(&Json::Str(String::new()))));
     assert!(targets::counts_as_attempt(None));
+}
+
+/// U+1D7CE..U+1D7FF bitişik beş `Nd` bloğudur: her blokta rakam 0..=9 (Python `int()` ile aynı).
+#[test]
+fn adjacent_decimal_blocks_keep_their_values() {
+    for block in 0..5u32 {
+        for d in 0..10u32 {
+            let c = char::from_u32(0x1D7CE + block * 10 + d).unwrap();
+            assert_eq!(
+                targets::parse_slots(&format!("agy={c}"))
+                    .iter()
+                    .find(|(m, _)| *m == "agy")
+                    .map(|(_, n)| *n),
+                Some(u64::from(d)),
+                "U+{:04X}",
+                c as u32
+            );
+        }
+    }
 }

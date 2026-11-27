@@ -105,13 +105,13 @@ pub(crate) fn digit_value(c: char) -> u32 {
     if let Some(d) = c.to_digit(10) {
         return d;
     }
-    // Nd blokları 10'ar ardışıktır: bloğun başından uzaklık.
+    // Nd blokları 10'ar ardışıktır ama bitişik olabilir (U+1D7CE..U+1D7FF: beş blok): dizinin başından uzaklık mod 10.
     let u = c as u32;
     let mut start = u;
-    while start > 0 && u - start < 9 && char::from_u32(start - 1).is_some_and(is_decimal_digit) {
+    while start > 0 && char::from_u32(start - 1).is_some_and(is_decimal_digit) {
         start -= 1;
     }
-    u - start
+    (u - start) % 10
 }
 
 fn is_decimal_digit(c: char) -> bool {
