@@ -241,28 +241,30 @@ _RESERVED: Dict[str, Tuple[float, float]] = {}      # oturum -> (usd, bitiş zam
 
 def _ledger_problem(now: float, base: str, write_mult: float) -> str:
     """Bugünün harcaması güvenilir biçimde sayılamıyorsa nedeni (dosya adıyla), aksi "". Okunamayan dizin/dosya ve geçersiz
-    sayaç 0 harcama gibi görünür; açık tavan buna güvenip geçirmesin. Dizin ya da dosyanın OLMAMASI sorun değildir."""
+    sayaç 0 harcama gibi görünür; açık tavan buna güvenip geçirmesin. Dizin ya da dosyanın OLMAMASI sorun değildir.
+    Toplamın okuduğu BÜTÜN dizinler denetlenir (`read_dirs`: ikinci örnekte kendi dizini de)."""
     since = _day_start_ms(now)
-    try:
-        names = os.listdir(base)
-    except FileNotFoundError:
-        return ""
-    except OSError:
-        return "günlük dizini okunamadı"
-    for n in names:
-        p = os.path.join(base, n)
-        if not n.endswith(".jsonl"):
-            continue
+    for d in read_dirs(base):
         try:
-            if os.path.getmtime(p) * 1000.0 < since:
-                continue
+            names = os.listdir(d)
         except FileNotFoundError:
             continue
         except OSError:
-            return f"{n}: okunamadı"
-        why = rv._scan_usage(p, "", since, write_mult)[1]
-        if why:
-            return f"{n}: {why}"
+            return "günlük dizini okunamadı"
+        for n in names:
+            p = os.path.join(d, n)
+            if not n.endswith(".jsonl"):
+                continue
+            try:
+                if os.path.getmtime(p) * 1000.0 < since:
+                    continue
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return f"{n}: okunamadı"
+            why = rv._scan_usage(p, "", since, write_mult)[1]
+            if why:
+                return f"{n}: {why}"
     return ""
 
 

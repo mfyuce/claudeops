@@ -106,6 +106,19 @@ class SharedStateTest(unittest.TestCase):
         self.assertEqual([r["session"] for r in rows], ["s", "s"])
         self.assertEqual(os.listdir(self.usage), ["s.jsonl"])
 
+    def test_unreadable_own_ledger_is_a_problem_in_a_second_instance(self):
+        base = ucli_cost.USAGE_DIR
+        _put(os.path.join(self.usage, "s.jsonl"), "{}\n")
+        now = os.path.getmtime(os.path.join(self.usage, "s.jsonl"))
+        self.assertEqual(ucli_cost._ledger_problem(now, base, 1.0), "")      # kendi dizini henüz yok: sorun değil
+        own = ucli_cost.log_path("kendi")
+        _put(own, '{"t": %d, "usage": {"input_tokens": -1}}\n' % int(now * 1000))
+        self.assertEqual(ucli_cost._ledger_problem(now, base, 1.0), "kendi.jsonl: geçersiz sayaç")
+        os.remove(own)
+        os.rmdir(os.path.dirname(own))
+        _put(os.path.dirname(own), "")                                      # dizin yerine dosya: listelenemez
+        self.assertEqual(ucli_cost._ledger_problem(now, base, 1.0), "günlük dizini okunamadı")
+
     def test_default_instance_uses_shared_usage(self):
         with mock.patch.object(paths, "CLAUDEOPS_DIR", self.shared):
             self.assertEqual(ucli_cost.log_path("s"), os.path.join(self.usage, "s.jsonl"))
