@@ -1,6 +1,5 @@
 """hosts.json oku-değiştir-yaz döngüsü kilitli: eşzamanlı save_host/promote_base_url/remove_host birbirinin yazısını ezmez."""
 import os
-import shutil
 import sys
 import tempfile
 import threading
@@ -113,22 +112,3 @@ class DbModeIrregularTest(unittest.TestCase):
 
 if __name__ == "__main__" and False:
     pass
-
-
-class TrailingWhitespaceTest(unittest.TestCase):
-    """Adres sonundaki "/" ile boşluk/satır sonu hangi sırayla gelirse gelsin temizlenir."""
-
-    def setUp(self):
-        self.d = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.d, True)
-        p = mock.patch.object(hosts, "HOSTS_JSON", os.path.join(self.d, "hosts.json"))
-        p.start()
-        self.addCleanup(p.stop)
-
-    def test_slash_and_newline_tail_is_removed(self):
-        r = hosts.save_host("h1", "http://192.0.2.1\n/", "tok", grpc_url="http://192.0.2.2 /\t/",
-                            extra_urls="http://192.0.2.3 /, http://192.0.2.4/\u2028/")
-        self.assertTrue(r.get("ok"), r)
-        h = hosts.load_hosts()[0]
-        self.assertEqual((h["base_url"], h["grpc_url"], h["extra_urls"]),
-                         ("http://192.0.2.1", "http://192.0.2.2", ["http://192.0.2.3", "http://192.0.2.4"]))

@@ -97,7 +97,6 @@ DEFS: dict = {}
 
 DEFS["hosts.py"] = [
     oos("HOSTS_JSON", "dosya yolu ve okuma/yazma çağıranın (`HostSource`)", W0A),
-    ok("_clean_url", "record.rs::clean_url", f"{P_SAVE}"),
     ok("LOCAL_HOST_NAME", "consts.rs::LOCAL_HOST_NAME", f"{P_CONST} U:record.rs::validation_order"),
     ok("_NAME_RE", "record.rs::valid_name", f"U:record.rs::validation_order {P_SAVE}"),
     ok("ERR _err", "record.rs::RecordError::message", f"{P_CONST} {P_SAVE}", "bilinmeyen dil = tr (Python gibi)"),
@@ -483,9 +482,6 @@ CASES["test_hosts.py"] = [
          f"U:guard.rs::https_never_downgrades_to_public_http {P_ADDR}"),
     t_ok(cls("ReachLoopbackTest", "test_helper test_setting_overrides_ports"), f"U:guard.rs::reach_ports_setting {P_ADDR}"),
     t_oos("DbModeIrregularTest.test_irregular_detected_from_db_not_stale_file", "DB kipi okuma", W0A),
-]
-CASES["test_hosts.py"] += [
-    t_ok("TrailingWhitespaceTest.test_slash_and_newline_tail_is_removed", P_SAVE),
 ]
 CASES["test_hosts_corrupt.py"] = [
     t_ok("CorruptHostsTest.test_save_refused_on_corrupt_and_backup_kept",

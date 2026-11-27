@@ -11,13 +11,13 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
-| tanım | 362 | 246 | 116 | 0 |
-| test durumu (65 dosya) | 927 | 166 | 761 | 0 |
+| tanım | 361 | 245 | 116 | 0 |
+| test durumu (65 dosya) | 926 | 165 | 761 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
 | `commands/web_hosts.py` | TAM | 155 | 155 | 0 | 0 |
-| `hosts.py` | TAM | 31 | 23 | 8 | 0 |
+| `hosts.py` | TAM | 30 | 22 | 8 | 0 |
 | `commands/web_grpc.py` | TAM | 42 | 21 | 21 | 0 |
 | `commands/web_steward.py` | seçili (`(?i)remote\|host\|caps\|facts\|backoff\|backing_off\|transport\|_HEALTH\|_RECOVERED_DOWN`) | 125 | 38 | 87 | 0 |
 | `authz.py` | seçili (giden imza) | 9 | 9 | 0 | 0 |
@@ -217,12 +217,11 @@ Yok.
 | `hosts.py::_write_txn` | işlev:291 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
 | `hosts.py::_txn` | işlev:298 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
 | `hosts.py::_txn.wrapper` | işlev:300 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
-| `hosts.py::_clean_url` | işlev:306 | karşılandı | `record.rs::clean_url` | `tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
-| `hosts.py::save_host` | işlev:315 | karşılandı | `record.rs::Draft::new`<br>`record.rs::Draft::apply` | `record.rs::validation_order`<br>`record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark |
-| `hosts.py::save_host::re1` | regex:339 | karşılandı | `record.rs::Draft::new` | `tests/parity.rs::save_host_validation_and_upsert_match_python` | `[,\n]+` bölme |
-| `hosts.py::promote_base_url` | işlev:383 | karşılandı | `record.rs::promote_base_url` | `record.rs::promote_and_remove`<br>`tests/fake_poller.rs::extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure` | yok |
-| `hosts.py::remove_host` | işlev:416 | karşılandı | `record.rs::remove` | `record.rs::promote_and_remove` | yok |
-| `hosts.py::list_hosts_public` | işlev:427 | karşılandı | `record.rs::HostRecord::public` | `record.rs::unknown_fields_survive_and_token_never_public`<br>`tests/fake_poller.rs::public_rows_never_carry_the_token` | yok |
+| `hosts.py::save_host` | işlev:306 | karşılandı | `record.rs::Draft::new`<br>`record.rs::Draft::apply` | `record.rs::validation_order`<br>`record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark |
+| `hosts.py::save_host::re1` | regex:330 | karşılandı | `record.rs::Draft::new` | `tests/parity.rs::save_host_validation_and_upsert_match_python` | `[,\n]+` bölme |
+| `hosts.py::promote_base_url` | işlev:374 | karşılandı | `record.rs::promote_base_url` | `record.rs::promote_and_remove`<br>`tests/fake_poller.rs::extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure` | yok |
+| `hosts.py::remove_host` | işlev:407 | karşılandı | `record.rs::remove` | `record.rs::promote_and_remove` | yok |
+| `hosts.py::list_hosts_public` | işlev:418 | karşılandı | `record.rs::HostRecord::public` | `record.rs::unknown_fields_survive_and_token_never_public`<br>`tests/fake_poller.rs::public_rows_never_carry_the_token` | yok |
 
 ### `py/claudeops/commands/web_grpc.py`
 
@@ -557,15 +556,14 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_hosts.py::ConcurrentWriteTest.test_parallel_saves_all_survive` | 21 | kapsam dışı | yok | hosts.json kilitli yazım. İz: W0-a durum (rs/state) |
-| `test_hosts.py::ConcurrentWriteTest.test_flock_failure_writes_nothing` | 38 | kapsam dışı | yok | hosts.json kilitli yazım. İz: W0-a durum (rs/state) |
-| `test_hosts.py::ReachLoopbackTest.test_reach_port_loopback_ok_in_extra_urls` | 61 | karşılandı | `record.rs::validation_order`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
-| `test_hosts.py::ReachLoopbackTest.test_everything_else_still_blocked` | 66 | karşılandı | `record.rs::validation_order`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
-| `test_hosts.py::ReachLoopbackTest.test_https_base_may_fall_back_to_reach_loopback` | 75 | karşılandı | `guard.rs::https_never_downgrades_to_public_http`<br>`tests/parity.rs::address_filters_match_python` | yok |
-| `test_hosts.py::ReachLoopbackTest.test_helper` | 81 | karşılandı | `guard.rs::reach_ports_setting`<br>`tests/parity.rs::address_filters_match_python` | yok |
-| `test_hosts.py::ReachLoopbackTest.test_setting_overrides_ports` | 87 | karşılandı | `guard.rs::reach_ports_setting`<br>`tests/parity.rs::address_filters_match_python` | yok |
-| `test_hosts.py::DbModeIrregularTest.test_irregular_detected_from_db_not_stale_file` | 99 | kapsam dışı | yok | DB kipi okuma. İz: W0-a durum (rs/state) |
-| `test_hosts.py::TrailingWhitespaceTest.test_slash_and_newline_tail_is_removed` | 128 | karşılandı | `tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
+| `test_hosts.py::ConcurrentWriteTest.test_parallel_saves_all_survive` | 20 | kapsam dışı | yok | hosts.json kilitli yazım. İz: W0-a durum (rs/state) |
+| `test_hosts.py::ConcurrentWriteTest.test_flock_failure_writes_nothing` | 37 | kapsam dışı | yok | hosts.json kilitli yazım. İz: W0-a durum (rs/state) |
+| `test_hosts.py::ReachLoopbackTest.test_reach_port_loopback_ok_in_extra_urls` | 60 | karşılandı | `record.rs::validation_order`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
+| `test_hosts.py::ReachLoopbackTest.test_everything_else_still_blocked` | 65 | karşılandı | `record.rs::validation_order`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yok |
+| `test_hosts.py::ReachLoopbackTest.test_https_base_may_fall_back_to_reach_loopback` | 74 | karşılandı | `guard.rs::https_never_downgrades_to_public_http`<br>`tests/parity.rs::address_filters_match_python` | yok |
+| `test_hosts.py::ReachLoopbackTest.test_helper` | 80 | karşılandı | `guard.rs::reach_ports_setting`<br>`tests/parity.rs::address_filters_match_python` | yok |
+| `test_hosts.py::ReachLoopbackTest.test_setting_overrides_ports` | 86 | karşılandı | `guard.rs::reach_ports_setting`<br>`tests/parity.rs::address_filters_match_python` | yok |
+| `test_hosts.py::DbModeIrregularTest.test_irregular_detected_from_db_not_stale_file` | 98 | kapsam dışı | yok | DB kipi okuma. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_hosts_corrupt.py`
 

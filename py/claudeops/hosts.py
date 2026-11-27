@@ -303,15 +303,6 @@ def _txn(fn):
     return wrapper
 
 
-def _clean_url(raw: str) -> str:
-    """Baştaki boşluk ve sondaki "/" + boşluk karışımı atılır (`strip().rstrip("/")` `x\n/`de satır sonunu bırakıyordu)."""
-    u = raw.strip()
-    end = len(u)
-    while end and (u[end - 1] == "/" or u[end - 1].isspace()):
-        end -= 1
-    return u[:end]
-
-
 def save_host(
     name: str, base_url: str, token: str, grpc_url: str = "", extra_urls: str = "", lang: str = "tr"
 ) -> Dict[str, Any]:
@@ -333,10 +324,10 @@ def save_host(
     poller'ı `base_url` başarısız olunca bunları bu sırayla dener; biri
     çalışırsa `promote_base_url()` onu `base_url` yapar (bkz. o fonksiyon)."""
     name = name.strip()
-    base_url = _clean_url(base_url)
+    base_url = base_url.strip().rstrip("/")
     token = token.strip()
-    grpc_url = _clean_url(grpc_url)
-    extra_list = [_clean_url(u) for u in re.split(r"[,\n]+", extra_urls) if u.strip()]
+    grpc_url = grpc_url.strip().rstrip("/")
+    extra_list = [u.strip().rstrip("/") for u in re.split(r"[,\n]+", extra_urls) if u.strip()]
 
     if not _NAME_RE.match(name):
         return _err(lang, "invalid_name")

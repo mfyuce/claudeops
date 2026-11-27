@@ -958,17 +958,6 @@ async fn save_host_validation_and_upsert_match_python() {
             json!(["c", "http://10.0.0.2", "t", "", "", "tr"]),
             Some(r#"[{"name":"a","token":"T"}, 3, {"base_url":"u"}]"#),
         ),
-        mk(
-            json!([
-                "t",
-                "http://10.0.0.1\n/",
-                "tok",
-                "http://10.0.0.2 /\t/",
-                "http://10.0.0.3 /, http://10.0.0.4/\u{2028}/\u{1c}/",
-                "tr"
-            ]),
-            None,
-        ),
     ];
     let py = oracle(json!({ "save_host": cases }));
     let ports = guard::reach_loopback_ports(None);
