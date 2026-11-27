@@ -257,6 +257,31 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     return {**os.environ, api_key_env: api_key}
 
 
+def _key_env_refusal(name: str) -> str:
+    """TBD#401: tek atımlık çağrıda anahtar adı yalnız `UCLI_API_KEY` ya da ayarlarda tanımlı bir ucli hizmetinin `env`i
+    olabilir (başka ad, ortamdaki herhangi bir değişkeni çağıranın verdiği uç noktaya "anahtar" diye gönderirdi). Boş metin =
+    kabul; değilse ret metni (ad yankılanmaz: alana yanlışlıkla anahtar yapıştırılmış olabilir). `settings.json` var ama
+    okunamıyor, normal dosya değil, bozuk ya da `ucli_services` liste değilse yalnız `UCLI_API_KEY`."""
+    if name == "UCLI_API_KEY":
+        return ""
+    from . import settings
+    stored: Any = None
+    try:
+        if os.path.exists(settings.SETTINGS_JSON) and not os.path.isfile(settings.SETTINGS_JSON):
+            raise ValueError("normal dosya değil")      # FIFO/aygıt: açmak bloklar
+        with open(settings.SETTINGS_JSON, encoding="utf-8") as f:
+            stored = json.load(f)
+    except FileNotFoundError:
+        stored = {}
+    except (OSError, ValueError, RecursionError):
+        pass
+    if not isinstance(stored, dict) or not isinstance(stored.get("ucli_services", []), list):
+        return "api_key_env kabul edilmedi: settings.json okunamadı ya da bozuk, yalnız UCLI_API_KEY kullanılabilir"
+    if name in {s["env"] for s in settings.normalize_ucli_services(stored.get("ucli_services"))}:
+        return ""
+    return "api_key_env kabul edilmedi: yalnız UCLI_API_KEY ya da ayarlarda tanımlı ucli hizmetlerinin anahtar adları"
+
+
 def _redact(text: str, secret: Optional[str]) -> str:
     """Hata metnine / onay kaydına giren çocuk çıktısından API anahtarını siler (8 karakterden kısa değer anahtar sayılmaz)."""
     secret = (secret or "").strip()
@@ -519,7 +544,10 @@ def ucli_chat_once(
     "tool_calls"}` (`AgentAnswer`, agent.rs) — `chat` (repl'siz) hep pretty-
     printed JSON yazar ama `json.loads` boşluğa bakmaz, framing derdi yok
     (process ömrü boyunca TEK değer). `api_key` verilirse (çağıranın kendi
-    ortamına güvenmek yerine, ör. bir web formundan) bkz. `_subprocess_env`."""
+    ortamına güvenmek yerine, ör. bir web formundan) bkz. `_subprocess_env`. `api_key_env`: bkz. `_key_env_refusal`."""
+    refusal = _key_env_refusal(api_key_env)     # her şeyden önce: alt süreç yok, ortam okunmaz
+    if refusal:
+        raise UcliError(refusal)
     if len(prompt) > 1 and prompt.startswith("-"):   # prompt konumsal argüman: `-` ile başlarsa ucli bayrak sayar (izin enjeksiyonu)
         raise UcliError("prompt '-' ile başlayamaz (ucli bayrak sanır)")
     bin_path = resolve_binary(binary)
