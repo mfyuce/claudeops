@@ -61,6 +61,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
                               # ÇEVRİLMEDİ, konfigüre edilebilir yapıldı — varsayılan "name",
                               # "cwd" isteyen (aynı klasördeki session'ları yan yana tutmak
                               # isteyenler için) Ayarlar > Genel'den seçer.
+    "spawn_desktop": 1,      # TBD#409: yeni CLI penceresi bu masaüstünde (0 tabanlı) DOĞRUDAN açılır; yoksa 1, o da yoksa 0; -1 = kapalı (`startup_desktop.py`)
     "layout_reserve": 0,     # her desktop'ta SON N yuva boş kalır (2x2'de 1 = sağ alt köşe; 0 = kapalı); `layout --reserve N` ile geçersiz kılınır
     "layout_grid": 4,        # `py/cops layout`/web "Yerleşim" sekmesi: desktop başına pencere
                               # sayısı (2026-09-15, kullanıcı: "settings de alani 4 e 8 e 2 ye

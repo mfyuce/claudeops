@@ -338,7 +338,12 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> b
     ediyor, bu sadece TOCTOU/nadir edge-case içindir) exception YUKARI SIZDIRILMAZ —
     çağıran (spawn_session/_fallback_watchdog) her durumda gerçek sonucu
     `tmux_has_session()` pollingiyle belirliyor, burada sadece False dönüp devam
-    etmesi yeterli."""
+    etmesi yeterli.
+
+    TBD#409: pencere `settings.spawn_desktop` masaüstünde DOĞRUDAN açılır (başlangıç bildirimi,
+    `startup_desktop.startup_env`); uygulanamazsa eskisi gibi bakılan masaüstünde açılır."""
+    from .startup_desktop import startup_env
+    env = startup_env(env, name)
     try:
         proc = subprocess.Popen(
             # --geometry: GNOME Terminal'in profil varsayılanı bu makinede 500
