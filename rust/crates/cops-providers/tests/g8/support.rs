@@ -29,9 +29,25 @@ pub struct Tmp {
 
 impl Tmp {
     pub fn new() -> Tmp {
+        Tmp::within(&std::env::temp_dir())
+    }
+
+    /// Eşzamanlı yazım testleri için: ağaç bellekte (`/dev/shm`; yoksa geçici dizin). Her kilitli yazım iki `fsync`
+    /// yapar ve `flock` beklemesi sıra gözetmez; yavaş diskte yüzlerce sıralı yazım 30 sn kilit sınırını aşıp testi
+    /// disk hızına bağlıyordu. Sınanan şey kayıp güncelleme, süre değil.
+    pub fn in_memory() -> Tmp {
+        let shm = Path::new("/dev/shm");
+        if shm.is_dir() {
+            Tmp::within(shm)
+        } else {
+            Tmp::new()
+        }
+    }
+
+    fn within(base: &Path) -> Tmp {
         let dir = tempfile::Builder::new()
             .prefix("cops-g8-")
-            .tempdir()
+            .tempdir_in(base)
             .unwrap();
         let root = fs::canonicalize(dir.path())
             .unwrap()

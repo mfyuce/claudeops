@@ -441,7 +441,7 @@ fn agent_children_get_no_token_and_garbage_is_rejected() {
 
 #[test]
 fn concurrent_issue_keeps_file_and_digest_consistent() {
-    let t = Tmp::new();
+    let t = Tmp::in_memory();
     let r = registry(&t);
     std::thread::scope(|s| {
         for i in 0..8 {

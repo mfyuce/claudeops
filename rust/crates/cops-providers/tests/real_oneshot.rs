@@ -378,7 +378,7 @@ fn oversized_output_is_refused() {
 
 #[test]
 fn concurrent_registrations_lose_nothing_and_one_key_has_one_winner() {
-    let t = Tmp::new();
+    let t = Tmp::in_memory();
     let store = ApprovalStore::new(&t.paths());
     let winners: usize = std::thread::scope(|scope| {
         let joins: Vec<_> = (0..8)
