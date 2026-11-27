@@ -183,22 +183,24 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     """{today_usd, cap_usd (0 = yok), pct (tavan yoksa None), cache_ttl}. 30 sn önbellekli (her /api/status'ta disk taraması yok)."""
     t = time.time() if now is None else now
     cfg = ucli_cost_config()
-    if not use_cache or t - _CACHE["at"] > _TTL or _CACHE["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
+    snap = dict(_CACHE)     # yanıt YALNIZ bu kopyadan okunur: arada gelen invalidate() tavan denetimine 0 USD göstermesin
+    if not use_cache or t - snap["at"] > _TTL or snap["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = write_mult(cfg)
         by = per_session_usd(t, base, mult)
-        _CACHE.update(at=t, total=total_usd(base, mult, _date_ms(cfg.get("credit_since") or "")), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
+        snap = dict(at=t, total=total_usd(base, mult, _date_ms(cfg.get("credit_since") or "")), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
                       rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
+        _CACHE.update(snap)
     cap = float(cfg["daily_cap_usd"])
-    usd = float(_CACHE["usd"])
-    by_all = _CACHE.get("by") or {}
+    usd = float(snap["usd"])
+    by_all = snap.get("by") or {}
     top = sorted(by_all.items(), key=lambda kv: (-kv[1], kv[0]))[:BY_SESSION_TOP]
     out = {"today_usd": round(usd, 4), "cap_usd": cap, "pct": (round(100.0 * usd / cap, 1) if cap > 0 else None),
            "cache_ttl": cfg["cache_ttl"], "by_session": [{"session": n, "usd": round(v, 4)} for n, v in top if v > 0],
-           "rate_1h_usd": round(sum((_CACHE.get("rate_1h") or {}).values()), 4),
-           "rate_15m_usd": round(sum((_CACHE.get("rate_15m") or {}).values()), 4)}
+           "rate_1h_usd": round(sum((snap.get("rate_1h") or {}).values()), 4),
+           "rate_15m_usd": round(sum((snap.get("rate_15m") or {}).values()), 4)}
     credit = float(cfg.get("credit_total_usd") or 0.0)
     if credit > 0:      # kalan = toplam - birikmiş harcama (alt sınır tahmini; negatife düşmez)
-        spent = float(_CACHE.get("total") or 0.0)
+        spent = float(snap.get("total") or 0.0)
         out.update(credit_total_usd=credit, spent_total_usd=round(spent, 4), credit_left_usd=round(max(0.0, credit - spent), 4))
         out.update(credit_window(cfg, spent, t))
     for k in ("credit_since", "credit_until"):      # tarih alanları kredi girilmemişken de panelde görünsün

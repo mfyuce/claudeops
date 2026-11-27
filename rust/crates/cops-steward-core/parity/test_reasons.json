@@ -224,6 +224,7 @@
  "test_steward_nowork.Plan": "AÇIK: `plan_no_work_close`: kapalı/drain, muaf adlar, manual sınıf; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
  "test_steward_nowork.Reopen": "AÇIK: `plan_no_work_reopen` tetikleyicileri; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
  "test_steward_nowork.StaleVerified": "AÇIK: `verified_is_stale/verified_stuck_reason`; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
+ "test_steward_one_start_per_project.OneStartPerProject.test_two_answers_one_start_and_slot_left_for_other_project": "aynı senaryo (planned, paused, done) elle vektörde: `parity/hand_cases.py` \"aynı projeye iki cevap\" -> `plan_tick_vectors`",
  "test_steward_owner_todo.Counting": "AÇIK: `web_steward` TODO.md okuma/sayma (`_scan_todo/_open_work_of/_owner_todo_of`): kutulu/numaralı/kutusuz madde ve sahibe bağlı etiket sayımı; dosya okur ama sayım kuralı saf ve Rust'ta yok (desen sabitleri taşındı), iz T10",
  "test_steward_questions_pending_delivery.QuestionHeadTests": "AÇIK: `commands/steward.question_head` 'teslim bekliyor' etiketi; saf CLI biçimlendirme, iz T6",
  "test_steward_quota.DecideTest": "AÇIK: `decide/limits/day_cap/day_label/enable_needs_confirm` kademeleri ve gün tavanı; `steward_quota.py` saf kota kararı; bu crate yalnız steward.py, hiçbir dalda taşınmadı, iz T10",
