@@ -293,9 +293,17 @@ def _paste_buffered(buf: str, commands: List[List[str]], payload: bytes, timeout
 
 def _delete_buffer(buf: str) -> None:
     try:
-        subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True, timeout=_TIMEOUT)
+        if subprocess.run(_base_argv() + ["delete-buffer", "-b", buf], capture_output=True,
+                          timeout=_TIMEOUT).returncode == 0:
+            return
     except Exception:
-        pass     # sunucu cevap vermiyor: yapacak bir şey yok, gönderim zaten "olmadı"
+        pass
+    # Sunucu cevap vermiyor ya da silmedi: tampon (parola olabilir) kalmış olabilir, görünür olsun (yalnız adı yazılır).
+    try:
+        from .diaglog import diag_log
+        diag_log("tmux_buffer_cleanup_failed", buffer=buf)
+    except Exception:
+        pass     # günlük yazılamadı: gönderim zaten "olmadı" dönüyor
 
 
 # Only these key-names may go through non-literal send-keys (never pass arbitrary
