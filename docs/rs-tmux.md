@@ -67,6 +67,15 @@ TBD 369 ile sorulan iki aday. Sahip (a) dedi; İKİ TARAFTA DÜZELTİLDİ (`e835
 | P8 | `send_text`/`send_raw` tek satırlık metni `send-keys -l -- <metin>` argv'siyle verir (Python `tmux_send_keys` aynı) | metin, `UserTyped` parola dahil, tmux istemcisinin ömrü boyunca `/proc/<pid>/cmdline`ta; `hidepid` yoksa çok kullanıcılı makinede başka kullanıcı görebilir (CLAUDE: "token argv'ye girmez"). Çok satırlı metin stdin'den gider, açık yok |
 | P9 | Yapıştırma zaman aşımına uğrarsa `cops-rs-*` tamponu silinmez (Python da yalnız tmux "olmadı" deyince siler) | metin tmux sunucusunda kalır (`show-buffer` ile okunur), sunucu kapanana dek bellekte |
 
+## Birleştirme sonrası kapı notları (cops, 27 Kas)
+
+| Not | Sonuç |
+|---|---|
+| `tmux_attach_shell_fragment` ValueError'ı `spawn.open_window`da yakalanmıyor (500) | Erişilemez (kod okuması): `open_window` önce aynı adla `tmux_has_session` çağırır, o da hedeflenemeyen adda `False` döner ve parça hiç kurulmaz. Kod değişmedi |
+| `auto` yolunda maske iki kez yoklanıyor | Bilerek kaldı: ikinci yoklama gönderime en yakın an, ilki çağırana `mask_blocked` nedenini verir (yorum eklendi) |
+| yerel `send` için de `remote_auto` etiketi | DÜZELTİLDİ: `send_refused_mask` artık `state=masked|unknown`, `via=term_input` |
+| zaman aşımında tampon kalabilir | Python silme başarısızlığını yutuyordu: artık `tmux_buffer_cleanup_failed` (yalnız tampon adı) günlüğe düşer, Rust'ın sayaç+günlüğüyle aynı. Sunucu cevap vermiyorsa tampon yine kalabilir (iki tarafta da) |
+
 ## Birleştirme kapısı bulguları (cops, 26 Kas akşam)
 
 | # | Bulgu | Durum |
@@ -193,8 +202,8 @@ Bölüm 1'deki ilgili sınıflar: H1 (madde 9), H4 (2.2, madde 8), H5 (madde 10)
 
 Kapsam:
 - Tanımlar: `py/claudeops/tmux_backend.py`nin TÜM üst düzey tanımları: 68 (47 işlev, 17 sabit, 4 regex; sınıf/yöntem yok).
-- Test metotları (512): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 55 dosya.
-- Sonuç: 512 test metodundan 109'u bu crate'te karşılandı (87 parite, 20 yalnız Rust testi, 2 tür denetimi), 403'ü kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
+- Test metotları (515): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 55 dosya.
+- Sonuç: 515 test metodundan 111'i bu crate'te karşılandı (87 parite, 22 yalnız Rust testi, 2 tür denetimi), 404'ü kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
 
 Parite testleri (`rust/crates/cops-tmux/tests/parity.rs`, köprü `tests/parity.py`):
 - PR `reads_match_python`: gerçek tmux'ta okuma işlevleri (has_session, capture, capture_range, pane_size, snapshot, maske, client_count).
@@ -403,6 +412,9 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_send_mask_guard.py::TermInputTests::test_automatic_input_is_refused_with_a_reason` | yok: panel `/api/term/input` ve orkestrasyon (`web`, `web_orch`) `auto` işareti (T2) | kapsam dışı |
 | `test_send_mask_guard.py::TermInputTests::test_automatic_input_keeps_the_backend_guard` | yok: panel `/api/term/input` ve orkestrasyon (`web`, `web_orch`) `auto` işareti (T2) | kapsam dışı |
 | `test_send_mask_guard.py::TermInputTests::test_remote_orchestration_marks_itself_automatic` | yok: panel `/api/term/input` ve orkestrasyon (`web`, `web_orch`) `auto` işareti (T2) | kapsam dışı |
+| `test_send_mask_guard.py::TermInputTests::test_refusal_is_logged_with_the_state_not_as_remote` | yok: panel `/api/term/input` ret günlüğü (T2) | kapsam dışı |
+| `test_send_mask_guard.py::BufferCleanupTests::test_failed_cleanup_is_logged_without_the_text` | `swallow::failed_buffer_cleanup_is_counted_logged_and_the_paste_error_returned` | karşılandı (yalnız Rust testi) |
+| `test_send_mask_guard.py::BufferCleanupTests::test_successful_cleanup_is_silent` | `argv::paste_timeout_deletes_the_buffer_and_sends_no_enter` (Rust yalnız silme başarısızsa sayar) | karşılandı (yalnız Rust testi) |
 | `test_send_mask_guard.py::RealPasswordPromptTests::test_automatic_send_does_not_answer_a_password_prompt` | `real_tmux::masked_pane_refuses_injection_but_accepts_user_typing` | karşılandı (yalnız Rust testi) |
 | `test_spawn_bad_tmux_name.py::BadNameSpawnTests::test_bad_name_returns_without_launching_anything` | yok: açılış (`spawn.py`) hata yakalama; crate tarafı `argv::hash_and_control_character_names_are_rejected_everywhere` (T4) | kapsam dışı |
 | `test_spawn_ghost_reclaim.py::GhostDetectTest::test_old_bare_bash_is_ghost` | `shell::tests::old_bare_bash_is_ghost`, `lifecycle::ghost_is_only_an_old_childless_shell`; PF, PL | karşılandı (parite) |

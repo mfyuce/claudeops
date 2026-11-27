@@ -2846,9 +2846,11 @@ def _term_input(name: str, text: str, lang: str = "tr", exact: bool = False, aut
     if err:
         return err
     _prov = get_provider(s.cli)
-    if auto and pane_is_masked_input(s.name) is not False:
-        diag_log("send_refused_mask", name=s.name, state="remote_auto")
-        return dict(_err(lang, "term_mask_blocked", name=name), code="mask_blocked")
+    if auto:     # ikinci yoklama `tmux_send_keys`te (gönderime en yakın an); bu ilki çağırana nedeni söyler
+        masked = pane_is_masked_input(s.name)
+        if masked is not False:
+            diag_log("send_refused_mask", name=s.name, state="masked" if masked else "unknown", via="term_input")
+            return dict(_err(lang, "term_mask_blocked", name=name), code="mask_blocked")
     guard = {} if auto else {"guard": False}
     ok = tmux_send_keys(s.name, _prov.prepare_input(text), settle_delay=_prov.input_settle_delay(), **guard)
     if ok:

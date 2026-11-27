@@ -74,6 +74,16 @@ class TermInputTests(unittest.TestCase):
             self.assertFalse(res["ok"])
             self.assertEqual(res["code"], "mask_blocked")
 
+    def test_refusal_is_logged_with_the_state_not_as_remote(self):
+        s = SimpleNamespace(name="k", cli="shell")
+        for masked, state in ((True, "masked"), (None, "unknown")):
+            events = []
+            with mock.patch.object(web, "_term_resolve", lambda *a, **k: (s, None)), \
+                    mock.patch.object(web, "pane_is_masked_input", lambda n: masked), \
+                    mock.patch.object(web, "diag_log", lambda ev, **d: events.append((ev, d))):
+                web._term_input("k", "metin", auto=True)
+            self.assertEqual(events, [("send_refused_mask", {"name": "k", "state": state, "via": "term_input"})])
+
     def test_automatic_input_keeps_the_backend_guard(self):
         res, sent = self.call(False, auto=True)
         self.assertEqual(res, {"ok": True})
@@ -85,6 +95,37 @@ class TermInputTests(unittest.TestCase):
                                lambda path, host, body, **k: seen.append(body) or ({"ok": True}, 200)):
             self.assertTrue(web_orch._send_prompt("uzak", "k", "claude", "metin"))
         self.assertIs(seen[0]["auto"], True)
+
+
+class BufferCleanupTests(unittest.TestCase):
+    def send(self, delete):
+        events = []
+
+        def run(argv, **kw):
+            if "paste-buffer" in argv:
+                raise tb.subprocess.TimeoutExpired(argv, 1)
+            if "delete-buffer" in argv:
+                return delete(argv)
+            return mock.Mock(returncode=0)
+
+        with mock.patch.object(tb, "pane_is_masked_input", lambda n: False), \
+                mock.patch.object(tb.subprocess, "run", run), \
+                mock.patch("claudeops.diaglog.diag_log", lambda ev, **d: events.append((ev, d))):
+            self.assertFalse(tb.tmux_send_keys("k", "gizli-metin"))
+        return events
+
+    def test_failed_cleanup_is_logged_without_the_text(self):
+        def hang(argv):
+            raise tb.subprocess.TimeoutExpired(argv, 1)
+
+        for delete in (hang, lambda argv: mock.Mock(returncode=1)):
+            events = self.send(delete)
+            self.assertEqual([e for e, _ in events], ["tmux_buffer_cleanup_failed"])
+            self.assertTrue(events[0][1]["buffer"].startswith("cops-"))
+            self.assertNotIn("gizli-metin", repr(events))
+
+    def test_successful_cleanup_is_silent(self):
+        self.assertEqual(self.send(lambda argv: mock.Mock(returncode=0)), [])
 
 
 @unittest.skipUnless(HAVE_TMUX, "tmux yok")

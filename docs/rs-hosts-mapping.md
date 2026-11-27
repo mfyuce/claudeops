@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
 | tanım | 361 | 245 | 116 | 0 |
-| test durumu (64 dosya) | 919 | 165 | 754 | 0 |
+| test durumu (64 dosya) | 922 | 165 | 757 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
@@ -969,9 +969,12 @@ Yok.
 | `test_send_mask_guard.py::BackendGuardTests.test_raw_is_unguarded_for_live_typing_and_guarded_on_request` | 47 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
 | `test_send_mask_guard.py::TermInputTests.test_panel_input_reaches_a_password_prompt` | 65 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
 | `test_send_mask_guard.py::TermInputTests.test_automatic_input_is_refused_with_a_reason` | 70 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
-| `test_send_mask_guard.py::TermInputTests.test_automatic_input_keeps_the_backend_guard` | 77 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
-| `test_send_mask_guard.py::TermInputTests.test_remote_orchestration_marks_itself_automatic` | 82 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
-| `test_send_mask_guard.py::RealPasswordPromptTests.test_automatic_send_does_not_answer_a_password_prompt` | 92 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_refusal_is_logged_with_the_state_not_as_remote` | 77 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_automatic_input_keeps_the_backend_guard` | 87 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_remote_orchestration_marks_itself_automatic` | 92 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::BufferCleanupTests.test_failed_cleanup_is_logged_without_the_text` | 117 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::BufferCleanupTests.test_successful_cleanup_is_silent` | 127 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::RealPasswordPromptTests.test_automatic_send_does_not_answer_a_password_prompt` | 133 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
 
 ### `py/tests/test_session_lock.py`
 
