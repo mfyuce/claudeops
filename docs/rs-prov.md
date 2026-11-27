@@ -344,7 +344,7 @@ satırları gruplara dağıtılmadı. Güncel toplamlar iki tablonun başında.
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo`: `real/modelio.rs` (G8) |
 | G8 `Probe` ve `Effect` gerçek uygulayıcısı | `real/` (dosya, süreç, HTTP, belge, günlük, token, MCP, checks, `agy_sids`), maliyet defteri (`cost.rs`, `real/ledger.rs`), SearXNG spawn yolu (`real/searxng.rs`) | 0 (53 TAŞINDI) | 0 (47 TAŞINDI, 5 kapsam dışı) | bitti: parite `parity_real`, `parity_ledger`, `parity_searxng`; `tests/real_{fs,process,http,ledger,searxng,fd,agy_store}.rs` |
 | G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 0 (15 TAŞINDI) | 0 (15 TAŞINDI) | bitti: `spawn_exec.rs`, `hooks.rs`, `real/{launch,routing_sync,runtime,tmux,scan}.rs`; parite `parity_g9`, `tests/{g9,real_tmux,real_scan}.rs` |
-| G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` yazılan kısım), bütçe notu | 0 (26 TAŞINDI, 18 kapsam dışı) | 0 (41 TAŞINDI, 8 kapsam dışı) | bitti: `oneshot.rs`, `approval.rs`, `real/{oneshot,approval}.rs`; parite `parity_oneshot`, `tests/real_oneshot.rs` |
+| G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` yazılan kısım), bütçe notu | 0 (33 TAŞINDI, 14 kapsam dışı) | 0 (50 TAŞINDI, 6 kapsam dışı) | bitti: `oneshot.rs`, `approval.rs`, `real/{oneshot,approval}.rs`; parite `parity_oneshot`, `tests/real_{oneshot,approval}.rs` |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
 
 ## G4: TUI girdisi, canlı geçiş, devir kancaları
@@ -939,8 +939,8 @@ zaman damgası bozuksa dalın kuralıyla yine `problem` olur.
 ### Sahiplik
 Taşınan: `OneshotError`, `CliProvider.oneshot`, `UcliProvider.oneshot`, `ucli_chat_once`, `build_chat_argv`,
 `_subprocess_env`, `mark_budget_exhausted`, onay kaydından `ucli_chat_once`un kullandığı kısım (`dir_for`, `register`,
-`set_state`, `parse_suspended`, defter okuma). Cevap yazma, sürdürme, listeleme ve `UcliReplSession` KAPSAM DIŞI
-(satırlar tabloda). Python'da bugün üretimde `approval_run_key` veren çağıran yok (yalnız testler).
+`set_state`, `parse_suspended`, defter okuma) ve `pending`, `recover_resuming`. Cevap yazma, sürdürme, koşu listeleme ve
+`UcliReplSession` KAPSAM DIŞI (satırlar tabloda). Python'da bugün üretimde `approval_run_key` veren çağıran yok (yalnız testler).
 
 ### Tasarım ve bağımlılıklar
 - Saf: `oneshot.rs` (argv, anahtar adı, çıktı yorumu, sır silme, bütçe notu), `approval.rs` (ad biçimleri, askı satırı,
@@ -952,7 +952,7 @@ Taşınan: `OneshotError`, `CliProvider.oneshot`, `UcliProvider.oneshot`, `ucli_
 - Yeni bağımlılık yok. `Paths::ucli_approval_root`, `Env::with_var` eklendi.
 
 ### Birleştirme notları
-- T7: `answer`/`pending`/`list_runs`/sürdürme taşınırken `approval::valid_*` (tam eşleşme), `consumed` işareti,
+- T7: `answer`/`list_runs`/sürdürme taşınırken `approval::valid_*` (tam eşleşme), `consumed` işareti,
   sürdürme hatasının kayda anahtarsız yazılması (`redact`) ve `slot_free` kuralı korunmalı; ikinci bir defter yazarı
   açılmamalı (`ApprovalStore` genişletilmeli).
 - rs/state: `real/lock.rs` `fsutil::FileLock` ile tekleşince `ApprovalStore` de ona geçer.
@@ -1204,6 +1204,24 @@ Kesin kimlik (yalnız takılma kararı ve yeniden açma yolu; yeni kimlik bulma 
   eşleşme ister (`codex_resume.rs::Live::codex_exact_rollout`); `codex_rollout_path` öteki okuyucular için cwd'ye düşmeyi
   sürdürür. agy ve copilot okuyucuları verilen kimlikte zaten tahmin etmediği için değişmedi. `StartRequest.resume_id`
   dört sağlayıcıda da komuta girer (`parity_g9` `-devam-verilen` artık bayrağı ve kimliği de denetler).
+
+## Onay kartları ve açılış kurtarması (main `494fbd67`; 27 Kas)
+Onay deposu artık `pending` ve `recover_resuming`i de taşır: yalnız `status: "pending"` kart bekleyendir; kartı olup hiçbiri
+`pending` olmayan (ya da `consumed` işaretli) `resuming`/`suspended` koşu `done` + `resume ran but its result was not
+recorded` olur; kalan `resuming` `suspended`a, bir haftayı aşan `suspended` `expired`a döner. Cevap yazma (`answer`),
+sürdürme (`begin_resume`) ve listeleme (`list_runs`) T7'de kalır; bu crate'te açılış çağıranı yok (bağlayan uç çağırır,
+`RECOVER_MAX_AGE`). Python düzeltmesi (iki tarafta, `fix:`): aşırı derin kart `RecursionError` ile listelemeyi ve
+kurtarmayı düşürüyordu, FIFO kart panel açılışını bekletiyordu. Parite `parity_oneshot` `kart-`, `tests/real_approval.rs`.
+- Bilinen ayrışma (testte vaka yok): 512'den derin kart ve 16 MiB üstü kart Rust'ta atlanır (Python derinliği ~1000'e dek,
+  boyutu sınırsız okur); UTF-8 olmayan kart ADLARI bayt sırasıyla dizilir; `created_at` dizi/nesne ise iki tarafta
+  `TypeError`, metni farklı.
+- Açık uç (iki tarafta aynı, değiştirilmedi): defterde sayıya çevrilemeyen `created_at` taşıyan tek `suspended` kayıt
+  bütün kurtarmayı istisnayla keser, hiçbir kayıt yazılmaz (kapalı yön: `resuming` kayıt sürdürülemez).
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `BadCards.test_deeply_nested_card_is_skipped` (py/tests/test_rsprov_approval_cards.py:27) | `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking`; `parity.rs::parity_oneshot` `kart-derin` | TAŞINDI |
+| `BadCards.test_fifo_card_does_not_block` (py/tests/test_rsprov_approval_cards.py:33) | `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
 
 ## EŞLEME TABLOSU
 
@@ -1785,33 +1803,36 @@ Kesin kimlik (yalnız takılma kararı ve yeniden açma yolu; yeni kimlik bulma 
 | `token_file` (py/claudeops/ucli_agents.py:154) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
 | `_write_token_file` (py/claudeops/ucli_agents.py:158) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
 | `issue_token` (py/claudeops/ucli_agents.py:168) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `ROOT` (py/claudeops/ucli_approval.py:21) | `probe.rs::Paths::ucli_approval_root` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-` | TAŞINDI |
-| `STATES` (py/claudeops/ucli_approval.py:25) | `approval.rs::STATES` | `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
-| `_KEY` (py/claudeops/ucli_approval.py:26) | `approval.rs::valid_run_key` | `parity.rs::parity_oneshot` `saf` `onay-ad`; `approval::tests::names_are_full_matches` | TAŞINDI |
-| `_ID` (py/claudeops/ucli_approval.py:27) | `approval.rs::valid_approval_id` | `parity.rs::parity_oneshot` `saf` `onay-kotu-kimlik`; `approval::tests::names_are_full_matches` | TAŞINDI |
-| `_index_path` (py/claudeops/ucli_approval.py:30) | `real/approval.rs::ApprovalStore::index_path` | `parity.rs::parity_oneshot` `kayit-` | TAŞINDI |
-| `dir_for` (py/claudeops/ucli_approval.py:34) | `real/approval.rs::ApprovalStore::dir_for` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-baglanti` `kayit-kok-` | TAŞINDI |
-| `_load_index` (py/claudeops/ucli_approval.py:47) | `real/approval.rs::ApprovalStore::load_index`, `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` `kayit-utf8` `kayit-derin` `kayit-okunamaz` `kayit-dizin` | TAŞINDI |
-| `register` (py/claudeops/ucli_approval.py:56) | `real/approval.rs::ApprovalStore::register`, `approval.rs::insert_run` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-`; `tests/real_oneshot.rs::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` | TAŞINDI |
-| `set_state` (py/claudeops/ucli_approval.py:72) | `real/approval.rs::ApprovalStore::set_state`, `approval.rs::change_state` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-belge`; `the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
-| `parse_suspended` (py/claudeops/ucli_approval.py:144) | `approval.rs::parse_suspended` | `parity.rs::parity_oneshot` `saf` (1500+ rastgele metin) `sohbet-onay-` | TAŞINDI |
-| `_read_index` (py/claudeops/ucli_approval.py:52) | `real/approval.rs::ApprovalStore::read_index` | `parity.rs::parity_oneshot` `kayit-dizin` `kayit-okunamaz` | TAŞINDI |
-| `_parse_index` (py/claudeops/ucli_approval.py:68) | `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` | TAŞINDI |
-| `_load_index_for_overwrite` (py/claudeops/ucli_approval.py:85) | `real/approval.rs::ApprovalStore::load_index_for_overwrite` | `parity.rs::parity_oneshot` `onay-defter-bozuk` `kayit-kopya-var` | TAŞINDI |
-| `_slot_free` (py/claudeops/ucli_approval.py:104) | `approval.rs::slot_free`, `ApprovalStore::slot_free` | `parity.rs::parity_oneshot` `kayit-akis` `onay-defter-canli` | TAŞINDI |
+| `ROOT` (py/claudeops/ucli_approval.py:24) | `probe.rs::Paths::ucli_approval_root` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-` | TAŞINDI |
+| `STATES` (py/claudeops/ucli_approval.py:28) | `approval.rs::STATES` | `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
+| `_KEY` (py/claudeops/ucli_approval.py:29) | `approval.rs::valid_run_key` | `parity.rs::parity_oneshot` `saf` `onay-ad`; `approval::tests::names_are_full_matches` | TAŞINDI |
+| `_ID` (py/claudeops/ucli_approval.py:30) | `approval.rs::valid_approval_id` | `parity.rs::parity_oneshot` `saf` `onay-kotu-kimlik`; `approval::tests::names_are_full_matches` | TAŞINDI |
+| `_index_path` (py/claudeops/ucli_approval.py:33) | `real/approval.rs::ApprovalStore::index_path` | `parity.rs::parity_oneshot` `kayit-` | TAŞINDI |
+| `dir_for` (py/claudeops/ucli_approval.py:37) | `real/approval.rs::ApprovalStore::dir_for` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-baglanti` `kayit-kok-` | TAŞINDI |
+| `_load_index` (py/claudeops/ucli_approval.py:80) | `real/approval.rs::ApprovalStore::load_index`, `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` `kayit-utf8` `kayit-derin` `kayit-okunamaz` `kayit-dizin` | TAŞINDI |
+| `register` (py/claudeops/ucli_approval.py:117) | `real/approval.rs::ApprovalStore::register`, `approval.rs::insert_run` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-`; `tests/real_oneshot.rs::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` | TAŞINDI |
+| `set_state` (py/claudeops/ucli_approval.py:135) | `real/approval.rs::ApprovalStore::set_state`, `approval.rs::change_state` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-belge`; `the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+| `parse_suspended` (py/claudeops/ucli_approval.py:232) | `approval.rs::parse_suspended` | `parity.rs::parity_oneshot` `saf` (1500+ rastgele metin) `sohbet-onay-` | TAŞINDI |
+| `_read_index` (py/claudeops/ucli_approval.py:64) | `real/approval.rs::ApprovalStore::read_index` | `parity.rs::parity_oneshot` `kayit-dizin` `kayit-okunamaz` | TAŞINDI |
+| `_parse_index` (py/claudeops/ucli_approval.py:72) | `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` | TAŞINDI |
+| `_load_index_for_overwrite` (py/claudeops/ucli_approval.py:89) | `real/approval.rs::ApprovalStore::load_index_for_overwrite` | `parity.rs::parity_oneshot` `onay-defter-bozuk` `kayit-kopya-var` | TAŞINDI |
+| `_slot_free` (py/claudeops/ucli_approval.py:108) | `approval.rs::slot_free`, `ApprovalStore::slot_free` | `parity.rs::parity_oneshot` `kayit-akis` `onay-defter-canli` | TAŞINDI |
 | `MAX_EDITED_BYTES` (py/claudeops/ucli_approval.py:25) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
 | `MAX_NOTE_BYTES` (py/claudeops/ucli_approval.py:26) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
 | `DECISIONS` (py/claudeops/ucli_approval.py:27) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `get` (py/claudeops/ucli_approval.py:126) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `set_result` (py/claudeops/ucli_approval.py:143) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `list_runs` (py/claudeops/ucli_approval.py:157) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `_consumed_path` (py/claudeops/ucli_approval.py:171) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `_consumed` (py/claudeops/ucli_approval.py:175) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `_mark_consumed` (py/claudeops/ucli_approval.py:183) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `begin_resume` (py/claudeops/ucli_approval.py:193) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `recover_resuming` (py/claudeops/ucli_approval.py:205) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `pending` (py/claudeops/ucli_approval.py:244) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `answer` (py/claudeops/ucli_approval.py:271) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `get` (py/claudeops/ucli_approval.py:130) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `set_result` (py/claudeops/ucli_approval.py:147) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `list_runs` (py/claudeops/ucli_approval.py:161) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `_consumed_path` (py/claudeops/ucli_approval.py:175) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
+| `_consumed` (py/claudeops/ucli_approval.py:179) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
+| `_mark_consumed` (py/claudeops/ucli_approval.py:187) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `begin_resume` (py/claudeops/ucli_approval.py:197) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `recover_resuming` (py/claudeops/ucli_approval.py:209) | `real/approval.rs::ApprovalStore::recover_resuming` (+ `RECOVER_MAX_AGE`), `approval.rs::recover` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_run_with_only_a_resumed_card_is_closed` | TAŞINDI |
+| `pending` (py/claudeops/ucli_approval.py:274) | `real/approval.rs::ApprovalStore::pending`, `approval.rs::pending_view` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_resumed_card_is_not_pending` | TAŞINDI |
+| `_pending_files` (py/claudeops/ucli_approval.py:248) | `real/approval.rs::ApprovalStore::pending_files`, `approval.rs::is_card` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
+| `_resume_started` (py/claudeops/ucli_approval.py:268) | `approval.rs::resume_started` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_chained_suspension_keeps_only_the_new_card` | TAŞINDI |
+| `_read_regular` (py/claudeops/ucli_approval.py:52) | `real/approval.rs::read_regular` | `parity.rs::parity_oneshot` `kayit-okunamaz` `kart-dizin-kart`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
+| `answer` (py/claudeops/ucli_approval.py:288) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
 | `ROOT` (py/claudeops/ucli_ask.py:22) | `probe.rs::Paths::ucli_ask_root` | `parity.rs::parity_ucli` `askdir` | TAŞINDI |
 | `_SAFE` (py/claudeops/ucli_ask.py:24) | `ucli.rs::valid_ask_name` | `parity.rs::parity_ucli` `askdir-gecersiz-ad` `askdir-satir-sonu` `askdir-uzun` | TAŞINDI |
 | `dir_for` (py/claudeops/ucli_ask.py:27) | `ucli.rs::Ctx::apply_cli_opts` (ask_dir) + `Effect` | `parity.rs::parity_ucli` `askdir`; dizin açma yalnız test uygulayıcısında (G8) | TAŞINDI |
@@ -2702,7 +2723,7 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ResumeTest.test_resume_chain_and_double_resume` (py/tests/test_ucli_approval_exec.py:83) | T7: onay sürdürme/listeleme (`ucli_resume_approval`, `list_runs`, `recover_resuming`) | KAPSAM DIŞI |
 | `ResumeTest.test_resume_error_recorded` (py/tests/test_ucli_approval_exec.py:93) | T7: onay sürdürme/listeleme (`ucli_resume_approval`, `list_runs`, `recover_resuming`) | KAPSAM DIŞI |
 | `ResumeTest.test_list_runs_owner_filter_hides_argv` (py/tests/test_ucli_approval_exec.py:100) | T7: onay sürdürme/listeleme (`ucli_resume_approval`, `list_runs`, `recover_resuming`) | KAPSAM DIŞI |
-| `ResumeTest.test_recover_resuming` (py/tests/test_ucli_approval_exec.py:106) | T7: onay sürdürme/listeleme (`ucli_resume_approval`, `list_runs`, `recover_resuming`) | KAPSAM DIŞI |
+| `ResumeTest.test_recover_resuming` (py/tests/test_ucli_approval_exec.py:106) | `parity.rs::parity_oneshot` `kart-` (`resuming` -> `suspended` -> `expired`; `begin_resume` T7) | TAŞINDI |
 | `ResumeTest.test_authz_resource_and_action` (py/tests/test_ucli_approval_exec.py:114) | T7 + `cops-auth::authz` (eylem tablosu ve `resources_from`; bu crate'te yetki yok) | KAPSAM DIŞI |
 | `AskDirTest.test_opts_default_off_and_ambiguous` (py/tests/test_ucli_ask_dir.py:27) | `parity.rs::parity_ucli` `approval-askdir` `askdir` | TAŞINDI |
 | `AskDirTest.test_argv_has_private_dir_outside_workspace` (py/tests/test_ucli_ask_dir.py:33) | `parity.rs::parity_ucli` `askdir-var` | TAŞINDI |
@@ -3230,7 +3251,7 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ApprovalTest.test_register_dirs_private_and_state` (py/tests/test_ucli_approval.py:30) | `parity.rs::parity_oneshot` `kayit-akis` (izinler ağaç görüntüsünde) | TAŞINDI |
 | `ApprovalTest.test_bad_run_key` (py/tests/test_ucli_approval.py:40) | `approval::tests::names_are_full_matches`; `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
 | `ApprovalTest.test_parse_suspended` (py/tests/test_ucli_approval.py:45) | `approval::tests::suspended_line_is_searched_from_the_end`; `parity.rs::parity_oneshot` `saf` | TAŞINDI |
-| `ApprovalTest.test_pending_lists_and_skips_bad_and_never_reads_suspended` (py/tests/test_ucli_approval.py:52) | T7: onay panel uçları (`/api/ucli/approvals`) | KAPSAM DIŞI |
+| `ApprovalTest.test_pending_lists_and_skips_bad_and_never_reads_suspended` (py/tests/test_ucli_approval.py:52) | `parity.rs::parity_oneshot` `kart-alan` `kart-bozuk` `kart-transkript` | TAŞINDI |
 | `ApprovalTest.test_answer_ok_and_modes` (py/tests/test_ucli_approval.py:65) | T7: onay panel uçları (`/api/ucli/approvals`) | KAPSAM DIŞI |
 | `ApprovalTest.test_answer_rejections` (py/tests/test_ucli_approval.py:76) | T7: onay panel uçları (`/api/ucli/approvals`) | KAPSAM DIŞI |
 | `BudgetExhaustedTest.test_failures_prefixes_answer_once` (py/tests/test_ucli_budget_exhausted.py:12) | `oneshot::tests::budget_note_prefixes_the_answer_once`; `parity.rs::parity_oneshot` `saf` | TAŞINDI |
@@ -3574,21 +3595,18 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 
 ### main `da6e993c` eşitlemesinin satırları ve testleri (27 Kas)
 
-`494fbd67` (sürdürülmüş onay kartı bekleyen sayılmasın): yalnız listeleme ve sürdürme yolu değişti (`pending`,
-`recover_resuming`); bu crate onay defterinde yalnız yazılan kısmı taşır (`register`, `set_state`, `slot_free`,
-`parse_suspended`), kart dosyalarını okuyan Rust kodu yok. `da6e993c` (SQLite salt okunur adresi): `chat_dump` ve
-`ucli_metrics` okuyucuları taşınmadı; `real/sqlite.rs` yolu zaten adres diye ayrıştırmaz. Rust kodu değişmedi.
+`494fbd67` (sürdürülmüş onay kartı bekleyen sayılmasın): sonraki turda taşındı ("Onay kartları ve açılış kurtarması"
+bölümü; satırlar ana tablolarda). `da6e993c` (SQLite salt okunur adresi): `chat_dump` ve
+`ucli_metrics` okuyucuları taşınmadı; `real/sqlite.rs` yolu zaten adres diye ayrıştırmaz.
 
 | Python (dosya:satır) | Rust karşılığı / neden gereksiz | durum |
 |---|---|---|
-| `_pending_files` (py/claudeops/ucli_approval.py:244) | T7: onay listeleme | KAPSAM DIŞI |
-| `_resume_started` (py/claudeops/ucli_approval.py:265) | T7: açılışta yarım koşu kapatma | KAPSAM DIŞI |
 | `ro_sqlite_uri` (py/claudeops/sqlite_uri.py:8) | T7: yalnız `chat_dump` ve `ucli_metrics` okuyucuları kullanır | KAPSAM DIŞI |
-| `ResumedApproval.test_resumed_card_is_not_pending_or_answerable` (py/tests/test_ucli_approval_resumed.py:38) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
-| `ResumedApproval.test_run_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:43) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
-| `ResumedApproval.test_already_suspended_record_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:49) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
-| `ResumedApproval.test_chained_suspension_keeps_only_the_new_card` (py/tests/test_ucli_approval_resumed.py:55) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
-| `ResumedApproval.test_untouched_card_stays_resumable` (py/tests/test_ucli_approval_resumed.py:60) | T7: onay listeleme ve sürdürme | KAPSAM DIŞI |
+| `ResumedApproval.test_resumed_card_is_not_pending_or_answerable` (py/tests/test_ucli_approval_resumed.py:38) | `tests/real_approval.rs::a_resumed_card_is_not_pending` (cevap yazma `answer` T7, bu crate'te yok) | TAŞINDI |
+| `ResumedApproval.test_run_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:43) | `tests/real_approval.rs::a_run_with_only_a_resumed_card_is_closed` (`begin_resume` T7) | TAŞINDI |
+| `ResumedApproval.test_already_suspended_record_with_only_resumed_card_is_closed` (py/tests/test_ucli_approval_resumed.py:49) | `tests/real_approval.rs::an_already_suspended_record_with_only_a_resumed_card_is_closed` | TAŞINDI |
+| `ResumedApproval.test_chained_suspension_keeps_only_the_new_card` (py/tests/test_ucli_approval_resumed.py:55) | `tests/real_approval.rs::a_chained_suspension_keeps_only_the_new_card` (`list_runs` T7; `pending` sınanır) | TAŞINDI |
+| `ResumedApproval.test_untouched_card_stays_resumable` (py/tests/test_ucli_approval_resumed.py:60) | `tests/real_approval.rs::an_untouched_card_stays_resumable` (`begin_resume` T7) | TAŞINDI |
 | `ReadOnlyUri.test_openers_read_the_exact_file_read_only` (py/tests/test_sqlite_ro_uri.py:46) | T7: `chat_dump` / `ucli_metrics` okuyucuları | KAPSAM DIŞI |
 | `ReadOnlyUri.test_double_slash_path_is_not_a_host` (py/tests/test_sqlite_ro_uri.py:55) | T7: `chat_dump` / `ucli_metrics` okuyucuları | KAPSAM DIŞI |
 

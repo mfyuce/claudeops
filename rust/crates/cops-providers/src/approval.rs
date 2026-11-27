@@ -1,10 +1,10 @@
-//! `ucli_approval`in saf kısmı: ad biçimleri, askıya alma satırı ve kayıt defteri belgesinin dönüşümleri.
+//! `ucli_approval`in saf kısmı: ad biçimleri, askıya alma satırı, onay kartları ve kayıt defteri belgesinin dönüşümleri.
 //!
 //! Belge `<durum>/ucli_approval/index.json`: `{run_key: {cwd, session, argv_resume, owner, created_at, state}}`. Okuma,
 //! kilit ve yazım [`crate::real::approval`] içindedir. Güvenlik yolu: belirsiz olan her şey REDDEDİLİR (canlı ya da
 //! tanınmayan kayıt ezilmez, tanınmayan durum yazılmaz).
 
-use crate::pyfmt::{splitlines, strip};
+use crate::pyfmt::{parse_float, py_str_repr, splitlines, strip};
 use crate::pyjson::Py;
 
 /// `STATES`.
@@ -124,6 +124,135 @@ pub fn change_state(index: &mut [(String, Py)], run_key: &str, state: &str) -> S
         None => fields.push(("state".into(), Py::Str(state.to_string()))),
     }
     StateChange::Changed
+}
+
+/// `_pending_files`in süzgeci: nesne ve `id` geçerli bir dize.
+pub fn is_card(card: &Py) -> bool {
+    card.get("id")
+        .and_then(Py::as_str)
+        .is_some_and(valid_approval_id)
+}
+
+fn is_text(value: Option<&Py>, text: &str) -> bool {
+    value.and_then(Py::as_str) == Some(text)
+}
+
+/// `_resume_started`in karar kısmı: kart var ama hiçbiri `pending` değil (ucli sürdürmeye başlarken `resumed` yazar;
+/// yerine yeni bekleyen kart yoksa onay kullanılmış, sonuç kayıp).
+pub fn resume_started(cards: &[Py]) -> bool {
+    !cards.is_empty() && !cards.iter().any(|c| is_text(c.get("status"), "pending"))
+}
+
+/// `pending`in satırı: yalnız `status: "pending"` kart; yalnız arayüzde gösterilecek alanlar.
+pub fn pending_view(card: &Py, now: f64) -> Option<Py> {
+    if !is_card(card) || !is_text(card.get("status"), "pending") {
+        return None;
+    }
+    let field = |k: &str| card.get(k).cloned().unwrap_or(Py::Null);
+    let text = |k: &str| {
+        let v = card.get(k).filter(|v| v.truthy());
+        Py::Str(v.map(Py::py_str).unwrap_or_default())
+    };
+    // `isinstance(exp, (int, float)) and exp <= now` (bool de int)
+    let expired = match card.get("expires_at") {
+        Some(Py::Bool(b)) => f64::from(u8::from(*b)) <= now,
+        Some(Py::Int(i)) => (*i as f64) <= now,
+        Some(Py::BigInt(s)) => s.starts_with('-'),
+        Some(Py::Float(f)) => *f <= now,
+        _ => false,
+    };
+    Some(Py::Object(vec![
+        ("id".into(), field("id")),
+        ("kind".into(), text("kind")),
+        ("tool".into(), text("tool")),
+        ("summary".into(), text("summary")),
+        ("created_at".into(), field("created_at")),
+        ("expires_at".into(), field("expires_at")),
+        ("expired".into(), Py::Bool(expired)),
+    ]))
+}
+
+/// Kapatılan yarım koşunun `result.error`ı.
+pub const RESULT_LOST: &str = "resume ran but its result was not recorded";
+
+/// `float(created_at)`in Python istisnası.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FloatError {
+    pub class: &'static str,
+    pub text: String,
+}
+
+/// `float(rec.get("created_at") or now)`.
+fn created_at_or(value: Option<&Py>, now: f64) -> Result<f64, FloatError> {
+    let error = |class, text: String| Err(FloatError { class, text });
+    let Some(value) = value.filter(|v| v.truthy()) else {
+        return Ok(now);
+    };
+    match value {
+        Py::Bool(_) => Ok(1.0),
+        Py::Int(i) => Ok(*i as f64),
+        Py::Float(f) => Ok(*f),
+        Py::BigInt(s) => match s.parse::<f64>() {
+            Ok(f) if f.is_finite() => Ok(f),
+            _ => error("OverflowError", "int too large to convert to float".into()),
+        },
+        Py::Str(s) => match parse_float(s) {
+            Some(f) => Ok(f),
+            None => error(
+                "ValueError",
+                format!("could not convert string to float: {}", py_str_repr(s)),
+            ),
+        },
+        _ => error("TypeError", "created_at sayı değil".into()),
+    }
+}
+
+fn set_field(fields: &mut Vec<(String, Py)>, key: &str, value: Py) {
+    match fields.iter_mut().find(|(k, _)| k == key) {
+        Some(slot) => slot.1 = value,
+        None => fields.push((key.to_string(), value)),
+    }
+}
+
+/// `recover_resuming`in belge adımı: yapılan değişiklik sayısı (0 ise yazılmaz). `lost(run_key)` yalnız `resuming` ya da
+/// `suspended` kayıtta sorulur: onay kullanılmış ama sonucu yazılmamışsa kayıt `done` olur (onaylı eylem ikinci kez
+/// sürmesin). Kalan `resuming` `suspended`a döner; `max_age`i aşan `suspended` `expired` olur. Hata: belge yazılmamalı.
+pub fn recover(
+    index: &mut [(String, Py)],
+    now: f64,
+    max_age: f64,
+    lost: impl Fn(&str) -> bool,
+) -> Result<usize, FloatError> {
+    let mut n = 0;
+    for (key, record) in index.iter_mut() {
+        let Py::Object(fields) = record else {
+            continue;
+        };
+        let state = |fields: &[(String, Py)], wanted: &str| {
+            fields
+                .iter()
+                .any(|(k, v)| k == "state" && v.as_str() == Some(wanted))
+        };
+        if (state(fields, "resuming") || state(fields, "suspended")) && lost(key) {
+            let result = Py::Object(vec![("error".into(), Py::Str(RESULT_LOST.into()))]);
+            set_field(fields, "state", Py::Str("done".into()));
+            set_field(fields, "result", result);
+            set_field(fields, "finished_at", Py::Float(now));
+            n += 1;
+        }
+        if state(fields, "resuming") {
+            set_field(fields, "state", Py::Str("suspended".into()));
+            n += 1;
+        }
+        if state(fields, "suspended") {
+            let created = fields.iter().find(|(k, _)| k == "created_at");
+            if now - created_at_or(created.map(|(_, v)| v), now)? > max_age {
+                set_field(fields, "state", Py::Str("expired".into()));
+                n += 1;
+            }
+        }
+    }
+    Ok(n)
 }
 
 #[cfg(test)]

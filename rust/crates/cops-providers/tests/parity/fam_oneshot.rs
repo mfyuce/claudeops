@@ -758,6 +758,220 @@ fn approval_cases() -> Vec<Case> {
     v
 }
 
+/// Onay kartları (`pending`) ve açılıştaki kurtarma (`recover_resuming`).
+fn card_cases() -> Vec<Case> {
+    const WEEK: f64 = 604800.0;
+    let index = "state/ucli_approval/index.json";
+    let run = "state/ucli_approval/r1";
+    let card = |name: &str, body: &str| file(&format!("{run}/pending/{name}"), body, 0o600);
+    let steps = json!([
+        ["pending", "r1", null],
+        ["pending", "r1", 0.0],
+        ["recover", null, WEEK],
+        ["pending", "r1", null],
+        ["recover", NOW, WEEK],
+        ["recover", NOW + 2.0 * WEEK, WEEK],
+        ["pending", "BAD", null],
+        ["pending", "yok", null]
+    ]);
+    let case = |id: String, index_body: &str| {
+        Case::new(
+            format!("kart-{id}"),
+            "g10_approval",
+            json!({"now": NOW, "steps": steps}),
+        )
+        .file(file(index, index_body, 0o600))
+    };
+    let record = |state: &str| format!(r#"{{"r1": {{"state": {state}, "created_at": {NOW}}}}}"#);
+    let states = [
+        r#""running""#,
+        r#""suspended""#,
+        r#""resuming""#,
+        r#""done""#,
+        r#""expired""#,
+        "5",
+        "null",
+        r#"["suspended"]"#,
+    ];
+    let sets: [(&str, &[&str]); 6] = [
+        ("yok", &[]),
+        ("bekleyen", &["pending"]),
+        ("surdurulmus", &["resumed"]),
+        ("zincir", &["resumed", "pending"]),
+        ("durumsuz", &["null", "resumed"]),
+        ("tuhaf", &["[\"pending\"]", "5"]),
+    ];
+    let mut v = Vec::new();
+    for (si, state) in states.iter().enumerate() {
+        for (name, statuses) in sets {
+            let mut c = case(format!("{si}-{name}"), &record(state));
+            for (i, status) in statuses.iter().enumerate() {
+                let status = if ["pending", "resumed"].contains(status) {
+                    format!("\"{status}\"")
+                } else {
+                    status.to_string()
+                };
+                let body = format!(
+                    r#"{{"id": "a{i}", "status": {status}, "kind": "edit", "expires_at": 9e12}}"#
+                );
+                c = c.file(card(&format!("a{i}.json"), &body));
+            }
+            v.push(c);
+        }
+        let consumed = case(format!("{si}-kullanilmis"), &record(state))
+            .file(card("a.json", r#"{"id": "a", "status": "pending"}"#))
+            .file(file(&format!("{run}/consumed"), "", 0o600));
+        v.push(consumed);
+        v.push(
+            case(format!("{si}-kullanilmis-baglanti"), &record(state))
+                .file(Fx::Link(format!("{run}/consumed"), "yok".into())),
+        );
+    }
+    // alanların `str()` ve süre anlamı
+    let values = [
+        "null",
+        "true",
+        "false",
+        "0",
+        "5",
+        "-1",
+        "1.5",
+        "0.0",
+        "1e300",
+        "1790000000",
+        "1790000000.25",
+        "1790000001",
+        "99999999999999999999999",
+        "-99999999999999999999999",
+        r#""""#,
+        r#""ğ 'x' \"y\"""#,
+        "[]",
+        r#"[1, "a", null, true, 2.5]"#,
+        "{}",
+        r#"{"k": ["ğ", {"n": 1}]}"#,
+    ];
+    for (i, value) in values.iter().enumerate() {
+        let body = format!(
+            r#"{{"id": "a", "status": "pending", "kind": {value}, "tool": {value}, "summary": {value}, "created_at": {value}, "expires_at": {value}, "fazla": 1}}"#
+        );
+        v.push(case(format!("alan{i}"), &record(r#""suspended""#)).file(card("a.json", &body)));
+    }
+    // `created_at` (kurtarmanın süre hesabı)
+    for (i, created) in [
+        "null",
+        "true",
+        "false",
+        "0",
+        "0.0",
+        "5",
+        "1790000000",
+        "1e300",
+        r#""""#,
+        r#"" 12.5 ""#,
+        r#""1_000""#,
+        r#""inf""#,
+        r#""abc""#,
+        "[]",
+        "[1]",
+        "{}",
+        r#"{"a": 1}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let body = format!(
+            r#"{{"once": {{"state": "resuming", "created_at": 1}}, "r1": {{"state": "suspended", "created_at": {created}, "x": 1}}}}"#
+        );
+        v.push(case(format!("yas{i}"), &body));
+    }
+    // okunmayan, bozuk ve tuhaf kartlar: yanlarında geçerli bir kart
+    let good = r#"{"id": "z", "status": "resumed"}"#;
+    let pend = r#"{"id": "b", "status": "pending"}"#;
+    for (i, body) in [
+        "",
+        "{",
+        "[]",
+        "null",
+        r#""pending""#,
+        r#"{"status": "pending"}"#,
+        r#"{"id": 5, "status": "pending"}"#,
+        r#"{"id": "../x", "status": "pending"}"#,
+        r#"{"id": "a\n", "status": "pending"}"#,
+        "\u{feff}{\"id\": \"a\", \"status\": \"pending\"}",
+        "{\r\n\"id\": \"a\",\r\"status\": \"pending\"}",
+    ]
+    .iter()
+    .enumerate()
+    {
+        v.push(
+            case(format!("bozuk{i}"), &record(r#""suspended""#))
+                .file(card("a.json", body))
+                .file(card("z.json", good)),
+        );
+    }
+    let base = |id: &str| case(id.into(), &record(r#""resuming""#)).file(card("z.json", good));
+    v.push(base("utf8").file(Fx::File(
+        format!("{run}/pending/a.json"),
+        b"\xff\xfe".to_vec(),
+        0o600,
+    )));
+    v.push(base("derin").file(Fx::File(
+        format!("{run}/pending/a.json"),
+        vec![b'['; 100_000],
+        0o600,
+    )));
+    v.push(base("okunamaz").file(file(&format!("{run}/pending/a.json"), pend, 0o000)));
+    v.push(base("dizin-kart").file(Fx::Dir(format!("{run}/pending/a.json"), 0o700)));
+    v.push(
+        base("baska-uzanti")
+            .file(card("a.JSON", pend))
+            .file(card("b.json.tmp", pend)),
+    );
+    v.push(
+        base("sira")
+            .file(card("b.json", pend))
+            .file(card("a.json", r#"{"id": "y", "status": "pending"}"#)),
+    );
+    v.push(base("gizli-ad").file(card(".json", pend)));
+    v.push(
+        base("kart-baglanti")
+            .file(file("home/kart", pend, 0o600))
+            .file(Fx::Link(
+                format!("{run}/pending/a.json"),
+                "../../../../home/kart".into(),
+            )),
+    );
+    v.push(
+        case("transkript".into(), &record(r#""suspended""#)).file(file(
+            &format!("{run}/suspended/a.json"),
+            pend,
+            0o600,
+        )),
+    );
+    v.push(
+        case("pending-dosya".into(), &record(r#""resuming""#)).file(file(
+            &format!("{run}/pending"),
+            "x",
+            0o600,
+        )),
+    );
+    for (i, body) in [
+        "{",
+        "[]",
+        "{}",
+        r#"{"r1": null, "BAD": {"state": "resuming"}, "r2": {"state": "resuming"}}"#,
+        r#"{"r1": {"state": "resuming", "result": 1, "finished_at": 2, "owner": "a"}}"#,
+        r#"{"r1": {"state": "suspended", "created_at": "abc"}}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        v.push(case(format!("defter{i}"), body).file(card("z.json", good)));
+    }
+    v.push(base("kilit-dizin").file(Fx::Dir(format!("{index}.lock"), 0o700)));
+    v
+}
+
 fn pure_cases() -> Vec<Case> {
     let mut rng = Rng(0x1010);
     const BITS: [&str; 24] = [
@@ -956,6 +1170,14 @@ fn rs_approval(store: &ApprovalStore, step: &Value) -> Value {
         "dir_for" => store
             .dir_for(s(1), step[2].as_bool().unwrap())
             .map(Value::from),
+        "pending" => Ok(store
+            .pending(s(1), step[2].as_f64())
+            .iter()
+            .map(jsonable)
+            .collect()),
+        "recover" => store
+            .recover_resuming(step[1].as_f64(), step[2].as_f64().unwrap())
+            .map(Value::from),
         _ => Ok(Value::from(store.slot_free(s(1)))),
     };
     match done {
@@ -1070,6 +1292,7 @@ pub fn run() {
     let root = r.e.root.clone();
     let mut cases = pure_cases();
     cases.extend(approval_cases());
+    cases.extend(card_cases());
     cases.extend(chat_cases(&root));
     cases.extend(oneshot_cases(&root));
     r.run(cases, &[], rs_g10);

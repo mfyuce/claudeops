@@ -1,9 +1,10 @@
-//! Onay kayıt defterinin yazılan kısmı (`ucli_approval.{dir_for, register, set_state}`): Python ile aynı dosyalar, aynı
-//! `flock`, aynı atomik 0600 yazım.
+//! Onay kayıt defteri (`ucli_approval.{dir_for, register, set_state, pending, recover_resuming}`): Python ile aynı
+//! dosyalar, aynı `flock`, aynı atomik 0600 yazım.
 //!
 //! Belirsizlikte RET: okunamayan ya da normal olmayan defter ezilmez; bozuk defterin önce `.corrupt-<özet>` kopyası
 //! bırakılır; bitmemiş kayıt aynı anahtarla değiştirilmez; sembolik bağ olan koşu dizini kullanılmaz; kilit alınamazsa
-//! yazılmaz. Cevap yazma, sürdürme ve listeleme panel uçlarındadır (T7), burada yok.
+//! yazılmaz. Onay kartı yalnız normal dosyadan okunur; `suspended/` (transkript) ASLA okunmaz. Cevap yazma, sürdürme ve
+//! koşu listeleme panel uçlarındadır (T7), burada yok.
 
 use crate::approval::{self, NewRun, StateChange};
 use crate::probe::Paths;
@@ -17,12 +18,17 @@ use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::{self, OpenOptions, Permissions};
 use std::io::{self, Read, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Defter okuma sınırı (Python sınırsız): aşan defter okunamaz sayılır.
+/// Defter ve onay kartı okuma sınırı (Python sınırsız): aşan dosya okunamaz sayılır.
 pub const INDEX_MAX_BYTES: u64 = 16 << 20;
+
+/// `recover_resuming`in varsayılan `max_age`i (saniye).
+pub const RECOVER_MAX_AGE: f64 = 7.0 * 86400.0;
 
 /// Python istisnasının sınıfı ve metni (günlüğe ve `UcliError`a aynen gider). Belge içeriği taşımaz.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +71,31 @@ fn unix_now() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0.0, |d| d.as_secs_f64())
+}
+
+/// `_read_regular`: normal dosyanın baytları (FIFO bloklamaz); yoksa None.
+fn read_regular(path: &Path) -> Result<Option<Vec<u8>>, ApprovalError> {
+    let open = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path);
+    let path = &*path.to_string_lossy();
+    let file = match open {
+        Ok(f) => f,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(os_error(&e, path)),
+    };
+    if !file.metadata().map_err(|e| os_error(&e, path))?.is_file() {
+        return Err(custom("OSError", libc::EINVAL, "normal dosya değil", path));
+    }
+    let mut raw = Vec::new();
+    file.take(INDEX_MAX_BYTES + 1)
+        .read_to_end(&mut raw)
+        .map_err(|e| os_error(&e, path))?;
+    if raw.len() as u64 > INDEX_MAX_BYTES {
+        return Err(custom("OSError", libc::EFBIG, "defter çok büyük", path));
+    }
+    Ok(Some(raw))
 }
 
 #[derive(Clone)]
@@ -144,29 +175,9 @@ impl ApprovalStore {
         Ok(dir)
     }
 
-    /// Ham defter; yoksa None. Okunamıyorsa, normal dosya değilse (FIFO bloklamaz) ya da sınırı aşıyorsa hata.
+    /// Ham defter; yoksa None. Okunamıyorsa, normal dosya değilse ya da sınırı aşıyorsa hata.
     fn read_index(&self) -> Result<Option<Vec<u8>>, ApprovalError> {
-        let path = self.index_path();
-        let open = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
-            .open(&path);
-        let file = match open {
-            Ok(f) => f,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(os_error(&e, &path)),
-        };
-        if !file.metadata().map_err(|e| os_error(&e, &path))?.is_file() {
-            return Err(custom("OSError", libc::EINVAL, "normal dosya değil", &path));
-        }
-        let mut raw = Vec::new();
-        file.take(INDEX_MAX_BYTES + 1)
-            .read_to_end(&mut raw)
-            .map_err(|e| os_error(&e, &path))?;
-        if raw.len() as u64 > INDEX_MAX_BYTES {
-            return Err(custom("OSError", libc::EFBIG, "defter çok büyük", &path));
-        }
-        Ok(Some(raw))
+        read_regular(Path::new(&self.index_path()))
     }
 
     /// `_load_index`: yok/okunamaz/bozuk defter boştur.
@@ -263,5 +274,62 @@ impl ApprovalStore {
             StateChange::NotARecord => Err(fail("TypeError", "onay kaydı nesne değil")),
             StateChange::Changed => self.write_index(index).map(|()| true),
         }
+    }
+
+    /// `_consumed`: onay kullanıldı ama sonucu kayda yazılamadı işareti.
+    fn consumed(&self, run_key: &str) -> bool {
+        self.dir_for(run_key, false)
+            .is_ok_and(|d| fs::symlink_metadata(format!("{d}/consumed")).is_ok())
+    }
+
+    /// `_pending_files`: `pending/*.json` kartları (ad sırasıyla). Okunamayan ya da bozuk kart atlanır.
+    fn pending_files(&self, run_key: &str) -> Vec<Py> {
+        let Ok(dir) = self.dir_for(run_key, false) else {
+            return Vec::new();
+        };
+        let pending = format!("{dir}/pending");
+        let Ok(mut names) = fs::read_dir(&pending).and_then(|entries| {
+            entries
+                .map(|e| e.map(|e| e.file_name()))
+                .collect::<io::Result<Vec<_>>>()
+        }) else {
+            return Vec::new();
+        };
+        names.sort();
+        names
+            .iter()
+            .filter(|n| n.as_bytes().ends_with(b".json"))
+            .filter_map(|n| {
+                // UTF-8 olmayan ad Python'da da okunur (surrogateescape): yol bayt olarak kurulur
+                let path = Path::new(&pending).join(n);
+                let raw = read_regular(&path).ok().flatten()?;
+                Py::parse(std::str::from_utf8(&raw).ok()?)
+            })
+            .filter(approval::is_card)
+            .collect()
+    }
+
+    /// `pending`: bekleyen onaylar; `now` yoksa saat.
+    pub fn pending(&self, run_key: &str, now: Option<f64>) -> Vec<Py> {
+        let now = now.unwrap_or_else(self.now);
+        self.pending_files(run_key)
+            .iter()
+            .filter_map(|card| approval::pending_view(card, now))
+            .collect()
+    }
+
+    /// `recover_resuming`: açılışta yarım kalan sürdürmeler ([`approval::recover`]); dönen değişiklik sayısı.
+    pub fn recover_resuming(&self, now: Option<f64>, max_age: f64) -> Result<usize, ApprovalError> {
+        let now = now.unwrap_or_else(self.now);
+        let _lock = self.lock()?;
+        let mut index = self.load_index();
+        let n = approval::recover(&mut index, now, max_age, |key| {
+            self.consumed(key) || approval::resume_started(&self.pending_files(key))
+        })
+        .map_err(|e| fail(e.class, e.text))?;
+        if n > 0 {
+            self.write_index(index)?;
+        }
+        Ok(n)
     }
 }

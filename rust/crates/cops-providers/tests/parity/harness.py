@@ -1252,6 +1252,10 @@ def op_g10_approval(a):
                     out.append(["ok", ucli_approval.set_state(*args)])
                 elif step == "dir_for":
                     out.append(["ok", ucli_approval.dir_for(args[0], create=args[1])])
+                elif step == "pending":
+                    out.append(["ok", ucli_approval.pending(*args)])
+                elif step == "recover":
+                    out.append(["ok", ucli_approval.recover_resuming(*args)])
                 else:
                     out.append(["ok", ucli_approval._slot_free(ucli_approval._load_index(), args[0])])
             except TypeError:
