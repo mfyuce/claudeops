@@ -3779,7 +3779,8 @@ def _apply(action: sw.Action, cfg: sw.Config, projects: Dict[str, sw.Project],
         if _box_has_typed_input(s.name, s.cli):
             sw.log_event(k + "_skipped", paths=paths, name=name, reason="input_box_not_empty")
             return {"ok": False, "error": "input box has unsent text"}
-        ok = _send(s.name, s.cli, sw.one_line(action.payload.get("text") or "devam"), sid=cfg.sid)   # ucli çok satırı ayrı tur sayar: TEK satır
+        text = sw.one_line(action.payload.get("text") or "devam") + " " + sw.reply_language_line(cfg.lang)   # ucli çok satırı ayrı tur sayar: TEK satır
+        ok = _send(s.name, s.cli, text, sid=cfg.sid)
         sw.log_event(k, paths=paths, name=name, ok=ok, **{k2: action.payload.get(k2) for k2 in ("project", "idle_secs", "threshold", "n", "next")})
         return {"ok": ok} if ok else _send_fail_result(s.name)
     if k == "idle_close":             # TBD#156: handover / respawn / stop (mevcut yollar: `_local_handover`, `respawn` -> `_last_launch` cli_opts korunur)
