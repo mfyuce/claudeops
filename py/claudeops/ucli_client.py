@@ -47,6 +47,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import paths as _paths
 from . import preview
 from .childgroup import _run_grouped
 from .diaglog import diag_log
@@ -298,10 +299,12 @@ STATE_ROOT = os.path.expanduser("~/.claude/claudeops/ucli-state")
 
 def state_dir_for(cwd: str) -> str:
     """`ucli chat --state-dir`e verilecek kök-başına dizin (depo DIŞI): `<STATE_ROOT>/<ad>-<sha1(gerçek kök)[:10]>`. Aynı kök
-    her zaman aynı dizin; farklı köklerin (aynı ada sahip bile olsa) dizini ayrı."""
+    her zaman aynı dizin; farklı köklerin (aynı ada sahip bile olsa) dizini ayrı. Ortak kök salt okunursa (ikinci örnek,
+    TBD#412 b) `<CLAUDEOPS_DIR>/ucli-state` altı: ucli bu dizine YAZAR."""
     real = os.path.realpath(cwd)
     base = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(real.rstrip(os.sep)) or "root")[:40]
-    return os.path.join(STATE_ROOT, f"{base}-{hashlib.sha1(real.encode('utf-8')).hexdigest()[:10]}")
+    root = STATE_ROOT if _paths.shared_write_allowed(STATE_ROOT) else os.path.join(_paths.CLAUDEOPS_DIR, "ucli-state")
+    return os.path.join(root, f"{base}-{hashlib.sha1(real.encode('utf-8')).hexdigest()[:10]}")
 
 
 def legacy_chat_dir(cwd: str) -> str:
@@ -314,7 +317,11 @@ def chat_session_dirs(cwd: str) -> List[str]:
     bile o dizindeki canlı oturum okunsun)."""
     from .settings import ucli_state_dir_enabled
     new, old = state_dir_for(cwd), legacy_chat_dir(cwd)
-    return [new, old] if (ucli_state_dir_enabled() or os.path.isdir(new)) else [old]
+    dirs = [new, old] if (ucli_state_dir_enabled() or os.path.isdir(new)) else [old]
+    shared = os.path.join(STATE_ROOT, os.path.basename(new))
+    if shared != new and os.path.isdir(shared):    # ikinci örnek: ortak durum dizini yalnız OKUNUR, en arkada
+        dirs.append(shared)
+    return dirs
 
 
 def find_chat_file(cwd: str, filename: str) -> str:

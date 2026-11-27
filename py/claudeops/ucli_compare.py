@@ -71,12 +71,13 @@ def _res(name: str, db: str) -> Optional[Dict[str, Any]]:
 
 def _rows(base: str, source: str, db: str, since: float, wm: float) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    try:
-        names = sorted(os.listdir(base))
-    except OSError:
-        return out
-    for n in names:
-        p = os.path.join(base, n)
+    found: List[tuple] = []
+    for d in ucli_cost.read_dirs(base):     # ikinci örnekte ortak + kendi dizini (TBD#412 b)
+        try:
+            found += [(n, os.path.join(d, n)) for n in os.listdir(d)]
+        except OSError:
+            continue
+    for n, p in sorted(found):
         if not n.endswith(".jsonl") or not os.path.isfile(p):
             continue
         try:
