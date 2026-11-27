@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1932 satır)
+### Python testleri (1933 satır)
 
-Test satırı özeti: 1932 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1933 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
