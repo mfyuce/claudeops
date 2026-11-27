@@ -955,6 +955,8 @@ FILES = {
     "rsprov_g7_fixes": ("model kaynakları hata düzeltmeleri (önbellek, çekim günlüğü)", SAG),
     "rsprov_g3_fixes": ("transkript model/effort okuyucusu: alt ajan satırı ve metin olmayan model", LIVE),
     "rsprov_s2_effort_model": ("canlı effort yalnız son yanıtın modelinden", LIVE),
+    "rsprov_stuck_own_conversation": ("takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından",
+                                      f"{SAG}; {T4}"),
     "rsprov_s1_own_session": ("sid'siz oturumda model/effort yalnız sürecin kendi kaydından (devir, yeniden açma)",
                               f"{LIVE}; {T4}"),
     "rsprov_g10_keyfile": ("tek atımlık çağrıda açılamayan anahtar dosyası", f"{SAG}; {T10}"),
@@ -1464,7 +1466,8 @@ rsprov_g10_oneshot:6:18f99b20b8
 rsprov_g1_fixes:20:ad2924daca
 rsprov_g4_dismiss:2:71df770dc0
 rsprov_g3_fixes:5:cd4ad4129c
-rsprov_s1_own_session:12:fe574b76b3
+rsprov_s1_own_session:12:ceb2a32df2
+rsprov_stuck_own_conversation:13:fd4561a213
 rsprov_s2_effort_model:7:a9e1100892
 rsprov_g5_fixes:9:5e8c310c26
 rsprov_g7_fixes:11:787c25c89f
@@ -1474,7 +1477,7 @@ rsprov_model_reader:6:fbceb023ec
 rsprov_models_redirect:2:e49e832742
 rsprov_paths:3:bc9d8d7efb
 rsprov_sqlite_readers:5:bebafe8f70
-shared_state_readonly:8:388c2e5d3d
+shared_state_readonly:13:dc826ef558
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
 state_backend_last_good:3:5531228f00

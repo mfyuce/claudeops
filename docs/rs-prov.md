@@ -1,16 +1,16 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `9de561e7` birleşimi `4c2e6712`):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 725 satır (TAŞINDI 650, KAPSAM DIŞI 75) ve test tablosu
-1567 satır (TAŞINDI 765, KAPSAM DIŞI 802; önceki sayıma bu turda eklenen 4 + 6 satır), ikisinde de EKSİK ve
-TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
-uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) onaylandı, uygulandı
-("S5" bölümü); sahipte iki soru (S4, S6). §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı (kod değişmedi).
-Son ağaçta ölçülen (`4c2e6712`; sonrasında yalnız bu belge değişti): `cargo test --workspace --no-fail-fast` 1293
-geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check -p cops-providers
--p cops-review-core -p cops-cli` temiz; Python tam paket 6473 OK (23 atlanan, 351 sn); eşleme denetimleri çıkış 0
-(hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`, rev `map_table.py <rapor> --check`). rs-tmux
-tablosu bu turda denetlenmedi (`tmux_backend.py` değişmedi).
+Durum (27 Kas 2026, `rs/prov` `54ed8a8e`; sonrasında yalnız belge ve eşleme dosyaları değişti):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 729 satır (TAŞINDI 653, KAPSAM DIŞI 76) ve test tablosu
+1587 satır (TAŞINDI 774, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
+4 + 20 satır). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
+uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) ve S6 = (b) onaylandı,
+uygulandı; TBD#419 = (a) uygulandı; sahipte S4 ve TBD#422. §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
+Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 1295 geçti, 0 kaldı, 1 atlandı;
+`clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check` temiz; Python tam paket 6497 OK
+(23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
+rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
+denetlenmedi (`tmux_backend.py` değişmedi).
 Oynak görülenler: `parity_real` ve iki `flock` testi bu turda giderildi ("Oynak testler" bölümü);
 `test_review_io_history::test_real_pipes_stream_and_heartbeat` incelenmedi.
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
@@ -89,7 +89,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), sorular S4 ve S6, kalan AÇIK satırlar.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), soru S4, kalan AÇIK satırlar.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -104,15 +104,14 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 
 | Ders satırı | Açık | Kim kapatabilir |
 |---|---|---|
-| §3.1 (a), §2.5.8 | model/effort okuması kapandı (S1); sid'siz `jsonl_path_for` (sohbet, son mesaj rolü) ve codex rollout okuması hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
+| §3.1 (a), §2.5.8 | model/effort okuması (S1) ve claude takılma kararı (TBD#419) kapandı; sid'siz `jsonl_path_for` (sohbet) ve codex rollout okuması (sohbet, son mesaj rolü, takılma kararı) hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
 | §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | sahip (S4), sonra iz |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
 | §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
 
-Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops);
-`d0054ada` sonrası ikinci örnekte hizmet anahtar dosyası sorusu (S6).
+Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops).
 
 ## S1/S2 (sahip onayı (a), 27 Kas; iki tarafta uygulandı)
 - **S1** (`836fe85d`): kimliği bilinmeyen claude oturumunda devir (`apply_handover_downgrades`,
@@ -125,8 +124,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
   Bilgi sekmesi ve kapanış anlık görüntüsü de bu kuralı alır (effort bilinmiyorsa komut satırı değeri; Bilgi sekmesi
   `no_assistant_turn` der).
 - **Kapsam dışı kalan sid'siz okumalar:** `jsonl_path_for` (sohbet geçmişi, `last_exchange`, `last_message_role`) ve
-  codex rollout. `stuck.find_stuck` takılma kararını `last_message_role`dan verir; sid'siz oturumda kardeşin dosyasına
-  bakabilir (kod okuması, sınanmadı). `recover_stuck`ın devam kimliği (`resolve_resume_id`) de bu işte değişmedi.
+  codex rollout. claude takılma kararı ve devam kimliği sonradan kapandı (aşağıda TBD#419).
   Sid'i keşfin kendisi verdiğinde keşif kuralı geçerli (`procStart`sız kayıt kabul edilir; değişmedi).
 
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
@@ -142,7 +140,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 | `CallersTest.test_handover_without_a_record_uses_spawn_values` (py/tests/test_rsprov_s1_own_session.py:136) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `CallersTest.test_effort_wrapper_passes_the_pid` (py/tests/test_rsprov_s1_own_session.py:142) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `CallersTest.test_recovery_reads_the_own_record_before_the_kill` (py/tests/test_rsprov_s1_own_session.py:163) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
-| `CallersTest.test_recovery_without_a_record_keeps_spawn_values` (py/tests/test_rsprov_s1_own_session.py:168) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_recovery_without_a_record_leaves_the_session_alone` (py/tests/test_rsprov_s1_own_session.py:172) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `EffortFollowsTheModelTest.test_effort_of_the_previous_model_is_not_carried_over` (py/tests/test_rsprov_s2_effort_model.py:37) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
 | `EffortFollowsTheModelTest.test_same_model_keeps_the_older_effort` (py/tests/test_rsprov_s2_effort_model.py:40) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
 | `EffortFollowsTheModelTest.test_scan_stops_at_a_model_change_even_if_the_model_returns` (py/tests/test_rsprov_s2_effort_model.py:43) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
@@ -217,11 +215,11 @@ Python 31 MB.
   değerler 0600 dosyaya yazılıp oradan yüklensin (copilot anahtarındaki yöntem): açılış komutu değişir. (b) kanca böyle
   bir ad döndürürse oturum açılmasın. (c) aynen kalsın, kural olarak "kanca sır döndürmez" yazılsın. Öneri: (a).
 - **S5 (maliyet günlüğü taramasının süresi): onaylandı, uygulandı** (27 Kas, (b); "S5" bölümü).
-- **S6 (ikinci örnekte hizmet anahtar dosyası, `d0054ada` sonrası).** `CLAUDEOPS_DIR` başka dizinden açılan örnek Evren
-  ve copilot anahtar dosyasını artık yazmıyor, ama Claude ve öteki hizmetlerin `ucli_key_<hizmet>` dosyasını hâlâ ortak
-  dizine yazıyor (kod okuması: `ucli_provider._apply_cli_opts`; Rust aynı): deneme örneğindeki farklı anahtar canlı
-  örneğin dosyasını ezer. (a) dosya salt okunursa ve içerik farklıysa açılış reddedilsin. (b) deneme örneği anahtarı
-  kendi dizinine yazıp oradan okusun: deneme kendi anahtarıyla çalışır. (c) aynen. Öneri: (b).
+- **S6 (ikinci örnekte hizmet anahtar dosyası): onaylandı, uygulandı** (27 Kas, sahip, (b); "TBD#419, S6, uzun harcama
+  satırı" bölümü).
+- **TBD#419 (sid'siz oturumda takılma kararı): onaylandı, uygulandı** (27 Kas, sahip, (a); aynı bölüm).
+- **TBD#422 (inceleme API bütçe kapısı, okunamayan günlük / geçersiz sayaç): CEVAPSIZ.** O iki durumda kapı hâlâ yalnız
+  toplamı görür; davranış değiştirilmedi. Seçenekler TOBEDECIDED'da.
 - Not (soru değil, açık kalan): TBD#401 `endpoint` alanını sınırlamadı; `/api/io/ask` izinli bir anahtar adını (ör.
   `ANTHROPIC_API_KEY`) çağıranın verdiği adrese hâlâ gönderebilir.
 
@@ -754,7 +752,7 @@ sınırlı, review dosyayı bütün okur).
 - Sağlık yoklaması std soketle yalnız `127.0.0.1`: proxy yok, yönlendirme yok, toplam süre. Yeni bağımlılık yok.
 
 ### Bilinen ayrışmalar (testte kayıtlı olan yok: yalnız Rust testinde ya da testsiz)
-- Defter: 16 MiB'tan uzun satır yalnız defterde "sayılamıyor" reddi (Python ve review toplamı sınırsız okur); var ama
+- Defter: var ama
   ayrıştırılamayan `settings.json` ve geçersiz tavan iki tarafta reddedilir (TBD#397); `credit_window` sonlu olmayan
   girdiyi `null` yazar. 512'den derin `settings.json`da Rust "bozuk" reddi verir, Python daha derine dek okur, çok derinde
   `load_settings` `RecursionError` atar (başlatma yine olmaz; düzeltilmedi).
@@ -810,7 +808,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Süre (100 MB tek günlük, release, 5'er koşuda 3 tur, art arda eski/yeni, yük 4-5): açılış denetimi ortancası eski
   1,28 sn, yeni 1,33 sn; review toplamı 1,49 -> 1,40 sn (koşudan koşuya oynama bundan büyük).
   Python tarafında derinlik denetiminin payı (20 MB tarama, CPU, 5 koşu ortancası): 1,77 -> 1,86 sn (aralıklar örtüşüyor).
-- AÇIK kalan fark: 16 MiB üstü satır (yalnız defter reddeder); BOZUK bir satırda 4300 basamağı Rust metinden, Python
+- AÇIK kalan fark (16 MiB üstü satır farkı sonradan kapandı, aşağıdaki bölüm): BOZUK bir satırda 4300 basamağı Rust metinden, Python
   ayrıştırma hatasından gördüğü için Rust daha sık reddedebilir (hiçbir yönde sayılmayan satır).
   Ayrıca review bütçe kapısı başka güvenilmezlikleri
   (geçersiz sayaç, okunamayan günlük) hâlâ yalnız toplamdan görür (iki dilde; değiştirilmedi).
@@ -1012,8 +1010,9 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
   (iki oturum aynı konuşmaya yazar).
 - Python bunu `spawn_session` İÇİNDE değil ÇAĞIRANDA kapatır: `web._start`/`_new_chat`/`_adopt`, `rc` ve guard
   `guard_lock()` (`~/.claude/claudeops/guard.lock` üzerinde `flock`) içinde `spawn_session` + `_wait_stable` (süreç
-  belirip sabitlenene dek) yapar; kilit süreçler arasıdır. Kilitsiz çağıran: `stuck.recover` (kendi adıyla yeniden açar,
-  `in_use` kendi adını zaten dışlar).
+  belirip sabitlenene dek) yapar; kilit süreçler arasıdır. Kilitsiz çağıran: `stuck.recover_stuck` (claude'da kararın
+  konuşmasını `resume_id` ile verir, başkasının tutup tutmadığına öldürmeden önce kendisi bakar; bakış ile açılış
+  arasındaki pencere kilitsiz).
 - Rust'ta `spawn_session` içinde kapatmak davranış DEĞİŞTİRİR: (a) süreç içi "rezerv" kümesi yarışta ikinci spawn'a başka/taze
   kimlik verir (Python aynı kimliği verirdi) ve Python süreçlerini görmez; (b) `spawn_session` içinde `guard.lock` almak,
   kilidi zaten tutan çağıranlarda kilitlenir (`flock` açık dosya başına: aynı süreçte ikinci açış bekler). Bu yüzden
@@ -1091,6 +1090,32 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   davranış değişmez.
 - Bilinen fark: Rust `SpawnRuntime` okunan günlük dizinlerini kurulurken bir kez hesaplar; Python her çağrıda.
 - `ucli_compare` (T7) bu crate'te yok.
+
+## TBD#419, S6, uzun harcama satırı (27 Kas; iki tarafta)
+- **Takılma kararı (TBD#419 (a), `015faf69`).** claude'da konuşma kimliği `Session.sid`, yoksa yalnız sürecin kendi
+  `sessions/<pid>.json` kaydı (S1'in `_live_transcript` doğrulaması); çözülemezse oturum takılmış sayılmaz.
+  `StuckInfo.sid` kararın konuşmasını taşır; `recover_stuck` onu sürdürür (`spawn_session(resume_id=)`, Rust
+  `StartRequest.resume_id`: verilince arama ve süreç taraması yok, `force_new` ezer). Eskiden devam kimliği
+  `resolve_resume_id`den (ad eşleşmesi, yoksa en yeni) geliyordu: karardan farklı olabiliyordu. claude'da kimlik
+  bilinmiyorsa ya da konuşmayı başka canlı oturum tutuyorsa süreç öldürülmez, dönüş `skipped: <neden>` (CLI hata sayar).
+  `find_stuck`/`recover_stuck`ın Rust karşılığı yok (T4 akışı); taşınan yalnız açılıştaki `resume_id`.
+- **Öteki sağlayıcılar değişmedi:** sid'siz codex'te son mesaj rolü cwd'deki en yeni rollout'tan okunur ve devam kimliği
+  `resolve_resume_id`den gelir (kod okuması, sınanmadı).
+- **Hizmet anahtarı (S6 (b), `0dfe682a`).** İkinci örnekte `ucli_key_<hizmet>` `<CLAUDEOPS_DIR>` altına yazılır ve oradan
+  okunur (`_service_key_file`, `Paths::service_key_file`); ortak dosyaya yazma ve silme yok. Ayarda anahtar yoksa ret
+  aynı (ortak dosyaya düşülmez). Evren (`ucli_api_key`) ve copilot dosyası `d0054ada` kuralında kaldı (salt okunur).
+  Varsayılan örnek değişmedi. Kaldırılan anahtarın hizmet dosyası iki kipte de silinmez (eskisi gibi).
+- **Uzun harcama satırı (`54ed8a8e`).** Satır sonu hariç 16 MiB'tan uzun satır toplama girmez; açık günlük tavan `çok
+  uzun satır` ile kapanır, `review_bad_record` `usage.length`, inceleme bütçe kapısı `_UNCOUNTABLE_SPENT_USD` görür.
+  Zaman penceresi bilinemediğinden bütün pencereler güvenilmez. Kural `cops-review-core` `usage.rs`
+  (`MAX_LINE_BYTES`, `next_line`, `too_long`) ve `review._usage_lines`; review toplamı artık dosyayı bütün olarak belleğe
+  almaz. Token özeti (`review.usage_summary`) ve `ucli_compare` token taraması harcama toplamı değildir, değişmedi
+  (satırı sınırsız okur).
+
+| Python testi (dosya) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `LineLimit.*` (py/tests/test_rsprov_cost_line_length.py) | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte`; `real_ledger` uzun satır vakası | TAŞINDI |
+| `Streaming.test_a_huge_line_is_not_held_in_memory` (py/tests/test_rsprov_cost_line_length.py) | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer` | TAŞINDI |
 
 ## EŞLEME TABLOSU
 
@@ -1477,7 +1502,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_history_args` (py/claudeops/providers/ucli_provider.py:478) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
 | `_effort_args` (py/claudeops/providers/ucli_provider.py:495) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
 | `_set_flag_value` (py/claudeops/providers/ucli_provider.py:513) | `ucli.rs::set_flag_value` | `parity.rs::parity_ucli` `hizmet-claude` `opts-` | TAŞINDI |
-| `_service_key_file` (py/claudeops/providers/ucli_provider.py:525) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `_service_key_file` (py/claudeops/providers/ucli_provider.py:554) | `probe.rs::Paths::service_key_file` | `parity.rs::parity_ucli` `hizmet-` `ornek-hizmet-` | TAŞINDI |
 | `_INSTRUCTIONS_MAX_BYTES` (py/claudeops/providers/ucli_provider.py:529) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
 | `_instructions_too_big` (py/claudeops/providers/ucli_provider.py:532) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
 | `instructions_check` (py/claudeops/providers/ucli_provider.py:543) | `ucli.rs::instructions_check` (`InstructionsCheck`) | `parity.rs::parity_panel` `instr-*` | TAŞINDI |
@@ -1848,6 +1873,15 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_STOP_TOOLS` (py/claudeops/bg_work.py:30) | `bg_work.rs::STOP_TOOLS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `_LINE_MARKS` (py/claudeops/bg_work.py:31) | `bg_work.rs::LINE_MARKS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `_notification_text` (py/claudeops/bg_work.py:58) | `bg_work.rs::notification_text` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+
+### TBD#419, S6 ve uzun satır turunun satırları (27 Kas)
+
+| Python (dosya:satır) | Rust karşılığı | parite testi | durum |
+|---|---|---|---|
+| `_own_conversation` (py/claudeops/stuck.py) | yok: `find_stuck`/`recover_stuck` akışı T4 (okuyucusu `claude_transcript.rs::Live::live_transcript`) | yok | KAPSAM DIŞI |
+| `spawn_session(resume_id=)` (py/claudeops/spawn.py) | `spawn_exec.rs::StartRequest.resume_id` | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+| `_MAX_LINE_BYTES` (py/claudeops/review.py) | `cops-review-core` `usage.rs::MAX_LINE_BYTES` | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte` | TAŞINDI |
+| `_usage_lines` (py/claudeops/review.py) | `cops-review-core` `usage.rs::{next_line, too_long}` | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer`; rev `parity` | TAŞINDI |
 
 ## TEST EŞLEME TABLOSU
 
@@ -3435,3 +3469,26 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` (py/tests/test_web_review_runner.py:593) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_other_failures_still_write_lesson` (py/tests/test_web_review_runner.py:602) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` (py/tests/test_web_review_runner.py:608) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+
+### TBD#419 ve S6 testleri (27 Kas)
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `FindStuckTest.test_sibling_conversation_never_decides` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_own_record_decides` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_untrusted_record_means_not_stuck` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_known_sid_is_kept` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_other_providers_are_asked_as_before` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_resumes_the_conversation_the_decision_was_made_on` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_hand_built_info_resolves_the_own_record_before_the_kill` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_other_providers_keep_their_own_resume_lookup` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `SpawnResumeIdTest.test_given_conversation_is_resumed_without_guessing` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+| `SpawnResumeIdTest.test_force_new_wins` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+| `SharedStateTest.test_service_key_of_a_second_instance_lives_in_its_own_dir` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SharedStateTest.test_second_instance_without_a_service_key_refuses_and_removes_nothing` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SharedStateTest.test_preview_writes_no_service_key_but_names_the_own_path` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SharedStateTest.test_own_key_link_into_the_shared_dir_is_not_followed` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SharedStateTest.test_default_instance_writes_the_shared_service_key` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |

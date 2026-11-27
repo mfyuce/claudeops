@@ -97,6 +97,8 @@ MAP = {
     "_UNCOUNTABLE_SPENT_USD": _m("report", "UNCOUNTABLE_SPENT_USD"),
     "_too_deep": _m("usage", "too_deep"),
     "_UNCOUNTABLE_KINDS": _m("report", "scan_report"),
+    "_MAX_LINE_BYTES": _m("usage", "MAX_LINE_BYTES"),
+    "_usage_lines": _m("usage", "next_line"),
     "_USAGE_COUNT_KEYS": _m("usage", "Record::charge"),
     "_usage_number": _m("usage", "Record::charge"),
     "_scan_usage": _m("report", "usage_cost_usd"),
@@ -120,7 +122,9 @@ NOTES = {
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
     "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
                          "sorun bayrağını `usage.rs::Record::charge` üretir, tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
-    "_UNCOUNTABLE_KINDS": "Rust'ta liste yok: `scan_report` iki türde de `uncountable` bayrağını kurar; "
+    "_usage_lines": "dolaylı parite: bütün `usage_cost_usd`/`anthropic_spent_usd` çağrıları bu okuyucudan geçer; satır sınırı "
+                    "ve akış `cops-providers` `tests/usage_two_copies.rs`",
+    "_UNCOUNTABLE_KINDS": "Rust'ta liste yok: `scan_report` her türde `uncountable` bayrağını kurar; "
                           "`long_integer` Python'da yorumlayıcının `ValueError`ıdır",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
@@ -187,7 +191,8 @@ TESTS = {}
 # Bu koşucunun sarmadığı özel adlar, yalnız adı verilen test modülünde: karşılaştırmaları o testte (dondurulmuş eski
 # Python'a karşı) ve `cops-providers`ta.
 ELSEWHERE = {"test_rsprov_cost_one_pass": {"_finite", "_log_bad", "_usage_number", "_scan_usage", "_scan_usage_windows"},
-             "test_rsprov_cost_depth": {"_scan_usage"}}
+             "test_rsprov_cost_depth": {"_scan_usage"},
+             "test_rsprov_cost_line_length": {"_scan_usage"}}
 
 
 def classes(module, value, names):
@@ -236,6 +241,9 @@ classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_rsprov_cost_depth", out("rs/prov + T7 `ucli_cost.py`", "derin satırın tavan kapısındaki sonucu (`sorun` "
                                       "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit LongIntegers")
 classes("test_rsprov_cost_depth", CORE, "ReviewBudgetGate")
+classes("test_rsprov_cost_line_length", out("rs/prov + T7 `ucli_cost.py`", "uzun satırın tavan kapısındaki sonucu ve akış "
+                                            "(`sorun` dönüşü); toplam payı `cops-providers` `usage_two_copies`"),
+        "LineLimit Streaming")
 classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
 tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),
       "corrupt_backup_not_repeated")
