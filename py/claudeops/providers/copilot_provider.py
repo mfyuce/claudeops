@@ -102,6 +102,8 @@ import sqlite3
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg
+from ..diaglog import diag_log
+from ..paths import shared_write_allowed
 from ..settings import byok_env_for, resolved_binary
 
 SESSION_STORE_DB = os.path.expanduser("~/.copilot/session-store.db")
@@ -131,6 +133,18 @@ def _sync_byok_env_file() -> bool:
     notu, spawn.py'nin env_prefix'i için de geçerli aynı ilke)."""
     env = byok_env_for("copilot")
     safe_env = {k: v for k, v in env.items() if is_safe_env_name(k)}
+    lines = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in safe_env.items())
+    if not shared_write_allowed(_BYOK_ENV_FILE):    # ortak dosya salt okunur (TBD#412 b); ayar farklıysa kullanılmaz
+        if not safe_env:
+            return os.path.isfile(_BYOK_ENV_FILE)
+        try:
+            with open(_BYOK_ENV_FILE, encoding="utf-8") as f:
+                same = f.read() == lines
+        except (OSError, UnicodeDecodeError):
+            same = False
+        if not same:
+            diag_log("shared_key_readonly", file=os.path.basename(_BYOK_ENV_FILE))
+        return same
     if not safe_env:
         if os.path.isfile(_BYOK_ENV_MANAGED_MARKER):
             for p in (_BYOK_ENV_FILE, _BYOK_ENV_MANAGED_MARKER):
@@ -140,7 +154,6 @@ def _sync_byok_env_file() -> bool:
                     pass
             return False
         return os.path.isfile(_BYOK_ENV_FILE)
-    lines = "".join(f"export {k}={shlex.quote(v)}\n" for k, v in safe_env.items())
     fd = os.open(_BYOK_ENV_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     os.fchmod(fd, 0o600)  # retroactive: O_CREAT's mode arg only applies on FIRST creation
     with os.fdopen(fd, "w") as f:
