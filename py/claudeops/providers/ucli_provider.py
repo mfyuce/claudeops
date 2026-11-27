@@ -96,7 +96,7 @@ import psutil
 from .. import searxng
 from .. import ucli_agents
 from ..diaglog import diag_log
-from ..paths import ucli_key_file
+from ..paths import shared_write_allowed, ucli_key_file
 from .. import ucli_cost
 from ..settings import ucli_cost_config
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
@@ -323,8 +323,22 @@ def _sync_api_key_file() -> bool:
     kaldırmak hiçbir şeyi değiştirmiyordu, yeni ucli session'ları eski anahtarla
     kimlik doğrulamaya devam ediyordu (Codex F12, canlı doğrulandı). Marker
     YOKSA dosyaya DOKUNMAZ — elle (ör. eski `read -s` deneme sürecinden)
-    oluşturulmuş bir dosya varsa onu KORUR, sessizce silmez."""
+    oluşturulmuş bir dosya varsa onu KORUR, sessizce silmez.
+
+    Ortak dosya salt okunursa (`paths.shared_write_allowed`) yazılmaz/silinmez; ayardaki anahtar dosyadakinden farklıysa
+    `False` (başka bir anahtarla sessizce harcama yapılmaz)."""
     key = byok_env_for("ucli").get("UCLI_API_KEY", "").strip()
+    if not shared_write_allowed(_API_KEY_FILE):
+        if not key:
+            return os.path.isfile(_API_KEY_FILE)
+        try:
+            with open(_API_KEY_FILE, encoding="utf-8") as f:
+                same = f.read().strip() == key
+        except (OSError, UnicodeDecodeError):
+            same = False
+        if not same:
+            diag_log("shared_key_readonly", file=os.path.basename(_API_KEY_FILE))
+        return same
     if not key:
         if os.path.isfile(_API_KEY_MANAGED_MARKER):
             for p in (_API_KEY_FILE, _API_KEY_MANAGED_MARKER):
@@ -582,8 +596,9 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
             diag_log("ucli_instructions_skipped", name=session_name, cwd=cwd, limit=_INSTRUCTIONS_MAX_BYTES)
             continue
         if flag == "--usage-log":
-            os.makedirs(ucli_cost.USAGE_DIR, mode=0o700, exist_ok=True)
-            argv = _set_flag_value(argv, flag, ucli_cost.log_path(session_name))
+            usage_log = ucli_cost.log_path(session_name)
+            os.makedirs(os.path.dirname(usage_log), mode=0o700, exist_ok=True)
+            argv = _set_flag_value(argv, flag, usage_log)
         elif val == "":
             if flag not in argv:
                 argv = argv + [flag]
@@ -723,8 +738,9 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     if "--usage-log" not in argv:       # Claude hizmeti kendi günlüğünü yukarıda ekledi; öteki TÜM açılışlar (Evren dahil) ayrı dizine yazar
         if binary_supports_flag(argv[0], "--usage-log"):
             try:
-                os.makedirs(ucli_cost.OTHER_DIR, mode=0o700, exist_ok=True)
-                argv = _set_flag_value(argv, "--usage-log", ucli_cost.other_log_path(session_name))
+                usage_log = ucli_cost.other_log_path(session_name)
+                os.makedirs(os.path.dirname(usage_log), mode=0o700, exist_ok=True)
+                argv = _set_flag_value(argv, "--usage-log", usage_log)
             except OSError as e:
                 diag_log("ucli_usage_log_dir_failed", name=session_name, error=str(e)[:120])
         else:
