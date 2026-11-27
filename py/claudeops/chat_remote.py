@@ -31,7 +31,7 @@ class Transport(Protocol):
 
 
 def names(tag: str, day: str) -> Dict[str, str]:
-    if not _TAG.match(tag) or not re.match(r"^\d{8}$", day):
+    if not _TAG.fullmatch(tag) or not re.fullmatch(r"\d{8}", day):
         raise ValueError("etiket/gün geçersiz")
     base = f".chatpull-{tag}-{day}"
     return {"tmp": base + ".tgz.part", "tgz": base + ".tgz", "done": base + ".done", "fail": base + ".fail",
