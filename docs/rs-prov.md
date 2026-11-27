@@ -144,6 +144,11 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
   sınırı; aşan dosya tavan açıkken "sayılamıyor" sayılıp açılış reddedilsin: süre sınırlanır, bugün açılan oturum
   reddedilebilir. (b) ret kuralı aynen; açılış denetimi her dosyayı tek geçişte okusun: sonuç aynı, süre düşer ama yine
   boyutla artar, iki dilde kod değişir. (c) aynen. Öneri: (b).
+- **S6 (ikinci örnekte hizmet anahtar dosyası, `d0054ada` sonrası).** `CLAUDEOPS_DIR` başka dizinden açılan örnek Evren
+  ve copilot anahtar dosyasını artık yazmıyor, ama Claude ve öteki hizmetlerin `ucli_key_<hizmet>` dosyasını hâlâ ortak
+  dizine yazıyor (kod okuması: `ucli_provider._apply_cli_opts`; Rust aynı): deneme örneğindeki farklı anahtar canlı
+  örneğin dosyasını ezer. (a) dosya salt okunursa ve içerik farklıysa açılış reddedilsin. (b) deneme örneği anahtarı
+  kendi dizinine yazıp oradan okusun: deneme kendi anahtarıyla çalışır. (c) aynen. Öneri: (b).
 - Not (soru değil, açık kalan): TBD#401 `endpoint` alanını sınırlamadı; `/api/io/ask` izinli bir anahtar adını (ör.
   `ANTHROPIC_API_KEY`) çağıranın verdiği adrese hâlâ gönderebilir.
 
@@ -949,9 +954,24 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Gözlem (sınanmadı, kod değişmedi): BYOK anahtarı ayardan kaldırılınca anahtar dosyası silinemez ama `.managed` damgası
   silinirse sonraki açılış dosyayı "elle bırakılmış" sayar (copilot ve ucli, iki dilde).
 
+## `origin/main` `d0054ada` eşitlemesi (27 Kas, TBD#412 b)
+- İkinci örnek (`CLAUDEOPS_DIR` ortak kök değil): ucli ve copilot BYOK dosyası yazılmaz/silinmez, ayar dosyadan farklıysa
+  kullanılmaz (`shared_key_readonly`); kullanım günlüğü ve `ucli-state` kendi dizinine; maliyet toplamı ortak + kendi
+  dizininden; sohbet okuyucuları ortak durum dizinine en son bakar. Varsayılan örnekte davranış aynı.
+- Parite ortamı `HOME` ile `CLAUDEOPS_DIR`i ayrı tuttuğundan eski vakalar artık ikinci örnek kipinde koşuyor; varsayılan
+  kip `Case::default_instance` ile (bağlantı) ayrıca koşar: `ornek-varsayilan-*`, `copilot-ornek-varsayilan-*`,
+  `defter-ornek-*-true`.
+- Birleştirme çakışmaları (`copilot_provider`, `ucli_provider`, `ucli_client`): kuru koşu korundu (salt okunur denetimi
+  `preview` dalından önce; kuru koşuda dizin açılmaz).
+- Python hatası (iki tarafta `fix:` `3bbca162`, `09952ae5`): `_ledger_problem` yalnız ortak dizine bakıyordu, ikinci
+  örnekte bozuk ya da okunamayan kendi günlüğü 0 harcama sayılıp açık tavanda açılış geçiyordu. Varsayılan örnekte
+  davranış değişmez.
+- Bilinen fark: Rust `SpawnRuntime` okunan günlük dizinlerini kurulurken bir kez hesaplar; Python her çağrıda.
+- `ucli_compare` (T7) bu crate'te yok.
+
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 711 satır: TAŞINDI 637, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 715 satır: TAŞINDI 641, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1689,10 +1709,14 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_window_titled` (py/claudeops/spawn.py:406) | `spawn_exec.rs::{Launcher::window_titled, window_listed}`; okuma `Terminal::window_list` (gerçek `real/launch.rs::GnomeTerminal`) | `parity.rs::parity_g9` `bekci-pencere-`; `tests/g9.rs::{watchdog_waits_instead_of_opening_a_second_window, watchdog_relaunches_unless_the_exact_title_is_listed, gnome_terminal_window_list_runs_wmctrl_on_the_given_display}` | TAŞINDI |
 | `_row_effort` (py/claudeops/providers/claude_provider.py:368) | `claude_transcript.rs::assistant_effort` | `parity.rs::parity_transcript` `esit-alt-ajan-` `effort-` | TAŞINDI |
 | `_key_env_refusal` (py/claudeops/ucli_client.py:260) | `oneshot.rs::check_key_env` + `real/oneshot.rs::OneShot::check_key_env` (`DEFAULT_KEY_ENV`, `Paths::settings_json`) | `parity.rs::parity_oneshot` `tbd401-`; `tests/real_oneshot.rs::only_known_key_env_names_start_a_child` | TAŞINDI |
+| `shared_write_allowed` (py/claudeops/paths.py, `d0054ada`) | `probe.rs::Paths::shared_write_allowed` (`Providers::shared_write_allowed`) | `parity.rs::parity_ucli` `ornek-`, `parity_build` `copilot-ornek-` | TAŞINDI |
+| `write_dir` (py/claudeops/ucli_cost.py, `d0054ada`) | `probe.rs::Paths::usage_write_dir`, `pyfmt.rs::relpath` | `parity.rs::parity_misc` `ucli-misc`, `parity_ledger` `defter-ornek-` | TAŞINDI |
+| `read_dirs` (py/claudeops/ucli_cost.py, `d0054ada`) | `probe.rs::Paths::usage_read_dirs`; `real/ledger.rs::CostLedger::with_write_dir` | `parity.rs::parity_ledger` `defter-ornek-` | TAŞINDI |
+| `_logs` (py/claudeops/ucli_cost.py, `d0054ada`) | `real/ledger.rs::logs_in` | `parity.rs::parity_ledger` `defter-ornek-` | TAŞINDI |
 
 ## TEST EŞLEME TABLOSU
 
-Güncel sayım (27 Kas): 1524 satır: TAŞINDI 739, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 785, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+Güncel sayım (27 Kas): 1532 satır: TAŞINDI 747, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 785, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -3247,3 +3271,11 @@ Güncel sayım (27 Kas): 1524 satır: TAŞINDI 739, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ModelCheckBinary.test_uses_resolved_claude_binary` (py/tests/test_uzops_review_fixes.py:49) | T7: `model_freshness` periyodik yoklaması bu crate'te yok | KAPSAM DIŞI |
 | `OneStartPerProject.test_two_answers_one_start_and_slot_left_for_other_project` (py/tests/test_steward_one_start_per_project.py:20) | rs/stew: `cops-steward-core` `tick/slots.rs` (main `ec82eac5` ile aynı commit) | KAPSAM DIŞI |
 | `AgyTest.test_document_that_cannot_be_written_back_does_not_drop_the_scan` (py/tests/test_rsprov_g1_fixes.py) | `parity_docs::state_docs_match_python_in_every_backend` `vekil` | TAŞINDI |
+| `SharedStateTest.test_allowed_only_outside_shared_or_default_instance` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-`, `parity_build` `copilot-ornek-` (iki örnek kipi) | TAŞINDI |
+| `SharedStateTest.test_empty_setting_does_not_delete_shared_keys` (py/tests/test_shared_state_readonly.py) | `parity_ucli` `ornek-ikinci-sil`, `parity_build` `copilot-ornek-ikinci-sil` | TAŞINDI |
+| `SharedStateTest.test_other_setting_neither_written_nor_used` (py/tests/test_shared_state_readonly.py) | `parity_ucli` `ornek-ikinci-ustune`, `parity_build` `copilot-ornek-ikinci-ustune` | TAŞINDI |
+| `SharedStateTest.test_same_setting_is_used_and_missing_file_not_created` (py/tests/test_shared_state_readonly.py) | `parity_ucli` `ornek-ikinci-ayni` `ornek-ikinci-yaz`, `parity_build` `copilot-ornek-ikinci-ayni` | TAŞINDI |
+| `SharedStateTest.test_usage_written_to_own_dir_and_both_counted` (py/tests/test_shared_state_readonly.py) | `parity_ledger` `defter-ornek-iki-dizin`, `parity_misc` `ucli-misc` (`ucli_compare` satırları T7: bu crate'te yok) | TAŞINDI |
+| `SharedStateTest.test_unreadable_own_ledger_is_a_problem_in_a_second_instance` (py/tests/test_shared_state_readonly.py) | `parity_ledger` `defter-ornek-kendi-bozuk` `-kendi-okunamaz` | TAŞINDI |
+| `SharedStateTest.test_default_instance_uses_shared_usage` (py/tests/test_shared_state_readonly.py) | `parity_ledger` `defter-ornek-*-true` | TAŞINDI |
+| `SharedStateTest.test_state_dir_own_and_shared_read_last` (py/tests/test_shared_state_readonly.py) | `parity_misc` `ucli-misc`, `parity_live` | TAŞINDI |

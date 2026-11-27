@@ -548,6 +548,7 @@ DEFS["paths.py"] = [
     oos("_test_code_loaded _under_test_runner ensure_private_state_dir ROSTER_TSV MODELS_TSV CLAUDE_MODELS_JSON",
         "durum dizini çözümü, test yalıtımı ve durum dosyaları", W0A),
     oos("ucli_key_file", "ucli anahtar dosyası yolu", SAG),
+    oos("shared_write_allowed", "ortak anahtar/kullanım dosyalarının yazım kapısı (açılış, TBD#412 b)", SAG),
     oos("REPO_DIR CONFIG_JSON GUARD_LOCK", "açılış/koruma yolu sabitleri", T4),
 ]
 
@@ -955,6 +956,7 @@ FILES = {
     "rsprov_paths": ("yola eklenen oturum adı/kimlik denetimi", SAG),
     "rsprov_g5_fixes": ("kota/bağlam ayrıştırıcıları ve ucli ölçüm ayarı", SAG),
     "rsprov_sqlite_readers": ("agy/copilot SQLite deposu okuma", f"{SAG}; {CHAT}"),
+    "shared_state_readonly": ("ikinci örnekte ortak anahtar ve kullanım dosyaları (açılış, maliyet defteri)", SAG),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
     "state_backend_last_good": (_PATHS, W0A),
@@ -1463,6 +1465,7 @@ rsprov_model_reader:6:fbceb023ec
 rsprov_models_redirect:2:e49e832742
 rsprov_paths:3:bc9d8d7efb
 rsprov_sqlite_readers:5:bebafe8f70
+shared_state_readonly:8:388c2e5d3d
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
 state_backend_last_good:3:5531228f00
