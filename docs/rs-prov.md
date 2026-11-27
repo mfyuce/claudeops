@@ -1,12 +1,13 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `rs/prov` `54ed8a8e`; sonrasında yalnız belge ve eşleme dosyaları değişti):
+Durum (27 Kas 2026, `rs/prov` `c8a86a87`, `main` `f7071898` içinde):
 **BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 735 satır (TAŞINDI 659, KAPSAM DIŞI 76) ve test tablosu
 1602 satır (TAŞINDI 789, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
 4 + 20 satır; S4 uygulamasıyla 6 + 15 satır daha). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
-uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) ve S6 = (b) onaylandı,
+uygulandı ("S1/S2" bölümü); S3 uygulandı (enterprise `b2779d1`); S5 = (b) ve S6 = (b) onaylandı,
 uygulandı; TBD#419 = (a) ve TBD#422 = (a) uygulandı; S4 = (a) uygulandı (27 Kas, iki tarafta; "S4" maddesi). §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
-Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 1295 geçti, 0 kaldı, 1 atlandı;
+TBD#425 = (a) uygulandı (`c113f820`). Son ağaçta ölçülen (`c8a86a87`): cargo 1324 geçti, 0 kaldı, 1 atlandı; clippy ve fmt temiz;
+Python 6610 OK (23 atlanan); dört eşleme denetimi çıkış 0. Aşağıdaki eski ölçüm (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 1295 geçti, 0 kaldı, 1 atlandı;
 `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check` temiz; Python tam paket 6497 OK
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
@@ -103,7 +104,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), kalan AÇIK satırlar.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): kalan AÇIK satırlar.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -122,7 +123,6 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
-| §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
 
 Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops).
 
@@ -216,7 +216,7 @@ Python 31 MB.
 ## Bekleyen sorular (sahip)
 - **S1 (sid'siz transkript okuma): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
 - **S2 (eski satırdan effort): onaylandı, uygulandı** (27 Kas, (b); "S1/S2" bölümü).
-- **S3 (kuru koşuda spawn kancası): onaylandı ((a), 27 Kas), enterprise deposunda değişiklik bekliyor.** `spawn_session(dry_run=True)` çok kullanıcı kancasını yine çağırıyor; TODO'daki kod
+- **S3 (kuru koşuda spawn kancası): onaylandı ((a), 27 Kas), uygulandı (enterprise `b2779d1`).** `spawn_session(dry_run=True)` çok kullanıcı kancasını yine çağırıyor; TODO'daki kod
   okumasına göre enterprise kancası bu sırada dizin açıyor, ret denetim kaydı yazıyor ve bellekte kota ayırıyor (bu turda
   ölçülmedi). Panel, oturumu başka CLI ile devralırken eski oturumu kapatmadan önce reddi bu kuru koşuyla görüyor. (a)
   çağrı kalsın, enterprise kancası kuru koşuyu (`preview.active()`) görünce yazmasın: ön denetim korunur, çekirdek
@@ -311,7 +311,7 @@ sır-argv birim testleri.
 | §3.17 test yalıtımı (H16) | her test `TempDir` (RAII); parite koşucusu boş ortam, geçici HOME/CLAUDEOPS_DIR, ağ kapalı (`parity_searxng` `arama-ag-engeli`); tmux yalnız özel sunucu (geçici `TMUX_TMPDIR` + rastgele soket; `real_tmux`, `real_pane`), kapanış o soketle; çalıştırılan betikler alt süreçle (`write_exe`, `spawn_guard`); `/proc` sahte ve sıralı (`real_scan`); HTTP `127.0.0.1:0`; üretim kodu durum yolunu kendisi türetmez (`Paths`) | TAMAM |
 | §3.18 uzak host sürüm / devre kesici / deploy (H10, H11) | crate uzak host çağırmaz | UYGULANMAZ. Not: bu dalın `py/` `fix:` commit'leri (61) canlıya web restart ve uzak deploy ile ulaşır (cops) |
 | §3.19 ikili sürümü, canlı = main, restart'ta yarım iş (H11) | kütüphane crate, ikili yok | UYGULANMAZ (copsd). Bekçi iş parçacığı süreçle ölür (G9, bağlayan uç `join`) |
-| §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. AÇIK: spawn kancası kuru koşuda da çağrılır (G9 aday 6, Python gibi; S3 onaylandı, enterprise deposunda değişiklik bekliyor) |
+| §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. Spawn kancası kuru koşuda da çağrılır (G9 aday 6, bilerek, S3 (a)); eklenti kuru koşuda yazmaz (enterprise `b2779d1`) |
 | §2.5.1 sağlayıcı başına tek modül, if-zinciri yok (H4) | `claude.rs`, `agy.rs`, `codex.rs`, `copilot.rs`, `shell.rs`, `ucli.rs`; dağıtım tek `match Cli` (`Providers::build_inner_command`, `tui.rs` `Cli` yöntemleri); `tui::only_claude_touches_the_pane`, `parity_build` | TAMAM |
 | §2.5.2 bayrak desteği `--help`'ten; desteklenmeyen eklenmez (H4) | `real/help.rs` (anahtar yol + mtime + boyut): `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`, `empty_failed_slow_huge_or_non_utf8_help_is_not_cached`; tanınmayan bayrak eklenmez + `ucli_flag_unsupported` (`parity_g8`), güvenlik izni bayrağı tanınmazsa spawn reddi (`Ctx::require`, `parity_ucli`) | TAMAM. KAPALI (cops kabulü, 27 Kas): ikilinin SÜRÜMÜ günlüğe yazılmaz (ders maddesi istiyor); gerekçe: Python da aynı davranıyor, her yoklamada günlük gürültü olur; kod değişmedi |
 | §2.5.3 effort / model tek geçit; agy kademesi (H4) | `resolve_effort` tek giriş; agy `-high` kademesi `effort::split_tier`; `parity_model_effort`, `effort::tests::tiers_sorting_and_nearest_match_python`; ana oturum Sonnet + medium: rs/stew `prompts.rs::main_session_model_effort` (`cops-steward-core` `main_session_model_effort_vectors`) | TAMAM |
@@ -1103,7 +1103,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | 3 | Gizli başlatma, gnome-terminal var, tmux yok: hiçbir şey açılmıyor, iz yok | `spawn_hidden_no_tmux` olayı; başka davranış aynı | `HiddenWithoutTmuxTest`; `{cli}-gizli-tmuxsuz` |
 | 4 | Bekçideki `Popen` `ValueError`ı iş parçacığını iz bırakmadan bitiriyordu (üretimde ulaşılamaz görünüyor, OKUNDU) | `spawn_retry_launch_error` (yalnız sınıf adı, metin yok); bekçi yine biter, yedek açılmaz | `WatchdogValueErrorTest`; `bekci-valueerror`; `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it` |
 
-### Python hatası adayları (5 DÜZELDİ; 6: S3 onaylandı, enterprise deposunda değişiklik bekliyor)
+### Python hatası adayları (5 DÜZELDİ; 6: S3 uygulandı, enterprise `b2779d1`)
 | # | Aday | Sonuç |
 |---|---|---|
 | 5 | Hayalet temizliği başlatmadan ÖNCE: ilk `Popen` `ValueError` ile reddedilse de eski oturum kapatılıyordu (argv/ortamda NUL) | DÜZELDİ (27 Kas): ad, cwd, iç komut ya da ekranda NUL varsa temizlik yapılmaz; ret/akış aynı. Yalnız başlayamayacak açılışta fark. `test_rsprov_g9_fixes.py::GhostKeptWhenLaunchCannotStartTest`, parite `nul-` |
