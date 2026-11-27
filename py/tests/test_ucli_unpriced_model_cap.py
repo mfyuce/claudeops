@@ -2,6 +2,7 @@
 "proc görünmedi" diye öldü). claudeops fiyatı biliyorsa `--price` verir; bilmiyorsa spawn'ı nedeniyle reddeder."""
 import os
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -10,13 +11,15 @@ from claudeops.providers import ucli_provider as up  # noqa: E402
 
 
 def apply(opts, model, flags=None):
-    with mock.patch.object(up, "binary_supports_flag", lambda b, f: flags is None or f in flags), \
+    # anahtar dosyası normal bir dosya olmalı (`_open_private_target` /dev/null'u reddeder)
+    with tempfile.TemporaryDirectory() as tmp, \
+            mock.patch.object(up.ucli_cost, "OTHER_DIR", os.path.join(tmp, "other")), \
+            mock.patch.object(up, "binary_supports_flag", lambda b, f: flags is None or f in flags), \
             mock.patch.object(up, "_default_session_cap", return_value=8.0), \
             mock.patch.object(up, "byok_env_for", return_value={"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k"}), \
             mock.patch.object(up, "_services", return_value={"claude": ("anthropic-messages", "http://x", "ANTHROPIC_API_KEY"),
                                                              "openai": ("", "http://y", "OPENAI_API_KEY")}), \
-            mock.patch.object(up, "_service_key_file", return_value=os.devnull), \
-            mock.patch.object(up.os, "fchmod", lambda *a: None), \
+            mock.patch.object(up, "_service_key_file", return_value=os.path.join(tmp, "key")), \
             mock.patch.object(up, "_claude_service_flags", lambda argv, *a: argv), \
             mock.patch.object(up, "diag_log", lambda *a, **k: None), \
             mock.patch.object(up, "path_executables", return_value={}):

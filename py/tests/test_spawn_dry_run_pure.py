@@ -143,7 +143,8 @@ class DryRunPureTest(unittest.TestCase):
         self.assertNotIn("--allow-agents", out["dry"])
 
     def test_ucli_claude_service_with_ask_dir(self):
-        out = self._run("ucli", opts={"service": "claude", "ask_dir": True})
+        # test modeli "m" fiyatsız: oturum USD tavanı açık kalsaydı açılış reddedilirdi (main 9e5bcf24)
+        out = self._run("ucli", opts={"service": "claude", "ask_dir": True}, settings={"ucli_max_session_usd": "0"})
         self._assert_pure(out)
         for part in ("ucli_key_claude", "--ask-dir", "--usage-log"):
             self.assertIn(part, out["dry"])
