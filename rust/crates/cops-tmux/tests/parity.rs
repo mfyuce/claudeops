@@ -120,6 +120,8 @@ fn reads_match_python() {
         for lines in [2000u32, 40, 8, 0] {
             calls.push(json!(["tmux_capture", name, lines]));
             rust.push(json!(t.capture(name, lines).ok()));
+            calls.push(json!(["tmux_capture", name, lines, true]));
+            rust.push(json!(t.capture_joined(name, lines).ok()));
         }
         for (start, end) in ranges {
             calls.push(json!(["tmux_capture_range", name, start, end]));
@@ -145,6 +147,10 @@ fn reads_match_python() {
     // Aynı gerçek ekran üzerinde saf işlevler (önemsiz eşitlik olmasın diye içerik de denetlenir).
     let screen = t.capture("a", 2000).unwrap();
     assert!(screen.lines().count() > 1800 && screen.contains("\x1b["));
+    // `-J`: sarılan 200 haneli satır yalnız birleştirilmiş yakalamada tek parça.
+    let long = format!("{:0200}", 7);
+    assert!(!strip_ansi(&screen).contains(&long));
+    assert!(strip_ansi(&t.capture_joined("a", 2000).unwrap()).contains(&long));
     assert_eq!(typed_input_in_box(&screen), Some(true));
     assert!(input_box(&screen).unwrap().typed.contains("ikinci satir"));
     assert!(t.snapshot("alt").unwrap().size.alternate_on);
@@ -731,6 +737,11 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
                 json!(["tmux_capture", "a", lines]),
                 &|x| json!(x.capture("a", lines).ok()),
             );
+            t(
+                &[("capture-pane.out", screen), ("capture-pane.rc", rc)],
+                json!(["tmux_capture", "a", lines, true]),
+                &|x| json!(x.capture_joined("a", lines).ok()),
+            );
         }
         for (start, end) in [(-5i64, 3i64), (0, 0), (10, -2)] {
             t(
@@ -1101,6 +1112,7 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         json!(["tmux_has_session", "a"]),
         json!(["tmux_pane_snapshot", "a"]),
         json!(["tmux_capture", "a", 10]),
+        json!(["tmux_capture", "a", 10, true]),
         json!(["tmux_send_keys", "a", "x", 0.0, false]),
         json!(["tmux_set_ctx", "a", "x"]),
         json!(["tmux_client_session", "/dev/pts/1"]),
@@ -1111,6 +1123,7 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         json!(gone.has_session("a").unwrap_or(false)),
         json!(gone.snapshot("a").ok().map(|_| ())),
         json!(gone.capture("a", 10).ok()),
+        json!(gone.capture_joined("a", 10).ok()),
         ok(gone.send_text("a", "x", Duration::ZERO, MaskGuard::UserTyped)),
         ok(gone.set_ctx("a", "x")),
         json!(gone.client_session("/dev/pts/1").ok().flatten()),

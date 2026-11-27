@@ -152,17 +152,23 @@ impl Tmux {
 
     /// Son `history` geçmiş satırı + görünür alan, ANSI korunur (`-e`). Eşleştirme için [`Tmux::capture_plain`].
     pub fn capture(&self, name: &str, history: u32) -> Result<String, TmuxError> {
+        self.capture_with(name, history, false)
+    }
+
+    /// [`Tmux::capture`], tmux'un sardığı uzun satırlar tek satır (`-J`; Python `tmux_capture(join=True)`). Yalnız metin
+    /// aramak için: ekran yerleşimine bakan okuyucular (giriş kutusu, diyalog) [`Tmux::capture`] kullanır.
+    pub fn capture_joined(&self, name: &str, history: u32) -> Result<String, TmuxError> {
+        self.capture_with(name, history, true)
+    }
+
+    fn capture_with(&self, name: &str, history: u32, join: bool) -> Result<String, TmuxError> {
+        let target = exact_target(name)?;
         let start = format!("-{history}");
-        self.run(&[
-            "capture-pane",
-            "-t",
-            &exact_target(name)?,
-            "-e",
-            "-p",
-            "-S",
-            &start,
-        ])?
-        .text()
+        let mut args = vec!["capture-pane", "-t", &target, "-e", "-p", "-S", &start];
+        if join {
+            args.push("-J");
+        }
+        self.run(&args)?.text()
     }
 
     /// [`Tmux::capture`] + [`strip_ansi`].
