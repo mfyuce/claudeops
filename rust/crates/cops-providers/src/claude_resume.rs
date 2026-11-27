@@ -70,7 +70,10 @@ fn path_join(dir: &str, name: &str) -> String {
         2 => 2,
         _ => 1,
     };
-    let parts: Vec<&str> = full.split('/').filter(|c| !c.is_empty() && *c != ".").collect();
+    let parts: Vec<&str> = full
+        .split('/')
+        .filter(|c| !c.is_empty() && *c != ".")
+        .collect();
     format!("{}{}", "/".repeat(slashes), parts.join("/"))
 }
 
@@ -126,7 +129,9 @@ impl Live<'_> {
 
     /// cwd'nin en son değiştirilen transkripti.
     pub fn find_latest_jsonl(&self, cwd: &str) -> Option<String> {
-        self.newest_first(self.project_jsonls(cwd)).into_iter().next()
+        self.newest_first(self.project_jsonls(cwd))
+            .into_iter()
+            .next()
     }
 
     /// `sessions/<pid>.json`ın kırpılmış `sessionId`si. Yalnız dosyadaki `pid` eşleşiyor VE `procStart` canlı sürecin
@@ -159,14 +164,22 @@ impl Live<'_> {
         let stat = String::from_utf8_lossy(&stat);
         // comm boşluk/parantez içerebilir: SON `)` sonrası; 19. alan starttime.
         let fields = &stat[stat.rfind(')')? + 1..];
-        let start = fields.split(crate::pyfmt::py_isspace).filter(|f| !f.is_empty()).nth(19)?;
+        let start = fields
+            .split(crate::pyfmt::py_isspace)
+            .filter(|f| !f.is_empty())
+            .nth(19)?;
         (start == want).then(|| sid.to_string())
     }
 
     /// İlk [`META_HEAD_LINES`] satırdan başlık ve cwd; okunamayan dosya ya da bozuk satır sessizce atlanır.
     pub fn jsonl_meta(&self, path: &str) -> Meta {
         let mut meta = Meta::default();
-        for row in self.head_lines(path, META_HEAD_LINES).unwrap_or_default().iter().filter_map(|l| json_line(l)) {
+        for row in self
+            .head_lines(path, META_HEAD_LINES)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|l| json_line(l))
+        {
             let text = |key: &str| row.get(key).and_then(Py::as_str).map(String::from);
             meta.title = meta.title.or_else(|| text("customTitle"));
             meta.cwd = meta.cwd.or_else(|| text("cwd"));
@@ -180,23 +193,41 @@ impl Live<'_> {
 
     /// Dosya KENDİ `cwd`sini yazmışsa ve hedefle uyuşmuyorsa true (proje dizini kodlaması farklı yolları birleştirir).
     fn other_cwd(&self, meta: &Meta, cwd: &str) -> bool {
-        meta.cwd.as_deref().is_some_and(|c| !c.is_empty() && !self.same_path(c, cwd))
+        meta.cwd
+            .as_deref()
+            .is_some_and(|c| !c.is_empty() && !self.same_path(c, cwd))
     }
 
     /// Dosyada en az bir `user`/`assistant` satırı var mı.
     pub fn has_chat_rows(&self, path: &str) -> bool {
-        let Some(data) = self.probe.read_range(path, 0, STUB_READ_MAX_BYTES) else { return false };
+        let Some(data) = self.probe.read_range(path, 0, STUB_READ_MAX_BYTES) else {
+            return false;
+        };
         universal_lines(&data)
             .iter()
             .filter_map(|l| json_line(l))
-            .any(|row| matches!(row.get("type").and_then(Py::as_str), Some("user" | "assistant")))
+            .any(|row| {
+                matches!(
+                    row.get("type").and_then(Py::as_str),
+                    Some("user" | "assistant")
+                )
+            })
     }
 
     /// En yeni [`RESUME_SCAN_LIMIT`] transkript içinden: başkasının tuttuğu (kimlik ya da başlık) ve başka cwd'ye ait
     /// olanlar elenir; adı `session_name` olan tercih edilir, yoksa en yeni uygun.
-    pub(crate) fn claude_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>, session_name: &str) -> Option<String> {
+    pub(crate) fn claude_resume_id(
+        &self,
+        cwd: &str,
+        in_use: &BTreeSet<String>,
+        session_name: &str,
+    ) -> Option<String> {
         let mut fallback = None;
-        for path in self.newest_first(self.project_jsonls(cwd)).into_iter().take(RESUME_SCAN_LIMIT) {
+        for path in self
+            .newest_first(self.project_jsonls(cwd))
+            .into_iter()
+            .take(RESUME_SCAN_LIMIT)
+        {
             let id = stem(file_name(&path));
             if in_use.contains(id) {
                 continue;
@@ -218,15 +249,27 @@ impl Live<'_> {
     }
 
     /// Başlığı TAM `session_name` olan en yeni gerçek konuşma (TÜM dosyalara bakılır); hepsi stub ise en yenisi.
-    pub(crate) fn claude_stopped_sid(&self, cwd: &str, session_name: &str, cache: &MetaCache) -> Option<String> {
+    pub(crate) fn claude_stopped_sid(
+        &self,
+        cwd: &str,
+        session_name: &str,
+        cache: &MetaCache,
+    ) -> Option<String> {
         if session_name.is_empty() {
             return None;
         }
         let dir = self.probe.claude_project_dir(cwd);
         let mut matches: Vec<(i64, u64, String)> = Vec::new();
-        for name in self.probe.list_dir(&dir)?.into_iter().filter(|n| n.ends_with(".jsonl")) {
+        for name in self
+            .probe
+            .list_dir(&dir)?
+            .into_iter()
+            .filter(|n| n.ends_with(".jsonl"))
+        {
             let path = path_join(&dir, &name);
-            let Some(st) = self.probe.stat(&path).filter(|s| s.is_file) else { continue };
+            let Some(st) = self.probe.stat(&path).filter(|s| s.is_file) else {
+                continue;
+            };
             let meta = cache.get(&path, (st.mtime_ns, st.size), || self.jsonl_meta(&path));
             if meta.title.as_deref() != Some(session_name) || self.other_cwd(&meta, cwd) {
                 continue;

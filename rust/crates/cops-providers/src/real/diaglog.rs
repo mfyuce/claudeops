@@ -59,7 +59,10 @@ fn py_of(v: &serde_json::Value) -> Py {
 
 impl DiagLog {
     pub fn new(path: impl Into<String>) -> DiagLog {
-        DiagLog { path: path.into(), mirror: None }
+        DiagLog {
+            path: path.into(),
+            mirror: None,
+        }
     }
 
     /// `diag_log_path()`: `CLAUDEOPS_DIAG_LOG` (boş değilse), yoksa `<durum dizini>/diag.log`.
@@ -83,8 +86,10 @@ impl DiagLog {
             let _ = fs::rename(&self.path, format!("{}.1", self.path));
         }
         // `{"ts": .., "event": .., **data}`: aynı adlı alan yerinde ezer
-        let mut entry =
-            vec![("ts".to_string(), Py::Str(local_iso_now())), ("event".to_string(), Py::Str(event.to_string()))];
+        let mut entry = vec![
+            ("ts".to_string(), Py::Str(local_iso_now())),
+            ("event".to_string(), Py::Str(event.to_string())),
+        ];
         for (key, value) in fields {
             match entry.iter_mut().find(|(k, _)| k == key) {
                 Some(slot) => slot.1 = py_of(value),
@@ -112,6 +117,9 @@ impl DiagLog {
 
     /// [`crate::BuildOutput::diags`] sırasıyla yazılır; dönen değer yazılan kayıt sayısı.
     pub fn write_all(&self, diags: &[Diag]) -> usize {
-        diags.iter().filter(|d| self.log(d.event, &d.fields)).count()
+        diags
+            .iter()
+            .filter(|d| self.log(d.event, &d.fields))
+            .count()
     }
 }

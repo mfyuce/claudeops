@@ -15,7 +15,11 @@ pub struct Env {
 impl fmt::Debug for Env {
     /// Ortam sır taşır: yalnız kaynağın türü basılır.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(if self.fixed.is_some() { "Env(fixed)" } else { "Env(process)" })
+        f.write_str(if self.fixed.is_some() {
+            "Env(fixed)"
+        } else {
+            "Env(process)"
+        })
     }
 }
 
@@ -35,7 +39,10 @@ impl Env {
                 None => out.push((k, v)),
             }
         }
-        Env { fixed: Some(Arc::new(out)), over: Vec::new() }
+        Env {
+            fixed: Some(Arc::new(out)),
+            over: Vec::new(),
+        }
     }
 
     /// `{**os.environ, name: value}`: tabanın (UTF-8 olmayanlar dahil) üstüne tek değişken.
@@ -61,7 +68,9 @@ impl Env {
     pub fn vars(&self) -> Vec<(String, String)> {
         let mut out: Vec<(String, String)> = match &self.fixed {
             Some(v) => v.as_ref().clone(),
-            None => std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?))).collect(),
+            None => std::env::vars_os()
+                .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+                .collect(),
         };
         for (name, value) in &self.over {
             match out.iter_mut().find(|(k, _)| k == name) {

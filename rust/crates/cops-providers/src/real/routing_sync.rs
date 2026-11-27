@@ -28,7 +28,9 @@ fn skipped(e: &io::Error) -> String {
 /// Python `open(path, encoding="utf-8").read()`in bayt kısmı ([`TEXT_MAX_BYTES`] üstü `OSError` sayılır; Python sınırsız).
 fn read_raw(path: &str) -> io::Result<Vec<u8>> {
     let mut out = Vec::new();
-    File::open(path)?.take(TEXT_MAX_BYTES + 1).read_to_end(&mut out)?;
+    File::open(path)?
+        .take(TEXT_MAX_BYTES + 1)
+        .read_to_end(&mut out)?;
     if out.len() as u64 > TEXT_MAX_BYTES {
         return Err(io::Error::from_raw_os_error(libc::EFBIG));
     }
@@ -39,12 +41,20 @@ fn read_raw(path: &str) -> io::Result<Vec<u8>> {
 pub fn copy2(src: &str, dst: &str) -> io::Result<()> {
     let mut from = File::open(src)?;
     let meta = from.metadata()?;
-    let mut to = OpenOptions::new().write(true).create(true).truncate(true).open(dst)?;
+    let mut to = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(dst)?;
     io::copy(&mut from, &mut to)?;
     to.flush()?;
-    let times = FileTimes::new().set_accessed(meta.accessed()?).set_modified(meta.modified()?);
+    let times = FileTimes::new()
+        .set_accessed(meta.accessed()?)
+        .set_modified(meta.modified()?);
     to.set_times(times)?;
-    to.set_permissions(fs::Permissions::from_mode(meta.permissions().mode() & 0o7777))?;
+    to.set_permissions(fs::Permissions::from_mode(
+        meta.permissions().mode() & 0o7777,
+    ))?;
     Ok(())
 }
 
@@ -75,7 +85,10 @@ pub fn sync_one(
         SyncAction::SkippedBadUtf8 => {
             diag.log(&Diag {
                 event: "routing_guidance_unreadable",
-                fields: vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))],
+                fields: vec![
+                    ("path", json!(path)),
+                    ("error", json!("UnicodeDecodeError")),
+                ],
             });
             "skipped:UnicodeDecodeError".into()
         }
@@ -84,7 +97,11 @@ pub fn sync_one(
             Ok(()) => "removed".into(),
             Err(e) => skipped(&e),
         },
-        SyncAction::Write { content, backup, removed } => {
+        SyncAction::Write {
+            content,
+            backup,
+            removed,
+        } => {
             let bak = format!("{path}{BACKUP_SUFFIX}");
             // kırık bağlantı: `copy2` onu izleyip dizin dışına yazardı. Yedek alınamıyorsa yönerge dosyasına da dokunulmaz.
             if backup && Path::new(&bak).is_symlink() && !Path::new(&bak).exists() {
@@ -120,8 +137,14 @@ pub fn sync_global_files_at(
     diag: &dyn DiagSink,
 ) -> [(&'static str, String); 2] {
     [
-        ("codex", sync_one(probe, settings, paths, codex_path, false, diag)),
-        ("agy", sync_one(probe, settings, paths, agy_path, true, diag)),
+        (
+            "codex",
+            sync_one(probe, settings, paths, codex_path, false, diag),
+        ),
+        (
+            "agy",
+            sync_one(probe, settings, paths, agy_path, true, diag),
+        ),
     ]
 }
 
@@ -132,5 +155,12 @@ pub fn sync_global_files(
     paths: &Paths,
     diag: &dyn DiagSink,
 ) -> [(&'static str, String); 2] {
-    sync_global_files_at(probe, settings, paths, &paths.codex_agents_md(), &paths.agy_gemini_md(), diag)
+    sync_global_files_at(
+        probe,
+        settings,
+        paths,
+        &paths.codex_agents_md(),
+        &paths.agy_gemini_md(),
+        diag,
+    )
 }

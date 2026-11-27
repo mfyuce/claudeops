@@ -87,30 +87,44 @@ impl Stream {
             // SAFETY: `fd` az önce alınan, bu yapının sahip olduğu boru ucudur.
             let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
             // SAFETY: aynı tanıtıcı; yalnız `O_NONBLOCK` eklenir.
-            if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+            {
                 return Err(io::Error::last_os_error());
             }
         }
-        Ok(Stream { pipe: pipe.map(|p| Box::new(p) as Box<dyn Read>), fd, capture, data: Vec::new() })
+        Ok(Stream {
+            pipe: pipe.map(|p| Box::new(p) as Box<dyn Read>),
+            fd,
+            capture,
+            data: Vec::new(),
+        })
     }
 
     /// Hazır veriyi okur (en çok bir parça: süre denetimi aç kalmasın).
     fn drain(&mut self) -> Result<(), RunError> {
-        let Some(pipe) = self.pipe.as_mut() else { return Ok(()) };
+        let Some(pipe) = self.pipe.as_mut() else {
+            return Ok(());
+        };
         let mut buf = [0u8; 65536];
         match pipe.read(&mut buf) {
             Ok(0) => self.pipe = None,
             Ok(n) => {
                 self.data.extend_from_slice(&buf[..n]);
                 match self.capture {
-                    Capture::Bounded(max) if self.data.len() as u64 > max => return Err(RunError::Overflow),
+                    Capture::Bounded(max) if self.data.len() as u64 > max => {
+                        return Err(RunError::Overflow)
+                    }
                     Capture::Tail(keep) if self.data.len() > keep => {
                         self.data.drain(..self.data.len() - keep);
                     }
                     _ => {}
                 }
             }
-            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) => {}
             Err(e) => return Err(RunError::Io(e)),
         }
         Ok(())
@@ -131,23 +145,38 @@ pub fn run(spec: &Spec<'_>) -> Result<Output, RunError> {
         return Err(RunError::Spawn(io::Error::from_raw_os_error(libc::ENOENT)));
     };
     let mut cmd = Command::new(program);
-    cmd.args(args).stdin(Stdio::null()).stdout(stdio(spec.stdout)).stderr(stdio(spec.stderr)).process_group(0);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(stdio(spec.stdout))
+        .stderr(stdio(spec.stderr))
+        .process_group(0);
     if let Some(cwd) = spec.cwd {
         cmd.current_dir(cwd);
     }
     spec.env.apply(&mut cmd);
     let deadline = Instant::now().checked_add(spec.timeout);
-    let mut guard = Guard { child: cmd.spawn().map_err(RunError::Spawn)?, reaped: false };
+    let mut guard = Guard {
+        child: cmd.spawn().map_err(RunError::Spawn)?,
+        reaped: false,
+    };
     let mut out = Stream::new(guard.child.stdout.take(), spec.stdout).map_err(RunError::Io)?;
     let mut err = Stream::new(guard.child.stderr.take(), spec.stderr).map_err(RunError::Io)?;
     let mut nap = Duration::from_micros(200);
     loop {
-        let left = deadline.map_or(Duration::from_secs(3600), |d| d.saturating_duration_since(Instant::now()));
+        let left = deadline.map_or(Duration::from_secs(3600), |d| {
+            d.saturating_duration_since(Instant::now())
+        });
         if out.pipe.is_none() && err.pipe.is_none() {
             if let Some(status) = guard.child.try_wait().map_err(RunError::Io)? {
                 guard.reaped = true;
-                let code = status.code().unwrap_or_else(|| -status.signal().unwrap_or(0));
-                return Ok(Output { code, stdout: out.data, stderr: err.data });
+                let code = status
+                    .code()
+                    .unwrap_or_else(|| -status.signal().unwrap_or(0));
+                return Ok(Output {
+                    code,
+                    stdout: out.data,
+                    stderr: err.data,
+                });
             }
             if left.is_zero() {
                 return Err(RunError::Timeout);

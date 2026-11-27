@@ -10,7 +10,8 @@
 //! başlatmayı reddeder; ayar belgesi okunamıyorsa tavan bilinemediğinden yine reddedilir.
 
 use crate::cost::{
-    credit_window, py_round, write_mult, CostRefusal, UsageScan, BY_SESSION_TOP, RESERVE_TTL, RESERVE_USD, TTL,
+    credit_window, py_round, write_mult, CostRefusal, UsageScan, BY_SESSION_TOP, RESERVE_TTL,
+    RESERVE_USD, TTL,
 };
 use crate::probe::Diag;
 use crate::pyfmt::parse_int;
@@ -35,7 +36,11 @@ pub type WallClock = Arc<dyn Fn() -> f64 + Send + Sync>;
 pub type CostSettings = Arc<dyn Fn() -> Result<UcliCostConfig, String> + Send + Sync>;
 
 pub fn system_clock() -> WallClock {
-    Arc::new(|| SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64()))
+    Arc::new(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_secs_f64())
+    })
 }
 
 /// `settings.json` dosyasından ayar: dosya yoksa varsayılan (tavan yok). Var ama okunamıyor ya da ayrıştırılamıyorsa
@@ -44,7 +49,9 @@ pub fn file_cost_settings(path: impl Into<String>) -> CostSettings {
     let path = path.into();
     Arc::new(move || {
         match fs::metadata(&path) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Settings::default().ucli_cost_config()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return Ok(Settings::default().ucli_cost_config())
+            }
             _ => {}
         }
         let parsed = fsio::read_bytes(&path, DOC_MAX_BYTES)
@@ -79,21 +86,36 @@ fn local_midnight(year: i64, month: i64, day: i64) -> Option<f64> {
 /// `_day_start_ms`: yerel gün başı (epoch ms).
 pub fn day_start_ms(now: f64) -> f64 {
     local_tm(now)
-        .and_then(|t| local_midnight(i64::from(t.tm_year) + 1900, i64::from(t.tm_mon) + 1, i64::from(t.tm_mday)))
+        .and_then(|t| {
+            local_midnight(
+                i64::from(t.tm_year) + 1900,
+                i64::from(t.tm_mon) + 1,
+                i64::from(t.tm_mday),
+            )
+        })
         .map_or(0.0, |s| s * 1000.0)
 }
 
 /// `time.strftime("%Y-%m-%d", time.localtime(now))`.
 fn day_key(now: f64) -> String {
     local_tm(now)
-        .map(|t| format!("{:04}-{:02}-{:02}", i64::from(t.tm_year) + 1900, t.tm_mon + 1, t.tm_mday))
+        .map(|t| {
+            format!(
+                "{:04}-{:02}-{:02}",
+                i64::from(t.tm_year) + 1900,
+                t.tm_mon + 1,
+                t.tm_mday
+            )
+        })
         .unwrap_or_default()
 }
 
 /// `_date_ms`: `YYYY-MM-DD` -> yerel gün başı (`end`: ertesi gün başı) epoch ms; bozuksa 0.
 pub fn date_ms(day: &str, end: bool) -> f64 {
     let parts: Vec<Option<i64>> = day.split('-').map(parse_int).collect();
-    let [Some(y), Some(m), Some(d)] = parts.as_slice() else { return 0.0 };
+    let [Some(y), Some(m), Some(d)] = parts.as_slice() else {
+        return 0.0;
+    };
     local_midnight(*y, *m, *d).map_or(0.0, |t| (t + if end { 86400.0 } else { 0.0 }) * 1000.0)
 }
 
@@ -120,17 +142,29 @@ fn log_bad(what: &'static str, key: &str) {
         log.pending.clear(); // kimse almıyorsa sınırsız büyümesin
     }
     log.seen.insert((what, key.clone()));
-    log.pending.push(Diag { event: "review_bad_record", fields: vec![("what", what.into()), ("key", key.into())] });
+    log.pending.push(Diag {
+        event: "review_bad_record",
+        fields: vec![("what", what.into()), ("key", key.into())],
+    });
 }
 
 /// Birikmiş `review_bad_record` olayları; çağıran günlüğe yazar.
 pub fn take_bad_record_diags() -> Vec<Diag> {
-    std::mem::take(&mut BAD_LOG.lock().unwrap_or_else(PoisonError::into_inner).pending)
+    std::mem::take(
+        &mut BAD_LOG
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .pending,
+    )
 }
 
 /// Tekrar süzgecini sıfırlar (süreç yeniden başlamış gibi).
 pub fn forget_bad_records() {
-    BAD_LOG.lock().unwrap_or_else(PoisonError::into_inner).seen.clear();
+    BAD_LOG
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .seen
+        .clear();
 }
 
 /// `review._scan_usage(path, ..)`: dosyayı satır satır toplar (yalnız `\n` satır ayırır, UTF-8 olmayan satır atlanır). Olmayan dosya
@@ -138,7 +172,10 @@ pub fn forget_bad_records() {
 pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64) -> UsageScan {
     let key = path.as_ref().to_string_lossy().into_owned();
     let mut scan = UsageScan::new(model, since_ms, mult);
-    let opened = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY).open(path);
+    let opened = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path);
     let file = match opened {
         Ok(f) => f,
         Err(e) => {
@@ -163,7 +200,9 @@ pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64)
     let mut line = Vec::new();
     loop {
         line.clear();
-        let read = (&mut reader).take(LINE_MAX_BYTES as u64 + 1).read_until(b'\n', &mut line);
+        let read = (&mut reader)
+            .take(LINE_MAX_BYTES as u64 + 1)
+            .read_until(b'\n', &mut line);
         match read {
             Ok(0) => break,
             Ok(_) => {}
@@ -205,7 +244,10 @@ fn entries(base: &str) -> io::Result<Vec<Log>> {
         let entry = entry?;
         let name = entry.file_name();
         if let Some(stem) = name.to_string_lossy().strip_suffix(".jsonl") {
-            out.push(Log { stem: stem.to_string(), path: entry.path() });
+            out.push(Log {
+                stem: stem.to_string(),
+                path: entry.path(),
+            });
         }
     }
     Ok(out)
@@ -229,12 +271,17 @@ fn logs(base: &str, since_ms: Option<f64>) -> Vec<Log> {
 /// `per_session_usd`: bugünkü $, oturum başına.
 pub fn per_session_usd(now: f64, base: &str, mult: f64) -> Vec<(String, f64)> {
     let since = day_start_ms(now);
-    logs(base, Some(since)).into_iter().map(|l| (l.stem, scan_usage(&l.path, "", since, mult).total)).collect()
+    logs(base, Some(since))
+        .into_iter()
+        .map(|l| (l.stem, scan_usage(&l.path, "", since, mult).total))
+        .collect()
 }
 
 /// `today_usd`.
 pub fn today_usd(now: f64, base: &str, mult: f64) -> f64 {
-    per_session_usd(now, base, mult).iter().fold(0.0, |a, (_, v)| a + v)
+    per_session_usd(now, base, mult)
+        .iter()
+        .fold(0.0, |a, (_, v)| a + v)
 }
 
 /// `rate_by_session`: son `window_min` dakikanın hızı (USD/saat), yalnız > 0 olanlar.
@@ -254,13 +301,17 @@ pub fn rate_by_session(now: f64, window_min: f64, base: &str, mult: f64) -> Vec<
 
 /// `rate_usd_per_hour`.
 pub fn rate_usd_per_hour(now: f64, window_min: f64, base: &str, mult: f64) -> f64 {
-    rate_by_session(now, window_min, base, mult).iter().fold(0.0, |a, (_, v)| a + v)
+    rate_by_session(now, window_min, base, mult)
+        .iter()
+        .fold(0.0, |a, (_, v)| a + v)
 }
 
 /// `total_usd`: birikmiş toplam; `since_ms` > 0 ise yalnız o andan sonrası.
 pub fn total_usd(base: &str, mult: f64, since_ms: f64) -> f64 {
     let filter = (since_ms > 0.0).then_some(since_ms);
-    logs(base, filter).into_iter().fold(0.0, |a, l| a + scan_usage(&l.path, "", since_ms, mult).total)
+    logs(base, filter).into_iter().fold(0.0, |a, l| {
+        a + scan_usage(&l.path, "", since_ms, mult).total
+    })
 }
 
 /// `_ledger_problem`: bugünün harcaması sayılamıyorsa nedeni (yalnız dosya adı; içerik yok).
@@ -340,8 +391,13 @@ impl CostLedger {
     }
 
     fn state_with(&self, cfg: &UcliCostConfig, now: f64, use_cache: bool) -> Value {
-        let cached = self.cache.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let snap = match cached.filter(|s| use_cache && now - s.at <= TTL && s.day == day_key(now)) {
+        let cached = self
+            .cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let snap = match cached.filter(|s| use_cache && now - s.at <= TTL && s.day == day_key(now))
+        {
             Some(s) => s,
             None => {
                 let mult = write_mult(cfg);
@@ -372,7 +428,14 @@ impl CostLedger {
         let mut put = |k: &str, v: Value| out.insert(k.to_string(), v);
         put("today_usd", json!(py_round(usd, 4)));
         put("cap_usd", json!(cap));
-        put("pct", if cap > 0.0 { json!(py_round(100.0 * usd / cap, 1)) } else { Value::Null });
+        put(
+            "pct",
+            if cap > 0.0 {
+                json!(py_round(100.0 * usd / cap, 1))
+            } else {
+                Value::Null
+            },
+        );
         put("cache_ttl", json!(cfg.cache_ttl));
         put("by_session", Value::Array(by_session));
         put("rate_1h_usd", rounded_sum(&snap.rate_1h));
@@ -382,10 +445,16 @@ impl CostLedger {
             let spent = snap.total;
             put("credit_total_usd", json!(credit));
             put("spent_total_usd", json!(py_round(spent, 4)));
-            put("credit_left_usd", json!(py_round((credit - spent).max(0.0), 4)));
+            put(
+                "credit_left_usd",
+                json!(py_round((credit - spent).max(0.0), 4)),
+            );
             out.extend(credit_window(cfg, spent, now, &|d| date_ms(d, true)));
         }
-        for (k, v) in [("credit_since", &cfg.credit_since), ("credit_until", &cfg.credit_until)] {
+        for (k, v) in [
+            ("credit_since", &cfg.credit_since),
+            ("credit_until", &cfg.credit_until),
+        ] {
             if !v.is_empty() {
                 out.insert(k.to_string(), json!(v));
             }
@@ -406,7 +475,13 @@ impl CostLedger {
     fn fresh_totals(&self, cfg: &UcliCostConfig, now: f64) -> (f64, f64) {
         let state = self.state_with(cfg, now, false);
         // sonlu olmayan sayı JSON'a giremez (`null`): sayaçlar sınırlı olduğundan beklenmez, olursa kapalı yön
-        (state.get("today_usd").and_then(Value::as_f64).unwrap_or(f64::INFINITY), cfg.daily_cap_usd)
+        (
+            state
+                .get("today_usd")
+                .and_then(Value::as_f64)
+                .unwrap_or(f64::INFINITY),
+            cfg.daily_cap_usd,
+        )
     }
 
     /// `cap_exceeded`. Ayar okunamıyorsa hata.
@@ -429,9 +504,15 @@ impl CostLedger {
         if let Some(why) = ledger_problem(now, &self.base, write_mult(&cfg)) {
             return Err(CostRefusal::Unverifiable(why));
         }
-        let others = held.iter().filter(|(n, _, _)| n != session).fold(0.0, |a, (_, u, _)| a + u);
+        let others = held
+            .iter()
+            .filter(|(n, _, _)| n != session)
+            .fold(0.0, |a, (_, u, _)| a + u);
         if usd + others >= cap {
-            return Err(CostRefusal::CapExceeded { today_usd: usd + others, cap_usd: cap });
+            return Err(CostRefusal::CapExceeded {
+                today_usd: usd + others,
+                cap_usd: cap,
+            });
         }
         let share = (session.to_string(), RESERVE_USD, now + RESERVE_TTL);
         match held.iter_mut().find(|(n, _, _)| n == session) {
@@ -443,12 +524,20 @@ impl CostLedger {
 
     /// `release`: başlatma başarısız oldu, payı hemen geri ver.
     pub fn release(&self, session: &str) {
-        self.reserved.lock().unwrap_or_else(PoisonError::into_inner).retain(|(n, _, _)| n != session);
+        self.reserved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(n, _, _)| n != session);
     }
 
     /// Payı duran oturumlar (süre dolumu uygulanmadan).
     pub fn reserved_sessions(&self) -> Vec<String> {
-        self.reserved.lock().unwrap_or_else(PoisonError::into_inner).iter().map(|(n, _, _)| n.clone()).collect()
+        self.reserved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(n, _, _)| n.clone())
+            .collect()
     }
 
     /// `_claude_service_flags`in kapısı: `cap_exceeded` + `reserve`.
@@ -456,7 +545,10 @@ impl CostLedger {
         let cfg = self.config()?;
         let (usd, cap) = self.fresh_totals(&cfg, now);
         if cap > 0.0 && usd >= cap {
-            return Err(CostRefusal::CapExceeded { today_usd: usd, cap_usd: cap });
+            return Err(CostRefusal::CapExceeded {
+                today_usd: usd,
+                cap_usd: cap,
+            });
         }
         self.reserve(session, now)
     }

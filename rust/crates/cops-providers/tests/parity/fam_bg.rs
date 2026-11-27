@@ -20,8 +20,10 @@ const SCREEN_SHELL: &str = "\
 ○ general-purpose  waiting on 1 shell · Yol öneki rewrite (köke göreli) · since 18:08
 ";
 const SCREEN_BG_TASKS: &str = "❯\n  2 background tasks · ← 1 agent · ↓ to manage\n";
-const SCREEN_OWN_WORK: &str = "● main\n○ general-purpose  Agent is waiting on its own background work · 40m\n";
-const SCREEN_IDLE: &str = "● Bitti: 3 agents tamamlandı, 2 shells kapandı.\n❯\n  ⏵⏵ auto mode on · ? for shortcuts\n";
+const SCREEN_OWN_WORK: &str =
+    "● main\n○ general-purpose  Agent is waiting on its own background work · 40m\n";
+const SCREEN_IDLE: &str =
+    "● Bitti: 3 agents tamamlandı, 2 shells kapandı.\n❯\n  ⏵⏵ auto mode on · ? for shortcuts\n";
 const CODEX_SCREEN: &str =
     "• Başladı.\n  1 background terminal running · /ps to view · /stop to close\n› Ask Codex to do anything\n";
 
@@ -32,7 +34,10 @@ pub fn screens() -> Vec<(&'static str, String)> {
         ("own", SCREEN_OWN_WORK.into()),
         ("idle", SCREEN_IDLE.into()),
         ("codex", CODEX_SCREEN.into()),
-        ("codex-idle", "› Ask Codex to do anything\nWorked for 3s".into()),
+        (
+            "codex-idle",
+            "› Ask Codex to do anything\nWorked for 3s".into(),
+        ),
         ("bos", String::new()),
         ("satir", "\n\n\n".into()),
         ("sifir", "0 background tasks · ↓ to manage".into()),
@@ -100,8 +105,14 @@ pub fn screens() -> Vec<(&'static str, String)> {
     );
     // son 14 satır sınırı: gösterge 14. ve 15. satırda, sondaki boş satırlar kırpılır
     for n in [12usize, 13, 14, 15] {
-        v.push(("kuyruk", format!("1 shell · to manage\n{}{}", "x\n".repeat(n), "\n".repeat(3))));
-        v.push(("kuyruk-codex", format!("1 background terminal running\n{}", "x\n".repeat(n))));
+        v.push((
+            "kuyruk",
+            format!("1 shell · to manage\n{}{}", "x\n".repeat(n), "\n".repeat(3)),
+        ));
+        v.push((
+            "kuyruk-codex",
+            format!("1 background terminal running\n{}", "x\n".repeat(n)),
+        ));
     }
     v
 }
@@ -143,7 +154,13 @@ pub fn sub_agent(kind: &str, id: Value, ts: &str) -> String {
 fn transcripts() -> Vec<Vec<String>> {
     let ts = "2026-11-23T10:00:00Z";
     let u = |i: &str| use_(i, true, ts);
-    let running = |i: &str, t: &str| res(i, json!(format!("Command running in background with ID: {t}.")), json!(null));
+    let running = |i: &str, t: &str| {
+        res(
+            i,
+            json!(format!("Command running in background with ID: {t}.")),
+            json!(null),
+        )
+    };
     let done = |t: &str| notif("completed", None, Some(t));
     let mut v: Vec<Vec<String>> = vec![
         vec![],
@@ -264,7 +281,10 @@ fn transcripts() -> Vec<Vec<String>> {
         v.push(vec![sub_agent("started", json!("a"), stamp)]);
     }
     // 4300 basamaktan uzun sayı: `ValueError`, satır atlanır
-    v.push(vec![format!("{{\"run_in_background\":{}}}", "9".repeat(5000)), use_("t1", true, "2026-11-23T10:00:00Z")]);
+    v.push(vec![
+        format!("{{\"run_in_background\":{}}}", "9".repeat(5000)),
+        use_("t1", true, "2026-11-23T10:00:00Z"),
+    ]);
     v.push(vec![r#"{"timestamp":5,"message":{"content":[{"type":"tool_use","id":"t","input":{"run_in_background":true}}]}}"#.into()]);
     // codex alt ajanları (test_bg_work.py + kenarlar)
     let a = |k: &str, i: Value| sub_agent(k, i, "2026-11-23T10:17:26Z");
@@ -301,15 +321,28 @@ fn odd_lines() -> Vec<(&'static str, Vec<String>)> {
         ("belge-metin", c("\"background\"")),
         ("belge-liste", c("[\"background\"]")),
         ("mesaj-metin", c(r#"{"message":"background"}"#)),
-        ("girdi-metin", c(r#"{"message":{"content":[{"type":"tool_use","id":"z","input":"background"}]}}"#)),
+        (
+            "girdi-metin",
+            c(r#"{"message":{"content":[{"type":"tool_use","id":"z","input":"background"}]}}"#),
+        ),
         (
             "kimlik-liste",
-            c(r#"{"message":{"content":[{"type":"tool_use","id":["z"],"input":{"run_in_background":true}}]}}"#),
+            c(
+                r#"{"message":{"content":[{"type":"tool_use","id":["z"],"input":{"run_in_background":true}}]}}"#,
+            ),
         ),
-        ("sonuc-kimlik-liste", c(r#"{"message":{"content":[{"type":"tool_result","tool_use_id":["z"],"x":"background"}]}}"#)),
+        (
+            "sonuc-kimlik-liste",
+            c(
+                r#"{"message":{"content":[{"type":"tool_result","tool_use_id":["z"],"x":"background"}]}}"#,
+            ),
+        ),
         ("rollout-belge", x("\"SubAgentActivity\"")),
         ("rollout-payload", x(r#"{"payload":"SubAgentActivity"}"#)),
-        ("rollout-item", x(r#"{"payload":{"item":"SubAgentActivity"}}"#)),
+        (
+            "rollout-item",
+            x(r#"{"payload":{"item":"SubAgentActivity"}}"#),
+        ),
     ]
 }
 
@@ -318,20 +351,58 @@ pub struct Rng(pub u64);
 
 impl Rng {
     pub fn below(&mut self, n: usize) -> usize {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         (self.0 >> 33) as usize % n
     }
     pub fn soup(&mut self, tokens: &[&str], max: usize) -> String {
-        (0..self.below(max)).map(|_| tokens[self.below(tokens.len())]).collect()
+        (0..self.below(max))
+            .map(|_| tokens[self.below(tokens.len())])
+            .collect()
     }
 }
 
 /// Ekran satırı sözcükleriyle rastgele metinler (sınır koşulları: bitişik sözcük, rakam, harf).
 fn random_screens() -> Vec<String> {
     const T: &[&str] = &[
-        "1", "2", "10", "0", "٣", " ", " ", " ", "shell", "shells", "agent", "monitor", "s", "x", "ğ", "_", ".", ",",
-        "·", "\n", "background", " task", "terminal", " running", "waiting", " on ", "its own background work",
-        "to manage", "esc to interrupt", "to view", "ctrl+b", "İ", "ſ", "\u{301}", "-", "(",
+        "1",
+        "2",
+        "10",
+        "0",
+        "٣",
+        " ",
+        " ",
+        " ",
+        "shell",
+        "shells",
+        "agent",
+        "monitor",
+        "s",
+        "x",
+        "ğ",
+        "_",
+        ".",
+        ",",
+        "·",
+        "\n",
+        "background",
+        " task",
+        "terminal",
+        " running",
+        "waiting",
+        " on ",
+        "its own background work",
+        "to manage",
+        "esc to interrupt",
+        "to view",
+        "ctrl+b",
+        "İ",
+        "ſ",
+        "\u{301}",
+        "-",
+        "(",
     ];
     let mut r = Rng(1);
     (0..3000).map(|_| r.soup(T, 14)).collect()
@@ -339,12 +410,19 @@ fn random_screens() -> Vec<String> {
 
 /// Geçerli bir damganın rastgele bozulmuş biçimleri.
 pub fn random_stamps() -> Vec<String> {
-    const T: &[&str] =
-        &["0", "1", "2", "3", "5", "9", "-", "+", ":", ".", "T", " ", "Z", "ğ", "x", "00", "12", "59", "60", "24"];
+    const T: &[&str] = &[
+        "0", "1", "2", "3", "5", "9", "-", "+", ":", ".", "T", " ", "Z", "ğ", "x", "00", "12",
+        "59", "60", "24",
+    ];
     let mut r = Rng(2);
     let bases = [
-        "2026-11-23T10:00:00.123+03:00", "2026-11-23T10:00:00Z", "2026-02-28 23:59:59.999999", "2024-02-29T00",
-        "0001-01-02T00:00:00+00:00", "2199-12-30T23:59:59-23:59", "2026-11-23T10:00:00+03:00:00.000001",
+        "2026-11-23T10:00:00.123+03:00",
+        "2026-11-23T10:00:00Z",
+        "2026-02-28 23:59:59.999999",
+        "2024-02-29T00",
+        "0001-01-02T00:00:00+00:00",
+        "2199-12-30T23:59:59-23:59",
+        "2026-11-23T10:00:00+03:00:00.000001",
     ];
     let mut out: Vec<String> = bases.iter().map(|s| s.to_string()).collect();
     for _ in 0..6000 {
@@ -355,7 +433,9 @@ pub fn random_stamps() -> Vec<String> {
                 0 if at < c.len() => {
                     c.remove(at);
                 }
-                1 if at < c.len() => c.splice(at..=at, T[r.below(T.len())].chars()).for_each(drop),
+                1 if at < c.len() => c
+                    .splice(at..=at, T[r.below(T.len())].chars())
+                    .for_each(drop),
                 2 => c.truncate(at),
                 _ => c.splice(at..at, T[r.below(T.len())].chars()).for_each(drop),
             }
@@ -365,15 +445,25 @@ pub fn random_stamps() -> Vec<String> {
     // Yıl sınırları atılır: Python yerel saat aritmetiği 1. ve 9999. yılda taşar; 2^53 mikro saniyeyi aşan yıllarda
     // (~2255 sonrası) `int / int` ile `f64` bölmesi son bitte ayrışabilir (yaş karşılaştırmasını etkilemez).
     out.retain(|s| {
-        let far = s.get(..4).and_then(|y| y.parse::<u32>().ok()).is_some_and(|y| y > 2200);
+        let far = s
+            .get(..4)
+            .and_then(|y| y.parse::<u32>().ok())
+            .is_some_and(|y| y > 2200);
         !(far || s.starts_with("0000") || s.starts_with("0001-01-01"))
     });
     out
 }
 
 fn clock(case: &Case) -> Clock {
-    let offset = if case.args["tz"] == "UTC0" { 0 } else { 3 * 3600 };
-    Clock { now: case.args["now"].as_f64().unwrap(), utc_offset_secs: offset }
+    let offset = if case.args["tz"] == "UTC0" {
+        0
+    } else {
+        3 * 3600
+    };
+    Clock {
+        now: case.args["now"].as_f64().unwrap(),
+        utc_offset_secs: offset,
+    }
 }
 
 fn rs_bg(e: &Env, c: &Case) -> RsOut {
@@ -381,10 +471,19 @@ fn rs_bg(e: &Env, c: &Case) -> RsOut {
     let settings = e.settings();
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let live = Live { settings: &settings, paths: &paths, probe: &probe, clock };
+    let live = Live {
+        settings: &settings,
+        paths: &paths,
+        probe: &probe,
+        clock,
+    };
     let texts = strs(c.args.get("texts"));
-    let transcripts: Vec<Vec<String>> =
-        c.args.get("transcripts").and_then(Value::as_array).map(|a| a.iter().map(|t| strs(Some(t))).collect()).unwrap_or_default();
+    let transcripts: Vec<Vec<String>> = c
+        .args
+        .get("transcripts")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().map(|t| strs(Some(t))).collect())
+        .unwrap_or_default();
     let files = strs(c.args.get("files"));
     RsOut::ret(json!({
         "screen_bg_count": texts.iter().map(|t| bg_work::screen_bg_count(t)).collect::<Vec<_>>(),
@@ -405,10 +504,22 @@ fn rs_bg(e: &Env, c: &Case) -> RsOut {
 fn cases(e: &Env) -> Vec<Case> {
     let mut v = Vec::new();
     let texts: Vec<String> = screens().into_iter().map(|(_, t)| t).collect();
-    v.push(Case::new("bg-ekran", "bg", json!({"texts": texts, "now": T, "tz": "UTC0"})));
-    v.push(Case::new("bg-ekran-rastgele", "bg", json!({"texts": random_screens(), "now": T, "tz": "UTC0"})));
+    v.push(Case::new(
+        "bg-ekran",
+        "bg",
+        json!({"texts": texts, "now": T, "tz": "UTC0"}),
+    ));
+    v.push(Case::new(
+        "bg-ekran-rastgele",
+        "bg",
+        json!({"texts": random_screens(), "now": T, "tz": "UTC0"}),
+    ));
     for tz in ["UTC0", "XXX-3"] {
-        v.push(Case::new(format!("bg-damga-{tz}"), "bg", json!({"stamps": random_stamps(), "now": T, "tz": tz})));
+        v.push(Case::new(
+            format!("bg-damga-{tz}"),
+            "bg",
+            json!({"stamps": random_stamps(), "now": T, "tz": tz}),
+        ));
     }
     let all = transcripts();
     for (i, chunk) in all.chunks(8).enumerate() {
@@ -422,7 +533,11 @@ fn cases(e: &Env) -> Vec<Case> {
     }
     // beklenmeyen tipte satır: iki tarafta da yalnız o satır/blok atlanır; sağlam satır sayılmaya devam eder
     for (name, lines) in odd_lines() {
-        v.push(Case::new(format!("bg-sekil-{name}"), "bg", json!({"transcripts": [lines], "now": T, "tz": "UTC0"})));
+        v.push(Case::new(
+            format!("bg-sekil-{name}"),
+            "bg",
+            json!({"transcripts": [lines], "now": T, "tz": "UTC0"}),
+        ));
     }
     // dosya kuyruğu: yok, dizin, boş yol, boş dosya, bozuk UTF-8, yarım satır, 8 MiB sınırında kesilen kayıt
     let path = |rel: &str| format!("{}/{rel}", e.root);
@@ -442,13 +557,20 @@ fn cases(e: &Env) -> Vec<Case> {
         .file(Fx::Link("work/link".into(), "bozuk".into())),
     );
     // kayıt 8 MiB kuyruğunun tamamen dışında / içinde (dönen satırlar karşılaştırılmasın diye yalnız karar)
-    for (name, filler) in [("disinda", 8 * 1024 * 1024usize), ("icinde", 8 * 1024 * 1024 - 4096)] {
+    for (name, filler) in [
+        ("disinda", 8 * 1024 * 1024usize),
+        ("icinde", 8 * 1024 * 1024 - 4096),
+    ] {
         let mut data = good.clone().into_bytes();
         data.push(b'\n');
         data.extend(std::iter::repeat_n(b'x', filler));
         v.push(
-            Case::new(format!("bg-kuyruk-{name}"), "bg", json!({"files": [path("work/buyuk")], "now": T, "tz": "UTC0"}))
-                .file(Fx::File("work/buyuk".into(), data, 0o644)),
+            Case::new(
+                format!("bg-kuyruk-{name}"),
+                "bg",
+                json!({"files": [path("work/buyuk")], "now": T, "tz": "UTC0"}),
+            )
+            .file(Fx::File("work/buyuk".into(), data, 0o644)),
         );
     }
     v

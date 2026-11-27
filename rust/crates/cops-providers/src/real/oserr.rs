@@ -28,7 +28,10 @@ pub fn class_name(e: &io::Error) -> &'static str {
 fn strerror(e: &io::Error) -> String {
     let text = e.to_string();
     match e.raw_os_error() {
-        Some(n) => text.strip_suffix(&format!(" (os error {n})")).unwrap_or(&text).to_string(),
+        Some(n) => text
+            .strip_suffix(&format!(" (os error {n})"))
+            .unwrap_or(&text)
+            .to_string(),
         None => text,
     }
 }

@@ -41,7 +41,12 @@ pub fn sqlite_cell(db: &str, sql: &str, param: &str) -> Option<SqlCell> {
     cell(first.get_ref(0).ok()?)
 }
 
-pub fn sqlite_rows(db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+pub fn sqlite_rows(
+    db: &str,
+    sql: &str,
+    params: &[SqlCell],
+    row: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+) -> bool {
     let mut run = || -> Option<()> {
         let conn = open(db)?;
         let mut statement = conn.prepare(sql).ok()?;

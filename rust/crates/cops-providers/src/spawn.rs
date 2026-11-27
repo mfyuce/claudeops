@@ -9,7 +9,15 @@ use serde_json::{json, Map, Value};
 
 /// Süreç/kabuk davranışını ele geçirebilen değişkenler: `env_overrides` ile ASLA taşınmaz.
 const DANGEROUS_ENV: [&str; 10] = [
-    "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "BASH_ENV", "ENV", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "PS4",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "BASH_ENV",
+    "ENV",
+    "PROMPT_COMMAND",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "PS4",
     "IFS",
 ];
 const DRY_RUN_PREVIEW_MAX: usize = 600;
@@ -35,7 +43,10 @@ pub const SESSION_USD_CAP_KEY: &str = "CLAUDEOPS_SESSION_USD_CAP";
 
 /// Geçerli ad + tehlikeli listede değil.
 pub fn filter_env_overrides(overrides: Vec<(String, String)>) -> Vec<(String, String)> {
-    overrides.into_iter().filter(|(k, _)| is_safe_env_name(k) && !DANGEROUS_ENV.contains(&k.as_str())).collect()
+    overrides
+        .into_iter()
+        .filter(|(k, _)| is_safe_env_name(k) && !DANGEROUS_ENV.contains(&k.as_str()))
+        .collect()
 }
 
 /// Kabuğa gömülecek `renice/ionice` öneki ("" = yok).
@@ -54,7 +65,11 @@ pub fn dry_run_preview(cwd: &str, overrides: &[(String, String)], invocation: &s
         .iter()
         .map(|(k, v)| {
             let folded: String = k.chars().map(fold_char).collect();
-            let value = if SECRET_WORDS.iter().any(|w| folded.contains(w)) { "***".to_string() } else { quote(v) };
+            let value = if SECRET_WORDS.iter().any(|w| folded.contains(w)) {
+                "***".to_string()
+            } else {
+                quote(v)
+            };
             format!("{k}={value} ")
         })
         .collect();
@@ -73,12 +88,16 @@ pub fn apply_hook_session_cap(
     cli: Cli,
     settings: &Settings,
 ) -> Option<Map<String, Value>> {
-    let Some(i) = hook_env.iter().position(|(k, _)| k == SESSION_USD_CAP_KEY) else { return cli_opts };
+    let Some(i) = hook_env.iter().position(|(k, _)| k == SESSION_USD_CAP_KEY) else {
+        return cli_opts;
+    };
     let raw = hook_env.remove(i).1;
     if !cli.accepts_cli_opts() {
         return cli_opts;
     }
-    let Some(cap) = parse_float(strip(&raw)).filter(|c| *c > 0.0 && c.is_finite()) else { return cli_opts };
+    let Some(cap) = parse_float(strip(&raw)).filter(|c| *c > 0.0 && c.is_finite()) else {
+        return cli_opts;
+    };
     let cap = cap.max(0.01);
     let mut opts = cli_opts.unwrap_or_default();
     let mut cur = opts
@@ -89,7 +108,10 @@ pub fn apply_hook_session_cap(
     if cur == 0.0 {
         cur = settings.default_max_session_usd();
     }
-    opts.insert("max_session_usd".into(), json!(if cur > 0.0 { cur.min(cap) } else { cap }));
+    opts.insert(
+        "max_session_usd".into(),
+        json!(if cur > 0.0 { cur.min(cap) } else { cap }),
+    );
     Some(opts)
 }
 
@@ -132,14 +154,22 @@ pub struct SpawnPlan {
 
 impl SpawnPlan {
     pub fn dry_run_line(&self, cwd: &str) -> String {
-        format!("[dry-run] {}  cmd: {}", self.kind, dry_run_preview(cwd, &self.overrides, &self.invocation))
+        format!(
+            "[dry-run] {}  cmd: {}",
+            self.kind,
+            dry_run_preview(cwd, &self.overrides, &self.invocation)
+        )
     }
 }
 
 /// `spawn_session`ın komut kuran kısmı (tek geçit: effort burada çözülür). Diag olayları ve Effect'ler `output`a
 /// birikir; HATA dönse bile birikenler uygulanmalı/günlüğe yazılmalı (Python hatadan önce yazdıklarını bırakır).
 /// `req.dry_run` ya da `output.dry_run` ise bu çağrı `output`a hiçbir şey eklemez.
-pub fn plan_spawn(p: &Providers<'_>, req: &SpawnRequest, output: &mut BuildOutput) -> Result<SpawnPlan, SpawnError> {
+pub fn plan_spawn(
+    p: &Providers<'_>,
+    req: &SpawnRequest,
+    output: &mut BuildOutput,
+) -> Result<SpawnPlan, SpawnError> {
     plan_spawn_with(p, req, &mut |_| Ok(req.hook_env.clone()), output)
 }
 
@@ -181,11 +211,22 @@ fn plan_inner(
     if effort != req.effort {
         output.diag(
             "spawn_effort_adjusted",
-            vec![("name", json!(&req.name)), ("cli", json!(&req.cli)), ("model", json!(&req.model)), ("requested", json!(&req.effort)), ("used", json!(&effort))],
+            vec![
+                ("name", json!(&req.name)),
+                ("cli", json!(&req.cli)),
+                ("model", json!(&req.model)),
+                ("requested", json!(&req.effort)),
+                ("used", json!(&effort)),
+            ],
         );
     }
-    let mcp = req.mcp_server.as_ref().or_else(|| req.extension_mcp.as_ref().filter(|_| req.cli == "claude"));
-    let extra = mcp.map(|s| p.mcp_launch_args(cli, s, &req.cwd, output)).unwrap_or_default();
+    let mcp = req
+        .mcp_server
+        .as_ref()
+        .or_else(|| req.extension_mcp.as_ref().filter(|_| req.cli == "claude"));
+    let extra = mcp
+        .map(|s| p.mcp_launch_args(cli, s, &req.cwd, output))
+        .unwrap_or_default();
     // Kanca (çok kullanıcı) build'DEN ÖNCE: ret erken yükselir, oturum USD tavanı ucli argv'sine girebilir.
     let mut hook_env = hook(output)?;
     let cli_opts = apply_hook_session_cap(&mut hook_env, req.cli_opts.clone(), cli, p.settings);
@@ -198,7 +239,9 @@ fn plan_inner(
         prompt: req.prompt.as_deref(),
         session_name: &req.name,
         extra_args: &extra,
-        cli_opts: cli_opts.as_ref().filter(|o| cli.accepts_cli_opts() && !o.is_empty()),
+        cli_opts: cli_opts
+            .as_ref()
+            .filter(|o| cli.accepts_cli_opts() && !o.is_empty()),
     };
     let invocation = p.build_inner_command(cli, &args, output)?;
     // Python dict birleştirme: var olan anahtar yerinde güncellenir.
@@ -211,18 +254,37 @@ fn plan_inner(
     }
     // Ortam komut satırına gömülür: tmux çalışan sunucuda Popen ortamını aktarmaz.
     let overrides = filter_env_overrides(overrides);
-    let env_prefix: String = overrides.iter().map(|(k, v)| format!("{k}={} ", quote(v))).collect();
-    let inner =
-        format!("cd {} && {}{env_prefix}{invocation}", quote(&req.cwd), priority_prefix(p.settings, &req.name));
-    Ok(SpawnPlan { kind, effort, inner, invocation, overrides })
+    let env_prefix: String = overrides
+        .iter()
+        .map(|(k, v)| format!("{k}={} ", quote(v)))
+        .collect();
+    let inner = format!(
+        "cd {} && {}{env_prefix}{invocation}",
+        quote(&req.cwd),
+        priority_prefix(p.settings, &req.name)
+    );
+    Ok(SpawnPlan {
+        kind,
+        effort,
+        inner,
+        invocation,
+        overrides,
+    })
 }
 
 /// Başlatılacak oturumun ortamı: çağıran sürecin CLI kimlik değişkenleri süpürülür, `DISPLAY` yazılır.
 /// Python dict ataması: ebeveynde `DISPLAY` varsa yerinde değişir (sıra korunur), yoksa sona eklenir.
-pub fn child_env<I: IntoIterator<Item = (String, String)>>(parent: I, display: &str) -> Vec<(String, String)> {
+pub fn child_env<I: IntoIterator<Item = (String, String)>>(
+    parent: I,
+    display: &str,
+) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = parent
         .into_iter()
-        .filter(|(k, _)| !["CLAUDE", "GEMINI", "ANTIGRAVITY"].iter().any(|p| k.starts_with(p)))
+        .filter(|(k, _)| {
+            !["CLAUDE", "GEMINI", "ANTIGRAVITY"]
+                .iter()
+                .any(|p| k.starts_with(p))
+        })
         .collect();
     match env.iter_mut().find(|(k, _)| k == "DISPLAY") {
         Some(slot) => slot.1 = display.into(),
@@ -253,7 +315,10 @@ pub fn detect_display(env_display: Option<&str>, exists: &dyn Fn(&str) -> bool) 
     }
     [":1", ":0"]
         .into_iter()
-        .find(|d| exists(&format!("/tmp/.X{}-lock", &d[1..])) || exists(&format!("/tmp/.X11-unix/X{}", &d[1..])))
+        .find(|d| {
+            exists(&format!("/tmp/.X{}-lock", &d[1..]))
+                || exists(&format!("/tmp/.X11-unix/X{}", &d[1..]))
+        })
         .unwrap_or(":1")
         .into()
 }
@@ -281,7 +346,13 @@ pub fn gnome_terminal_argv(name: &str, cwd: &str, window_cmd: &str) -> Vec<Strin
 /// `cops watch host:ad` aynalama penceresinin kabuk satırı.
 pub fn mirror_window_command(repo_dir: &str, host: &str, name: &str, port: u16) -> String {
     let cops = format!("{}/py/cops", repo_dir.trim_end_matches('/'));
-    let cmd = join_quoted(&[cops, "watch".into(), format!("{host}:{name}"), "--port".into(), port.to_string()]);
+    let cmd = join_quoted(&[
+        cops,
+        "watch".into(),
+        format!("{host}:{name}"),
+        "--port".into(),
+        port.to_string(),
+    ]);
     format!(
         "{cmd}; rc=$?; if [ \"$rc\" -ne 0 ]; then echo; echo \"cops watch çıkış kodu: $rc\"; read -r -p \"Kapatmak için \
          Enter... \" _; fi"

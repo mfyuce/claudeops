@@ -37,7 +37,10 @@ pub struct FileDocs {
 
 impl FileDocs {
     pub fn new(paths: &Paths, env: Env) -> FileDocs {
-        FileDocs { settings_json: format!("{}/settings.json", paths.claudeops_dir), env }
+        FileDocs {
+            settings_json: format!("{}/settings.json", paths.claudeops_dir),
+            env,
+        }
     }
 
     /// `statedocs.backend()`: ortam, yoksa `settings.json` `store_backend`, yoksa `files`. Her çağrıda yeniden okunur.
@@ -69,9 +72,12 @@ impl DocStore for FileDocs {
 
     fn write(&self, name: &str, path: &str, doc: &Py) -> Result<(), String> {
         if self.db_only(name) {
-            return Err(format!("{name}: store_backend=db, belge deposu (rs/state) gerekli; yazılmadı"));
+            return Err(format!(
+                "{name}: store_backend=db, belge deposu (rs/state) gerekli; yazılmadı"
+            ));
         }
-        effects::atomic_write_text(path, &doc.dumps_pretty(), None).map_err(|e| format!("{name}: {e}"))
+        effects::atomic_write_text(path, &doc.dumps_pretty(), None)
+            .map_err(|e| format!("{name}: {e}"))
     }
 }
 
@@ -86,8 +92,14 @@ pub struct DocAgySidStore {
 
 impl DocAgySidStore {
     pub fn new(paths: &Paths, docs: Arc<dyn DocStore>) -> DocAgySidStore {
-        let cwd = std::env::current_dir().map_or_else(|_| "/".into(), |p| p.to_string_lossy().into_owned());
-        DocAgySidStore { docs, path: paths.agy_sids_json(), cwd, timeout: LOCK_TIMEOUT }
+        let cwd = std::env::current_dir()
+            .map_or_else(|_| "/".into(), |p| p.to_string_lossy().into_owned());
+        DocAgySidStore {
+            docs,
+            path: paths.agy_sids_json(),
+            cwd,
+            timeout: LOCK_TIMEOUT,
+        }
     }
 
     pub fn with_lock_timeout(mut self, timeout: Duration) -> DocAgySidStore {

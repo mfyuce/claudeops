@@ -34,7 +34,10 @@ const PRICES: [(&str, [f64; 4]); 4] = [
 
 /// `review.anthropic_price`: bilinmeyen model en pahalı varsayımla (opus).
 pub fn anthropic_price(model: &str) -> [f64; 4] {
-    PRICES.iter().find(|(k, _)| model.contains(k)).map_or(PRICES[2].1, |(_, v)| *v)
+    PRICES
+        .iter()
+        .find(|(k, _)| model.contains(k))
+        .map_or(PRICES[2].1, |(_, v)| *v)
 }
 
 /// `ucli_cost.write_mult`.
@@ -65,7 +68,13 @@ pub enum CostRefusal {
 
 impl fmt::Display for CostRefusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let num = |v: f64| if v.is_nan() { "nan".to_string() } else { format!("{v:.2}") };
+        let num = |v: f64| {
+            if v.is_nan() {
+                "nan".to_string()
+            } else {
+                format!("{v:.2}")
+            }
+        };
         match self {
             CostRefusal::CapExceeded { today_usd, cap_usd } => write!(
                 f,
@@ -129,7 +138,9 @@ fn finite(v: &Py) -> bool {
 
 /// `float(rec.get("t") or 0)` + geçerli mi. Sayıya çevrilemeyen = (0, geçersiz); sonlu olmayan değer aynen döner.
 fn timestamp(v: Option<&Py>) -> (f64, bool) {
-    let Some(v) = v.filter(|v| v.truthy()) else { return (0.0, true) };
+    let Some(v) = v.filter(|v| v.truthy()) else {
+        return (0.0, true);
+    };
     let parsed = match v {
         Py::Bool(_) => Some(1.0),
         Py::Int(i) => Some(*i as f64),
@@ -166,7 +177,15 @@ pub struct UsageScan {
 impl UsageScan {
     pub fn new(model: &str, since_ms: f64, write_mult: f64) -> UsageScan {
         let price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
-        UsageScan { price, fixed_model: !model.is_empty(), since_ms, write_mult, total: 0.0, problem: None, skipped: Vec::new() }
+        UsageScan {
+            price,
+            fixed_model: !model.is_empty(),
+            since_ms,
+            write_mult,
+            total: 0.0,
+            problem: None,
+            skipped: Vec::new(),
+        }
     }
 
     /// Tek satır (satır sonu olsa da olur). Ayrıştırılamayan (yarım yazılmış) satır atlanır.
@@ -200,7 +219,10 @@ impl UsageScan {
             return;
         }
         let Some(u) = usage else { return };
-        if COUNT_KEYS.iter().any(|k| u.get(k).is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())) {
+        if COUNT_KEYS.iter().any(|k| {
+            u.get(k)
+                .is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())
+        }) {
             self.problem = Some("geçersiz sayaç");
         }
         if let Py::Object(fields) = u {
@@ -209,19 +231,37 @@ impl UsageScan {
                 return;
             }
         }
-        let g = |names: &[&str]| names.iter().find_map(|n| usage_number(u.get(n))).unwrap_or(0.0);
-        let cr = g(&["cache_read_input_tokens", "cached_tokens", "cache_read_tokens"]);
+        let g = |names: &[&str]| {
+            names
+                .iter()
+                .find_map(|n| usage_number(u.get(n)))
+                .unwrap_or(0.0)
+        };
+        let cr = g(&[
+            "cache_read_input_tokens",
+            "cached_tokens",
+            "cache_read_tokens",
+        ]);
         let cw = g(&["cache_creation_input_tokens", "cache_write_tokens"]);
         let [pi, po, pr, pw] = self.price;
         let inp = match usage_number(u.get("input_tokens")) {
             Some(i) => {
-                let read = if u.get("cache_read_input_tokens").is_some() { 0.0 } else { cr };
-                let written = if u.get("cache_creation_input_tokens").is_some() { 0.0 } else { cw };
+                let read = if u.get("cache_read_input_tokens").is_some() {
+                    0.0
+                } else {
+                    cr
+                };
+                let written = if u.get("cache_creation_input_tokens").is_some() {
+                    0.0
+                } else {
+                    cw
+                };
                 (i - read - written).max(0.0)
             }
             None => (g(&["prompt_tokens"]) - cr - cw).max(0.0),
         };
-        let normalized = u.get("cached_tokens").is_some() && u.get("cache_creation_input_tokens").is_none();
+        let normalized =
+            u.get("cached_tokens").is_some() && u.get("cache_creation_input_tokens").is_none();
         let inp_price = if normalized { pw } else { pi };
         let out = g(&["output_tokens", "completion_tokens"]);
         self.total += (inp * inp_price + out * po + cr * pr + cw * pw * self.write_mult) / 1e6;

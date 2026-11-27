@@ -1,10 +1,14 @@
 //! ucli sağlayıcısı. Her isteğe bağlı bayrak YALNIZ ikilinin `chat --help`i listeliyorsa eklenir.
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
-use crate::model_sources::{bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, LIVE_MODELS_TIMEOUT};
+use crate::model_sources::{
+    bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, LIVE_MODELS_TIMEOUT,
+};
 use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
-use crate::pyfmt::{basename, fmt_g, join_path, join_quoted, py_float, py_str_repr, quote, str_of, truthy};
+use crate::pyfmt::{
+    basename, fmt_g, join_path, join_quoted, py_float, py_str_repr, quote, str_of, truthy,
+};
 use crate::pyjson::Py;
 use crate::settings::Settings;
 use crate::ucli_opts::{exec_flags, expand_exec_cmds, str_list, BROAD_GLOBS};
@@ -26,8 +30,16 @@ const PRICED_MODELS: [&str; 2] = ["claude-opus-5-5", "claude-sonnet-5-5"];
 const DERIVES_CONTEXT_MARK: &str = "advertises a large window";
 
 /// `--max-steps`, `--max-context-kib`, `--max-tool-calls`, `--max-output-tokens` ön ayarları (`_EFFORT_LIMITS`).
-pub const EFFORT_LIMITS: [(&str, [i64; 4]); 2] = [("medium", [25, 256, 64, 4096]), ("high", [200, 16384, 256, 16000])];
-const LIMIT_KEYS: [&str; 4] = ["max_steps", "max_context_kib", "max_tool_calls", "max_output_tokens"];
+pub const EFFORT_LIMITS: [(&str, [i64; 4]); 2] = [
+    ("medium", [25, 256, 64, 4096]),
+    ("high", [200, 16384, 256, 16000]),
+];
+const LIMIT_KEYS: [&str; 4] = [
+    "max_steps",
+    "max_context_kib",
+    "max_tool_calls",
+    "max_output_tokens",
+];
 
 /// Uç noktanın `/models` sonucu.
 #[derive(Debug, Clone, Default)]
@@ -51,8 +63,15 @@ impl LiveModels {
 /// `/models` yanıtı: yalnız `task == "chat"` modeller.
 pub fn parse_live_models(payload: &Value) -> LiveModels {
     let mut out = LiveModels::default();
-    for m in payload.get("data").and_then(Value::as_array).into_iter().flatten() {
-        let Some(id) = m.get("id").filter(|v| truthy(v)).map(str_of) else { continue };
+    for m in payload
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(id) = m.get("id").filter(|v| truthy(v)).map(str_of) else {
+            continue;
+        };
         if m.get("task").and_then(Value::as_str) != Some("chat") {
             continue;
         }
@@ -130,8 +149,15 @@ pub fn reasoning_effort_for(live: &LiveModels, model: &str, level: &str) -> Opti
     if caps.get("reasoning_effort") != Some(&Value::Bool(true)) {
         return None;
     }
-    if let Some(values) = caps.get("reasoning_effort_values").and_then(Value::as_array).filter(|v| !v.is_empty()) {
-        let aliased = caps.get("reasoning_effort_aliases").and_then(Value::as_object).is_some_and(|a| a.contains_key(level));
+    if let Some(values) = caps
+        .get("reasoning_effort_values")
+        .and_then(Value::as_array)
+        .filter(|v| !v.is_empty())
+    {
+        let aliased = caps
+            .get("reasoning_effort_aliases")
+            .and_then(Value::as_object)
+            .is_some_and(|a| a.contains_key(level));
         if !values.iter().any(|v| v.as_str() == Some(level)) && !aliased {
             return None;
         }
@@ -149,7 +175,8 @@ pub fn find_flag(help: &str, flag: &str) -> Option<usize> {
     while let Some(i) = help[from..].find(flag) {
         let start = from + i;
         let end = start + flag.len();
-        if !help[..start].chars().next_back().is_some_and(word_char) && !help[end..].chars().next().is_some_and(word_char)
+        if !help[..start].chars().next_back().is_some_and(word_char)
+            && !help[end..].chars().next().is_some_and(word_char)
         {
             return Some(end);
         }
@@ -161,11 +188,22 @@ pub fn find_flag(help: &str, flag: &str) -> Option<usize> {
 /// Bayraktan sonraki ilk `[possible values: a, b]` listesi; bulunamazsa boş (= bilinmiyor).
 pub fn flag_values(help: &str, flag: &str) -> Vec<String> {
     const MARK: &str = "[possible values: ";
-    let Some(end) = find_flag(help, flag) else { return Vec::new() };
-    let Some(i) = help[end..].find(MARK) else { return Vec::new() };
+    let Some(end) = find_flag(help, flag) else {
+        return Vec::new();
+    };
+    let Some(i) = help[end..].find(MARK) else {
+        return Vec::new();
+    };
     let rest = &help[end + i + MARK.len()..];
-    let Some(close) = rest.find(']') else { return Vec::new() };
-    rest[..close].split(',').map(crate::pyfmt::strip).filter(|v| !v.is_empty()).map(str::to_string).collect()
+    let Some(close) = rest.find(']') else {
+        return Vec::new();
+    };
+    rest[..close]
+        .split(',')
+        .map(crate::pyfmt::strip)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// `resolve_binary`: ayar -> `UCLI_BIN` -> `<repo>/bin/ucli` -> PATH -> kardeş proje derlemesi.
@@ -185,7 +223,10 @@ pub fn resolve_binary(p: &Providers<'_>) -> Result<String, SpawnError> {
         return Ok(found);
     }
     for profile in ["release", "debug"] {
-        let cand = format!("{}/work/projects/tmp/unified-cli/target/{profile}/ucli", p.paths.home);
+        let cand = format!(
+            "{}/work/projects/tmp/unified-cli/target/{profile}/ucli",
+            p.paths.home
+        );
         if p.probe.is_file(&cand) {
             return Ok(cand);
         }
@@ -206,15 +247,33 @@ pub fn state_dir_for(state_root: &str, real_cwd: &str) -> String {
     }
     let base: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || "_.-".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "_.-".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(40)
         .collect();
-    let digest: String = Sha1::digest(real_cwd.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    let digest: String = Sha1::digest(real_cwd.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     format!("{state_root}/{base}-{}", &digest[..10])
 }
 
 fn safe_name(session: &str) -> String {
-    session.chars().map(|c| if c.is_alphanumeric() || "-_.".contains(c) { c } else { '_' }).collect()
+    session
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || "-_.".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// `binary_supports_flag`: yardım metninde TAM bayrak.
@@ -241,7 +300,11 @@ pub fn is_child_name(name: &str) -> bool {
     let name = name.strip_suffix('\n').unwrap_or(name);
     name.rmatch_indices("_aj").any(|(i, _)| {
         let n = &name[i + 3..];
-        i > 0 && !name[..i].contains('\n') && !n.is_empty() && !n.starts_with('0') && n.bytes().all(|b| b.is_ascii_digit())
+        i > 0
+            && !name[..i].contains('\n')
+            && !n.is_empty()
+            && !n.starts_with('0')
+            && n.bytes().all(|b| b.is_ascii_digit())
     })
 }
 
@@ -264,7 +327,10 @@ fn push_once(argv: &mut Vec<String>, flag: &str) {
 }
 
 fn value_after<'a>(argv: &'a [String], flag: &str) -> Option<&'a str> {
-    argv.iter().position(|a| a == flag).and_then(|i| argv.get(i + 1)).map(String::as_str)
+    argv.iter()
+        .position(|a| a == flag)
+        .and_then(|i| argv.get(i + 1))
+        .map(String::as_str)
 }
 
 struct Ctx<'a, 'b> {
@@ -282,7 +348,14 @@ impl Ctx<'_, '_> {
 
     fn unsupported(&mut self, flag: &str) {
         let (name, binary) = (self.session.to_string(), self.binary.clone());
-        self.out.diag("ucli_flag_unsupported", vec![("name", json!(&name)), ("flag", json!(flag)), ("binary", json!(&binary))]);
+        self.out.diag(
+            "ucli_flag_unsupported",
+            vec![
+                ("name", json!(&name)),
+                ("flag", json!(flag)),
+                ("binary", json!(&binary)),
+            ],
+        );
     }
 
     /// İkili tanıyorsa true; tanımıyorsa günlüğe yazar.
@@ -299,7 +372,9 @@ impl Ctx<'_, '_> {
         if self.known(flag) {
             Ok(())
         } else {
-            Err(SpawnError(format!("ucli ikilisi {flag} bayrağını tanımıyor ({why})")))
+            Err(SpawnError(format!(
+                "ucli ikilisi {flag} bayrağını tanımıyor ({why})"
+            )))
         }
     }
 
@@ -311,13 +386,26 @@ impl Ctx<'_, '_> {
                 let (name, binary) = (self.session.to_string(), self.binary.clone());
                 self.out.diag(
                     "ucli_web_flag_unsupported",
-                    vec![("name", json!(&name)), ("flag", json!("--search-url")), ("binary", json!(&binary)), ("auto", json!(auto))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("flag", json!("--search-url")),
+                        ("binary", json!(&binary)),
+                        ("auto", json!(auto)),
+                    ],
                 );
             } else {
                 let preview = self.out.dry_run;
-                let url = cfg.search_url.clone().or_else(|| self.p.probe.searxng_url(self.session, preview));
+                let url = cfg
+                    .search_url
+                    .clone()
+                    .or_else(|| self.p.probe.searxng_url(self.session, preview));
                 if let Some(url) = url.filter(|u| !u.is_empty()) {
-                    argv.extend(["--search-url".into(), url, "--search-flavor".into(), "searxng".into()]);
+                    argv.extend([
+                        "--search-url".into(),
+                        url,
+                        "--search-flavor".into(),
+                        "searxng".into(),
+                    ]);
                 }
             }
         }
@@ -331,25 +419,47 @@ impl Ctx<'_, '_> {
                 let (name, binary) = (self.session.to_string(), self.binary.clone());
                 self.out.diag(
                     "ucli_web_flag_unsupported",
-                    vec![("name", json!(&name)), ("flag", json!("--allow-fetch")), ("binary", json!(&binary))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("flag", json!("--allow-fetch")),
+                        ("binary", json!(&binary)),
+                    ],
                 );
             }
         }
     }
 
     /// Ayara bağlı basit bayraklar, Python'daki sırayla.
-    fn tuning_args(&mut self, argv: &mut Vec<String>, a: &BuildArgs<'_>, preset: &str, overrides: &[(&str, i64)], force_state: bool) {
+    fn tuning_args(
+        &mut self,
+        argv: &mut Vec<String>,
+        a: &BuildArgs<'_>,
+        preset: &str,
+        overrides: &[(&str, i64)],
+        force_state: bool,
+    ) {
         let s = self.p.settings;
-        let limit = |key: &str, default: i64| overrides.iter().find(|(k, _)| *k == key).map_or(default, |(_, v)| *v);
+        let limit = |key: &str, default: i64| {
+            overrides
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map_or(default, |(_, v)| *v)
+        };
         let script = s.ucli_script_mode();
         if !script.is_empty() && self.known("--allow-script") {
             argv.push(format!("--allow-script={script}"));
         }
         if self.known("--request-timeout-secs") {
-            argv.extend(["--request-timeout-secs".into(), limit("request_timeout_secs", REQUEST_TIMEOUT_SECS).to_string()]);
+            argv.extend([
+                "--request-timeout-secs".into(),
+                limit("request_timeout_secs", REQUEST_TIMEOUT_SECS).to_string(),
+            ]);
         }
         if self.known("--max-history-kib") {
-            argv.extend(["--max-history-kib".into(), limit("max_history_kib", MAX_HISTORY_KIB).to_string()]);
+            argv.extend([
+                "--max-history-kib".into(),
+                limit("max_history_kib", MAX_HISTORY_KIB).to_string(),
+            ]);
         }
         let mode = s.ucli_reasoning_mode();
         if mode != "off" && !a.model.is_empty() && self.known("--effort") {
@@ -358,7 +468,14 @@ impl Ctx<'_, '_> {
                 Some(v) => argv.extend(["--effort".into(), v]),
                 None => {
                     let name = self.session.to_string();
-                    self.out.diag("ucli_effort_skipped", vec![("name", json!(&name)), ("model", json!(a.model)), ("level", json!(level))]);
+                    self.out.diag(
+                        "ucli_effort_skipped",
+                        vec![
+                            ("name", json!(&name)),
+                            ("model", json!(a.model)),
+                            ("level", json!(level)),
+                        ],
+                    );
                 }
             }
         }
@@ -372,7 +489,11 @@ impl Ctx<'_, '_> {
             let dir = self.p.paths.ucli_metrics_dir();
             let file = format!("{dir}/{}.jsonl", safe_name(self.session));
             // dizin açılamıyorsa bayrak eklenmez
-            if self.out.apply_now(self.p.probe, Effect::MkdirPrivate { path: dir }).is_ok() {
+            if self
+                .out
+                .apply_now(self.p.probe, Effect::MkdirPrivate { path: dir })
+                .is_ok()
+            {
                 argv.extend(["--metrics-file".into(), file]);
             }
         }
@@ -398,7 +519,11 @@ impl Ctx<'_, '_> {
     }
 
     /// Claude (Anthropic API) hizmeti: günlük tavan + takım bayrakları.
-    fn claude_service_flags(&mut self, argv: &mut Vec<String>, cwd: &str) -> Result<(), SpawnError> {
+    fn claude_service_flags(
+        &mut self,
+        argv: &mut Vec<String>,
+        cwd: &str,
+    ) -> Result<(), SpawnError> {
         if let Err(refused) = self.p.probe.claude_cost_gate(self.session) {
             let message = refused.to_string();
             self.out.cost_refusal = Some(refused);
@@ -417,13 +542,20 @@ impl Ctx<'_, '_> {
         if self.known("--instructions-auto") {
             let too_big = !cwd.is_empty()
                 && ["AGENTS.md", "CLAUDE.md"].iter().any(|n| {
-                    self.p.probe.file_size(&join_path(cwd, n)).is_some_and(|b| b > INSTRUCTIONS_MAX_BYTES)
+                    self.p
+                        .probe
+                        .file_size(&join_path(cwd, n))
+                        .is_some_and(|b| b > INSTRUCTIONS_MAX_BYTES)
                 });
             if too_big {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_instructions_skipped",
-                    vec![("name", json!(&name)), ("cwd", json!(cwd)), ("limit", json!(INSTRUCTIONS_MAX_BYTES))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("cwd", json!(cwd)),
+                        ("limit", json!(INSTRUCTIONS_MAX_BYTES)),
+                    ],
                 );
             } else {
                 push_once(argv, "--instructions-auto");
@@ -442,7 +574,11 @@ impl Ctx<'_, '_> {
         let probe = self.p.probe;
         let on = |k: &str| opts.get(k).is_some_and(truthy);
         let mut env_prefix = String::new();
-        let service = opts.get("service").filter(|v| truthy(v)).map(str_of).unwrap_or_default();
+        let service = opts
+            .get("service")
+            .filter(|v| truthy(v))
+            .map(str_of)
+            .unwrap_or_default();
         if !service.is_empty() && service != "evren" {
             let services = self.p.settings.ucli_services();
             let svc = services
@@ -451,14 +587,26 @@ impl Ctx<'_, '_> {
                 .ok_or_else(|| SpawnError(format!("bilinmeyen hizmet: {service}")))?;
             let key = self.p.settings.byok_value("ucli", &svc.env);
             if key.is_empty() {
-                return Err(SpawnError(format!("{service}: anahtar yok (Model anahtarları panelinden gir: {})", svc.env)));
+                return Err(SpawnError(format!(
+                    "{service}: anahtar yok (Model anahtarları panelinden gir: {})",
+                    svc.env
+                )));
             }
             if !svc.wire.is_empty() && !self.has("--provider") {
-                return Err(SpawnError("ucli ikilisi --provider bayrağını tanımıyor".into()));
+                return Err(SpawnError(
+                    "ucli ikilisi --provider bayrağını tanımıyor".into(),
+                ));
             }
             let path = self.p.paths.ucli_key_file(&service);
-            self.out.effects.push(Effect::WriteSecret { path: path.clone(), content: key });
-            let endpoint = if svc.endpoint.is_empty() { "" } else { &svc.endpoint };
+            self.out.effects.push(Effect::WriteSecret {
+                path: path.clone(),
+                content: key,
+            });
+            let endpoint = if svc.endpoint.is_empty() {
+                ""
+            } else {
+                &svc.endpoint
+            };
             set_flag_value(argv, "--endpoint", endpoint);
             set_flag_value(argv, "--api-key-env", &svc.env);
             if !svc.wire.is_empty() {
@@ -469,7 +617,11 @@ impl Ctx<'_, '_> {
                 argv.drain(i..(i + 2).min(argv.len()));
             }
             if let Some(model) = value_after(argv, "--model").map(str::to_string) {
-                let levels = self.p.settings.ucli_effort_levels_for(&service, &model).unwrap_or_default();
+                let levels = self
+                    .p
+                    .settings
+                    .ucli_effort_levels_for(&service, &model)
+                    .unwrap_or_default();
                 if levels.iter().any(|x| x == a.effort) && self.has("--effort") {
                     argv.extend(["--effort".into(), a.effort.into()]);
                 }
@@ -482,14 +634,20 @@ impl Ctx<'_, '_> {
         if !argv.iter().any(|x| x == "--usage-log") && self.known("--usage-log") {
             let dir = format!("{}/other", self.p.paths.ucli_usage_dir());
             let log = usage_log_path(&dir, self.session);
-            match self.out.apply_now(self.p.probe, Effect::MkdirPrivate { path: dir }) {
+            match self
+                .out
+                .apply_now(self.p.probe, Effect::MkdirPrivate { path: dir })
+            {
                 Ok(()) => set_flag_value(argv, "--usage-log", &log),
                 // bekleyen yazım düştü: spawn zaten o hatayla düşecek
                 Err(None) => {}
                 Err(Some(e)) => {
                     let name = self.session.to_string();
                     let text: String = e.to_string().chars().take(120).collect();
-                    self.out.diag("ucli_usage_log_dir_failed", vec![("name", json!(&name)), ("error", json!(text))]);
+                    self.out.diag(
+                        "ucli_usage_log_dir_failed",
+                        vec![("name", json!(&name)), ("error", json!(text))],
+                    );
                 }
             }
         }
@@ -497,7 +655,9 @@ impl Ctx<'_, '_> {
         let as_usd = |k: &str| -> Result<Option<f64>, SpawnError> {
             match opts.get(k).filter(|v| truthy(v)) {
                 None => Ok(None),
-                Some(v) => py_float(v).map(Some).ok_or_else(|| SpawnError(float_error(v))),
+                Some(v) => py_float(v)
+                    .map(Some)
+                    .ok_or_else(|| SpawnError(float_error(v))),
             }
         };
         if let Some(usd) = as_usd("max_cost_usd")? {
@@ -509,23 +669,32 @@ impl Ctx<'_, '_> {
                     let name = self.session.to_string();
                     self.out.diag(
                         "ucli_max_cost_skipped",
-                        vec![("name", json!(&name)), ("model", json!(&model)), ("reason", json!("no built-in price"))],
+                        vec![
+                            ("name", json!(&name)),
+                            ("model", json!(&model)),
+                            ("reason", json!("no built-in price")),
+                        ],
                     );
                 }
             }
         }
         // Evren (ücretsiz) hizmette varsayılan oturum tavanı eklenmez.
-        let session_cap = as_usd("max_session_usd")?.filter(|v| *v != 0.0).unwrap_or_else(|| {
-            if service.is_empty() || service == "evren" {
-                0.0
-            } else {
-                self.p.settings.default_max_session_usd()
-            }
-        });
+        let session_cap = as_usd("max_session_usd")?
+            .filter(|v| *v != 0.0)
+            .unwrap_or_else(|| {
+                if service.is_empty() || service == "evren" {
+                    0.0
+                } else {
+                    self.p.settings.default_max_session_usd()
+                }
+            });
         if session_cap != 0.0 && self.known("--max-session-usd") {
             set_flag_value(argv, "--max-session-usd", &fmt_g(session_cap));
         }
-        for (key, flag) in [("git_commit", "--allow-git-commit"), ("git_push", "--allow-git-push")] {
+        for (key, flag) in [
+            ("git_commit", "--allow-git-commit"),
+            ("git_push", "--allow-git-push"),
+        ] {
             if on(key) {
                 self.require(flag, "git izni yarım uygulanmaz")?;
                 push_once(argv, flag);
@@ -544,7 +713,9 @@ impl Ctx<'_, '_> {
             ("instructions_user", "--instructions-user"),
             ("instructions_max_kib", "--instructions-max-kib"),
         ] {
-            let Some(val) = opts.get(key).filter(|v| truthy(v)) else { continue };
+            let Some(val) = opts.get(key).filter(|v| truthy(v)) else {
+                continue;
+            };
             if !self.known(flag) {
                 continue;
             }
@@ -560,20 +731,29 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_flag_skipped",
-                    vec![("name", json!(&name)), ("flag", json!("--search-token-env")), ("reason", json!("no --search-url"))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("flag", json!("--search-token-env")),
+                        ("reason", json!("no --search-url")),
+                    ],
                 );
             } else if self.known("--search-token-env") {
                 set_flag_value(argv, "--search-token-env", &str_of(ste));
             }
         }
-        for (key, flag) in [("allow_image", "--allow-image"), ("allow_scholar", "--allow-scholar")] {
+        for (key, flag) in [
+            ("allow_image", "--allow-image"),
+            ("allow_scholar", "--allow-scholar"),
+        ] {
             if on(key) {
                 self.require(flag, "yetenek izni yarım uygulanmaz")?;
                 push_once(argv, flag);
             }
         }
         if on("approval_dir") {
-            return Err(SpawnError("approval_dir REPL oturumunda kullanılamaz (REPL için ask_dir)".into()));
+            return Err(SpawnError(
+                "approval_dir REPL oturumunda kullanılamaz (REPL için ask_dir)".into(),
+            ));
         }
         if on("ask_dir") {
             if self.session.is_empty() {
@@ -586,21 +766,37 @@ impl Ctx<'_, '_> {
             let root = self.p.paths.ucli_ask_root();
             let dir = format!("{root}/{}", self.session);
             self.out.effects.push(Effect::MkdirPrivate { path: root });
-            self.out.effects.push(Effect::MkdirPrivate { path: dir.clone() });
-            self.out.effects.push(Effect::ChmodPrivate { path: dir.clone() });
+            self.out
+                .effects
+                .push(Effect::MkdirPrivate { path: dir.clone() });
+            self.out
+                .effects
+                .push(Effect::ChmodPrivate { path: dir.clone() });
             set_flag_value(argv, "--ask-dir", &dir);
         }
         let mut opts = opts.clone();
         if on_map(&opts, "exec_cmds") {
-            let names = expand_exec_cmds(&str_list(&opts, "exec_cmds"), &probe.path_executables()).map_err(SpawnError)?;
+            let names = expand_exec_cmds(&str_list(&opts, "exec_cmds"), &probe.path_executables())
+                .map_err(SpawnError)?;
             opts.insert("exec_cmds".into(), Value::from(names));
         }
         let ex = exec_flags(&opts, &|| probe.rust_toolchain(), &|d| probe.is_dir(d));
         let globs = str_list(&opts, "exec_own_glob");
         if on_map(&opts, "accept_risk") && globs.iter().any(|g| BROAD_GLOBS.contains(&g.as_str())) {
-            let broad: Vec<&str> = globs.iter().map(String::as_str).filter(|g| BROAD_GLOBS.contains(g)).collect();
+            let broad: Vec<&str> = globs
+                .iter()
+                .map(String::as_str)
+                .filter(|g| BROAD_GLOBS.contains(g))
+                .collect();
             let name = self.session.to_string();
-            self.out.diag("ucli_grant", vec![("name", json!(&name)), ("globs", json!(broad)), ("accept_risk", json!(true))]);
+            self.out.diag(
+                "ucli_grant",
+                vec![
+                    ("name", json!(&name)),
+                    ("globs", json!(broad)),
+                    ("accept_risk", json!(true)),
+                ],
+            );
         }
         if !ex.is_empty() {
             let mut need = vec!["--allow-exec", "--allow-exec-cmd"];
@@ -673,7 +869,11 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_grant",
-                    vec![("name", json!(&name)), ("checks", json!("full")), ("accept_risk", json!(true))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("checks", json!("full")),
+                        ("accept_risk", json!(true)),
+                    ],
                 );
             }
         }
@@ -683,7 +883,11 @@ impl Ctx<'_, '_> {
                 let name = self.session.to_string();
                 self.out.diag(
                     "ucli_flag_skipped",
-                    vec![("name", json!(&name)), ("flag", json!("--ask-edit")), ("reason", json!("no --allow-edit"))],
+                    vec![
+                        ("name", json!(&name)),
+                        ("flag", json!("--ask-edit")),
+                        ("reason", json!("no --allow-edit")),
+                    ],
                 );
             } else {
                 self.require("--ask-edit", "izin yarım uygulanmaz")?;
@@ -697,10 +901,15 @@ impl Ctx<'_, '_> {
     /// ajansız açılır; defterdeki üst kayıt bozuksa (`TypeError`) spawn düşer.
     fn agent_setup(&mut self) -> Result<(Vec<String>, Vec<String>), SpawnError> {
         let none = Ok((Vec::new(), Vec::new()));
-        if self.session.is_empty() || !self.p.settings.ucli_agents_enabled() || is_child_name(self.session) {
+        if self.session.is_empty()
+            || !self.p.settings.ucli_agents_enabled()
+            || is_child_name(self.session)
+        {
             return none;
         }
-        let Some(port) = self.p.probe.panel_port().filter(|p| *p != 0) else { return none };
+        let Some(port) = self.p.probe.panel_port().filter(|p| *p != 0) else {
+            return none;
+        };
         if !self.known("--allow-agents") {
             return none;
         }
@@ -716,14 +925,22 @@ impl Ctx<'_, '_> {
             Ok(path) => Ok((
                 vec!["--allow-agents".into()],
                 vec![
-                    format!("UCLI_AGENT_URL={}", quote(&format!("http://127.0.0.1:{port}"))),
+                    format!(
+                        "UCLI_AGENT_URL={}",
+                        quote(&format!("http://127.0.0.1:{port}"))
+                    ),
                     format!("UCLI_AGENT_TOKEN=\"$(cat {})\"", quote(&path)),
                 ],
             )),
-            Err(e) if e == "TypeError" => Err(SpawnError(crate::real::agents::BAD_PARENT_RECORD.into())),
+            Err(e) if e == "TypeError" => {
+                Err(SpawnError(crate::real::agents::BAD_PARENT_RECORD.into()))
+            }
             Err(e) => {
                 let name = self.session.to_string();
-                self.out.diag("ucli_agents_token_failed", vec![("name", json!(&name)), ("error", json!(&e))]);
+                self.out.diag(
+                    "ucli_agents_token_failed",
+                    vec![("name", json!(&name)), ("error", json!(&e))],
+                );
                 none
             }
         }
@@ -742,7 +959,10 @@ impl Ctx<'_, '_> {
             }
             return self.p.probe.is_file(&file);
         }
-        self.out.effects.push(Effect::WriteSecret { path: file, content: key });
+        self.out.effects.push(Effect::WriteSecret {
+            path: file,
+            content: key,
+        });
         self.out.effects.push(Effect::Touch { path: marker });
         true
     }
@@ -755,8 +975,13 @@ fn on_map(opts: &Map<String, Value>, key: &str) -> bool {
 fn valid_ask_name(name: &str) -> bool {
     let name = name.strip_suffix('\n').unwrap_or(name);
     name.len() <= 100
-        && name.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
-        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        && name
+            .bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_alphanumeric())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 
 pub(crate) fn build_inner_command(
@@ -764,29 +989,67 @@ pub(crate) fn build_inner_command(
     a: &BuildArgs<'_>,
     out: &mut BuildOutput,
 ) -> Result<String, SpawnError> {
-    let preset = if EFFORT_LIMITS.iter().any(|(n, _)| *n == a.effort) { a.effort } else { "medium" };
-    let base = EFFORT_LIMITS.iter().find(|(n, _)| *n == preset).expect("ön ayar var").1;
+    let preset = if EFFORT_LIMITS.iter().any(|(n, _)| *n == a.effort) {
+        a.effort
+    } else {
+        "medium"
+    };
+    let base = EFFORT_LIMITS
+        .iter()
+        .find(|(n, _)| *n == preset)
+        .expect("ön ayar var")
+        .1;
     let overrides = p.settings.ucli_limit_overrides();
-    let limit = |i: usize| overrides.iter().find(|(k, _)| *k == LIMIT_KEYS[i]).map_or(base[i], |(_, v)| *v);
+    let limit = |i: usize| {
+        overrides
+            .iter()
+            .find(|(k, _)| *k == LIMIT_KEYS[i])
+            .map_or(base[i], |(_, v)| *v)
+    };
     let binary = resolve_binary(p)?;
     // Python `chat_help_text`: çıplak ad PATH'ten çözülür.
-    let help = p.probe.ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
-    let mut cx = Ctx { p, out, binary: binary.clone(), help, session: a.session_name };
+    let help = p
+        .probe
+        .ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
+    let mut cx = Ctx {
+        p,
+        out,
+        binary: binary.clone(),
+        help,
+        session: a.session_name,
+    };
 
-    let endpoint = Some(p.settings.ucli_endpoint()).filter(|e| !e.is_empty()).unwrap_or_else(|| DEFAULT_ENDPOINT.into());
-    let mut argv: Vec<String> = [binary.as_str(), "--root", a.cwd, "chat", "--repl", "--endpoint", &endpoint, "--max-steps"]
-        .map(String::from)
-        .to_vec();
+    let endpoint = Some(p.settings.ucli_endpoint())
+        .filter(|e| !e.is_empty())
+        .unwrap_or_else(|| DEFAULT_ENDPOINT.into());
+    let mut argv: Vec<String> = [
+        binary.as_str(),
+        "--root",
+        a.cwd,
+        "chat",
+        "--repl",
+        "--endpoint",
+        &endpoint,
+        "--max-steps",
+    ]
+    .map(String::from)
+    .to_vec();
     argv.push(limit(0).to_string());
     // İkili bağlam tavanını modelden türetiyorsa yalnız açık ayar geçer.
-    if overrides.iter().any(|(k, _)| *k == "max_context_kib") || !cx.help.contains(DERIVES_CONTEXT_MARK) {
+    if overrides.iter().any(|(k, _)| *k == "max_context_kib")
+        || !cx.help.contains(DERIVES_CONTEXT_MARK)
+    {
         argv.extend(["--max-context-kib".into(), limit(1).to_string()]);
     }
     argv.extend(["--max-tool-calls".into(), limit(2).to_string()]);
     argv.extend(["--max-output-tokens".into(), limit(3).to_string()]);
     argv.push("--pretty".into());
     if !a.session_name.is_empty() {
-        argv.extend(["--session".into(), a.session_name.into(), "--status-file".into()]);
+        argv.extend([
+            "--session".into(),
+            a.session_name.into(),
+            "--status-file".into(),
+        ]);
     }
     if !a.model.is_empty() {
         argv.extend(["--model".into(), a.model.into()]);
@@ -810,7 +1073,11 @@ pub(crate) fn build_inner_command(
     let (agent_args, agent_env) = cx.agent_setup()?;
     argv.extend(agent_args);
     let inner = join_quoted(&argv);
-    let agent_prefix = if agent_env.is_empty() { String::new() } else { agent_env.join(" ") + " " };
+    let agent_prefix = if agent_env.is_empty() {
+        String::new()
+    } else {
+        agent_env.join(" ") + " "
+    };
     let sh = |wrapped: String| format!("sh -c {}", quote(&wrapped));
     if !service_env.is_empty() {
         return Ok(sh(format!("{service_env} {agent_prefix}exec {inner}")));
@@ -818,7 +1085,9 @@ pub(crate) fn build_inner_command(
     if cx.sync_api_key_file() {
         let key_file = p.paths.ucli_key_file("");
         let key_file = quote(&key_file);
-        return Ok(sh(format!("UCLI_API_KEY=\"$(cat {key_file})\" {agent_prefix}exec {inner}")));
+        return Ok(sh(format!(
+            "UCLI_API_KEY=\"$(cat {key_file})\" {agent_prefix}exec {inner}"
+        )));
     }
     if !agent_prefix.is_empty() {
         return Ok(sh(format!("{agent_prefix}exec {inner}")));
@@ -828,8 +1097,17 @@ pub(crate) fn build_inner_command(
 
 /// `ucli mcp add` sunucu adı: 1-24 ASCII harf/rakam/alt çizgi.
 pub fn mcp_server_name(spec_name: &str) -> String {
-    let clean: String =
-        spec_name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).take(24).collect();
+    let clean: String = spec_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(24)
+        .collect();
     if clean.is_empty() {
         "mcp".into()
     } else {
@@ -840,8 +1118,18 @@ pub fn mcp_server_name(spec_name: &str) -> String {
 /// `ucli --root CWD mcp add ...` argv'si (kimlik bilgisi yok).
 pub fn mcp_add_argv(binary: &str, cwd: &str, spec: &McpSpec) -> Vec<String> {
     let name = mcp_server_name(&spec.name);
-    let mut argv: Vec<String> =
-        [binary, "--root", cwd, "mcp", "add", &name, "--command", &spec.command].map(String::from).to_vec();
+    let mut argv: Vec<String> = [
+        binary,
+        "--root",
+        cwd,
+        "mcp",
+        "add",
+        &name,
+        "--command",
+        &spec.command,
+    ]
+    .map(String::from)
+    .to_vec();
     for t in &spec.allowed_tools {
         argv.extend(["--allow-tool".into(), t.clone()]);
     }
@@ -852,30 +1140,66 @@ pub fn mcp_add_argv(binary: &str, cwd: &str, spec: &McpSpec) -> Vec<String> {
 
 /// `_MCP_TOOL_RE.fullmatch` (`[A-Za-z0-9_.-]{1,64}`): sondaki satır sonu da reddedilir.
 fn valid_tool_name(t: &str) -> bool {
-    (1..=64).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+    (1..=64).contains(&t.len())
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 
-pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out: &mut BuildOutput) -> Vec<String> {
+pub(crate) fn mcp_launch_args(
+    p: &Providers<'_>,
+    spec: &McpSpec,
+    cwd: &str,
+    out: &mut BuildOutput,
+) -> Vec<String> {
     let binary = match resolve_binary(p) {
         Ok(b) => b,
         Err(e) => {
             // Python `reason=repr(e)`: `UcliError('...')`.
-            out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!(py_repr("UcliError", &e.0)))]);
+            out.diag(
+                "ucli_mcp_skipped",
+                vec![
+                    ("server", json!(&spec.name)),
+                    ("reason", json!(py_repr("UcliError", &e.0))),
+                ],
+            );
             return Vec::new();
         }
     };
-    let help = p.probe.ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
+    let help = p
+        .probe
+        .ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
     if find_flag(&help, "--with-mcp").is_none() {
-        out.diag("ucli_flag_unsupported", vec![("flag", json!("--with-mcp")), ("binary", json!(&binary))]);
+        out.diag(
+            "ucli_flag_unsupported",
+            vec![("flag", json!("--with-mcp")), ("binary", json!(&binary))],
+        );
         return Vec::new();
     }
-    let tools: Vec<String> = spec.allowed_tools.iter().filter(|t| valid_tool_name(t)).cloned().collect();
+    let tools: Vec<String> = spec
+        .allowed_tools
+        .iter()
+        .filter(|t| valid_tool_name(t))
+        .cloned()
+        .collect();
     if tools.is_empty() {
-        out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!("no allowed tools"))]);
+        out.diag(
+            "ucli_mcp_skipped",
+            vec![
+                ("server", json!(&spec.name)),
+                ("reason", json!("no allowed tools")),
+            ],
+        );
         return Vec::new();
     }
     if !cwd.starts_with('/') || !p.probe.is_dir(cwd) {
-        out.diag("ucli_mcp_skipped", vec![("server", json!(&spec.name)), ("reason", json!("no workspace")), ("cwd", json!(cwd))]);
+        out.diag(
+            "ucli_mcp_skipped",
+            vec![
+                ("server", json!(&spec.name)),
+                ("reason", json!("no workspace")),
+                ("cwd", json!(cwd)),
+            ],
+        );
         return Vec::new();
     }
     // Python `register_mcp(binary, cwd, clean)`: oturum adı geçirilmez, günlükte `name=""`.
@@ -883,7 +1207,11 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
     if p.probe.is_symlink(&dir) {
         out.diag(
             "ucli_mcp_register_failed",
-            vec![("name", json!("")), ("cwd", json!(cwd)), ("error", json!(".ucli is a symlink"))],
+            vec![
+                ("name", json!("")),
+                ("cwd", json!(cwd)),
+                ("error", json!(".ucli is a symlink")),
+            ],
         );
         return Vec::new();
     }
@@ -891,8 +1219,15 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
     if out.dry_run {
         return vec!["--with-mcp".into()];
     }
-    let clean = McpSpec { allowed_tools: tools, ..spec.clone() };
-    match p.probe.register_mcp(cwd, &join_path(&dir, "mcp.json"), &mcp_add_argv(&binary, cwd, &clean)) {
+    let clean = McpSpec {
+        allowed_tools: tools,
+        ..spec.clone()
+    };
+    match p.probe.register_mcp(
+        cwd,
+        &join_path(&dir, "mcp.json"),
+        &mcp_add_argv(&binary, cwd, &clean),
+    ) {
         Ok(()) => {
             out.diag(
                 "ucli_mcp_registered",
@@ -906,7 +1241,14 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
             vec!["--with-mcp".into()]
         }
         Err(McpRegisterError::Unlink(e) | McpRegisterError::Spawn(e)) => {
-            out.diag("ucli_mcp_register_failed", vec![("name", json!("")), ("cwd", json!(cwd)), ("error", json!(e))]);
+            out.diag(
+                "ucli_mcp_register_failed",
+                vec![
+                    ("name", json!("")),
+                    ("cwd", json!(cwd)),
+                    ("error", json!(e)),
+                ],
+            );
             Vec::new()
         }
         Err(McpRegisterError::Exit { rc, stdout, stderr }) => {
@@ -916,7 +1258,12 @@ pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, cwd: &str, out:
             let tail: String = text.chars().skip(n.saturating_sub(300)).collect();
             out.diag(
                 "ucli_mcp_register_failed",
-                vec![("name", json!("")), ("cwd", json!(cwd)), ("rc", json!(rc)), ("error", json!(tail))],
+                vec![
+                    ("name", json!("")),
+                    ("cwd", json!(cwd)),
+                    ("rc", json!(rc)),
+                    ("error", json!(tail)),
+                ],
             );
             Vec::new()
         }
@@ -968,7 +1315,10 @@ fn py_dirname(p: &str) -> &str {
 /// boyutları. `cwd` mutlak, NUL içermeyen, var olan bir dizin değilse boş liste. Dosya (symlink çözülünce) `cwd`
 /// dışındaysa ya da normal dosya değilse atlanır. Boyut okunamazsa (Python `OSError`) o ana dek bulunanlar döner.
 pub fn instructions_check(probe: &dyn crate::probe::Probe, cwd: &str) -> InstructionsCheck {
-    let mut res = InstructionsCheck { limit: INSTRUCTIONS_MAX_BYTES, files: Vec::new() };
+    let mut res = InstructionsCheck {
+        limit: INSTRUCTIONS_MAX_BYTES,
+        files: Vec::new(),
+    };
     if cwd.is_empty() || !cwd.starts_with('/') || cwd.contains('\0') {
         return res;
     }
@@ -981,8 +1331,14 @@ pub fn instructions_check(probe: &dyn crate::probe::Probe, cwd: &str) -> Instruc
         if py_dirname(&real) != root || !probe.is_file(&real) {
             continue;
         }
-        let Some(n) = probe.file_size(&real) else { return res };
-        res.files.push(InstructionsFile { name, bytes: n, over: n > INSTRUCTIONS_MAX_BYTES });
+        let Some(n) = probe.file_size(&real) else {
+            return res;
+        };
+        res.files.push(InstructionsFile {
+            name,
+            bytes: n,
+            over: n > INSTRUCTIONS_MAX_BYTES,
+        });
     }
     res
 }

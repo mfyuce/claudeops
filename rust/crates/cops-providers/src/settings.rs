@@ -2,15 +2,22 @@
 //! çağıranın işi (cops-state); burada yalnız ayrıştırılmış nesne yorumlanır. Bozuk değer asla hata vermez.
 
 use crate::ojson::OValue;
-use crate::pyfmt::{decimal_value, parse_float, parse_int, py_float, str_of, str_or_empty, strip, truthy};
+use crate::pyfmt::{
+    decimal_value, parse_float, parse_int, py_float, str_of, str_or_empty, strip, truthy,
+};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::sync::LazyLock;
 
-const OFF_WORDS: [&str; 11] =
-    ["off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none"];
-const AGENTS_OFF_WORDS: [&str; 8] = ["off", "0", "false", "no", "none", "disabled", "kapali", "kapalı"];
-const ON_WORDS: [&str; 9] = ["on", "1", "true", "yes", "y", "evet", "acik", "açık", "enabled"];
+const OFF_WORDS: [&str; 11] = [
+    "off", "0", "false", "no", "n", "hayir", "hayır", "kapali", "kapalı", "disabled", "none",
+];
+const AGENTS_OFF_WORDS: [&str; 8] = [
+    "off", "0", "false", "no", "none", "disabled", "kapali", "kapalı",
+];
+const ON_WORDS: [&str; 9] = [
+    "on", "1", "true", "yes", "y", "evet", "acik", "açık", "enabled",
+];
 const REASONING_LEVELS: [&str; 4] = ["low", "medium", "high", "max"];
 const MAX_FETCH_DOMAINS: usize = 64;
 /// `ucli_max_session_usd` boş/bozukken.
@@ -30,7 +37,10 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { map: Map::new(), ord: OValue::Object(Vec::new()) }
+        Settings {
+            map: Map::new(),
+            ord: OValue::Object(Vec::new()),
+        }
     }
 }
 
@@ -39,7 +49,8 @@ pub fn is_safe_env_name(name: &str) -> bool {
     let b = name.as_bytes();
     !b.is_empty()
         && (b[0] == b'_' || b[0].is_ascii_uppercase())
-        && b.iter().all(|c| *c == b'_' || c.is_ascii_uppercase() || c.is_ascii_digit())
+        && b.iter()
+            .all(|c| *c == b'_' || c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 /// ucli model hizmeti (`ucli_services` girdisi).
@@ -69,10 +80,20 @@ fn builtin_services() -> Vec<UcliService> {
         models: Vec::new(),
         efforts: Vec::new(),
     };
-    let mut claude =
-        s("claude", "Claude (Anthropic)", "anthropic-messages", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY");
+    let mut claude = s(
+        "claude",
+        "Claude (Anthropic)",
+        "anthropic-messages",
+        "https://api.anthropic.com/v1",
+        "ANTHROPIC_API_KEY",
+    );
     let lv = |l: &[&str]| l.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-    claude.models = lv(&["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"]);
+    claude.models = lv(&[
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-1",
+    ]);
     claude.efforts = vec![
         ("haiku".into(), lv(&[])),
         ("sonnet".into(), lv(&["low", "medium", "high"])),
@@ -82,9 +103,27 @@ fn builtin_services() -> Vec<UcliService> {
     vec![
         s("evren", "Evren", "", "", "UCLI_API_KEY"),
         claude,
-        s("grok", "Grok (xAI)", "", "https://api.x.ai/v1", "XAI_API_KEY"),
-        s("openrouter", "OpenRouter", "", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-        s("groq", "Groq (groq.com)", "", "https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+        s(
+            "grok",
+            "Grok (xAI)",
+            "",
+            "https://api.x.ai/v1",
+            "XAI_API_KEY",
+        ),
+        s(
+            "openrouter",
+            "OpenRouter",
+            "",
+            "https://openrouter.ai/api/v1",
+            "OPENROUTER_API_KEY",
+        ),
+        s(
+            "groq",
+            "Groq (groq.com)",
+            "",
+            "https://api.groq.com/openai/v1",
+            "GROQ_API_KEY",
+        ),
     ]
 }
 
@@ -99,9 +138,11 @@ pub struct UcliWeb {
 static SVC_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{1,19}$").unwrap());
 static SVC_ENV: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z][A-Z0-9_]{2,39}$").unwrap());
 // Python `\\s` (str) `\\x1c-\\x1f`i de kapsar.
-static SVC_EP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^https?://[^\s\x1c-\x1f]+$").unwrap());
+static SVC_EP: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^https?://[^\s\x1c-\x1f]+$").unwrap());
 static HOST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$").unwrap()
+    Regex::new(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$")
+        .unwrap()
 });
 
 fn take_chars(s: &str, n: usize) -> String {
@@ -162,7 +203,13 @@ fn cost_amount(v: Option<&Value>) -> f64 {
 fn is_iso_date(v: &str) -> bool {
     let c: Vec<char> = v.chars().collect();
     c.len() == 10
-        && c.iter().enumerate().all(|(i, ch)| if i == 4 || i == 7 { *ch == '-' } else { decimal_value(*ch).is_some() })
+        && c.iter().enumerate().all(|(i, ch)| {
+            if i == 4 || i == 7 {
+                *ch == '-'
+            } else {
+                decimal_value(*ch).is_some()
+            }
+        })
 }
 
 /// `ucli_metrics` ayarının yorumu (`ucli_metrics.get_config`).
@@ -174,12 +221,18 @@ pub struct MetricsConfig {
 }
 
 /// `ucli_metrics.DEFAULTS`.
-pub const METRICS_DEFAULTS: MetricsConfig = MetricsConfig { enabled: true, interval_s: 15.0, retention_days: 30.0 };
+pub const METRICS_DEFAULTS: MetricsConfig = MetricsConfig {
+    enabled: true,
+    interval_s: 15.0,
+    retention_days: 30.0,
+};
 
 /// `ucli_metrics._num`: `float(v)` (olmayan/bozuk = varsayılan), sonra `min(max(f, lo), hi)`. Python `max`/`min`
 /// karşılaştırma sırası korunur: NaN SINIRLANMADAN döner (Python davranışı, bkz. parite `metrics-nan`).
 fn metrics_num(v: Option<&Value>, default: f64, lo: f64, hi: f64) -> f64 {
-    let Some(f) = v.and_then(py_float) else { return default };
+    let Some(f) = v.and_then(py_float) else {
+        return default;
+    };
     let f = if lo > f { lo } else { f };
     if hi < f {
         hi
@@ -191,16 +244,30 @@ fn metrics_num(v: Option<&Value>, default: f64, lo: f64, hi: f64) -> f64 {
 /// `ucli_metrics.get_config(raw)`: `raw` sözlük değilse varsayılanlar. `enabled` dize ise kırpılıp küçültülür ve
 /// `off/false/0/no/hayır` dışındaki her şey açık; dize değilse Python doğruluk değeri (`null` = kapalı).
 pub fn metrics_config(raw: &Value) -> MetricsConfig {
-    let Some(m) = raw.as_object() else { return METRICS_DEFAULTS };
+    let Some(m) = raw.as_object() else {
+        return METRICS_DEFAULTS;
+    };
     let enabled = match m.get("enabled") {
         None => METRICS_DEFAULTS.enabled,
-        Some(Value::String(s)) => !["off", "false", "0", "no", "hayır"].contains(&strip(s).to_lowercase().as_str()),
+        Some(Value::String(s)) => {
+            !["off", "false", "0", "no", "hayır"].contains(&strip(s).to_lowercase().as_str())
+        }
         Some(v) => truthy(v),
     };
     MetricsConfig {
         enabled,
-        interval_s: metrics_num(m.get("interval_s"), METRICS_DEFAULTS.interval_s, 1.0, 3600.0),
-        retention_days: metrics_num(m.get("retention_days"), METRICS_DEFAULTS.retention_days, 1.0, 3650.0),
+        interval_s: metrics_num(
+            m.get("interval_s"),
+            METRICS_DEFAULTS.interval_s,
+            1.0,
+            3600.0,
+        ),
+        retention_days: metrics_num(
+            m.get("retention_days"),
+            METRICS_DEFAULTS.retention_days,
+            1.0,
+            3650.0,
+        ),
     }
 }
 
@@ -208,18 +275,30 @@ pub fn metrics_config(raw: &Value) -> MetricsConfig {
 /// boşluk/denetim karakteri yok, köşeli parantezli host geçerli IPv6 (ya da `vX.` IPvFuture), port yalnız ASCII rakam ve
 /// 0-65535 (boş port = yok). Python'un ASCII dışı ağ konumu için NFKC denetimi TAŞINMADI.
 pub fn valid_http_url(url: &str) -> bool {
-    if url.is_empty() || url.chars().any(|c| crate::pyfmt::py_isspace(c) || (c as u32) < 32 || c as u32 == 127) {
+    if url.is_empty()
+        || url
+            .chars()
+            .any(|c| crate::pyfmt::py_isspace(c) || (c as u32) < 32 || c as u32 == 127)
+    {
         return false;
     }
     let Some(i) = url.find(':') else { return false };
     let scheme = &url[..i];
     let scheme_ok = i > 0
-        && scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
-        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c));
-    if !scheme_ok || !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
+        && scheme
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c));
+    if !scheme_ok || !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
+    {
         return false;
     }
-    let Some(rest) = url[i + 1..].strip_prefix("//") else { return false };
+    let Some(rest) = url[i + 1..].strip_prefix("//") else {
+        return false;
+    };
     let netloc = rest.split(['/', '?', '#']).next().unwrap_or("");
     let (open, close) = (netloc.contains('['), netloc.contains(']'));
     if open != close {
@@ -250,7 +329,9 @@ pub fn valid_http_url(url: &str) -> bool {
     };
     let digits = port.trim_start_matches('0');
     let port_ok = port.is_empty()
-        || (port.bytes().all(|b| b.is_ascii_digit()) && digits.len() <= 5 && digits.parse::<u32>().unwrap_or(0) <= 65535);
+        || (port.bytes().all(|b| b.is_ascii_digit())
+            && digits.len() <= 5
+            && digits.parse::<u32>().unwrap_or(0) <= 65535);
     !host.is_empty() && port_ok
 }
 
@@ -260,7 +341,10 @@ fn bracketed_host_ok(h: &str) -> bool {
         // `\Av[a-fA-F0-9]+\..+\Z`
         return match rest.split_once('.') {
             Some((hex, tail)) => {
-                !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit()) && !tail.is_empty() && !tail.contains('\n')
+                !hex.is_empty()
+                    && hex.chars().all(|c| c.is_ascii_hexdigit())
+                    && !tail.is_empty()
+                    && !tail.contains('\n')
             }
             None => false,
         };
@@ -317,7 +401,11 @@ impl Settings {
 
     /// `default_model[cli]` / `default_effort[cli]`.
     pub fn per_cli(&self, key: &str, cli: &str) -> String {
-        self.block(key).and_then(|b| b.get(cli)).and_then(Value::as_str).unwrap_or("").to_string()
+        self.block(key)
+            .and_then(|b| b.get(cli))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
     }
 
     /// `provider_bin[cli]`, kırpılmış.
@@ -327,7 +415,12 @@ impl Settings {
 
     /// `byok[cli]`: boş olmayan değerler, `str()`e zorlanmış.
     pub fn byok_env(&self, cli: &str) -> Vec<(String, String)> {
-        let Some(entries) = self.ord.get("byok").and_then(|b| b.get(cli)).and_then(OValue::entries) else {
+        let Some(entries) = self
+            .ord
+            .get("byok")
+            .and_then(|b| b.get(cli))
+            .and_then(OValue::entries)
+        else {
             return Vec::new();
         };
         entries
@@ -339,19 +432,33 @@ impl Settings {
     }
 
     pub fn byok_value(&self, cli: &str, env: &str) -> String {
-        let v = self.byok_env(cli).into_iter().find(|(k, _)| k == env).map(|(_, v)| v).unwrap_or_default();
+        let v = self
+            .byok_env(cli)
+            .into_iter()
+            .find(|(k, _)| k == env)
+            .map(|(_, v)| v)
+            .unwrap_or_default();
         strip(&v).to_string()
     }
 
     /// `ucli_limits` içindeki geçerli (pozitif tam sayı) sayısal override'lar.
     pub fn ucli_limit_overrides(&self) -> Vec<(&'static str, i64)> {
-        ["max_steps", "max_context_kib", "max_tool_calls", "max_output_tokens", "request_timeout_secs", "max_history_kib"]
-            .into_iter()
-            .filter_map(|k| {
-                let v = self.block("ucli_limits")?.get(k)?;
-                parse_int(strip(&str_of(v))).filter(|n| *n > 0).map(|n| (k, n))
-            })
-            .collect()
+        [
+            "max_steps",
+            "max_context_kib",
+            "max_tool_calls",
+            "max_output_tokens",
+            "request_timeout_secs",
+            "max_history_kib",
+        ]
+        .into_iter()
+        .filter_map(|k| {
+            let v = self.block("ucli_limits")?.get(k)?;
+            parse_int(strip(&str_of(v)))
+                .filter(|n| *n > 0)
+                .map(|n| (k, n))
+        })
+        .collect()
     }
 
     pub fn ucli_reasoning_mode(&self) -> String {
@@ -419,8 +526,14 @@ impl Settings {
             Some(Value::Array(a)) => a.iter().map(str_of).collect::<Vec<_>>().join(","),
             v => str_or_empty(v),
         };
-        for tok in text.to_lowercase().split(|c: char| c == ',' || crate::pyfmt::py_isspace(c)) {
-            if !tok.is_empty() && tok.len() <= 253 && HOST.is_match(tok) && !out.allow_fetch_domains.iter().any(|d| d == tok)
+        for tok in text
+            .to_lowercase()
+            .split(|c: char| c == ',' || crate::pyfmt::py_isspace(c))
+        {
+            if !tok.is_empty()
+                && tok.len() <= 253
+                && HOST.is_match(tok)
+                && !out.allow_fetch_domains.iter().any(|d| d == tok)
             {
                 out.allow_fetch_domains.push(tok.to_string());
                 if out.allow_fetch_domains.len() >= MAX_FETCH_DOMAINS {
@@ -433,17 +546,29 @@ impl Settings {
 
     /// `normalize_ucli_services`: geçersiz girdiler atılır, `evren` her zaman vardır.
     pub fn ucli_services(&self) -> Vec<UcliService> {
-        let Some(raw) = self.ord.get("ucli_services").and_then(OValue::as_array).filter(|a| !a.is_empty()) else {
+        let Some(raw) = self
+            .ord
+            .get("ucli_services")
+            .and_then(OValue::as_array)
+            .filter(|a| !a.is_empty())
+        else {
             return builtin_services();
         };
         let mut out: Vec<UcliService> = Vec::new();
         for ro in raw {
-            let Some(entries) = ro.entries() else { continue };
-            let r: Map<String, Value> = entries.iter().map(|(k, v)| (k.clone(), v.to_value())).collect();
+            let Some(entries) = ro.entries() else {
+                continue;
+            };
+            let r: Map<String, Value> = entries
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_value()))
+                .collect();
             let id = strip(&str_or_empty(r.get("id"))).to_lowercase();
             let env = strip(&str_or_empty(r.get("env"))).to_string();
             let wire = strip(&str_or_empty(r.get("wire"))).to_string();
-            let ep = strip(&str_or_empty(r.get("endpoint"))).trim_end_matches('/').to_string();
+            let ep = strip(&str_or_empty(r.get("endpoint")))
+                .trim_end_matches('/')
+                .to_string();
             if !SVC_ID.is_match(&id)
                 || out.iter().any(|s| s.id == id)
                 || !SVC_ENV.is_match(&env)
@@ -453,16 +578,25 @@ impl Settings {
             {
                 continue;
             }
-            let label = take_chars(&{
-                let l = strip(&str_or_empty(r.get("label"))).to_string();
-                if l.is_empty() { id.clone() } else { l }
-            }, 40);
+            let label = take_chars(
+                &{
+                    let l = strip(&str_or_empty(r.get("label"))).to_string();
+                    if l.is_empty() {
+                        id.clone()
+                    } else {
+                        l
+                    }
+                },
+                40,
+            );
             let models = service_models(ro.get("models"));
             let mut efforts = Vec::new();
             if let Some(eff) = ro.get("efforts").and_then(OValue::entries) {
                 for (k, v) in eff.iter().take(20) {
                     let key = take_chars(&strip(k).to_lowercase(), 40);
-                    let Value::Array(list) = v.to_value() else { continue };
+                    let Value::Array(list) = v.to_value() else {
+                        continue;
+                    };
                     if key.is_empty() {
                         continue;
                     }
@@ -474,13 +608,24 @@ impl Settings {
                         }
                     }
                     // Python `efforts[ek] = ...`: var olan anahtar YERİNDE güncellenir.
-                    match efforts.iter_mut().find(|(k2, _): &&mut (String, Vec<String>)| *k2 == key) {
+                    match efforts
+                        .iter_mut()
+                        .find(|(k2, _): &&mut (String, Vec<String>)| *k2 == key)
+                    {
                         Some(slot) => slot.1 = levels,
                         None => efforts.push((key, levels)),
                     }
                 }
             }
-            out.push(UcliService { id, label, wire, endpoint: ep, env, models, efforts });
+            out.push(UcliService {
+                id,
+                label,
+                wire,
+                endpoint: ep,
+                env,
+                models,
+                efforts,
+            });
         }
         if !out.iter().any(|s| s.id == "evren") {
             out.insert(0, builtin_services().remove(0));
@@ -522,7 +667,11 @@ impl Settings {
         };
         UcliCostConfig {
             daily_cap_usd: cost_amount(raw.get("daily_cap_usd")),
-            cache_ttl: if self.block_word("ucli_cost", "cache_ttl") == "5m" { "5m" } else { "1h" },
+            cache_ttl: if self.block_word("ucli_cost", "cache_ttl") == "5m" {
+                "5m"
+            } else {
+                "1h"
+            },
             credit_total_usd: cost_amount(raw.get("credit_total_usd")),
             credit_since: date("credit_since"),
             credit_until: date("credit_until"),
@@ -550,7 +699,11 @@ impl Settings {
 
     /// `ucli_metrics.get_config()` (ayardan; blok sözlük değilse `{}`).
     pub fn ucli_metrics_config(&self) -> MetricsConfig {
-        metrics_config(self.get("ucli_metrics").filter(|v| v.is_object()).unwrap_or(&Value::Object(Map::new())))
+        metrics_config(
+            self.get("ucli_metrics")
+                .filter(|v| v.is_object())
+                .unwrap_or(&Value::Object(Map::new())),
+        )
     }
 
     pub fn ucli_agents_enabled(&self) -> bool {
@@ -576,7 +729,9 @@ impl Settings {
 
     /// `spawn_nice` (anahtar yoksa 10); 1-19 dışı / kapalı = None.
     pub fn spawn_nice(&self) -> Option<i64> {
-        let raw = self.get("spawn_nice").map_or_else(|| "10".to_string(), str_of);
+        let raw = self
+            .get("spawn_nice")
+            .map_or_else(|| "10".to_string(), str_of);
         let raw = strip(&raw).to_lowercase();
         if ["", "off", "0", "no", "false"].contains(&raw.as_str()) {
             return None;

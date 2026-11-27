@@ -38,8 +38,15 @@ impl CopsTmux {
 
     /// Verilen istemciyle (testte `Tmux::with_socket(..).tmpdir(..)`).
     pub fn new(tmux: Tmux, repo_dir: &str, env: Env) -> CopsTmux {
-        let conf = tmux_conf_path(&Path::new(repo_dir).join("py")).to_string_lossy().into_owned();
-        CopsTmux { tmux, conf, env, now: None }
+        let conf = tmux_conf_path(&Path::new(repo_dir).join("py"))
+            .to_string_lossy()
+            .into_owned();
+        CopsTmux {
+            tmux,
+            conf,
+            env,
+            now: None,
+        }
     }
 
     /// Hayalet yaşı için duvar saati (varsayılan sistem saati).
@@ -71,16 +78,22 @@ impl SpawnTmux for CopsTmux {
     }
 
     fn new_session_fragment(&self, name: &str, cwd: &str, inner: &str) -> Result<String, String> {
-        self.tmux.new_session_shell_fragment(&self.conf, name, cwd, inner).map_err(fragment_error)
+        self.tmux
+            .new_session_shell_fragment(&self.conf, name, cwd, inner)
+            .map_err(fragment_error)
     }
 
     fn attach_fragment(&self, name: &str) -> Result<String, String> {
-        self.tmux.attach_shell_fragment(&self.conf, name).map_err(fragment_error)
+        self.tmux
+            .attach_shell_fragment(&self.conf, name)
+            .map_err(fragment_error)
     }
 
     fn spawn_direct(&self, name: &str, cwd: &str, inner: &str, env: &[(String, String)]) -> bool {
         let envs = env.iter().map(|(k, v)| (k.as_str(), v.as_str()));
-        self.tmux.spawn_direct(Path::new(&self.conf), name, cwd, inner, envs).is_ok()
+        self.tmux
+            .spawn_direct(Path::new(&self.conf), name, cwd, inner, envs)
+            .is_ok()
     }
 
     fn has_session(&self, name: &str) -> bool {
@@ -89,7 +102,8 @@ impl SpawnTmux for CopsTmux {
     }
 
     fn ghost_session(&self, name: &str) -> bool {
-        self.tmux.ghost_session(name, self.now.as_ref().map(|f| f()))
+        self.tmux
+            .ghost_session(name, self.now.as_ref().map(|f| f()))
     }
 
     fn capture(&self, name: &str, lines: u32) -> Option<String> {

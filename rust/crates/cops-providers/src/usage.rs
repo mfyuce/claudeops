@@ -20,8 +20,16 @@ pub struct UsageEntry {
     pub detail: String,
 }
 
-fn entry(label: impl Into<String>, percent: impl Into<String>, detail: impl Into<String>) -> UsageEntry {
-    UsageEntry { label: label.into(), percent: percent.into(), detail: detail.into() }
+fn entry(
+    label: impl Into<String>,
+    percent: impl Into<String>,
+    detail: impl Into<String>,
+) -> UsageEntry {
+    UsageEntry {
+        label: label.into(),
+        percent: percent.into(),
+        detail: detail.into(),
+    }
 }
 
 /// Python `\s` sınıfının içi.
@@ -56,11 +64,14 @@ fn rx(pat: &str) -> Regex {
 }
 
 // claude_provider.py `_USAGE_HEADER_RE`, `_USAGE_PERCENT_RE`, `_USAGE_RESETS_RE`, `_USAGE_FRESH_RE`.
-static USAGE_HEADER: LazyLock<Regex> = LazyLock::new(|| rx(r"^(Current (?:session|week(?:{S}*\([^)]+\))?))\z"));
+static USAGE_HEADER: LazyLock<Regex> =
+    LazyLock::new(|| rx(r"^(Current (?:session|week(?:{S}*\([^)]+\))?))\z"));
 static USAGE_PERCENT: LazyLock<Regex> = LazyLock::new(|| rx(r"({D}+)%{S}*used"));
 static USAGE_RESETS: LazyLock<Regex> = LazyLock::new(|| rx(r"^(Resets{S}.+)\z"));
 static USAGE_FRESH: LazyLock<Regex> = LazyLock::new(|| {
-    rx(r"^(Current (?:session|week(?:{S}*\([^)]+\))?)):{S}*({D}+)%{S}*used(?:{S}*[·•]{S}*(?:[Rr]esets?{S}+)?(.+))?\z")
+    rx(
+        r"^(Current (?:session|week(?:{S}*\([^)]+\))?)):{S}*({D}+)%{S}*used(?:{S}*[·•]{S}*(?:[Rr]esets?{S}+)?(.+))?\z",
+    )
 });
 // claude_provider.py `_CONTEXT_TOTAL_RE`, `_CONTEXT_CATEGORY_RE` (satır içinde `search`).
 static CONTEXT_TOTAL: LazyLock<Regex> = LazyLock::new(|| {
@@ -103,7 +114,10 @@ const DIGIT_NOT_DECIMAL: [(u32, u32); 20] = [
 fn py_isdigit(s: &str) -> bool {
     !s.is_empty()
         && s.chars().all(|c| {
-            decimal_value(c).is_some() || DIGIT_NOT_DECIMAL.iter().any(|(a, b)| (*a..=*b).contains(&(c as u32)))
+            decimal_value(c).is_some()
+                || DIGIT_NOT_DECIMAL
+                    .iter()
+                    .any(|(a, b)| (*a..=*b).contains(&(c as u32)))
         })
 }
 
@@ -148,7 +162,11 @@ pub fn claude_fresh_usage(text: &str) -> Option<Vec<UsageEntry>> {
     for ln in splitlines(text) {
         if let Some(c) = USAGE_FRESH.captures(strip(ln)) {
             let rs = strip(c.get(3).map_or("", |m| m.as_str()));
-            let detail = if rs.is_empty() { String::new() } else { format!("Resets {rs}") };
+            let detail = if rs.is_empty() {
+                String::new()
+            } else {
+                format!("Resets {rs}")
+            };
             entries.push(entry(&c[1], &c[2], detail));
         }
     }
@@ -165,7 +183,11 @@ pub fn claude_context(text: &str) -> Option<Vec<UsageEntry>> {
     let mut entries: Vec<UsageEntry> = Vec::new();
     for line in splitlines(text).into_iter().map(strip) {
         if let Some(t) = CONTEXT_TOTAL.captures(line) {
-            entries = vec![entry("Context", &t[3], format!("{}/{} tokens", &t[1], &t[2]))];
+            entries = vec![entry(
+                "Context",
+                &t[3],
+                format!("{}/{} tokens", &t[1], &t[2]),
+            )];
             continue;
         }
         if let Some(c) = CONTEXT_CATEGORY.captures(line) {
@@ -183,12 +205,18 @@ pub fn agy_usage(text: &str) -> Option<Vec<UsageEntry>> {
     let mut rows = Vec::new();
     for line in splitlines(text) {
         let parts: Vec<&str> = line.split('\t').map(strip).collect();
-        let [group, metric, percent, reset_at] = parts.as_slice() else { continue };
+        let [group, metric, percent, reset_at] = parts.as_slice() else {
+            continue;
+        };
         let pct = percent.trim_end_matches('%');
         if !py_isdigit(pct) {
             continue;
         }
-        rows.push(entry(format!("{group} \u{2014} {metric}"), pct, format!("Resets {reset_at}")));
+        rows.push(entry(
+            format!("{group} \u{2014} {metric}"),
+            pct,
+            format!("Resets {reset_at}"),
+        ));
     }
     (!rows.is_empty()).then_some(rows)
 }
@@ -271,7 +299,11 @@ impl Providers<'_> {
     /// Oturum açmadan kullanım okuması (model turu yakmayan kısa süreç): claude `-p /usage`, agy `--print=/usage`.
     pub fn usage_fresh_argv(&self, cli: Cli) -> Option<Vec<String>> {
         match cli {
-            Cli::Claude => Some(vec![self.resolved_binary("claude"), "-p".into(), "/usage".into()]),
+            Cli::Claude => Some(vec![
+                self.resolved_binary("claude"),
+                "-p".into(),
+                "/usage".into(),
+            ]),
             Cli::Agy => Some(vec![self.resolved_binary("agy"), "--print=/usage".into()]),
             _ => None,
         }

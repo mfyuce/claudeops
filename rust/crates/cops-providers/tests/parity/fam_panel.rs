@@ -84,7 +84,10 @@ fn cost_cases() -> Vec<Case> {
     let mut v: Vec<Case> = raws
         .into_iter()
         .enumerate()
-        .map(|(i, raw)| Case::new(format!("cost{i}"), "cost_config", json!({})).settings_json(json!({"ucli_cost": raw})))
+        .map(|(i, raw)| {
+            Case::new(format!("cost{i}"), "cost_config", json!({}))
+                .settings_json(json!({"ucli_cost": raw}))
+        })
         .collect();
     v.push(Case::new("cost-dosya-yok", "cost_config", json!({})));
     v.push(Case::new("cost-bozuk-json", "cost_config", json!({})).settings("{\"ucli_cost\": "));
@@ -116,12 +119,23 @@ fn metrics_cases() -> Vec<Case> {
     let mut v = Vec::new();
     for (i, raw) in raws.iter().enumerate() {
         // `get_config(raw)` doğrudan (test_ucli_metrics.py biçimi) ve ayardan (`load_settings().get("ucli_metrics")`).
-        v.push(Case::new(format!("metrics-raw{i}"), "metrics_config", json!({"raw": raw})));
-        v.push(Case::new(format!("metrics-ayar{i}"), "metrics_config", json!({})).settings_json(json!({"ucli_metrics": raw})));
+        v.push(Case::new(
+            format!("metrics-raw{i}"),
+            "metrics_config",
+            json!({"raw": raw}),
+        ));
+        v.push(
+            Case::new(format!("metrics-ayar{i}"), "metrics_config", json!({}))
+                .settings_json(json!({"ucli_metrics": raw})),
+        );
     }
     v.push(Case::new("metrics-dosya-yok", "metrics_config", json!({})));
     // Python HATASI? `_num` NaN'ı sınırlamaz (`max(nan, lo)` = nan): `interval_s` NaN kalır, örnekleyici `sleep(nan)`.
-    v.push(Case::new("metrics-nan", "metrics_config", json!({"raw": {"interval_s": "nan", "retention_days": "NaN"}})));
+    v.push(Case::new(
+        "metrics-nan",
+        "metrics_config",
+        json!({"raw": {"interval_s": "nan", "retention_days": "NaN"}}),
+    ));
     v
 }
 
@@ -130,44 +144,122 @@ fn instr_cases(e: &Env) -> Vec<Case> {
     let big = |rel: &str, n: usize| Fx::File(rel.into(), vec![b'x'; n], 0o644);
     vec![
         // InstructionsCheckTests.test_sizes
-        Case::new("instr-boyut", "instr_check", json!({"cwd": format!("{w}/p1")}))
-            .file(big("work/p1/AGENTS.md", 50000))
-            .file(big("work/p1/CLAUDE.md", 100)),
+        Case::new(
+            "instr-boyut",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(big("work/p1/AGENTS.md", 50000))
+        .file(big("work/p1/CLAUDE.md", 100)),
         // test_exact_limit_not_over (+ bir fazlası)
-        Case::new("instr-sinir", "instr_check", json!({"cwd": format!("{w}/p1")})).file(big("work/p1/CLAUDE.md", 40960)),
-        Case::new("instr-sinir-ustu", "instr_check", json!({"cwd": format!("{w}/p1")})).file(big("work/p1/CLAUDE.md", 40961)),
+        Case::new(
+            "instr-sinir",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(big("work/p1/CLAUDE.md", 40960)),
+        Case::new(
+            "instr-sinir-ustu",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(big("work/p1/CLAUDE.md", 40961)),
         // test_no_files_and_bad_cwd
-        Case::new("instr-dosyasiz", "instr_check", json!({"cwd": format!("{w}/p1")})),
+        Case::new(
+            "instr-dosyasiz",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        ),
         Case::new("instr-bos", "instr_check", json!({"cwd": ""})),
-        Case::new("instr-goreli", "instr_check", json!({"cwd": "relative/dir"})),
-        Case::new("instr-yok", "instr_check", json!({"cwd": format!("{w}/yok/zzz")})),
-        Case::new("instr-dosya-cwd", "instr_check", json!({"cwd": format!("{w}/p1/f")})).file(file("work/p1/f", "x", 0o644)),
-        Case::new("instr-nul", "instr_check", json!({"cwd": format!("{w}/p1\u{0}")})).file(big("work/p1/CLAUDE.md", 5)),
+        Case::new(
+            "instr-goreli",
+            "instr_check",
+            json!({"cwd": "relative/dir"}),
+        ),
+        Case::new(
+            "instr-yok",
+            "instr_check",
+            json!({"cwd": format!("{w}/yok/zzz")}),
+        ),
+        Case::new(
+            "instr-dosya-cwd",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1/f")}),
+        )
+        .file(file("work/p1/f", "x", 0o644)),
+        Case::new(
+            "instr-nul",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1\u{0}")}),
+        )
+        .file(big("work/p1/CLAUDE.md", 5)),
         // test_symlink_escape_ignored (+ içeride kalan symlink, kırık symlink, dizin adlı AGENTS.md)
-        Case::new("instr-symlink-kacis", "instr_check", json!({"cwd": format!("{w}/p1")}))
-            .file(big("work/o/secret.md", 20000))
-            .file(Fx::Link("work/p1/AGENTS.md".into(), format!("{w}/o/secret.md"))),
-        Case::new("instr-symlink-ici", "instr_check", json!({"cwd": format!("{w}/p1")}))
-            .file(big("work/p1/CLAUDE.md", 7))
-            .file(Fx::Link("work/p1/AGENTS.md".into(), "CLAUDE.md".into())),
-        Case::new("instr-symlink-kirik", "instr_check", json!({"cwd": format!("{w}/p1")}))
-            .file(Fx::Link("work/p1/AGENTS.md".into(), "yok.md".into())),
-        Case::new("instr-dizin", "instr_check", json!({"cwd": format!("{w}/p1")}))
-            .file(Fx::Dir("work/p1/AGENTS.md".into(), 0o755))
-            .file(big("work/p1/CLAUDE.md", 0)),
+        Case::new(
+            "instr-symlink-kacis",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(big("work/o/secret.md", 20000))
+        .file(Fx::Link(
+            "work/p1/AGENTS.md".into(),
+            format!("{w}/o/secret.md"),
+        )),
+        Case::new(
+            "instr-symlink-ici",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(big("work/p1/CLAUDE.md", 7))
+        .file(Fx::Link("work/p1/AGENTS.md".into(), "CLAUDE.md".into())),
+        Case::new(
+            "instr-symlink-kirik",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(Fx::Link("work/p1/AGENTS.md".into(), "yok.md".into())),
+        Case::new(
+            "instr-dizin",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(Fx::Dir("work/p1/AGENTS.md".into(), 0o755))
+        .file(big("work/p1/CLAUDE.md", 0)),
         // cwd'nin kendisi symlink, sonda `/`, `..`, Unicode ad
-        Case::new("instr-cwd-symlink", "instr_check", json!({"cwd": format!("{w}/bag/")}))
-            .file(big("work/p1/AGENTS.md", 3))
-            .file(Fx::Link("work/bag".into(), format!("{w}/p1"))),
-        Case::new("instr-cwd-nokta", "instr_check", json!({"cwd": format!("{w}/yok/../p1/.")})).file(big("work/p1/AGENTS.md", 4)),
-        Case::new("instr-unicode", "instr_check", json!({"cwd": format!("{w}/ğ ü")})).file(big("work/ğ ü/CLAUDE.md", 9)),
+        Case::new(
+            "instr-cwd-symlink",
+            "instr_check",
+            json!({"cwd": format!("{w}/bag/")}),
+        )
+        .file(big("work/p1/AGENTS.md", 3))
+        .file(Fx::Link("work/bag".into(), format!("{w}/p1"))),
+        Case::new(
+            "instr-cwd-nokta",
+            "instr_check",
+            json!({"cwd": format!("{w}/yok/../p1/.")}),
+        )
+        .file(big("work/p1/AGENTS.md", 4)),
+        Case::new(
+            "instr-unicode",
+            "instr_check",
+            json!({"cwd": format!("{w}/ğ ü")}),
+        )
+        .file(big("work/ğ ü/CLAUDE.md", 9)),
         Case::new("instr-kok", "instr_check", json!({"cwd": "/"})),
         // test_no_content_returned: dönüşte içerik yok (karşılaştırma tüm dönüşü kapsar)
-        Case::new("instr-icerik", "instr_check", json!({"cwd": format!("{w}/p1")})).file(file("work/p1/CLAUDE.md", "TOPSECRET", 0o644)),
+        Case::new(
+            "instr-icerik",
+            "instr_check",
+            json!({"cwd": format!("{w}/p1")}),
+        )
+        .file(file("work/p1/CLAUDE.md", "TOPSECRET", 0o644)),
         // listelenemeyen (yalnız x) dizin: boyut yine okunur (stat), içerik okunmaz
-        Case::new("instr-izinsiz-dizin", "instr_check", json!({"cwd": format!("{w}/gizli")}))
-            .file(file("work/gizli/AGENTS.md", "abc", 0o644))
-            .file(Fx::Dir("work/gizli".into(), 0o311)),
+        Case::new(
+            "instr-izinsiz-dizin",
+            "instr_check",
+            json!({"cwd": format!("{w}/gizli")}),
+        )
+        .file(file("work/gizli/AGENTS.md", "abc", 0o644))
+        .file(Fx::Dir("work/gizli".into(), 0o311)),
     ]
 }
 

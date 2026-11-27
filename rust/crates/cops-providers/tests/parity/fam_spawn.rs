@@ -8,8 +8,9 @@ use crate::fam_model::with;
 use crate::fam_ucli::full_help;
 use cops_providers::provider::main_session_model_effort;
 use cops_providers::spawn::{
-    apply_hook_session_cap, child_env, detect_display, dry_run_preview, filter_env_overrides, gnome_terminal_argv,
-    mirror_child_env, mirror_window_command, plan_spawn, priority_prefix, window_command, SpawnRequest,
+    apply_hook_session_cap, child_env, detect_display, dry_run_preview, filter_env_overrides,
+    gnome_terminal_argv, mirror_child_env, mirror_window_command, plan_spawn, priority_prefix,
+    window_command, SpawnRequest,
 };
 use cops_providers::Cli;
 use serde_json::{json, Value};
@@ -39,7 +40,16 @@ pub fn pairs(v: &[(String, String)]) -> Vec<Value> {
 
 fn kv(v: Option<&Value>) -> Vec<(String, String)> {
     v.and_then(Value::as_array)
-        .map(|a| a.iter().map(|p| (p[0].as_str().unwrap().to_string(), p[1].as_str().unwrap().to_string())).collect())
+        .map(|a| {
+            a.iter()
+                .map(|p| {
+                    (
+                        p[0].as_str().unwrap().to_string(),
+                        p[1].as_str().unwrap().to_string(),
+                    )
+                })
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -76,8 +86,10 @@ fn rs_spawn(e: &Env, c: &Case) -> RsOut {
         let env = child_env(parent_env(e, c), ":7");
         rs.ret = match mode {
             "dry" => json!({"ret": plan.dry_run_line(&req.cwd), "direct": []}),
-            "hidden" => json!({"ret": plan.kind, "direct": [{"name": req.name, "cwd": req.cwd, "inner": plan.inner,
-                                                              "env": pairs(&env)}]}),
+            "hidden" => {
+                json!({"ret": plan.kind, "direct": [{"name": req.name, "cwd": req.cwd, "inner": plan.inner,
+                                                              "env": pairs(&env)}]})
+            }
             _ => {
                 let frag = format!("TMUXFRAG<{}|{}|{}>", req.name, req.cwd, plan.inner);
                 let win = window_command(&plan.inner, (mode == "gt_tmux").then_some(frag.as_str()));
@@ -89,25 +101,44 @@ fn rs_spawn(e: &Env, c: &Case) -> RsOut {
     })
 }
 
-const DROP: [&str; 4] = ["spawn_hidden", "spawn_direct_headless", "spawn_no_gnome_terminal", "spawn_launch_failed"];
+const DROP: [&str; 4] = [
+    "spawn_hidden",
+    "spawn_direct_headless",
+    "spawn_no_gnome_terminal",
+    "spawn_launch_failed",
+];
 
 fn spawn_cases(e: &Env) -> Vec<Case> {
     let w = format!("{}/p1", e.work);
     let mut v = Vec::new();
     let base = |id: String, cli: &str, mode: &str, extra: Value| {
         let mut a = json!({"cli": cli, "mode": mode, "name": "s1", "cwd": w, "model": "m", "perm": "auto", "effort": "high"});
-        a.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        a.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
         Case::new(id, "spawn", a).facts(json!({"ucli_help": full_help()}))
     };
     let long = format!("{}ğ'\"", "uzun istem ".repeat(70));
-    for cli in ["claude", "agy", "codex", "copilot", "shell", "ucli", "bogus"] {
+    for cli in [
+        "claude", "agy", "codex", "copilot", "shell", "ucli", "bogus",
+    ] {
         for mode in ["dry", "hidden", "gt", "gt_tmux"] {
             v.push(base(format!("{cli}-{mode}"), cli, mode, json!({})));
-            v.push(base(format!("{cli}-{mode}-dolu"), cli, mode, json!({"name": "a b'c", "prompt": long, "resume": "1234567890abcdef",
-                "model": "gemini-3.8-flash-high", "effort": "max", "perm": "plan"}))
+            v.push(
+                base(
+                    format!("{cli}-{mode}-dolu"),
+                    cli,
+                    mode,
+                    json!({"name": "a b'c", "prompt": long, "resume": "1234567890abcdef",
+                "model": "gemini-3.8-flash-high", "effort": "max", "perm": "plan"}),
+                )
                 .facts(json!({"agy_models": ["gemini-3.8-flash-high"]}))
-                .env("DISPLAY", ":3").env("CLAUDE_CODE_X", "1").env("GEMINI_KEY", "g").env("ANTIGRAVITY_Y", "a")
-                .env("XCLAUDE", "kalir"));
+                .env("DISPLAY", ":3")
+                .env("CLAUDE_CODE_X", "1")
+                .env("GEMINI_KEY", "g")
+                .env("ANTIGRAVITY_Y", "a")
+                .env("XCLAUDE", "kalir"),
+            );
         }
         v.push(base(format!("{cli}-kanca"), cli, "dry", json!({"cli_opts": {"max_session_usd": 5}}))
             .facts(json!({"hook_env": [["CLAUDEOPS_SESSION_USD_CAP", "2.5"], ["COPS_NAME", "ezilir"], ["API_KEY", "sır"],
@@ -115,15 +146,36 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
                                        ["UCLI_HOME", "/u h"], ["BASH_ENV", "b"], ["PS4", "p"], ["", "e"]]})));
         v.push(base(format!("{cli}-kanca-gizli"), cli, "hidden", json!({}))
             .facts(json!({"hook_env": [["COPS_NAME", "ezilir"], ["PROVIDER_DIR", "/p d"], ["IFS", "x"]]})));
-        v.push(base(format!("{cli}-beyin"), cli, "hidden", json!({"name": "degnekci_iso"})).settings_json(json!({"spawn_nice": "3"})));
-        v.push(base(format!("{cli}-nice-kapali"), cli, "hidden", json!({})).settings_json(json!({"spawn_nice": "off"})));
-        v.push(base(format!("{cli}-mcp"), cli, "dry", json!({"mcp": {"name": "cops-steward", "command": "/r/cops",
-            "args": ["mcp-steward", "--steward", "iso"], "allowed_tools": ["ask"]}})));
+        v.push(
+            base(
+                format!("{cli}-beyin"),
+                cli,
+                "hidden",
+                json!({"name": "degnekci_iso"}),
+            )
+            .settings_json(json!({"spawn_nice": "3"})),
+        );
+        v.push(
+            base(format!("{cli}-nice-kapali"), cli, "hidden", json!({}))
+                .settings_json(json!({"spawn_nice": "off"})),
+        );
+        v.push(base(
+            format!("{cli}-mcp"),
+            cli,
+            "dry",
+            json!({"mcp": {"name": "cops-steward", "command": "/r/cops",
+            "args": ["mcp-steward", "--steward", "iso"], "allowed_tools": ["ask"]}}),
+        ));
         v.push(base(format!("{cli}-eklenti-mcp"), cli, "dry", json!({}))
             .facts(json!({"extension_mcp": {"name": "notes", "command": "/r/cops", "args": ["mcp-ext", "notes"], "allowed_tools": ["t"]}})));
         v.push(base(format!("{cli}-eklenti-ve-acik-mcp"), cli, "dry", json!({"mcp": {"name": "a", "command": "c", "args": []}}))
             .facts(json!({"extension_mcp": {"name": "notes", "command": "/r/cops", "args": ["mcp-ext", "notes"]}})));
-        v.push(base(format!("{cli}-cwd-tirnak"), cli, "dry", json!({"cwd": format!("{w}/a b'c")})));
+        v.push(base(
+            format!("{cli}-cwd-tirnak"),
+            cli,
+            "dry",
+            json!({"cwd": format!("{w}/a b'c")}),
+        ));
     }
     // Yan etkili dallar: kuru kipte dosya/diag/`mcp add` yok, komut satırı aynı; gizli kipte hepsi uygulanır.
     let mcp = json!({"name": "s", "command": "/r/cops", "args": [], "allowed_tools": ["t"]});
@@ -137,31 +189,96 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
                               "agent_token": {"path": format!("{}/ucli_agent_tokens/{name}", e.state)}}))
                 .settings_json(byok.clone()));
         }
-        v.push(base(format!("yan-ucli-hizmet-{mode}"), "ucli", mode, json!({"cli_opts": {"service": "claude", "ask_dir": true}}))
-            .settings_json(byok.clone()));
+        v.push(
+            base(
+                format!("yan-ucli-hizmet-{mode}"),
+                "ucli",
+                mode,
+                json!({"cli_opts": {"service": "claude", "ask_dir": true}}),
+            )
+            .settings_json(byok.clone()),
+        );
         for cli in ["claude", "copilot"] {
-            v.push(base(format!("yan-{cli}-{mode}"), cli, mode, json!({"mcp": mcp}))
-                .settings_json(byok.clone())
-                .file(file("home/.copilot/config.json", "{\"trustedFolders\": []}", 0o600)));
+            v.push(
+                base(format!("yan-{cli}-{mode}"), cli, mode, json!({"mcp": mcp}))
+                    .settings_json(byok.clone())
+                    .file(file(
+                        "home/.copilot/config.json",
+                        "{\"trustedFolders\": []}",
+                        0o600,
+                    )),
+            );
         }
     }
     // effort düzeltme olayı (agy kademeli kimlik, codex önbelleği).
-    v.push(base("agy-effort-ayar".into(), "agy", "dry", json!({"model": "gemini-3.8-flash-high", "effort": "low"})));
-    v.push(base("agy-effort-kardes".into(), "agy", "dry", json!({"model": "gemini-3.8-flash", "effort": "max"}))
-        .facts(json!({"agy_models": ["gemini-3.8-flash-low", "gemini-3.8-flash-medium"]})));
-    v.push(base("codex-effort".into(), "codex", "dry", json!({"model": "gpt-5.5", "effort": "max"}))
-        .file(file("home/.codex/models_cache.json", &json!({"models": [{"slug": "gpt-5.5", "visibility": "list",
-            "supported_reasoning_levels": ["low", "high"]}]}).to_string(), 0o644)));
+    v.push(base(
+        "agy-effort-ayar".into(),
+        "agy",
+        "dry",
+        json!({"model": "gemini-3.8-flash-high", "effort": "low"}),
+    ));
+    v.push(
+        base(
+            "agy-effort-kardes".into(),
+            "agy",
+            "dry",
+            json!({"model": "gemini-3.8-flash", "effort": "max"}),
+        )
+        .facts(json!({"agy_models": ["gemini-3.8-flash-low", "gemini-3.8-flash-medium"]})),
+    );
+    v.push(
+        base(
+            "codex-effort".into(),
+            "codex",
+            "dry",
+            json!({"model": "gpt-5.5", "effort": "max"}),
+        )
+        .file(file(
+            "home/.codex/models_cache.json",
+            &json!({"models": [{"slug": "gpt-5.5", "visibility": "list",
+            "supported_reasoning_levels": ["low", "high"]}]})
+            .to_string(),
+            0o644,
+        )),
+    );
     // ucli: cli_opts + kanca tavanı, hata.
-    v.push(base("ucli-opts".into(), "ucli", "hidden", json!({"cli_opts": {"exec_cmds": ["git"], "max_session_usd": 50}}))
-        .facts(json!({"hook_env": [["CLAUDEOPS_SESSION_USD_CAP", "12"]], "path_executables": ["git"]})));
-    v.push(base("ucli-opts-hata".into(), "ucli", "dry", json!({"cli_opts": {"git_commit": true}}))
-        .facts(json!({"ucli_help": ""})));
+    v.push(
+        base(
+            "ucli-opts".into(),
+            "ucli",
+            "hidden",
+            json!({"cli_opts": {"exec_cmds": ["git"], "max_session_usd": 50}}),
+        )
+        .facts(
+            json!({"hook_env": [["CLAUDEOPS_SESSION_USD_CAP", "12"]], "path_executables": ["git"]}),
+        ),
+    );
+    v.push(
+        base(
+            "ucli-opts-hata".into(),
+            "ucli",
+            "dry",
+            json!({"cli_opts": {"git_commit": true}}),
+        )
+        .facts(json!({"ucli_help": ""})),
+    );
     v.push(base("ucli-ikili-yok".into(), "ucli", "dry", json!({})).env("PATH", ""));
-    v.push(base("ucli-anahtar".into(), "ucli", "hidden", json!({}))
-        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})));
-    v.push(base("ucli-opts-bos".into(), "ucli", "dry", json!({"cli_opts": {}})));
-    v.push(base("claude-opts".into(), "claude", "dry", json!({"cli_opts": {"exec_cmds": ["git"]}})));
+    v.push(
+        base("ucli-anahtar".into(), "ucli", "hidden", json!({}))
+            .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})),
+    );
+    v.push(base(
+        "ucli-opts-bos".into(),
+        "ucli",
+        "dry",
+        json!({"cli_opts": {}}),
+    ));
+    v.push(base(
+        "claude-opts".into(),
+        "claude",
+        "dry",
+        json!({"cli_opts": {"exec_cmds": ["git"]}}),
+    ));
     v
 }
 
@@ -178,10 +295,23 @@ fn rs_hook_cap(e: &Env, c: &Case) -> RsOut {
 }
 
 fn hook_cases() -> Vec<Case> {
-    let caps = ["2.5", " 3 ", "0", "-1", "abc", "inf", "nan", "1e-9", "0.001", "1_0", "١٠", "\u{1f}5", "Infinity", "", "1e400"];
-    let opts = [json!(null), json!({}), json!({"max_session_usd": 5}), json!({"max_session_usd": "7"}), json!({"max_session_usd": 0}),
-                json!({"max_session_usd": true}), json!({"max_session_usd": [1]}), json!({"max_session_usd": " 4\u{1f}"}),
-                json!({"max_session_usd": "nan"}), json!({"max_session_usd": -3}), json!({"x": 1})];
+    let caps = [
+        "2.5", " 3 ", "0", "-1", "abc", "inf", "nan", "1e-9", "0.001", "1_0", "١٠", "\u{1f}5",
+        "Infinity", "", "1e400",
+    ];
+    let opts = [
+        json!(null),
+        json!({}),
+        json!({"max_session_usd": 5}),
+        json!({"max_session_usd": "7"}),
+        json!({"max_session_usd": 0}),
+        json!({"max_session_usd": true}),
+        json!({"max_session_usd": [1]}),
+        json!({"max_session_usd": " 4\u{1f}"}),
+        json!({"max_session_usd": "nan"}),
+        json!({"max_session_usd": -3}),
+        json!({"x": 1}),
+    ];
     let mut v = Vec::new();
     for (i, cap) in caps.iter().enumerate() {
         for (j, o) in opts.iter().enumerate() {
@@ -194,7 +324,11 @@ fn hook_cases() -> Vec<Case> {
             }
         }
     }
-    v.push(Case::new("kanca-yok", "hook_cap", json!({"cli": "ucli", "cli_opts": {"a": 1}, "hook_env": [["A", "1"]]})));
+    v.push(Case::new(
+        "kanca-yok",
+        "hook_cap",
+        json!({"cli": "ucli", "cli_opts": {"a": 1}, "hook_env": [["A", "1"]]}),
+    ));
     v.push(Case::new("kanca-ayar", "hook_cap", json!({"cli": "ucli", "cli_opts": {}, "hook_env": [["CLAUDEOPS_SESSION_USD_CAP", "20"]]}))
         .settings_json(json!({"ucli_max_session_usd": "0"})));
     v.push(Case::new("kanca-ayar2", "hook_cap", json!({"cli": "ucli", "cli_opts": null, "hook_env": [["CLAUDEOPS_SESSION_USD_CAP", "20"]]}))
@@ -210,7 +344,12 @@ fn rs_misc(e: &Env, c: &Case) -> RsOut {
         "preview" => json!(dry_run_preview(s("cwd"), &kv(a.get("overrides")), s("inv"))),
         "filter_env" => json!(pairs(&filter_env_overrides(kv(a.get("overrides"))))),
         "detect_display" => {
-            let d = c.env.iter().rev().find(|(k, _)| k == "DISPLAY").map(|(_, v)| v.as_str());
+            let d = c
+                .env
+                .iter()
+                .rev()
+                .find(|(k, _)| k == "DISPLAY")
+                .map(|(_, v)| v.as_str());
             json!(detect_display(d, &|p| Path::new(p).exists()))
         }
         "main_session" => {
@@ -233,21 +372,70 @@ fn rs_misc(e: &Env, c: &Case) -> RsOut {
 
 fn misc_cases() -> Vec<Case> {
     let mut v = Vec::new();
-    for (i, n) in ["s1", "degnekci", "degnekci_x", "Degnekci", " degnekci", "", "değnekçi"].iter().enumerate() {
-        for (j, nice) in [json!(null), json!("5"), json!("off"), json!(19), json!(20)].iter().enumerate() {
+    for (i, n) in [
+        "s1",
+        "degnekci",
+        "degnekci_x",
+        "Degnekci",
+        " degnekci",
+        "",
+        "değnekçi",
+    ]
+    .iter()
+    .enumerate()
+    {
+        for (j, nice) in [json!(null), json!("5"), json!("off"), json!(19), json!(20)]
+            .iter()
+            .enumerate()
+        {
             let c = Case::new(format!("prefix-{i}-{j}"), "prefix", json!({"name": n}));
-            v.push(if nice.is_null() { c } else { c.settings_json(json!({"spawn_nice": nice})) });
+            v.push(if nice.is_null() {
+                c
+            } else {
+                c.settings_json(json!({"spawn_nice": nice}))
+            });
         }
     }
     let long = "x".repeat(700);
-    let ov = json!([["API_KEY", "s"], ["my_token", "t"], ["Auth", "a"], ["PASSWORD", "p"], ["CREDENTIALS_FILE", "c"],
-                    ["SECRET", "z"], ["PASSWD", "q"], ["COPS_NAME", "a b"], ["MONKEY", "m"], ["\u{212a}EY", "k"], ["ſecret", "s"],
-                    ["X", "it's"]]);
-    v.push(Case::new("preview", "preview", json!({"cwd": "/a b", "overrides": ov, "inv": "claude --model m"})));
-    v.push(Case::new("preview-uzun", "preview", json!({"cwd": "/w", "overrides": [], "inv": long})));
-    v.push(Case::new("preview-unicode", "preview", json!({"cwd": "/w", "overrides": [], "inv": "ğ".repeat(700)})));
-    v.push(Case::new("preview-sinir", "preview", json!({"cwd": "/w", "overrides": [], "inv": "y".repeat(600 - 9)})));
-    v.push(Case::new("preview-sinir2", "preview", json!({"cwd": "/w", "overrides": [], "inv": "y".repeat(600 - 8)})));
+    let ov = json!([
+        ["API_KEY", "s"],
+        ["my_token", "t"],
+        ["Auth", "a"],
+        ["PASSWORD", "p"],
+        ["CREDENTIALS_FILE", "c"],
+        ["SECRET", "z"],
+        ["PASSWD", "q"],
+        ["COPS_NAME", "a b"],
+        ["MONKEY", "m"],
+        ["\u{212a}EY", "k"],
+        ["ſecret", "s"],
+        ["X", "it's"]
+    ]);
+    v.push(Case::new(
+        "preview",
+        "preview",
+        json!({"cwd": "/a b", "overrides": ov, "inv": "claude --model m"}),
+    ));
+    v.push(Case::new(
+        "preview-uzun",
+        "preview",
+        json!({"cwd": "/w", "overrides": [], "inv": long}),
+    ));
+    v.push(Case::new(
+        "preview-unicode",
+        "preview",
+        json!({"cwd": "/w", "overrides": [], "inv": "ğ".repeat(700)}),
+    ));
+    v.push(Case::new(
+        "preview-sinir",
+        "preview",
+        json!({"cwd": "/w", "overrides": [], "inv": "y".repeat(600 - 9)}),
+    ));
+    v.push(Case::new(
+        "preview-sinir2",
+        "preview",
+        json!({"cwd": "/w", "overrides": [], "inv": "y".repeat(600 - 8)}),
+    ));
     v.push(Case::new("filter", "filter_env", json!({"overrides": [["OK", "1"], ["LD_PRELOAD", "x"], ["LD_LIBRARY_PATH", "x"],
         ["LD_AUDIT", "x"], ["BASH_ENV", "x"], ["ENV", "x"], ["PROMPT_COMMAND", "x"], ["SHELLOPTS", "x"], ["BASHOPTS", "x"],
         ["PS4", "x"], ["IFS", "x"], ["lower", "x"], ["_U", "x"], ["9X", "x"], ["A-B", "x"], ["", "x"], ["X\n", "x"], ["Ä", "x"],
@@ -270,10 +458,26 @@ fn misc_cases() -> Vec<Case> {
         ("İclaude", "x", "", "s"),
     ];
     for (i, (m, ef, cli, son)) in ms.iter().enumerate() {
-        v.push(Case::new(format!("ana-oturum{i}"), "main_session", json!({"model": m, "effort": ef, "cli": cli, "sonnet": son})));
+        v.push(Case::new(
+            format!("ana-oturum{i}"),
+            "main_session",
+            json!({"model": m, "effort": ef, "cli": cli, "sonnet": son}),
+        ));
     }
-    v.push(Case::new("ayna", "mirror", json!({"host": "ulak31", "name": "proje 1", "port": 8765})).env("DISPLAY", ":0").env("CLAUDE_X", "1"));
-    v.push(Case::new("ayna-tirnak", "mirror", json!({"host": "h'x", "name": "ğ\"", "port": 1})));
+    v.push(
+        Case::new(
+            "ayna",
+            "mirror",
+            json!({"host": "ulak31", "name": "proje 1", "port": 8765}),
+        )
+        .env("DISPLAY", ":0")
+        .env("CLAUDE_X", "1"),
+    );
+    v.push(Case::new(
+        "ayna-tirnak",
+        "mirror",
+        json!({"host": "h'x", "name": "ğ\"", "port": 1}),
+    ));
     v
 }
 

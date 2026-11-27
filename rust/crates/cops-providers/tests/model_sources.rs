@@ -7,8 +7,8 @@ use cops_providers::model_sources::{
 use cops_providers::ucli::{self, reasoning_effort_for};
 use cops_providers::ucli_opts::{Toolchain, SERVICE_MODELS_RETRY, SERVICE_MODELS_TTL};
 use cops_providers::{
-    agy, codex, Cli, HttpRequest, McpRegisterError, ModelIo, ModelSources, Paths, Probe, Providers, RunRequest,
-    SecretValue, Settings,
+    agy, codex, Cli, HttpRequest, McpRegisterError, ModelIo, ModelSources, Paths, Probe, Providers,
+    RunRequest, SecretValue, Settings,
 };
 use serde_json::{json, Value};
 use std::sync::mpsc::{channel, Receiver};
@@ -175,7 +175,10 @@ impl Probe for Which {
     fn panel_port(&self) -> Option<u16> {
         None
     }
-    fn apply_now(&self, _: &cops_providers::Effect) -> Result<(), cops_providers::real::effects::EffectError> {
+    fn apply_now(
+        &self,
+        _: &cops_providers::Effect,
+    ) -> Result<(), cops_providers::real::effects::EffectError> {
         unimplemented!()
     }
     fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<(), McpRegisterError> {
@@ -184,7 +187,11 @@ impl Probe for Which {
 }
 
 fn paths() -> Paths {
-    Paths { claudeops_dir: "/yok/state".into(), home: "/yok/home".into(), repo_dir: "/yok/repo".into() }
+    Paths {
+        claudeops_dir: "/yok/state".into(),
+        home: "/yok/home".into(),
+        repo_dir: "/yok/repo".into(),
+    }
 }
 
 fn keyed(key: &str) -> Settings {
@@ -210,7 +217,10 @@ fn live_body(id: &str) -> Vec<u8> {
 
 #[test]
 fn lifetimes_and_limits_match_python() {
-    assert_eq!((agy::MODELS_TTL, codex::MODELS_TTL, ucli::MODELS_TTL), (300.0, 300.0, 300.0));
+    assert_eq!(
+        (agy::MODELS_TTL, codex::MODELS_TTL, ucli::MODELS_TTL),
+        (300.0, 300.0, 300.0)
+    );
     assert_eq!((SERVICE_MODELS_TTL, SERVICE_MODELS_RETRY), (86400.0, 60.0));
     assert_eq!(LIVE_MODELS_TIMEOUT, Duration::from_secs(5));
 }
@@ -225,7 +235,10 @@ fn agy_catalog_runs_the_resolved_binary_without_a_shell() {
     let runs = io.s.lock().unwrap().runs.clone();
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].argv, ["/opt/my tools/agy", "models"]);
-    assert_eq!((runs[0].timeout, runs[0].max_stdout), (Duration::from_secs(5), AGY_MODELS_MAX_BYTES));
+    assert_eq!(
+        (runs[0].timeout, runs[0].max_stdout),
+        (Duration::from_secs(5), AGY_MODELS_MAX_BYTES)
+    );
 }
 
 #[test]
@@ -286,7 +299,11 @@ fn repeated_errors_never_replace_the_last_good_list() {
         s.file = Some(br#"{"models": [{"slug": "c", "visibility": "list"}]}"#.to_vec());
     });
     let all = |sources: &ModelSources| {
-        (sources.agy_models(|| "agy".into()), sources.codex_models(&paths), sources.ucli_live(&settings))
+        (
+            sources.agy_models(|| "agy".into()),
+            sources.codex_models(&paths),
+            sources.ucli_live(&settings),
+        )
     };
     all(&sources);
     for _ in 0..6 {
@@ -298,8 +315,18 @@ fn repeated_errors_never_replace_the_last_good_list() {
         // kilit işler koşmadan bırakılır (işin kendisi de `Fake`i kullanır)
         let jobs = io.s.lock().unwrap().queue.replace(Vec::new()).unwrap();
         jobs.into_iter().for_each(|job| job());
-        assert_eq!((a, c, u.choices()), (vec!["a".to_string()], vec!["c".into()], vec!["u".into(), "gemma".into()]));
-        assert_eq!(reasoning_effort_for(&u, "u", "high").as_deref(), Some("high"));
+        assert_eq!(
+            (a, c, u.choices()),
+            (
+                vec!["a".to_string()],
+                vec!["c".into()],
+                vec!["u".into(), "gemma".into()]
+            )
+        );
+        assert_eq!(
+            reasoning_effort_for(&u, "u", "high").as_deref(),
+            Some("high")
+        );
     }
     assert_eq!(io.counts(), (7, 7, 7));
 }
@@ -315,15 +342,24 @@ fn oversized_answers_are_ignored_even_if_the_implementation_returns_them() {
     };
     io.set(|s| {
         s.run = big(AGY_MODELS_MAX_BYTES, b"a\tA\n");
-        s.file = big(CODEX_CACHE_MAX_BYTES, br#"{"models": [{"slug": "c", "visibility": "list"}]}"#);
-        s.http = big(HTTP_MAX_BYTES, br#"{"data": [{"id": "u", "task": "chat"}]}"#);
+        s.file = big(
+            CODEX_CACHE_MAX_BYTES,
+            br#"{"models": [{"slug": "c", "visibility": "list"}]}"#,
+        );
+        s.http = big(
+            HTTP_MAX_BYTES,
+            br#"{"data": [{"id": "u", "task": "chat"}]}"#,
+        );
     });
     assert!(sources.agy_models(|| "agy".into()).is_empty());
     assert_eq!(sources.codex_models(&paths), codex::FALLBACK_MODELS);
     assert_eq!(sources.ucli_live(&settings).ids, [ucli::FALLBACK_MODEL]);
     assert!(sources.service_models(&settings, "grok", "k").is_empty());
     let s = io.s.lock().unwrap();
-    assert_eq!(s.reads, [(paths.codex_models_cache(), CODEX_CACHE_MAX_BYTES)]);
+    assert_eq!(
+        s.reads,
+        [(paths.codex_models_cache(), CODEX_CACHE_MAX_BYTES)]
+    );
     assert!(s.gets.iter().all(|r| r.max_body == HTTP_MAX_BYTES));
 }
 
@@ -333,10 +369,18 @@ fn model_list_and_effort_gate_share_one_fetch() {
     io.set(|s| s.http = Some(live_body("deepseek-v4-flash")));
     let (settings, paths) = (keyed("k"), paths());
     let catalog = sources.catalog(Cli::Ucli, &settings, &paths, &Which);
-    let p = Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &Which };
+    let p = Providers {
+        settings: &settings,
+        catalog: &catalog,
+        paths: &paths,
+        probe: &Which,
+    };
     assert_eq!(p.model_choices(Cli::Ucli), ["deepseek-v4-flash", "gemma"]);
     let again = sources.catalog(Cli::Ucli, &settings, &paths, &Which);
-    assert_eq!(reasoning_effort_for(&again.ucli, "deepseek-v4-flash", "high").as_deref(), Some("high"));
+    assert_eq!(
+        reasoning_effort_for(&again.ucli, "deepseek-v4-flash", "high").as_deref(),
+        Some("high")
+    );
     assert_eq!(reasoning_effort_for(&again.ucli, "gemma", "high"), None);
     assert_eq!(io.counts(), (0, 1, 0));
 }
@@ -344,11 +388,18 @@ fn model_list_and_effort_gate_share_one_fetch() {
 #[test]
 fn catalog_touches_only_its_own_source() {
     let (io, sources) = setup();
-    io.set(|s| s.doc = Some(json!({"models": {"claude-sonnet-5-5": "enabled", "claude-x-1": "disabled"}})));
+    io.set(|s| {
+        s.doc = Some(json!({"models": {"claude-sonnet-5-5": "enabled", "claude-x-1": "disabled"}}))
+    });
     let (settings, paths) = (keyed("k"), paths());
     // claude: belge deposu doğruluk kaynağı; crate `claude_models.json`ı kendisi OKUMAZ (db kipinde dosya bayat olabilir)
     let c = sources.catalog(Cli::Claude, &settings, &paths, &Which);
-    let p = Providers { settings: &settings, catalog: &c, paths: &paths, probe: &Which };
+    let p = Providers {
+        settings: &settings,
+        catalog: &c,
+        paths: &paths,
+        probe: &Which,
+    };
     assert_eq!(p.model_choices(Cli::Claude), ["claude-sonnet-5-5"]);
     for cli in [Cli::Copilot, Cli::Shell] {
         sources.catalog(cli, &settings, &paths, &Which);
@@ -373,9 +424,17 @@ fn codex_choices_are_cached_but_effort_levels_read_the_current_file() {
     sources.catalog(Cli::Codex, &settings, &paths, &Which);
     io.set(|s| s.file = doc("yeni", "high"));
     let c = sources.catalog(Cli::Codex, &settings, &paths, &Which);
-    let p = Providers { settings: &settings, catalog: &c, paths: &paths, probe: &Which };
+    let p = Providers {
+        settings: &settings,
+        catalog: &c,
+        paths: &paths,
+        probe: &Which,
+    };
     assert_eq!(p.model_choices(Cli::Codex), ["m"]);
-    assert_eq!(p.model_effort_levels(Cli::Codex, "yeni"), Some(vec!["high".to_string()]));
+    assert_eq!(
+        p.model_effort_levels(Cli::Codex, "yeni"),
+        Some(vec!["high".to_string()])
+    );
 }
 
 #[test]
@@ -384,7 +443,9 @@ fn no_request_without_a_key() {
     for settings in [Settings::default(), keyed(""), keyed(" \t\n")] {
         assert!(ucli::fetch_live_models(io.as_ref(), &settings).is_none());
     }
-    assert!(sources.service_models(&Settings::default(), "grok", "").is_empty());
+    assert!(sources
+        .service_models(&Settings::default(), "grok", "")
+        .is_empty());
     assert_eq!(io.counts(), (0, 0, 0));
 }
 
@@ -392,8 +453,16 @@ fn no_request_without_a_key() {
 fn a_key_that_cannot_be_a_header_value_sends_nothing() {
     let (io, sources) = setup();
     for bad in ["a\nX-Enjekte: 1", "a\r\n b", "anahtar-ş"] {
-        assert!(ucli::fetch_live_models(io.as_ref(), &keyed(bad)).is_none(), "{bad:?}");
-        assert!(sources.service_models(&Settings::default(), "grok", bad).is_empty(), "{bad:?}");
+        assert!(
+            ucli::fetch_live_models(io.as_ref(), &keyed(bad)).is_none(),
+            "{bad:?}"
+        );
+        assert!(
+            sources
+                .service_models(&Settings::default(), "grok", bad)
+                .is_empty(),
+            "{bad:?}"
+        );
         io.set(|s| s.t += 61.0);
     }
     assert_eq!(io.counts(), (0, 0, 0));
@@ -419,9 +488,15 @@ fn the_key_stays_out_of_urls_argv_and_debug_output() {
     for r in &s.gets {
         assert!(!r.url.contains(secret));
         let shown = format!("{r:?} {r:#?}");
-        assert!(!shown.contains(secret) && !shown.contains("PAROLA"), "{shown}");
+        assert!(
+            !shown.contains(secret) && !shown.contains("PAROLA"),
+            "{shown}"
+        );
         assert!(shown.contains("<redacted>"));
-        assert!(r.headers.iter().any(|(_, v)| String::from_utf8_lossy(v.expose()).contains(secret)));
+        assert!(r
+            .headers
+            .iter()
+            .any(|(_, v)| String::from_utf8_lossy(v.expose()).contains(secret)));
     }
     assert!(!format!("{:?}", s.runs).contains(secret));
 }

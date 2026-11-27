@@ -21,7 +21,11 @@ impl Paths {
         format!("{}/.claude/claudeops", self.home)
     }
     pub fn ucli_key_file(&self, service: &str) -> String {
-        let name = if service.is_empty() { "ucli_api_key".to_string() } else { format!("ucli_key_{service}") };
+        let name = if service.is_empty() {
+            "ucli_api_key".to_string()
+        } else {
+            format!("ucli_key_{service}")
+        };
         format!("{}/{name}", self.home_state())
     }
     pub fn copilot_env_file(&self) -> String {
@@ -43,7 +47,10 @@ impl Paths {
     }
     /// agy'nin cwd -> konuşma kimliği önbelleği (`CONVERSATIONS_CACHE`).
     pub fn agy_conversations_cache(&self) -> String {
-        format!("{}/.gemini/antigravity-cli/cache/last_conversations.json", self.home)
+        format!(
+            "{}/.gemini/antigravity-cli/cache/last_conversations.json",
+            self.home
+        )
     }
     /// codex rollout arşivi (`CODEX_HOME`a bakmaz: Python `SESSIONS_DIR`).
     pub fn codex_sessions_dir(&self) -> String {
@@ -155,7 +162,12 @@ pub trait Probe {
     fn panel_port(&self) -> Option<u16>;
     /// ucli MCP kaydı: `config_path` (`os.path.lexists` ise) silinir, `argv` `cwd`de çalıştırılır (20 sn). Günlük olaylarını
     /// crate yazar (Python `register_mcp` ile aynı alanlar).
-    fn register_mcp(&self, cwd: &str, config_path: &str, argv: &[String]) -> Result<(), McpRegisterError>;
+    fn register_mcp(
+        &self,
+        cwd: &str,
+        config_path: &str,
+        argv: &[String],
+    ) -> Result<(), McpRegisterError>;
     /// Başarısızlığı KOMUTU değiştiren yazımlar için yan etkiyi HEMEN uygula (Python'da bayrak yazım başarılıysa
     /// eklenir). Kuru çalıştırmada çağrılmaz; bekleyen yan etkiler bu yolla önceden uygulanıp listeden düşer. Gerçek uygulama: [`crate::real::effects::apply`].
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError>;
@@ -165,16 +177,30 @@ pub trait Probe {
 #[derive(Clone, PartialEq, Eq)]
 pub enum Effect {
     /// 0600, `O_NOFOLLOW`, kırp-yaz; var olan dosyanın izni de 0600'e çekilir. İçerik SIR olabilir.
-    WriteSecret { path: String, content: String },
+    WriteSecret {
+        path: String,
+        content: String,
+    },
     /// Atomik yazım; var olan dosyanın izni korunur (symlink ise hedefi yazılır).
-    WriteAtomic { path: String, content: String },
+    WriteAtomic {
+        path: String,
+        content: String,
+    },
     /// Boş damga dosyası (0600, `O_NOFOLLOW`, kırp).
-    Touch { path: String },
-    Remove { path: String },
+    Touch {
+        path: String,
+    },
+    Remove {
+        path: String,
+    },
     /// `makedirs(mode=0700, exist_ok=True)`.
-    MkdirPrivate { path: String },
+    MkdirPrivate {
+        path: String,
+    },
     /// `chmod(path, 0o700)` (var olan dizinin izni de daraltılır).
-    ChmodPrivate { path: String },
+    ChmodPrivate {
+        path: String,
+    },
 }
 
 impl fmt::Debug for Effect {
@@ -199,7 +225,11 @@ pub enum McpRegisterError {
     /// Süreç başlatılamadı / zaman aşımı.
     Spawn(String),
     /// Sıfır olmayan çıkış.
-    Exit { rc: i32, stdout: String, stderr: String },
+    Exit {
+        rc: i32,
+        stdout: String,
+        stderr: String,
+    },
 }
 
 /// `diag_log(event, **alanlar)` karşılığı; çağıran günlüğe yazar. Alan sırası ve JSON tipi Python'daki gibidir (bool, sayı,
@@ -228,7 +258,11 @@ impl BuildOutput {
     /// kurulurken olur), sonra `effect`. Bekleyen biri düşerse o ve sonrası listede KALIR (çağıran aynı hatayı alır,
     /// spawn düşer), `effect` denenmez: `Err(None)`. `effect`in kendisi düşerse `Err(Some(..))`. Kuru çalıştırmada
     /// hiçbir şey yapılmaz ve başarı sayılır.
-    pub(crate) fn apply_now(&mut self, probe: &dyn Probe, effect: Effect) -> Result<(), Option<EffectError>> {
+    pub(crate) fn apply_now(
+        &mut self,
+        probe: &dyn Probe,
+        effect: Effect,
+    ) -> Result<(), Option<EffectError>> {
         if self.dry_run {
             return Ok(());
         }

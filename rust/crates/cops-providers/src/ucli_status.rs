@@ -28,7 +28,13 @@ pub const USAGE_FIELDS: [&str; 9] = [
 ];
 
 /// `phase` nesnesinin tam sayı alanları.
-pub const PHASE_INT_FIELDS: [&str; 5] = ["since_unix", "attempt", "max_attempts", "wait_secs", "streamed_bytes"];
+pub const PHASE_INT_FIELDS: [&str; 5] = [
+    "since_unix",
+    "attempt",
+    "max_attempts",
+    "wait_secs",
+    "streamed_bytes",
+];
 
 /// Süreç boyunca biriken sayaçlar ([`USAGE_FIELDS`]; eksik ya da bozuk alan 0).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -89,7 +95,12 @@ fn decimal_number(s: &str) -> Option<u64> {
     if s.is_empty() {
         return None;
     }
-    s.chars().try_fold(0u64, |acc, c| Some(acc.saturating_mul(10).saturating_add(u64::from(decimal_value(c)?))))
+    s.chars().try_fold(0u64, |acc, c| {
+        Some(
+            acc.saturating_mul(10)
+                .saturating_add(u64::from(decimal_value(c)?)),
+        )
+    })
 }
 
 fn capped(s: &str, max: usize) -> String {
@@ -120,7 +131,8 @@ impl Live<'_> {
     /// `{session}.status.json`; yok/bozuk/UTF-8 değil/nesne değilse None.
     pub fn read_status_file(&self, cwd: &str, session: &str) -> Option<Py> {
         let path = self.find_chat_file(cwd, &format!("{session}.status.json"));
-        self.read_json(&path, STATUS_MAX_BYTES).filter(Py::is_object)
+        self.read_json(&path, STATUS_MAX_BYTES)
+            .filter(Py::is_object)
     }
 
     fn read_json(&self, path: &str, max: u64) -> Option<Py> {
@@ -133,20 +145,31 @@ impl Live<'_> {
         let mut out: Vec<(u64, u64, String)> = Vec::new();
         for dir in self.chat_session_dirs(cwd) {
             let failed = join_path(&dir, "failed");
-            let Some(names) = self.probe.list_dir(&failed) else { continue };
+            let Some(names) = self.probe.list_dir(&failed) else {
+                continue;
+            };
             for name in names {
-                let Some(stem) = name.strip_suffix(".json") else { continue };
+                let Some(stem) = name.strip_suffix(".json") else {
+                    continue;
+                };
                 let mut parts = stem.rsplitn(3, '-');
-                let (Some(n), Some(unix), Some(owner)) = (parts.next(), parts.next(), parts.next()) else { continue };
+                let (Some(n), Some(unix), Some(owner)) = (parts.next(), parts.next(), parts.next())
+                else {
+                    continue;
+                };
                 if owner != session {
                     continue;
                 }
-                let (Some(unix), Some(n)) = (decimal_number(unix), decimal_number(n)) else { continue };
+                let (Some(unix), Some(n)) = (decimal_number(unix), decimal_number(n)) else {
+                    continue;
+                };
                 out.push((unix, n, join_path(&failed, &name)));
             }
         }
         out.sort();
-        out.into_iter().map(|(unix, _, path)| (unix, path)).collect()
+        out.into_iter()
+            .map(|(unix, _, path)| (unix, path))
+            .collect()
     }
 
     /// Oturum kimliği boş değilse durum dosyası.
@@ -159,18 +182,30 @@ impl Live<'_> {
     }
 
     pub(crate) fn ucli_background_work(&self, cwd: &str, sid: Option<&str>) -> Option<u64> {
-        self.status_for(cwd, sid)?.get("background_tasks")?.non_negative_int()
+        self.status_for(cwd, sid)?
+            .get("background_tasks")?
+            .non_negative_int()
     }
 
     pub(crate) fn ucli_tools(&self, cwd: &str, sid: Option<&str>) -> Option<Vec<String>> {
         let status = self.status_for(cwd, sid)?;
-        let Py::Array(names) = status.get("tools")? else { return None };
-        names.iter().map(|n| n.as_str().filter(|s| !s.is_empty()).map(str::to_string)).collect()
+        let Py::Array(names) = status.get("tools")? else {
+            return None;
+        };
+        names
+            .iter()
+            .map(|n| n.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+            .collect()
     }
 
     /// `context_bytes / 4` (kaba token tahmini).
     pub(crate) fn ucli_context(&self, cwd: &str, sid: Option<&str>) -> Option<u64> {
-        Some(self.status_for(cwd, sid)?.get("context_bytes")?.non_negative_int()? / 4)
+        Some(
+            self.status_for(cwd, sid)?
+                .get("context_bytes")?
+                .non_negative_int()?
+                / 4,
+        )
     }
 
     pub(crate) fn ucli_usage(&self, cwd: &str, sid: Option<&str>) -> Option<LiveUsage> {
@@ -199,12 +234,18 @@ impl Live<'_> {
         if name.is_empty() {
             return None;
         }
-        let detail = raw.get("detail").and_then(Py::as_str).map(strip).filter(|d| !d.is_empty());
+        let detail = raw
+            .get("detail")
+            .and_then(Py::as_str)
+            .map(strip)
+            .filter(|d| !d.is_empty());
         Some(LivePhase {
             name: capped(name, 40),
             ints: PHASE_INT_FIELDS.map(|k| raw.get(k).and_then(Py::non_negative_int)),
             detail: detail.map(|d| capped(d, 160)),
-            last_unix: status.get("last_activity_unix").and_then(Py::non_negative_int),
+            last_unix: status
+                .get("last_activity_unix")
+                .and_then(Py::non_negative_int),
         })
     }
 
@@ -223,7 +264,10 @@ impl Live<'_> {
         let record = self.read_json(path, RECORD_MAX_BYTES)?;
         let mut err = record.get("error")?.clone();
         if err.is_object() {
-            err = match ["message", "error"].iter().find_map(|k| err.get(k).filter(|v| v.truthy())) {
+            err = match ["message", "error"]
+                .iter()
+                .find_map(|k| err.get(k).filter(|v| v.truthy()))
+            {
                 Some(v) => v.clone(),
                 None => Py::Str(err.dumps()),
             };
@@ -232,7 +276,11 @@ impl Live<'_> {
             return None;
         }
         let text = err.py_str();
-        let joined = text.split(py_isspace).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+        let joined = text
+            .split(py_isspace)
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
         Some(capped(&joined, 160))
     }
 }

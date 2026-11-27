@@ -7,15 +7,17 @@
 
 #![allow(dead_code)]
 
+use cops_providers::cost::CostRefusal;
 use cops_providers::real::docs::FileDocs;
 use cops_providers::real::effects::{self, EffectError};
 use cops_providers::real::help::HelpCache;
-use cops_providers::cost::CostRefusal;
 use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
 use cops_providers::real::{Env as OsEnv, RealDeps, RealProbe};
 use cops_providers::ucli::LiveModels;
 use cops_providers::ucli_opts::Toolchain;
-use cops_providers::{BuildOutput, Diag, Effect, McpRegisterError, ModelCatalog, Paths, Probe, Settings};
+use cops_providers::{
+    BuildOutput, Diag, Effect, McpRegisterError, ModelCatalog, Paths, Probe, Settings,
+};
 use serde_json::{json, Map, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -80,7 +82,16 @@ pub struct Case {
 
 impl Case {
     pub fn new(id: impl Into<String>, op: &'static str, args: Value) -> Self {
-        Case { id: id.into(), op, args, settings: None, files: Vec::new(), env: Vec::new(), facts: json!({}), known: None }
+        Case {
+            id: id.into(),
+            op,
+            args,
+            settings: None,
+            files: Vec::new(),
+            env: Vec::new(),
+            facts: json!({}),
+            known: None,
+        }
     }
     pub fn settings(mut self, s: impl Into<String>) -> Self {
         self.settings = Some(s.into());
@@ -159,7 +170,10 @@ impl Env {
     /// Kök dizin adı `prefix` ile başlar (HOME dahil tüm yollar onu içerir: kabuk tırnaklama vakaları).
     pub fn with_prefix(prefix: &str) -> Env {
         let tmp = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
-        let root = fs::canonicalize(tmp.path()).unwrap().to_string_lossy().into_owned();
+        let root = fs::canonicalize(tmp.path())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let mut e = Env {
             home: format!("{root}/home"),
             state: format!("{root}/state"),
@@ -192,7 +206,11 @@ impl Env {
             .expect("python3 çalıştırılamadı");
         let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        e.py = Some(Py { child, stdin, stdout });
+        e.py = Some(Py {
+            child,
+            stdin,
+            stdout,
+        });
         e
     }
 
@@ -208,9 +226,16 @@ impl Env {
     }
 
     pub fn std_fixtures(&self) -> Vec<Fx> {
-        let mut v = vec![Fx::Dir("home/.claude".into(), 0o755), Fx::Dir("home/.claude/claudeops".into(), 0o700)];
+        let mut v = vec![
+            Fx::Dir("home/.claude".into(), 0o755),
+            Fx::Dir("home/.claude/claudeops".into(), 0o700),
+        ];
         for b in ["claude", "codex", "agy", "copilot", "ucli"] {
-            v.push(Fx::File(format!("bin/{b}"), b"#!/bin/false\n".to_vec(), 0o755));
+            v.push(Fx::File(
+                format!("bin/{b}"),
+                b"#!/bin/false\n".to_vec(),
+                0o755,
+            ));
         }
         v.push(Fx::Dir("work/p1".into(), 0o755));
         v
@@ -220,7 +245,11 @@ impl Env {
         let mut all = self.std_fixtures();
         all.extend(case.files.iter().cloned());
         if let Some(s) = &case.settings {
-            all.push(Fx::File("state/settings.json".into(), s.as_bytes().to_vec(), 0o600));
+            all.push(Fx::File(
+                "state/settings.json".into(),
+                s.as_bytes().to_vec(),
+                0o600,
+            ));
         }
         for fx in all {
             match fx {
@@ -264,8 +293,13 @@ impl Env {
         stdin.flush().unwrap();
         let mut line = String::new();
         py.stdout.read_line(&mut line).unwrap();
-        assert!(!line.is_empty(), "python koşucusu yanıt vermedi (vaka {})", case.id);
-        serde_json::from_str(&line).unwrap_or_else(|e| panic!("python çıktısı JSON değil ({e}): {line}"))
+        assert!(
+            !line.is_empty(),
+            "python koşucusu yanıt vermedi (vaka {})",
+            case.id
+        );
+        serde_json::from_str(&line)
+            .unwrap_or_else(|e| panic!("python çıktısı JSON değil ({e}): {line}"))
     }
 
     /// Kök altındaki ağacın görüntüsü: yol -> tür/izin/içerik.
@@ -276,7 +310,11 @@ impl Env {
     }
 
     pub fn paths(&self) -> Paths {
-        Paths { claudeops_dir: self.state.clone(), home: self.home.clone(), repo_dir: self.repo.clone() }
+        Paths {
+            claudeops_dir: self.state.clone(),
+            home: self.home.clone(),
+            repo_dir: self.repo.clone(),
+        }
     }
 
     pub fn settings(&self) -> Settings {
@@ -287,14 +325,26 @@ impl Env {
     }
 
     pub fn catalog(&self, case: &Case) -> ModelCatalog {
-        let parse = |p: String| fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+        let parse = |p: String| {
+            fs::read_to_string(p)
+                .ok()
+                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        };
         let live = case.fact("ucli_live");
         let ids = live
             .and_then(|l| l.get("ids"))
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
-        let caps = live.and_then(|l| l.get("caps")).and_then(Value::as_object).cloned().unwrap_or_default();
+        let caps = live
+            .and_then(|l| l.get("caps"))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
         ModelCatalog {
             claude_state: parse(format!("{}/claude_models.json", self.state)),
             agy_models: strs(case.fact("agy_models")),
@@ -306,11 +356,17 @@ impl Env {
 }
 
 pub fn strs(v: Option<&Value>) -> Vec<String> {
-    v.and_then(Value::as_array).map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect()).unwrap_or_default()
+    v.and_then(Value::as_array)
+        .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect())
+        .unwrap_or_default()
 }
 
 fn mkdir(p: &str, mode: u32) {
-    fs::DirBuilder::new().recursive(true).mode(mode).create(p).unwrap();
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(mode)
+        .create(p)
+        .unwrap();
     fs::set_permissions(p, fs::Permissions::from_mode(mode)).unwrap();
 }
 
@@ -331,18 +387,31 @@ fn walk(p: &Path, root: &str, out: &mut BTreeMap<String, String>) {
     let Ok(rd) = fs::read_dir(p) else { return };
     for ent in rd.flatten() {
         let path = ent.path();
-        let rel = path.to_string_lossy().strip_prefix(root).unwrap_or("").to_string();
+        let rel = path
+            .to_string_lossy()
+            .strip_prefix(root)
+            .unwrap_or("")
+            .to_string();
         let m = fs::symlink_metadata(&path).unwrap();
         let mode = m.permissions().mode() & 0o7777;
         if m.file_type().is_symlink() {
-            out.insert(rel, format!("link -> {}", fs::read_link(&path).unwrap().to_string_lossy()));
+            out.insert(
+                rel,
+                format!(
+                    "link -> {}",
+                    fs::read_link(&path).unwrap().to_string_lossy()
+                ),
+            );
         } else if m.is_dir() {
             out.insert(rel, format!("dir {mode:o}"));
             walk(&path, root, out);
         } else {
             // izinsiz bırakılan fixture (okuma hatası vakaları) iki görüntüde de aynı işaretle geçer
             let content = fs::read(&path).unwrap_or_else(|_| b"<okunamaz>".to_vec());
-            out.insert(rel, format!("file {mode:o} {:?}", String::from_utf8_lossy(&content)));
+            out.insert(
+                rel,
+                format!("file {mode:o} {:?}", String::from_utf8_lossy(&content)),
+            );
         }
     }
 }
@@ -351,7 +420,9 @@ fn walk(p: &Path, root: &str, out: &mut BTreeMap<String, String>) {
 
 /// Python `claude_provider._encode_cwd` (gerçek karşılığı rs/proc `transcript.rs::encode_cwd`).
 pub fn encode_cwd(cwd: &str) -> String {
-    cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
+    cwd.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
 }
 
 pub struct TestProjects(pub String);
@@ -404,7 +475,12 @@ pub struct FsProbe<'a> {
 
 impl<'a> FsProbe<'a> {
     pub fn new(e: &'a Env, case: &'a Case) -> Self {
-        FsProbe { e, case, real: real_probe(e, case), mcp_calls: RefCell::new(Vec::new()) }
+        FsProbe {
+            e,
+            case,
+            real: real_probe(e, case),
+            mcp_calls: RefCell::new(Vec::new()),
+        }
     }
 }
 
@@ -437,19 +513,32 @@ impl Probe for FsProbe<'_> {
         self.real.which(name)
     }
     fn env_var(&self, name: &str) -> Option<String> {
-        self.case.env.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.clone())
+        self.case
+            .env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
     }
     fn claude_help(&self, binary: &str) -> String {
         if fs::metadata(binary).is_err() {
             return String::new();
         }
-        self.case.fact("claude_help").and_then(Value::as_str).unwrap_or("").to_string()
+        self.case
+            .fact("claude_help")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
     }
     fn ucli_chat_help(&self, binary: &str) -> String {
         if fs::metadata(binary).is_err() {
             return String::new();
         }
-        self.case.fact("ucli_help").and_then(Value::as_str).unwrap_or("").to_string()
+        self.case
+            .fact("ucli_help")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
     }
     fn path_executables(&self) -> Vec<String> {
         strs(self.case.fact("path_executables"))
@@ -473,7 +562,10 @@ impl Probe for FsProbe<'_> {
         }
     }
     fn searxng_url(&self, _session: &str, _preview: bool) -> Option<String> {
-        self.case.fact("searxng_url").and_then(Value::as_str).map(String::from)
+        self.case
+            .fact("searxng_url")
+            .and_then(Value::as_str)
+            .map(String::from)
     }
     fn checks_registry(&self, _path: &str) -> Result<(), String> {
         match self.case.fact("checks_err").and_then(Value::as_str) {
@@ -482,8 +574,15 @@ impl Probe for FsProbe<'_> {
         }
     }
     fn claude_cost_gate(&self, _session: &str) -> Result<(), CostRefusal> {
-        if self.case.fact("cost_exceeded").is_some_and(|v| v.as_bool() == Some(true)) {
-            Err(CostRefusal::CapExceeded { today_usd: 1.5, cap_usd: 1.0 })
+        if self
+            .case
+            .fact("cost_exceeded")
+            .is_some_and(|v| v.as_bool() == Some(true))
+        {
+            Err(CostRefusal::CapExceeded {
+                today_usd: 1.5,
+                cap_usd: 1.0,
+            })
         } else {
             Ok(())
         }
@@ -493,12 +592,23 @@ impl Probe for FsProbe<'_> {
         if t.and_then(|t| t.get("error")).is_some() {
             return Err("OSError".into());
         }
-        Ok(t.and_then(|t| t.get("path")).and_then(Value::as_str).unwrap_or("").to_string())
+        Ok(t.and_then(|t| t.get("path"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string())
     }
     fn panel_port(&self) -> Option<u16> {
-        self.case.fact("panel_port").and_then(Value::as_u64).map(|p| p as u16)
+        self.case
+            .fact("panel_port")
+            .and_then(Value::as_u64)
+            .map(|p| p as u16)
     }
-    fn register_mcp(&self, _cwd: &str, config_path: &str, argv: &[String]) -> Result<(), McpRegisterError> {
+    fn register_mcp(
+        &self,
+        _cwd: &str,
+        config_path: &str,
+        argv: &[String],
+    ) -> Result<(), McpRegisterError> {
         if fs::symlink_metadata(config_path).is_ok() {
             fs::remove_file(config_path).map_err(|e| McpRegisterError::Unlink(format!("{e:?}")))?;
         }
@@ -507,10 +617,22 @@ impl Probe for FsProbe<'_> {
         if let Some(msg) = r.and_then(|r| r.get("raise")).and_then(Value::as_str) {
             return Err(McpRegisterError::Spawn(format!("OSError('{msg}')")));
         }
-        let rc = r.and_then(|r| r.get("rc")).and_then(Value::as_i64).unwrap_or(0) as i32;
+        let rc = r
+            .and_then(|r| r.get("rc"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0) as i32;
         if rc != 0 {
-            let s = |k: &str| r.and_then(|r| r.get(k)).and_then(Value::as_str).unwrap_or("").to_string();
-            return Err(McpRegisterError::Exit { rc, stdout: s("stdout"), stderr: s("stderr") });
+            let s = |k: &str| {
+                r.and_then(|r| r.get(k))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
+            return Err(McpRegisterError::Exit {
+                rc,
+                stdout: s("stdout"),
+                stderr: s("stderr"),
+            });
         }
         Ok(())
     }
@@ -538,12 +660,21 @@ pub struct RsOut {
 
 impl RsOut {
     pub fn ret(v: Value) -> RsOut {
-        RsOut { ret: v, ..Default::default() }
+        RsOut {
+            ret: v,
+            ..Default::default()
+        }
     }
 }
 
 pub fn diag_json(d: &Diag) -> Value {
-    json!([d.event, d.fields.iter().map(|(k, v)| json!([k, v])).collect::<Vec<_>>()])
+    json!([
+        d.event,
+        d.fields
+            .iter()
+            .map(|(k, v)| json!([k, v]))
+            .collect::<Vec<_>>()
+    ])
 }
 
 /// Python `_jsonable` biçimi: sonlu olmayan float `{"$float": ...}`.
@@ -572,7 +703,12 @@ pub fn json_diff(path: &str, a: &Value, b: &Value, out: &mut Vec<String>) {
         (Value::Object(x), Value::Object(y)) => {
             let keys: std::collections::BTreeSet<&String> = x.keys().chain(y.keys()).collect();
             for k in keys {
-                json_diff(&format!("{path}.{k}"), x.get(k).unwrap_or(&Value::Null), y.get(k).unwrap_or(&Value::Null), out);
+                json_diff(
+                    &format!("{path}.{k}"),
+                    x.get(k).unwrap_or(&Value::Null),
+                    y.get(k).unwrap_or(&Value::Null),
+                    out,
+                );
             }
         }
         (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
@@ -597,7 +733,12 @@ impl Runner {
     }
 
     pub fn with_env(e: Env) -> Runner {
-        Runner { e, known: Vec::new(), fails: Vec::new(), count: 0 }
+        Runner {
+            e,
+            known: Vec::new(),
+            fails: Vec::new(),
+            count: 0,
+        }
     }
 
     /// Python `diags` içinden Rust kapsamı DIŞINDAKİ olayları atar (yalnız `spawn` başlatma kısmının olayları, bkz. çağıran).
@@ -609,8 +750,13 @@ impl Runner {
     }
 
     /// [`Runner::run`] + her tarafta fixture kurulduktan sonra `prepare` (ör. dosya zamanları).
-    pub fn run_prepared<P, F>(&mut self, cases: Vec<Case>, drop_events: &[&str], prepare: P, rust: F)
-    where
+    pub fn run_prepared<P, F>(
+        &mut self,
+        cases: Vec<Case>,
+        drop_events: &[&str],
+        prepare: P,
+        rust: F,
+    ) where
         P: Fn(&Env, &Case),
         F: Fn(&Env, &Case) -> RsOut,
     {
@@ -629,9 +775,21 @@ impl Runner {
             prepare(&self.e, &case);
             let mut rs = rust(&self.e, &case);
             // GERÇEK uygulayıcı: dosya ağacı karşılaştırması onu da sınar
-            let apply_err = if rs.skip_effects { Ok(()) } else { effects::apply_all(&rs.out.effects) };
+            let apply_err = if rs.skip_effects {
+                Ok(())
+            } else {
+                effects::apply_all(&rs.out.effects)
+            };
             let snap_rs = self.e.snapshot();
-            self.compare(&case, &py, &mut rs, apply_err, &snap_py, &snap_rs, drop_events);
+            self.compare(
+                &case,
+                &py,
+                &mut rs,
+                apply_err,
+                &snap_py,
+                &snap_rs,
+                drop_events,
+            );
         }
     }
 
@@ -674,26 +832,48 @@ impl Runner {
             .filter(|d| !drop_events.contains(&d[0].as_str().unwrap()))
             .cloned()
             .collect();
-        let rd: Vec<Value> = rs.out.diags.iter().chain(rs.extra_diags.iter()).map(diag_json).collect();
+        let rd: Vec<Value> = rs
+            .out
+            .diags
+            .iter()
+            .chain(rs.extra_diags.iter())
+            .map(diag_json)
+            .collect();
         if pd != rd {
-            diffs.push(format!("diag\n    py: {}\n    rs: {}", Value::from(pd), Value::from(rd)));
+            diffs.push(format!(
+                "diag\n    py: {}\n    rs: {}",
+                Value::from(pd),
+                Value::from(rd)
+            ));
         }
         let pm: Vec<Value> = py["run"]
             .as_array()
             .unwrap()
             .iter()
-            .filter(|a| a.get(3).and_then(Value::as_str) == Some("mcp") && a.get(4).and_then(Value::as_str) == Some("add"))
+            .filter(|a| {
+                a.get(3).and_then(Value::as_str) == Some("mcp")
+                    && a.get(4).and_then(Value::as_str) == Some("add")
+            })
             .cloned()
             .collect();
         let rm: Vec<Value> = rs.mcp_calls.iter().map(|a| json!(a)).collect();
         if pm != rm {
-            diffs.push(format!("mcp add argv\n    py: {}\n    rs: {}", Value::from(pm), Value::from(rm)));
+            diffs.push(format!(
+                "mcp add argv\n    py: {}\n    rs: {}",
+                Value::from(pm),
+                Value::from(rm)
+            ));
         }
         if py["popen"].as_array().unwrap() != &rs.popen {
-            diffs.push(format!("popen\n    py: {}\n    rs: {}", py["popen"], Value::from(rs.popen.clone())));
+            diffs.push(format!(
+                "popen\n    py: {}\n    rs: {}",
+                py["popen"],
+                Value::from(rs.popen.clone())
+            ));
         }
         if snap_py != snap_rs {
-            let keys: std::collections::BTreeSet<&String> = snap_py.keys().chain(snap_rs.keys()).collect();
+            let keys: std::collections::BTreeSet<&String> =
+                snap_py.keys().chain(snap_rs.keys()).collect();
             for k in keys {
                 let (a, b) = (snap_py.get(k), snap_rs.get(k));
                 if a != b {
@@ -703,22 +883,40 @@ impl Runner {
         }
         if let Some(why) = case.known {
             if diffs.is_empty() {
-                self.fails.push(format!("[{}] bilinen ayrışma kaydı var ama çıktılar EŞİT: kaydı kaldır ({why})", case.id));
+                self.fails.push(format!(
+                    "[{}] bilinen ayrışma kaydı var ama çıktılar EŞİT: kaydı kaldır ({why})",
+                    case.id
+                ));
             } else {
                 self.known.push(format!("[{}] {why}", case.id));
             }
             return;
         }
         if !diffs.is_empty() {
-            self.fails.push(format!("[{}] {} {}\n  {}", case.id, case.op, case.args, diffs.join("\n  ")));
+            self.fails.push(format!(
+                "[{}] {} {}\n  {}",
+                case.id,
+                case.op,
+                case.args,
+                diffs.join("\n  ")
+            ));
         }
     }
 
     pub fn finish(self, family: &str) {
         if !self.fails.is_empty() {
-            panic!("{family}: {} / {} vakada fark\n\n{}", self.fails.len(), self.count, self.fails.join("\n\n"));
+            panic!(
+                "{family}: {} / {} vakada fark\n\n{}",
+                self.fails.len(),
+                self.count,
+                self.fails.join("\n\n")
+            );
         }
-        eprintln!("{family}: {} vaka; bilinen ayrışma {}:", self.count, self.known.len());
+        eprintln!(
+            "{family}: {} vaka; bilinen ayrışma {}:",
+            self.count,
+            self.known.len()
+        );
         for k in &self.known {
             eprintln!("  {k}");
         }

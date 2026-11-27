@@ -27,7 +27,10 @@ fn detect_display_lock_still_works() {
 
 #[test]
 fn detect_display_prefers_1_over_0() {
-    assert_eq!(display_with(&["/tmp/.X11-unix/X0", "/tmp/.X11-unix/X1"]), ":1");
+    assert_eq!(
+        display_with(&["/tmp/.X11-unix/X0", "/tmp/.X11-unix/X1"]),
+        ":1"
+    );
     assert_eq!(display_with(&["/tmp/.X0-lock", "/tmp/.X11-unix/X1"]), ":1");
 }
 
@@ -36,7 +39,10 @@ fn detect_display_nothing_defaults_1_and_env_wins() {
     assert_eq!(display_with(&[]), ":1");
     assert_eq!(detect_display(Some(":7"), &|_| true), ":7");
     // Boş `DISPLAY` yok sayılır (Python `os.environ.get("DISPLAY") or ...`).
-    assert_eq!(detect_display(Some(""), &|p| p == "/tmp/.X11-unix/X0"), ":0");
+    assert_eq!(
+        detect_display(Some(""), &|p| p == "/tmp/.X11-unix/X0"),
+        ":0"
+    );
 }
 
 /// `SpawnPriority.test_child_inherits_nice`: önek gerçek kabukta çocuğa nice aktarır (yetkisiz süreç önceliği
@@ -46,13 +52,23 @@ fn priority_prefix_child_inherits_nice() {
     let pre = priority_prefix(&Settings::from_json(r#"{"spawn_nice": "10"}"#), "p");
     assert!(pre.contains("renice -n 10"), "{pre}");
     let out = Command::new("sh")
-        .args(["-c", &format!("cd /tmp && {pre}bash -c 'cut -d\" \" -f19 /proc/$$/stat'")])
+        .args([
+            "-c",
+            &format!("cd /tmp && {pre}bash -c 'cut -d\" \" -f19 /proc/$$/stat'"),
+        ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // SAFETY: `nice(0)` önceliği değiştirmez, yalnız okur.
     let ours = unsafe { libc::nice(0) };
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), (ours.max(10)).to_string());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        (ours.max(10)).to_string()
+    );
 }
 
 /// `GuidanceTest.test_guidance_failure_never_breaks_spawn`: paketli yönerge yok, dizin ya da UTF-8 değilse bayrak
@@ -64,12 +80,21 @@ fn guidance_failure_never_breaks_spawn() {
     let settings = Settings::default();
     let catalog = ModelCatalog::default();
     let paths = t.paths();
-    let p = Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &probe };
+    let p = Providers {
+        settings: &settings,
+        catalog: &catalog,
+        paths: &paths,
+        probe: &probe,
+    };
     let bundled = paths.routing_bundled();
     let check = |what: &str| {
         let mut out = BuildOutput::default();
         assert_eq!(claude_guidance_path(&p, &mut out), None, "{what}");
-        assert!(out.effects.is_empty() && out.diags.is_empty(), "{what}: {:?}", out.diags);
+        assert!(
+            out.effects.is_empty() && out.diags.is_empty(),
+            "{what}: {:?}",
+            out.diags
+        );
     };
     check("yok");
     std::fs::create_dir_all(&bundled).unwrap();

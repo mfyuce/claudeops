@@ -25,7 +25,12 @@ fn rs_usage(e: &Env, c: &Case) -> RsOut {
     let cat = e.catalog(c);
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let p = Providers { settings: &s, catalog: &cat, paths: &paths, probe: &probe };
+    let p = Providers {
+        settings: &s,
+        catalog: &cat,
+        paths: &paths,
+        probe: &probe,
+    };
     let texts = strs(c.args.get("texts"));
     RsOut::ret(json!({
         "usage_command": cli.usage_command(),
@@ -76,16 +81,38 @@ const AGY_TSV2: &str = "Gemini Models\tWeekly Limit Remaining\t81%\t2026-11-25T0
 const COPILOT_SCREEN: &str = "   Active account/provider usage\n   Plan       ■■■■■■■■■■■■■■■■■■■■ 35% used • resets in 11 days\n              530 / 1,500 AIC\n /tmp\n";
 const COPILOT_NORESET: &str = "Plan   ■■ 10% used\n 5 / 100 AIC\n";
 /// copilot_provider.py `_USAGE_*_RE` yorumundaki canlı örnek (13 Eyl).
-const COPILOT_OLD: &str = "   Plan       ■■■■■■■■■■■■■■■■■■■■ 0% used\n              11 / 1,500 AIC\n";
+const COPILOT_OLD: &str =
+    "   Plan       ■■■■■■■■■■■■■■■■■■■■ 0% used\n              11 / 1,500 AIC\n";
 
 fn texts() -> Vec<String> {
     let mut v: Vec<String> = vec![
-        CLAUDE_FRESH, CLAUDE_TUI, CLAUDE_CONTEXT, AGY_TSV, AGY_TSV2, COPILOT_SCREEN, COPILOT_NORESET, COPILOT_OLD,
+        CLAUDE_FRESH,
+        CLAUDE_TUI,
+        CLAUDE_CONTEXT,
+        AGY_TSV,
+        AGY_TSV2,
+        COPILOT_SCREEN,
+        COPILOT_NORESET,
+        COPILOT_OLD,
         // test_usage_fresh.py `test_parse_falls_back_to_tui_format`
         "Current week (all models)\n██  92% used\nResets Sep 14, 6pm (Europe/Istanbul)\n",
         // boş / bozuk
-        "", "\n", "   ", "\u{0}\u{1}\u{fffd}", "Current", "Current session", "Current session\n", "% used", "Plan",
-        "Plan 5%", "tokens (5%)", "\t\t\t", "a\tb\tc\td\te", "a\tb\t%\td", "a\tb\t5%%\td", "a\tb\t%5\td",
+        "",
+        "\n",
+        "   ",
+        "\u{0}\u{1}\u{fffd}",
+        "Current",
+        "Current session",
+        "Current session\n",
+        "% used",
+        "Plan",
+        "Plan 5%",
+        "tokens (5%)",
+        "\t\t\t",
+        "a\tb\tc\td\te",
+        "a\tb\t%\td",
+        "a\tb\t5%%\td",
+        "a\tb\t%5\td",
     ]
     .into_iter()
     .map(String::from)
@@ -179,7 +206,13 @@ fn usage_cases(e: &Env) -> Vec<Case> {
     let t = texts();
     let mut v: Vec<Case> = Cli::ALL
         .iter()
-        .map(|c| Case::new(format!("usage-{}", c.name()), "usage", json!({"cli": c.name(), "texts": t})))
+        .map(|c| {
+            Case::new(
+                format!("usage-{}", c.name()),
+                "usage",
+                json!({"cli": c.name(), "texts": t}),
+            )
+        })
         .collect();
     // `usage_fresh_argv`/`usage_fresh_tui_argv` ikili çözümü (test_usage_fresh.py `ResolvedBinaryFallback`):
     // PATH'te yok + bilinen konum; `provider_bin` override; PATH'te yok ve bilinen konum yok = çıplak ad.
@@ -188,21 +221,45 @@ fn usage_cases(e: &Env) -> Vec<Case> {
         v.push(
             Case::new(format!("usage-bin-yok-{cli}"), "usage", json!({"cli": cli}))
                 .env("PATH", &format!("{}/bos", e.root))
-                .file(Fx::File(format!("home/{known}"), b"#!/bin/sh\n".to_vec(), 0o755)),
+                .file(Fx::File(
+                    format!("home/{known}"),
+                    b"#!/bin/sh\n".to_vec(),
+                    0o755,
+                )),
         );
         v.push(
-            Case::new(format!("usage-bin-override-{cli}"), "usage", json!({"cli": cli}))
-                .env("PATH", &format!("{}/bos", e.root))
-                .settings_json(json!({"provider_bin": {cli: format!("{}/ozel/{cli}", e.root)}}))
-                .file(Fx::File(format!("ozel/{cli}"), b"#!/bin/sh\n".to_vec(), 0o755)),
+            Case::new(
+                format!("usage-bin-override-{cli}"),
+                "usage",
+                json!({"cli": cli}),
+            )
+            .env("PATH", &format!("{}/bos", e.root))
+            .settings_json(json!({"provider_bin": {cli: format!("{}/ozel/{cli}", e.root)}}))
+            .file(Fx::File(
+                format!("ozel/{cli}"),
+                b"#!/bin/sh\n".to_vec(),
+                0o755,
+            )),
         );
         v.push(
-            Case::new(format!("usage-bin-tilde-{cli}"), "usage", json!({"cli": cli}))
-                .settings_json(json!({"provider_bin": {cli: format!("~/x/{cli}")}}))
-                .file(Fx::File(format!("home/x/{cli}"), b"#!/bin/sh\n".to_vec(), 0o755)),
+            Case::new(
+                format!("usage-bin-tilde-{cli}"),
+                "usage",
+                json!({"cli": cli}),
+            )
+            .settings_json(json!({"provider_bin": {cli: format!("~/x/{cli}")}}))
+            .file(Fx::File(
+                format!("home/x/{cli}"),
+                b"#!/bin/sh\n".to_vec(),
+                0o755,
+            )),
         );
     }
-    v.push(Case::new("usage-bilinmeyen-cli", "usage", json!({"cli": "yok", "texts": [CLAUDE_FRESH, AGY_TSV]})));
+    v.push(Case::new(
+        "usage-bilinmeyen-cli",
+        "usage",
+        json!({"cli": "yok", "texts": [CLAUDE_FRESH, AGY_TSV]}),
+    ));
     v
 }
 

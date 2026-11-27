@@ -9,8 +9,20 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::LazyLock;
 
-pub const MODEL_CHOICES: [&str; 4] = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2", "claude-haiku-5-5"];
-pub const PERMISSION_MODES: [&str; 6] = ["auto", "acceptEdits", "bypassPermissions", "manual", "dontAsk", "plan"];
+pub const MODEL_CHOICES: [&str; 4] = [
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "claude-fable-5-2",
+    "claude-haiku-5-5",
+];
+pub const PERMISSION_MODES: [&str; 6] = [
+    "auto",
+    "acceptEdits",
+    "bypassPermissions",
+    "manual",
+    "dontAsk",
+    "plan",
+];
 pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// Tur işlenirken durum çubuğunda görünen metin.
 pub const BUSY_STATUS_PATTERN: &str = "esc to interrupt";
@@ -24,13 +36,18 @@ pub const MODE_STATUS_PATTERNS: [(&str, &str); 4] = [
 /// Shift+Tab ile hedeflenebilen modlar (döngü sırası varsayılmaz).
 pub const CYCLABLE_MODES: [&str; 4] = ["manual", "acceptEdits", "plan", "auto"];
 
-static SONNET_PIN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(claude-sonnet-)(\d{1,2}(?:-\d{1,2})?)(\[[^\]]*\])?\n?$").unwrap());
+static SONNET_PIN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(claude-sonnet-)(\d{1,2}(?:-\d{1,2})?)(\[[^\]]*\])?\n?$").unwrap()
+});
 
 fn sonnet_version(id: &str) -> Vec<u32> {
     SONNET_PIN
         .captures(id)
-        .map(|c| c[2].split('-').map(|p| crate::pyfmt::parse_int(p).unwrap_or(0) as u32).collect())
+        .map(|c| {
+            c[2].split('-')
+                .map(|p| crate::pyfmt::parse_int(p).unwrap_or(0) as u32)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -50,7 +67,12 @@ pub fn model_choices(state: Option<&Value>) -> Vec<String> {
     let mut enabled: Vec<String> = state
         .and_then(|s| s.get("models"))
         .and_then(Value::as_object)
-        .map(|m| m.iter().filter(|(_, v)| v.as_str() == Some("enabled")).map(|(k, _)| k.clone()).collect())
+        .map(|m| {
+            m.iter()
+                .filter(|(_, v)| v.as_str() == Some("enabled"))
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
         .unwrap_or_default();
     if enabled.is_empty() {
         return MODEL_CHOICES.iter().map(|s| s.to_string()).collect();
@@ -61,24 +83,43 @@ pub fn model_choices(state: Option<&Value>) -> Vec<String> {
 
 /// Sabitlenmiş sonnet id'sini en yeni sonnet'e taşır (`[..]` eki korunur).
 pub fn refresh_stored_model(stored: &str, choices: &[String]) -> String {
-    let Some(m) = SONNET_PIN.captures(stored) else { return stored.into() };
+    let Some(m) = SONNET_PIN.captures(stored) else {
+        return stored.into();
+    };
     match newest_sonnet(choices) {
         Some(fresh) if sonnet_version(&fresh) > sonnet_version(stored) => {
-            let f = SONNET_PIN.captures(&fresh).expect("newest_sonnet pinned id döndürür");
+            let f = SONNET_PIN
+                .captures(&fresh)
+                .expect("newest_sonnet pinned id döndürür");
             format!("{}{}{}", &f[1], &f[2], m.get(3).map_or("", |s| s.as_str()))
         }
         _ => stored.into(),
     }
 }
 
-pub(crate) fn build_inner_command(p: &Providers<'_>, a: &BuildArgs<'_>, out: &mut BuildOutput) -> String {
+pub(crate) fn build_inner_command(
+    p: &Providers<'_>,
+    a: &BuildArgs<'_>,
+    out: &mut BuildOutput,
+) -> String {
     let binary = p.resolved_binary("claude");
-    let resume = a.resume_id.filter(|r| !r.is_empty()).map_or(String::new(), |r| format!("--resume {} ", quote(r)));
+    let resume = a
+        .resume_id
+        .filter(|r| !r.is_empty())
+        .map_or(String::new(), |r| format!("--resume {} ", quote(r)));
     // `--mcp-config` değişken sayıda değer okur: ardından mutlaka başka bir bayrak (`--model`) gelmeli.
-    let extra: String = a.extra_args.iter().map(|x| format!("{} ", quote(x))).collect();
-    let guidance = routing::claude_guidance_path(p, out)
-        .map_or(String::new(), |g| format!("--append-system-prompt-file {} ", quote(&g)));
-    let prompt = a.prompt.filter(|s| !s.is_empty()).map_or(String::new(), |s| format!(" {}", quote(s)));
+    let extra: String = a
+        .extra_args
+        .iter()
+        .map(|x| format!("{} ", quote(x)))
+        .collect();
+    let guidance = routing::claude_guidance_path(p, out).map_or(String::new(), |g| {
+        format!("--append-system-prompt-file {} ", quote(&g))
+    });
+    let prompt = a
+        .prompt
+        .filter(|s| !s.is_empty())
+        .map_or(String::new(), |s| format!(" {}", quote(s)));
     let name = quote(a.session_name);
     format!(
         "{} {resume}{extra}{guidance}--model {} --permission-mode {} --effort {} -n {name} --remote-control {name}{prompt}",
@@ -114,7 +155,10 @@ fn mcp_config_path(p: &Providers<'_>, spec: &McpSpec) -> String {
     let stem = base.strip_suffix(".json").unwrap_or(&base);
     if let Some(i) = spec.args.iter().position(|a| a == "--steward") {
         if let Some(sid) = spec.args.get(i + 1) {
-            if !sid.is_empty() && sid.chars().all(char::is_alphabetic) && crate::pyfmt::py_islower(sid) {
+            if !sid.is_empty()
+                && sid.chars().all(char::is_alphabetic)
+                && crate::pyfmt::py_islower(sid)
+            {
                 return format!("{stem}_{sid}.json");
             }
         }
@@ -135,7 +179,11 @@ fn mcp_config_json(spec: &McpSpec) -> String {
     let args = if spec.args.is_empty() {
         "[]".to_string()
     } else {
-        let items: Vec<String> = spec.args.iter().map(|a| format!("        {}", s(a))).collect();
+        let items: Vec<String> = spec
+            .args
+            .iter()
+            .map(|a| format!("        {}", s(a)))
+            .collect();
         format!("[\n{}\n      ]", items.join(",\n"))
     };
     format!(
@@ -145,8 +193,15 @@ fn mcp_config_json(spec: &McpSpec) -> String {
     )
 }
 
-pub(crate) fn mcp_launch_args(p: &Providers<'_>, spec: &McpSpec, out: &mut BuildOutput) -> Vec<String> {
+pub(crate) fn mcp_launch_args(
+    p: &Providers<'_>,
+    spec: &McpSpec,
+    out: &mut BuildOutput,
+) -> Vec<String> {
     let path = mcp_config_path(p, spec);
-    out.effects.push(Effect::WriteAtomic { path: path.clone(), content: mcp_config_json(spec) });
+    out.effects.push(Effect::WriteAtomic {
+        path: path.clone(),
+        content: mcp_config_json(spec),
+    });
     vec!["--mcp-config".into(), path]
 }

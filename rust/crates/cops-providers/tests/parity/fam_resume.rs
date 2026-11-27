@@ -6,10 +6,14 @@
 use crate::common::*;
 use crate::fam_bg::Rng;
 use crate::fam_live::with_sessions;
-use cops_providers::claude_resume::{META_CACHE_MAX, META_HEAD_LINES, RESUME_SCAN_LIMIT, STUB_MAX_BYTES};
+use cops_providers::claude_resume::{
+    META_CACHE_MAX, META_HEAD_LINES, RESUME_SCAN_LIMIT, STUB_MAX_BYTES,
+};
 use cops_providers::codex_resume::MAX_ROLLOUT_SCAN;
 use cops_providers::pyjson::Py;
-use cops_providers::{agy_resume, copilot, ids_held_by_others, AgySidStore, Cli, Live, LiveSession, MetaCache};
+use cops_providers::{
+    agy_resume, copilot, ids_held_by_others, AgySidStore, Cli, Live, LiveSession, MetaCache,
+};
 use rusqlite::types::Value as Sql;
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -29,7 +33,10 @@ pub fn proc_stat(pid: i64, start: &str) -> String {
 }
 
 fn project(cwd: &str) -> String {
-    let encoded: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let encoded: String = cwd
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
     format!("home/.claude/projects/{encoded}")
 }
 
@@ -52,7 +59,13 @@ struct B {
 
 impl B {
     fn new(id: &str) -> B {
-        B { id: format!("devam-{id}"), files: Vec::new(), times: Vec::new(), queries: Vec::new(), facts: json!({}) }
+        B {
+            id: format!("devam-{id}"),
+            files: Vec::new(),
+            times: Vec::new(),
+            queries: Vec::new(),
+            facts: json!({}),
+        }
     }
     fn raw(mut self, rel: impl Into<String>, body: impl Into<Vec<u8>>) -> B {
         self.files.push(Fx::File(rel.into(), body.into(), 0o644));
@@ -115,7 +128,9 @@ impl Build<'_> {
         }
         for name in names {
             b = b.q(json!({"f": "resolve", "cli": "claude", "cwd": cwd, "name": name}));
-            b = b.q(json!({"f": "resolve", "cli": "claude", "cwd": cwd, "name": name, "in_use": held}));
+            b = b.q(
+                json!({"f": "resolve", "cli": "claude", "cwd": cwd, "name": name, "in_use": held}),
+            );
             b = b.q(json!({"f": "stopped", "cli": "claude", "cwd": cwd, "name": name}));
         }
         b
@@ -148,7 +163,11 @@ fn claude_cases(b: &mut Build<'_>) {
     let held = ["a", "inst2"];
     let c = b.claude_queries(B::new("claude-dizin-yok"), &names, &held);
     b.push(c);
-    let c = b.claude_queries(B::new("claude-dizin-bos").fx(Fx::Dir(dir.clone(), 0o755)), &names, &held);
+    let c = b.claude_queries(
+        B::new("claude-dizin-bos").fx(Fx::Dir(dir.clone(), 0o755)),
+        &names,
+        &held,
+    );
     b.push(c);
     // kardeş oturumlar: kendi konuşması eski, başlık-yalnız stub daha yeni; elde tutulanlar elenir
     let c = B::new("claude-kardes")
@@ -163,9 +182,11 @@ fn claude_cases(b: &mut Build<'_>) {
     // aynı ad: en yeni GERÇEK konuşma (en büyüğü değil); ad ön ek olarak eşleşmez
     let mut old = conv(Some("inst"), &cwd, true);
     old.push_str(&"{\"type\":\"user\"}\n".repeat(50));
-    let c = B::new("claude-yeni-gercek")
-        .at(f("old"), old, T0 + 10)
-        .at(f("new"), conv(Some("inst"), &cwd, true), T0 + 20);
+    let c = B::new("claude-yeni-gercek").at(f("old"), old, T0 + 10).at(
+        f("new"),
+        conv(Some("inst"), &cwd, true),
+        T0 + 20,
+    );
     let c = b.claude_queries(c, &["inst", "ins", "inst1"], &[]);
     b.push(c);
     // başka cwd yazan dosya, cwd'siz dosya, göreli/artıklı cwd yazımı
@@ -176,16 +197,40 @@ fn claude_cases(b: &mut Build<'_>) {
         .at(f("c"), conv(Some("never"), "", true), T0 + 20)
         .at(f("d"), r#"{"customTitle":"inst2"}"#.to_string(), T0 + 10)
         .at(f("e"), conv(Some("inst"), "work/p1", true), T0 + 50)
-        .at(f("g"), conv(Some("idle"), &format!("{cwd}/"), true), T0 + 60);
+        .at(
+            f("g"),
+            conv(Some("idle"), &format!("{cwd}/"), true),
+            T0 + 60,
+        );
     let c = b.claude_queries(c, &names, &["e", "g"]);
     b.push(c);
     // uzantı kuralı: `.jsonl` adlı gizli dosya, `..jsonl`, uzantısız, dizin, bağlantı, kopuk bağlantı
     let c = B::new("claude-adlar")
-        .at(format!("{dir}/.jsonl"), conv(Some("inst"), &cwd, true), T0 + 90)
-        .at(format!("{dir}/..jsonl"), conv(Some("inst2"), &cwd, true), T0 + 5)
-        .at(format!("{dir}/x.json"), conv(Some("idle"), &cwd, true), T0 + 99)
-        .at(format!("{dir}/x.jsonl.bak"), conv(Some("never"), &cwd, true), T0 + 98)
-        .at(format!("{dir}/.gizli.jsonl"), conv(Some("never"), &cwd, true), T0 + 4)
+        .at(
+            format!("{dir}/.jsonl"),
+            conv(Some("inst"), &cwd, true),
+            T0 + 90,
+        )
+        .at(
+            format!("{dir}/..jsonl"),
+            conv(Some("inst2"), &cwd, true),
+            T0 + 5,
+        )
+        .at(
+            format!("{dir}/x.json"),
+            conv(Some("idle"), &cwd, true),
+            T0 + 99,
+        )
+        .at(
+            format!("{dir}/x.jsonl.bak"),
+            conv(Some("never"), &cwd, true),
+            T0 + 98,
+        )
+        .at(
+            format!("{dir}/.gizli.jsonl"),
+            conv(Some("never"), &cwd, true),
+            T0 + 4,
+        )
         .fx(Fx::Dir(format!("{dir}/klasor.jsonl"), 0o755))
         .fx(Fx::Link(format!("{dir}/kopuk.jsonl"), "yok".into()))
         .at(f("a"), conv(Some("never"), &cwd, true), T0 + 1)
@@ -193,10 +238,22 @@ fn claude_cases(b: &mut Build<'_>) {
     let c = b.claude_queries(c, &names, &[]);
     b.push(c);
     // tarama sınırı: resume en yeni 25'e bakar, durmuş oturum hepsine
-    for extra in [RESUME_SCAN_LIMIT - 1, RESUME_SCAN_LIMIT, RESUME_SCAN_LIMIT + 5] {
-        let mut c = B::new(&format!("claude-sinir-{extra}")).at(f("oldest"), conv(Some("inst"), &cwd, true), T0);
+    for extra in [
+        RESUME_SCAN_LIMIT - 1,
+        RESUME_SCAN_LIMIT,
+        RESUME_SCAN_LIMIT + 5,
+    ] {
+        let mut c = B::new(&format!("claude-sinir-{extra}")).at(
+            f("oldest"),
+            conv(Some("inst"), &cwd, true),
+            T0,
+        );
         for i in 0..extra {
-            c = c.at(f(&format!("n{i:02}")), conv(Some(&format!("yeni{i}")), &cwd, true), T0 + 10 + i as i64);
+            c = c.at(
+                f(&format!("n{i:02}")),
+                conv(Some(&format!("yeni{i}")), &cwd, true),
+                T0 + 10 + i as i64,
+            );
         }
         let c = b.claude_queries(c, &["inst", "yeni0", ""], &[]);
         b.push(c);
@@ -208,7 +265,12 @@ fn claude_cases(b: &mut Build<'_>) {
     }
     let c = b.claude_queries(c, &["inst", ""], &["q"]);
     b.push(c);
-    for (id, a, z) in [("us", 1000, 2000), ("ns", 1, 2), ("ns-ters", 2, 1), ("saniye-alti", 999_999_999, 0)] {
+    for (id, a, z) in [
+        ("us", 1000, 2000),
+        ("ns", 1, 2),
+        ("ns-ters", 2, 1),
+        ("saniye-alti", 999_999_999, 0),
+    ] {
         let c = B::new(&format!("claude-zaman-{id}"))
             .at_ns(f("a"), conv(Some("inst"), &cwd, true), T0, a)
             .at_ns(f("z"), conv(Some("inst"), &cwd, true), T0, z);
@@ -216,7 +278,11 @@ fn claude_cases(b: &mut Build<'_>) {
         b.push(c);
     }
     // büyük dosya içine bakılmadan gerçek sayılır; sınırın bir altı taranır
-    for (id, size) in [("alti", STUB_MAX_BYTES - 1), ("tam", STUB_MAX_BYTES), ("ustu", STUB_MAX_BYTES + 1)] {
+    for (id, size) in [
+        ("alti", STUB_MAX_BYTES - 1),
+        ("tam", STUB_MAX_BYTES),
+        ("ustu", STUB_MAX_BYTES + 1),
+    ] {
         let mut big = conv(Some("inst"), &cwd, false);
         big.push_str(&" ".repeat(size as usize - big.len()));
         let c = B::new(&format!("claude-stub-{id}"))
@@ -236,33 +302,97 @@ fn meta_cases(b: &mut Build<'_>) {
         ("bos", String::new()),
         ("temel", format!("{title}\n{cwd}\n")),
         ("sonsuz", format!("{title}\n{cwd}")),
-        ("on-besinci", format!("{}{title}\n", pad(META_HEAD_LINES - 1))),
+        (
+            "on-besinci",
+            format!("{}{title}\n", pad(META_HEAD_LINES - 1)),
+        ),
         ("on-altinci", format!("{}{title}\n", pad(META_HEAD_LINES))),
-        ("crlf", format!("{}{title}\r\n{cwd}\r\n", "{}\r\n".repeat(META_HEAD_LINES - 2))),
-        ("cr", format!("{}{title}\r{cwd}\r", "{}\r".repeat(META_HEAD_LINES - 2))),
-        ("crlf-disarida", format!("{}{title}\r\n", "{}\r\n".repeat(META_HEAD_LINES))),
-        ("bos-satirlar", format!("{}{title}\n", "\n".repeat(META_HEAD_LINES))),
-        ("ilk-kazanir", format!("{title}\n{{\"customTitle\":\"u\",\"cwd\":\"/c\"}}\n{{\"cwd\":\"/d\"}}\n")),
-        ("bos-baslik", format!("{{\"customTitle\":\"\"}}\n{title}\n{cwd}\n")),
+        (
+            "crlf",
+            format!(
+                "{}{title}\r\n{cwd}\r\n",
+                "{}\r\n".repeat(META_HEAD_LINES - 2)
+            ),
+        ),
+        (
+            "cr",
+            format!("{}{title}\r{cwd}\r", "{}\r".repeat(META_HEAD_LINES - 2)),
+        ),
+        (
+            "crlf-disarida",
+            format!("{}{title}\r\n", "{}\r\n".repeat(META_HEAD_LINES)),
+        ),
+        (
+            "bos-satirlar",
+            format!("{}{title}\n", "\n".repeat(META_HEAD_LINES)),
+        ),
+        (
+            "ilk-kazanir",
+            format!("{title}\n{{\"customTitle\":\"u\",\"cwd\":\"/c\"}}\n{{\"cwd\":\"/d\"}}\n"),
+        ),
+        (
+            "bos-baslik",
+            format!("{{\"customTitle\":\"\"}}\n{title}\n{cwd}\n"),
+        ),
         ("bos-cwd", format!("{{\"cwd\":\"\"}}\n{title}\n{cwd}\n")),
-        ("tipler", format!("{{\"customTitle\":5,\"cwd\":[1]}}\n{{\"customTitle\":null}}\n{title}\n")),
+        (
+            "tipler",
+            format!("{{\"customTitle\":5,\"cwd\":[1]}}\n{{\"customTitle\":null}}\n{title}\n"),
+        ),
         ("nesne-degil", format!("[1]\n5\n\"x\"\nnull\n{title}\n")),
         ("bozuk", format!("{{\n}}{title}\n  {cwd}  \n")),
         ("bom", format!("\u{feff}{title}\n{cwd}\n")),
-        ("unicode", "{\"customTitle\":\"ğüş 😀\",\"cwd\":\"/ç\"}\n".to_string()),
-        ("uzun-satir", format!("{{\"x\":\"{}\"}}\n{title}\n{cwd}\n", "y".repeat(200_000))),
-        ("uzun-sonrasi", format!("{}{{\"x\":\"{}\"}}\n{title}\n", pad(3), "y".repeat(70_000))),
+        (
+            "unicode",
+            "{\"customTitle\":\"ğüş 😀\",\"cwd\":\"/ç\"}\n".to_string(),
+        ),
+        (
+            "uzun-satir",
+            format!("{{\"x\":\"{}\"}}\n{title}\n{cwd}\n", "y".repeat(200_000)),
+        ),
+        (
+            "uzun-sonrasi",
+            format!("{}{{\"x\":\"{}\"}}\n{title}\n", pad(3), "y".repeat(70_000)),
+        ),
         ("satir-user", "{}\n{\"type\":\"user\"}\n".to_string()),
         ("satir-assistant", "{\"type\":\"assistant\"}".to_string()),
-        ("satir-system", "{\"type\":\"system\"}\n{\"type\":[\"user\"]}\n[\"user\"]\n{\"type\":\"User\"}\n".to_string()),
+        (
+            "satir-system",
+            "{\"type\":\"system\"}\n{\"type\":[\"user\"]}\n[\"user\"]\n{\"type\":\"User\"}\n"
+                .to_string(),
+        ),
         ("satir-gec", format!("{}{{\"type\":\"user\"}}\n", pad(500))),
     ]
     .into_iter()
     .map(|(id, s)| (id.to_string(), s.into_bytes()))
     .collect();
-    bodies.push(("utf8".into(), [b"{\"customTitle\":\"a".to_vec(), vec![0xff, 0xfe], b"\"}\n{\"type\":\"user\"}\n".to_vec()].concat()));
+    bodies.push((
+        "utf8".into(),
+        [
+            b"{\"customTitle\":\"a".to_vec(),
+            vec![0xff, 0xfe],
+            b"\"}\n{\"type\":\"user\"}\n".to_vec(),
+        ]
+        .concat(),
+    ));
     // rastgele bozulmuş satırlar
-    const T: &[&str] = &["{", "}", "\"", ",", ":", " ", "\n", "\r", "\\", "null", "1", "ğ", "\t", "customTitle", "user"];
+    const T: &[&str] = &[
+        "{",
+        "}",
+        "\"",
+        ",",
+        ":",
+        " ",
+        "\n",
+        "\r",
+        "\\",
+        "null",
+        "1",
+        "ğ",
+        "\t",
+        "customTitle",
+        "user",
+    ];
     let base = format!("{title}\n{cwd}\n{{\"type\":\"user\"}}\n");
     let mut r = Rng(11);
     for i in 0..150 {
@@ -273,11 +403,16 @@ fn meta_cases(b: &mut Build<'_>) {
                 0 => {
                     c.remove(at);
                 }
-                1 => c.splice(at..=at, T[r.below(T.len())].chars()).for_each(drop),
+                1 => c
+                    .splice(at..=at, T[r.below(T.len())].chars())
+                    .for_each(drop),
                 _ => c.splice(at..at, T[r.below(T.len())].chars()).for_each(drop),
             }
         }
-        bodies.push((format!("rastgele-{i}"), c.into_iter().collect::<String>().into_bytes()));
+        bodies.push((
+            format!("rastgele-{i}"),
+            c.into_iter().collect::<String>().into_bytes(),
+        ));
     }
     for (id, body) in bodies {
         let path = b.abs("work/m.jsonl");
@@ -289,7 +424,11 @@ fn meta_cases(b: &mut Build<'_>) {
     }
     let (missing, folder) = (b.abs("work/yok.jsonl"), b.abs("work/p1"));
     let c = B::new("meta-okunamaz")
-        .fx(Fx::File("work/kapali.jsonl".into(), b"{\"type\":\"user\"}\n".to_vec(), 0o000))
+        .fx(Fx::File(
+            "work/kapali.jsonl".into(),
+            b"{\"type\":\"user\"}\n".to_vec(),
+            0o000,
+        ))
         .q(json!({"f": "meta", "path": missing}))
         .q(json!({"f": "meta", "path": folder}))
         .q(json!({"f": "meta", "path": b.abs("work/kapali.jsonl")}))
@@ -316,18 +455,63 @@ fn session_file_cases(b: &mut Build<'_>) {
         ("liste".into(), "[1,2]".into()),
         ("bos".into(), String::new()),
         ("bom".into(), format!("\u{feff}{ok}")),
-        ("nan-pid".into(), r#"{"pid":NaN,"sessionId":"s","procStart":"777"}"#.into()),
+        (
+            "nan-pid".into(),
+            r#"{"pid":NaN,"sessionId":"s","procStart":"777"}"#.into(),
+        ),
         ("pid-yok".into(), without("pid")),
         ("sid-yok".into(), without("sessionId")),
         ("baslangic-yok".into(), without("procStart")),
     ];
-    for (i, v) in [json!(43), json!(0), json!(null), json!("42"), json!(" 4_2 "), json!("x"), json!(""), json!(42.9), json!(41.9), json!(true), json!([42]), json!([]), json!({"a": 1}), json!(-42), json!(1e30)].into_iter().enumerate() {
+    for (i, v) in [
+        json!(43),
+        json!(0),
+        json!(null),
+        json!("42"),
+        json!(" 4_2 "),
+        json!("x"),
+        json!(""),
+        json!(42.9),
+        json!(41.9),
+        json!(true),
+        json!([42]),
+        json!([]),
+        json!({"a": 1}),
+        json!(-42),
+        json!(1e30),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         bodies.push((format!("pid-{i}"), with("pid", v)));
     }
-    for (i, v) in [json!(""), json!("  "), json!(123), json!(null), json!(["a"]), json!("  kirpilan \n"), json!("ğ")].into_iter().enumerate() {
+    for (i, v) in [
+        json!(""),
+        json!("  "),
+        json!(123),
+        json!(null),
+        json!(["a"]),
+        json!("  kirpilan \n"),
+        json!("ğ"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         bodies.push((format!("sid-{i}"), with("sessionId", v)));
     }
-    for (i, v) in [json!(""), json!("1"), json!(" 777 \n"), json!(777), json!(777.0), json!(null), json!(true), json!("0777")].into_iter().enumerate() {
+    for (i, v) in [
+        json!(""),
+        json!("1"),
+        json!(" 777 \n"),
+        json!(777),
+        json!(777.0),
+        json!(null),
+        json!(true),
+        json!("0777"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
         bodies.push((format!("start-{i}"), with("procStart", v)));
     }
     let q = json!({"f": "session_sid", "pid": 42});
@@ -342,12 +526,20 @@ fn session_file_cases(b: &mut Build<'_>) {
         ("yok", None),
         ("parantezsiz", Some("42 claude S 1".to_string())),
         ("kisa", Some("42 (c) S 1 1".to_string())),
-        ("tam-yirmi", Some("42 (c) 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 777".to_string())),
-        ("on-dokuz", Some("42 (c) 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 777".to_string())),
+        (
+            "tam-yirmi",
+            Some("42 (c) 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 777".to_string()),
+        ),
+        (
+            "on-dokuz",
+            Some("42 (c) 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 777".to_string()),
+        ),
         ("baska", Some(proc_stat(42, "778"))),
     ];
     for (id, stat) in stats {
-        let mut c = B::new(&format!("stat-{id}")).raw("home/.claude/sessions/42.json", ok.to_string()).q(q.clone());
+        let mut c = B::new(&format!("stat-{id}"))
+            .raw("home/.claude/sessions/42.json", ok.to_string())
+            .q(q.clone());
         if let Some(s) = stat {
             c = c.facts(json!({"proc_stat": {"42": s}}));
         }
@@ -359,7 +551,9 @@ fn session_file_cases(b: &mut Build<'_>) {
         .q(json!({"f": "session_sid", "pid": null}))
         .facts(json!({"proc_stat": {"42": proc_stat(42, "777")}}));
     b.push(c);
-    let c = B::new("kayit-utf8").raw("home/.claude/sessions/42.json", vec![b'{', 0xff, b'}']).q(q);
+    let c = B::new("kayit-utf8")
+        .raw("home/.claude/sessions/42.json", vec![b'{', 0xff, b'}'])
+        .q(q);
     b.push(c);
 }
 
@@ -397,7 +591,11 @@ fn codex_cases(b: &mut Build<'_>) {
     let c = B::new("codex-temel")
         .at(named("1", U1), own.clone(), T0 + 10)
         .at(named("2", U2), own.clone(), T0 + 20)
-        .at(named("3", "99999999-2222-3333-4444-555555555555"), meta_line(json!("/baska"), json!({})), T0 + 30);
+        .at(
+            named("3", "99999999-2222-3333-4444-555555555555"),
+            meta_line(json!("/baska"), json!({})),
+            T0 + 30,
+        );
     let c = codex_queries(b, c, &[U2], &sids);
     b.push(c);
     // kimlik dosya adında yoksa payload'dan; kimliksiz uygun dosya taramayı bitirir
@@ -409,23 +607,51 @@ fn codex_cases(b: &mut Build<'_>) {
         ("id-bos-iki", json!({"id": null, "session_id": null})),
     ] {
         let c = B::new(&format!("codex-adsiz-{id}"))
-            .at(format!("{ROLL}/adsiz.jsonl"), meta_line(json!(cwd), extra), T0 + 20)
+            .at(
+                format!("{ROLL}/adsiz.jsonl"),
+                meta_line(json!(cwd), extra),
+                T0 + 20,
+            )
             .at(named("1", U1), own.clone(), T0 + 10);
         let c = codex_queries(b, c, &["pid-1"], &["adsiz"]);
         b.push(c);
     }
     // cwd biçimleri ve ilk satır sınırları
     let lines: Vec<(&str, String)> = vec![
-        ("cwd-artikli", meta_line(json!(format!("{cwd}/./y/..//")), json!({}))),
+        (
+            "cwd-artikli",
+            meta_line(json!(format!("{cwd}/./y/..//")), json!({})),
+        ),
         ("cwd-goreli", meta_line(json!("work/p1"), json!({}))),
         ("cwd-bos", meta_line(json!(""), json!({}))),
         ("cwd-null", meta_line(Value::Null, json!({}))),
         ("cwd-sayi", meta_line(json!(5), json!({}))),
-        ("cwd-yok", format!("{}\n", json!({"type": "session_meta", "payload": {"id": "x"}}))),
-        ("payload-bos", format!("{}\n", json!({"type": "session_meta", "payload": {}}))),
-        ("payload-null", format!("{}\n", json!({"type": "session_meta", "payload": null}))),
-        ("payload-yok", format!("{}\n", json!({"type": "session_meta"}))),
-        ("tur-baska", format!("{}\n", json!({"type": "response_item", "payload": {"cwd": cwd}}))),
+        (
+            "cwd-yok",
+            format!(
+                "{}\n",
+                json!({"type": "session_meta", "payload": {"id": "x"}})
+            ),
+        ),
+        (
+            "payload-bos",
+            format!("{}\n", json!({"type": "session_meta", "payload": {}})),
+        ),
+        (
+            "payload-null",
+            format!("{}\n", json!({"type": "session_meta", "payload": null})),
+        ),
+        (
+            "payload-yok",
+            format!("{}\n", json!({"type": "session_meta"})),
+        ),
+        (
+            "tur-baska",
+            format!(
+                "{}\n",
+                json!({"type": "response_item", "payload": {"cwd": cwd}})
+            ),
+        ),
         ("ikinci-satir", format!("{{}}\n{}", own)),
         ("bos-ilk", format!("\n{own}")),
         ("bozuk", "{bozuk\n".into()),
@@ -433,7 +659,10 @@ fn codex_cases(b: &mut Build<'_>) {
         ("sonsuz", own.trim_end().to_string()),
         ("crlf", own.replace('\n', "\r\n")),
         ("cr", format!("{}\r{{}}\r", own.trim_end())),
-        ("uzun", meta_line(json!(cwd), json!({"instructions": "y".repeat(300_000)}))),
+        (
+            "uzun",
+            meta_line(json!(cwd), json!({"instructions": "y".repeat(300_000)})),
+        ),
         ("bom", format!("\u{feff}{own}")),
     ];
     for (id, body) in lines {
@@ -457,14 +686,22 @@ fn codex_cases(b: &mut Build<'_>) {
     // eşit zaman ve çok sayıda dosya; sınır dışındaki uygun dosya görülmez
     let mut c = B::new("codex-esit");
     for n in ["c", "a", "b"] {
-        c = c.at(format!("{ROLL}/{n}.jsonl"), meta_line(json!(cwd), json!({"id": n})), T0);
+        c = c.at(
+            format!("{ROLL}/{n}.jsonl"),
+            meta_line(json!(cwd), json!({"id": n})),
+            T0,
+        );
     }
     let c = codex_queries(b, c, &["a"], &["a", "b"]);
     b.push(c);
     for extra in [MAX_ROLLOUT_SCAN - 1, MAX_ROLLOUT_SCAN] {
         let mut c = B::new(&format!("codex-sinir-{extra}")).at(named("eski", U1), own.clone(), T0);
         for i in 0..extra {
-            c = c.at(format!("{ROLL}/n{i}.jsonl"), meta_line(json!("/baska"), json!({})), T0 + 10);
+            c = c.at(
+                format!("{ROLL}/n{i}.jsonl"),
+                meta_line(json!("/baska"), json!({})),
+                T0 + 10,
+            );
         }
         let c = codex_queries(b, c, &[], &[]);
         b.push(c);
@@ -476,7 +713,16 @@ fn codex_cases(b: &mut Build<'_>) {
 fn agy_cases(b: &mut Build<'_>) {
     let cwd = b.cwd();
     let sids = r#"{"inst":"own","held":"held-1","bos":"","gone":"yok","mutlak":"/yok/x"}"#;
-    let names = ["", "inst", "held", "sayi", "bos", "gone", "mutlak", "unlearned"];
+    let names = [
+        "",
+        "inst",
+        "held",
+        "sayi",
+        "bos",
+        "gone",
+        "mutlak",
+        "unlearned",
+    ];
     let queries = |mut c: B| {
         for name in names {
             c = c.q(json!({"f": "resolve", "cli": "agy", "cwd": cwd, "name": name, "in_use": ["held-1", "tutulan"]}));
@@ -509,7 +755,12 @@ fn agy_cases(b: &mut Build<'_>) {
         let c = queries(c);
         b.push(c);
     }
-    for (id, doc) in [("tam", sids.to_string()), ("liste", "[1]".into()), ("bozuk", "{x".into()), ("bos", String::new())] {
+    for (id, doc) in [
+        ("tam", sids.to_string()),
+        ("liste", "[1]".into()),
+        ("bozuk", "{x".into()),
+        ("bos", String::new()),
+    ] {
         let c = B::new(&format!("agy-ogrenilen-{id}"))
             .raw("state/agy_sids.json", doc)
             .raw(AGY_CACHE, cache(json!("c1")))
@@ -523,9 +774,18 @@ fn agy_cases(b: &mut Build<'_>) {
     let messy = format!("{cwd}/./z/..");
     for (id, body) in [
         ("norm", cache(json!("c1"))),
-        ("ham", json!({ messy.clone(): "ham", cwd.clone(): "norm" }).to_string()),
-        ("ham-bos", json!({ messy.clone(): "", cwd.clone(): "norm" }).to_string()),
-        ("ham-sayi", json!({ messy.clone(): 3, cwd.clone(): "norm" }).to_string()),
+        (
+            "ham",
+            json!({ messy.clone(): "ham", cwd.clone(): "norm" }).to_string(),
+        ),
+        (
+            "ham-bos",
+            json!({ messy.clone(): "", cwd.clone(): "norm" }).to_string(),
+        ),
+        (
+            "ham-sayi",
+            json!({ messy.clone(): 3, cwd.clone(): "norm" }).to_string(),
+        ),
     ] {
         let c = B::new(&format!("agy-cwd-{id}"))
             .raw(AGY_CACHE, body)
@@ -533,7 +793,19 @@ fn agy_cases(b: &mut Build<'_>) {
         b.push(c);
     }
     // konuşma dizini taraması ve tek yeni kimlik
-    let files = ["a.db", "a.db-wal", "a.db-shm", "b.db-journal", "c.dbx", "d.db.db", "e.sqlite", ".gizli.db", ".db", "ğ.db", "f.db"];
+    let files = [
+        "a.db",
+        "a.db-wal",
+        "a.db-shm",
+        "b.db-journal",
+        "c.dbx",
+        "d.db.db",
+        "e.sqlite",
+        ".gizli.db",
+        ".db",
+        "ğ.db",
+        "f.db",
+    ];
     let mut c = B::new("agy-konusmalar").fx(Fx::Dir(format!("{AGY_DIR}/klasor.db"), 0o755));
     for f in files {
         c = c.raw(format!("{AGY_DIR}/{f}"), "");
@@ -561,7 +833,8 @@ fn agy_cases(b: &mut Build<'_>) {
     .into_iter()
     .enumerate()
     {
-        let c = B::new(&format!("agy-sahipli-{i}")).q(json!({"f": "claimed", "known": known, "sid": sid, "name": name}));
+        let c = B::new(&format!("agy-sahipli-{i}"))
+            .q(json!({"f": "claimed", "known": known, "sid": sid, "name": name}));
         b.push(c);
     }
     // yazım dizileri: aynı değer, yeni ad, güncelleme, nesne olmayan/bozuk belge
@@ -576,7 +849,15 @@ fn agy_cases(b: &mut Build<'_>) {
         if let Some(d) = doc {
             c = c.raw("state/agy_sids.json", d);
         }
-        for (name, sid) in [("a", "2"), ("a", "2"), ("yeni", "n"), ("a", "3"), ("sayi", "7"), ("ğ", "ü 😀"), ("", "")] {
+        for (name, sid) in [
+            ("a", "2"),
+            ("a", "2"),
+            ("yeni", "n"),
+            ("a", "3"),
+            ("sayi", "7"),
+            ("ğ", "ü 😀"),
+            ("", ""),
+        ] {
             c = c.q(json!({"f": "remember", "name": name, "sid": sid}));
         }
         b.push(c);
@@ -586,7 +867,10 @@ fn agy_cases(b: &mut Build<'_>) {
 fn sessions_db(rows: &[(Sql, Sql)]) -> Vec<u8> {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("e.db");
-    rusqlite::Connection::open(&path).unwrap().execute_batch("CREATE TABLE x (a)").unwrap();
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE x (a)")
+        .unwrap();
     with_sessions(&fs::read(path).unwrap(), rows)
 }
 
@@ -600,12 +884,38 @@ fn copilot_cases(b: &mut Build<'_>) {
     let messy = format!("{cwd}//./k/..");
     // satır sırası = `updated_at` artan
     let dbs: Vec<(&str, Vec<(Sql, Sql)>)> = vec![
-        ("temel", vec![(t("eski"), t(&cwd)), (t("yeni"), t(&cwd)), (t("baska"), t("/baska"))]),
+        (
+            "temel",
+            vec![
+                (t("eski"), t(&cwd)),
+                (t("yeni"), t(&cwd)),
+                (t("baska"), t("/baska")),
+            ],
+        ),
         ("artikli", vec![(t("a"), t(&messy)), (t("g"), t("work/p1"))]),
-        ("bos-cwd", vec![(t("eski"), t(&cwd)), (t("n"), Sql::Null), (t("b"), t("")), (t("s"), Sql::Integer(0))]),
-        ("cwd-tipleri", vec![(t("eski"), t(&cwd)), (t("i"), Sql::Integer(5)), (t("r"), Sql::Real(1.5)), (t("bl"), Sql::Blob(b"x".to_vec()))]),
+        (
+            "bos-cwd",
+            vec![
+                (t("eski"), t(&cwd)),
+                (t("n"), Sql::Null),
+                (t("b"), t("")),
+                (t("s"), Sql::Integer(0)),
+            ],
+        ),
+        (
+            "cwd-tipleri",
+            vec![
+                (t("eski"), t(&cwd)),
+                (t("i"), Sql::Integer(5)),
+                (t("r"), Sql::Real(1.5)),
+                (t("bl"), Sql::Blob(b"x".to_vec())),
+            ],
+        ),
         ("bos-kimlik", vec![(t("eski"), t(&cwd)), (t(""), t(&cwd))]),
-        ("null-kimlik", vec![(t("eski"), t(&cwd)), (Sql::Null, t(&cwd))]),
+        (
+            "null-kimlik",
+            vec![(t("eski"), t(&cwd)), (Sql::Null, t(&cwd))],
+        ),
         ("eslesme-yok", vec![(t("a"), t("/baska"))]),
         ("tablo-bos", vec![]),
     ];
@@ -621,8 +931,14 @@ fn copilot_cases(b: &mut Build<'_>) {
         let c = queries(c, &[]);
         b.push(c);
     }
-    for (id, body) in [("bozuk", b"not a database at all, definitely not".to_vec()), ("bos", Vec::new())] {
-        let c = queries(B::new(&format!("copilot-db-{id}")).raw(COPILOT_DB, body), &[]);
+    for (id, body) in [
+        ("bozuk", b"not a database at all, definitely not".to_vec()),
+        ("bos", Vec::new()),
+    ] {
+        let c = queries(
+            B::new(&format!("copilot-db-{id}")).raw(COPILOT_DB, body),
+            &[],
+        );
         b.push(c);
     }
     let c = queries(B::new("copilot-db-yok"), &[]);
@@ -642,40 +958,69 @@ fn dispatch_cases(b: &mut Build<'_>) {
     }
     c = c.q(json!({"f": "constants"}));
     b.push(c);
-    let live = json!([["a", "s1"], ["b", null], ["", "s3"], ["c", ""], ["ben", "s5"], ["ben20261108", "s6"], ["d", "s1"]]);
+    let live = json!([
+        ["a", "s1"],
+        ["b", null],
+        ["", "s3"],
+        ["c", ""],
+        ["ben", "s5"],
+        ["ben20261108", "s6"],
+        ["d", "s1"]
+    ]);
     let mut c = B::new("tutulan");
     for name in ["ben", "", "yok", "a"] {
         c = c.q(json!({"f": "held", "name": name, "live": live}));
     }
-    c = c.q(json!({"f": "held", "name": "ben", "live": []})).q(json!({"f": "held", "name": "ben", "live": null}));
+    c = c
+        .q(json!({"f": "held", "name": "ben", "live": []}))
+        .q(json!({"f": "held", "name": "ben", "live": null}));
     b.push(c);
 }
 
 /// Python'un istisna attığı ya da başka tip döndürdüğü girdiler: Rust yalnız o adayı atlar.
 fn divergences(b: &mut Build<'_>) {
     let (cwd, dir) = (b.cwd(), b.dir());
-    let resolve = |cli: &str, name: &str| json!({"f": "resolve", "cli": cli, "cwd": cwd, "name": name});
+    let resolve =
+        |cli: &str, name: &str| json!({"f": "resolve", "cli": cli, "cwd": cwd, "name": name});
     let own = meta_line(json!(cwd), json!({}));
     let good = format!("{ROLL}/rollout-1-{U1}.jsonl");
     let newer = format!("{ROLL}/rollout-2-{U2}.jsonl");
     for (id, body) in [
         ("codex-utf8", vec![0xff, b'\n']),
         ("codex-nesne-degil", b"[1]\n".to_vec()),
-        ("codex-payload-liste", b"{\"type\":\"session_meta\",\"payload\":[1]}\n".to_vec()),
-        ("codex-utf8-sonraki-satir", [own.replace(U1, U2).into_bytes(), vec![0xff, b'\n']].concat()),
+        (
+            "codex-payload-liste",
+            b"{\"type\":\"session_meta\",\"payload\":[1]}\n".to_vec(),
+        ),
+        (
+            "codex-utf8-sonraki-satir",
+            [own.replace(U1, U2).into_bytes(), vec![0xff, b'\n']].concat(),
+        ),
     ] {
         let c = B::new(&format!("sapma-{id}"))
             .at(good.clone(), own.clone(), T0)
             .at(newer.clone(), body, T0 + 5)
             .q(resolve("codex", ""));
-        let want = if id == "codex-utf8-sonraki-satir" { U2 } else { U1 };
+        let want = if id == "codex-utf8-sonraki-satir" {
+            U2
+        } else {
+            U1
+        };
         b.diverges(c, "ilk okuma parçasında bozuk UTF-8 / nesne olmayan satır ya da payload: Python istisna, Rust yalnız o satırı değerlendirir", json!([want]));
     }
     for (id, v) in [("sayi", json!(7)), ("liste", json!(["x"]))] {
         let c = B::new(&format!("sapma-codex-kimlik-{id}"))
-            .at(format!("{ROLL}/adsiz.jsonl"), meta_line(json!(cwd), json!({"id": v})), T0)
+            .at(
+                format!("{ROLL}/adsiz.jsonl"),
+                meta_line(json!(cwd), json!({"id": v})),
+                T0,
+            )
             .q(resolve("codex", ""));
-        b.diverges(c, "metin olmayan kimlik: Python sayıyı döndürür / listede istisna, Rust 'yok'", json!([null]));
+        b.diverges(
+            c,
+            "metin olmayan kimlik: Python sayıyı döndürür / listede istisna, Rust 'yok'",
+            json!([null]),
+        );
     }
     // `[`: Python sid'i glob deseni sayar
     let c = B::new("sapma-codex-joker")
@@ -683,33 +1028,82 @@ fn divergences(b: &mut Build<'_>) {
         .at(newer.clone(), meta_line(json!("/baska"), json!({})), T0 + 5)
         .q(json!({"f": "rollout", "cwd": cwd, "sid": "[0-9]"}));
     let want = b.abs(&good);
-    b.diverges(c, "joker taşıyan sid: Python glob deseni sayar (başka dosya), Rust ad eşleşmesi yapmaz", json!([want]));
-    let c = B::new("sapma-agy-onbellek-utf8").raw(AGY_CACHE, vec![b'{', 0xff, b'}']).q(resolve("agy", ""));
-    b.diverges(c, "UTF-8 olmayan cwd önbelleği: Python istisna, Rust 'yok'", json!([null]));
+    b.diverges(
+        c,
+        "joker taşıyan sid: Python glob deseni sayar (başka dosya), Rust ad eşleşmesi yapmaz",
+        json!([want]),
+    );
+    let c = B::new("sapma-agy-onbellek-utf8")
+        .raw(AGY_CACHE, vec![b'{', 0xff, b'}'])
+        .q(resolve("agy", ""));
+    b.diverges(
+        c,
+        "UTF-8 olmayan cwd önbelleği: Python istisna, Rust 'yok'",
+        json!([null]),
+    );
     let c = B::new("sapma-agy-kimlik-sayi")
         .raw("state/agy_sids.json", r#"{"inst":7}"#)
         .raw(AGY_CACHE, json!({ cwd.clone(): "c1" }).to_string())
         .q(resolve("agy", "inst"));
-    b.diverges(c, "metin olmayan öğrenilen kimlik: Python döndürür, Rust cwd önbelleğine düşer", json!(["c1"]));
+    b.diverges(
+        c,
+        "metin olmayan öğrenilen kimlik: Python döndürür, Rust cwd önbelleğine düşer",
+        json!(["c1"]),
+    );
     let c = B::new("sapma-claude-dizin-dosya")
         .raw(dir.clone(), "dosya")
         .q(resolve("claude", ""))
         .q(json!({"f": "latest", "cwd": cwd}));
-    b.diverges(c, "proje dizini yerinde dosya: Python `NotADirectoryError`, Rust 'yok'", json!([null, null]));
-    let c = B::new("sapma-claude-uzun-sid").at(format!("{dir}/z.jsonl"), "", T0).q(json!({"f": "jsonl", "cwd": cwd, "sid": "s".repeat(300)}));
-    b.diverges(c, "dosya adı sınırını aşan sid: Python `is_file` `OSError`, Rust 'yok' (TBD#365: tahmin yok)", json!([null]));
+    b.diverges(
+        c,
+        "proje dizini yerinde dosya: Python `NotADirectoryError`, Rust 'yok'",
+        json!([null, null]),
+    );
+    let c = B::new("sapma-claude-uzun-sid")
+        .at(format!("{dir}/z.jsonl"), "", T0)
+        .q(json!({"f": "jsonl", "cwd": cwd, "sid": "s".repeat(300)}));
+    b.diverges(
+        c,
+        "dosya adı sınırını aşan sid: Python `is_file` `OSError`, Rust 'yok' (TBD#365: tahmin yok)",
+        json!([null]),
+    );
     let c = B::new("sapma-kayit-sonsuz-pid")
-        .raw("home/.claude/sessions/42.json", r#"{"pid":Infinity,"sessionId":"s","procStart":"777"}"#)
+        .raw(
+            "home/.claude/sessions/42.json",
+            r#"{"pid":Infinity,"sessionId":"s","procStart":"777"}"#,
+        )
         .q(json!({"f": "session_sid", "pid": 42}));
-    b.diverges(c, "sonsuz pid: Python `OverflowError` yakalamaz, Rust 'yok'", json!([null]));
+    b.diverges(
+        c,
+        "sonsuz pid: Python `OverflowError` yakalamaz, Rust 'yok'",
+        json!([null]),
+    );
     let c = B::new("sapma-meta-derin")
-        .raw("work/m.jsonl", format!("{{\"customTitle\":\"t\",\"d\":{}{}}}\n", "[".repeat(600), "]".repeat(600)))
+        .raw(
+            "work/m.jsonl",
+            format!(
+                "{{\"customTitle\":\"t\",\"d\":{}{}}}\n",
+                "[".repeat(600),
+                "]".repeat(600)
+            ),
+        )
         .q(json!({"f": "meta", "path": b.abs("work/m.jsonl")}));
-    b.diverges(c, "512'den derin satır: Python okur, Rust atlar", json!([[null, null]]));
+    b.diverges(
+        c,
+        "512'den derin satır: Python okur, Rust atlar",
+        json!([[null, null]]),
+    );
     let c = B::new("sapma-copilot-kimlik-sayi")
-        .raw(COPILOT_DB, sessions_db(&[(Sql::Integer(7), Sql::Text(cwd.clone()))]))
+        .raw(
+            COPILOT_DB,
+            sessions_db(&[(Sql::Integer(7), Sql::Text(cwd.clone()))]),
+        )
         .q(resolve("copilot", ""));
-    b.diverges(c, "metin olmayan oturum kimliği: Python sayıyı döndürür, Rust 'yok'", json!([null]));
+    b.diverges(
+        c,
+        "metin olmayan oturum kimliği: Python sayıyı döndürür, Rust 'yok'",
+        json!([null]),
+    );
 }
 
 // ------------------------------------------------------------------------------------------------------------- koşum
@@ -734,11 +1128,21 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
     let settings = e.settings();
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let clock = cops_providers::bg_work::Clock { now: 0.0, utc_offset_secs: 0 };
-    let live = Live { settings: &settings, paths: &paths, probe: &probe, clock };
+    let clock = cops_providers::bg_work::Clock {
+        now: 0.0,
+        utc_offset_secs: 0,
+    };
+    let live = Live {
+        settings: &settings,
+        paths: &paths,
+        probe: &probe,
+        clock,
+    };
     let cache = MetaCache::default();
     let doc = format!("{}/agy_sids.json", e.state);
-    let store = MemStore(RefCell::new(fs::read_to_string(&doc).ok().and_then(|t| Py::parse(&t))));
+    let store = MemStore(RefCell::new(
+        fs::read_to_string(&doc).ok().and_then(|t| Py::parse(&t)),
+    ));
     let queries = c.args["queries"].as_array().unwrap();
     let set = |v: &Value| -> BTreeSet<String> { strs(Some(v)).into_iter().collect() };
     let out: Vec<Value> = queries
@@ -768,14 +1172,21 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
                 "held" => {
                     let rows = q["live"].as_array().map(|a| {
                         a.iter()
-                            .map(|r| LiveSession { name: r[0].as_str().unwrap(), sid: r[1].as_str() })
+                            .map(|r| LiveSession {
+                                name: r[0].as_str().unwrap(),
+                                sid: r[1].as_str(),
+                            })
                             .collect::<Vec<_>>()
                     });
                     json!(ids_held_by_others(name, rows.as_deref()))
                 }
                 "claimed" => {
                     let known = Py::parse(&q["known"].to_string()).unwrap();
-                    json!(agy_resume::sid_claimed_by_other(&known, s("sid").unwrap(), name))
+                    json!(agy_resume::sid_claimed_by_other(
+                        &known,
+                        s("sid").unwrap(),
+                        name
+                    ))
                 }
                 "remember" => {
                     agy_resume::remember_agy_sid(&store, name, s("sid").unwrap(), false).unwrap();
@@ -784,10 +1195,20 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
                         _ => json!({}),
                     }
                 }
-                "constants" => json!([META_HEAD_LINES, RESUME_SCAN_LIMIT, STUB_MAX_BYTES, META_CACHE_MAX,
-                    MAX_ROLLOUT_SCAN, copilot::RESUME_SCAN_LIMIT,
-                    [paths.agy_conversations_cache(), paths.agy_conversations_dir(), paths.claude_sessions_dir(),
-                     paths.codex_sessions_dir()]]),
+                "constants" => json!([
+                    META_HEAD_LINES,
+                    RESUME_SCAN_LIMIT,
+                    STUB_MAX_BYTES,
+                    META_CACHE_MAX,
+                    MAX_ROLLOUT_SCAN,
+                    copilot::RESUME_SCAN_LIMIT,
+                    [
+                        paths.agy_conversations_cache(),
+                        paths.agy_conversations_dir(),
+                        paths.claude_sessions_dir(),
+                        paths.codex_sessions_dir()
+                    ]
+                ]),
                 other => panic!("bilinmeyen sorgu: {other}"),
             }
         })
@@ -801,7 +1222,12 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
 pub fn run() {
     let mut r = Runner::new();
     let (cases, times, expect) = {
-        let mut b = Build { e: &r.e, cases: Vec::new(), times: HashMap::new(), expect: HashMap::new() };
+        let mut b = Build {
+            e: &r.e,
+            cases: Vec::new(),
+            times: HashMap::new(),
+            expect: HashMap::new(),
+        };
         claude_cases(&mut b);
         meta_cases(&mut b);
         session_file_cases(&mut b);
@@ -818,7 +1244,10 @@ pub fn run() {
         |e, c| {
             for (rel, secs, ns) in times.get(&c.id).into_iter().flatten() {
                 let at = std::time::UNIX_EPOCH + std::time::Duration::new(*secs as u64, *ns);
-                let file = fs::File::options().append(true).open(format!("{}/{rel}", e.root)).unwrap();
+                let file = fs::File::options()
+                    .append(true)
+                    .open(format!("{}/{rel}", e.root))
+                    .unwrap();
                 file.set_modified(at).unwrap();
             }
         },

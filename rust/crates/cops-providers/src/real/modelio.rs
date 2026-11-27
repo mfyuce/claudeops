@@ -20,7 +20,12 @@ pub struct RealModelIo {
 impl RealModelIo {
     pub fn new(paths: &Paths, env: Env, docs: Arc<dyn DocStore>) -> RealModelIo {
         let http = HttpClient::new(env.clone());
-        RealModelIo { env, docs, claude_models_json: paths.claude_models_json(), http }
+        RealModelIo {
+            env,
+            docs,
+            claude_models_json: paths.claude_models_json(),
+            http,
+        }
     }
 
     pub fn with_http(mut self, http: HttpClient) -> RealModelIo {
@@ -31,7 +36,10 @@ impl RealModelIo {
 
 impl ModelIo for RealModelIo {
     fn monotonic_secs(&self) -> f64 {
-        let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
         // SAFETY: `ts` geçerli ve bu çağrıya özel.
         if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
             return 0.0;
@@ -39,10 +47,14 @@ impl ModelIo for RealModelIo {
         ts.tv_sec as f64 + ts.tv_nsec as f64 / 1e9
     }
     fn wall_secs(&self) -> f64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_secs_f64())
     }
     fn claude_models_doc(&self) -> Option<Value> {
-        self.docs.read("claude_models", &self.claude_models_json).map(|d| d.to_value())
+        self.docs
+            .read("claude_models", &self.claude_models_json)
+            .map(|d| d.to_value())
     }
     fn read_file(&self, path: &str, max: u64) -> Option<Vec<u8>> {
         fsio::read_bytes(path, max)

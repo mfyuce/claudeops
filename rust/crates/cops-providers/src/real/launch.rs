@@ -29,7 +29,11 @@ impl GnomeTerminal {
 
 /// `Popen`in `ValueError`ları (CPython `_posixsubprocess` öncesi denetimler).
 fn popen_value_error(argv: &[String], env: &[(String, String)]) -> Option<&'static str> {
-    if argv.iter().any(|a| a.contains('\0')) || env.iter().any(|(k, v)| k.contains('\0') || v.contains('\0')) {
+    if argv.iter().any(|a| a.contains('\0'))
+        || env
+            .iter()
+            .any(|(k, v)| k.contains('\0') || v.contains('\0'))
+    {
         return Some("embedded null byte");
     }
     if env.iter().any(|(k, _)| k.contains('=')) {
@@ -58,7 +62,9 @@ impl Terminal for GnomeTerminal {
         if let Some(why) = popen_value_error(argv, env) {
             return Err(LaunchError::Value(why.into()));
         }
-        let Some((program, args)) = argv.split_first() else { return Ok(false) };
+        let Some((program, args)) = argv.split_first() else {
+            return Ok(false);
+        };
         let spawned = Command::new(program)
             .args(args)
             .env_clear()
@@ -69,7 +75,9 @@ impl Terminal for GnomeTerminal {
         let Ok(child) = spawned else { return Ok(false) };
         let slot = Arc::new(Mutex::new(Some(child)));
         let theirs = Arc::clone(&slot);
-        let started = std::thread::Builder::new().name("cops-gt-reap".into()).spawn(move || reap(&theirs));
+        let started = std::thread::Builder::new()
+            .name("cops-gt-reap".into())
+            .spawn(move || reap(&theirs));
         if started.is_err() {
             // Python `RuntimeError` yükselir; çocuk yine de toplanır (istemci hemen çıkar).
             reap(&slot);

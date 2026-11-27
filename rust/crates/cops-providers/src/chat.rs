@@ -41,7 +41,10 @@ pub struct ChatTurn {
 
 impl ChatTurn {
     fn new(role: &str, text: String) -> ChatTurn {
-        ChatTurn { role: Py::Str(role.into()), text: Py::Str(text) }
+        ChatTurn {
+            role: Py::Str(role.into()),
+            text: Py::Str(text),
+        }
     }
 }
 
@@ -54,7 +57,10 @@ pub struct Exchange {
 
 impl Exchange {
     fn new(user: String, assistant: String) -> Exchange {
-        Exchange { user: Py::Str(user), assistant: Py::Str(assistant) }
+        Exchange {
+            user: Py::Str(user),
+            assistant: Py::Str(assistant),
+        }
     }
     fn empty() -> Exchange {
         Exchange::new(String::new(), String::new())
@@ -138,12 +144,18 @@ fn claude_content(row: &Py) -> Option<&Py> {
 
 fn claude_last(data: &[u8]) -> Exchange {
     let mut rows = raw_lines(data).rev().filter_map(object_line);
-    let Some(answer) = rows.find(|r| kind(r) == Some("assistant") && !flag(r, "isSidechain")) else {
+    let Some(answer) = rows.find(|r| kind(r) == Some("assistant") && !flag(r, "isSidechain"))
+    else {
         return Exchange::empty();
     };
     let user = rows
         // Sıkıştırma özeti kullanıcının mesajı değildir.
-        .filter(|r| kind(r) == Some("user") && !["isSidechain", "isMeta", "isCompactSummary"].iter().any(|k| flag(r, k)))
+        .filter(|r| {
+            kind(r) == Some("user")
+                && !["isSidechain", "isMeta", "isCompactSummary"]
+                    .iter()
+                    .any(|k| flag(r, k))
+        })
         .find(|r| claude_real_user(claude_content(r)))
         .map(|r| claude_text(claude_content(&r)))
         .unwrap_or_default();
@@ -152,7 +164,9 @@ fn claude_last(data: &[u8]) -> Exchange {
 
 /// `compactMetadata` alanının `str()` hali (alan yoksa "").
 fn meta_field(meta: Option<&Py>, key: &str) -> String {
-    meta.and_then(|m| m.get(key)).map(Py::py_str).unwrap_or_default()
+    meta.and_then(|m| m.get(key))
+        .map(Py::py_str)
+        .unwrap_or_default()
 }
 
 fn claude_history(data: &[u8]) -> Vec<ChatTurn> {
@@ -160,10 +174,16 @@ fn claude_history(data: &[u8]) -> Vec<ChatTurn> {
     for row in raw_lines(data).filter_map(object_line) {
         let t = kind(&row);
         let sidechain = flag(&row, "isSidechain");
-        let role = if t == Some("system") && row.get("subtype").and_then(Py::as_str) == Some("compact_boundary") {
+        let role = if t == Some("system")
+            && row.get("subtype").and_then(Py::as_str) == Some("compact_boundary")
+        {
             // Sıkıştırma öncesi mesajlar dosyada durur: sınır yalnız işaret ("tetikleyen, öncesi token").
             let meta = row.get("compactMetadata");
-            let text = format!("{}, {}", meta_field(meta, "trigger"), meta_field(meta, "preTokens"));
+            let text = format!(
+                "{}, {}",
+                meta_field(meta, "trigger"),
+                meta_field(meta, "preTokens")
+            );
             out.push(ChatTurn::new("boundary", text));
             continue;
         } else if t == Some("user") && flag(&row, "isCompactSummary") && !sidechain {
@@ -221,7 +241,9 @@ fn codex_last(data: &[u8]) -> Exchange {
         Some(("assistant", content)) => Some(codex_text(content)),
         _ => None,
     });
-    let Some(answer) = answer else { return Exchange::empty() };
+    let Some(answer) = answer else {
+        return Exchange::empty();
+    };
     let user = rows
         .find_map(|r| match codex_message(&r) {
             Some(("user", content)) => Some(codex_text(content)).filter(|t| codex_real_user(t)),
@@ -234,7 +256,9 @@ fn codex_last(data: &[u8]) -> Exchange {
 fn codex_history(data: &[u8]) -> Vec<ChatTurn> {
     let mut out = Vec::new();
     for row in raw_lines(data).filter_map(object_line) {
-        let Some((role, content)) = codex_message(&row) else { continue };
+        let Some((role, content)) = codex_message(&row) else {
+            continue;
+        };
         let text = codex_text(content);
         let keep = match role {
             "assistant" => !text.is_empty(),
@@ -276,7 +300,9 @@ fn bytes_field(data: &[u8], field: u64) -> Option<&[u8]> {
     let mut found = None;
     let mut at = 0usize;
     while at < data.len() {
-        let Some((tag, big_tag)) = read_varint(data, &mut at) else { break };
+        let Some((tag, big_tag)) = read_varint(data, &mut at) else {
+            break;
+        };
         match tag & 0x7 {
             0 => {
                 if read_varint(data, &mut at).is_none() {
@@ -286,8 +312,14 @@ fn bytes_field(data: &[u8], field: u64) -> Option<&[u8]> {
             1 => at = at.saturating_add(8),
             5 => at = at.saturating_add(4),
             2 => {
-                let Some((len, big_len)) = read_varint(data, &mut at) else { break };
-                let len = if big_len { usize::MAX } else { usize::try_from(len).unwrap_or(usize::MAX) };
+                let Some((len, big_len)) = read_varint(data, &mut at) else {
+                    break;
+                };
+                let len = if big_len {
+                    usize::MAX
+                } else {
+                    usize::try_from(len).unwrap_or(usize::MAX)
+                };
                 let start = at.min(data.len());
                 at = at.saturating_add(len);
                 if !big_tag && tag >> 3 == field {
@@ -328,10 +360,15 @@ fn cell_is(cell: &SqlCell, n: i64) -> bool {
 
 /// Satır geçerli bir adımsa `(tür, yük)`: yük BLOB olmalı, kontrol noktası `<summary>` taşımalı.
 fn agy_step(row: &[SqlCell]) -> Option<(i64, &[u8])> {
-    let [step_type, SqlCell::Blob(payload)] = row else { return None };
-    let t = [AGY_STEP_USER, AGY_STEP_ASSISTANT, AGY_STEP_CHECKPOINT].into_iter().find(|n| cell_is(step_type, *n))?;
+    let [step_type, SqlCell::Blob(payload)] = row else {
+        return None;
+    };
+    let t = [AGY_STEP_USER, AGY_STEP_ASSISTANT, AGY_STEP_CHECKPOINT]
+        .into_iter()
+        .find(|n| cell_is(step_type, *n))?;
     let marker = b"<summary>";
-    (t != AGY_STEP_CHECKPOINT || payload.windows(marker.len()).any(|w| w == marker)).then_some((t, payload.as_slice()))
+    (t != AGY_STEP_CHECKPOINT || payload.windows(marker.len()).any(|w| w == marker))
+        .then_some((t, payload.as_slice()))
 }
 
 // ---------------------------------------------------------------------------------------------------------- copilot
@@ -352,7 +389,10 @@ fn cell_or_empty(cell: &SqlCell) -> Py {
 
 /// `value or ""`.
 fn value_or_empty(value: Option<&Py>) -> Py {
-    value.filter(|v| v.truthy()).cloned().unwrap_or_else(|| Py::Str(String::new()))
+    value
+        .filter(|v| v.truthy())
+        .cloned()
+        .unwrap_or_else(|| Py::Str(String::new()))
 }
 
 fn ucli_last(turns: &[ChatTurn]) -> Exchange {
@@ -365,7 +405,10 @@ fn ucli_last(turns: &[ChatTurn]) -> Exchange {
         .take_while(|t| !is(t, "user"))
         .find(|t| is(t, "assistant"))
         .map(|t| &t.text);
-    Exchange { user: value_or_empty(user), assistant: value_or_empty(assistant) }
+    Exchange {
+        user: value_or_empty(user),
+        assistant: value_or_empty(assistant),
+    }
 }
 
 // ----------------------------------------------------------------------------------------------------------- okuyucu
@@ -374,14 +417,20 @@ impl Live<'_> {
     /// Son kullanıcı mesajı + son asistan yanıtı; None = desteklenmiyor (shell) ya da ucli geçmişi okunamıyor.
     pub fn last_exchange(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Exchange> {
         match cli {
-            Cli::Claude => Some(claude_last(&self.transcript_bytes(self.jsonl_path_for(cwd, sid)))),
-            Cli::Codex => Some(codex_last(&self.transcript_bytes(self.codex_rollout_path(cwd, sid)))),
+            Cli::Claude => Some(claude_last(
+                &self.transcript_bytes(self.jsonl_path_for(cwd, sid)),
+            )),
+            Cli::Codex => Some(codex_last(
+                &self.transcript_bytes(self.codex_rollout_path(cwd, sid)),
+            )),
             Cli::Agy => Some(self.agy_last(cwd, sid)),
             Cli::Copilot => Some(match self.copilot_turns(cwd, sid).pop() {
                 Some((user, assistant)) => Exchange { user, assistant },
                 None => Exchange::empty(),
             }),
-            Cli::Ucli => self.full_history(cli, cwd, sid).map(|turns| ucli_last(&turns)),
+            Cli::Ucli => self
+                .full_history(cli, cwd, sid)
+                .map(|turns| ucli_last(&turns)),
             Cli::Shell => None,
         }
     }
@@ -389,15 +438,22 @@ impl Live<'_> {
     /// Bütün konuşma, eskiden yeniye; None = desteklenmiyor (shell), ucli'de kimlik yok ya da dosya okunamıyor.
     pub fn full_history(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Vec<ChatTurn>> {
         match cli {
-            Cli::Claude => Some(claude_history(&self.transcript_bytes(self.jsonl_path_for(cwd, sid)))),
-            Cli::Codex => Some(codex_history(&self.transcript_bytes(self.codex_rollout_path(cwd, sid)))),
+            Cli::Claude => Some(claude_history(
+                &self.transcript_bytes(self.jsonl_path_for(cwd, sid)),
+            )),
+            Cli::Codex => Some(codex_history(
+                &self.transcript_bytes(self.codex_rollout_path(cwd, sid)),
+            )),
             Cli::Agy => Some(self.agy_history(cwd, sid)),
             Cli::Copilot => {
                 let mut out = Vec::new();
                 for (user, assistant) in self.copilot_turns(cwd, sid) {
                     for (role, text) in [("user", user), ("assistant", assistant)] {
                         if text.truthy() {
-                            out.push(ChatTurn { role: Py::Str(role.into()), text });
+                            out.push(ChatTurn {
+                                role: Py::Str(role.into()),
+                                text,
+                            });
                         }
                     }
                 }
@@ -471,22 +527,31 @@ impl Live<'_> {
             let Some(turn) = line.and_then(Py::parse) else {
                 return pieces.peek().is_none().then_some((out, true));
             };
-            let Some(role) = turn.get("role") else { continue };
-            out.push(ChatTurn { role: role.clone(), text: turn.get("content")?.clone() });
+            let Some(role) = turn.get("role") else {
+                continue;
+            };
+            out.push(ChatTurn {
+                role: role.clone(),
+                text: turn.get("content")?.clone(),
+            });
         }
         Some((out, false))
     }
 
     /// Transkriptin tamamı; yol yoksa ya da okunamazsa boş.
     fn transcript_bytes(&self, path: Option<String>) -> Vec<u8> {
-        path.filter(|p| !p.is_empty()).and_then(|p| self.probe.read_bytes(&p, u64::MAX)).unwrap_or_default()
+        path.filter(|p| !p.is_empty())
+            .and_then(|p| self.probe.read_bytes(&p, u64::MAX))
+            .unwrap_or_default()
     }
 
     /// Konuşma veritabanı (dosya varsa).
     fn agy_db(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
         let id = match sid.filter(|s| !s.is_empty()) {
             Some(s) => s.to_string(),
-            None => self.agy_resume_id(cwd, &BTreeSet::new(), "").filter(|s| !s.is_empty())?,
+            None => self
+                .agy_resume_id(cwd, &BTreeSet::new(), "")
+                .filter(|s| !s.is_empty())?,
         };
         let path = join_path(&self.paths.agy_conversations_dir(), &format!("{id}.db"));
         self.probe.is_file(&path).then_some(path)
@@ -495,15 +560,18 @@ impl Live<'_> {
     /// Adımları gezer; `false` dönen ziyaretçi okumayı keser. Dönüş: SQLite hatası çıkmadı.
     fn agy_steps(&self, db: &str, sql: &str, visit: &mut dyn FnMut(i64, &[u8]) -> bool) -> bool {
         let types = [AGY_STEP_USER, AGY_STEP_ASSISTANT, AGY_STEP_CHECKPOINT].map(SqlCell::Int);
-        self.probe.sqlite_rows(db, sql, &types, &mut |row| match agy_step(&row) {
-            Some((t, payload)) => visit(t, payload),
-            None => true,
-        })
+        self.probe
+            .sqlite_rows(db, sql, &types, &mut |row| match agy_step(&row) {
+                Some((t, payload)) => visit(t, payload),
+                None => true,
+            })
     }
 
     /// Sondan tembel okuma: son asistan metni ve ondan önceki ilk kullanıcı adımı. Hata, bulunanı silmez.
     fn agy_last(&self, cwd: &str, sid: Option<&str>) -> Exchange {
-        let Some(db) = self.agy_db(cwd, sid) else { return Exchange::empty() };
+        let Some(db) = self.agy_db(cwd, sid) else {
+            return Exchange::empty();
+        };
         let mut answer: Option<String> = None;
         let mut user = String::new();
         self.agy_steps(&db, AGY_STEPS_DESC_SQL, &mut |t, payload| {
@@ -526,7 +594,9 @@ impl Live<'_> {
     }
 
     fn agy_history(&self, cwd: &str, sid: Option<&str>) -> Vec<ChatTurn> {
-        let Some(db) = self.agy_db(cwd, sid) else { return Vec::new() };
+        let Some(db) = self.agy_db(cwd, sid) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         let complete = self.agy_steps(&db, AGY_STEPS_SQL, &mut |t, payload| {
             let (role, text) = match t {
@@ -554,9 +624,13 @@ impl Live<'_> {
     fn copilot_turns(&self, cwd: &str, sid: Option<&str>) -> Vec<(Py, Py)> {
         let session = match sid.filter(|s| !s.is_empty()) {
             Some(s) => Some(s.to_string()),
-            None => self.copilot_resume_id(cwd, &BTreeSet::new()).filter(|s| !s.is_empty()),
+            None => self
+                .copilot_resume_id(cwd, &BTreeSet::new())
+                .filter(|s| !s.is_empty()),
         };
-        let Some(session) = session else { return Vec::new() };
+        let Some(session) = session else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         let complete = self.probe.sqlite_rows(
             &self.paths.copilot_session_db(),
@@ -605,7 +679,10 @@ mod tests {
         let read = |b: &[u8]| read_varint(b, &mut 0);
         assert_eq!(read(&varint(u64::MAX)), Some((u64::MAX, false)));
         // 2^64: alt bitler 0, taşma işaretli
-        assert_eq!(read(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]), Some((0, true)));
+        assert_eq!(
+            read(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02]),
+            Some((0, true))
+        );
         // sıfır dolgulu uzun varint taşma değildir
         let mut padded = vec![0x80u8; 1000];
         padded.push(0);
@@ -650,7 +727,10 @@ mod tests {
     #[test]
     fn broken_transcript_lines_are_skipped_not_fatal() {
         let data = b"[1]\n\xff\xfe\n{\"type\":\"user\",\"message\":\"x\"}\n{\"type\":\"user\",\"message\":{\"content\":\"soru\"}}\n{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":5},{\"type\":\"text\",\"text\":\"cevap\"}]}}\n\"x\"\n{\"type\":\"assist";
-        assert_eq!(claude_last(data), Exchange::new("soru".into(), "cevap".into()));
+        assert_eq!(
+            claude_last(data),
+            Exchange::new("soru".into(), "cevap".into())
+        );
         let roles: Vec<Py> = claude_history(data).into_iter().map(|t| t.role).collect();
         assert_eq!(roles, [Py::Str("user".into()), Py::Str("assistant".into())]);
     }

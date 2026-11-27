@@ -39,7 +39,8 @@ pub enum HookFailure {
 }
 
 /// Çok kullanıcı kancası: `(cli, ad, cwd) -> {ORTAM: değer}`. Kimlik (principal) kapanışta taşınır.
-pub type SpawnHookFn = dyn Fn(&str, &str, &str) -> Result<Vec<(String, String)>, HookFailure> + Send + Sync;
+pub type SpawnHookFn =
+    dyn Fn(&str, &str, &str) -> Result<Vec<(String, String)>, HookFailure> + Send + Sync;
 
 /// Eklenti MCP koşulu: `cwd` bu eklentiye ait mi (hata = bu eklenti atlanır).
 pub type CwdPredicate = dyn Fn(&str) -> Result<bool, String> + Send + Sync;
@@ -61,7 +62,9 @@ pub fn spawn_env(
     cwd: &str,
     out: &mut BuildOutput,
 ) -> Result<Vec<(String, String)>, SpawnRefused> {
-    let Some(hook) = hook else { return Ok(Vec::new()) };
+    let Some(hook) = hook else {
+        return Ok(Vec::new());
+    };
     match hook(cli, name, cwd) {
         Ok(env) => {
             let mut dict: Vec<(String, String)> = Vec::with_capacity(env.len());
@@ -76,8 +79,14 @@ pub fn spawn_env(
         Err(HookFailure::Refused(r)) => Err(r),
         Err(HookFailure::Error { class, message }) => {
             let text: String = format!("{class}: {message}").chars().take(200).collect();
-            out.diag("authz_spawn_hook_failed", vec![("error", json!(text)), ("cli", json!(cli))]);
-            Err(SpawnRefused { reason: "hook_error".into(), detail: String::new() })
+            out.diag(
+                "authz_spawn_hook_failed",
+                vec![("error", json!(text)), ("cli", json!(cli))],
+            );
+            Err(SpawnRefused {
+                reason: "hook_error".into(),
+                detail: String::new(),
+            })
         }
     }
 }

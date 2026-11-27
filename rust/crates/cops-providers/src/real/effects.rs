@@ -38,8 +38,12 @@ fn at(path: &str) -> impl Fn(io::Error) -> Fail + '_ {
 /// Tek yan etkiyi uygular.
 pub fn apply(effect: &Effect) -> Result<(), EffectError> {
     let done = match effect {
-        Effect::WriteSecret { path, content } => write_secret(path, content.as_bytes()).map_err(at(path)),
-        Effect::WriteAtomic { path, content } => atomic_write_text(path, content, None).map_err(at(path)),
+        Effect::WriteSecret { path, content } => {
+            write_secret(path, content.as_bytes()).map_err(at(path))
+        }
+        Effect::WriteAtomic { path, content } => {
+            atomic_write_text(path, content, None).map_err(at(path))
+        }
         Effect::Touch { path } => touch(path).map_err(at(path)),
         Effect::Remove { path } => {
             // Python `try: os.remove(p) except OSError: pass`
@@ -47,9 +51,15 @@ pub fn apply(effect: &Effect) -> Result<(), EffectError> {
             Ok(())
         }
         Effect::MkdirPrivate { path } => makedirs(path, 0o700),
-        Effect::ChmodPrivate { path } => fs::set_permissions(path, Permissions::from_mode(0o700)).map_err(at(path)),
+        Effect::ChmodPrivate { path } => {
+            fs::set_permissions(path, Permissions::from_mode(0o700)).map_err(at(path))
+        }
     };
-    done.map_err(|(path, error)| EffectError { index: 0, path, error })
+    done.map_err(|(path, error)| EffectError {
+        index: 0,
+        path,
+        error,
+    })
 }
 
 /// Verilen sırayla uygular; ilk hatada DURUR (Python'da istisna sonraki adımları da keser).
@@ -71,7 +81,10 @@ fn open_truncate(path: &str) -> io::Result<File> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY)
         .open(path)?;
     if !file.metadata()?.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "normal dosya değil"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "normal dosya değil",
+        ));
     }
     Ok(file)
 }
@@ -134,8 +147,17 @@ pub fn atomic_write_text(path: &str, text: &str, mode: Option<u32>) -> io::Resul
     if !head.is_empty() {
         makedirs(head, 0o777).map_err(|(_, e)| e)?;
     }
-    let mode = mode.or_else(|| fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.permissions().mode() & 0o7777));
-    let tmp = format!("{path}.{}-{}.tmp", std::process::id(), TMP_SEQ.fetch_add(1, Ordering::Relaxed));
+    let mode = mode.or_else(|| {
+        fs::metadata(path)
+            .ok()
+            .filter(|m| m.is_file())
+            .map(|m| m.permissions().mode() & 0o7777)
+    });
+    let tmp = format!(
+        "{path}.{}-{}.tmp",
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, Ordering::Relaxed)
+    );
     // önceki çöküşten kalan aynı adlı dosya ya da yerleştirilmiş symlink takip edilmesin
     let _ = fs::remove_file(&tmp);
     let written = (|| {

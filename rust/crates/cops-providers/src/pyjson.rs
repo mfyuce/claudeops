@@ -69,7 +69,9 @@ impl Py {
             Py::Float(f) => Value::from(*f),
             Py::Str(s) => Value::String(s.clone()),
             Py::Array(a) => Value::Array(a.iter().map(Py::to_value).collect()),
-            Py::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), v.to_value())).collect()),
+            Py::Object(o) => {
+                Value::Object(o.iter().map(|(k, v)| (k.clone(), v.to_value())).collect())
+            }
         }
     }
 
@@ -201,7 +203,9 @@ impl Py {
             Py::Int(i) => out.push_str(&i.to_string()),
             Py::BigInt(s) => out.push_str(s),
             Py::Float(f) if f.is_nan() => out.push_str("NaN"),
-            Py::Float(f) if f.is_infinite() => out.push_str(if *f > 0.0 { "Infinity" } else { "-Infinity" }),
+            Py::Float(f) if f.is_infinite() => {
+                out.push_str(if *f > 0.0 { "Infinity" } else { "-Infinity" })
+            }
             Py::Float(f) => out.push_str(&float_repr(*f)),
             Py::Str(s) => dumps_str(s, out),
             Py::Array(a) => {
@@ -253,7 +257,11 @@ static UNPRINTABLE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"^[\p{C}\p{Z}]$").expect("sabit desen"));
 
 fn repr_str(s: &str, out: &mut String) {
-    let q = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let q = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
     out.push(q);
     let mut buf = [0u8; 4];
     for c in s.chars() {
@@ -432,12 +440,19 @@ impl Parser<'_> {
         } else if int_end - start - usize::from(t.starts_with('-')) > MAX_INT_DIGITS {
             None
         } else {
-            Some(t.parse().map(Py::Int).unwrap_or_else(|_| Py::BigInt(t.to_string())))
+            Some(
+                t.parse()
+                    .map(Py::Int)
+                    .unwrap_or_else(|_| Py::BigInt(t.to_string())),
+            )
         }
     }
 
     fn hex4(&mut self) -> Option<u32> {
-        let h = self.s.get(self.i..self.i + 4).filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()))?;
+        let h = self
+            .s
+            .get(self.i..self.i + 4)
+            .filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()))?;
         let v = u32::from_str_radix(h, 16).ok()?;
         self.i += 4;
         Some(v)
@@ -448,7 +463,10 @@ impl Parser<'_> {
         let mut out = String::new();
         loop {
             let start = self.i;
-            while self.peek().is_some_and(|c| c != b'"' && c != b'\\' && c >= 0x20) {
+            while self
+                .peek()
+                .is_some_and(|c| c != b'"' && c != b'\\' && c >= 0x20)
+            {
                 self.i += 1;
             }
             out.push_str(&self.s[start..self.i]);

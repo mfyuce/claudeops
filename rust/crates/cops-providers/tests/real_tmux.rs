@@ -5,7 +5,8 @@
 use cops_providers::real::tmux::{CopsTmux, BAD_NAME};
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
-    fallback_watchdog, open_window, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux, Terminal,
+    fallback_watchdog, open_window, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher,
+    SpawnTmux, Terminal,
 };
 use cops_providers::Diag;
 use cops_tmux::Tmux;
@@ -26,7 +27,10 @@ fn repo() -> String {
 }
 
 fn now() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
 }
 
 struct Server {
@@ -39,11 +43,17 @@ impl Server {
         static SEQ: AtomicU32 = AtomicU32::new(0);
         let socket = format!(
             "cxprov{}-{}-{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos(),
             SEQ.fetch_add(1, Ordering::Relaxed),
             std::process::id()
         );
-        Server { socket, dir: tempfile::tempdir().unwrap() }
+        Server {
+            socket,
+            dir: tempfile::tempdir().unwrap(),
+        }
     }
 
     fn path(&self) -> &Path {
@@ -56,8 +66,12 @@ impl Server {
 
     /// Gerçek sağlayıcı; hayalet yaşı `age` saniye ileri alınmış saatle.
     fn cops(&self, age: f64) -> CopsTmux {
-        CopsTmux::new(self.client(), &repo(), Env::fixed([("PATH", "/usr/bin:/bin")]))
-            .with_wall_clock(Arc::new(move || now() + age))
+        CopsTmux::new(
+            self.client(),
+            &repo(),
+            Env::fixed([("PATH", "/usr/bin:/bin")]),
+        )
+        .with_wall_clock(Arc::new(move || now() + age))
     }
 
     /// Pane ortamı: kullanıcının kabuk ayarlarından bağımsız, yalnız bu değişkenler.
@@ -80,7 +94,10 @@ impl Server {
     }
 
     fn sessions(&self) -> Vec<String> {
-        self.client().list_sessions().map(|v| v.into_iter().map(|s| s.name).collect()).unwrap_or_default()
+        self.client()
+            .list_sessions()
+            .map(|v| v.into_iter().map(|s| s.name).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -136,10 +153,29 @@ fn spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session() {
 fn unaddressable_names_run_no_tmux_command_and_open_nothing() {
     let s = Server::new();
     let t = s.cops(100.0);
-    for name in ["", "$0", "a:b", "a#(touch x)", "victim#{?0,x,}", "a\tb", "a\u{1b}b"] {
-        assert_eq!(t.new_session_fragment(name, "/", "true"), Err(BAD_NAME.to_string()), "{name:?}");
-        assert_eq!(t.attach_fragment(name), Err(BAD_NAME.to_string()), "{name:?}");
-        assert!(!t.spawn_direct(name, &s.cwd(), "true", &s.pane_env()), "{name:?}");
+    for name in [
+        "",
+        "$0",
+        "a:b",
+        "a#(touch x)",
+        "victim#{?0,x,}",
+        "a\tb",
+        "a\u{1b}b",
+    ] {
+        assert_eq!(
+            t.new_session_fragment(name, "/", "true"),
+            Err(BAD_NAME.to_string()),
+            "{name:?}"
+        );
+        assert_eq!(
+            t.attach_fragment(name),
+            Err(BAD_NAME.to_string()),
+            "{name:?}"
+        );
+        assert!(
+            !t.spawn_direct(name, &s.cwd(), "true", &s.pane_env()),
+            "{name:?}"
+        );
         assert!(!t.has_session(name), "{name:?}");
         assert!(!t.ghost_session(name), "{name:?}");
         assert_eq!(t.capture(name, 10), None, "{name:?}");
@@ -165,9 +201,16 @@ fn available_follows_the_given_path_like_shutil_which() {
     let s = Server::new();
     let none = CopsTmux::new(s.client(), &repo(), Env::fixed([("PATH", s.cwd())]));
     assert!(!none.available());
-    let empty = CopsTmux::new(s.client(), &repo(), Env::fixed(Vec::<(String, String)>::new()));
+    let empty = CopsTmux::new(
+        s.client(),
+        &repo(),
+        Env::fixed(Vec::<(String, String)>::new()),
+    );
     // `PATH` yoksa Python `os.defpath` (`/bin:/usr/bin`).
-    assert_eq!(empty.available(), Path::new("/usr/bin/tmux").exists() || Path::new("/bin/tmux").exists());
+    assert_eq!(
+        empty.available(),
+        Path::new("/usr/bin/tmux").exists() || Path::new("/bin/tmux").exists()
+    );
 }
 
 /// Python `tmux_new_session_shell_fragment` / `tmux_attach_shell_fragment` ile aynı metin (aynı depo, aynı conf).
@@ -202,7 +245,11 @@ print(json.dumps(out))
         .env("CLAUDEOPS_DIR", s.path().join("state"))
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let py: Vec<(String, String)> = serde_json::from_slice(&out.stdout).unwrap();
     for ((n, c, i), (want_new, want_attach)) in cases.iter().zip(py) {
         assert_eq!(t.new_session_fragment(n, c, i).unwrap(), want_new, "{n:?}");
@@ -266,7 +313,12 @@ fn launcher(t: CopsTmux, log: &Arc<Log>) -> Launcher {
 }
 
 fn events(log: &Log) -> Vec<(&'static str, Vec<(&'static str, Value)>)> {
-    log.diags.lock().unwrap().iter().map(|d| (d.event, d.fields.clone())).collect()
+    log.diags
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|d| (d.event, d.fields.clone()))
+        .collect()
 }
 
 /// `ReclaimTest` gerçek tmux'ta: çıplak kabukla kalan (CLI'si çıkmış) TAM adlı oturum kapanır; ön ek kardeşi, meşgul
@@ -308,7 +360,10 @@ fn watchdog_falls_back_to_a_real_headless_session() {
     let env = s.pane_env();
     fallback_watchdog(&l, "w1", &s.cwd(), "echo BEKCI-ACTI", &env, "WINDOWCMD");
     assert!(l.tmux.has_session("w1"));
-    wait_until(|| screen(&s.cops(0.0), "w1").contains("BEKCI-ACTI"), "yedek oturum çıktısı");
+    wait_until(
+        || screen(&s.cops(0.0), "w1").contains("BEKCI-ACTI"),
+        "yedek oturum çıktısı",
+    );
     let names: Vec<&str> = events(&log).iter().map(|e| e.0).collect();
     assert_eq!(names, ["spawn_retry", "spawn_retry", "spawn_fallback_used"]);
     assert_eq!(log.launches.lock().unwrap().len(), 2);
@@ -330,10 +385,21 @@ fn open_window_attaches_to_the_exact_existing_session() {
     assert_eq!(open_window(&l, "ow", &s.cwd(), Some(":7")), Ok(false));
     assert!(log.launches.lock().unwrap().is_empty());
     assert!(t.spawn_direct("ow_1", &s.cwd(), "sleep 60", &s.pane_env()));
-    assert_eq!(open_window(&l, "ow", &s.cwd(), Some(":7")), Ok(false), "ön ek eşleşmesi yok");
+    assert_eq!(
+        open_window(&l, "ow", &s.cwd(), Some(":7")),
+        Ok(false),
+        "ön ek eşleşmesi yok"
+    );
     assert!(t.spawn_direct("ow", &s.cwd(), "sleep 60", &s.pane_env()));
     assert_eq!(open_window(&l, "ow", &s.cwd(), Some(":7")), Ok(true));
     let launches = log.launches.lock().unwrap();
     let cmd = launches[0].last().unwrap();
-    assert!(cmd.ends_with(&format!("-L {} -f {} attach-session -t =ow:; exec bash", s.socket, t.conf())), "{cmd}");
+    assert!(
+        cmd.ends_with(&format!(
+            "-L {} -f {} attach-session -t =ow:; exec bash",
+            s.socket,
+            t.conf()
+        )),
+        "{cmd}"
+    );
 }

@@ -35,7 +35,9 @@ fn learned<'a>(known: &'a [(String, Py)], name: &str) -> Option<&'a Py> {
 /// `sid`, `session_name` DIŞINDA bir ada kayıtlı mı (kardeş oturumun kimliği öğrenilmez).
 pub fn sid_claimed_by_other(doc: &Py, sid: &str, session_name: &str) -> bool {
     match doc {
-        Py::Object(o) => o.iter().any(|(name, other)| other.as_str() == Some(sid) && name != session_name),
+        Py::Object(o) => o
+            .iter()
+            .any(|(name, other)| other.as_str() == Some(sid) && name != session_name),
         _ => false,
     }
 }
@@ -48,7 +50,8 @@ pub fn remember_agy_sid(
     sid: &str,
     preview: bool,
 ) -> Result<bool, String> {
-    let same = |known: &[(String, Py)]| learned(known, session_name).and_then(Py::as_str) == Some(sid);
+    let same =
+        |known: &[(String, Py)]| learned(known, session_name).and_then(Py::as_str) == Some(sid);
     if preview || same(&entries(store.load())) {
         return Ok(false);
     }
@@ -69,13 +72,22 @@ pub fn remember_agy_sid(
 
 impl Live<'_> {
     /// Önce bu ADA öğrenilen kimlik; yoksa (ya da başkasının elindeyse) agy'nin cwd başına TEK kimlik tutan önbelleği.
-    pub(crate) fn agy_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>, session_name: &str) -> Option<String> {
+    pub(crate) fn agy_resume_id(
+        &self,
+        cwd: &str,
+        in_use: &BTreeSet<String>,
+        session_name: &str,
+    ) -> Option<String> {
         let known = entries(self.probe.agy_sids_doc());
-        let own = learned(&known, session_name).filter(|_| !session_name.is_empty()).and_then(Py::as_str);
+        let own = learned(&known, session_name)
+            .filter(|_| !session_name.is_empty())
+            .and_then(Py::as_str);
         if let Some(own) = own.filter(|o| !o.is_empty() && !in_use.contains(*o)) {
             return Some(own.to_string());
         }
-        let bytes = self.probe.read_bytes(&self.paths.agy_conversations_cache(), CACHE_MAX_BYTES)?;
+        let bytes = self
+            .probe
+            .read_bytes(&self.paths.agy_conversations_cache(), CACHE_MAX_BYTES)?;
         let data = Py::parse(std::str::from_utf8(&bytes).ok()?)?;
         let value = data
             .get(cwd)
@@ -91,7 +103,9 @@ impl Live<'_> {
             return None;
         }
         let known = entries(self.probe.agy_sids_doc());
-        let sid = learned(&known, session_name)?.as_str().filter(|s| !s.is_empty())?;
+        let sid = learned(&known, session_name)?
+            .as_str()
+            .filter(|s| !s.is_empty())?;
         let db = join_path(&self.paths.agy_conversations_dir(), &format!("{sid}.db"));
         self.probe.is_file(&db).then(|| sid.to_string())
     }

@@ -10,15 +10,18 @@ use cops_providers::agy::parse_models;
 use cops_providers::real::routing_sync::sync_one;
 use cops_providers::routing::with_block;
 use cops_providers::ucli::{
-    derives_context, flag_values, is_child_name, mcp_server_name, parse_live_models, reasoning_effort_for, state_dir_for,
-    supports_flag, usage_log_path, LiveModels,
+    derives_context, flag_values, is_child_name, mcp_server_name, parse_live_models,
+    reasoning_effort_for, state_dir_for, supports_flag, usage_log_path, LiveModels,
 };
 use cops_providers::ucli_opts::{exec_flags, expand_exec_cmds, is_forbidden_cmd, validate_opts};
 use cops_providers::Probe;
 use serde_json::{json, Value};
 
 fn rs_with_block(_e: &Env, c: &Case) -> RsOut {
-    RsOut::ret(json!(with_block(c.args["existing"].as_str().unwrap(), c.args.get("body").and_then(Value::as_str))))
+    RsOut::ret(json!(with_block(
+        c.args["existing"].as_str().unwrap(),
+        c.args.get("body").and_then(Value::as_str)
+    )))
 }
 
 fn with_block_cases() -> Vec<Case> {
@@ -40,11 +43,23 @@ fn with_block_cases() -> Vec<Case> {
         "satır sonu yok".into(),
         " \u{1f} ".into(),
     ];
-    let bodies = [None, Some("yönerge"), Some("yönerge\n\n"), Some("son \u{1f}\u{1c}"), Some(""), Some("  \n"), Some("\u{2028}x\u{2028}")];
+    let bodies = [
+        None,
+        Some("yönerge"),
+        Some("yönerge\n\n"),
+        Some("son \u{1f}\u{1c}"),
+        Some(""),
+        Some("  \n"),
+        Some("\u{2028}x\u{2028}"),
+    ];
     let mut v = Vec::new();
     for (i, ex) in existings.iter().enumerate() {
         for (j, body) in bodies.iter().enumerate() {
-            v.push(Case::new(format!("blok{i}-{j}"), "with_block", json!({"existing": ex, "body": body})));
+            v.push(Case::new(
+                format!("blok{i}-{j}"),
+                "with_block",
+                json!({"existing": ex, "body": body}),
+            ));
         }
     }
     v
@@ -68,8 +83,12 @@ fn sync_cases(e: &Env) -> Vec<Case> {
     let en = "<!-- claudeops-routing:end -->";
     let path = format!("{}/.codex/AGENTS.md", e.home);
     let mut v = Vec::new();
-    let settings = [json!(null), json!({"routing_guidance": "off"}), json!({"routing_guidance_text": "  özel yönerge  "}),
-                    json!({"routing_guidance_text": " "})];
+    let settings = [
+        json!(null),
+        json!({"routing_guidance": "off"}),
+        json!({"routing_guidance_text": "  özel yönerge  "}),
+        json!({"routing_guidance_text": " "}),
+    ];
     let files: [Option<String>; 7] = [
         None,
         Some(String::new()),
@@ -82,7 +101,11 @@ fn sync_cases(e: &Env) -> Vec<Case> {
     for (i, s) in settings.iter().enumerate() {
         for (j, f) in files.iter().enumerate() {
             for create in [false, true] {
-                let mut c = Case::new(format!("sync{i}-{j}-{create}"), "sync_one", json!({"path": path, "create": create}));
+                let mut c = Case::new(
+                    format!("sync{i}-{j}-{create}"),
+                    "sync_one",
+                    json!({"path": path, "create": create}),
+                );
                 if !s.is_null() {
                     c = c.settings_json(s.clone());
                 }
@@ -93,18 +116,61 @@ fn sync_cases(e: &Env) -> Vec<Case> {
             }
         }
     }
-    v.push(Case::new("sync-yedek-var", "sync_one", json!({"path": path, "create": false}))
+    v.push(
+        Case::new(
+            "sync-yedek-var",
+            "sync_one",
+            json!({"path": path, "create": false}),
+        )
         .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
-        .file(file("home/.codex/AGENTS.md.bak-routing", "eski yedek", 0o600)));
-    v.push(Case::new("sync-symlink", "sync_one", json!({"path": path, "create": false}))
+        .file(file(
+            "home/.codex/AGENTS.md.bak-routing",
+            "eski yedek",
+            0o600,
+        )),
+    );
+    v.push(
+        Case::new(
+            "sync-symlink",
+            "sync_one",
+            json!({"path": path, "create": false}),
+        )
         .file(file("home/gercek.md", "k\n", 0o600))
-        .file(Fx::Link("home/.codex/AGENTS.md".into(), "../gercek.md".into())));
-    v.push(Case::new("sync-dizin-yok-create", "sync_one", json!({"path": format!("{}/.gemini/GEMINI.md", e.home), "create": true})));
-    v.push(Case::new("sync-bozuk-utf8", "sync_one", json!({"path": path, "create": false}))
-        .file(Fx::File("home/.codex/AGENTS.md".into(), vec![0xff, b'\n'], 0o600)));
-    v.push(Case::new("sync-bozuk-utf8-kapali", "sync_one", json!({"path": path, "create": true}))
+        .file(Fx::Link(
+            "home/.codex/AGENTS.md".into(),
+            "../gercek.md".into(),
+        )),
+    );
+    v.push(Case::new(
+        "sync-dizin-yok-create",
+        "sync_one",
+        json!({"path": format!("{}/.gemini/GEMINI.md", e.home), "create": true}),
+    ));
+    v.push(
+        Case::new(
+            "sync-bozuk-utf8",
+            "sync_one",
+            json!({"path": path, "create": false}),
+        )
+        .file(Fx::File(
+            "home/.codex/AGENTS.md".into(),
+            vec![0xff, b'\n'],
+            0o600,
+        )),
+    );
+    v.push(
+        Case::new(
+            "sync-bozuk-utf8-kapali",
+            "sync_one",
+            json!({"path": path, "create": true}),
+        )
         .settings_json(json!({"routing_guidance": "off"}))
-        .file(Fx::File("home/.codex/AGENTS.md".into(), vec![b'k', 0xfe], 0o600)));
+        .file(Fx::File(
+            "home/.codex/AGENTS.md".into(),
+            vec![b'k', 0xfe],
+            0o600,
+        )),
+    );
     v
 }
 
@@ -116,7 +182,12 @@ fn rs_ucli_misc(e: &Env, c: &Case) -> RsOut {
         let flags = strs(a.get("flags"));
         let live = LiveModels {
             ids: Vec::new(),
-            caps: c.fact("ucli_live").and_then(|l| l.get("caps")).and_then(Value::as_object).cloned().unwrap_or_default(),
+            caps: c
+                .fact("ucli_live")
+                .and_then(|l| l.get("caps"))
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default(),
         };
         RsOut::ret(json!({
             "state_dir_for": strs(a.get("cwds")).iter()
@@ -136,20 +207,58 @@ fn rs_ucli_misc(e: &Env, c: &Case) -> RsOut {
 
 fn misc_cases(e: &Env) -> Vec<Case> {
     let cwds = [
-        format!("{}/p1", e.work), format!("{}/p1/", e.work), "/".into(), "".into(), "p1".into(), format!("{}/yok/../p1", e.work),
-        format!("{}/ğ ü+x.y-z_{}", e.work, "a".repeat(50)), format!("{}/bag", e.work), format!("{}/..", e.work),
-        "//".into(), format!("{}/p1/./.", e.work),
+        format!("{}/p1", e.work),
+        format!("{}/p1/", e.work),
+        "/".into(),
+        "".into(),
+        "p1".into(),
+        format!("{}/yok/../p1", e.work),
+        format!("{}/ğ ü+x.y-z_{}", e.work, "a".repeat(50)),
+        format!("{}/bag", e.work),
+        format!("{}/..", e.work),
+        "//".into(),
+        format!("{}/p1/./.", e.work),
     ];
     let names = [
-        "s1", "", "a_aj1", "a_aj0", "a_aj01", "_aj1", "a_aj", "a_aj1\n", "a\nb_aj1", "x_aj12_aj3", "a_ajx", "a_aj١",
-        "cops-steward", "ğ.ad", "a b/c", &"x".repeat(130), "bash", "BASH", "Python3.11", "python", "pypy3", "node-18",
-        "perl5.36\n", "busybox_", "Rscript", "rscript", "luajit", "²", "١", "ǅ", "K", "ⅰ",
+        "s1",
+        "",
+        "a_aj1",
+        "a_aj0",
+        "a_aj01",
+        "_aj1",
+        "a_aj",
+        "a_aj1\n",
+        "a\nb_aj1",
+        "x_aj12_aj3",
+        "a_ajx",
+        "a_aj١",
+        "cops-steward",
+        "ğ.ad",
+        "a b/c",
+        &"x".repeat(130),
+        "bash",
+        "BASH",
+        "Python3.11",
+        "python",
+        "pypy3",
+        "node-18",
+        "perl5.36\n",
+        "busybox_",
+        "Rscript",
+        "rscript",
+        "luajit",
+        "²",
+        "١",
+        "ǅ",
+        "K",
+        "ⅰ",
     ];
     let helps = [
         full_help(),
         "--allow-checks <M>\n\n  --checks-max x\n[possible values: a,  b ,, c]\n".into(),
         "--allow-checks [possible values: ".into(),
-        "--allow-checks x\n--checks-max [possible values: restricted]\n... [possible values: z]".into(),
+        "--allow-checks x\n--checks-max [possible values: restricted]\n... [possible values: z]"
+            .into(),
         "x--allow-checks [possible values: q] --allow-checks [possible values: full]".into(),
         "--allow-checks-x [possible values: q]".into(),
         "--allow-checks\u{345} --allow-checks".into(),
@@ -182,9 +291,13 @@ fn misc_cases(e: &Env) -> Vec<Case> {
 }
 
 fn rs_live(_e: &Env, c: &Case) -> RsOut {
-    let live = serde_json::from_str::<Value>(c.args["payload"].as_str().unwrap()).map(|v| parse_live_models(&v)).unwrap_or_default();
-    RsOut::ret(json!({"ids": if live.ids.is_empty() { Value::Null } else { json!(live.ids) },
-                      "caps": if live.ids.is_empty() { json!({}) } else { Value::Object(live.caps) }}))
+    let live = serde_json::from_str::<Value>(c.args["payload"].as_str().unwrap())
+        .map(|v| parse_live_models(&v))
+        .unwrap_or_default();
+    RsOut::ret(
+        json!({"ids": if live.ids.is_empty() { Value::Null } else { json!(live.ids) },
+                      "caps": if live.ids.is_empty() { json!({}) } else { Value::Object(live.caps) }}),
+    )
 }
 
 fn live_cases() -> Vec<Case> {
@@ -206,14 +319,40 @@ fn live_cases() -> Vec<Case> {
                 .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
         })
         .collect();
-    for (i, p) in ["[1]", "[]", "\"x\"", "5", "null", "true", r#"{"data": 5}"#, r#"{"data": null}"#, r#"{"data": true}"#,
-                   r#"{"data": "ab"}"#, r#"{"data": {"id": "a"}}"#].iter().enumerate() {
-        v.push(Case::new(format!("live-bicim{i}"), "live_models", json!({"payload": p}))
-            .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})));
+    for (i, p) in [
+        "[1]",
+        "[]",
+        "\"x\"",
+        "5",
+        "null",
+        "true",
+        r#"{"data": 5}"#,
+        r#"{"data": null}"#,
+        r#"{"data": true}"#,
+        r#"{"data": "ab"}"#,
+        r#"{"data": {"id": "a"}}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        v.push(
+            Case::new(
+                format!("live-bicim{i}"),
+                "live_models",
+                json!({"payload": p}),
+            )
+            .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})),
+        );
     }
-    v.push(Case::new("live-sayi-id", "live_models", json!({"payload": json!({"data": [{"id": 5, "task": "chat"}]}).to_string()}))
+    v.push(
+        Case::new(
+            "live-sayi-id",
+            "live_models",
+            json!({"payload": json!({"data": [{"id": 5, "task": "chat"}]}).to_string()}),
+        )
         .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
-        .known("dize olmayan model kimliği (5) Python'da int kalır, Rust `str()` ile \"5\""));
+        .known("dize olmayan model kimliği (5) Python'da int kalır, Rust `str()` ile \"5\""),
+    );
     v
 }
 
@@ -228,7 +367,10 @@ fn agy_cases() -> Vec<Case> {
         "\tboş\n\u{1f}x\u{1f}\tY\nyalnız\nçok\tsekme\tvar",
         "",
     ];
-    outs.iter().enumerate().map(|(i, o)| Case::new(format!("agy{i}"), "agy_parse", json!({"output": o}))).collect()
+    outs.iter()
+        .enumerate()
+        .map(|(i, o)| Case::new(format!("agy{i}"), "agy_parse", json!({"output": o})))
+        .collect()
 }
 
 fn rs_expand(_e: &Env, c: &Case) -> RsOut {
@@ -238,64 +380,236 @@ fn rs_expand(_e: &Env, c: &Case) -> RsOut {
         // Python `expand_exec_cmds` geçersiz regex'te `re.error` FIRLATIR (doğrulamadan geçen girdide erişilemez);
         // Rust hata metnine sarar: karşılaştırma iç iletiyle.
         Err(err) if err.starts_with("geçersiz regex (") => {
-            let inner = err["geçersiz regex (".len()..].rsplit_once("): ").map_or(err.clone(), |(m, _)| m.to_string());
-            RsOut { exc: Some(inner), ..Default::default() }
+            let inner = err["geçersiz regex (".len()..]
+                .rsplit_once("): ")
+                .map_or(err.clone(), |(m, _)| m.to_string());
+            RsOut {
+                exc: Some(inner),
+                ..Default::default()
+            }
         }
         Err(err) => RsOut::ret(json!({"ok": [], "err": err})),
     }
 }
 
 pub const RE_PATTERNS: [&str; 78] = [
-    "git", "gi.", "g.*", "(ca|ru).+", "[[:alpha:]]+", "\\w+", "\\d", "[a-c]+", "[^a-z]+", "c\\+\\+", "a{2}", "a{,3}",
-    "g{1,}it", "x{2,1}", "a++", "*a", "a**", "a*?", "a*??", "(?i)GIT", "git(?i)", "(?i:G)it", "(?-i:g)it", "(?P<n>g)(?P=n)",
-    "(?P<n>g)\\1", "(?P=n)", "(?<n>g)", "(?>g)", "\\p{L}", "\\Z", "git\\Z", "\\Agit", "[\\d]+", "[\\w-]+", "[a\\-z]+",
-    "[]a]", "[^]a]+", "[z-a]", "[a-\\d]", "a|", "|a", "()", "(", ")", "a)", "[", "[a", "\\", "\\x67it", "\\u0067it",
-    "\\147it", "\\0", "\\8", "a\\1", "(a)\\2", "\\q", "\\-", "\\.", "[.]", "a{1,2}{3}", "^git$", "^*", "\\b*",
-    "(?#yorum)git", "{", "a{", "a{1", "a{x}", "a{1,2,3}", "[&&]", "[a&&b]+", "[a--b]", "[~~]", "[|]", "(?i", "(?z)", "(?P<1>a)",
+    "git",
+    "gi.",
+    "g.*",
+    "(ca|ru).+",
+    "[[:alpha:]]+",
+    "\\w+",
+    "\\d",
+    "[a-c]+",
+    "[^a-z]+",
+    "c\\+\\+",
+    "a{2}",
+    "a{,3}",
+    "g{1,}it",
+    "x{2,1}",
+    "a++",
+    "*a",
+    "a**",
+    "a*?",
+    "a*??",
+    "(?i)GIT",
+    "git(?i)",
+    "(?i:G)it",
+    "(?-i:g)it",
+    "(?P<n>g)(?P=n)",
+    "(?P<n>g)\\1",
+    "(?P=n)",
+    "(?<n>g)",
+    "(?>g)",
+    "\\p{L}",
+    "\\Z",
+    "git\\Z",
+    "\\Agit",
+    "[\\d]+",
+    "[\\w-]+",
+    "[a\\-z]+",
+    "[]a]",
+    "[^]a]+",
+    "[z-a]",
+    "[a-\\d]",
+    "a|",
+    "|a",
+    "()",
+    "(",
+    ")",
+    "a)",
+    "[",
+    "[a",
+    "\\",
+    "\\x67it",
+    "\\u0067it",
+    "\\147it",
+    "\\0",
+    "\\8",
+    "a\\1",
+    "(a)\\2",
+    "\\q",
+    "\\-",
+    "\\.",
+    "[.]",
+    "a{1,2}{3}",
+    "^git$",
+    "^*",
+    "\\b*",
+    "(?#yorum)git",
+    "{",
+    "a{",
+    "a{1",
+    "a{x}",
+    "a{1,2,3}",
+    "[&&]",
+    "[a&&b]+",
+    "[a--b]",
+    "[~~]",
+    "[|]",
+    "(?i",
+    "(?z)",
+    "(?P<1>a)",
     "(?P<a>x)(?P<a>y)",
 ];
 
 fn re_cases() -> Vec<Case> {
-    let avail = ["git", "GIT", "Git", "gitk", "gg", "cargo", "rustc", "c++", "a", "aa", "aaa", "ab", "a]", "]", ":", "[", "x",
-                 "g1", "gi", "g", "a-b", "-", ".", "a|b", "~", "&", "zz9", "\\", "git\n"];
+    let avail = [
+        "git", "GIT", "Git", "gitk", "gg", "cargo", "rustc", "c++", "a", "aa", "aaa", "ab", "a]",
+        "]", ":", "[", "x", "g1", "gi", "g", "a-b", "-", ".", "a|b", "~", "&", "zz9", "\\",
+        "git\n",
+    ];
     let mut v = Vec::new();
     for (i, p) in RE_PATTERNS.iter().enumerate() {
-        v.push(Case::new(format!("re-val{i}"), "validate", json!({"raw": {"exec_cmds": format!("re:{p}")}})).facts(json!({"toolchain": "yok"})));
-        v.push(Case::new(format!("re-exp{i}"), "expand", json!({"items": [format!("re:{p}")], "available": avail})));
+        v.push(
+            Case::new(
+                format!("re-val{i}"),
+                "validate",
+                json!({"raw": {"exec_cmds": format!("re:{p}")}}),
+            )
+            .facts(json!({"toolchain": "yok"})),
+        );
+        v.push(Case::new(
+            format!("re-exp{i}"),
+            "expand",
+            json!({"items": [format!("re:{p}")], "available": avail}),
+        ));
     }
-    v.push(Case::new("re-val-verbose", "validate", json!({"raw": {"exec_cmds": "re:(?x)g i t"}})).facts(json!({"toolchain": "yok"}))
-        .known("DAHA SIKI: Python `(?x)` (verbose) kabul eder; çevirici desteklemez, reddeder"));
-    v.push(Case::new("re-val-kosul", "validate", json!({"raw": {"exec_cmds": "re:(a)?(?(1)b|c)"}})).facts(json!({"toolchain": "yok"}))
-        .known("DAHA SIKI: Python koşullu grup `(?(1)..)` kabul eder; çevirici reddeder"));
-    v.push(Case::new("re-val-adli", "validate", json!({"raw": {"exec_cmds": "re:\\N{LATIN SMALL LETTER G}it"}})).facts(json!({"toolchain": "yok"}))
-        .known("DAHA SIKI: Python `\\N{ad}` kabul eder; çevirici reddeder"));
+    v.push(
+        Case::new(
+            "re-val-verbose",
+            "validate",
+            json!({"raw": {"exec_cmds": "re:(?x)g i t"}}),
+        )
+        .facts(json!({"toolchain": "yok"}))
+        .known("DAHA SIKI: Python `(?x)` (verbose) kabul eder; çevirici desteklemez, reddeder"),
+    );
+    v.push(
+        Case::new(
+            "re-val-kosul",
+            "validate",
+            json!({"raw": {"exec_cmds": "re:(a)?(?(1)b|c)"}}),
+        )
+        .facts(json!({"toolchain": "yok"}))
+        .known("DAHA SIKI: Python koşullu grup `(?(1)..)` kabul eder; çevirici reddeder"),
+    );
+    v.push(
+        Case::new(
+            "re-val-adli",
+            "validate",
+            json!({"raw": {"exec_cmds": "re:\\N{LATIN SMALL LETTER G}it"}}),
+        )
+        .facts(json!({"toolchain": "yok"}))
+        .known("DAHA SIKI: Python `\\N{ad}` kabul eder; çevirici reddeder"),
+    );
     v
 }
 
 fn expand_cases() -> Vec<Case> {
-    let avail = ["bash", "cargo", "cargo-clippy", "git", "git-lfs", "gitk", "ls", "make", "python3", "python3.11", "rg", "rustc",
-                 "sh", "xargs", "a.b", "a+b", "c[1]", "[x", "-x", "Go"];
+    let avail = [
+        "bash",
+        "cargo",
+        "cargo-clippy",
+        "git",
+        "git-lfs",
+        "gitk",
+        "ls",
+        "make",
+        "python3",
+        "python3.11",
+        "rg",
+        "rustc",
+        "sh",
+        "xargs",
+        "a.b",
+        "a+b",
+        "c[1]",
+        "[x",
+        "-x",
+        "Go",
+    ];
     let items: Vec<Vec<&str>> = vec![
-        vec!["git", "cargo"], vec!["git*"], vec!["*"], vec!["?it"], vec!["[gc]*"], vec!["[!gc]*"], vec!["[a-c]*"], vec!["[z-a]*"],
-        vec!["[*"], vec!["[]]*"], vec!["[!]]*"], vec!["c[[]1]"], vec!["a.b"], vec!["a?b"], vec!["re:git.*"], vec!["re:(ca|ru)\\w+"],
-        vec!["re:python3"], vec!["re:.*"], vec!["re:sh|bash"], vec!["zz*"], vec!["re:zz"], vec!["git", "git*", "re:gi.*"],
-        vec!["[-x]*"], vec!["[x-]*"], vec!["*[!a-z]*"], vec!["[A-Z]*"], vec!["g*", "c*"], vec!["re:"],
-        vec!["re:(?i)go"], vec!["re:g"], vec!["re:\\d"], vec!["Go*"], vec!["[\\]]*"], vec!["[a-]"],
+        vec!["git", "cargo"],
+        vec!["git*"],
+        vec!["*"],
+        vec!["?it"],
+        vec!["[gc]*"],
+        vec!["[!gc]*"],
+        vec!["[a-c]*"],
+        vec!["[z-a]*"],
+        vec!["[*"],
+        vec!["[]]*"],
+        vec!["[!]]*"],
+        vec!["c[[]1]"],
+        vec!["a.b"],
+        vec!["a?b"],
+        vec!["re:git.*"],
+        vec!["re:(ca|ru)\\w+"],
+        vec!["re:python3"],
+        vec!["re:.*"],
+        vec!["re:sh|bash"],
+        vec!["zz*"],
+        vec!["re:zz"],
+        vec!["git", "git*", "re:gi.*"],
+        vec!["[-x]*"],
+        vec!["[x-]*"],
+        vec!["*[!a-z]*"],
+        vec!["[A-Z]*"],
+        vec!["g*", "c*"],
+        vec!["re:"],
+        vec!["re:(?i)go"],
+        vec!["re:g"],
+        vec!["re:\\d"],
+        vec!["Go*"],
+        vec!["[\\]]*"],
+        vec!["[a-]"],
     ];
     let mut v: Vec<Case> = items
         .iter()
         .enumerate()
-        .map(|(i, it)| Case::new(format!("expand{i}"), "expand", json!({"items": it, "available": avail})))
+        .map(|(i, it)| {
+            Case::new(
+                format!("expand{i}"),
+                "expand",
+                json!({"items": it, "available": avail}),
+            )
+        })
         .collect();
     let many: Vec<String> = (0..4001).map(|i| format!("c{i}")).collect();
-    v.push(Case::new("expand-cok", "expand", json!({"items": ["c*"], "available": many})));
+    v.push(Case::new(
+        "expand-cok",
+        "expand",
+        json!({"items": ["c*"], "available": many}),
+    ));
     v
 }
 
 fn rs_exec_flags(e: &Env, c: &Case) -> RsOut {
     with(e, c, |_, probe| {
         let opts = c.args["opts"].as_object().cloned().unwrap_or_default();
-        RsOut::ret(json!(exec_flags(&opts, &|| probe.rust_toolchain(), &|d| probe.is_dir(d))))
+        RsOut::ret(json!(exec_flags(&opts, &|| probe.rust_toolchain(), &|d| {
+            probe.is_dir(d)
+        })))
     })
 }
 
@@ -305,31 +619,46 @@ fn exec_flags_cases(e: &Env) -> Vec<Case> {
                     "registry": format!("{}/.cargo/registry", e.home), "git": format!("{}/.cargo/git", e.home),
                     "rustup_home": format!("{}/.rustup", e.home), "cargo_home": format!("{}/.cargo", e.home)});
     let opts = [
-        json!({}), json!({"exec_cmds": []}), json!({"exec_cmds": ["git", "ls"]}),
+        json!({}),
+        json!({"exec_cmds": []}),
+        json!({"exec_cmds": ["git", "ls"]}),
         json!({"exec_cmds": ["git"], "exec_own_glob": ["a/*", "b"], "exec_bind_ro": ["/o/x", "/o/x"], "exec_timeout": 5}),
-        json!({"exec_toolchain": "rust"}), json!({"exec_cmds": ["git"], "exec_toolchain": "rust", "exec_bind_ro": [root]}),
-        json!({"exec_cmds": ["git"], "exec_toolchain": "go"}), json!({"exec_cmds": ["git"], "exec_timeout": 2.9}),
-        json!({"exec_cmds": ["git"], "exec_timeout": "7"}), json!({"exec_cmds": ["git"], "exec_timeout": 0}),
-        json!({"exec_cmds": ["git"], "exec_timeout": true}), json!({"exec_cmds": [1, "a"]}),
+        json!({"exec_toolchain": "rust"}),
+        json!({"exec_cmds": ["git"], "exec_toolchain": "rust", "exec_bind_ro": [root]}),
+        json!({"exec_cmds": ["git"], "exec_toolchain": "go"}),
+        json!({"exec_cmds": ["git"], "exec_timeout": 2.9}),
+        json!({"exec_cmds": ["git"], "exec_timeout": "7"}),
+        json!({"exec_cmds": ["git"], "exec_timeout": 0}),
+        json!({"exec_cmds": ["git"], "exec_timeout": true}),
+        json!({"exec_cmds": [1, "a"]}),
     ];
     let mut v = Vec::new();
     for (i, o) in opts.iter().enumerate() {
         let why = "doğrulanmamış girdi: dize olmayan komut adı Python'da `\",\".join` TypeError; Rust `str()` ile birleştirir";
-        v.push(Case::new(format!("exec{i}"), "exec_flags", json!({"opts": o})).facts(json!({"toolchain": tc.clone()}))
-            .file(Fx::Dir(".cargo-yok".into(), 0o755))
-            .file(Fx::Dir("home/.cargo/git".into(), 0o755))
-            .known_if(i == 11, why));
-        v.push(Case::new(format!("exec{i}-tcsiz"), "exec_flags", json!({"opts": o})).facts(json!({"toolchain": "yok"})).known_if(i == 11, why));
+        v.push(
+            Case::new(format!("exec{i}"), "exec_flags", json!({"opts": o}))
+                .facts(json!({"toolchain": tc.clone()}))
+                .file(Fx::Dir(".cargo-yok".into(), 0o755))
+                .file(Fx::Dir("home/.cargo/git".into(), 0o755))
+                .known_if(i == 11, why),
+        );
+        v.push(
+            Case::new(format!("exec{i}-tcsiz"), "exec_flags", json!({"opts": o}))
+                .facts(json!({"toolchain": "yok"}))
+                .known_if(i == 11, why),
+        );
     }
     v
 }
 
 fn rs_validate(e: &Env, c: &Case) -> RsOut {
     with(e, c, |p, probe| {
-        RsOut::ret(match validate_opts(&c.args["raw"], p.settings, &|| probe.rust_toolchain()) {
-            Ok(m) => json!({"ok": m, "err": ""}),
-            Err(err) => json!({"ok": {}, "err": err}),
-        })
+        RsOut::ret(
+            match validate_opts(&c.args["raw"], p.settings, &|| probe.rust_toolchain()) {
+                Ok(m) => json!({"ok": m, "err": ""}),
+                Err(err) => json!({"ok": {}, "err": err}),
+            },
+        )
     })
 }
 
@@ -366,9 +695,17 @@ fn validate_cases() -> Vec<Case> {
         json!({"exec_cmds": "git", "exec_own_glob": ["a/*\n"]}),
         json!({"exec_cmds": ["git\n"]}),
     ];
-    raws.iter().enumerate().map(|(i, r)| Case::new(format!("val{i}"), "validate", json!({"raw": r}))
-        .facts(json!({"toolchain": "yok"}))
-        .known_if(i == 6, "str(dict) Python repr, Rust JSON metni (hata iletisinde)")).collect()
+    raws.iter()
+        .enumerate()
+        .map(|(i, r)| {
+            Case::new(format!("val{i}"), "validate", json!({"raw": r}))
+                .facts(json!({"toolchain": "yok"}))
+                .known_if(
+                    i == 6,
+                    "str(dict) Python repr, Rust JSON metni (hata iletisinde)",
+                )
+        })
+        .collect()
 }
 
 pub fn run() {
@@ -381,10 +718,15 @@ pub fn run() {
     r.run(live_cases(), &[], rs_live);
     r.run(agy_cases(), &[], rs_agy);
     r.run(expand_cases(), &[], rs_expand);
-    r.run(re_cases(), &[], |e, c| if c.op == "expand" { rs_expand(e, c) } else { rs_validate(e, c) });
+    r.run(re_cases(), &[], |e, c| {
+        if c.op == "expand" {
+            rs_expand(e, c)
+        } else {
+            rs_validate(e, c)
+        }
+    });
     let cases = exec_flags_cases(&r.e);
     r.run(cases, &[], rs_exec_flags);
     r.run(validate_cases(), &[], rs_validate);
     r.finish("misc");
 }
-

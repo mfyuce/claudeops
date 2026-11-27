@@ -30,19 +30,35 @@ impl SpawnRuntime {
     }
 
     /// [`SpawnRuntime::new`], maliyet ayarı başka kaynaktan (rs/state yükleyicisi bağlanınca).
-    pub fn with_cost_settings(paths: &Paths, env: &Env, python: &str, settings: CostSettings) -> SpawnRuntime {
+    pub fn with_cost_settings(
+        paths: &Paths,
+        env: &Env,
+        python: &str,
+        settings: CostSettings,
+    ) -> SpawnRuntime {
         let diag = DiagLog::from_env(paths, env);
         let provision = Provision::python(python, &paths.repo_dir);
         SpawnRuntime {
             ledger: Arc::new(CostLedger::new(paths.ucli_usage_dir(), settings)),
-            search: Arc::new(ManagedSearch::new(&paths.home, &paths.claudeops_dir, env.clone(), diag.clone(), provision)),
+            search: Arc::new(ManagedSearch::new(
+                &paths.home,
+                &paths.claudeops_dir,
+                env.clone(),
+                diag.clone(),
+                provision,
+            )),
             help: Arc::new(HelpCache::default()),
             diag,
         }
     }
 
     /// Bu örneklerle [`RealDeps`].
-    pub fn deps(&self, docs: Arc<dyn DocStore>, projects: Arc<dyn ProjectDirs>, panel_port: Option<u16>) -> RealDeps {
+    pub fn deps(
+        &self,
+        docs: Arc<dyn DocStore>,
+        projects: Arc<dyn ProjectDirs>,
+        panel_port: Option<u16>,
+    ) -> RealDeps {
         RealDeps {
             docs,
             projects,

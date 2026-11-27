@@ -47,16 +47,35 @@ impl Fake {
             uid: ME,
             clk_tck: 100,
         };
-        Fake { _tmp: tmp, root, cfg }
+        Fake {
+            _tmp: tmp,
+            root,
+            cfg,
+        }
     }
 
     fn add(&self, pid: u32, cmd: &str, env: &[&str], cwd: &str) {
         let d = self.root.join("proc").join(pid.to_string());
         fs::create_dir_all(d.join("fd")).unwrap();
-        fs::write(d.join("status"), format!("Name:\tx\nUid:\t{ME}\t{ME}\t{ME}\t{ME}\n")).unwrap();
-        fs::write(d.join("stat"), format!("{pid} (x) S 1 0 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {} 0 0\n", pid * 10)).unwrap();
+        fs::write(
+            d.join("status"),
+            format!("Name:\tx\nUid:\t{ME}\t{ME}\t{ME}\t{ME}\n"),
+        )
+        .unwrap();
+        fs::write(
+            d.join("stat"),
+            format!(
+                "{pid} (x) S 1 0 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {} 0 0\n",
+                pid * 10
+            ),
+        )
+        .unwrap();
         let nul = |parts: Vec<&str>| parts.iter().map(|s| format!("{s}\0")).collect::<String>();
-        fs::write(d.join("cmdline"), nul(cmd.split(' ').filter(|s| !s.is_empty()).collect())).unwrap();
+        fs::write(
+            d.join("cmdline"),
+            nul(cmd.split(' ').filter(|s| !s.is_empty()).collect()),
+        )
+        .unwrap();
         fs::write(d.join("environ"), nul(env.to_vec())).unwrap();
         symlink(cwd, d.join("cwd")).unwrap();
         symlink("/dev/pts/3", d.join("fd/0")).unwrap();
@@ -105,24 +124,43 @@ impl DiagSink for Sink {
 
 impl Sink {
     fn events(&self) -> Vec<String> {
-        self.0.lock().unwrap().iter().map(|d| format!("{} {:?}", d.event, d.fields)).collect()
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|d| format!("{} {:?}", d.event, d.fields))
+            .collect()
     }
 }
 
 fn obj(pairs: &[(&str, &str)]) -> Py {
-    Py::Object(pairs.iter().map(|(k, v)| (k.to_string(), Py::Str(v.to_string()))).collect())
+    Py::Object(
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), Py::Str(v.to_string())))
+            .collect(),
+    )
 }
 
 type Rows = Option<Vec<(String, Option<String>)>>;
 
 fn rows(v: &[(&str, Option<&str>)]) -> Rows {
-    Some(v.iter().map(|(n, s)| (n.to_string(), s.map(String::from))).collect())
+    Some(
+        v.iter()
+            .map(|(n, s)| (n.to_string(), s.map(String::from)))
+            .collect(),
+    )
 }
 
 /// Bir claude (argv kimlikli), bir codex ve öğrenilen kimlikli bir agy.
 fn fleet() -> Fake {
     let f = Fake::new();
-    f.add(10, "/bin/claude --remote-control cl --resume S1", &[], "/w/a");
+    f.add(
+        10,
+        "/bin/claude --remote-control cl --resume S1",
+        &[],
+        "/w/a",
+    );
     f.add(11, "codex", &["COPS_NAME=cx"], "/w/b");
     f.add(12, "agy", &["COPS_NAME=ag"], "/w/proj");
     fs::write(&f.cfg.agy_cache, r#"{"/w/proj": " c1 "}"#).unwrap();
@@ -135,7 +173,10 @@ fn rows_are_name_and_sid_and_the_learned_agy_id_is_saved() {
     let f = fleet();
     let (store, sink) = (Mem::default(), Sink::default());
     let got = ProcScan::new(f.cfg.clone(), &store, &sink).live_sessions(false);
-    assert_eq!(got, rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))]));
+    assert_eq!(
+        got,
+        rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))])
+    );
     assert_eq!(*store.doc.borrow(), Some(obj(&[("ag", "c1")])));
     assert_eq!((store.saves.get(), store.locks.get()), (1, 1));
     assert!(sink.events().is_empty());
@@ -145,7 +186,13 @@ fn rows_are_name_and_sid_and_the_learned_agy_id_is_saved() {
     assert_eq!((store.saves.get(), store.locks.get()), (1, 1));
     // spawn'ın gördüğü küme: kendisi hariç kimlikler ve adlar.
     let live = got.unwrap();
-    let ls: Vec<LiveSession<'_>> = live.iter().map(|(n, s)| LiveSession { name: n, sid: s.as_deref() }).collect();
+    let ls: Vec<LiveSession<'_>> = live
+        .iter()
+        .map(|(n, s)| LiveSession {
+            name: n,
+            sid: s.as_deref(),
+        })
+        .collect();
     let held: Vec<String> = ids_held_by_others("ag", Some(&ls)).into_iter().collect();
     assert_eq!(held, ["S1", "cl", "cx"]);
 }
@@ -157,7 +204,10 @@ fn preview_scan_writes_nothing() {
     let f = fleet();
     let (store, sink) = (Mem::default(), Sink::default());
     let got = ProcScan::new(f.cfg.clone(), &store, &sink).live_sessions(true);
-    assert_eq!(got, rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))]));
+    assert_eq!(
+        got,
+        rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))])
+    );
     assert_eq!((store.saves.get(), store.locks.get()), (0, 0));
     assert_eq!(*store.doc.borrow(), None);
 }
@@ -169,16 +219,28 @@ fn lock_failure_is_logged_but_a_save_failure_drops_the_scan() {
     let _g = proc_guard();
     let f = fleet();
     let sink = Sink::default();
-    let busy = Mem { lock_err: Some("ğ".repeat(300)), ..Mem::default() };
+    let busy = Mem {
+        lock_err: Some("ğ".repeat(300)),
+        ..Mem::default()
+    };
     let got = ProcScan::new(f.cfg.clone(), &busy, &sink).live_sessions(false);
-    assert_eq!(got, rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))]));
+    assert_eq!(
+        got,
+        rows(&[("cl", Some("S1")), ("cx", None), ("ag", Some("c1"))])
+    );
     let ev = sink.0.lock().unwrap().clone();
     assert_eq!(ev.len(), 1);
     assert_eq!(ev[0].event, "agy_sids_lock_busy");
     assert_eq!(ev[0].fields, vec![("error", json!("ğ".repeat(200)))]);
-    let broken = Mem { save_err: Some("disk dolu".into()), ..Mem::default() };
+    let broken = Mem {
+        save_err: Some("disk dolu".into()),
+        ..Mem::default()
+    };
     let sink2 = Sink::default();
-    assert_eq!(ProcScan::new(f.cfg.clone(), &broken, &sink2).live_sessions(false), None);
+    assert_eq!(
+        ProcScan::new(f.cfg.clone(), &broken, &sink2).live_sessions(false),
+        None
+    );
     assert!(sink2.events().is_empty());
 }
 
@@ -193,7 +255,10 @@ fn unreadable_process_list_drops_the_scan_and_writes_nothing() {
     assert_eq!((store.saves.get(), store.locks.get()), (0, 0));
     // Boş ama okunabilir liste "tarama düştü" DEĞİL.
     let empty = Fake::new();
-    assert_eq!(ProcScan::new(empty.cfg.clone(), &store, &sink).live_sessions(false), Some(vec![]));
+    assert_eq!(
+        ProcScan::new(empty.cfg.clone(), &store, &sink).live_sessions(false),
+        Some(vec![])
+    );
 }
 
 /// Gerçek yazım yolu: `DocAgySidStore` + dosya kipi (geçici `CLAUDEOPS_DIR`), Python ile aynı dosya ve kilit.
@@ -208,13 +273,17 @@ fn learned_id_reaches_the_agy_sids_file() {
         home: f.root.join("home").to_str().unwrap().into(),
         repo_dir: f.root.join("repo").to_str().unwrap().into(),
     };
-    let env = Env::fixed([("HOME", paths.home.as_str()), ("CLAUDEOPS_DIR", paths.claudeops_dir.as_str())]);
+    let env = Env::fixed([
+        ("HOME", paths.home.as_str()),
+        ("CLAUDEOPS_DIR", paths.claudeops_dir.as_str()),
+    ]);
     let store = DocAgySidStore::new(&paths, Arc::new(FileDocs::new(&paths, env)));
     fs::write(state.join("agy_sids.json"), r#"{"eski": "e1"}"#).unwrap();
     let sink = Sink::default();
     let got = ProcScan::new(f.cfg.clone(), &store, &sink).live_sessions(false);
     assert!(got.unwrap().contains(&("ag".into(), Some("c1".into()))));
-    let saved: serde_json::Value = serde_json::from_slice(&fs::read(state.join("agy_sids.json")).unwrap()).unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(state.join("agy_sids.json")).unwrap()).unwrap();
     assert_eq!(saved, json!({"eski": "e1", "ag": "c1"}));
     assert!(sink.events().is_empty(), "{:?}", sink.events());
 }
@@ -232,7 +301,10 @@ fn real_proc_scan_reads_without_side_effects() {
     let cfg = scan_config(&paths);
     assert_eq!(cfg.proc_root, PathBuf::from("/proc"));
     assert_eq!(cfg.agy_sids, PathBuf::from(paths.agy_sids_json()));
-    assert_eq!(cfg.agy_cache, PathBuf::from(paths.agy_conversations_cache()));
+    assert_eq!(
+        cfg.agy_cache,
+        PathBuf::from(paths.agy_conversations_cache())
+    );
     let (store, sink) = (Mem::default(), Sink::default());
     let got = ProcScan::new(cfg, &store, &sink).live_sessions(true);
     assert!(got.is_some());

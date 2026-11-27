@@ -37,7 +37,10 @@ impl fmt::Display for ApprovalError {
 impl std::error::Error for ApprovalError {}
 
 fn fail(class: &'static str, text: impl Into<String>) -> ApprovalError {
-    ApprovalError { class, text: text.into() }
+    ApprovalError {
+        class,
+        text: text.into(),
+    }
 }
 
 fn os_error(e: &io::Error, path: &str) -> ApprovalError {
@@ -46,11 +49,19 @@ fn os_error(e: &io::Error, path: &str) -> ApprovalError {
 
 /// `OSError(errno, strerror, path)` (Python'ın kendi metniyle).
 fn custom(class: &'static str, errno: i32, what: &str, path: &str) -> ApprovalError {
-    fail(class, format!("[Errno {errno}] {what}: {}", crate::pyfmt::py_str_repr(path)))
+    fail(
+        class,
+        format!(
+            "[Errno {errno}] {what}: {}",
+            crate::pyfmt::py_str_repr(path)
+        ),
+    )
 }
 
 fn unix_now() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +73,11 @@ pub struct ApprovalStore {
 
 impl ApprovalStore {
     pub fn new(paths: &Paths) -> ApprovalStore {
-        ApprovalStore { root: paths.ucli_approval_root(), now: unix_now, lock_timeout: LOCK_TIMEOUT }
+        ApprovalStore {
+            root: paths.ucli_approval_root(),
+            now: unix_now,
+            lock_timeout: LOCK_TIMEOUT,
+        }
     }
 
     pub fn with_clock(mut self, now: fn() -> f64) -> ApprovalStore {
@@ -88,12 +103,22 @@ impl ApprovalStore {
         if create {
             makedirs(&self.root, 0o700).map_err(|(p, e)| os_error(&e, &p))?;
             for sub in ["", "pending", "suspended", "answers"] {
-                let path = if sub.is_empty() { dir.clone() } else { format!("{dir}/{sub}") };
+                let path = if sub.is_empty() {
+                    dir.clone()
+                } else {
+                    format!("{dir}/{sub}")
+                };
                 if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
-                    return Err(custom("OSError", libc::ELOOP, "onay dizini sembolik bağ", &path));
+                    return Err(custom(
+                        "OSError",
+                        libc::ELOOP,
+                        "onay dizini sembolik bağ",
+                        &path,
+                    ));
                 }
                 makedirs(&path, 0o700).map_err(|(p, e)| os_error(&e, &p))?;
-                fs::set_permissions(&path, Permissions::from_mode(0o700)).map_err(|e| os_error(&e, &path))?;
+                fs::set_permissions(&path, Permissions::from_mode(0o700))
+                    .map_err(|e| os_error(&e, &path))?;
             }
         }
         Ok(dir)
@@ -102,7 +127,10 @@ impl ApprovalStore {
     /// Ham defter; yoksa None. Okunamıyorsa, normal dosya değilse (FIFO bloklamaz) ya da sınırı aşıyorsa hata.
     fn read_index(&self) -> Result<Option<Vec<u8>>, ApprovalError> {
         let path = self.index_path();
-        let open = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY).open(&path);
+        let open = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+            .open(&path);
         let file = match open {
             Ok(f) => f,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -112,7 +140,9 @@ impl ApprovalStore {
             return Err(custom("OSError", libc::EINVAL, "normal dosya değil", &path));
         }
         let mut raw = Vec::new();
-        file.take(INDEX_MAX_BYTES + 1).read_to_end(&mut raw).map_err(|e| os_error(&e, &path))?;
+        file.take(INDEX_MAX_BYTES + 1)
+            .read_to_end(&mut raw)
+            .map_err(|e| os_error(&e, &path))?;
         if raw.len() as u64 > INDEX_MAX_BYTES {
             return Err(custom("OSError", libc::EFBIG, "defter çok büyük", &path));
         }
@@ -121,19 +151,32 @@ impl ApprovalStore {
 
     /// `_load_index`: yok/okunamaz/bozuk defter boştur.
     fn load_index(&self) -> Vec<(String, Py)> {
-        self.read_index().ok().flatten().and_then(|raw| approval::parse_index(&raw)).unwrap_or_default()
+        self.read_index()
+            .ok()
+            .flatten()
+            .and_then(|raw| approval::parse_index(&raw))
+            .unwrap_or_default()
     }
 
     /// `_load_index_for_overwrite`: bozuk defterin önce 0600 kopyası bırakılır.
     fn load_index_for_overwrite(&self) -> Result<Vec<(String, Py)>, ApprovalError> {
-        let Some(raw) = self.read_index()? else { return Ok(Vec::new()) };
+        let Some(raw) = self.read_index()? else {
+            return Ok(Vec::new());
+        };
         if let Some(index) = approval::parse_index(&raw) {
             return Ok(index);
         }
-        let digest: String = Sha256::digest(&raw).iter().map(|b| format!("{b:02x}")).collect();
+        let digest: String = Sha256::digest(&raw)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let copy = format!("{}.corrupt-{}", self.index_path(), &digest[..12]);
-        let open =
-            OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(&copy);
+        let open = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&copy);
         match open {
             Ok(mut f) => f.write_all(&raw).map_err(|e| os_error(&e, &copy))?,
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
@@ -146,14 +189,20 @@ impl ApprovalStore {
         let path = self.index_path();
         let lock = format!("{path}.lock");
         // hatanın metnindeki yol, düşen adımın yoludur (dizin açma ya da kilit dosyası)
-        let refused = |e: &io::Error, at: &str| fail("LockError", format!("{lock} alınamadı: {}", oserr::text(e, at)));
+        let refused = |e: &io::Error, at: &str| {
+            fail(
+                "LockError",
+                format!("{lock} alınamadı: {}", oserr::text(e, at)),
+            )
+        };
         makedirs(&self.root, 0o777).map_err(|(p, e)| refused(&e, &p))?;
         FileLock::acquire(&path, "/", self.lock_timeout).map_err(|e| refused(&e, &lock))
     }
 
     fn write_index(&self, index: Vec<(String, Py)>) -> Result<(), ApprovalError> {
         let path = self.index_path();
-        atomic_write_text(&path, &Py::Object(index).dumps_pretty(), Some(0o600)).map_err(|e| os_error(&e, &path))
+        atomic_write_text(&path, &Py::Object(index).dumps_pretty(), Some(0o600))
+            .map_err(|e| os_error(&e, &path))
     }
 
     /// `run_key` yeni koşuya verilebilir mi (kilitsiz ön denetim; kesin karar [`ApprovalStore::register`]de, kilit altında).
@@ -167,7 +216,12 @@ impl ApprovalStore {
         let _lock = self.lock()?;
         let mut index = self.load_index_for_overwrite()?;
         if !approval::insert_run(&mut index, run_key, run, (self.now)()) {
-            return Err(custom("FileExistsError", libc::EEXIST, "run_key kullanımda", run_key));
+            return Err(custom(
+                "FileExistsError",
+                libc::EEXIST,
+                "run_key kullanımda",
+                run_key,
+            ));
         }
         self.write_index(index)?;
         Ok(dir)

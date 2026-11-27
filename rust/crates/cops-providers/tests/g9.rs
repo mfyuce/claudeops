@@ -6,8 +6,8 @@ use cops_providers::real::launch::{repo_dir_of, GnomeTerminal, SystemClock};
 use cops_providers::real::routing_sync::{copy2, sync_global_files};
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
-    fallback_watchdog, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux, Terminal,
-    FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
+    fallback_watchdog, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux,
+    Terminal, FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
 };
 use cops_providers::{Diag, Paths, Settings};
 use serde_json::{json, Value};
@@ -69,13 +69,23 @@ impl SpawnTmux for FakeTmux {
     fn attach_fragment(&self, name: &str) -> Result<String, String> {
         Ok(format!("attach {name}"))
     }
-    fn spawn_direct(&self, name: &str, _cwd: &str, _inner: &str, _env: &[(String, String)]) -> bool {
+    fn spawn_direct(
+        &self,
+        name: &str,
+        _cwd: &str,
+        _inner: &str,
+        _env: &[(String, String)],
+    ) -> bool {
         self.call(format!("direct {name}"));
         self.direct_ok
     }
     fn has_session(&self, name: &str) -> bool {
         self.call(format!("has {name}"));
-        self.has.lock().unwrap().pop_front().unwrap_or(self.has_default)
+        self.has
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(self.has_default)
     }
     fn ghost_session(&self, name: &str) -> bool {
         self.call(format!("ghost {name}"));
@@ -103,7 +113,11 @@ impl Terminal for FakeTerm {
         false
     }
     fn launch(&self, argv: &[String], _env: &[(String, String)]) -> Result<bool, LaunchError> {
-        self.log.calls.lock().unwrap().push(format!("launch {}", argv[2]));
+        self.log
+            .calls
+            .lock()
+            .unwrap()
+            .push(format!("launch {}", argv[2]));
         self.results.lock().unwrap().pop_front().unwrap_or(Ok(true))
     }
 }
@@ -142,15 +156,25 @@ fn rig(tmux: impl FnOnce(&mut FakeTmux), launches: Vec<Result<bool, LaunchError>
     let log = Arc::new(Log::default());
     let mut t = FakeTmux::new(&log);
     tmux(&mut t);
-    let clock = Arc::new(FakeClock { t: Mutex::new(1000.0), sleeps: Mutex::new(Vec::new()) });
+    let clock = Arc::new(FakeClock {
+        t: Mutex::new(1000.0),
+        sleeps: Mutex::new(Vec::new()),
+    });
     let launcher = Launcher {
         tmux: Arc::new(t),
-        terminal: Arc::new(FakeTerm { log: log.clone(), results: Mutex::new(launches.into()) }),
+        terminal: Arc::new(FakeTerm {
+            log: log.clone(),
+            results: Mutex::new(launches.into()),
+        }),
         clock: clock.clone(),
         diag: Arc::new(Sink(log.clone())),
         parent_env: vec![("HOME".into(), "/h".into())],
     };
-    Rig { log, clock, launcher }
+    Rig {
+        log,
+        clock,
+        launcher,
+    }
 }
 
 impl Rig {
@@ -158,7 +182,13 @@ impl Rig {
         self.log.calls.lock().unwrap().clone()
     }
     fn events(&self) -> Vec<(&'static str, Vec<(&'static str, Value)>)> {
-        self.log.diags.lock().unwrap().iter().map(|d| (d.event, d.fields.clone())).collect()
+        self.log
+            .diags
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|d| (d.event, d.fields.clone()))
+            .collect()
     }
 }
 
@@ -175,7 +205,12 @@ fn ghost_is_killed_and_only_screen_counts_are_logged() {
     assert_eq!(ev[0].0, "spawn_ghost_reclaimed");
     assert_eq!(
         ev[0].1,
-        vec![("name", json!("p")), ("cli", json!("claude")), ("screen_lines", json!(2)), ("screen_chars", json!(17))]
+        vec![
+            ("name", json!("p")),
+            ("cli", json!("claude")),
+            ("screen_lines", json!(2)),
+            ("screen_chars", json!(17))
+        ]
     );
 }
 
@@ -206,12 +241,18 @@ fn non_ghost_and_missing_tmux_are_untouched() {
 fn reclaim_never_panics_and_never_logs_the_screen() {
     let r = rig(|t| t.capture = None, vec![]);
     reclaim_ghost_session(&r.launcher, "p", "agy");
-    assert_eq!(r.events()[0].1[2..], [("screen_lines", json!(0)), ("screen_chars", json!(0))]);
+    assert_eq!(
+        r.events()[0].1[2..],
+        [("screen_lines", json!(0)), ("screen_chars", json!(0))]
+    );
     let screen = format!("\u{1b}[31m{}\u{1b}[0m\n\n   \nson\n", "ğ".repeat(2000));
     let r = rig(|t| t.capture = Some(screen), vec![]);
     reclaim_ghost_session(&r.launcher, "p", "agy");
     // renk kodları ve boş satırlar sayılmaz
-    assert_eq!(r.events()[0].1[2..], [("screen_lines", json!(2)), ("screen_chars", json!(2004))]);
+    assert_eq!(
+        r.events()[0].1[2..],
+        [("screen_lines", json!(2)), ("screen_chars", json!(2004))]
+    );
     let logged = format!("{:?}", r.events());
     assert!(!logged.contains('ğ') && !logged.contains("son"), "{logged}");
 }
@@ -219,7 +260,14 @@ fn reclaim_never_panics_and_never_logs_the_screen() {
 // ------------------------------------------------------------------------------------------------- bekçi (sahte saat)
 
 fn watch(r: &Rig) {
-    fallback_watchdog(&r.launcher, "s", "/w", "inner", &[("DISPLAY".into(), ":1".into())], "cmd");
+    fallback_watchdog(
+        &r.launcher,
+        "s",
+        "/w",
+        "inner",
+        &[("DISPLAY".into(), ":1".into())],
+        "cmd",
+    );
 }
 
 #[test]
@@ -240,10 +288,19 @@ fn watchdog_retries_then_falls_back_to_headless_tmux() {
     let sleeps = r.clock.sleeps.lock().unwrap().clone();
     assert_eq!(sleeps.len(), polls * attempts);
     assert!(sleeps.iter().all(|s| *s == FALLBACK_POLL_SECONDS));
-    assert_eq!(*r.clock.t.lock().unwrap(), 1000.0 + FALLBACK_ATTEMPT_WAIT_SECONDS * attempts as f64);
+    assert_eq!(
+        *r.clock.t.lock().unwrap(),
+        1000.0 + FALLBACK_ATTEMPT_WAIT_SECONDS * attempts as f64
+    );
     let calls = r.calls();
-    assert_eq!(calls.iter().filter(|c| c.starts_with("launch")).count(), FALLBACK_RETRY_COUNT as usize);
-    assert_eq!(calls.iter().filter(|c| *c == "has s").count(), polls * attempts + 1);
+    assert_eq!(
+        calls.iter().filter(|c| c.starts_with("launch")).count(),
+        FALLBACK_RETRY_COUNT as usize
+    );
+    assert_eq!(
+        calls.iter().filter(|c| *c == "has s").count(),
+        polls * attempts + 1
+    );
     assert_eq!(calls.last().unwrap(), "direct s");
     let names: Vec<&str> = r.events().iter().map(|e| e.0).collect();
     assert_eq!(names, ["spawn_retry", "spawn_retry", "spawn_fallback_used"]);
@@ -258,7 +315,10 @@ fn watchdog_logs_success_on_a_later_attempt() {
     let r = rig(|t| *t.has.get_mut().unwrap() = seq.into(), vec![]);
     watch(&r);
     let ev = r.events();
-    assert_eq!(ev.iter().map(|e| e.0).collect::<Vec<_>>(), ["spawn_retry", "spawn_retry_succeeded"]);
+    assert_eq!(
+        ev.iter().map(|e| e.0).collect::<Vec<_>>(),
+        ["spawn_retry", "spawn_retry_succeeded"]
+    );
     assert_eq!(ev[1].1[2], ("attempt", json!(1)));
     assert!(!r.calls().iter().any(|c| c.starts_with("direct")));
 }
@@ -268,14 +328,31 @@ fn watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it() {
     let r = rig(|t| t.direct_ok = false, vec![Ok(false)]);
     watch(&r);
     let names: Vec<&str> = r.events().iter().map(|e| e.0).collect();
-    assert_eq!(names, ["spawn_retry", "spawn_retry_launch_failed", "spawn_retry", "spawn_fallback_used"]);
+    assert_eq!(
+        names,
+        [
+            "spawn_retry",
+            "spawn_retry_launch_failed",
+            "spawn_retry",
+            "spawn_fallback_used"
+        ]
+    );
     assert_eq!(r.events()[3].1[2], ("ok", json!(false)));
     // `ValueError` bekçiyi bitirir, penceresiz yedek açılmaz; günlüğe hata metni DEĞİL sınıf adı girer.
-    let r = rig(|_| {}, vec![Err(LaunchError::Value("API_KEY=sk-cok-gizli".into()))]);
+    let r = rig(
+        |_| {},
+        vec![Err(LaunchError::Value("API_KEY=sk-cok-gizli".into()))],
+    );
     watch(&r);
     let ev = r.events();
-    assert_eq!(ev.iter().map(|e| e.0).collect::<Vec<_>>(), ["spawn_retry", "spawn_retry_launch_error"]);
-    assert_eq!(ev[1].1[2..], [("attempt", json!(1)), ("error", json!("ValueError"))]);
+    assert_eq!(
+        ev.iter().map(|e| e.0).collect::<Vec<_>>(),
+        ["spawn_retry", "spawn_retry_launch_error"]
+    );
+    assert_eq!(
+        ev[1].1[2..],
+        [("attempt", json!(1)), ("error", json!("ValueError"))]
+    );
     assert!(!format!("{ev:?}").contains("gizli"));
     assert!(!r.calls().iter().any(|c| c.starts_with("direct")));
 }
@@ -296,8 +373,14 @@ fn system_clock_is_monotonic_and_ignores_bad_sleeps() {
 // --------------------------------------------------------------------------------------- GnomeTerminal (sahte betik)
 
 fn tmpdir() -> (TempDir, String) {
-    let d = tempfile::Builder::new().prefix("cops-g9-").tempdir().unwrap();
-    let root = fs::canonicalize(d.path()).unwrap().to_string_lossy().into_owned();
+    let d = tempfile::Builder::new()
+        .prefix("cops-g9-")
+        .tempdir()
+        .unwrap();
+    let root = fs::canonicalize(d.path())
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
     (d, root)
 }
 
@@ -309,7 +392,12 @@ fn write_exe(path: &str, body: &str) {
         .stdin(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(body.as_bytes())
+        .unwrap();
     assert!(child.wait().unwrap().success());
 }
 
@@ -343,7 +431,17 @@ fn gnome_terminal_runs_with_only_the_given_env_and_is_reaped() {
     let gt = GnomeTerminal::new(Env::fixed([("PATH", format!("{root}/bin"))]));
     assert!(gt.available());
     assert!(!GnomeTerminal::new(Env::fixed([("PATH", format!("{root}/yok"))])).available());
-    let argv: Vec<String> = ["gnome-terminal", "--window", "--title=a b", "--", "bash", "-c", "x; exec bash"].map(String::from).into();
+    let argv: Vec<String> = [
+        "gnome-terminal",
+        "--window",
+        "--title=a b",
+        "--",
+        "bash",
+        "-c",
+        "x; exec bash",
+    ]
+    .map(String::from)
+    .into();
     let env = vec![
         ("PATH".to_string(), format!("{root}/bin:/usr/bin:/bin")),
         ("OUT".to_string(), out.clone()),
@@ -351,11 +449,19 @@ fn gnome_terminal_runs_with_only_the_given_env_and_is_reaped() {
     ];
     assert_eq!(gt.launch(&argv, &env), Ok(true));
     let pid = wait_for(&format!("{out}.pid")).trim().to_string();
-    assert_eq!(fs::read_to_string(format!("{out}.argv")).unwrap(), "--window\n--title=a b\n--\nbash\n-c\nx; exec bash\n");
+    assert_eq!(
+        fs::read_to_string(format!("{out}.argv")).unwrap(),
+        "--window\n--title=a b\n--\nbash\n-c\nx; exec bash\n"
+    );
     let child_env = fs::read_to_string(format!("{out}.env")).unwrap();
     assert!(child_env.contains("DISPLAY=:7\n") && child_env.contains(&format!("OUT={out}\n")));
     // miras YOK: test sürecinin HOME'u ve cargo değişkenleri çocuğa geçmez
-    assert!(!child_env.lines().any(|l| l.starts_with("HOME=") || l.starts_with("CARGO")), "{child_env}");
+    assert!(
+        !child_env
+            .lines()
+            .any(|l| l.starts_with("HOME=") || l.starts_with("CARGO")),
+        "{child_env}"
+    );
     // arka planda toplanır: zombi kalmaz (yalnız bu testin kendi çocuğu)
     let deadline = Instant::now() + Duration::from_secs(10);
     while Path::new(&format!("/proc/{pid}")).exists() {
@@ -375,8 +481,14 @@ fn gnome_terminal_popen_failures() {
     let argv = |a: &str| vec!["gnome-terminal".to_string(), a.to_string()];
     let env = |p: &str| vec![("PATH".to_string(), p.to_string())];
     // `OSError` (yok, çalıştırılamaz) = false; `env`deki PATH aranır, çağıranınki değil
-    assert_eq!(gt.launch(&argv("x"), &env(&format!("{root}/yok"))), Ok(false));
-    assert_eq!(gt.launch(&argv("x"), &env(&format!("{root}/noexec"))), Ok(false));
+    assert_eq!(
+        gt.launch(&argv("x"), &env(&format!("{root}/yok"))),
+        Ok(false)
+    );
+    assert_eq!(
+        gt.launch(&argv("x"), &env(&format!("{root}/noexec"))),
+        Ok(false)
+    );
     assert_eq!(gt.launch(&[], &env(&format!("{root}/bin"))), Ok(false));
     // `ValueError` (Python `Popen` öncesi denetimler): spawn reddi
     let nul = Err(LaunchError::Value("embedded null byte".into()));
@@ -385,10 +497,15 @@ fn gnome_terminal_popen_failures() {
     assert_eq!(gt.launch(&argv("x"), &[("A\0".into(), "v".into())]), nul);
     assert_eq!(
         gt.launch(&argv("x"), &[("A=B".into(), "v".into())]),
-        Err(LaunchError::Value("illegal environment variable name".into()))
+        Err(LaunchError::Value(
+            "illegal environment variable name".into()
+        ))
     );
     // gerçek çalıştırılabilir: true
-    assert_eq!(gt.launch(&argv("x"), &env(&format!("{root}/bin"))), Ok(true));
+    assert_eq!(
+        gt.launch(&argv("x"), &env(&format!("{root}/bin"))),
+        Ok(true)
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------- copy2, REPO_DIR
@@ -401,7 +518,12 @@ fn copy2_copies_content_mode_and_times_and_follows_a_target_link() {
     fs::set_permissions(&src, fs::Permissions::from_mode(0o640)).unwrap();
     let past = SystemTime::UNIX_EPOCH + Duration::new(1_600_000_000, 123_456_789);
     let older = SystemTime::UNIX_EPOCH + Duration::new(1_500_000_000, 987_654_321);
-    fs::File::options().write(true).open(&src).unwrap().set_times(FileTimes::new().set_modified(past).set_accessed(older)).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&src)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(past).set_accessed(older))
+        .unwrap();
     let dst = format!("{root}/dst");
     fs::write(&dst, "eski uzun içerik burada\n").unwrap();
     copy2(&src, &dst).unwrap();
@@ -414,8 +536,14 @@ fn copy2_copies_content_mode_and_times_and_follows_a_target_link() {
     let link = format!("{root}/link");
     std::os::unix::fs::symlink(format!("{root}/target"), &link).unwrap();
     copy2(&src, &link).unwrap();
-    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
-    assert_eq!(fs::read_to_string(format!("{root}/target")).unwrap(), "içerik\n");
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_to_string(format!("{root}/target")).unwrap(),
+        "içerik\n"
+    );
     // kaynak yok: NotFound, hedef oluşmaz
     let e = copy2(&format!("{root}/yok"), &format!("{root}/x")).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
@@ -428,12 +556,21 @@ fn repo_dir_resolves_links_and_two_parents() {
     let real = format!("{root}/depo/py/claudeops/paths.py");
     fs::create_dir_all(Path::new(&real).parent().unwrap()).unwrap();
     fs::write(&real, "").unwrap();
-    assert_eq!(repo_dir_of(Path::new(&real)).as_deref(), Some(format!("{root}/depo").as_str()));
+    assert_eq!(
+        repo_dir_of(Path::new(&real)).as_deref(),
+        Some(format!("{root}/depo").as_str())
+    );
     std::os::unix::fs::symlink(&real, format!("{root}/bag.py")).unwrap();
-    assert_eq!(repo_dir_of(Path::new(&format!("{root}/bag.py"))).as_deref(), Some(format!("{root}/depo").as_str()));
+    assert_eq!(
+        repo_dir_of(Path::new(&format!("{root}/bag.py"))).as_deref(),
+        Some(format!("{root}/depo").as_str())
+    );
     std::os::unix::fs::symlink(format!("{root}/depo"), format!("{root}/depo-bag")).unwrap();
     let via = format!("{root}/depo-bag/py/claudeops/paths.py");
-    assert_eq!(repo_dir_of(Path::new(&via)).as_deref(), Some(format!("{root}/depo").as_str()));
+    assert_eq!(
+        repo_dir_of(Path::new(&via)).as_deref(),
+        Some(format!("{root}/depo").as_str())
+    );
     assert_eq!(repo_dir_of(Path::new(&format!("{root}/yok.py"))), None);
     // gerçek depo: bu crate'in üç üstü
     let here = fs::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")).unwrap();
@@ -445,7 +582,11 @@ fn repo_dir_resolves_links_and_two_parents() {
 /// oluşturulmaz, agy dosyası (dizini dahil) oluşturulur.
 #[test]
 fn default_sync_paths_are_under_home() {
-    let p = Paths { claudeops_dir: "/s".into(), home: "/h ev".into(), repo_dir: "/r".into() };
+    let p = Paths {
+        claudeops_dir: "/s".into(),
+        home: "/h ev".into(),
+        repo_dir: "/r".into(),
+    };
     assert_eq!(p.codex_agents_md(), "/h ev/.codex/AGENTS.md");
     assert_eq!(p.agy_gemini_md(), "/h ev/.gemini/GEMINI.md");
     let t = support::Tmp::new();
@@ -453,10 +594,19 @@ fn default_sync_paths_are_under_home() {
     let settings = Settings::from_json(r#"{"routing_guidance_text": "yönerge"}"#);
     let log = Arc::new(Log::default());
     let out = sync_global_files(&probe, &settings, &t.paths(), &Sink(log.clone()));
-    assert_eq!(out, [("codex", "skipped:no file".to_string()), ("agy", "written".to_string())]);
+    assert_eq!(
+        out,
+        [
+            ("codex", "skipped:no file".to_string()),
+            ("agy", "written".to_string())
+        ]
+    );
     assert!(!Path::new(&t.path("home/.codex/AGENTS.md")).exists());
     let agy = fs::read_to_string(t.path("home/.gemini/GEMINI.md")).unwrap();
-    assert!(agy.starts_with("<!-- claudeops-routing:begin -->\nyönerge\n"), "{agy}");
+    assert!(
+        agy.starts_with("<!-- claudeops-routing:begin -->\nyönerge\n"),
+        "{agy}"
+    );
     assert!(log.diags.lock().unwrap().is_empty());
 }
 
@@ -482,6 +632,9 @@ fn dangling_backup_link_writes_neither_backup_nor_target() {
         let diags = log.diags.lock().unwrap();
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].event, "routing_guidance_backup_broken_link");
-        assert_eq!(diags[0].fields, vec![("path", json!(codex)), ("backup", json!(bak))]);
+        assert_eq!(
+            diags[0].fields,
+            vec![("path", json!(codex)), ("backup", json!(bak))]
+        );
     }
 }

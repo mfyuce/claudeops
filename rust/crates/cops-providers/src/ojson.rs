@@ -29,7 +29,11 @@ impl OValue {
             Value::Number(n) => OValue::Number(n.clone()),
             Value::String(s) => OValue::String(s.clone()),
             Value::Array(a) => OValue::Array(a.iter().map(OValue::from_value).collect()),
-            Value::Object(o) => OValue::Object(o.iter().map(|(k, v)| (k.clone(), OValue::from_value(v))).collect()),
+            Value::Object(o) => OValue::Object(
+                o.iter()
+                    .map(|(k, v)| (k.clone(), OValue::from_value(v)))
+                    .collect(),
+            ),
         }
     }
 
@@ -40,12 +44,19 @@ impl OValue {
             OValue::Number(n) => Value::Number(n.clone()),
             OValue::String(s) => Value::String(s.clone()),
             OValue::Array(a) => Value::Array(a.iter().map(OValue::to_value).collect()),
-            OValue::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), v.to_value())).collect::<Map<_, _>>()),
+            OValue::Object(o) => Value::Object(
+                o.iter()
+                    .map(|(k, v)| (k.clone(), v.to_value()))
+                    .collect::<Map<_, _>>(),
+            ),
         }
     }
 
     pub fn get(&self, key: &str) -> Option<&OValue> {
-        self.entries()?.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+        self.entries()?
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
     }
 
     /// Nesne girdileri (sırayla); nesne değilse None.

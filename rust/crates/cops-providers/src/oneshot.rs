@@ -23,7 +23,10 @@ impl std::error::Error for OneshotError {}
 /// `_SAFE_ENV_NAME_RE` (tam eşleşme): `[A-Z0-9_]+_API_KEY`. Genel bir ad (`LD_PRELOAD`, `PATH`) kod enjeksiyonu olurdu.
 pub fn is_api_key_env_name(name: &str) -> bool {
     name.strip_suffix("_API_KEY").is_some_and(|head| {
-        !head.is_empty() && head.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        !head.is_empty()
+            && head
+                .bytes()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
     })
 }
 
@@ -46,14 +49,22 @@ pub struct ChatArgv<'a> {
 
 /// `build_chat_argv`.
 pub fn build_chat_argv(a: &ChatArgv<'_>) -> Vec<String> {
-    let mut argv: Vec<String> = vec![a.binary.into(), "--root".into(), a.root.into(), "chat".into()];
+    let mut argv: Vec<String> = vec![
+        a.binary.into(),
+        "--root".into(),
+        a.root.into(),
+        "chat".into(),
+    ];
     if a.repl {
         argv.push("--repl".into());
     }
     let key_env = Some(a.api_key_env);
-    for (flag, value) in
-        [("--session", a.session), ("--model", a.model), ("--endpoint", a.endpoint), ("--api-key-env", key_env)]
-    {
+    for (flag, value) in [
+        ("--session", a.session),
+        ("--model", a.model),
+        ("--endpoint", a.endpoint),
+        ("--api-key-env", key_env),
+    ] {
         if let Some(v) = value.filter(|v| !v.is_empty()) {
             argv.extend([flag.to_string(), v.to_string()]);
         }
@@ -71,7 +82,9 @@ pub fn build_chat_argv(a: &ChatArgv<'_>) -> Vec<String> {
 /// `prompt` konumsal argümandır: `-` ile başlayan (tek `-` dışında) ucli'de bayrak sayılır, reddedilir.
 pub fn check_prompt(prompt: &str) -> Result<(), SpawnError> {
     if prompt.len() > 1 && prompt.starts_with('-') {
-        return Err(SpawnError("prompt '-' ile başlayamaz (ucli bayrak sanır)".into()));
+        return Err(SpawnError(
+            "prompt '-' ile başlayamaz (ucli bayrak sanır)".into(),
+        ));
     }
     Ok(())
 }
@@ -85,14 +98,22 @@ pub fn redact(text: &str, secret: Option<&str>) -> String {
 }
 
 /// `_BUDGET_NOTES`.
-pub const BUDGET_NOTES: [(&str, &str); 1] =
-    [("failures", "ucli art arda başarısız araç çağrıları yüzünden takıldı; aşağıdaki cevap KISMİ, işi bitirmedi")];
+pub const BUDGET_NOTES: [(&str, &str); 1] = [(
+    "failures",
+    "ucli art arda başarısız araç çağrıları yüzünden takıldı; aşağıdaki cevap KISMİ, işi bitirmedi",
+)];
 
 const NOTE_PREFIX: &str = "[⚠ ";
 
 /// `mark_budget_exhausted`: `budget_exhausted` doluysa `answer`ın başına bir kez uyarı satırı eklenir.
 pub fn mark_budget_exhausted(mut value: Py) -> Py {
-    let Some(why) = value.get("budget_exhausted").filter(|v| v.truthy()).map(Py::py_str) else { return value };
+    let Some(why) = value
+        .get("budget_exhausted")
+        .filter(|v| v.truthy())
+        .map(Py::py_str)
+    else {
+        return value;
+    };
     let text = match BUDGET_NOTES.iter().find(|(k, _)| *k == why) {
         Some((_, note)) => (*note).to_string(),
         None => format!("ucli bütçesi tükendi ({why}); cevap KISMİ olabilir"),
@@ -110,17 +131,32 @@ pub fn mark_budget_exhausted(mut value: Py) -> Py {
 /// Biten `ucli chat`in (askıya alma dışı) sonucu: çıkış kodu, tek JSON nesnesi, `error` alanı, bütçe notu.
 ///
 /// JSON ayrıştırma ayrıntısı (Python `JSONDecodeError` metni) taşınmaz.
-pub fn chat_result(code: i32, stdout: &str, stderr: &str, secret: Option<&str>) -> Result<Py, SpawnError> {
+pub fn chat_result(
+    code: i32,
+    stdout: &str,
+    stderr: &str,
+    secret: Option<&str>,
+) -> Result<Py, SpawnError> {
     if code != 0 {
         let err = redact(strip(stderr), secret);
-        return Err(SpawnError(if err.is_empty() { format!("ucli exit={code}") } else { err }));
+        return Err(SpawnError(if err.is_empty() {
+            format!("ucli exit={code}")
+        } else {
+            err
+        }));
     }
     let shown = || py_str_repr(&redact(stdout, secret));
     let Some(value) = Py::parse(stdout) else {
-        return Err(SpawnError(format!("ucli çıktısı JSON değildi\nstdout={}", shown())));
+        return Err(SpawnError(format!(
+            "ucli çıktısı JSON değildi\nstdout={}",
+            shown()
+        )));
     };
     if !value.is_object() {
-        return Err(SpawnError(format!("ucli çıktısı JSON nesnesi değildi: stdout={}", shown())));
+        return Err(SpawnError(format!(
+            "ucli çıktısı JSON nesnesi değildi: stdout={}",
+            shown()
+        )));
     }
     if let Some(error) = value.get("error") {
         return Err(SpawnError(redact(&error.py_str(), secret)));
@@ -130,7 +166,11 @@ pub fn chat_result(code: i32, stdout: &str, stderr: &str, secret: Option<&str>) 
 
 /// `UcliProvider.oneshot`un cevap metni: `str(answer or "").strip()`, boşsa hata.
 pub fn ucli_answer(value: &Py) -> Result<String, OneshotError> {
-    let text = value.get("answer").filter(|a| a.truthy()).map(Py::py_str).unwrap_or_default();
+    let text = value
+        .get("answer")
+        .filter(|a| a.truthy())
+        .map(Py::py_str)
+        .unwrap_or_default();
     let text = strip(&text);
     if text.is_empty() {
         return Err(OneshotError("ucli: boş yanıt".into()));
@@ -141,16 +181,28 @@ pub fn ucli_answer(value: &Py) -> Result<String, OneshotError> {
 /// Python metin kipi: katı UTF-8 ve evrensel satır sonu; UTF-8 değilse None.
 pub fn decode_text(bytes: Vec<u8>) -> Option<String> {
     let text = String::from_utf8(bytes).ok()?;
-    Some(if text.contains('\r') { text.replace("\r\n", "\n").replace('\r', "\n") } else { text })
+    Some(if text.contains('\r') {
+        text.replace("\r\n", "\n").replace('\r', "\n")
+    } else {
+        text
+    })
 }
 
 /// `CliProvider.oneshot`un süreç sonrası yorumu.
-pub fn argv_result(name: &str, code: i32, stdout: &str, stderr: &str) -> Result<String, OneshotError> {
+pub fn argv_result(
+    name: &str,
+    code: i32,
+    stdout: &str,
+    stderr: &str,
+) -> Result<String, OneshotError> {
     let text = strip(stdout);
     if code != 0 {
         let source = if stderr.is_empty() { text } else { stderr };
         let head: String = source.chars().take(300).collect();
-        return Err(OneshotError(format!("{name}: exit={code}: {}", strip(&head))));
+        return Err(OneshotError(format!(
+            "{name}: exit={code}: {}",
+            strip(&head)
+        )));
     }
     if text.is_empty() {
         return Err(OneshotError(format!("{name}: boş yanıt")));
@@ -184,9 +236,13 @@ mod tests {
 
     #[test]
     fn absent_or_empty_budget_field_leaves_the_value_unchanged() {
-        for json in [r#"{"answer": "tam"}"#, r#"{"answer": "t", "budget_exhausted": null}"#,
-            r#"{"answer": "t", "budget_exhausted": ""}"#, r#"{"answer": 5, "budget_exhausted": "x"}"#, "[1]"]
-        {
+        for json in [
+            r#"{"answer": "tam"}"#,
+            r#"{"answer": "t", "budget_exhausted": null}"#,
+            r#"{"answer": "t", "budget_exhausted": ""}"#,
+            r#"{"answer": 5, "budget_exhausted": "x"}"#,
+            "[1]",
+        ] {
             assert_eq!(mark(json), Py::parse(json).unwrap(), "{json}");
         }
     }
@@ -196,7 +252,16 @@ mod tests {
         for ok in ["UCLI_API_KEY", "A_API_KEY", "_X9_API_KEY"] {
             assert!(is_api_key_env_name(ok), "{ok}");
         }
-        for bad in ["", "_API_KEY", "API_KEY", "LD_PRELOAD", "ucli_API_KEY", "X_API_KEY\n", "X_API_KEY=1", "X_API_KEYS"] {
+        for bad in [
+            "",
+            "_API_KEY",
+            "API_KEY",
+            "LD_PRELOAD",
+            "ucli_API_KEY",
+            "X_API_KEY\n",
+            "X_API_KEY=1",
+            "X_API_KEYS",
+        ] {
             assert!(!is_api_key_env_name(bad), "{bad:?}");
         }
     }
@@ -210,7 +275,9 @@ mod tests {
             (0, "[\"sk-gizli-anahtar\"]", ""),
             (0, "{\"error\": \"key sk-gizli-anahtar\"}", ""),
         ] {
-            let text = chat_result(code, out, err, Some(" sk-gizli-anahtar\n")).unwrap_err().0;
+            let text = chat_result(code, out, err, Some(" sk-gizli-anahtar\n"))
+                .unwrap_err()
+                .0;
             assert!(!text.contains(key) && text.contains("<redacted>"), "{text}");
         }
         assert_eq!(redact("kisa kisa", Some("kisa")), "kisa kisa");

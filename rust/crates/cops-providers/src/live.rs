@@ -65,7 +65,13 @@ pub trait LiveProbe: Probe {
     /// [`LiveProbe::sqlite_cell`] gibi açılır; sorgunun satırları tek tek (belleğe toplanmadan) `row`a verilir, `row`
     /// `false` dönerse okuma kesilir (dönüş `true`). SQLite hatasında (açılamayan/bozuk dosya, eksik tablo, UTF-8 olmayan
     /// metin hücresi) `false`; o ana kadarki satırlar verilmiş kalır. `db` yolu OLDUĞU GİBİ açılır (URI ayrıştırması yok).
-    fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool;
+    fn sqlite_rows(
+        &self,
+        db: &str,
+        sql: &str,
+        params: &[SqlCell],
+        row: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+    ) -> bool;
     /// `~/.claude/projects/<kodlanmış cwd>` (`claude_provider._encode_cwd`: rs/proc `transcript.rs::encode_cwd`).
     fn claude_project_dir(&self, cwd: &str) -> String;
 }
@@ -94,15 +100,24 @@ impl Cli {
 
 impl Live<'_> {
     /// Arka plan işi (kabuk işi, Monitor, alt ajan) sayısı. `pane_text`: ANSI'si ayıklanmış ekran.
-    pub fn background_work(&self, cli: Cli, pane_text: &str, cwd: &str, sid: Option<&str>) -> Option<u64> {
+    pub fn background_work(
+        &self,
+        cli: Cli,
+        pane_text: &str,
+        cwd: &str,
+        sid: Option<&str>,
+    ) -> Option<u64> {
         match cli {
             Cli::Claude => Some(match bg_work::screen_bg_count(pane_text) {
-                0 => u64::from(self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref())),
+                0 => u64::from(
+                    self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref()),
+                ),
                 n => n,
             }),
             Cli::Codex => {
                 let lines = self.tail_lines(self.codex_rollout_path(cwd, sid).as_deref());
-                let agents = bg_work::codex_subagents_pending(lines.iter().map(String::as_str), self.clock);
+                let agents =
+                    bg_work::codex_subagents_pending(lines.iter().map(String::as_str), self.clock);
                 Some(bg_work::codex_screen_count(pane_text).saturating_add(agents))
             }
             Cli::Ucli => self.ucli_background_work(cwd, sid),
@@ -131,7 +146,9 @@ impl Live<'_> {
         match cli {
             Cli::Codex => self.codex_context(cwd, sid),
             Cli::Copilot => self.copilot_context(cwd, sid),
-            Cli::Ucli => self.ucli_context(cwd, sid).map(|t| i64::try_from(t).unwrap_or(i64::MAX)),
+            Cli::Ucli => self
+                .ucli_context(cwd, sid)
+                .map(|t| i64::try_from(t).unwrap_or(i64::MAX)),
             Cli::Claude | Cli::Agy | Cli::Shell => None,
         }
     }
@@ -201,9 +218,15 @@ impl Live<'_> {
     fn copilot_context(&self, cwd: &str, sid: Option<&str>) -> Option<i64> {
         let session = match sid.filter(|s| !s.is_empty()) {
             Some(s) => s.to_string(),
-            None => self.copilot_resume_id(cwd, &BTreeSet::new()).filter(|s| !s.is_empty())?,
+            None => self
+                .copilot_resume_id(cwd, &BTreeSet::new())
+                .filter(|s| !s.is_empty())?,
         };
-        match self.probe.sqlite_cell(&self.paths.copilot_session_db(), COPILOT_CONTEXT_SQL, &session)? {
+        match self.probe.sqlite_cell(
+            &self.paths.copilot_session_db(),
+            COPILOT_CONTEXT_SQL,
+            &session,
+        )? {
             SqlCell::Null => None,
             SqlCell::Int(n) => (n != 0).then_some(n),
             // `int(f)`: sıfıra doğru keser; sonsuz/NaN bilinmiyor

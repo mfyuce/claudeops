@@ -39,13 +39,31 @@ impl Ctx {
         let approvals = ApprovalStore::new(&paths);
         let diag = DiagLog::new(t.path("state/diag.log"));
         let settings = Settings::from_json(settings);
-        Ctx { paths, env, probe, settings, catalog: ModelCatalog::default(), approvals, diag, t }
+        Ctx {
+            paths,
+            env,
+            probe,
+            settings,
+            catalog: ModelCatalog::default(),
+            approvals,
+            diag,
+            t,
+        }
     }
 
     fn with<R>(&self, f: impl FnOnce(&OneShot<'_, '_>) -> R) -> R {
-        let providers =
-            Providers { settings: &self.settings, catalog: &self.catalog, paths: &self.paths, probe: &self.probe };
-        f(&OneShot { providers: &providers, env: &self.env, approvals: &self.approvals, diag: &self.diag })
+        let providers = Providers {
+            settings: &self.settings,
+            catalog: &self.catalog,
+            paths: &self.paths,
+            probe: &self.probe,
+        };
+        f(&OneShot {
+            providers: &providers,
+            env: &self.env,
+            approvals: &self.approvals,
+            diag: &self.diag,
+        })
     }
 
     fn ucli(&self, body: &str) -> String {
@@ -91,7 +109,9 @@ fn the_key_reaches_only_the_child_environment() {
     let c = Ctx::new("{}");
     let seen = c.t.path("home/gorulen");
     let suspended = "echo '{\"suspended\":{\"id\":\"a1\"}}'; exit 75";
-    let bin = c.ucli(&format!("echo \"$@\" > {seen}.argv; echo \"$UCLI_API_KEY\" > {seen}.env; {suspended}"));
+    let bin = c.ucli(&format!(
+        "echo \"$@\" > {seen}.argv; echo \"$UCLI_API_KEY\" > {seen}.env; {suspended}"
+    ));
     let work = c.t.path("work");
     let mut req = ChatRequest::new(&work, "p");
     req.binary = Some(&bin);
@@ -99,32 +119,59 @@ fn the_key_reaches_only_the_child_environment() {
     req.approval_run_key = Some("r1");
     assert!(!format!("{req:?}").contains(KEY));
     let value = c.with(|s| s.chat_once(&req)).unwrap();
-    assert_eq!(value.get("status").and_then(|v| v.as_str()), Some("suspended"));
-    assert_eq!(fs::read_to_string(format!("{seen}.env")).unwrap().trim(), KEY);
-    assert!(!fs::read_to_string(format!("{seen}.argv")).unwrap().contains(KEY));
+    assert_eq!(
+        value.get("status").and_then(|v| v.as_str()),
+        Some("suspended")
+    );
+    assert_eq!(
+        fs::read_to_string(format!("{seen}.env")).unwrap().trim(),
+        KEY
+    );
+    assert!(!fs::read_to_string(format!("{seen}.argv"))
+        .unwrap()
+        .contains(KEY));
     assert!(!all_files(&c.t.path("state")).contains(KEY));
     assert!(!format!("{:?}", c.env.with_var("UCLI_API_KEY", KEY)).contains(KEY));
     assert_eq!(mode(&c.approvals.index_path()), 0o600);
     // kayıt yazılamayan yolun günlüğü ve hata metni de anahtarsız
     let index = c.approvals.index_path();
-    let bad = c.ucli(&format!("echo \"$UCLI_API_KEY\" >&2; rm '{index}'; mkdir '{index}'; {suspended}"));
+    let bad = c.ucli(&format!(
+        "echo \"$UCLI_API_KEY\" >&2; rm '{index}'; mkdir '{index}'; {suspended}"
+    ));
     req.binary = Some(&bad);
     req.approval_run_key = Some("r2");
     let error = c.with(|s| s.chat_once(&req)).unwrap_err().0;
-    assert!(error.contains("kayıt yazılamadı") && !error.contains(KEY), "{error}");
+    assert!(
+        error.contains("kayıt yazılamadı") && !error.contains(KEY),
+        "{error}"
+    );
     let log = fs::read_to_string(c.diag.path()).unwrap();
-    assert!(log.contains("ucli_approval_record_failed") && !log.contains(KEY), "{log}");
+    assert!(
+        log.contains("ucli_approval_record_failed") && !log.contains(KEY),
+        "{log}"
+    );
 }
 
 #[test]
 fn the_configured_key_goes_into_the_child_only_for_the_ucli_oneshot() {
     let _g = spawn_guard();
-    let c = Ctx::new(&format!(r#"{{"byok": {{"ucli": {{"UCLI_API_KEY": "{KEY}"}}}}}}"#));
+    let c = Ctx::new(&format!(
+        r#"{{"byok": {{"ucli": {{"UCLI_API_KEY": "{KEY}"}}}}}}"#
+    ));
     let seen = c.t.path("work/argv");
-    let bin = c.ucli(&format!("echo \"$@\" > {seen}; printf '{{\"answer\":\"%s\"}}' \"${{#UCLI_API_KEY}}\""));
-    let settings = format!(r#"{{"provider_bin": {{"ucli": "{bin}"}}, "byok": {{"ucli": {{"UCLI_API_KEY": "{KEY}"}}}}}}"#);
-    let c = Ctx { settings: Settings::from_json(&settings), ..c };
-    let got = c.with(|s| s.oneshot(Cli::Ucli, "özetle", Some("m"), &c.t.path("work/notr"), 10.0)).unwrap();
+    let bin = c.ucli(&format!(
+        "echo \"$@\" > {seen}; printf '{{\"answer\":\"%s\"}}' \"${{#UCLI_API_KEY}}\""
+    ));
+    let settings = format!(
+        r#"{{"provider_bin": {{"ucli": "{bin}"}}, "byok": {{"ucli": {{"UCLI_API_KEY": "{KEY}"}}}}}}"#
+    );
+    let c = Ctx {
+        settings: Settings::from_json(&settings),
+        ..c
+    };
+    let got = c
+        .with(|s| s.oneshot(Cli::Ucli, "özetle", Some("m"), &c.t.path("work/notr"), 10.0))
+        .unwrap();
     assert_eq!(got, Some(KEY.len().to_string()));
     assert!(!fs::read_to_string(seen).unwrap().contains(KEY));
 }
@@ -139,7 +186,9 @@ fn timeouts_kill_the_whole_group_and_return_promptly() {
     for oneshot in [false, true] {
         let start = Instant::now();
         let text = if oneshot {
-            c.with(|s| s.run_argv("claude", std::slice::from_ref(&bin), &work, 0.7)).unwrap_err().0
+            c.with(|s| s.run_argv("claude", std::slice::from_ref(&bin), &work, 0.7))
+                .unwrap_err()
+                .0
         } else {
             let mut req = ChatRequest::new(&work, "p");
             req.binary = Some(&bin);
@@ -159,7 +208,17 @@ fn a_live_run_key_is_refused_before_the_binary_starts() {
     let _g = spawn_guard();
     let c = Ctx::new("{}");
     let argv = vec!["eski".to_string()];
-    c.approvals.register("r1", NewRun { cwd: "/w", session: "s", argv_resume: &argv, owner: "ali" }).unwrap();
+    c.approvals
+        .register(
+            "r1",
+            NewRun {
+                cwd: "/w",
+                session: "s",
+                argv_resume: &argv,
+                owner: "ali",
+            },
+        )
+        .unwrap();
     let before = fs::read(c.approvals.index_path()).unwrap();
     let mark = c.t.path("work/calisti");
     let bin = c.ucli(&format!("touch {mark}; echo '{{}}'"));
@@ -167,7 +226,11 @@ fn a_live_run_key_is_refused_before_the_binary_starts() {
     let mut req = ChatRequest::new(&work, "p");
     req.binary = Some(&bin);
     req.approval_run_key = Some("r1");
-    assert!(c.with(|s| s.chat_once(&req)).unwrap_err().0.contains("run_key kullanımda"));
+    assert!(c
+        .with(|s| s.chat_once(&req))
+        .unwrap_err()
+        .0
+        .contains("run_key kullanımda"));
     req.approval_run_key = None;
     req.prompt = "--allow-edit";
     assert!(c.with(|s| s.chat_once(&req)).is_err());
@@ -180,18 +243,37 @@ fn a_fifo_key_file_or_index_is_refused_without_blocking() {
     let _g = spawn_guard();
     let c = Ctx::new("{}");
     let bin = c.ucli("echo '{\"answer\":\"x\"}'");
-    let c = Ctx { settings: Settings::from_json(&format!(r#"{{"provider_bin": {{"ucli": "{bin}"}}}}"#)), ..c };
+    let c = Ctx {
+        settings: Settings::from_json(&format!(r#"{{"provider_bin": {{"ucli": "{bin}"}}}}"#)),
+        ..c
+    };
     let key = c.paths.ucli_key_file("");
     fs::create_dir_all(std::path::Path::new(&key).parent().unwrap()).unwrap();
     mkfifo(&key);
     let start = Instant::now();
-    let error = c.with(|s| s.oneshot(Cli::Ucli, "p", None, &c.t.path("work/notr"), 5.0)).unwrap_err().0;
-    assert_eq!(error, "ucli: anahtar dosyası okunamadı (normal dosya değil)");
+    let error = c
+        .with(|s| s.oneshot(Cli::Ucli, "p", None, &c.t.path("work/notr"), 5.0))
+        .unwrap_err()
+        .0;
+    assert_eq!(
+        error,
+        "ucli: anahtar dosyası okunamadı (normal dosya değil)"
+    );
     fs::create_dir(c.paths.ucli_approval_root()).unwrap();
     mkfifo(&c.approvals.index_path());
     let argv = vec!["a".to_string()];
-    let run = NewRun { cwd: "/w", session: "", argv_resume: &argv, owner: "" };
-    assert!(c.approvals.register("r1", run).unwrap_err().text.contains("normal dosya değil"));
+    let run = NewRun {
+        cwd: "/w",
+        session: "",
+        argv_resume: &argv,
+        owner: "",
+    };
+    assert!(c
+        .approvals
+        .register("r1", run)
+        .unwrap_err()
+        .text
+        .contains("normal dosya değil"));
     assert!(!c.approvals.set_state("r1", "done").unwrap());
     assert!(start.elapsed() < Duration::from_secs(10));
 }
@@ -204,9 +286,17 @@ fn oversized_output_is_refused() {
     let work = c.t.path("work");
     let mut req = ChatRequest::new(&work, "p");
     req.binary = Some(&bin);
-    assert_eq!(c.with(|s| s.chat_once(&req)).unwrap_err().0, "ucli çıktısı sınırı aştı");
+    assert_eq!(
+        c.with(|s| s.chat_once(&req)).unwrap_err().0,
+        "ucli çıktısı sınırı aştı"
+    );
     let argv = [bin.clone()];
-    assert_eq!(c.with(|s| s.run_argv("claude", &argv, &work, 30.0)).unwrap_err().0, "claude: çıktı sınırı aşıldı");
+    assert_eq!(
+        c.with(|s| s.run_argv("claude", &argv, &work, 30.0))
+            .unwrap_err()
+            .0,
+        "claude: çıktı sınırı aşıldı"
+    );
 }
 
 #[test]
@@ -219,7 +309,12 @@ fn concurrent_registrations_lose_nothing_and_one_key_has_one_winner() {
                 let store = store.clone();
                 scope.spawn(move || {
                     let argv = vec![format!("w{worker}")];
-                    let run = NewRun { cwd: "/w", session: "s", argv_resume: &argv, owner: "o" };
+                    let run = NewRun {
+                        cwd: "/w",
+                        session: "s",
+                        argv_resume: &argv,
+                        owner: "o",
+                    };
                     for i in 0..20 {
                         let key = format!("w{worker}-{i}");
                         store.register(&key, run).unwrap();
@@ -235,7 +330,13 @@ fn concurrent_registrations_lose_nothing_and_one_key_has_one_winner() {
     let text = fs::read_to_string(store.index_path()).unwrap();
     let index = cops_providers::approval::parse_index(text.as_bytes()).unwrap();
     assert_eq!(index.len(), 161);
-    assert_eq!(index.iter().filter(|(_, r)| r.get("state").and_then(|s| s.as_str()) == Some("suspended")).count(), 160);
+    assert_eq!(
+        index
+            .iter()
+            .filter(|(_, r)| r.get("state").and_then(|s| s.as_str()) == Some("suspended"))
+            .count(),
+        160
+    );
 }
 
 #[test]
@@ -244,7 +345,12 @@ fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
     let t = Tmp::new();
     let store = ApprovalStore::new(&t.paths()).with_lock_timeout(Duration::from_millis(100));
     let argv = vec!["a".to_string()];
-    let run = NewRun { cwd: "/w", session: "", argv_resume: &argv, owner: "" };
+    let run = NewRun {
+        cwd: "/w",
+        session: "",
+        argv_resume: &argv,
+        owner: "",
+    };
     store.register("r1", run).unwrap();
     let before = fs::read(store.index_path()).unwrap();
     let holder = "import sys\nfrom claudeops import ucli_approval as ua\nfrom claudeops.atomic_json import file_lock\n\
@@ -252,7 +358,15 @@ fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
                   sys.stdin.read()\n";
     let py = format!("{}/../../../py", env!("CARGO_MANIFEST_DIR"));
     let mut child = Command::new("/usr/bin/python3")
-        .args(["-s", "-B", "-W", "ignore", "-c", holder, &t.paths().ucli_approval_root()])
+        .args([
+            "-s",
+            "-B",
+            "-W",
+            "ignore",
+            "-c",
+            holder,
+            &t.paths().ucli_approval_root(),
+        ])
         .env_clear()
         .env("HOME", t.path("home"))
         .env("CLAUDEOPS_DIR", t.path("state"))
@@ -264,7 +378,9 @@ fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
         .spawn()
         .unwrap();
     let mut line = String::new();
-    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
     let register = store.register("r2", run);
     let change = store.set_state("r1", "done");
     drop(child.stdin.take());

@@ -7,7 +7,9 @@ use cops_providers::effort::{effort_rank, nearest_effort, sort_levels, split_tie
 use cops_providers::{Cli, Providers};
 use serde_json::{json, Value};
 
-pub const CLIS: [&str; 8] = ["claude", "agy", "codex", "copilot", "shell", "ucli", "bogus", ""];
+pub const CLIS: [&str; 8] = [
+    "claude", "agy", "codex", "copilot", "shell", "ucli", "bogus", "",
+];
 
 pub const MODELS: [&str; 22] = [
     "",
@@ -34,15 +36,22 @@ pub const MODELS: [&str; 22] = [
     "claude-sonnet-٥",
 ];
 
-pub const EFFORTS: [&str; 12] =
-    ["", "low", "medium", "high", "xhigh", "max", "ultra", "none", "minimal", "bogus", "MAX", " high"];
+pub const EFFORTS: [&str; 12] = [
+    "", "low", "medium", "high", "xhigh", "max", "ultra", "none", "minimal", "bogus", "MAX",
+    " high",
+];
 
 pub fn with<R>(e: &Env, c: &Case, f: impl FnOnce(&Providers<'_>, &FsProbe<'_>) -> R) -> R {
     let settings = e.settings();
     let catalog = e.catalog(c);
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let p = Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &probe };
+    let p = Providers {
+        settings: &settings,
+        catalog: &catalog,
+        paths: &paths,
+        probe: &probe,
+    };
     f(&p, &probe)
 }
 
@@ -67,13 +76,28 @@ fn rs_model(e: &Env, c: &Case) -> RsOut {
         let efforts: Vec<String> = strs(c.args.get("efforts"));
         if !models.is_empty() {
             let o = out.as_object_mut().unwrap();
-            let mut push = |k: &str, v: Value| o.entry(k).or_insert_with(|| json!([])).as_array_mut().unwrap().push(v);
+            let mut push = |k: &str, v: Value| {
+                o.entry(k)
+                    .or_insert_with(|| json!([]))
+                    .as_array_mut()
+                    .unwrap()
+                    .push(v)
+            };
             for m in &models {
                 push("model_effort_levels", json!(p.model_effort_levels(cli, m)));
                 push("effort_levels_for", json!(p.effort_levels_for(cli, m)));
-                push("refresh_stored_model", json!(p.refresh_stored_model(cli, m)));
+                push(
+                    "refresh_stored_model",
+                    json!(p.refresh_stored_model(cli, m)),
+                );
                 push("resolved_model_for", json!(p.resolved_model_for(cli, m)));
-                push("resolve_effort", json!(efforts.iter().map(|ef| p.resolve_effort(cli, m, ef)).collect::<Vec<_>>()));
+                push(
+                    "resolve_effort",
+                    json!(efforts
+                        .iter()
+                        .map(|ef| p.resolve_effort(cli, m, ef))
+                        .collect::<Vec<_>>()),
+                );
             }
         }
         RsOut::ret(out)
@@ -86,7 +110,11 @@ fn codex_cache(v: Value) -> Fx {
 
 fn model_cases() -> Vec<Case> {
     let base = |id: String, cli: &str| {
-        Case::new(id, "model", json!({"cli": cli, "models": MODELS, "efforts": EFFORTS, "name": "oturum-1"}))
+        Case::new(
+            id,
+            "model",
+            json!({"cli": cli, "models": MODELS, "efforts": EFFORTS, "name": "oturum-1"}),
+        )
     };
     let mut v = Vec::new();
     for cli in CLIS {
@@ -99,7 +127,10 @@ fn model_cases() -> Vec<Case> {
         v.push(base(format!("ayar-gecersiz-{cli}"), cli).settings_json(
             json!({"default_model": {cli: 5, "claude": ["x"]}, "default_effort": {cli: "ultra", "claude": null}}),
         ));
-        v.push(base(format!("ayar-tip-{cli}"), cli).settings_json(json!({"default_model": "x", "default_effort": [1]})));
+        v.push(
+            base(format!("ayar-tip-{cli}"), cli)
+                .settings_json(json!({"default_model": "x", "default_effort": [1]})),
+        );
         v.push(base(format!("ayar-bozuk-{cli}"), cli).settings("{bozuk"));
         v.push(base(format!("ayar-liste-{cli}"), cli).settings("[1,2]"));
     }
@@ -120,13 +151,25 @@ fn model_cases() -> Vec<Case> {
     ];
     for (i, st) in states.iter().enumerate() {
         for cli in ["claude", "bogus"] {
-            v.push(base(format!("claude-state{i}-{cli}"), cli).file(file("state/claude_models.json", &st.to_string(), 0o644)));
+            v.push(base(format!("claude-state{i}-{cli}"), cli).file(file(
+                "state/claude_models.json",
+                &st.to_string(),
+                0o644,
+            )));
         }
     }
-    v.push(base("claude-state-bozuk".into(), "claude").file(file("state/claude_models.json", "{x", 0o644)));
+    v.push(base("claude-state-bozuk".into(), "claude").file(file(
+        "state/claude_models.json",
+        "{x",
+        0o644,
+    )));
     v.push(
         base("claude-state-ayar".into(), "claude")
-            .file(file("state/claude_models.json", &states[1].to_string(), 0o644))
+            .file(file(
+                "state/claude_models.json",
+                &states[1].to_string(),
+                0o644,
+            ))
             .settings_json(json!({"default_model": {"claude": "claude-sonnet-6"}})),
     );
     // codex: models_cache.json biçimleri.
@@ -163,7 +206,11 @@ fn model_cases() -> Vec<Case> {
             c
         });
     }
-    v.push(base("codex-cache-bozuk".into(), "codex").file(file("home/.codex/models_cache.json", "{\"models\": [", 0o644)));
+    v.push(base("codex-cache-bozuk".into(), "codex").file(file(
+        "home/.codex/models_cache.json",
+        "{\"models\": [",
+        0o644,
+    )));
     v.push(base("codex-cache-nan".into(), "codex").file(file(
         "home/.codex/models_cache.json",
         "{\"models\": [{\"slug\": \"a\", \"visibility\": \"list\", \"priority\": NaN}]}",
@@ -171,9 +218,20 @@ fn model_cases() -> Vec<Case> {
     )).known("Python json.load NaN/Infinity kabul eder; serde_json reddeder (bu ailede katalog testte serde ile elle kurulur; crate okuma yolu: `src-codex-nan`)"));
     // agy: canlı `agy models` kimlikleri.
     let agy = [
-        json!(["gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "claude-opus-4-6-thinking",
-               "gpt-oss-120b-medium", "gemini-3.1-pro-high", "gemini-3.8-flash-ultra"]),
-        json!(["gemini-3.8-flash", "gemini-3.8-flash-xhigh", "gemini-3.8-flash-minimal"]),
+        json!([
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-medium",
+            "claude-opus-4-6-thinking",
+            "gpt-oss-120b-medium",
+            "gemini-3.1-pro-high",
+            "gemini-3.8-flash-ultra"
+        ]),
+        json!([
+            "gemini-3.8-flash",
+            "gemini-3.8-flash-xhigh",
+            "gemini-3.8-flash-minimal"
+        ]),
         json!([""]),
         json!([]),
     ];
@@ -186,11 +244,16 @@ fn model_cases() -> Vec<Case> {
         );
     }
     // ucli: canlı model listesi.
-    v.push(base("ucli-live".into(), "ucli").facts(json!({"ucli_live": {"ids": ["glm-5.3", "deepseek-v4-flash"], "caps": {}}})));
+    v.push(
+        base("ucli-live".into(), "ucli")
+            .facts(json!({"ucli_live": {"ids": ["glm-5.3", "deepseek-v4-flash"], "caps": {}}})),
+    );
     v.push(
         base("ucli-live-ayar".into(), "ucli")
             .facts(json!({"ucli_live": {"ids": ["glm-5.3", "qwen"], "caps": {}}}))
-            .settings_json(json!({"default_model": {"ucli": "qwen"}, "default_effort": {"ucli": "low"}})),
+            .settings_json(
+                json!({"default_model": {"ucli": "qwen"}, "default_effort": {"ucli": "low"}}),
+            ),
     );
     v
 }
@@ -220,14 +283,29 @@ fn effort_cases() -> Vec<Case> {
         &["medium", "medium"],
     ];
     let models = [
-        "gemini-3.8-flash-high", "gemini-3.8-flash", "-high", "high", "a--low", "x-ultra", "x-none", "", "a-b-max",
-        "gemini-xhigh", "x-High", "x-high\n", "ğ-minimal",
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash",
+        "-high",
+        "high",
+        "a--low",
+        "x-ultra",
+        "x-none",
+        "",
+        "a-b-max",
+        "gemini-xhigh",
+        "x-High",
+        "x-high\n",
+        "ğ-minimal",
     ];
     lists
         .iter()
         .enumerate()
         .map(|(i, l)| {
-            Case::new(format!("effort{i}"), "effort", json!({"levels": l, "models": models, "requests": EFFORTS}))
+            Case::new(
+                format!("effort{i}"),
+                "effort",
+                json!({"levels": l, "models": models, "requests": EFFORTS}),
+            )
         })
         .collect()
 }

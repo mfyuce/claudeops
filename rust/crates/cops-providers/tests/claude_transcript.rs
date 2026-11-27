@@ -4,7 +4,9 @@
 use cops_providers::bg_work::Clock;
 use cops_providers::claude_transcript::{FIRST_WINDOW_BYTES, MAX_WINDOW_BYTES};
 use cops_providers::ucli_opts::Toolchain;
-use cops_providers::{Cli, FileStat, Live, LiveProbe, McpRegisterError, Paths, Probe, Settings, SqlCell};
+use cops_providers::{
+    Cli, FileStat, Live, LiveProbe, McpRegisterError, Paths, Probe, Settings, SqlCell,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -78,7 +80,10 @@ impl Probe for Mem {
     fn panel_port(&self) -> Option<u16> {
         unreachable!()
     }
-    fn apply_now(&self, _: &cops_providers::Effect) -> Result<(), cops_providers::real::effects::EffectError> {
+    fn apply_now(
+        &self,
+        _: &cops_providers::Effect,
+    ) -> Result<(), cops_providers::real::effects::EffectError> {
         unimplemented!()
     }
     fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<(), McpRegisterError> {
@@ -128,19 +133,40 @@ impl LiveProbe for Mem {
     fn sqlite_cell(&self, _: &str, _: &str, _: &str) -> Option<SqlCell> {
         unreachable!()
     }
-    fn sqlite_rows(&self, _: &str, _: &str, _: &[SqlCell], _: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+    fn sqlite_rows(
+        &self,
+        _: &str,
+        _: &str,
+        _: &[SqlCell],
+        _: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+    ) -> bool {
         unreachable!()
     }
 }
 
 fn with<T>(mem: &Mem, f: impl FnOnce(&Live<'_>) -> T) -> T {
     let settings = Settings::default();
-    let paths = Paths { claudeops_dir: "/s".into(), home: "/h".into(), repo_dir: "/r".into() };
-    f(&Live { settings: &settings, paths: &paths, probe: mem, clock: Clock { now: 0.0, utc_offset_secs: 0 } })
+    let paths = Paths {
+        claudeops_dir: "/s".into(),
+        home: "/h".into(),
+        repo_dir: "/r".into(),
+    };
+    f(&Live {
+        settings: &settings,
+        paths: &paths,
+        probe: mem,
+        clock: Clock {
+            now: 0.0,
+            utc_offset_secs: 0,
+        },
+    })
 }
 
 fn one(data: impl Into<Vec<u8>>) -> Mem {
-    Mem { files: HashMap::from([("/p/s.jsonl".to_string(), data.into())]), ..Default::default() }
+    Mem {
+        files: HashMap::from([("/p/s.jsonl".to_string(), data.into())]),
+        ..Default::default()
+    }
 }
 
 fn row(second: u32, model: &str) -> String {
@@ -175,7 +201,10 @@ fn window_grows_four_times_and_stops_at_the_limit() {
     assert_eq!(model(&gone), None);
     // 64K, 256K, 1M, 4M: dördüncüden sonra büyümez; hiçbir okuma tavanı aşmaz
     let lengths: Vec<u64> = gone.reads.borrow().iter().map(|r| r.1).collect();
-    assert_eq!(lengths, [FIRST_WINDOW_BYTES, 262_144, 1_048_576, MAX_WINDOW_BYTES]);
+    assert_eq!(
+        lengths,
+        [FIRST_WINDOW_BYTES, 262_144, 1_048_576, MAX_WINDOW_BYTES]
+    );
     let huge = one(vec![b'x'; 3 * MAX_WINDOW_BYTES as usize]);
     assert_eq!(model(&huge), None);
     assert!(huge.reads.borrow().iter().all(|r| r.1 <= MAX_WINDOW_BYTES));
@@ -187,7 +216,11 @@ fn since_stops_the_scan_without_reading_further() {
     data.extend(format!("\n{}\n", row(1, "eski")).into_bytes());
     let mem = one(data);
     // 2027-01-15T08:00:30Z
-    assert_eq!(with(&mem, |l| l.last_assistant_model("/p/s.jsonl", Some(1_800_000_030.0))), None);
+    assert_eq!(
+        with(&mem, |l| l
+            .last_assistant_model("/p/s.jsonl", Some(1_800_000_030.0))),
+        None
+    );
     assert_eq!(mem.reads.borrow().len(), 1);
 }
 
@@ -241,18 +274,36 @@ fn truncated_and_mutated_input_never_panics() {
         read(data);
     }
     read(vec![b'['; 1_000_000]);
-    for model in ["claude-", "claude-sonnet-5-", &"claude-sonnet-5-".repeat(100_000), "İ🙂"] {
+    for model in [
+        "claude-",
+        "claude-sonnet-5-",
+        &"claude-sonnet-5-".repeat(100_000),
+        "İ🙂",
+    ] {
         let _ = Cli::Claude.effort_switch_keeps_cache(Some(model));
     }
 }
 
 #[test]
 fn cache_candidates_are_exact_files_and_newest_wins() {
-    let files = [("/p/cmd.jsonl", row(1, "m")), ("/p/from-pid.jsonl", row(9, "m")), ("/p/sibling.jsonl", row(50, "m"))];
-    let mem = Mem { files: files.into_iter().map(|(p, r)| (p.to_string(), r.into_bytes())).collect(), ..Default::default() };
+    let files = [
+        ("/p/cmd.jsonl", row(1, "m")),
+        ("/p/from-pid.jsonl", row(9, "m")),
+        ("/p/sibling.jsonl", row(50, "m")),
+    ];
+    let mem = Mem {
+        files: files
+            .into_iter()
+            .map(|(p, r)| (p.to_string(), r.into_bytes()))
+            .collect(),
+        ..Default::default()
+    };
     let at = |cli, sid, pid| with(&mem, |l| l.last_request_epoch(cli, "/w", sid, pid));
     assert_eq!(at(Cli::Claude, Some("cmd"), None), Some(1_800_000_001.0));
-    assert_eq!(at(Cli::Claude, Some("cmd"), Some(42)), Some(1_800_000_009.0));
+    assert_eq!(
+        at(Cli::Claude, Some("cmd"), Some(42)),
+        Some(1_800_000_009.0)
+    );
     assert_eq!(at(Cli::Claude, None, Some(42)), Some(1_800_000_009.0));
     assert_eq!(at(Cli::Claude, None, Some(7)), None);
     assert_eq!(at(Cli::Claude, Some("missing"), None), None);
@@ -274,8 +325,36 @@ fn synthetic_and_unexpected_rows_do_not_hide_the_real_model() {
         r#"{"type":"assistant","message":{"model":["x"]}}"#
     );
     let mem = one(data);
-    assert_eq!(with(&mem, |l| l.live_or_spawn_model("claude", "/w", Some("s"), "spawn")), "gercek");
-    assert_eq!(with(&mem, |l| l.live_or_spawn_effort("claude", "/w", Some("s"), "spawn")), "high");
-    assert_eq!(with(&mem, |l| l.live_or_spawn_model("bogus", "/w", Some("s"), "spawn")), "spawn");
-    assert_eq!(with(&mem, |l| l.live_or_spawn_model("claude", "/w", None, "spawn")), "spawn");
+    assert_eq!(
+        with(&mem, |l| l.live_or_spawn_model(
+            "claude",
+            "/w",
+            Some("s"),
+            "spawn"
+        )),
+        "gercek"
+    );
+    assert_eq!(
+        with(&mem, |l| l.live_or_spawn_effort(
+            "claude",
+            "/w",
+            Some("s"),
+            "spawn"
+        )),
+        "high"
+    );
+    assert_eq!(
+        with(&mem, |l| l.live_or_spawn_model(
+            "bogus",
+            "/w",
+            Some("s"),
+            "spawn"
+        )),
+        "spawn"
+    );
+    assert_eq!(
+        with(&mem, |l| l
+            .live_or_spawn_model("claude", "/w", None, "spawn")),
+        "spawn"
+    );
 }

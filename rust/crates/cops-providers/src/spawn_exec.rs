@@ -16,8 +16,8 @@ use crate::pyfmt::{splitlines, strip};
 use crate::real::oserr;
 use crate::resume::{ids_held_by_others, LiveSession};
 use crate::spawn::{
-    child_env, detect_display, gnome_terminal_argv, mirror_child_env, mirror_window_command, plan_spawn_with,
-    window_command, SpawnRequest,
+    child_env, detect_display, gnome_terminal_argv, mirror_child_env, mirror_window_command,
+    plan_spawn_with, window_command, SpawnRequest,
 };
 use crate::tui::strip_ansi;
 use serde_json::{json, Map, Value};
@@ -100,11 +100,23 @@ pub trait SessionScan {
 
 /// `provider.resolve_resume_id(cwd, in_use=, session_name=)`.
 pub trait ResumeResolver {
-    fn resolve_resume_id(&self, cli: Cli, cwd: &str, in_use: &BTreeSet<String>, session_name: &str) -> Option<String>;
+    fn resolve_resume_id(
+        &self,
+        cli: Cli,
+        cwd: &str,
+        in_use: &BTreeSet<String>,
+        session_name: &str,
+    ) -> Option<String>;
 }
 
 impl ResumeResolver for Live<'_> {
-    fn resolve_resume_id(&self, cli: Cli, cwd: &str, in_use: &BTreeSet<String>, session_name: &str) -> Option<String> {
+    fn resolve_resume_id(
+        &self,
+        cli: Cli,
+        cwd: &str,
+        in_use: &BTreeSet<String>,
+        session_name: &str,
+    ) -> Option<String> {
         Live::resolve_resume_id(self, cli, cwd, in_use, session_name)
     }
 }
@@ -138,7 +150,11 @@ impl Launcher {
 
     /// `detect_display()`: ortam -> var olan X soketi/kilidi -> `:1`.
     pub fn detect_display(&self) -> String {
-        let env = self.parent_env.iter().find(|(k, _)| k == "DISPLAY").map(|(_, v)| v.as_str());
+        let env = self
+            .parent_env
+            .iter()
+            .find(|(k, _)| k == "DISPLAY")
+            .map(|(_, v)| v.as_str());
         detect_display(env, &|p| self.terminal.path_exists(p))
     }
 
@@ -167,7 +183,11 @@ pub struct StartRequest {
 }
 
 impl StartRequest {
-    pub fn new(name: impl Into<String>, cwd: impl Into<String>, model: impl Into<String>) -> StartRequest {
+    pub fn new(
+        name: impl Into<String>,
+        cwd: impl Into<String>,
+        model: impl Into<String>,
+    ) -> StartRequest {
         StartRequest {
             name: name.into(),
             cwd: cwd.into(),
@@ -211,7 +231,10 @@ pub struct Started {
 
 impl fmt::Debug for Started {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Started").field("kind", &self.kind).field("watchdog", &self.watchdog.is_some()).finish()
+        f.debug_struct("Started")
+            .field("kind", &self.kind)
+            .field("watchdog", &self.watchdog.is_some())
+            .finish()
     }
 }
 
@@ -220,7 +243,10 @@ impl fmt::Debug for Started {
 pub enum SpawnFailure {
     /// Python `ValueError` ailesi (anahtar yok, tavan, kanca reddi, `UcliError`, `Popen` `ValueError`): web temiz ret
     /// döner ([`SpawnFailure::web_refusal`]).
-    Refused { error: SpawnError, cost: Option<CostRefusal> },
+    Refused {
+        error: SpawnError,
+        cost: Option<CostRefusal>,
+    },
     /// Başka istisna (`OSError` yazım hatası, `RuntimeError`): `class` = `type(e).__name__`, `message` = `str(e)`.
     Error { class: String, message: String },
 }
@@ -230,7 +256,9 @@ impl SpawnFailure {
     /// `{"ok": false, "error": "<sınıf>: <metin>"}`).
     pub fn web_refusal(&self) -> Option<Value> {
         match self {
-            SpawnFailure::Refused { error, cost } => Some(crate::cost::refusal(&error.0, cost.as_ref())),
+            SpawnFailure::Refused { error, cost } => {
+                Some(crate::cost::refusal(&error.0, cost.as_ref()))
+            }
             SpawnFailure::Error { .. } => None,
         }
     }
@@ -248,13 +276,19 @@ impl fmt::Display for SpawnFailure {
 impl std::error::Error for SpawnFailure {}
 
 fn refused(message: impl Into<String>) -> SpawnFailure {
-    SpawnFailure::Refused { error: SpawnError(message.into()), cost: None }
+    SpawnFailure::Refused {
+        error: SpawnError(message.into()),
+        cost: None,
+    }
 }
 
 fn launch_failure(e: LaunchError) -> SpawnFailure {
     match e {
         LaunchError::Value(m) => refused(m),
-        LaunchError::Runtime(m) => SpawnFailure::Error { class: "RuntimeError".into(), message: m },
+        LaunchError::Runtime(m) => SpawnFailure::Error {
+            class: "RuntimeError".into(),
+            message: m,
+        },
     }
 }
 
@@ -270,7 +304,11 @@ pub struct SpawnDeps<'a> {
 
 /// `spawn_session`. Başarısız (`Err`) ya da kuru başlatmada maliyet payı burada geri verilir; başarıda pay KALIR
 /// (oturum açılamazsa çağıran yine `release` eder, Python `web._start` gibi).
-pub fn spawn_session(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<Started, SpawnFailure> {
+pub fn spawn_session(
+    deps: &SpawnDeps<'_>,
+    launcher: &Launcher,
+    req: &StartRequest,
+) -> Result<Started, SpawnFailure> {
     let out = run(deps, launcher, req);
     if req.dry_run || out.is_err() {
         deps.cost.release(&req.name);
@@ -278,7 +316,11 @@ pub fn spawn_session(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartReque
     out
 }
 
-fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<Started, SpawnFailure> {
+fn run(
+    deps: &SpawnDeps<'_>,
+    launcher: &Launcher,
+    req: &StartRequest,
+) -> Result<Started, SpawnFailure> {
     let p = deps.providers;
     let cli = Cli::parse(&req.cli);
     let display = launcher.display(req.display.as_deref());
@@ -286,16 +328,25 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
         None
     } else {
         let live = deps.scan.live_sessions(req.dry_run);
-        let rows: Option<Vec<LiveSession<'_>>> = live
-            .as_ref()
-            .map(|v| v.iter().map(|(name, sid)| LiveSession { name, sid: sid.as_deref() }).collect());
+        let rows: Option<Vec<LiveSession<'_>>> = live.as_ref().map(|v| {
+            v.iter()
+                .map(|(name, sid)| LiveSession {
+                    name,
+                    sid: sid.as_deref(),
+                })
+                .collect()
+        });
         let in_use = ids_held_by_others(&req.name, rows.as_deref());
-        deps.resume.resolve_resume_id(cli, &req.cwd, &in_use, &req.name)
+        deps.resume
+            .resolve_resume_id(cli, &req.cwd, &in_use, &req.name)
     };
     // K14: eklenti MCP'si yalnız claude'da ve açıkça `mcp_server` verilmediyse (ham ad; bilinmeyen CLI claude sağlayıcısı
     // kullanır ama eklenti almaz).
-    let extension_mcp =
-        if req.mcp_server.is_none() && req.cli == "claude" { deps.hooks.session_mcp(&req.cwd) } else { None };
+    let extension_mcp = if req.mcp_server.is_none() && req.cli == "claude" {
+        deps.hooks.session_mcp(&req.cwd)
+    } else {
+        None
+    };
     let spawn_req = SpawnRequest {
         name: req.name.clone(),
         cwd: req.cwd.clone(),
@@ -328,9 +379,15 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
             message: e.to_string(),
         })?;
     }
-    let plan = plan.map_err(|error| SpawnFailure::Refused { error, cost: out.cost_refusal.clone() })?;
+    let plan = plan.map_err(|error| SpawnFailure::Refused {
+        error,
+        cost: out.cost_refusal.clone(),
+    })?;
     if req.dry_run {
-        return Ok(Started { kind: plan.dry_run_line(&req.cwd), watchdog: None });
+        return Ok(Started {
+            kind: plan.dry_run_line(&req.cwd),
+            watchdog: None,
+        });
     }
 
     reclaim_ghost_session(launcher, &req.name, &req.cli);
@@ -342,28 +399,60 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
         if no_gt {
             launcher.log(
                 "spawn_no_gnome_terminal",
-                vec![("name", json!(req.name)), ("cwd", json!(req.cwd)), ("tmux", json!(launcher.tmux.available()))],
+                vec![
+                    ("name", json!(req.name)),
+                    ("cwd", json!(req.cwd)),
+                    ("tmux", json!(launcher.tmux.available())),
+                ],
             );
         }
         if launcher.tmux.available() {
-            let ok = launcher.tmux.spawn_direct(&req.name, &req.cwd, &plan.inner, &env);
-            let event = if req.hidden && !no_gt { "spawn_hidden" } else { "spawn_direct_headless" };
-            launcher.log(event, vec![("name", json!(req.name)), ("cwd", json!(req.cwd)), ("ok", json!(ok))]);
+            let ok = launcher
+                .tmux
+                .spawn_direct(&req.name, &req.cwd, &plan.inner, &env);
+            let event = if req.hidden && !no_gt {
+                "spawn_hidden"
+            } else {
+                "spawn_direct_headless"
+            };
+            launcher.log(
+                event,
+                vec![
+                    ("name", json!(req.name)),
+                    ("cwd", json!(req.cwd)),
+                    ("ok", json!(ok)),
+                ],
+            );
         } else if !no_gt {
             // gizli başlatma + tmux yok: hiçbir şey açılmadı (gtsiz dalda iz zaten yukarıda)
-            launcher.log("spawn_hidden_no_tmux", vec![("name", json!(req.name)), ("cwd", json!(req.cwd))]);
+            launcher.log(
+                "spawn_hidden_no_tmux",
+                vec![("name", json!(req.name)), ("cwd", json!(req.cwd))],
+            );
         }
-        return Ok(Started { kind: plan.kind, watchdog: None });
+        return Ok(Started {
+            kind: plan.kind,
+            watchdog: None,
+        });
     }
 
     let fragment = if launcher.tmux.available() {
-        match launcher.tmux.new_session_fragment(&req.name, &req.cwd, &plan.inner) {
+        match launcher
+            .tmux
+            .new_session_fragment(&req.name, &req.cwd, &plan.inner)
+        {
             Ok(f) => Some(f),
             Err(_) => {
                 // tmux'ta hedeflenemeyen ad: hiçbir şey açılmaz (pencere de bekçi de yok); çağıran süreç yokluğundan
                 // "olmadı" görür (Python `spawn_bad_name`, `bb26564e`).
-                launcher.log("spawn_bad_name", vec![("name", json!(req.name)), ("cwd", json!(req.cwd))]);
-                return Ok(Started { kind: plan.kind, watchdog: None });
+                launcher.log(
+                    "spawn_bad_name",
+                    vec![("name", json!(req.name)), ("cwd", json!(req.cwd))],
+                );
+                return Ok(Started {
+                    kind: plan.kind,
+                    watchdog: None,
+                });
             }
         }
     } else {
@@ -371,8 +460,15 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
     };
     let window_cmd = window_command(&plan.inner, fragment.as_deref());
     let argv = gnome_terminal_argv(&req.name, &req.cwd, &window_cmd);
-    if !launcher.terminal.launch(&argv, &env).map_err(launch_failure)? {
-        launcher.log("spawn_launch_failed", vec![("name", json!(req.name)), ("cwd", json!(req.cwd))]);
+    if !launcher
+        .terminal
+        .launch(&argv, &env)
+        .map_err(launch_failure)?
+    {
+        launcher.log(
+            "spawn_launch_failed",
+            vec![("name", json!(req.name)), ("cwd", json!(req.cwd))],
+        );
     }
     let watchdog = if launcher.tmux.available() {
         let l = launcher.clone();
@@ -380,12 +476,18 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
         let handle = std::thread::Builder::new()
             .name("cops-spawn-watchdog".into())
             .spawn(move || fallback_watchdog(&l, &name, &cwd, &inner, &env, &window_cmd))
-            .map_err(|_| SpawnFailure::Error { class: "RuntimeError".into(), message: "can't start new thread".into() })?;
+            .map_err(|_| SpawnFailure::Error {
+                class: "RuntimeError".into(),
+                message: "can't start new thread".into(),
+            })?;
         Some(Watchdog(handle))
     } else {
         None
     };
-    Ok(Started { kind: plan.kind, watchdog })
+    Ok(Started {
+        kind: plan.kind,
+        watchdog,
+    })
 }
 
 /// `_reclaim_ghost_session` (PROC-03): CLI'si çıkmış, `exec bash`le canlı kalan TAM adlı tmux oturumu spawn'dan önce
@@ -395,8 +497,16 @@ pub fn reclaim_ghost_session(launcher: &Launcher, name: &str, cli: &str) {
     if cli == "shell" || !launcher.tmux.available() || !launcher.tmux.ghost_session(name) {
         return;
     }
-    let screen = strip_ansi(&launcher.tmux.capture(name, GHOST_CAPTURE_LINES).unwrap_or_default());
-    let kept: Vec<&str> = splitlines(&screen).into_iter().filter(|l| !strip(l).is_empty()).collect();
+    let screen = strip_ansi(
+        &launcher
+            .tmux
+            .capture(name, GHOST_CAPTURE_LINES)
+            .unwrap_or_default(),
+    );
+    let kept: Vec<&str> = splitlines(&screen)
+        .into_iter()
+        .filter(|l| !strip(l).is_empty())
+        .collect();
     let chars = kept.join("\n").chars().count();
     launcher.tmux.kill_session(name);
     launcher.log(
@@ -429,7 +539,11 @@ pub fn fallback_watchdog(
                 if attempt > 0 {
                     launcher.log(
                         "spawn_retry_succeeded",
-                        vec![("name", json!(name)), ("cwd", json!(cwd)), ("attempt", json!(attempt))],
+                        vec![
+                            ("name", json!(name)),
+                            ("cwd", json!(cwd)),
+                            ("attempt", json!(attempt)),
+                        ],
                     );
                 }
                 return;
@@ -438,12 +552,26 @@ pub fn fallback_watchdog(
         }
         if attempt < FALLBACK_RETRY_COUNT {
             let next = attempt + 1;
-            launcher.log("spawn_retry", vec![("name", json!(name)), ("cwd", json!(cwd)), ("attempt", json!(next))]);
-            match launcher.terminal.launch(&gnome_terminal_argv(name, cwd, window_cmd), env) {
+            launcher.log(
+                "spawn_retry",
+                vec![
+                    ("name", json!(name)),
+                    ("cwd", json!(cwd)),
+                    ("attempt", json!(next)),
+                ],
+            );
+            match launcher
+                .terminal
+                .launch(&gnome_terminal_argv(name, cwd, window_cmd), env)
+            {
                 Ok(true) => {}
                 Ok(false) => launcher.log(
                     "spawn_retry_launch_failed",
-                    vec![("name", json!(name)), ("cwd", json!(cwd)), ("attempt", json!(next))],
+                    vec![
+                        ("name", json!(name)),
+                        ("cwd", json!(cwd)),
+                        ("attempt", json!(next)),
+                    ],
                 ),
                 Err(LaunchError::Value(_)) => {
                     launcher.log(
@@ -466,11 +594,23 @@ pub fn fallback_watchdog(
         return;
     }
     let ok = tmux.spawn_direct(name, cwd, inner, env);
-    launcher.log("spawn_fallback_used", vec![("name", json!(name)), ("cwd", json!(cwd)), ("ok", json!(ok))]);
+    launcher.log(
+        "spawn_fallback_used",
+        vec![
+            ("name", json!(name)),
+            ("cwd", json!(cwd)),
+            ("ok", json!(ok)),
+        ],
+    );
 }
 
 /// `open_window`: VAR OLAN tmux oturumuna yeni gnome-terminal penceresi (CLI yeniden başlamaz). Oturum yoksa false.
-pub fn open_window(launcher: &Launcher, name: &str, cwd: &str, display: Option<&str>) -> Result<bool, SpawnFailure> {
+pub fn open_window(
+    launcher: &Launcher,
+    name: &str,
+    cwd: &str,
+    display: Option<&str>,
+) -> Result<bool, SpawnFailure> {
     if !launcher.tmux.has_session(name) {
         return Ok(false);
     }
@@ -478,7 +618,10 @@ pub fn open_window(launcher: &Launcher, name: &str, cwd: &str, display: Option<&
     let env = child_env(launcher.parent_env.iter().cloned(), &display);
     let fragment = launcher.tmux.attach_fragment(name).map_err(refused)?;
     let argv = gnome_terminal_argv(name, cwd, &window_command("", Some(&fragment)));
-    launcher.terminal.launch(&argv, &env).map_err(launch_failure)
+    launcher
+        .terminal
+        .launch(&argv, &env)
+        .map_err(launch_failure)
 }
 
 /// `open_mirror_window`: `cops watch <host>:<ad> --port <port>` çalıştıran pencere (tmux'a bağlanmaz). `CLAUDEOPS_DIR`
@@ -492,8 +635,15 @@ pub fn open_mirror_window(
     display: Option<&str>,
 ) -> Result<bool, SpawnFailure> {
     let display = launcher.display(display);
-    let env = mirror_child_env(launcher.parent_env.iter().cloned(), &display, &paths.claudeops_dir);
+    let env = mirror_child_env(
+        launcher.parent_env.iter().cloned(),
+        &display,
+        &paths.claudeops_dir,
+    );
     let window_cmd = mirror_window_command(&paths.repo_dir, host, name, port);
     let argv = gnome_terminal_argv(&format!("{host}:{name}"), &paths.home, &window_cmd);
-    launcher.terminal.launch(&argv, &env).map_err(launch_failure)
+    launcher
+        .terminal
+        .launch(&argv, &env)
+        .map_err(launch_failure)
 }

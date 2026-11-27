@@ -2,9 +2,9 @@
 
 #![allow(dead_code)]
 
+use cops_providers::cost::CostRefusal;
 use cops_providers::real::docs::FileDocs;
 use cops_providers::real::help::HelpCache;
-use cops_providers::cost::CostRefusal;
 use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
 use cops_providers::real::{Env, RealDeps, RealProbe};
 use cops_providers::Paths;
@@ -28,8 +28,14 @@ pub struct Tmp {
 
 impl Tmp {
     pub fn new() -> Tmp {
-        let dir = tempfile::Builder::new().prefix("cops-g8-").tempdir().unwrap();
-        let root = fs::canonicalize(dir.path()).unwrap().to_string_lossy().into_owned();
+        let dir = tempfile::Builder::new()
+            .prefix("cops-g8-")
+            .tempdir()
+            .unwrap();
+        let root = fs::canonicalize(dir.path())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         for d in ["home", "state", "bin", "work"] {
             fs::create_dir(format!("{root}/{d}")).unwrap();
         }
@@ -54,7 +60,11 @@ impl Tmp {
     }
 
     pub fn paths(&self) -> Paths {
-        Paths { claudeops_dir: self.path("state"), home: self.path("home"), repo_dir: self.path("repo") }
+        Paths {
+            claudeops_dir: self.path("state"),
+            home: self.path("home"),
+            repo_dir: self.path("repo"),
+        }
     }
 
     /// Yalıtılmış ortam: PATH sahte `bin` + temel araçlar.
@@ -62,7 +72,10 @@ impl Tmp {
         let mut vars = vec![
             ("HOME".to_string(), self.path("home")),
             ("CLAUDEOPS_DIR".to_string(), self.path("state")),
-            ("PATH".to_string(), format!("{}:/usr/bin:/bin", self.path("bin"))),
+            (
+                "PATH".to_string(),
+                format!("{}:/usr/bin:/bin", self.path("bin")),
+            ),
         ];
         vars.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
         Env::fixed(vars)
@@ -82,7 +95,10 @@ impl Tmp {
     }
 
     pub fn probe(&self) -> RealProbe {
-        self.probe_with(self.env(&[]), Arc::new(HelpCache::with_timeout(Duration::from_secs(5))))
+        self.probe_with(
+            self.env(&[]),
+            Arc::new(HelpCache::with_timeout(Duration::from_secs(5))),
+        )
     }
 }
 
@@ -108,7 +124,10 @@ pub struct Projects(pub String);
 
 impl ProjectDirs for Projects {
     fn claude_project_dir(&self, cwd: &str) -> String {
-        let enc: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let enc: String = cwd
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
         format!("{}/.claude/projects/{enc}", self.0)
     }
 }

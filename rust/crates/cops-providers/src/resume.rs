@@ -81,7 +81,11 @@ impl Live<'_> {
     }
 
     /// `snapshot`tan sonra beliren TEK yeni konuşma; hiç ya da birden çoksa None (tahmin yok).
-    pub fn discover_live_sid(&self, cli: Cli, snapshot: Option<&BTreeSet<String>>) -> Option<String> {
+    pub fn discover_live_sid(
+        &self,
+        cli: Cli,
+        snapshot: Option<&BTreeSet<String>>,
+    ) -> Option<String> {
         match cli {
             Cli::Agy => self.agy_discover(snapshot?),
             Cli::Claude | Cli::Codex | Cli::Copilot | Cli::Shell | Cli::Ucli => None,
@@ -97,13 +101,17 @@ impl Live<'_> {
     /// `_safe_mtime`: `st_mtime` (float saniye); okunamazsa 0.
     pub(crate) fn safe_mtime(&self, path: &str) -> f64 {
         self.probe.stat(path).map_or(0.0, |s| {
-            s.mtime_ns.div_euclid(1_000_000_000) as f64 + 1e-9 * s.mtime_ns.rem_euclid(1_000_000_000) as f64
+            s.mtime_ns.div_euclid(1_000_000_000) as f64
+                + 1e-9 * s.mtime_ns.rem_euclid(1_000_000_000) as f64
         })
     }
 
     /// Yeniden eskiye; eşit zamanlıların listeleme sırası korunur.
     pub(crate) fn newest_first(&self, paths: Vec<String>) -> Vec<String> {
-        let mut timed: Vec<(f64, String)> = paths.into_iter().map(|p| (self.safe_mtime(&p), p)).collect();
+        let mut timed: Vec<(f64, String)> = paths
+            .into_iter()
+            .map(|p| (self.safe_mtime(&p), p))
+            .collect();
         timed.sort_by(|a, b| b.0.total_cmp(&a.0));
         timed.into_iter().map(|(_, p)| p).collect()
     }

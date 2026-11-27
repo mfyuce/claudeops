@@ -25,13 +25,29 @@ fn store(paths: &Paths, env: cops_providers::real::Env) -> DocAgySidStore {
 /// Alt süreç kipi: `COPS_G8_WORKER=<kök>|<ad>` verilmediyse hiçbir şey yapmaz.
 #[test]
 fn worker_process() {
-    let Ok(spec) = std::env::var("COPS_G8_WORKER") else { return };
+    let Ok(spec) = std::env::var("COPS_G8_WORKER") else {
+        return;
+    };
     let (root, id) = spec.split_once('|').unwrap();
-    let paths = Paths { claudeops_dir: format!("{root}/state"), home: format!("{root}/home"), repo_dir: root.into() };
-    let store = store(&paths, cops_providers::real::Env::fixed([("CLAUDEOPS_STORE_BACKEND", "files")]));
+    let paths = Paths {
+        claudeops_dir: format!("{root}/state"),
+        home: format!("{root}/home"),
+        repo_dir: root.into(),
+    };
+    let store = store(
+        &paths,
+        cops_providers::real::Env::fixed([("CLAUDEOPS_STORE_BACKEND", "files")]),
+    );
     for i in 0..WRITES {
         // kilit süresi dolarsa yeniden dener; üst sınır `wait_all`ın süresi
-        while remember_agy_sid(&store, &format!("{id}-{i}"), &format!("sid-{id}-{i}"), false).is_err() {}
+        while remember_agy_sid(
+            &store,
+            &format!("{id}-{i}"),
+            &format!("sid-{id}-{i}"),
+            false,
+        )
+        .is_err()
+        {}
     }
 }
 
@@ -94,7 +110,9 @@ fn rust_and_python_writers_across_processes_lose_nothing() {
     }
     wait_all(children);
     let text = fs::read_to_string(t.path("state/agy_sids.json")).unwrap();
-    let Some(Py::Object(entries)) = Py::parse(&text) else { panic!("belge bozuk: {text}") };
+    let Some(Py::Object(entries)) = Py::parse(&text) else {
+        panic!("belge bozuk: {text}")
+    };
     assert_eq!(entries.len(), 2 * WORKERS * WRITES);
     for (name, sid) in &entries {
         assert_eq!(sid.as_str(), Some(format!("sid-{name}").as_str()));
@@ -108,19 +126,30 @@ fn the_lock_is_the_one_python_takes_and_waiting_is_bounded() {
     let holder = "import fcntl, os, sys, time\nfd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o600)\n\
                   fcntl.flock(fd, fcntl.LOCK_EX)\nprint('tutuldu', flush=True)\nsys.stdin.readline()\n";
     let mut child = Command::new("/usr/bin/python3")
-        .args(["-I", "-c", holder, &format!("{}.lock", paths.agy_sids_json())])
+        .args([
+            "-I",
+            "-c",
+            holder,
+            &format!("{}.lock", paths.agy_sids_json()),
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
     let mut line = String::new();
-    std::io::BufRead::read_line(&mut std::io::BufReader::new(child.stdout.take().unwrap()), &mut line).unwrap();
+    std::io::BufRead::read_line(
+        &mut std::io::BufReader::new(child.stdout.take().unwrap()),
+        &mut line,
+    )
+    .unwrap();
     assert_eq!(line.trim(), "tutuldu");
     let s = store(&paths, t.env(&[])).with_lock_timeout(Duration::from_millis(200));
     let start = Instant::now();
     let r = remember_agy_sid(&s, "a", "1", false);
     assert!(r.unwrap_err().contains("kilidi alınamadı"));
-    assert!(start.elapsed() >= Duration::from_millis(200) && start.elapsed() < Duration::from_secs(5));
+    assert!(
+        start.elapsed() >= Duration::from_millis(200) && start.elapsed() < Duration::from_secs(5)
+    );
     assert!(s.load().is_none(), "kilitsiz yazıldı");
     drop(child.stdin.take()); // stdin kapanınca tutan süreç kendiliğinden çıkar
     child.wait().unwrap();
@@ -147,8 +176,16 @@ fn db_backend_documents_are_neither_read_from_nor_written_to_the_mirror() {
     t.write("state/agy_sids.json", r#"{"a": "bayat"}"#, 0o600);
     for (settings, env, db) in [
         (r#"{"store_backend": " DB "}"#, vec![], true),
-        (r#"{"store_backend": "db"}"#, vec![("CLAUDEOPS_STORE_BACKEND", "files")], false),
-        (r#"{"store_backend": "files"}"#, vec![("CLAUDEOPS_STORE_BACKEND", "db")], true),
+        (
+            r#"{"store_backend": "db"}"#,
+            vec![("CLAUDEOPS_STORE_BACKEND", "files")],
+            false,
+        ),
+        (
+            r#"{"store_backend": "files"}"#,
+            vec![("CLAUDEOPS_STORE_BACKEND", "db")],
+            true,
+        ),
         (r#"{"store_backend": "dual"}"#, vec![], false),
         ("bozuk", vec![("CLAUDEOPS_STORE_BACKEND", "sacma")], false),
     ] {
@@ -160,8 +197,13 @@ fn db_backend_documents_are_neither_read_from_nor_written_to_the_mirror() {
         assert!(docs.read("baska", &paths.agy_sids_json()).is_some());
         if db {
             let s = store(&paths, t.env(&env));
-            assert!(remember_agy_sid(&s, "b", "2", false).unwrap_err().contains("db"));
-            assert_eq!(fs::read_to_string(paths.agy_sids_json()).unwrap(), r#"{"a": "bayat"}"#);
+            assert!(remember_agy_sid(&s, "b", "2", false)
+                .unwrap_err()
+                .contains("db"));
+            assert_eq!(
+                fs::read_to_string(paths.agy_sids_json()).unwrap(),
+                r#"{"a": "bayat"}"#
+            );
         }
     }
 }

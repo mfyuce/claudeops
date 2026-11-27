@@ -24,7 +24,9 @@ const KEY: &str = "gizli-anahtar-123";
 
 /// Bağlantı başına `handler` koşan loopback sunucu. Gelen istek başlıkları kanala yazılır. Dinleyici 20 sn boyunca yeni
 /// bağlantı gelmezse kapanır (iş parçacığı kalmaz).
-fn serve(handler: impl Fn(&[u8], &mut TcpStream) + Send + Sync + 'static) -> (u16, Receiver<Vec<u8>>) {
+fn serve(
+    handler: impl Fn(&[u8], &mut TcpStream) + Send + Sync + 'static,
+) -> (u16, Receiver<Vec<u8>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -41,7 +43,9 @@ fn serve(handler: impl Fn(&[u8], &mut TcpStream) + Send + Sync + 'static) -> (u1
             let (tx, handler) = (tx.clone(), handler.clone());
             std::thread::spawn(move || {
                 stream.set_nonblocking(false).unwrap();
-                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
                 let head = read_head(&mut stream);
                 let _ = tx.send(head.clone());
                 handler(&head, &mut stream);
@@ -93,7 +97,10 @@ fn text(head: &[u8]) -> String {
 }
 
 fn nothing(rx: &Receiver<Vec<u8>>) {
-    assert!(rx.recv_timeout(Duration::from_millis(200)).is_err(), "beklenmeyen istek");
+    assert!(
+        rx.recv_timeout(Duration::from_millis(200)).is_err(),
+        "beklenmeyen istek"
+    );
 }
 
 #[test]
@@ -107,7 +114,10 @@ fn a_2xx_body_is_returned_for_every_framing() {
         let (port, _rx) = serve(move |_, s| {
             let _ = s.write_all(reply);
         });
-        assert_eq!(get(&[], format!("http://127.0.0.1:{port}/models")).as_deref(), Ok(&b"merhab"[..]));
+        assert_eq!(
+            get(&[], format!("http://127.0.0.1:{port}/models")).as_deref(),
+            Ok(&b"merhab"[..])
+        );
     }
 }
 
@@ -115,12 +125,17 @@ fn a_2xx_body_is_returned_for_every_framing() {
 fn the_request_carries_the_key_only_in_its_header_and_latin1_bytes_stay_raw() {
     let (port, rx) = fixed(OK);
     let mut req = request(format!("http://127.0.0.1:{port}/a/b?q=1#parca"), 5000, 100);
-    req.headers.push(("Authorization", SecretValue::new("Bearer é").unwrap()));
+    req.headers
+        .push(("Authorization", SecretValue::new("Bearer é").unwrap()));
     HttpClient::new(env(&[])).get(&req).unwrap();
     let head = rx.recv().unwrap();
     let lower = text(&head);
     assert!(lower.starts_with("get /a/b?q=1 http/1.1\r\n"), "{lower}");
-    for wanted in [format!("host: 127.0.0.1:{port}\r\n"), "accept-encoding: identity\r\n".into(), "connection: close\r\n".into()] {
+    for wanted in [
+        format!("host: 127.0.0.1:{port}\r\n"),
+        "accept-encoding: identity\r\n".into(),
+        "connection: close\r\n".into(),
+    ] {
         assert!(lower.contains(&wanted), "{wanted} yok: {lower}");
     }
     assert!(lower.contains(&format!("x-api-key: {KEY}\r\n")));
@@ -134,7 +149,10 @@ fn redirects_are_never_followed_and_the_key_does_not_leave() {
         let (port, _rx) = serve(move |_, s| {
             let _ = write!(s, "HTTP/1.1 {status} Yon\r\nLocation: http://127.0.0.1:{other}/x\r\nContent-Length: 0\r\n\r\n");
         });
-        assert_eq!(get(&[], format!("http://127.0.0.1:{port}/models")), Err(HttpError::Status(status)));
+        assert_eq!(
+            get(&[], format!("http://127.0.0.1:{port}/models")),
+            Err(HttpError::Status(status))
+        );
     }
     nothing(&other_rx);
 }
@@ -142,14 +160,32 @@ fn redirects_are_never_followed_and_the_key_does_not_leave() {
 #[test]
 fn error_statuses_broken_and_truncated_answers_are_errors_without_details() {
     for (reply, wanted) in [
-        (&b"HTTP/1.1 404 Yok\r\nContent-Length: 0\r\n\r\n"[..], HttpError::Status(404)),
-        (b"HTTP/1.1 500 X\r\nContent-Length: 3\r\n\r\nabc", HttpError::Status(500)),
-        (b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nyarim", HttpError::Protocol),
-        (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nab", HttpError::Protocol),
-        (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n", HttpError::Protocol),
+        (
+            &b"HTTP/1.1 404 Yok\r\nContent-Length: 0\r\n\r\n"[..],
+            HttpError::Status(404),
+        ),
+        (
+            b"HTTP/1.1 500 X\r\nContent-Length: 3\r\n\r\nabc",
+            HttpError::Status(500),
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\nyarim",
+            HttpError::Protocol,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nab",
+            HttpError::Protocol,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n",
+            HttpError::Protocol,
+        ),
         (b"bu http degil\r\n\r\n", HttpError::Protocol),
         (b"", HttpError::Protocol),
-        (b"HTTP/1.1 200 OK\r\nContent-Length: 1001\r\n\r\n", HttpError::TooBig),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 1001\r\n\r\n",
+            HttpError::TooBig,
+        ),
     ] {
         let (port, _rx) = serve(move |_, s| {
             let _ = s.write_all(reply);
@@ -170,7 +206,10 @@ fn an_endless_body_stops_at_the_limit() {
         while s.write_all(b"4\r\nabcd\r\n").is_ok() {}
     });
     let start = Instant::now();
-    assert_eq!(get(&[], format!("http://127.0.0.1:{port}/")), Err(HttpError::TooBig));
+    assert_eq!(
+        get(&[], format!("http://127.0.0.1:{port}/")),
+        Err(HttpError::TooBig)
+    );
     assert!(start.elapsed() < Duration::from_secs(5));
 }
 
@@ -188,9 +227,14 @@ fn the_timeout_is_the_total_time_not_per_read() {
     });
     for port in [silent, drip] {
         let start = Instant::now();
-        let r = HttpClient::new(env(&[])).get(&request(format!("http://127.0.0.1:{port}/"), 400, 1000));
+        let r =
+            HttpClient::new(env(&[])).get(&request(format!("http://127.0.0.1:{port}/"), 400, 1000));
         assert_eq!(r, Err(HttpError::Timeout));
-        assert!(start.elapsed() < Duration::from_secs(2), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
     }
 }
 
@@ -218,13 +262,19 @@ fn unusable_addresses_send_nothing() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         l.local_addr().unwrap().port()
     };
-    assert_eq!(get(&[], format!("http://127.0.0.1:{closed}/")), Err(HttpError::Connect));
+    assert_eq!(
+        get(&[], format!("http://127.0.0.1:{closed}/")),
+        Err(HttpError::Connect)
+    );
 }
 
 #[test]
 fn it_can_be_called_from_inside_an_async_runtime() {
     let (port, _rx) = fixed(OK);
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let got = runtime.block_on(async { get(&[], format!("http://127.0.0.1:{port}/")) });
     assert_eq!(got.as_deref(), Ok(&b"merha"[..]));
 }
@@ -234,22 +284,46 @@ fn http_goes_through_the_environment_proxy_with_basic_auth_unless_bypassed() {
     let (proxy, proxy_rx) = fixed(OK);
     let (direct, direct_rx) = fixed(OK);
     let proxy_url = format!("http://kul%40x:pa%3Ass@127.0.0.1:{proxy}/");
-    get(&[("http_proxy", &proxy_url)], "http://hedef.invalid:81/m?a=1".into()).unwrap();
+    get(
+        &[("http_proxy", &proxy_url)],
+        "http://hedef.invalid:81/m?a=1".into(),
+    )
+    .unwrap();
     let head = text(&proxy_rx.recv().unwrap());
-    assert!(head.starts_with("get http://hedef.invalid:81/m?a=1 http/1.1\r\n"), "{head}");
+    assert!(
+        head.starts_with("get http://hedef.invalid:81/m?a=1 http/1.1\r\n"),
+        "{head}"
+    );
     assert!(head.contains("host: hedef.invalid:81\r\n"));
     // base64("kul@x:pa:ss")
-    assert!(head.contains("proxy-authorization: basic a3vsqhg6cge6c3m="), "{head}");
+    assert!(
+        head.contains("proxy-authorization: basic a3vsqhg6cge6c3m="),
+        "{head}"
+    );
 
     let url = format!("http://127.0.0.1:{direct}/");
-    get(&[("http_proxy", &proxy_url), ("no_proxy", "127.0.0.1")], url.clone()).unwrap();
+    get(
+        &[("http_proxy", &proxy_url), ("no_proxy", "127.0.0.1")],
+        url.clone(),
+    )
+    .unwrap();
     assert!(!text(&direct_rx.recv().unwrap()).contains("proxy-authorization"));
     // https değişkeni ve all_proxy http hedefi etkilemez
-    get(&[("https_proxy", &proxy_url), ("all_proxy", &proxy_url)], url.clone()).unwrap();
+    get(
+        &[("https_proxy", &proxy_url), ("all_proxy", &proxy_url)],
+        url.clone(),
+    )
+    .unwrap();
     direct_rx.recv().unwrap();
     // kullanılamayan proxy: doğrudan gidilmez
-    assert_eq!(get(&[("http_proxy", "socks5://127.0.0.1:1")], url.clone()), Err(HttpError::Proxy));
-    assert_eq!(get(&[("http_proxy", "http:/tek-egik")], url), Err(HttpError::Proxy));
+    assert_eq!(
+        get(&[("http_proxy", "socks5://127.0.0.1:1")], url.clone()),
+        Err(HttpError::Proxy)
+    );
+    assert_eq!(
+        get(&[("http_proxy", "http:/tek-egik")], url),
+        Err(HttpError::Proxy)
+    );
     nothing(&direct_rx);
     nothing(&proxy_rx);
 }
@@ -267,7 +341,10 @@ fn pki(names: &[&str]) -> Pki {
     let issuer = Issuer::new(ca, ca_key);
     let key = KeyPair::generate().unwrap();
     let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
-    let leaf = CertificateParams::new(names).unwrap().signed_by(&key, &issuer).unwrap();
+    let leaf = CertificateParams::new(names)
+        .unwrap()
+        .signed_by(&key, &issuer)
+        .unwrap();
     let mut roots = RootCertStore::empty();
     roots.add(ca_cert.der().clone()).unwrap();
     let provider = Arc::new(rustls::crypto::ring::default_provider());
@@ -275,9 +352,15 @@ fn pki(names: &[&str]) -> Pki {
         .with_safe_default_protocol_versions()
         .unwrap()
         .with_no_client_auth()
-        .with_single_cert(vec![leaf.der().clone()], PrivateKeyDer::try_from(key.serialize_der()).unwrap())
+        .with_single_cert(
+            vec![leaf.der().clone()],
+            PrivateKeyDer::try_from(key.serialize_der()).unwrap(),
+        )
         .unwrap();
-    Pki { roots, server: Arc::new(server) }
+    Pki {
+        roots,
+        server: Arc::new(server),
+    }
 }
 
 /// Tek loopback TLS sunucusu; el sıkışmadan sonra okunan istek başlıkları kanala yazılır.
@@ -287,12 +370,19 @@ fn tls_server(config: Arc<ServerConfig>) -> (u16, Receiver<Vec<u8>>) {
     let port = listener.local_addr().unwrap().port();
     let (tx, rx) = channel();
     std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         runtime.block_on(async {
             let listener = tokio::net::TcpListener::from_std(listener).unwrap();
             let acceptor = tokio_rustls::TlsAcceptor::from(config);
-            while let Ok(Ok((tcp, _))) = tokio::time::timeout(Duration::from_secs(10), listener.accept()).await {
-                let Ok(mut tls) = acceptor.accept(tcp).await else { continue };
+            while let Ok(Ok((tcp, _))) =
+                tokio::time::timeout(Duration::from_secs(10), listener.accept()).await
+            {
+                let Ok(mut tls) = acceptor.accept(tcp).await else {
+                    continue;
+                };
                 let mut head = Vec::new();
                 while !head.ends_with(b"\r\n\r\n") {
                     match tls.read_u8().await {
@@ -304,7 +394,11 @@ fn tls_server(config: Arc<ServerConfig>) -> (u16, Receiver<Vec<u8>>) {
                     continue;
                 }
                 let _ = tx.send(head);
-                let _ = tls.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\ntls").await;
+                let _ = tls
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\ntls",
+                    )
+                    .await;
                 let _ = tls.shutdown().await;
             }
         });
@@ -327,7 +421,10 @@ fn tls_verification_is_on_for_untrusted_roots_and_wrong_names() {
     let empty = HttpClient::with_roots(env(&[]), RootCertStore::empty());
     assert!(empty.get(&request(url.clone(), 5000, 100)).is_err());
     nothing(&rx); // doğrulama düşünce anahtar HİÇ gönderilmedi
-    assert_eq!(trusted.get(&request(url, 5000, 100)).as_deref(), Ok(&b"tls"[..]));
+    assert_eq!(
+        trusted.get(&request(url, 5000, 100)).as_deref(),
+        Ok(&b"tls"[..])
+    );
     assert!(text(&rx.recv().unwrap()).contains(KEY));
     // düz metin konuşan sunucuya https (istek beklemeden yanıt yazar)
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -341,13 +438,18 @@ fn tls_verification_is_on_for_untrusted_roots_and_wrong_names() {
         let _ = s.read_to_end(&mut seen);
         assert!(!seen.windows(KEY.len()).any(|w| w == KEY.as_bytes()));
     });
-    assert_eq!(trusted.get(&request(format!("https://localhost:{plain}/"), 2000, 100)), Err(HttpError::Tls));
+    assert_eq!(
+        trusted.get(&request(format!("https://localhost:{plain}/"), 2000, 100)),
+        Err(HttpError::Tls)
+    );
     speaker.join().unwrap();
 }
 
 fn splice(client: &mut TcpStream, port: u16) {
     let mut upstream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    client.write_all(b"HTTP/1.0 200 Connection established\r\nX: y\r\n\r\n").unwrap();
+    client
+        .write_all(b"HTTP/1.0 200 Connection established\r\nX: y\r\n\r\n")
+        .unwrap();
     let (mut c2, mut u2) = (client.try_clone().unwrap(), upstream.try_clone().unwrap());
     let up = std::thread::spawn(move || {
         let _ = std::io::copy(&mut c2, &mut u2);
@@ -365,17 +467,30 @@ fn https_is_tunnelled_with_connect_and_proxy_auth_stays_outside_the_tunnel() {
     let (proxy, proxy_rx) = serve(move |_, s| splice(s, target));
     let proxy_url = format!("u:p@127.0.0.1:{proxy}");
     let client = HttpClient::with_roots(env(&[("https_proxy", &proxy_url)]), pki.roots.clone());
-    let got = client.get(&request(format!("https://hedef.invalid:{target}/m"), 5000, 100));
+    let got = client.get(&request(
+        format!("https://hedef.invalid:{target}/m"),
+        5000,
+        100,
+    ));
     assert_eq!(got.as_deref(), Ok(&b"tls"[..]));
     let connect = text(&proxy_rx.recv().unwrap());
-    assert!(connect.starts_with(&format!("connect hedef.invalid:{target} http/1.0\r\n")), "{connect}");
+    assert!(
+        connect.starts_with(&format!("connect hedef.invalid:{target} http/1.0\r\n")),
+        "{connect}"
+    );
     assert!(connect.contains("proxy-authorization: basic dtpw\r\n") && !connect.contains(KEY));
     let inner = text(&target_rx.recv().unwrap());
-    assert!(inner.starts_with("get /m http/1.1") && !inner.contains("proxy-authorization"), "{inner}");
+    assert!(
+        inner.starts_with("get /m http/1.1") && !inner.contains("proxy-authorization"),
+        "{inner}"
+    );
 
     let (deny, deny_rx) = fixed(b"HTTP/1.1 407 Auth\r\n\r\n");
     let deny_url = format!("http://127.0.0.1:{deny}");
-    let r = get(&[("HTTPS_PROXY", &deny_url)], "https://hedef.invalid/".into());
+    let r = get(
+        &[("HTTPS_PROXY", &deny_url)],
+        "https://hedef.invalid/".into(),
+    );
     assert_eq!(r, Err(HttpError::Proxy));
     assert!(!text(&deny_rx.recv().unwrap()).contains(KEY));
 }
@@ -384,7 +499,11 @@ fn https_is_tunnelled_with_connect_and_proxy_auth_stays_outside_the_tunnel() {
 fn the_real_model_io_runs_reads_and_fetches() {
     let _g = spawn_guard();
     let t = Tmp::new();
-    let io = RealModelIo::new(&t.paths(), t.env(&[]), Arc::new(FileDocs::new(&t.paths(), t.env(&[]))));
+    let io = RealModelIo::new(
+        &t.paths(),
+        t.env(&[]),
+        Arc::new(FileDocs::new(&t.paths(), t.env(&[]))),
+    );
     let a = io.monotonic_secs();
     std::thread::sleep(Duration::from_millis(20));
     assert!(a > 0.0 && io.monotonic_secs() - a >= 0.015);
@@ -397,16 +516,27 @@ fn the_real_model_io_runs_reads_and_fetches() {
     assert_eq!(io.read_file(&f, 2), None);
     let run = |body: &str, ms: u64| {
         let bin = t.script("bin/agy", body);
-        io.run_stdout(&RunRequest { argv: vec![bin], timeout: Duration::from_millis(ms), max_stdout: 100 })
+        io.run_stdout(&RunRequest {
+            argv: vec![bin],
+            timeout: Duration::from_millis(ms),
+            max_stdout: 100,
+        })
     };
     // çıkış koduna bakılmaz; stderr atılır
-    assert_eq!(run("echo m1; echo hata >&2; exit 9", 3000).as_deref(), Some(&b"m1\n"[..]));
+    assert_eq!(
+        run("echo m1; echo hata >&2; exit 9", 3000).as_deref(),
+        Some(&b"m1\n"[..])
+    );
     assert_eq!(run("sleep 30", 300), None);
     assert_eq!(run("yes", 3000), None);
 
     let (port, rx) = serve(|_, s| {
         let body = br#"{"data": [{"id": "model-a"}, {"id": "model-b"}]}"#;
-        let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+        let _ = write!(
+            s,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
         let _ = s.write_all(body);
     });
     let sources = ModelSources::new(Arc::new(io));
@@ -414,6 +544,9 @@ fn the_real_model_io_runs_reads_and_fetches() {
         &json!({"ucli_services": [{"id": "yerel", "endpoint": format!("http://127.0.0.1:{port}/v1"), "env": "YEREL_KEY"}]})
             .to_string(),
     );
-    assert_eq!(sources.service_models(&settings, "yerel", KEY), ["model-a", "model-b"]);
+    assert_eq!(
+        sources.service_models(&settings, "yerel", KEY),
+        ["model-a", "model-b"]
+    );
     assert!(text(&rx.recv().unwrap()).contains(KEY));
 }

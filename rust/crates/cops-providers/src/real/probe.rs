@@ -69,7 +69,15 @@ pub struct RealProbe {
 impl RealProbe {
     pub fn new(paths: Paths, env: Env, deps: RealDeps) -> RealProbe {
         let agents = AgentRegistry::new(&paths);
-        RealProbe { paths, env, deps, agents, cwd: None, proc_root: "/proc".into(), mcp_timeout: MCP_ADD_TIMEOUT }
+        RealProbe {
+            paths,
+            env,
+            deps,
+            agents,
+            cwd: None,
+            proc_root: "/proc".into(),
+            mcp_timeout: MCP_ADD_TIMEOUT,
+        }
     }
 
     /// Göreli yolların tabanı (verilmezse sürecin çalışma dizini).
@@ -158,7 +166,12 @@ impl Probe for RealProbe {
     fn panel_port(&self) -> Option<u16> {
         self.deps.panel_port
     }
-    fn register_mcp(&self, cwd: &str, config_path: &str, argv: &[String]) -> Result<(), McpRegisterError> {
+    fn register_mcp(
+        &self,
+        cwd: &str,
+        config_path: &str,
+        argv: &[String],
+    ) -> Result<(), McpRegisterError> {
         // symlink ise hedefi değil bağlantının kendisi silinir
         if fs::symlink_metadata(config_path).is_ok() {
             fs::remove_file(config_path).map_err(|e| McpRegisterError::Unlink(oserr::repr(&e)))?;
@@ -171,11 +184,20 @@ impl Probe for RealProbe {
             stdout: Capture::Tail(MCP_OUTPUT_TAIL),
             stderr: Capture::Tail(MCP_OUTPUT_TAIL),
         };
-        let out = process::run(&spec).map_err(|e| McpRegisterError::Spawn(run_error_repr(&e, argv, self.mcp_timeout)))?;
+        let out = process::run(&spec)
+            .map_err(|e| McpRegisterError::Spawn(run_error_repr(&e, argv, self.mcp_timeout)))?;
         if out.code != 0 {
             // Python metin kipi (UTF-8 olmayan çıktı orada istisnadır; burada U+FFFD)
-            let text = |b: &[u8]| String::from_utf8_lossy(b).replace("\r\n", "\n").replace('\r', "\n");
-            return Err(McpRegisterError::Exit { rc: out.code, stdout: text(&out.stdout), stderr: text(&out.stderr) });
+            let text = |b: &[u8]| {
+                String::from_utf8_lossy(b)
+                    .replace("\r\n", "\n")
+                    .replace('\r', "\n")
+            };
+            return Err(McpRegisterError::Exit {
+                rc: out.code,
+                stdout: text(&out.stdout),
+                stderr: text(&out.stderr),
+            });
         }
         Ok(())
     }
@@ -191,7 +213,11 @@ fn run_error_repr(e: &RunError, argv: &[String], timeout: Duration) -> String {
         RunError::Timeout => {
             let items: Vec<String> = argv.iter().map(|a| crate::pyfmt::py_str_repr(a)).collect();
             let secs = timeout.as_secs_f64();
-            let secs = if secs.fract() == 0.0 { format!("{secs:.0}") } else { crate::pyfmt::float_repr(secs) };
+            let secs = if secs.fract() == 0.0 {
+                format!("{secs:.0}")
+            } else {
+                crate::pyfmt::float_repr(secs)
+            };
             format!("TimeoutExpired([{}], {secs})", items.join(", "))
         }
         // `Capture::Tail` taşma üretmez
@@ -213,12 +239,16 @@ impl LiveProbe for RealProbe {
         fsio::stat(path)
     }
     fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
-        fsio::read_bytes(&format!("{}/{pid}/stat", self.proc_root), PROC_STAT_MAX_BYTES)
+        fsio::read_bytes(
+            &format!("{}/{pid}/stat", self.proc_root),
+            PROC_STAT_MAX_BYTES,
+        )
     }
     fn current_dir(&self) -> String {
         match &self.cwd {
             Some(c) => c.clone(),
-            None => std::env::current_dir().map_or_else(|_| ".".into(), |p| p.to_string_lossy().into_owned()),
+            None => std::env::current_dir()
+                .map_or_else(|_| ".".into(), |p| p.to_string_lossy().into_owned()),
         }
     }
     fn agy_sids_doc(&self) -> Option<Py> {
@@ -230,7 +260,13 @@ impl LiveProbe for RealProbe {
     fn sqlite_cell(&self, db: &str, sql: &str, param: &str) -> Option<SqlCell> {
         sqlite::sqlite_cell(db, sql, param)
     }
-    fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+    fn sqlite_rows(
+        &self,
+        db: &str,
+        sql: &str,
+        params: &[SqlCell],
+        row: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+    ) -> bool {
         sqlite::sqlite_rows(db, sql, params, row)
     }
     fn claude_project_dir(&self, cwd: &str) -> String {

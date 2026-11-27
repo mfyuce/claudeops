@@ -31,7 +31,11 @@ impl LiveProbe for FsProbe<'_> {
         self.real.stat(path)
     }
     fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
-        self.case.fact("proc_stat")?.get(pid.to_string())?.as_str().map(|s| s.as_bytes().to_vec())
+        self.case
+            .fact("proc_stat")?
+            .get(pid.to_string())?
+            .as_str()
+            .map(|s| s.as_bytes().to_vec())
     }
     fn current_dir(&self) -> String {
         self.e.root.clone()
@@ -39,7 +43,13 @@ impl LiveProbe for FsProbe<'_> {
     fn agy_sids_doc(&self) -> Option<cops_providers::pyjson::Py> {
         self.real.agy_sids_doc()
     }
-    fn sqlite_rows(&self, db: &str, sql: &str, params: &[SqlCell], row: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+    fn sqlite_rows(
+        &self,
+        db: &str,
+        sql: &str,
+        params: &[SqlCell],
+        row: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+    ) -> bool {
         self.real.sqlite_rows(db, sql, params, row)
     }
     fn claude_project_dir(&self, cwd: &str) -> String {
@@ -62,10 +72,24 @@ fn rs_live(e: &Env, c: &Case) -> RsOut {
     let settings = e.settings();
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let clock = Clock { now: c.args["now"].as_f64().unwrap(), utc_offset_secs: 0 };
-    let live = Live { settings: &settings, paths: &paths, probe: &probe, clock };
+    let clock = Clock {
+        now: c.args["now"].as_f64().unwrap(),
+        utc_offset_secs: 0,
+    };
+    let live = Live {
+        settings: &settings,
+        paths: &paths,
+        probe: &probe,
+        clock,
+    };
     let usage = live.live_usage(cli, cwd, sid).map(|u| {
-        Value::Object(USAGE_FIELDS.iter().zip(u.values()).map(|(k, v)| (k.to_string(), v.into())).collect::<Map<_, _>>())
+        Value::Object(
+            USAGE_FIELDS
+                .iter()
+                .zip(u.values())
+                .map(|(k, v)| (k.to_string(), v.into()))
+                .collect::<Map<_, _>>(),
+        )
     });
     let phase = live.live_phase(cli, cwd, sid).map(|p| {
         let mut m = map(json!({"name": p.name}));
@@ -121,20 +145,30 @@ impl Build<'_> {
     }
 
     fn case(&self, id: &str, cli: &str, sid: Option<&str>, pane: &str) -> Case {
-        Case::new(format!("live-{id}"), "live", json!({"cli": cli, "cwd": self.cwd(), "sid": sid, "pane": pane, "now": T}))
+        Case::new(
+            format!("live-{id}"),
+            "live",
+            json!({"cli": cli, "cwd": self.cwd(), "sid": sid, "pane": pane, "now": T}),
+        )
     }
 
     /// Yeni (`--state-dir`) sohbet dizini, köke göreli.
     fn new_dir(&self) -> String {
         let root = format!("{}/.claude/claudeops/ucli-state", self.e.home);
         let dir = state_dir_for(&root, &self.cwd());
-        dir.strip_prefix(&format!("{}/", self.e.root)).unwrap().to_string()
+        dir.strip_prefix(&format!("{}/", self.e.root))
+            .unwrap()
+            .to_string()
     }
 
     /// Eski dizinde `s1.status.json` içeriği `body` olan ucli vakası.
     fn status(&self, id: &str, body: impl AsRef<[u8]>) -> Case {
         self.case(&format!("durum-{id}"), "ucli", Some("s1"), "")
-            .file(Fx::File("work/p1/.ucli/chat/s1.status.json".into(), body.as_ref().to_vec(), 0o644))
+            .file(Fx::File(
+                "work/p1/.ucli/chat/s1.status.json".into(),
+                body.as_ref().to_vec(),
+                0o644,
+            ))
     }
 
     fn push(&mut self, c: Case) {
@@ -200,17 +234,36 @@ fn status_bodies(b: &mut Build<'_>) {
     .iter()
     .map(|s| s.to_string())
     .collect();
-    bodies.push(format!(r#"{{"phase":{{"name":"  writing{long}","detail":"{long}"}}}}"#));
-    bodies.push(format!(r#"{{"phase":{{"name":"{}","detail":" {}🙂 "}}}}"#, "x".repeat(39) + " y", "x".repeat(159)));
-    for last in ["1700000042", "null", "\"12\"", "-5", "true", "1.5", "[1]", "0"] {
-        bodies.push(format!(r#"{{"phase":{WRITING},"last_activity_unix":{last}}}"#));
+    bodies.push(format!(
+        r#"{{"phase":{{"name":"  writing{long}","detail":"{long}"}}}}"#
+    ));
+    bodies.push(format!(
+        r#"{{"phase":{{"name":"{}","detail":" {}🙂 "}}}}"#,
+        "x".repeat(39) + " y",
+        "x".repeat(159)
+    ));
+    for last in [
+        "1700000042",
+        "null",
+        "\"12\"",
+        "-5",
+        "true",
+        "1.5",
+        "[1]",
+        "0",
+    ] {
+        bodies.push(format!(
+            r#"{{"phase":{WRITING},"last_activity_unix":{last}}}"#
+        ));
     }
     for (i, body) in bodies.iter().enumerate() {
         let c = b.status(&format!("{i}"), body);
         b.push(c);
     }
     // bozuk dosyalar ve Python `json` ayrıntıları (her biri sayaç/faz taşır ki kabul/ret görünsün)
-    let full = format!(r#""activity":"waiting_for_stdin","context_bytes":400,"usage":{{"requests":1}},"phase":{WRITING}"#);
+    let full = format!(
+        r#""activity":"waiting_for_stdin","context_bytes":400,"usage":{{"requests":1}},"phase":{WRITING}"#
+    );
     let nested = |n: usize| format!(r#"{{{full},"d":{}{}}}"#, "[".repeat(n), "]".repeat(n));
     let broken: Vec<(&str, Vec<u8>)> = vec![
         ("bozuk", b"{not json".to_vec()),
@@ -224,44 +277,97 @@ fn status_bodies(b: &mut Build<'_>) {
         ("kuyruk", format!("{{{full}}} x").into_bytes()),
         ("virgul", format!("{{{full},}}").into_bytes()),
         ("bom", format!("\u{feff}{{{full}}}").into_bytes()),
-        ("utf8", [format!("{{{full},\"x\":\"").into_bytes(), vec![0xff, b'"', b'}']].concat()),
+        (
+            "utf8",
+            [
+                format!("{{{full},\"x\":\"").into_bytes(),
+                vec![0xff, b'"', b'}'],
+            ]
+            .concat(),
+        ),
         ("denetim", format!("{{{full},\"x\":\"a\tb\"}}").into_bytes()),
         ("satir", format!("{{{full},\r\n\"x\":1}}\r\n").into_bytes()),
         ("formfeed", format!("{{{full}}}\u{c}").into_bytes()),
         ("onsifir", format!("{{{full},\"x\":01}}").into_bytes()),
         ("nokta", format!("{{{full},\"x\":1.}}").into_bytes()),
-        ("nan", format!("{{{full},\"x\":NaN,\"y\":Infinity,\"z\":-Infinity}}").into_bytes()),
-        ("nan-alan", br#"{"context_bytes":NaN,"background_tasks":Infinity,"usage":{"requests":NaN}}"#.to_vec()),
-        ("vekil", format!(r#"{{{full},"x":"\ud83d","y":"\udc00 \ud83d\ude00"}}"#).into_bytes()),
-        ("yinelenen", format!(r#"{{{full},"context_bytes":800,"activity":"running_tool"}}"#).into_bytes()),
-        ("us", format!(r#"{{{full},"x":1e999,"y":-1.5E+3}}"#).into_bytes()),
+        (
+            "nan",
+            format!("{{{full},\"x\":NaN,\"y\":Infinity,\"z\":-Infinity}}").into_bytes(),
+        ),
+        (
+            "nan-alan",
+            br#"{"context_bytes":NaN,"background_tasks":Infinity,"usage":{"requests":NaN}}"#
+                .to_vec(),
+        ),
+        (
+            "vekil",
+            format!(r#"{{{full},"x":"\ud83d","y":"\udc00 \ud83d\ude00"}}"#).into_bytes(),
+        ),
+        (
+            "yinelenen",
+            format!(r#"{{{full},"context_bytes":800,"activity":"running_tool"}}"#).into_bytes(),
+        ),
+        (
+            "us",
+            format!(r#"{{{full},"x":1e999,"y":-1.5E+3}}"#).into_bytes(),
+        ),
         ("derin", nested(300).into_bytes()),
     ];
     for (id, body) in broken {
         let c = b.status(id, body);
         b.push(c);
     }
-    let c = b.status("cok-derin", nested(600)).known("512'den derin belge: Python okur, Rust 'okunamadı' sayar (yığın sınırı)");
+    let c = b
+        .status("cok-derin", nested(600))
+        .known("512'den derin belge: Python okur, Rust 'okunamadı' sayar (yığın sınırı)");
     b.push(c);
     // 4300 basamaktan uzun sayı iki tarafta da "okunamadı"
-    let c = b.status("dev-sayi", format!(r#"{{{full},"x":{}}}"#, "9".repeat(5000)));
+    let c = b.status(
+        "dev-sayi",
+        format!(r#"{{{full},"x":{}}}"#, "9".repeat(5000)),
+    );
     b.push(c);
     let c = b
         .status("tasan-sayac", r#"{"usage":{"requests":123456789012345678901234567890},"phase":{"name":"w","attempt":18446744073709551616}}"#)
         .known("u64'e sığmayan sayaç: Python sınırsız int, Rust u64::MAX");
     b.push(c);
     let c = b
-        .status("sinir-ustu", format!("{{{full}}}{}", " ".repeat(STATUS_MAX_BYTES as usize)))
+        .status(
+            "sinir-ustu",
+            format!("{{{full}}}{}", " ".repeat(STATUS_MAX_BYTES as usize)),
+        )
         .known("8 MiB üstü durum dosyası: Python sınırsız okur, Rust 'okunamadı' sayar");
     b.push(c);
-    let c = b.status("sinir-icinde", format!("{{{full}}}{}", " ".repeat(STATUS_MAX_BYTES as usize - full.len() - 2)));
+    let c = b.status(
+        "sinir-icinde",
+        format!(
+            "{{{full}}}{}",
+            " ".repeat(STATUS_MAX_BYTES as usize - full.len() - 2)
+        ),
+    );
     b.push(c);
-    let c = b.case("durum-dizin", "ucli", Some("s1"), "").file(Fx::Dir("work/p1/.ucli/chat/s1.status.json".into(), 0o755));
+    let c = b
+        .case("durum-dizin", "ucli", Some("s1"), "")
+        .file(Fx::Dir("work/p1/.ucli/chat/s1.status.json".into(), 0o755));
     b.push(c);
-    for (id, sid) in [("yok-sid", None), ("bos-sid", Some("")), ("baska-sid", Some("s2")), ("onek-sid", Some("s"))] {
+    for (id, sid) in [
+        ("yok-sid", None),
+        ("bos-sid", Some("")),
+        ("baska-sid", Some("s2")),
+        ("onek-sid", Some("s")),
+    ] {
         let c = b
-            .case(&format!("durum-{id}"), "ucli", sid, "1 shell · esc to interrupt")
-            .file(file("work/p1/.ucli/chat/s1.status.json", &format!("{{{full}}}"), 0o644));
+            .case(
+                &format!("durum-{id}"),
+                "ucli",
+                sid,
+                "1 shell · esc to interrupt",
+            )
+            .file(file(
+                "work/p1/.ucli/chat/s1.status.json",
+                &format!("{{{full}}}"),
+                0o644,
+            ));
         b.push(c);
     }
 }
@@ -269,8 +375,8 @@ fn status_bodies(b: &mut Build<'_>) {
 /// Geçerli bir durum dosyasının rastgele bozulmuş biçimleri: kabul/ret ve okunan alanlar aynı olmalı.
 fn mutated_status(b: &mut Build<'_>) {
     const T: &[&str] = &[
-        "{", "}", "[", "]", "\"", ",", ":", " ", "-", ".", "e", "1", "0", "null", "true", "NaN", "Infinity", "\\",
-        "\\n", "\\u0041", "ğ", "\n", "\t",
+        "{", "}", "[", "]", "\"", ",", ":", " ", "-", ".", "e", "1", "0", "null", "true", "NaN",
+        "Infinity", "\\", "\\n", "\\u0041", "ğ", "\n", "\t",
     ];
     let base = r#"{"activity":"waiting_for_stdin","context_bytes":4096,"background_tasks":2,"tools":["a","b"],"usage":{"requests":3,"unmetered":1},"phase":{"name":"writing","since_unix":17,"detail":"d"},"last_activity_unix":42}"#;
     let mut r = Rng(3);
@@ -282,7 +388,9 @@ fn mutated_status(b: &mut Build<'_>) {
                 0 => {
                     c.remove(at);
                 }
-                1 => c.splice(at..=at, T[r.below(T.len())].chars()).for_each(drop),
+                1 => c
+                    .splice(at..=at, T[r.below(T.len())].chars())
+                    .for_each(drop),
                 _ => c.splice(at..at, T[r.below(T.len())].chars()).for_each(drop),
             }
         }
@@ -296,10 +404,20 @@ fn state_dirs(b: &mut Build<'_>) {
     let new = b.new_dir();
     let on = json!({"ucli_limits": {"state_dir": "on"}});
     for (setting, tag) in [(Some(&on), "acik"), (None, "kapali")] {
-        for (has_new_dir, in_new, in_old) in
-            [(false, false, false), (false, false, true), (true, false, false), (true, true, false), (true, false, true), (true, true, true)]
-        {
-            let mut c = b.case(&format!("dizin-{tag}-{has_new_dir}-{in_new}-{in_old}"), "ucli", Some("oturum-ğ"), "");
+        for (has_new_dir, in_new, in_old) in [
+            (false, false, false),
+            (false, false, true),
+            (true, false, false),
+            (true, true, false),
+            (true, false, true),
+            (true, true, true),
+        ] {
+            let mut c = b.case(
+                &format!("dizin-{tag}-{has_new_dir}-{in_new}-{in_old}"),
+                "ucli",
+                Some("oturum-ğ"),
+                "",
+            );
             if let Some(s) = setting {
                 c = c.settings_json(s.clone());
             }
@@ -308,26 +426,48 @@ fn state_dirs(b: &mut Build<'_>) {
             }
             if in_new {
                 c = c
-                    .file(file(&format!("{new}/oturum-ğ.status.json"), r#"{"context_bytes":40}"#, 0o600))
-                    .file(file(&format!("{new}/failed/oturum-ğ-20-1.json"), r#"{"error":"yeni"}"#, 0o600));
+                    .file(file(
+                        &format!("{new}/oturum-ğ.status.json"),
+                        r#"{"context_bytes":40}"#,
+                        0o600,
+                    ))
+                    .file(file(
+                        &format!("{new}/failed/oturum-ğ-20-1.json"),
+                        r#"{"error":"yeni"}"#,
+                        0o600,
+                    ));
             }
             if in_old {
                 c = c
-                    .file(file("work/p1/.ucli/chat/oturum-ğ.status.json", r#"{"context_bytes":80}"#, 0o600))
-                    .file(file("work/p1/.ucli/chat/failed/oturum-ğ-30-1.json", r#"{"error":"eski"}"#, 0o600));
+                    .file(file(
+                        "work/p1/.ucli/chat/oturum-ğ.status.json",
+                        r#"{"context_bytes":80}"#,
+                        0o600,
+                    ))
+                    .file(file(
+                        "work/p1/.ucli/chat/failed/oturum-ğ-30-1.json",
+                        r#"{"error":"eski"}"#,
+                        0o600,
+                    ));
             }
             b.push(c);
         }
     }
     // cwd symlink (gerçek yol özetlenir), sonda `/`, göreli yol
-    for (id, cwd) in
-        [("link", format!("{}/work/lnk", b.e.root)), ("bolu", format!("{}/work/p1/", b.e.root)), ("goreli", "work/p1".into())]
-    {
+    for (id, cwd) in [
+        ("link", format!("{}/work/lnk", b.e.root)),
+        ("bolu", format!("{}/work/p1/", b.e.root)),
+        ("goreli", "work/p1".into()),
+    ] {
         let mut c = b
             .case(&format!("dizin-{id}"), "ucli", Some("s1"), "")
             .settings_json(on.clone())
             .file(Fx::Link("work/lnk".into(), "p1".into()))
-            .file(file(&format!("{new}/s1.status.json"), r#"{"context_bytes":40}"#, 0o600));
+            .file(file(
+                &format!("{new}/s1.status.json"),
+                r#"{"context_bytes":40}"#,
+                0o600,
+            ));
         c.args["cwd"] = cwd.into();
         b.push(c);
     }
@@ -338,14 +478,21 @@ fn failed_records(b: &mut Build<'_>) {
     let put = |c: Case, name: &str, body: &str| c.file(file(&format!("{DIR}/{name}"), body, 0o644));
     let c = b.case("hata-dizin-yok", "ucli", Some("s1"), "");
     b.push(c);
-    let c = b.case("hata-dizin-bos", "ucli", Some("s1"), "").file(Fx::Dir(DIR.into(), 0o755));
+    let c = b
+        .case("hata-dizin-bos", "ucli", Some("s1"), "")
+        .file(Fx::Dir(DIR.into(), 0o755));
     b.push(c);
-    let c = b.case("hata-dizin-dosya", "ucli", Some("s1"), "").file(file(DIR, "x", 0o644));
+    let c = b
+        .case("hata-dizin-dosya", "ucli", Some("s1"), "")
+        .file(file(DIR, "x", 0o644));
     b.push(c);
     let mut c = b.case("hata-sayim", "ucli", Some("s1"), "");
     for (name, body) in [
         ("s1-1700000000-1.json", r#"{"error":"old"}"#),
-        ("s1-1700000500-2.json", r#"{"error":"timed out\nafter 600s"}"#),
+        (
+            "s1-1700000500-2.json",
+            r#"{"error":"timed out\nafter 600s"}"#,
+        ),
         ("s1-2-1700000900-1.json", r#"{"error":"other session"}"#),
         ("s1-notes.json", "{}"),
         ("s1-1700000600-1.txt", "x"),
@@ -374,14 +521,30 @@ fn failed_records(b: &mut Build<'_>) {
     }
     b.push(c);
     // tireli oturum adı
-    let c = put(put(b.case("hata-tireli", "ucli", Some("cli-2"), ""), "cli-2-5-1.json", "{}"), "cli-7-1.json", "{}");
+    let c = put(
+        put(
+            b.case("hata-tireli", "ucli", Some("cli-2"), ""),
+            "cli-2-5-1.json",
+            "{}",
+        ),
+        "cli-7-1.json",
+        "{}",
+    );
     b.push(c);
-    let c = put(b.case("hata-ust-simge", "ucli", Some("s1"), ""), "s1-5-1.json", r#"{"error":"x"}"#);
+    let c = put(
+        b.case("hata-ust-simge", "ucli", Some("s1"), ""),
+        "s1-5-1.json",
+        r#"{"error":"x"}"#,
+    );
     // üst simge rakamlı ad iki tarafta da yalnız kendisi atlanır
     let c = put(c, "s1-²-1.json", "{}");
     b.push(c);
-    let c = put(b.case("hata-dev-unix", "ucli", Some("s1"), ""), "s1-99999999999999999999999999-1.json", "{}")
-        .known("u64'e sığmayan zaman: Python sınırsız int, Rust u64::MAX");
+    let c = put(
+        b.case("hata-dev-unix", "ucli", Some("s1"), ""),
+        "s1-99999999999999999999999999-1.json",
+        "{}",
+    )
+    .known("u64'e sığmayan zaman: Python sınırsız int, Rust u64::MAX");
     b.push(c);
     let long = "ğ ".repeat(200);
     let errors: Vec<String> = [
@@ -420,14 +583,22 @@ fn failed_records(b: &mut Build<'_>) {
     .chain([format!(r#"{{"error":"{long}"}}"#), format!(r#"{{"error":{{"message":"{}🙂🙂"}}}}"#, "x".repeat(159))])
     .collect();
     for (i, body) in errors.iter().enumerate() {
-        let c = put(b.case(&format!("hata-metin-{i}"), "ucli", Some("s1"), ""), "s1-1700000000-1.json", body);
+        let c = put(
+            b.case(&format!("hata-metin-{i}"), "ucli", Some("s1"), ""),
+            "s1-1700000000-1.json",
+            body,
+        );
         b.push(c);
     }
-    let c = b
-        .case("hata-utf8", "ucli", Some("s1"), "")
-        .file(Fx::File(format!("{DIR}/s1-1-1.json"), b"{\"error\":\"\xff\"}".to_vec(), 0o644));
+    let c = b.case("hata-utf8", "ucli", Some("s1"), "").file(Fx::File(
+        format!("{DIR}/s1-1-1.json"),
+        b"{\"error\":\"\xff\"}".to_vec(),
+        0o644,
+    ));
     b.push(c);
-    let c = b.case("hata-kayit-dizin", "ucli", Some("s1"), "").file(Fx::Dir(format!("{DIR}/s1-1-1.json"), 0o755));
+    let c = b
+        .case("hata-kayit-dizin", "ucli", Some("s1"), "")
+        .file(Fx::Dir(format!("{DIR}/s1-1-1.json"), 0o755));
     b.push(c);
 }
 
@@ -441,11 +612,20 @@ fn background(b: &mut Build<'_>) {
             continue;
         }
         for cli in ["claude", "codex"] {
-            let c = b.case(&format!("ekran-{cli}-{name}-{}", screen.len()), cli, None, &screen);
+            let c = b.case(
+                &format!("ekran-{cli}-{name}-{}", screen.len()),
+                cli,
+                None,
+                &screen,
+            );
             b.push(c);
         }
     }
-    for (id, sid, body) in [("bekleyen", Some("abc"), &pend), ("eski", Some("abc"), &stale), ("sidsiz", None, &pend)] {
+    for (id, sid, body) in [
+        ("bekleyen", Some("abc"), &pend),
+        ("eski", Some("abc"), &stale),
+        ("sidsiz", None, &pend),
+    ] {
         for pane in ["", "❯ ? for shortcuts", "2 background tasks · ↓ to manage"] {
             let c = b
                 .case(&format!("claude-{id}-{}", pane.len()), "claude", sid, pane)
@@ -463,12 +643,26 @@ fn background(b: &mut Build<'_>) {
     ]
     .join("\n");
     for pane in ["", "  1 background terminal running · /ps to view"] {
-        let c = b.case(&format!("codex-ajan-{}", pane.len()), "codex", Some("sidabc"), pane).file(file(rollout, &agents, 0o600));
+        let c = b
+            .case(
+                &format!("codex-ajan-{}", pane.len()),
+                "codex",
+                Some("sidabc"),
+                pane,
+            )
+            .file(file(rollout, &agents, 0o600));
         b.push(c);
     }
     // diğer CLI'lar: ekran ve sid ne olursa olsun varsayılanlar
-    for cli in ["claude", "agy", "codex", "copilot", "ucli", "shell", "bogus"] {
-        let c = b.case(&format!("varsayilan-{cli}"), cli, Some("sid"), "1 shell · esc to interrupt");
+    for cli in [
+        "claude", "agy", "codex", "copilot", "ucli", "shell", "bogus",
+    ] {
+        let c = b.case(
+            &format!("varsayilan-{cli}"),
+            cli,
+            Some("sid"),
+            "1 shell · esc to interrupt",
+        );
         b.push(c);
     }
 }
@@ -511,28 +705,49 @@ fn codex_context(b: &mut Build<'_>) {
         format!("{filler}\n{}\n", t(11)),
     ];
     for (i, body) in bodies.iter().enumerate() {
-        let c = b.case(&format!("codex-ctx-{i}"), "codex", Some("sidabc"), "").file(file(ROLLOUT, body, 0o600));
+        let c = b
+            .case(&format!("codex-ctx-{i}"), "codex", Some("sidabc"), "")
+            .file(file(ROLLOUT, body, 0o600));
         b.push(c);
     }
     let mut broken = t(7).into_bytes();
     broken.extend_from_slice(b"\n\xff\xfe \"token_count\"\n");
-    let c = b.case("codex-ctx-utf8", "codex", Some("sidabc"), "").file(Fx::File(ROLLOUT.into(), broken, 0o600));
+    let c = b
+        .case("codex-ctx-utf8", "codex", Some("sidabc"), "")
+        .file(Fx::File(ROLLOUT.into(), broken, 0o600));
     b.push(c);
     for (id, sid) in [("yok", Some("yok-sid")), ("sidsiz", None)] {
-        let c = b.case(&format!("codex-ctx-{id}"), "codex", sid, "").file(file(ROLLOUT, &t(7), 0o600));
+        let c = b
+            .case(&format!("codex-ctx-{id}"), "codex", sid, "")
+            .file(file(ROLLOUT, &t(7), 0o600));
         b.push(c);
     }
     let c = b
         .case("codex-ctx-bool", "codex", Some("sidabc"), "")
-        .file(file(ROLLOUT, &format!("{}\n{}\n", t(7), token_count(json!(true))), 0o600));
+        .file(file(
+            ROLLOUT,
+            &format!("{}\n{}\n", t(7), token_count(json!(true))),
+            0o600,
+        ));
     b.push(c);
     let c = b
         .case("codex-ctx-negatif", "codex", Some("sidabc"), "")
-        .file(file(ROLLOUT, &format!("{}\n{}\n", t(7), token_count(json!(-5))), 0o600));
+        .file(file(
+            ROLLOUT,
+            &format!("{}\n{}\n", t(7), token_count(json!(-5))),
+            0o600,
+        ));
     b.push(c);
     let c = b
         .case("codex-ctx-dev", "codex", Some("sidabc"), "")
-        .file(file(ROLLOUT, &token_count(json!(1)).replace("\"input_tokens\":1}", "\"input_tokens\":99999999999999999999}"), 0o600))
+        .file(file(
+            ROLLOUT,
+            &token_count(json!(1)).replace(
+                "\"input_tokens\":1}",
+                "\"input_tokens\":99999999999999999999}",
+            ),
+            0o600,
+        ))
         .known("i64'e sığmayan sayaç: Python sınırsız int, Rust i64::MAX");
     b.push(c);
 }
@@ -546,8 +761,11 @@ fn db_bytes(rows: &[(&str, i64, Option<&str>, Sql, &str)]) -> Vec<u8> {
     c.execute_batch("CREATE TABLE assistant_usage_events (session_id TEXT, turn_index INT, agent_id TEXT, input_tokens, created_at TEXT)")
         .unwrap();
     for r in rows {
-        c.execute("INSERT INTO assistant_usage_events VALUES (?,?,?,?,?)", rusqlite::params![r.0, r.1, r.2, r.3, r.4])
-            .unwrap();
+        c.execute(
+            "INSERT INTO assistant_usage_events VALUES (?,?,?,?,?)",
+            rusqlite::params![r.0, r.1, r.2, r.3, r.4],
+        )
+        .unwrap();
     }
     drop(c);
     fs::read(path).unwrap()
@@ -559,9 +777,14 @@ pub fn with_sessions(db: &[u8], rows: &[(Sql, Sql)]) -> Vec<u8> {
     let path = tmp.path().join("s.db");
     fs::write(&path, db).unwrap();
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("CREATE TABLE sessions (id, cwd, updated_at)").unwrap();
+    c.execute_batch("CREATE TABLE sessions (id, cwd, updated_at)")
+        .unwrap();
     for (i, (id, cwd)) in rows.iter().enumerate() {
-        c.execute("INSERT INTO sessions VALUES (?,?,?)", rusqlite::params![id, cwd, i as i64]).unwrap();
+        c.execute(
+            "INSERT INTO sessions VALUES (?,?,?)",
+            rusqlite::params![id, cwd, i as i64],
+        )
+        .unwrap();
     }
     drop(c);
     fs::read(path).unwrap()
@@ -574,7 +797,13 @@ fn copilot_context(b: &mut Build<'_>) {
     let rows = db_bytes(&[
         ("s1", 0, None, Sql::Integer(1000), t0),
         ("s1", 1, None, Sql::Integer(5000), t1),
-        ("s1", 1, Some("sub1"), Sql::Integer(99999), "2026-10-27T10:06:00Z"),
+        (
+            "s1",
+            1,
+            Some("sub1"),
+            Sql::Integer(99999),
+            "2026-10-27T10:06:00Z",
+        ),
         ("s2", 0, None, Sql::Integer(7), "2026-10-27T10:07:00Z"),
         ("tur", 0, None, Sql::Integer(1), t0),
         ("tur", 2, None, Sql::Integer(2), t0),
@@ -594,7 +823,9 @@ fn copilot_context(b: &mut Build<'_>) {
             Some(r) => with_sessions(&rows, &[(Sql::Text(r.into()), Sql::Text(b.cwd()))]),
             None => rows.clone(),
         };
-        let c = b.case(&format!("copilot-{id}"), "copilot", sid, "").file(Fx::File(DB.into(), db, 0o600));
+        let c = b
+            .case(&format!("copilot-{id}"), "copilot", sid, "")
+            .file(Fx::File(DB.into(), db, 0o600));
         b.push(c);
     }
     let cells: Vec<(&str, Sql)> = vec![
@@ -615,18 +846,34 @@ fn copilot_context(b: &mut Build<'_>) {
     for (id, v) in cells {
         let c = b
             .case(&format!("copilot-hucre-{id}"), "copilot", Some("s1"), "")
-            .file(Fx::File(DB.into(), db_bytes(&[("s1", 0, None, v, t0)]), 0o600));
+            .file(Fx::File(
+                DB.into(),
+                db_bytes(&[("s1", 0, None, v, t0)]),
+                0o600,
+            ));
         b.push(c);
     }
     // sayı olmayan hücre iki tarafta da "bilinmiyor"
-    for (id, v) in [("metin-harf", Sql::Text("abc".into())), ("sonsuz", Sql::Real(f64::INFINITY))] {
+    for (id, v) in [
+        ("metin-harf", Sql::Text("abc".into())),
+        ("sonsuz", Sql::Real(f64::INFINITY)),
+    ] {
         let c = b
             .case(&format!("copilot-hucre-{id}"), "copilot", Some("s1"), "")
-            .file(Fx::File(DB.into(), db_bytes(&[("s1", 0, None, v, t0)]), 0o600));
+            .file(Fx::File(
+                DB.into(),
+                db_bytes(&[("s1", 0, None, v, t0)]),
+                0o600,
+            ));
         b.push(c);
     }
-    for (id, content) in [("bozuk", b"not a database at all, definitely not".to_vec()), ("bos", Vec::new())] {
-        let c = b.case(&format!("copilot-db-{id}"), "copilot", Some("s1"), "").file(Fx::File(DB.into(), content, 0o600));
+    for (id, content) in [
+        ("bozuk", b"not a database at all, definitely not".to_vec()),
+        ("bos", Vec::new()),
+    ] {
+        let c = b
+            .case(&format!("copilot-db-{id}"), "copilot", Some("s1"), "")
+            .file(Fx::File(DB.into(), content, 0o600));
         b.push(c);
     }
     let c = b.case("copilot-db-yok", "copilot", Some("s1"), "");
@@ -636,7 +883,10 @@ fn copilot_context(b: &mut Build<'_>) {
 pub fn run() {
     let mut r = Runner::new();
     let cases = {
-        let mut b = Build { e: &r.e, cases: Vec::new() };
+        let mut b = Build {
+            e: &r.e,
+            cases: Vec::new(),
+        };
         status_bodies(&mut b);
         mutated_status(&mut b);
         state_dirs(&mut b);

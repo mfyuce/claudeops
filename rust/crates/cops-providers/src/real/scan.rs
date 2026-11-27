@@ -31,7 +31,10 @@ pub struct ProcScan<'a> {
 fn uid_and_clk_tck() -> (u32, u64) {
     // SAFETY: ikisi de argümansız/salt okuma libc çağrısı.
     let (uid, tck) = unsafe { (libc::getuid(), libc::sysconf(libc::_SC_CLK_TCK)) };
-    (uid, u64::try_from(tck).ok().filter(|t| *t > 0).unwrap_or(100))
+    (
+        uid,
+        u64::try_from(tck).ok().filter(|t| *t > 0).unwrap_or(100),
+    )
 }
 
 /// `paths`in köklerinden tarama yapılandırması (Python: `Path.home()`, `CLAUDEOPS_DIR`, `os.getuid()`).
@@ -88,7 +91,10 @@ impl SessionScan for ProcScan<'_> {
         if scan.diag.proc_root_error.is_some() {
             return None;
         }
-        let watch = SaveWatch { inner: self.agy, save_failed: Cell::new(false) };
+        let watch = SaveWatch {
+            inner: self.agy,
+            save_failed: Cell::new(false),
+        };
         for (name, sid) in &scan.agy_learned {
             if let Err(e) = remember_agy_sid(&watch, name, sid, preview) {
                 if watch.save_failed.get() {

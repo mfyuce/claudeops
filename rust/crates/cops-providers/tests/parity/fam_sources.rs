@@ -19,7 +19,10 @@ struct State {
 struct StepIo(Mutex<State>);
 
 fn unhex(s: &str) -> Vec<u8> {
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
 }
 
 fn hex(b: impl AsRef<[u8]>) -> String {
@@ -50,17 +53,31 @@ impl ModelIo for StepIo {
         std::fs::read(path).ok().filter(|d| d.len() as u64 <= max)
     }
     fn run_stdout(&self, req: &RunRequest) -> Option<Vec<u8>> {
-        self.0.lock().unwrap().calls.push(json!(["run", req.argv, req.timeout.as_secs_f64() as u64]));
+        self.0.lock().unwrap().calls.push(json!([
+            "run",
+            req.argv,
+            req.timeout.as_secs_f64() as u64
+        ]));
         self.payload()
     }
     fn http_get(&self, req: &HttpRequest) -> Option<Vec<u8>> {
         let mut headers: Vec<(String, String)> = req
             .headers
             .iter()
-            .map(|(k, v)| (k.to_lowercase(), v.expose().iter().map(|b| *b as char).collect()))
+            .map(|(k, v)| {
+                (
+                    k.to_lowercase(),
+                    v.expose().iter().map(|b| *b as char).collect(),
+                )
+            })
             .collect();
         headers.sort();
-        self.0.lock().unwrap().calls.push(json!(["get", req.url, headers, req.timeout.as_secs_f64()]));
+        self.0.lock().unwrap().calls.push(json!([
+            "get",
+            req.url,
+            headers,
+            req.timeout.as_secs_f64()
+        ]));
         self.payload()
     }
     fn spawn_background(&self, name: &'static str, job: Box<dyn FnOnce() + Send + 'static>) {
@@ -103,8 +120,16 @@ fn rs_sources(e: &Env, c: &Case) -> RsOut {
         }
         let choices = |cli: Cli| {
             let catalog = sources.catalog(cli, &settings, &paths, &probe);
-            let p = Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &probe };
-            (p.model_choices(cli), Value::Object(catalog.ucli.caps.clone()))
+            let p = Providers {
+                settings: &settings,
+                catalog: &catalog,
+                paths: &paths,
+                probe: &probe,
+            };
+            (
+                p.model_choices(cli),
+                Value::Object(catalog.ucli.caps.clone()),
+            )
         };
         let mut row = match source {
             "agy" => json!({"ret": choices(Cli::Agy).0, "exc": null}),
@@ -113,8 +138,10 @@ fn rs_sources(e: &Env, c: &Case) -> RsOut {
                 let (ret, caps) = choices(Cli::Ucli);
                 json!({"ret": ret, "exc": null, "caps": caps})
             }
-            _ => json!({"ret": sources.service_models(&settings, step["service"].as_str().unwrap(), step["key"].as_str().unwrap()),
-                        "exc": null}),
+            _ => {
+                json!({"ret": sources.service_models(&settings, step["service"].as_str().unwrap(), step["key"].as_str().unwrap()),
+                        "exc": null})
+            }
         };
         if step.get("run_bg").and_then(Value::as_bool) == Some(true) {
             // iş, kilit bırakıldıktan sonra koşar (kendisi de `StepIo`yu kullanır)
@@ -136,7 +163,12 @@ fn seq(id: impl Into<String>, source: &str, steps: Vec<Value>) -> Case {
 }
 
 fn diverges(id: &str, source: &str, steps: Vec<Value>, expect: Value, why: &'static str) -> Case {
-    Case::new(id, "sources", json!({"source": source, "steps": steps, "expect": expect})).known(why)
+    Case::new(
+        id,
+        "sources",
+        json!({"source": source, "steps": steps, "expect": expect}),
+    )
+    .known(why)
 }
 
 fn ok(b: impl AsRef<[u8]>) -> Value {
@@ -162,7 +194,9 @@ impl Rng {
     }
     /// Önbellek sınırlarına yakın artışlarla ilerleyen saat.
     fn advance(&mut self, t: f64) -> f64 {
-        t + [0.0, 1.0, 59.0, 60.0, 61.0, 299.5, 300.0, 300.5, 1000.0, 86399.0, 86400.0, 90000.0][self.n(12) as usize]
+        t + [
+            0.0, 1.0, 59.0, 60.0, 61.0, 299.5, 300.0, 300.5, 1000.0, 86399.0, 86400.0, 90000.0,
+        ][self.n(12) as usize]
     }
     fn mutate(&mut self, mut b: Vec<u8>) -> Vec<u8> {
         if !b.is_empty() && self.n(5) == 0 {
@@ -179,7 +213,12 @@ impl Rng {
 
 fn agy_cases() -> Vec<Case> {
     let out = |ids: &[&str]| {
-        ok(format!("Fetching available models...\n{}", ids.iter().map(|i| format!("{i}\tAd {i}\n")).collect::<String>()))
+        ok(format!(
+            "Fetching available models...\n{}",
+            ids.iter()
+                .map(|i| format!("{i}\tAd {i}\n"))
+                .collect::<String>()
+        ))
     };
     let s = |t: f64, resp: Value| json!({"t": t, "resp": resp});
     let bg = |t: f64, resp: Value| json!({"t": t, "resp": resp, "run_bg": true});
@@ -215,7 +254,8 @@ fn agy_cases() -> Vec<Case> {
                     _ => {
                         let text: String = (0..r.n(5))
                             .map(|_| {
-                                let id = r.pick(&["a", "gemini-x-high", " b ", "", "ğ", "Fetching..."]);
+                                let id =
+                                    r.pick(&["a", "gemini-x-high", " b ", "", "ğ", "Fetching..."]);
                                 let sep = r.pick(&["\t", "\t", " ", ""]);
                                 let end = r.pick(&["\n", "\r\n", "\r", "", "\u{b}", "\u{85}"]);
                                 format!("{id}{sep}L{end}")
@@ -233,8 +273,10 @@ fn agy_cases() -> Vec<Case> {
 }
 
 fn codex_doc(slugs: &[(&str, i64)]) -> String {
-    let models: Vec<Value> =
-        slugs.iter().map(|(s, p)| json!({"slug": s, "visibility": "list", "priority": p})).collect();
+    let models: Vec<Value> = slugs
+        .iter()
+        .map(|(s, p)| json!({"slug": s, "visibility": "list", "priority": p}))
+        .collect();
     json!({"models": models}).to_string()
 }
 
@@ -276,10 +318,16 @@ fn codex_cases() -> Vec<Case> {
                         .map(|_| {
                             let mut m = serde_json::Map::new();
                             if r.n(8) > 0 {
-                                m.insert("slug".into(), json!(r.pick(&["a", "b", "gpt-5.5", "", "ğ"])));
+                                m.insert(
+                                    "slug".into(),
+                                    json!(r.pick(&["a", "b", "gpt-5.5", "", "ğ"])),
+                                );
                             }
                             if r.n(6) > 0 {
-                                m.insert("visibility".into(), json!(r.pick(&["list", "list", "hide"])));
+                                m.insert(
+                                    "visibility".into(),
+                                    json!(r.pick(&["list", "list", "hide"])),
+                                );
                             }
                             if r.n(2) == 0 {
                                 m.insert("priority".into(), json!(r.n(4)));
@@ -313,7 +361,8 @@ fn key_settings(key: &str, endpoint: &str) -> String {
 
 fn ucli_cases() -> Vec<Case> {
     let s = |t: f64, resp: Value| json!({"t": t, "resp": resp});
-    let set = |t: f64, settings: String, resp: Value| json!({"t": t, "settings": settings, "resp": resp});
+    let set =
+        |t: f64, settings: String, resp: Value| json!({"t": t, "settings": settings, "resp": resp});
     let k = || key_settings("anahtar", "");
     let good = |ids: &[&str]| ok(chat_payload(ids));
     let mut v = vec![
@@ -379,13 +428,35 @@ fn ucli_cases() -> Vec<Case> {
                             .map(|_| {
                                 let mut m = serde_json::Map::new();
                                 if r.n(8) > 0 {
-                                    m.insert("id".into(), [json!("a"), json!("b"), json!(""), json!(null), json!("ğ")][r.n(5) as usize].clone());
+                                    m.insert(
+                                        "id".into(),
+                                        [
+                                            json!("a"),
+                                            json!("b"),
+                                            json!(""),
+                                            json!(null),
+                                            json!("ğ"),
+                                        ][r.n(5) as usize]
+                                            .clone(),
+                                    );
                                 }
                                 if r.n(6) > 0 {
-                                    m.insert("task".into(), json!(r.pick(&["chat", "chat", "ocr"])));
+                                    m.insert(
+                                        "task".into(),
+                                        json!(r.pick(&["chat", "chat", "ocr"])),
+                                    );
                                 }
                                 if r.n(2) == 0 {
-                                    m.insert("capabilities".into(), [json!({"reasoning_effort": true}), json!({}), json!(null), json!("x")][r.n(4) as usize].clone());
+                                    m.insert(
+                                        "capabilities".into(),
+                                        [
+                                            json!({"reasoning_effort": true}),
+                                            json!({}),
+                                            json!(null),
+                                            json!("x"),
+                                        ][r.n(4) as usize]
+                                            .clone(),
+                                    );
                                 }
                                 Value::Object(m)
                             })
@@ -411,31 +482,73 @@ fn service_cases() -> Vec<Case> {
     let s = |t: f64, service: &str, key: &str, resp: Value| json!({"t": t, "service": service, "key": key, "resp": resp});
     let one = |id: &str| ok(json!({"data": [{"id": id}]}).to_string());
     let mut v = vec![
-        seq("src-svc-istek-yok", "service", vec![
-            s(0.0, "evren", "K", one("a")), s(0.0, "grok", "", one("a")), s(0.0, "yok", "K", one("a")),
-            s(0.0, "", "K", one("a")), s(0.0, "Grok", "K", one("a")),
-        ]),
-        seq("src-svc-ttl", "service", vec![
-            s(1000.0, "grok", "K", one("m1")), s(81000.0, "grok", "K", one("m2")), s(87399.5, "grok", "K", one("m2")),
-            s(87400.0, "grok", "K", one("m3")), s(87401.0, "grok", "BASKA", one("m4")),
-            // süre dolunca başarısızlık iyi listeyi EZER; 60 sn sonra yeniden denenir
-            s(200000.0, "grok", "K", fail("os")), s(200030.0, "grok", "K", one("m5")), s(200059.5, "grok", "K", one("m5")),
-            s(200060.0, "grok", "K", one("m5")),
-        ]),
-        seq("src-svc-bos-sonuc", "service", vec![
-            s(0.0, "groq", "K", ok("{\"data\": []}")), s(59.0, "groq", "K", one("a")), s(60.0, "groq", "K", one("a")),
-        ]),
-        seq("src-svc-ayri", "service", vec![
-            s(0.0, "grok", "K", one("g")), s(0.0, "groq", "K", one("q")), s(1.0, "grok", "K", one("x")),
-            s(1.0, "claude", "KEY", one("c")), s(1.0, "openrouter", "K o", one("o")),
-        ]),
-        seq("src-svc-saat-geri", "service", vec![s(1000.0, "grok", "K", one("a")), s(1.0, "grok", "K", one("b"))]),
-        seq("src-svc-ozel", "service", vec![
-            json!({"t": 0.0, "service": "benim", "key": "K", "resp": one("a"),
+        seq(
+            "src-svc-istek-yok",
+            "service",
+            vec![
+                s(0.0, "evren", "K", one("a")),
+                s(0.0, "grok", "", one("a")),
+                s(0.0, "yok", "K", one("a")),
+                s(0.0, "", "K", one("a")),
+                s(0.0, "Grok", "K", one("a")),
+            ],
+        ),
+        seq(
+            "src-svc-ttl",
+            "service",
+            vec![
+                s(1000.0, "grok", "K", one("m1")),
+                s(81000.0, "grok", "K", one("m2")),
+                s(87399.5, "grok", "K", one("m2")),
+                s(87400.0, "grok", "K", one("m3")),
+                s(87401.0, "grok", "BASKA", one("m4")),
+                // süre dolunca başarısızlık iyi listeyi EZER; 60 sn sonra yeniden denenir
+                s(200000.0, "grok", "K", fail("os")),
+                s(200030.0, "grok", "K", one("m5")),
+                s(200059.5, "grok", "K", one("m5")),
+                s(200060.0, "grok", "K", one("m5")),
+            ],
+        ),
+        seq(
+            "src-svc-bos-sonuc",
+            "service",
+            vec![
+                s(0.0, "groq", "K", ok("{\"data\": []}")),
+                s(59.0, "groq", "K", one("a")),
+                s(60.0, "groq", "K", one("a")),
+            ],
+        ),
+        seq(
+            "src-svc-ayri",
+            "service",
+            vec![
+                s(0.0, "grok", "K", one("g")),
+                s(0.0, "groq", "K", one("q")),
+                s(1.0, "grok", "K", one("x")),
+                s(1.0, "claude", "KEY", one("c")),
+                s(1.0, "openrouter", "K o", one("o")),
+            ],
+        ),
+        seq(
+            "src-svc-saat-geri",
+            "service",
+            vec![
+                s(1000.0, "grok", "K", one("a")),
+                s(1.0, "grok", "K", one("b")),
+            ],
+        ),
+        seq(
+            "src-svc-ozel",
+            "service",
+            vec![
+                json!({"t": 0.0, "service": "benim", "key": "K", "resp": one("a"),
                    "settings": json!({"ucli_services": [{"id": "benim", "env": "BENIM_KEY", "endpoint": "http://h.invalid/api/v9///"},
                                                         {"id": "ant", "env": "ANT_KEY", "wire": "anthropic-messages", "endpoint": "http://a.invalid"}]}).to_string()}),
-            s(1.0, "ant", "K", one("b")), s(2.0, "grok", "K", one("c")), s(3.0, "evren", "K", one("d")),
-        ]),
+                s(1.0, "ant", "K", one("b")),
+                s(2.0, "grok", "K", one("c")),
+                s(3.0, "evren", "K", one("d")),
+            ],
+        ),
     ];
     let bodies: &[&str] = &[
         "{\"data\": [{\"id\": \"b\"}, {\"id\": \"a\"}, {\"id\": \"a\"}]}",
@@ -460,20 +573,60 @@ fn service_cases() -> Vec<Case> {
         "{\"data\": [{\"id\": \"ilk\", \"id\": \"son\"}], \"data\": [{\"id\": \"kazanan\"}]}",
     ];
     for (i, b) in bodies.iter().enumerate() {
-        v.push(seq(format!("src-svc-govde-{i}"), "service", vec![s(0.0, "grok", "K", ok(b)), s(61.0, "grok", "K", ok(b))]));
+        v.push(seq(
+            format!("src-svc-govde-{i}"),
+            "service",
+            vec![s(0.0, "grok", "K", ok(b)), s(61.0, "grok", "K", ok(b))],
+        ));
     }
-    v.push(seq("src-svc-govde-utf8", "service", vec![s(0.0, "grok", "K", ok(b"{\"data\": [{\"id\": \"a\xff\xc3b\xf0\x9f\"}]}"))]));
-    v.push(seq("src-svc-govde-hata", "service", vec![s(0.0, "grok", "K", fail("http")), s(61.0, "grok", "K", fail("timeout"))]));
-    v.push(seq("src-svc-cok-derin", "service", vec![s(0.0, "grok", "K", json!({"rep": [hex("["), 100000]}))]));
+    v.push(seq(
+        "src-svc-govde-utf8",
+        "service",
+        vec![s(
+            0.0,
+            "grok",
+            "K",
+            ok(b"{\"data\": [{\"id\": \"a\xff\xc3b\xf0\x9f\"}]}"),
+        )],
+    ));
+    v.push(seq(
+        "src-svc-govde-hata",
+        "service",
+        vec![
+            s(0.0, "grok", "K", fail("http")),
+            s(61.0, "grok", "K", fail("timeout")),
+        ],
+    ));
+    v.push(seq(
+        "src-svc-cok-derin",
+        "service",
+        vec![s(0.0, "grok", "K", json!({"rep": [hex("["), 100000]}))],
+    ));
     v.push(diverges(
-        "src-svc-sapma-vekil", "service",
-        vec![s(0.0, "grok", "K", ok("{\"data\": [{\"id\": \"a\\ud800\"}]}"))],
+        "src-svc-sapma-vekil",
+        "service",
+        vec![s(
+            0.0,
+            "grok",
+            "K",
+            ok("{\"data\": [{\"id\": \"a\\ud800\"}]}"),
+        )],
         json!([["a\u{fffd}"]]),
         "hizmet /models eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
     ));
     v.push(diverges(
-        "src-svc-sapma-derinlik", "service",
-        vec![s(0.0, "grok", "K", ok(format!("{{\"data\": [{{\"id\": \"a\"}}], \"x\": {}{}}}", "[".repeat(600), "]".repeat(600))))],
+        "src-svc-sapma-derinlik",
+        "service",
+        vec![s(
+            0.0,
+            "grok",
+            "K",
+            ok(format!(
+                "{{\"data\": [{{\"id\": \"a\"}}], \"x\": {}{}}}",
+                "[".repeat(600),
+                "]".repeat(600)
+            )),
+        )],
         json!([[]]),
         "hizmet /models 512'den derin gövde: Python okur, Rust boş liste",
     ));
@@ -494,11 +647,20 @@ fn service_cases() -> Vec<Case> {
                                 _ => json!({"id": r.pick(&["a", "B", "ç", "", "a-1", "a_1"])}),
                             })
                             .collect();
-                        let body = if r.n(4) == 0 { json!(rows) } else { json!({"data": rows}) };
+                        let body = if r.n(4) == 0 {
+                            json!(rows)
+                        } else {
+                            json!({"data": rows})
+                        };
                         ok(r.mutate(body.to_string().into_bytes()))
                     }
                 };
-                s(t, r.pick(&["grok", "grok", "claude", "evren", "yok"]), r.pick(&["K", "K", ""]), resp)
+                s(
+                    t,
+                    r.pick(&["grok", "grok", "claude", "evren", "yok"]),
+                    r.pick(&["K", "K", ""]),
+                    resp,
+                )
             })
             .collect();
         v.push(seq(format!("src-svc-rastgele-{i}"), "service", steps));

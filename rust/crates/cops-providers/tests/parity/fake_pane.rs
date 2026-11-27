@@ -20,7 +20,14 @@ pub struct Script {
 
 impl Default for Script {
     fn default() -> Self {
-        Script { screens: Vec::new(), send_ok: true, keys: Vec::new(), t0: 1000.0, send_cost: 0.0, capture_cost: 0.0 }
+        Script {
+            screens: Vec::new(),
+            send_ok: true,
+            keys: Vec::new(),
+            t0: 1000.0,
+            send_cost: 0.0,
+            capture_cost: 0.0,
+        }
     }
 }
 
@@ -35,11 +42,20 @@ pub struct FakePane {
 impl FakePane {
     pub fn new(script: Script) -> Self {
         let now = Cell::new(script.t0);
-        FakePane { script, now, log: RefCell::new(Vec::new()), captures: Cell::new(0), key_calls: Cell::new(0) }
+        FakePane {
+            script,
+            now,
+            log: RefCell::new(Vec::new()),
+            captures: Cell::new(0),
+            key_calls: Cell::new(0),
+        }
     }
 
     pub fn screens(screens: &[&str]) -> Self {
-        Self::new(Script { screens: screens.iter().map(|s| Some(s.to_string())).collect(), ..Script::default() })
+        Self::new(Script {
+            screens: screens.iter().map(|s| Some(s.to_string())).collect(),
+            ..Script::default()
+        })
     }
 
     /// Basılan tuş adları, sırayla.
@@ -62,7 +78,12 @@ impl FakePane {
     }
 
     fn of(&self, kind: &str, i: usize) -> Vec<String> {
-        self.log.borrow().iter().filter(|e| e[0] == kind).map(|e| e[i].as_str().unwrap().to_string()).collect()
+        self.log
+            .borrow()
+            .iter()
+            .filter(|e| e[0] == kind)
+            .map(|e| e[i].as_str().unwrap().to_string())
+            .collect()
     }
 
     fn push(&self, v: Value) {
@@ -97,7 +118,9 @@ impl Pane for FakePane {
         assert!(i < 5000, "bitmeyen bekleme");
         self.advance(self.script.capture_cost);
         let n = self.script.screens.len();
-        (n > 0).then(|| self.script.screens[i.min(n - 1)].clone()).flatten()
+        (n > 0)
+            .then(|| self.script.screens[i.min(n - 1)].clone())
+            .flatten()
     }
 
     fn monotonic(&self) -> f64 {

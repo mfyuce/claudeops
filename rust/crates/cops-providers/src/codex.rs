@@ -18,8 +18,18 @@ pub const FALLBACK_MODELS: [&str; 4] = ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.
 fn permission_flags(mode: &str) -> &'static [&'static str] {
     match if mode.is_empty() { "auto" } else { mode } {
         "auto" => &["--dangerously-bypass-approvals-and-sandbox"],
-        "acceptEdits" => &["--sandbox", "workspace-write", "--ask-for-approval", "never"],
-        "manual" => &["--sandbox", "workspace-write", "--ask-for-approval", "on-request"],
+        "acceptEdits" => &[
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "never",
+        ],
+        "manual" => &[
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "on-request",
+        ],
         // Tanınmayan mod en kısıtlıya düşer.
         _ => &["--sandbox", "read-only", "--ask-for-approval", "on-request"],
     }
@@ -49,7 +59,10 @@ pub const MODELS_TTL: f64 = 300.0;
 
 /// `models_cache.json`ın ayrıştırılmış hali; yoksa, okunamazsa, UTF-8 ya da JSON değilse None.
 pub(crate) fn read_models_cache(io: &dyn ModelIo, paths: &Paths) -> Option<Value> {
-    let data = bounded(io.read_file(&paths.codex_models_cache(), CODEX_CACHE_MAX_BYTES), CODEX_CACHE_MAX_BYTES)?;
+    let data = bounded(
+        io.read_file(&paths.codex_models_cache(), CODEX_CACHE_MAX_BYTES),
+        CODEX_CACHE_MAX_BYTES,
+    )?;
     Py::parse(std::str::from_utf8(&data).ok()?).map(|p| p.to_value())
 }
 
@@ -108,7 +121,9 @@ pub fn model_choices(cache: Option<&Value>) -> Vec<String> {
 /// Belgedeki listelenen modeller. Python'da `models` girdisi sözlük değilse (AttributeError) ya da öncelikler
 /// karşılaştırılamazsa (TypeError) belge kullanılmaz: burada boş liste.
 pub fn listed_slugs(cache: Option<&Value>) -> Vec<String> {
-    let Some(Value::Object(data)) = cache else { return Vec::new() };
+    let Some(Value::Object(data)) = cache else {
+        return Vec::new();
+    };
     let models: Vec<&Value> = match data.get("models") {
         None => Vec::new(),
         Some(Value::Array(a)) => a.iter().collect(),
@@ -119,12 +134,18 @@ pub fn listed_slugs(cache: Option<&Value>) -> Vec<String> {
     };
     let mut listed: Vec<(PrioKey, String)> = Vec::new();
     for m in models {
-        let Value::Object(m) = m else { return Vec::new() };
-        if m.get("visibility").and_then(Value::as_str) != Some("list") || !m.get("slug").is_some_and(truthy) {
+        let Value::Object(m) = m else {
+            return Vec::new();
+        };
+        if m.get("visibility").and_then(Value::as_str) != Some("list")
+            || !m.get("slug").is_some_and(truthy)
+        {
             continue;
         }
         // Dize olmayan (ama doğru değerli) slug Python'da listeye OLDUĞU GİBİ girer; burada temsil edilemez, atlanır.
-        let Some(slug) = m.get("slug").and_then(Value::as_str) else { continue };
+        let Some(slug) = m.get("slug").and_then(Value::as_str) else {
+            continue;
+        };
         listed.push((prio_key(m), slug.to_string()));
     }
     if listed.len() > 1 {
@@ -156,7 +177,9 @@ pub fn model_effort_levels(model: &str, cache: Option<&Value>) -> Option<Vec<Str
     if model.is_empty() {
         return None;
     }
-    let Value::Object(data) = cache? else { return None };
+    let Value::Object(data) = cache? else {
+        return None;
+    };
     let models = py_iter(data.get("models")?)?;
     for m in &models {
         let Value::Object(m) = m else { return None };
@@ -182,9 +205,20 @@ pub(crate) fn build_inner_command(p: &Providers<'_>, a: &BuildArgs<'_>) -> Strin
         parts.extend(["resume".into(), quote(r)]);
     }
     parts.extend(["--model".into(), quote(a.model)]);
-    let effort = if a.effort.is_empty() { "medium" } else { a.effort };
-    parts.extend(["--config".into(), quote(&format!("model_reasoning_effort={effort}"))]);
-    parts.extend(permission_flags(a.permission_mode).iter().map(|s| s.to_string()));
+    let effort = if a.effort.is_empty() {
+        "medium"
+    } else {
+        a.effort
+    };
+    parts.extend([
+        "--config".into(),
+        quote(&format!("model_reasoning_effort={effort}")),
+    ]);
+    parts.extend(
+        permission_flags(a.permission_mode)
+            .iter()
+            .map(|s| s.to_string()),
+    );
     parts.extend(a.extra_args.iter().map(|x| quote(x)));
     if let Some(pr) = a.prompt.filter(|s| !s.is_empty()) {
         parts.push(quote(pr));
@@ -196,7 +230,11 @@ pub(crate) fn mcp_launch_args(spec: &McpSpec) -> Vec<String> {
     let args: Vec<String> = spec.args.iter().map(|a| json_ascii(a)).collect();
     vec![
         "-c".into(),
-        format!("mcp_servers.{}.command={}", spec.name, json_ascii(&spec.command)),
+        format!(
+            "mcp_servers.{}.command={}",
+            spec.name,
+            json_ascii(&spec.command)
+        ),
         "-c".into(),
         format!("mcp_servers.{}.args=[{}]", spec.name, args.join(", ")),
     ]

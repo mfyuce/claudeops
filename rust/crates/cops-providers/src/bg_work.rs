@@ -32,7 +32,9 @@ const W_IN: &str = r"\p{L}\p{N}_";
 /// ise eşleşmeden sonra elle bakılır: `regex` doğrusal zamanlıdır (geri izlemeli motor uzun satırda sınıra takılıp
 /// sessizce "eşleşme yok" diyordu).
 fn rx(pat: &str) -> Regex {
-    let p = pat.replace("{W}", W_IN).replace("{D}", &format!("[{}]", d_in()));
+    let p = pat
+        .replace("{W}", W_IN)
+        .replace("{D}", &format!("[{}]", d_in()));
     Regex::new(&p).expect("sabit desen")
 }
 
@@ -43,7 +45,9 @@ static WORD_CHAR: LazyLock<Regex> = LazyLock::new(|| rx(r"^[{W}]"));
 static HINT: LazyLock<Regex> =
     LazyLock::new(|| rx(r"(?i)to manage|esc to [iİı]nterrupt|to v[iİı]ew|ctrl\+b"));
 static WAIT: LazyLock<Regex> = LazyLock::new(|| {
-    rx(r"(?i)(?:^|[^{W}])wa[iİı]t[iİı]ng on (?:[iİı]ts own background work|[1-9]{D}* (?:shells?|agents?|background tasks?|mon[iİı]tors?))")
+    rx(
+        r"(?i)(?:^|[^{W}])wa[iİı]t[iİı]ng on (?:[iİı]ts own background work|[1-9]{D}* (?:shells?|agents?|background tasks?|mon[iİı]tors?))",
+    )
 });
 static CODEX_BG: LazyLock<Regex> =
     LazyLock::new(|| rx(r"(?i)(?:^|[^{W}.])([1-9]{D}*) background term[iİı]nals? runn[iİı]ng"));
@@ -51,7 +55,14 @@ static NOTIF_ID: LazyLock<Regex> = LazyLock::new(|| rx(r"<tool-use-id>([^<]+)</t
 static TASK_ID: LazyLock<Regex> = LazyLock::new(|| rx(r"<task-id>([^<]+)</task-id>"));
 static STATUS: LazyLock<Regex> = LazyLock::new(|| rx(r"<status>([^<]+)</status>"));
 static RUNNING_ID: LazyLock<Regex> = LazyLock::new(|| rx(r"(?:^|[^{W}])ID: ([A-Za-z0-9]+)"));
-const DONE_STATUSES: [&str; 6] = ["completed", "failed", "killed", "cancelled", "canceled", "stopped"];
+const DONE_STATUSES: [&str; 6] = [
+    "completed",
+    "failed",
+    "killed",
+    "cancelled",
+    "canceled",
+    "stopped",
+];
 
 /// `(text).rstrip("\n").split("\n")[-SCREEN_TAIL_LINES:]`.
 fn screen_tail(text: &str) -> impl Iterator<Item = &str> {
@@ -62,20 +73,29 @@ fn screen_tail(text: &str) -> impl Iterator<Item = &str> {
 
 /// Desenin her eşleşmesinin birinci grubu.
 fn groups<'a>(re: &'a Regex, s: &'a str) -> impl Iterator<Item = &'a str> + 'a {
-    re.captures_iter(s).filter_map(|c| c.get(1).map(|m| m.as_str()))
+    re.captures_iter(s)
+        .filter_map(|c| c.get(1).map(|m| m.as_str()))
 }
 
 /// Satırdaki iş sayıları (sözcüğün hemen ardından harf/rakam gelmeyen eşleşmeler).
 fn counts(line: &str) -> impl Iterator<Item = &str> {
     COUNT
         .captures_iter(line)
-        .filter(|c| c.get(0).is_some_and(|m| !WORD_CHAR.is_match(&line[m.end()..])))
+        .filter(|c| {
+            c.get(0)
+                .is_some_and(|m| !WORD_CHAR.is_match(&line[m.end()..]))
+        })
         .filter_map(|c| c.get(1).map(|m| m.as_str()))
 }
 
 /// `int()` (Unicode ondalık rakamlar); `u64`e sığmayan değer `u64::MAX`.
 fn count_value(digits: &str) -> u64 {
-    digits.chars().filter_map(decimal_value).fold(0u64, |acc, d| acc.saturating_mul(10).saturating_add(u64::from(d)))
+    digits
+        .chars()
+        .filter_map(decimal_value)
+        .fold(0u64, |acc, d| {
+            acc.saturating_mul(10).saturating_add(u64::from(d))
+        })
 }
 
 fn sum_counts<'a>(found: impl Iterator<Item = &'a str>) -> u64 {
@@ -101,12 +121,15 @@ pub fn screen_bg_count(text: &str) -> u64 {
 
 /// ANSI'si ayıklanmış ekranda arka plan işi göstergesi var mı.
 pub fn screen_bg_work(text: &str) -> bool {
-    screen_tail(text).any(|line| WAIT.is_match(line) || (HINT.is_match(line) && counts(line).next().is_some()))
+    screen_tail(text)
+        .any(|line| WAIT.is_match(line) || (HINT.is_match(line) && counts(line).next().is_some()))
 }
 
 /// codex alt durum satırı: `N background terminal(s) running`.
 pub fn codex_screen_count(text: &str) -> u64 {
-    screen_tail(text).fold(0u64, |acc, line| acc.saturating_add(sum_counts(groups(&CODEX_BG, line))))
+    screen_tail(text).fold(0u64, |acc, line| {
+        acc.saturating_add(sum_counts(groups(&CODEX_BG, line)))
+    })
 }
 
 /// Python'da sözlük/küme anahtarı olabilen kimlik (`True == 1 == 1.0`).
@@ -122,7 +145,9 @@ fn key(v: &Py) -> Option<Key> {
         Py::Bool(b) => Some(Key::Num(u8::from(*b).to_string())),
         Py::Int(i) => Some(Key::Num(i.to_string())),
         Py::BigInt(s) => Some(Key::Num(s.clone())),
-        Py::Float(f) if f.fract() == 0.0 && f.abs() < 9.0e18 => Some(Key::Num((*f as i64).to_string())),
+        Py::Float(f) if f.fract() == 0.0 && f.abs() < 9.0e18 => {
+            Some(Key::Num((*f as i64).to_string()))
+        }
         Py::Float(f) => Some(Key::Num(f.to_string())),
         Py::Null | Py::Array(_) | Py::Object(_) => None,
     }
@@ -164,15 +189,23 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
         {
             continue;
         }
-        let Some(o) = Py::parse(line).filter(Py::is_object) else { continue };
-        let ts = o.get("timestamp").and_then(|v| iso_epoch(v, clock.utc_offset_secs));
-        let Some(message) = dict_or_empty(o.get("message")) else { continue };
+        let Some(o) = Py::parse(line).filter(Py::is_object) else {
+            continue;
+        };
+        let ts = o
+            .get("timestamp")
+            .and_then(|v| iso_epoch(v, clock.utc_offset_secs));
+        let Some(message) = dict_or_empty(o.get("message")) else {
+            continue;
+        };
         match message.get("content") {
             Some(Py::Str(c)) => {
                 if !c.contains("<task-notification>") {
                     continue;
                 }
-                let Some(status) = groups(&STATUS, c).next() else { continue };
+                let Some(status) = groups(&STATUS, c).next() else {
+                    continue;
+                };
                 if DONE_STATUSES.contains(&strip(status).to_lowercase().as_str()) {
                     done_use.extend(groups(&NOTIF_ID, c).map(|s| Key::Str(s.to_string())));
                     done_task.extend(groups(&TASK_ID, c).map(str::to_string));
@@ -192,7 +225,9 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
                             pending.insert(k, (at, None));
                         }
                     } else if kind == Some("tool_result") {
-                        let Some(k) = b.get("tool_use_id").and_then(key) else { continue };
+                        let Some(k) = b.get("tool_use_id").and_then(key) else {
+                            continue;
+                        };
                         if !pending.contains_key(&k) {
                             continue;
                         }
@@ -201,7 +236,10 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
                             pending.remove(&k);
                             continue;
                         }
-                        let text: String = result_text(b.get("content").unwrap_or(&Py::Null)).chars().take(400).collect();
+                        let text: String = result_text(b.get("content").unwrap_or(&Py::Null))
+                            .chars()
+                            .take(400)
+                            .collect();
                         let task = groups(&RUNNING_ID, &text).next().map(str::to_string);
                         if let (Some(task), Some(slot)) = (task, pending.get_mut(&k)) {
                             slot.1 = Some(task);
@@ -227,17 +265,29 @@ pub fn codex_subagents_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clo
         if !line.contains("SubAgentActivity") {
             continue;
         }
-        let Some(o) = Py::parse(line).filter(Py::is_object) else { continue };
-        let Some(item) = dict_or_empty(o.get("payload")).and_then(|p| dict_or_empty(p.get("item"))) else {
+        let Some(o) = Py::parse(line).filter(Py::is_object) else {
+            continue;
+        };
+        let Some(item) = dict_or_empty(o.get("payload")).and_then(|p| dict_or_empty(p.get("item")))
+        else {
             continue;
         };
         if item.get("type").and_then(Py::as_str) != Some("SubAgentActivity") {
             continue;
         }
-        let Some(agent) = item.get("agent_thread_id").filter(|v| v.truthy()).map(Py::py_str) else { continue };
+        let Some(agent) = item
+            .get("agent_thread_id")
+            .filter(|v| v.truthy())
+            .map(Py::py_str)
+        else {
+            continue;
+        };
         match item.get("kind").and_then(Py::as_str) {
             Some("started") => {
-                let at = o.get("timestamp").and_then(|v| iso_epoch(v, clock.utc_offset_secs)).filter(|t| *t != 0.0);
+                let at = o
+                    .get("timestamp")
+                    .and_then(|v| iso_epoch(v, clock.utc_offset_secs))
+                    .filter(|t| *t != 0.0);
                 started.insert(agent, at.unwrap_or(clock.now));
             }
             Some("completed" | "failed" | "cancelled" | "canceled" | "closed") => {
@@ -246,12 +296,18 @@ pub fn codex_subagents_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clo
             _ => {}
         }
     }
-    started.iter().filter(|(a, at)| !done.contains(*a) && clock.now - **at < PENDING_MAX_AGE_SECONDS).count() as u64
+    started
+        .iter()
+        .filter(|(a, at)| !done.contains(*a) && clock.now - **at < PENDING_MAX_AGE_SECONDS)
+        .count() as u64
 }
 
 /// Dosya kuyruğu baytlarının satırları (`decode("utf-8", "replace").split("\n")`).
 pub fn decode_lines(data: &[u8]) -> Vec<String> {
-    String::from_utf8_lossy(data).split('\n').map(str::to_string).collect()
+    String::from_utf8_lossy(data)
+        .split('\n')
+        .map(str::to_string)
+        .collect()
 }
 
 // ---------------------------------------------------------------------------------------------- zaman damgası
@@ -317,7 +373,9 @@ pub fn iso_epoch(v: &Py, local_offset: i64) -> Option<f64> {
 }
 
 fn digits(b: &[u8]) -> Option<i64> {
-    b.iter().try_fold(0i64, |acc, c| c.is_ascii_digit().then(|| acc * 10 + i64::from(c - b'0')))
+    b.iter().try_fold(0i64, |acc, c| {
+        c.is_ascii_digit().then(|| acc * 10 + i64::from(c - b'0'))
+    })
 }
 
 /// CPython 3.10 `parse_hh_mm_ss_ff`: `([saat, dk, sn, mikro], artık karakter var mı)`. `end` kısmı izleyen bayt
@@ -370,7 +428,15 @@ mod tests {
         assert_eq!(at("1970-01-01T03:00:00"), Some(0.0));
         assert_eq!(at("1970-01-02"), Some(86_400.0 - 10_800.0));
         assert_eq!(at("2026-11-23T10:00:00.250+00:00"), Some(1_795_428_000.25));
-        for bad in ["", "2026-11-23T", "2026-13-01", "2026-02-29", "2026-11-23T10:00:00.1Z", "ğğğğğğğğğğğ", "2026-11-23ğ"] {
+        for bad in [
+            "",
+            "2026-11-23T",
+            "2026-13-01",
+            "2026-02-29",
+            "2026-11-23T10:00:00.1Z",
+            "ğğğğğğğğğğğ",
+            "2026-11-23ğ",
+        ] {
             assert_eq!(at(bad), None, "{bad}");
         }
     }
@@ -381,7 +447,10 @@ mod tests {
         let line = "x ".repeat(2_000_000);
         assert_eq!(screen_bg_count(&format!("{line}2 shells · to manage")), 2);
         assert_eq!(screen_bg_count(&format!("{line}waiting on 1 shell")), 1);
-        assert_eq!(codex_screen_count(&format!("{line}3 background terminals running")), 3);
+        assert_eq!(
+            codex_screen_count(&format!("{line}3 background terminals running")),
+            3
+        );
         assert!(screen_bg_work(&format!("{line}waiting on 1 shell")));
     }
 
@@ -389,7 +458,10 @@ mod tests {
     #[test]
     fn truncated_and_mutated_input_never_panics() {
         let seed = "{\"timestamp\":\"2026-11-23ğ10:00:00.123+03:00\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"t\",\"input\":{\"run_in_background\":true}},-1.5e+3,NaN,\"\\ud83d\\ude00 background 🙂 SubAgentActivity\"]}}";
-        let clock = Clock { now: 0.0, utc_offset_secs: 0 };
+        let clock = Clock {
+            now: 0.0,
+            utc_offset_secs: 0,
+        };
         let mut variants: Vec<String> = Vec::new();
         for (at, _) in seed.char_indices() {
             variants.push(seed[..at].to_string());

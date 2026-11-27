@@ -15,12 +15,22 @@ const UCLI_HELP: &str = "echo 'Usage: ucli [OPTIONS]'; for f in --model --effort
 --provider --state-dir --session --usage-log --interactive --request-timeout-secs --max-steps --instructions-auto \
 --metrics-dir --allow-exec --allow-write --write-root --allow-net; do echo \"  $f <X>\"; done";
 
-fn build(t: &support::Tmp, cli: Cli, settings: &Settings, opts: Option<&Map<String, Value>>) -> (String, BuildOutput) {
+fn build(
+    t: &support::Tmp,
+    cli: Cli,
+    settings: &Settings,
+    opts: Option<&Map<String, Value>>,
+) -> (String, BuildOutput) {
     let _g = support::spawn_guard();
     let probe = t.probe();
     let catalog = ModelCatalog::default();
     let paths = t.paths();
-    let p = Providers { settings, catalog: &catalog, paths: &paths, probe: &probe };
+    let p = Providers {
+        settings,
+        catalog: &catalog,
+        paths: &paths,
+        probe: &probe,
+    };
     let cwd = t.path("work");
     let args = BuildArgs {
         cwd: &cwd,
@@ -34,14 +44,22 @@ fn build(t: &support::Tmp, cli: Cli, settings: &Settings, opts: Option<&Map<Stri
         cli_opts: opts,
     };
     let mut out = BuildOutput::default();
-    let cmd = p.build_inner_command(cli, &args, &mut out).unwrap_or_else(|e| panic!("{cli:?}: {e:?}"));
+    let cmd = p
+        .build_inner_command(cli, &args, &mut out)
+        .unwrap_or_else(|e| panic!("{cli:?}: {e:?}"));
     (cmd, out)
 }
 
 fn assert_secret_only_in_effect(cmd: &str, out: &BuildOutput, what: &str) {
     assert!(!cmd.contains("GIZLI"), "{what}: komut satırında sır: {cmd}");
-    assert!(!format!("{out:?}").contains("GIZLI"), "{what}: Debug çıktısında sır");
-    assert!(!format!("{:?}", out.diags).contains("GIZLI"), "{what}: günlükte sır");
+    assert!(
+        !format!("{out:?}").contains("GIZLI"),
+        "{what}: Debug çıktısında sır"
+    );
+    assert!(
+        !format!("{:?}", out.diags).contains("GIZLI"),
+        "{what}: günlükte sır"
+    );
     let secret = out
         .effects
         .iter()
@@ -50,7 +68,11 @@ fn assert_secret_only_in_effect(cmd: &str, out: &BuildOutput, what: &str) {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert!(secret.iter().any(|c| c.contains(KEY)), "{what}: sır 0600 dosyaya yazılmıyor: {:?}", out.effects);
+    assert!(
+        secret.iter().any(|c| c.contains(KEY)),
+        "{what}: sır 0600 dosyaya yazılmıyor: {:?}",
+        out.effects
+    );
     // Sır yalnız `WriteSecret`te: atomik yazım/dokunma içeriğinde yok.
     for e in &out.effects {
         if let Effect::WriteAtomic { content, .. } = e {
@@ -63,7 +85,8 @@ fn assert_secret_only_in_effect(cmd: &str, out: &BuildOutput, what: &str) {
 fn copilot_byok_key_goes_to_a_private_file_not_argv() {
     let t = support::Tmp::new();
     t.script("bin/copilot", "echo copilot");
-    let settings = Settings::from_json(&json!({"byok": {"copilot": {"COPILOT_API_KEY": KEY}}}).to_string());
+    let settings =
+        Settings::from_json(&json!({"byok": {"copilot": {"COPILOT_API_KEY": KEY}}}).to_string());
     let (cmd, out) = build(&t, Cli::Copilot, &settings, None);
     assert_secret_only_in_effect(&cmd, &out, "copilot");
     assert!(cmd.contains(&t.paths().copilot_env_file()), "{cmd}");
@@ -73,7 +96,8 @@ fn copilot_byok_key_goes_to_a_private_file_not_argv() {
 fn ucli_evren_key_goes_to_a_private_file_not_argv() {
     let t = support::Tmp::new();
     t.script("bin/ucli", UCLI_HELP);
-    let settings = Settings::from_json(&json!({"byok": {"ucli": {"UCLI_API_KEY": KEY}}}).to_string());
+    let settings =
+        Settings::from_json(&json!({"byok": {"ucli": {"UCLI_API_KEY": KEY}}}).to_string());
     let (cmd, out) = build(&t, Cli::Ucli, &settings, None);
     assert_secret_only_in_effect(&cmd, &out, "ucli evren");
 }
@@ -94,5 +118,8 @@ fn ucli_service_key_goes_to_a_private_file_not_argv() {
     opts.insert("service".into(), json!("openai"));
     let (cmd, out) = build(&t, Cli::Ucli, &settings, Some(&opts));
     assert_secret_only_in_effect(&cmd, &out, "ucli hizmet");
-    assert!(cmd.contains("OPENAI_API_KEY"), "anahtar ADI (değeri değil) komutta: {cmd}");
+    assert!(
+        cmd.contains("OPENAI_API_KEY"),
+        "anahtar ADI (değeri değil) komutta: {cmd}"
+    );
 }

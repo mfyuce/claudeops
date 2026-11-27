@@ -6,8 +6,8 @@
 //! Bilinen ayrışma vakalarında (`chat-sapma-`) Rust'ın güvenli sonucu `expect` ile ayrıca doğrulanır.
 
 use crate::common::*;
-use crate::fam_live::with_sessions;
 use crate::fam_bg::Rng;
+use crate::fam_live::with_sessions;
 use cops_providers::bg_work::Clock;
 use cops_providers::pyjson::Py;
 use cops_providers::ucli::state_dir_for;
@@ -37,7 +37,11 @@ impl Build<'_> {
     }
 
     fn case(&self, id: &str, cli: &str, sid: Option<&str>) -> Case {
-        Case::new(format!("chat-{id}"), "chat", json!({"cli": cli, "cwd": self.cwd(), "sid": sid}))
+        Case::new(
+            format!("chat-{id}"),
+            "chat",
+            json!({"cli": cli, "cwd": self.cwd(), "sid": sid}),
+        )
     }
 
     fn push(&mut self, c: Case) {
@@ -57,34 +61,47 @@ impl Build<'_> {
     }
 
     fn claude_rel(&self, file: &str) -> String {
-        let encoded: String = self.cwd().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+        let encoded: String = self
+            .cwd()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
         format!("home/.claude/projects/{encoded}/{file}")
     }
 
     fn claude(&self, id: &str, body: impl AsRef<[u8]>) -> Case {
         let file = Fx::File(self.claude_rel("s1.jsonl"), body.as_ref().to_vec(), 0o600);
-        self.case(&format!("claude-{id}"), "claude", Some(CLAUDE_DB_SID)).file(file)
+        self.case(&format!("claude-{id}"), "claude", Some(CLAUDE_DB_SID))
+            .file(file)
     }
 
     fn codex(&self, id: &str, body: impl AsRef<[u8]>) -> Case {
         let file = Fx::File(CODEX_FILE.into(), body.as_ref().to_vec(), 0o600);
-        self.case(&format!("codex-{id}"), "codex", Some("s1")).file(file)
+        self.case(&format!("codex-{id}"), "codex", Some("s1"))
+            .file(file)
     }
 
     /// Eski (`<cwd>/.ucli/chat`) dizinde `s1.jsonl`.
     fn ucli(&self, id: &str, body: impl AsRef<[u8]>) -> Case {
-        let file = Fx::File("work/p1/.ucli/chat/s1.jsonl".into(), body.as_ref().to_vec(), 0o644);
-        self.case(&format!("ucli-{id}"), "ucli", Some("s1")).file(file)
+        let file = Fx::File(
+            "work/p1/.ucli/chat/s1.jsonl".into(),
+            body.as_ref().to_vec(),
+            0o644,
+        );
+        self.case(&format!("ucli-{id}"), "ucli", Some("s1"))
+            .file(file)
     }
 
     fn agy(&self, id: &str, db: Vec<u8>) -> Case {
         let file = Fx::File(format!("{AGY_DIR}/abc.db"), db, 0o600);
-        self.case(&format!("agy-{id}"), "agy", Some("abc")).file(file)
+        self.case(&format!("agy-{id}"), "agy", Some("abc"))
+            .file(file)
     }
 
     fn copilot(&self, id: &str, db: Vec<u8>) -> Case {
         let file = Fx::File(COPILOT_DB.into(), db, 0o600);
-        self.case(&format!("copilot-sohbet-{id}"), "copilot", Some("s1")).file(file)
+        self.case(&format!("copilot-sohbet-{id}"), "copilot", Some("s1"))
+            .file(file)
     }
 }
 
@@ -93,7 +110,10 @@ fn lines<S: AsRef<str>>(rows: &[S]) -> String {
 }
 
 fn turns(pairs: &[(&str, &str)]) -> Value {
-    pairs.iter().map(|(r, t)| json!({"role": r, "text": t})).collect()
+    pairs
+        .iter()
+        .map(|(r, t)| json!({"role": r, "text": t}))
+        .collect()
 }
 
 // ----------------------------------------------------------------------------------------------------------- claude
@@ -135,29 +155,55 @@ fn claude_cases(b: &mut Build<'_>) {
     let c = b.case("claude-sid-yok", "claude", None);
     b.push(c);
     let file = Fx::File(b.claude_rel("baska.jsonl"), lines(&all).into_bytes(), 0o600);
-    for (id, sid) in [("en-yeni", None), ("en-yeni-bos-sid", Some("")), ("en-yeni-yanlis-sid", Some("yok"))] {
-        let c = b.case(&format!("claude-{id}"), "claude", sid).file(file.clone());
+    for (id, sid) in [
+        ("en-yeni", None),
+        ("en-yeni-bos-sid", Some("")),
+        ("en-yeni-yanlis-sid", Some("yok")),
+    ] {
+        let c = b
+            .case(&format!("claude-{id}"), "claude", sid)
+            .file(file.clone());
         b.push(c);
     }
-    let c = b.case("claude-dizin-dosya-yerinde", "claude", Some("s1")).file(Fx::Dir(b.claude_rel("s1.jsonl"), 0o755));
+    let c = b
+        .case("claude-dizin-dosya-yerinde", "claude", Some("s1"))
+        .file(Fx::Dir(b.claude_rel("s1.jsonl"), 0o755));
     b.push(c);
-    let c = b.case("claude-izinsiz", "claude", Some("s1")).file(Fx::File(
-        b.claude_rel("s1.jsonl"),
-        lines(&all).into_bytes(),
-        0o000,
-    ));
+    let c = b
+        .case("claude-izinsiz", "claude", Some("s1"))
+        .file(Fx::File(
+            b.claude_rel("s1.jsonl"),
+            lines(&all).into_bytes(),
+            0o000,
+        ));
     b.push(c);
 
     let q = msg("user", json!("soru"), json!({}));
     let r = msg("assistant", json!("cevap"), json!({}));
     // bayrakların doğruluk değeri
-    for (i, v) in [json!(true), json!(false), json!(0), json!(1), json!(""), json!("no"), json!([]), json!([0]), json!({}), Value::Null]
-        .into_iter()
-        .enumerate()
+    for (i, v) in [
+        json!(true),
+        json!(false),
+        json!(0),
+        json!(1),
+        json!(""),
+        json!("no"),
+        json!([]),
+        json!([0]),
+        json!({}),
+        Value::Null,
+    ]
+    .into_iter()
+    .enumerate()
     {
         for key in ["isSidechain", "isMeta", "isCompactSummary"] {
             let flagged = |t: &str, c: &str| msg(t, json!(c), json!({ key: v.clone() }));
-            let body = lines(&[q.clone(), r.clone(), flagged("user", "işaretli soru"), flagged("assistant", "işaretli cevap")]);
+            let body = lines(&[
+                q.clone(),
+                r.clone(),
+                flagged("user", "işaretli soru"),
+                flagged("assistant", "işaretli cevap"),
+            ]);
             let c = b.claude(&format!("bayrak-{key}-{i}"), body);
             b.push(c);
         }
@@ -186,10 +232,17 @@ fn claude_cases(b: &mut Build<'_>) {
         json!({"type": "text", "text": "sözlük"}),
     ];
     for (i, content) in contents.iter().enumerate() {
-        let body = lines(&[q.clone(), msg("user", content.clone(), json!({})), msg("assistant", content.clone(), json!({}))]);
+        let body = lines(&[
+            q.clone(),
+            msg("user", content.clone(), json!({})),
+            msg("assistant", content.clone(), json!({})),
+        ]);
         let c = b.claude(&format!("icerik-{i}"), body);
         b.push(c);
-        let body = lines(&[msg("user", content.clone(), json!({"isCompactSummary": true})), r.clone()]);
+        let body = lines(&[
+            msg("user", content.clone(), json!({"isCompactSummary": true})),
+            r.clone(),
+        ]);
         let c = b.claude(&format!("ozet-{i}"), body);
         b.push(c);
     }
@@ -211,23 +264,45 @@ fn claude_cases(b: &mut Build<'_>) {
         json!({"trigger": "ğ, \"x\"", "preTokens": "261105"}),
     ];
     for (i, meta) in metas.iter().enumerate() {
-        let row = json!({"type": "system", "subtype": "compact_boundary", "compactMetadata": meta}).to_string();
+        let row = json!({"type": "system", "subtype": "compact_boundary", "compactMetadata": meta})
+            .to_string();
         let c = b.claude(&format!("sinir-{i}"), lines(&[q.clone(), r.clone(), row]));
         b.push(c);
     }
     for (id, row) in [
-        ("sinir-meta-yok", r#"{"type":"system","subtype":"compact_boundary"}"#),
-        ("sinir-nan", r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":NaN,"preTokens":-Infinity}}"#),
-        ("sinir-buyuk-sayi", r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"preTokens":123456789012345678901234567890}}"#),
+        (
+            "sinir-meta-yok",
+            r#"{"type":"system","subtype":"compact_boundary"}"#,
+        ),
+        (
+            "sinir-nan",
+            r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":NaN,"preTokens":-Infinity}}"#,
+        ),
+        (
+            "sinir-buyuk-sayi",
+            r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"preTokens":123456789012345678901234567890}}"#,
+        ),
         ("sinir-baska-altur", r#"{"type":"system","subtype":"x"}"#),
-        ("sinir-sidechain", r#"{"type":"system","subtype":"compact_boundary","isSidechain":true}"#),
+        (
+            "sinir-sidechain",
+            r#"{"type":"system","subtype":"compact_boundary","isSidechain":true}"#,
+        ),
         ("tur-sayi", r#"{"type":5,"message":{"content":"x"}}"#),
         ("tur-yok", r#"{"message":{"content":"x"}}"#),
         ("mesaj-yok", r#"{"type":"assistant"}"#),
         ("kullanici-mesaj-yok", r#"{"type":"user"}"#),
-        ("yinelenen-anahtar", r#"{"type":"user","type":"assistant","message":{"content":"a","content":"b"}}"#),
-        ("nan-alan", r#"{"type":"assistant","x":NaN,"message":{"content":"nan'lı"}}"#),
-        ("vekil-cifti", r#"{"type":"assistant","message":{"content":"😀"}}"#),
+        (
+            "yinelenen-anahtar",
+            r#"{"type":"user","type":"assistant","message":{"content":"a","content":"b"}}"#,
+        ),
+        (
+            "nan-alan",
+            r#"{"type":"assistant","x":NaN,"message":{"content":"nan'lı"}}"#,
+        ),
+        (
+            "vekil-cifti",
+            r#"{"type":"assistant","message":{"content":"😀"}}"#,
+        ),
     ] {
         let c = b.claude(id, lines(&[q.as_str(), row]));
         b.push(c);
@@ -240,23 +315,47 @@ fn claude_cases(b: &mut Build<'_>) {
         ("crlf", body.replace('\n', "\r\n")),
         ("tek-cr", body.replace('\n', "\r")),
         ("son-satirsiz", body.trim_end().to_string()),
-        ("yarim-son-satir", format!("{body}{{\"type\":\"assistant\",\"mess")),
+        (
+            "yarim-son-satir",
+            format!("{body}{{\"type\":\"assistant\",\"mess"),
+        ),
         ("bom", format!("\u{feff}{body}")),
-        ("bozuk-satirlar", format!("çöp\n{{\n{body}}}\nNone\n{{'type':'user'}}\n")),
-        ("kirpma", format!("\u{3000}\u{1c} \t{q}\u{a0}\u{c}\n{r}\u{2028}\n")),
+        (
+            "bozuk-satirlar",
+            format!("çöp\n{{\n{body}}}\nNone\n{{'type':'user'}}\n"),
+        ),
+        (
+            "kirpma",
+            format!("\u{3000}\u{1c} \t{q}\u{a0}\u{c}\n{r}\u{2028}\n"),
+        ),
         ("ayni-satirda-iki", format!("{q}{r}\n{q} {r}\n")),
-        ("ayirac-satir-degil", format!("{q}\u{2028}{r}\n{q}\u{85}{r}\n{q}\u{b}{r}\n")),
+        (
+            "ayirac-satir-degil",
+            format!("{q}\u{2028}{r}\n{q}\u{85}{r}\n{q}\u{b}{r}\n"),
+        ),
         ("nul", format!("{q}\n\u{0}\n{r}\n")),
     ] {
         let c = b.claude(&format!("satir-{id}"), text);
         b.push(c);
     }
     let long: Vec<String> = (0..3000)
-        .map(|i| msg(if i % 2 == 0 { "user" } else { "assistant" }, json!(format!("tur {i} {}", "ğ".repeat(i % 50))), json!({})))
+        .map(|i| {
+            msg(
+                if i % 2 == 0 { "user" } else { "assistant" },
+                json!(format!("tur {i} {}", "ğ".repeat(i % 50))),
+                json!({}),
+            )
+        })
         .collect();
     let c = b.claude("uzun", lines(&long));
     b.push(c);
-    let c = b.claude("dev-satir", lines(&[q.clone(), msg("assistant", json!("x".repeat(3_000_000)), json!({}))]));
+    let c = b.claude(
+        "dev-satir",
+        lines(&[
+            q.clone(),
+            msg("assistant", json!("x".repeat(3_000_000)), json!({})),
+        ]),
+    );
     b.push(c);
     // her karakter sınırında kesilmiş dosya (yazım sürerken okuma)
     let full = lines(&all);
@@ -277,21 +376,35 @@ fn claude_divergences(b: &mut Build<'_>) {
         ("sayi-satir", "5".to_string()),
         ("null-satir", "null".to_string()),
     ] {
-        let c = b.claude(&format!("sekil-{id}"), lines(&[q.as_str(), r.as_str(), bad.as_str()]));
+        let c = b.claude(
+            &format!("sekil-{id}"),
+            lines(&[q.as_str(), r.as_str(), bad.as_str()]),
+        );
         b.agrees(c, ok.clone());
     }
     for (id, bad) in [
         ("mesaj-null", r#"{"type":"user","message":null}"#),
         ("mesaj-metin", r#"{"type":"user","message":"x"}"#),
         ("mesaj-dizi", r#"{"type":"user","message":[1]}"#),
-        ("ozet-mesaj-null", r#"{"type":"user","isCompactSummary":true,"message":null}"#),
+        (
+            "ozet-mesaj-null",
+            r#"{"type":"user","isCompactSummary":true,"message":null}"#,
+        ),
     ] {
-        let c = b.claude(&format!("sekil-{id}"), lines(&[q.as_str(), bad, r.as_str()]));
+        let c = b.claude(
+            &format!("sekil-{id}"),
+            lines(&[q.as_str(), bad, r.as_str()]),
+        );
         b.agrees(c, ok.clone());
     }
     for (id, v) in [("sayi", "5"), ("sozluk", r#"{"a":1}"#), ("true", "true")] {
-        let bad = format!(r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":{v}}},{{"type":"text","text":"cevap"}}]}}}}"#);
-        let c = b.claude(&format!("sekil-metin-degil-{id}"), lines(&[q.as_str(), bad.as_str()]));
+        let bad = format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":{v}}},{{"type":"text","text":"cevap"}}]}}}}"#
+        );
+        let c = b.claude(
+            &format!("sekil-metin-degil-{id}"),
+            lines(&[q.as_str(), bad.as_str()]),
+        );
         b.agrees(c, ok.clone());
     }
     let meta = r#"{"type":"system","subtype":"compact_boundary","compactMetadata":"x"}"#;
@@ -307,19 +420,48 @@ fn claude_divergences(b: &mut Build<'_>) {
     mid.extend_from_slice(format!("{r}\n").as_bytes());
     let c = b.claude("sekil-utf8-orta", mid);
     b.agrees(c, ok.clone());
-    let deep = format!("{{\"type\":\"x\",\"d\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
-    let c = b.claude("sekil-derin", lines(&[q.as_str(), r.as_str(), deep.as_str()]));
+    let deep = format!(
+        "{{\"type\":\"x\",\"d\":{}{}}}",
+        "[".repeat(100_000),
+        "]".repeat(100_000)
+    );
+    let c = b.claude(
+        "sekil-derin",
+        lines(&[q.as_str(), r.as_str(), deep.as_str()]),
+    );
     b.agrees(c, ok.clone());
     let huge = format!("{{\"type\":\"x\",\"n\":{}}}", "9".repeat(5000));
-    let c = b.claude("sekil-dev-sayi", lines(&[q.as_str(), r.as_str(), huge.as_str()]));
+    let c = b.claude(
+        "sekil-dev-sayi",
+        lines(&[q.as_str(), r.as_str(), huge.as_str()]),
+    );
     b.agrees(c, ok.clone());
     let summary = msg("user", json!("özet"), json!({"isCompactSummary": true}));
-    let c = b.claude("ozet-kullanici-degil", lines(&[q.as_str(), summary.as_str(), r.as_str()]));
-    b.agrees(c, json!({"last_exchange": {"user": "soru", "assistant": "cevap"}}));
+    let c = b.claude(
+        "ozet-kullanici-degil",
+        lines(&[q.as_str(), summary.as_str(), r.as_str()]),
+    );
+    b.agrees(
+        c,
+        json!({"last_exchange": {"user": "soru", "assistant": "cevap"}}),
+    );
     let c = b.claude("ozet-yalniz", lines(&[summary.as_str(), r.as_str()]));
-    b.agrees(c, json!({"last_exchange": {"user": "", "assistant": "cevap"}}));
-    let c = b.claude("mesaj-son-asistan", lines(&[q.as_str(), r.as_str(), r#"{"type":"assistant","message":5}"#]));
-    b.agrees(c, json!({"last_exchange": {"user": "soru", "assistant": ""}}));
+    b.agrees(
+        c,
+        json!({"last_exchange": {"user": "", "assistant": "cevap"}}),
+    );
+    let c = b.claude(
+        "mesaj-son-asistan",
+        lines(&[
+            q.as_str(),
+            r.as_str(),
+            r#"{"type":"assistant","message":5}"#,
+        ]),
+    );
+    b.agrees(
+        c,
+        json!({"last_exchange": {"user": "soru", "assistant": ""}}),
+    );
     let lone = r#"{"type":"assistant","message":{"content":"yarım \ud83d"}}"#;
     let c = b.claude("sapma-vekil", lines(&[q.as_str(), lone]));
     b.diverges(
@@ -346,11 +488,20 @@ fn codex_cases(b: &mut Build<'_>) {
         json!({"type": "session_meta", "payload": {"cwd": "/yok", "id": "s1"}}).to_string(),
         user("<environment_context>\n  <cwd>/x</cwd>\n</environment_context>"),
         user("soru ğ 😀"),
-        json!({"type": "response_item", "payload": {"type": "reasoning", "summary": []}}).to_string(),
+        json!({"type": "response_item", "payload": {"type": "reasoning", "summary": []}})
+            .to_string(),
         ai("ara cevap"),
         codex_msg("developer", json!([block("input_text", "yönerge")])),
-        codex_msg("assistant", json!([block("output_text", "a"), block("reasoning", "gizli"), block("input_text", "b")])),
-        json!({"type": "event_msg", "payload": {"type": "message", "role": "user", "content": []}}).to_string(),
+        codex_msg(
+            "assistant",
+            json!([
+                block("output_text", "a"),
+                block("reasoning", "gizli"),
+                block("input_text", "b")
+            ]),
+        ),
+        json!({"type": "event_msg", "payload": {"type": "message", "role": "user", "content": []}})
+            .to_string(),
         user("cevapsız"),
         codex_msg("assistant", json!([])),
     ];
@@ -358,8 +509,16 @@ fn codex_cases(b: &mut Build<'_>) {
         let c = b.codex(&format!("onek-{n}"), lines(&all[..n]));
         b.push(c);
     }
-    for (id, sid) in [("sid-yok", None), ("bos-sid", Some("")), ("yanlis-sid", Some("yok"))] {
-        let c = b.case(&format!("codex-{id}"), "codex", sid).file(Fx::File(CODEX_FILE.into(), lines(&all).into_bytes(), 0o600));
+    for (id, sid) in [
+        ("sid-yok", None),
+        ("bos-sid", Some("")),
+        ("yanlis-sid", Some("yok")),
+    ] {
+        let c = b.case(&format!("codex-{id}"), "codex", sid).file(Fx::File(
+            CODEX_FILE.into(),
+            lines(&all).into_bytes(),
+            0o600,
+        ));
         b.push(c);
     }
     let q = user("soru");
@@ -376,7 +535,10 @@ fn codex_cases(b: &mut Build<'_>) {
         "  gerçek soru  ",
     ];
     for (i, t) in texts.iter().enumerate() {
-        let c = b.codex(&format!("metin-{i}"), lines(&[q.clone(), r.clone(), user(t), ai(t)]));
+        let c = b.codex(
+            &format!("metin-{i}"),
+            lines(&[q.clone(), r.clone(), user(t), ai(t)]),
+        );
         b.push(c);
     }
     let contents = [
@@ -402,10 +564,22 @@ fn codex_cases(b: &mut Build<'_>) {
     for (id, row) in [
         ("payload-yok", r#"{"type":"response_item"}"#),
         ("payload-bos", r#"{"type":"response_item","payload":{}}"#),
-        ("rol-yok", r#"{"type":"response_item","payload":{"type":"message","content":[]}}"#),
-        ("rol-sayi", r#"{"type":"response_item","payload":{"type":"message","role":1}}"#),
-        ("icerik-yok", r#"{"type":"response_item","payload":{"type":"message","role":"assistant"}}"#),
-        ("baska-tur-payload-metin", r#"{"type":"event_msg","payload":"x"}"#),
+        (
+            "rol-yok",
+            r#"{"type":"response_item","payload":{"type":"message","content":[]}}"#,
+        ),
+        (
+            "rol-sayi",
+            r#"{"type":"response_item","payload":{"type":"message","role":1}}"#,
+        ),
+        (
+            "icerik-yok",
+            r#"{"type":"response_item","payload":{"type":"message","role":"assistant"}}"#,
+        ),
+        (
+            "baska-tur-payload-metin",
+            r#"{"type":"event_msg","payload":"x"}"#,
+        ),
     ] {
         let c = b.codex(id, lines(&[q.as_str(), r.as_str(), row]));
         b.push(c);
@@ -426,7 +600,10 @@ fn codex_cases(b: &mut Build<'_>) {
         ("payload-null", r#"{"type":"response_item","payload":null}"#),
         ("payload-metin", r#"{"type":"response_item","payload":"x"}"#),
     ] {
-        let c = b.codex(&format!("sekil-{id}"), lines(&[q.as_str(), r.as_str(), bad]));
+        let c = b.codex(
+            &format!("sekil-{id}"),
+            lines(&[q.as_str(), r.as_str(), bad]),
+        );
         b.agrees(c, ok.clone());
     }
     let bad = r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":7},{"type":"output_text","text":"cevap"}]}}"#;
@@ -475,32 +652,95 @@ fn ucli_cases(b: &mut Build<'_>) {
         ("bekleyen", vec![user("a"), ai("OLD COPS-END"), user("b")]),
         ("cevapli", vec![user("a"), ai("A")]),
         ("yalniz-asistan", vec![ai("A")]),
-        ("araya-arac", vec![user("a"), ai("A"), tool.clone(), ai("B"), tool.clone()]),
-        ("yalniz-arac", vec![tool.clone(), ucli_row(json!("system"), json!("sistem"))]),
-        ("asistan-null", vec![user("a"), ai("A"), ucli_row(json!("assistant"), Value::Null)]),
-        ("kullanici-null", vec![user("a"), ai("A"), ucli_row(json!("user"), Value::Null)]),
-        ("nesne-olmayan", vec!["[1]".into(), "5".into(), "\"role\"".into(), "null".into(), user("a")]),
-        ("rolsuz", vec![json!({"content": "x"}).to_string(), user("a")]),
-        ("bos-satirlar", vec![String::new(), "  \u{3000} ".into(), user("a"), String::new()]),
+        (
+            "araya-arac",
+            vec![user("a"), ai("A"), tool.clone(), ai("B"), tool.clone()],
+        ),
+        (
+            "yalniz-arac",
+            vec![tool.clone(), ucli_row(json!("system"), json!("sistem"))],
+        ),
+        (
+            "asistan-null",
+            vec![
+                user("a"),
+                ai("A"),
+                ucli_row(json!("assistant"), Value::Null),
+            ],
+        ),
+        (
+            "kullanici-null",
+            vec![user("a"), ai("A"), ucli_row(json!("user"), Value::Null)],
+        ),
+        (
+            "nesne-olmayan",
+            vec![
+                "[1]".into(),
+                "5".into(),
+                "\"role\"".into(),
+                "null".into(),
+                user("a"),
+            ],
+        ),
+        (
+            "rolsuz",
+            vec![json!({"content": "x"}).to_string(), user("a")],
+        ),
+        (
+            "bos-satirlar",
+            vec![
+                String::new(),
+                "  \u{3000} ".into(),
+                user("a"),
+                String::new(),
+            ],
+        ),
     ];
     for (id, rows) in named {
         let c = b.ucli(id, lines(&rows));
         b.push(c);
     }
-    for (i, v) in [json!(""), json!(0), json!(false), json!([]), json!({}), json!(7), json!(1.5), json!(true), json!(["a", {"k": null}]), json!({"b": 1, "a": "ğ"})]
-        .into_iter()
-        .enumerate()
+    for (i, v) in [
+        json!(""),
+        json!(0),
+        json!(false),
+        json!([]),
+        json!({}),
+        json!(7),
+        json!(1.5),
+        json!(true),
+        json!(["a", {"k": null}]),
+        json!({"b": 1, "a": "ğ"}),
+    ]
+    .into_iter()
+    .enumerate()
     {
-        let c = b.ucli(&format!("icerik-{i}"), lines(&[user("a"), ucli_row(json!("assistant"), v.clone())]));
+        let c = b.ucli(
+            &format!("icerik-{i}"),
+            lines(&[user("a"), ucli_row(json!("assistant"), v.clone())]),
+        );
         b.push(c);
-        let c = b.ucli(&format!("kullanici-icerik-{i}"), lines(&[ai("x"), ucli_row(json!("user"), v.clone())]));
+        let c = b.ucli(
+            &format!("kullanici-icerik-{i}"),
+            lines(&[ai("x"), ucli_row(json!("user"), v.clone())]),
+        );
         b.push(c);
-        let c = b.ucli(&format!("rol-{i}"), lines(&[user("a"), ucli_row(v, json!("rol tuhaf"))]));
+        let c = b.ucli(
+            &format!("rol-{i}"),
+            lines(&[user("a"), ucli_row(v, json!("rol tuhaf"))]),
+        );
         b.push(c);
     }
     let c = b.ucli("rol-null", lines(&[ucli_row(Value::Null, json!("x"))]));
     b.push(c);
-    let c = b.ucli("sayilar", format!("{}\n{}\n", r#"{"role":"assistant","content":NaN}"#, r#"{"role":"x","content":123456789012345678901234567890}"#));
+    let c = b.ucli(
+        "sayilar",
+        format!(
+            "{}\n{}\n",
+            r#"{"role":"assistant","content":NaN}"#,
+            r#"{"role":"x","content":123456789012345678901234567890}"#
+        ),
+    );
     b.push(c);
     for (id, bad) in [
         ("bozuk-json", "{not json"),
@@ -509,7 +749,10 @@ fn ucli_cases(b: &mut Build<'_>) {
         ("tek-tirnak", "{'role':'user'}"),
         ("fazla", r#"{"role":"user","content":"a"} x"#),
     ] {
-        for (at, rows) in [("sonda", vec![h.clone(), user("a"), bad.to_string()]), ("basta", vec![bad.to_string(), user("a")])] {
+        for (at, rows) in [
+            ("sonda", vec![h.clone(), user("a"), bad.to_string()]),
+            ("basta", vec![bad.to_string(), user("a")]),
+        ] {
             let c = b.ucli(&format!("bozuk-{id}-{at}"), lines(&rows));
             b.push(c);
         }
@@ -524,8 +767,11 @@ fn ucli_cases(b: &mut Build<'_>) {
         let mut data = done.clone().into_bytes();
         data.extend_from_slice(tail);
         let c = b.ucli(&format!("yarim-son-{id}"), data);
-        b.agrees(c, json!({"full_history": ok, "read_chat_history": ok, "last_message_role": null,
-                           "last_exchange": {"user": "soru", "assistant": "cevap"}}));
+        b.agrees(
+            c,
+            json!({"full_history": ok, "read_chat_history": ok, "last_message_role": null,
+                           "last_exchange": {"user": "soru", "assistant": "cevap"}}),
+        );
     }
     let c = b.ucli("sonsuz-tam-satir", format!("{done}{}", user("yeni")));
     b.agrees(c, json!({"last_message_role": "user"}));
@@ -536,30 +782,57 @@ fn ucli_cases(b: &mut Build<'_>) {
         ("tek-cr", body.replace('\n', "\r")),
         ("bom", format!("\u{feff}{body}")),
         ("ayirac", format!("{}\u{2028}{}\n", user("a"), ai("b"))),
-        ("ham-u2028", "{\"role\":\"user\",\"content\":\"a\u{2028}b\"}\n".to_string()),
+        (
+            "ham-u2028",
+            "{\"role\":\"user\",\"content\":\"a\u{2028}b\"}\n".to_string(),
+        ),
     ] {
         let c = b.ucli(&format!("satir-{id}"), text);
         b.push(c);
     }
-    for (id, sid) in [("sid-yok", None), ("bos-sid", Some("")), ("dosya-yok", Some("nope"))] {
-        let file = Fx::File("work/p1/.ucli/chat/s1.jsonl".into(), body.clone().into_bytes(), 0o644);
+    for (id, sid) in [
+        ("sid-yok", None),
+        ("bos-sid", Some("")),
+        ("dosya-yok", Some("nope")),
+    ] {
+        let file = Fx::File(
+            "work/p1/.ucli/chat/s1.jsonl".into(),
+            body.clone().into_bytes(),
+            0o644,
+        );
         let c = b.case(&format!("ucli-{id}"), "ucli", sid).file(file);
         b.push(c);
     }
-    let c = b.case("ucli-dizin-dosya-yerinde", "ucli", Some("s1")).file(Fx::Dir("work/p1/.ucli/chat/s1.jsonl".into(), 0o755));
-    b.push(c);
     let c = b
-        .case("ucli-izinsiz", "ucli", Some("s1"))
-        .file(Fx::File("work/p1/.ucli/chat/s1.jsonl".into(), body.clone().into_bytes(), 0o000));
+        .case("ucli-dizin-dosya-yerinde", "ucli", Some("s1"))
+        .file(Fx::Dir("work/p1/.ucli/chat/s1.jsonl".into(), 0o755));
+    b.push(c);
+    let c = b.case("ucli-izinsiz", "ucli", Some("s1")).file(Fx::File(
+        "work/p1/.ucli/chat/s1.jsonl".into(),
+        body.clone().into_bytes(),
+        0o000,
+    ));
     b.push(c);
     // yeni (`--state-dir`) ve eski dizin sırası
     let root = format!("{}/.claude/claudeops/ucli-state", b.e.home);
     let new = state_dir_for(&root, &b.cwd());
-    let new = new.strip_prefix(&format!("{}/", b.e.root)).unwrap().to_string();
+    let new = new
+        .strip_prefix(&format!("{}/", b.e.root))
+        .unwrap()
+        .to_string();
     for (flag, on) in [("acik", true), ("kapali", false)] {
-        for (id, sid) in [("eski", "eski"), ("yeni", "yeni"), ("ikisi", "ikisi"), ("yok", "yok")] {
+        for (id, sid) in [
+            ("eski", "eski"),
+            ("yeni", "yeni"),
+            ("ikisi", "ikisi"),
+            ("yok", "yok"),
+        ] {
             let put = |dir: &str, name: &str, text: &str| {
-                Fx::File(format!("{dir}/{name}.jsonl"), format!("{}\n", user(text)).into_bytes(), 0o644)
+                Fx::File(
+                    format!("{dir}/{name}.jsonl"),
+                    format!("{}\n", user(text)).into_bytes(),
+                    0o644,
+                )
             };
             let mut c = b
                 .case(&format!("ucli-dizin-{flag}-{id}"), "ucli", Some(sid))
@@ -576,14 +849,24 @@ fn ucli_cases(b: &mut Build<'_>) {
     let mut bad = body.clone().into_bytes();
     bad.extend_from_slice(b"\xff\n");
     let c = b.ucli("utf8", bad);
-    b.agrees(c, json!({"full_history": null, "last_exchange": null, "read_chat_history": null}));
-    let deep = format!("{{\"role\":\"x\",\"content\":{}{}}}", "[".repeat(100_000), "]".repeat(100_000));
+    b.agrees(
+        c,
+        json!({"full_history": null, "last_exchange": null, "read_chat_history": null}),
+    );
+    let deep = format!(
+        "{{\"role\":\"x\",\"content\":{}{}}}",
+        "[".repeat(100_000),
+        "]".repeat(100_000)
+    );
     let c = b.ucli("derin", lines(&[user("a"), deep]));
     b.agrees(c, json!({"full_history": null}));
     let huge = format!("{{\"role\":\"x\",\"content\":{}}}", "9".repeat(5000));
     let c = b.ucli("dev-sayi", lines(&[user("a"), huge]));
     b.agrees(c, json!({"full_history": null}));
-    let c = b.ucli("sapma-vekil", lines(&[r#"{"role":"user","content":"\udc00"}"#]));
+    let c = b.ucli(
+        "sapma-vekil",
+        lines(&[r#"{"role":"user","content":"\udc00"}"#]),
+    );
     b.diverges(
         c,
         "eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
@@ -627,7 +910,8 @@ fn db_with(schema: &str, insert: &str, rows: &[Vec<Sql>]) -> Vec<u8> {
     c.execute_batch(schema).unwrap();
     c.execute_batch("BEGIN").unwrap();
     for r in rows {
-        c.execute(insert, rusqlite::params_from_iter(r.iter())).unwrap();
+        c.execute(insert, rusqlite::params_from_iter(r.iter()))
+            .unwrap();
     }
     c.execute_batch("COMMIT").unwrap();
     drop(c);
@@ -636,7 +920,10 @@ fn db_with(schema: &str, insert: &str, rows: &[Vec<Sql>]) -> Vec<u8> {
 
 /// `steps` tablosu; `affinity` = `step_type` sütun tipi.
 fn agy_db_typed(affinity: &str, rows: &[(i64, Sql, Sql)]) -> Vec<u8> {
-    let rows: Vec<Vec<Sql>> = rows.iter().map(|(i, t, p)| vec![Sql::Integer(*i), t.clone(), p.clone()]).collect();
+    let rows: Vec<Vec<Sql>> = rows
+        .iter()
+        .map(|(i, t, p)| vec![Sql::Integer(*i), t.clone(), p.clone()])
+        .collect();
     db_with(
         &format!("CREATE TABLE steps (idx INTEGER, step_type {affinity}, step_payload BLOB)"),
         "INSERT INTO steps VALUES (?,?,?)",
@@ -646,8 +933,11 @@ fn agy_db_typed(affinity: &str, rows: &[(i64, Sql, Sql)]) -> Vec<u8> {
 
 fn agy_db(rows: &[(i64, Sql)]) -> Vec<u8> {
     // satır: (adım türü, yük); idx = sıra
-    let rows: Vec<(i64, Sql, Sql)> =
-        rows.iter().enumerate().map(|(i, (t, p))| (i as i64, Sql::Integer(*t), p.clone())).collect();
+    let rows: Vec<(i64, Sql, Sql)> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, (t, p))| (i as i64, Sql::Integer(*t), p.clone()))
+        .collect();
     agy_db_typed("INTEGER", &rows)
 }
 
@@ -655,27 +945,90 @@ fn agy_scenarios() -> Vec<(&'static str, Vec<(i64, Sql)>)> {
     let blob = |b: &[u8]| Sql::Blob(b.to_vec());
     let summary = blob(b"x<summary>ozet</summary>");
     vec![
-        ("sikistirma", vec![
-            (14, pu("soru")),
-            (15, pa("cevap")),
-            (23, blob(b"baska bir type-23 adimi")),
-            (23, summary.clone()),
-            (14, pu("yeni")),
-        ]),
-        ("son-cift", vec![(14, pu("ilk")), (15, pa("c1")), (14, pu("ikinci")), (15, pa("c2")), (15, Sql::Blob(ld(20, b"")))]),
+        (
+            "sikistirma",
+            vec![
+                (14, pu("soru")),
+                (15, pa("cevap")),
+                (23, blob(b"baska bir type-23 adimi")),
+                (23, summary.clone()),
+                (14, pu("yeni")),
+            ],
+        ),
+        (
+            "son-cift",
+            vec![
+                (14, pu("ilk")),
+                (15, pa("c1")),
+                (14, pu("ikinci")),
+                (15, pa("c2")),
+                (15, Sql::Blob(ld(20, b""))),
+            ],
+        ),
         ("bos", vec![]),
         ("yalniz-kullanici", vec![(14, pu("x"))]),
         ("yalniz-asistan", vec![(15, pa("x"))]),
-        ("arada-sinir", vec![(14, pu("s")), (23, summary.clone()), (15, pa("c"))]),
-        ("bos-kullanici", vec![(14, pu("onceki")), (14, pu("")), (15, pa("c"))]),
-        ("ardisik", vec![(14, pu("a")), (14, pu("b")), (15, pa("1")), (15, pa("2"))]),
-        ("baska-turler", vec![(1, pu("x")), (14, pu("s")), (99, pa("y")), (15, pa("c")), (0, summary)]),
-        ("yuk-null", vec![(14, pu("s")), (15, pa("c")), (14, Sql::Null), (15, Sql::Null), (23, Sql::Null)]),
-        ("yuk-metin", vec![(14, pu("s")), (15, pa("c")), (15, Sql::Text("metin".into())), (23, Sql::Text("<summary>".into()))]),
-        ("yuk-sayi", vec![(15, pa("c")), (15, Sql::Integer(5)), (14, Sql::Real(1.5))]),
-        ("yuk-bos", vec![(14, blob(b"")), (15, blob(b"")), (23, blob(b""))]),
-        ("sinir-yarim", vec![(23, blob(b"<summary")), (23, blob(b"<Summary>")), (23, blob(b"\0\xff<summary>"))]),
-        ("unicode", vec![(14, pu("ğüş İ 😀\u{2028}\0")), (15, pa("  "))]),
+        (
+            "arada-sinir",
+            vec![(14, pu("s")), (23, summary.clone()), (15, pa("c"))],
+        ),
+        (
+            "bos-kullanici",
+            vec![(14, pu("onceki")), (14, pu("")), (15, pa("c"))],
+        ),
+        (
+            "ardisik",
+            vec![(14, pu("a")), (14, pu("b")), (15, pa("1")), (15, pa("2"))],
+        ),
+        (
+            "baska-turler",
+            vec![
+                (1, pu("x")),
+                (14, pu("s")),
+                (99, pa("y")),
+                (15, pa("c")),
+                (0, summary),
+            ],
+        ),
+        (
+            "yuk-null",
+            vec![
+                (14, pu("s")),
+                (15, pa("c")),
+                (14, Sql::Null),
+                (15, Sql::Null),
+                (23, Sql::Null),
+            ],
+        ),
+        (
+            "yuk-metin",
+            vec![
+                (14, pu("s")),
+                (15, pa("c")),
+                (15, Sql::Text("metin".into())),
+                (23, Sql::Text("<summary>".into())),
+            ],
+        ),
+        (
+            "yuk-sayi",
+            vec![(15, pa("c")), (15, Sql::Integer(5)), (14, Sql::Real(1.5))],
+        ),
+        (
+            "yuk-bos",
+            vec![(14, blob(b"")), (15, blob(b"")), (23, blob(b""))],
+        ),
+        (
+            "sinir-yarim",
+            vec![
+                (23, blob(b"<summary")),
+                (23, blob(b"<Summary>")),
+                (23, blob(b"\0\xff<summary>")),
+            ],
+        ),
+        (
+            "unicode",
+            vec![(14, pu("ğüş İ 😀\u{2028}\0")), (15, pa("  "))],
+        ),
     ]
 }
 
@@ -699,39 +1052,69 @@ fn agy_payloads() -> Vec<Vec<u8>> {
         cat(&[varint((3 << 3) | 1), vec![0; 3]]),
         cat(&[good.clone(), varint((3 << 3) | 5), vec![0; 1]]),
         // desteklenmeyen wire type: durur, öncesi geçerli
-        cat(&[good.clone(), varint((3 << 3) | 3), ld(19, &ld(2, b"sonrasi"))]),
+        cat(&[
+            good.clone(),
+            varint((3 << 3) | 3),
+            ld(19, &ld(2, b"sonrasi")),
+        ]),
         cat(&[varint((3 << 3) | 4), good.clone()]),
         cat(&[varint((3 << 3) | 6), good.clone()]),
         cat(&[good.clone(), varint((3 << 3) | 7)]),
         // uzunluk veriyi aşıyor
         cat(&[varint((19 << 3) | 2), varint(1000), inner.clone()]),
         cat(&[varint((19 << 3) | 2), varint(u64::MAX), inner.clone()]),
-        cat(&[varint((19 << 3) | 2), vec![0xff; 20], vec![0x01], inner.clone()]),
+        cat(&[
+            varint((19 << 3) | 2),
+            vec![0xff; 20],
+            vec![0x01],
+            inner.clone(),
+        ]),
         cat(&[good.clone(), varint((19 << 3) | 2), varint(9)]),
         cat(&[good.clone(), varint((19 << 3) | 2)]),
         cat(&[good.clone(), vec![0x80]]),
         cat(&[good.clone(), vec![0x80; 50]]),
         cat(&[good.clone(), varint(1 << 3), vec![0xff]]),
         // 64 biti aşan etiket (alt bitleri alan 19'a benzer)
-        cat(&[vec![0x9a, 0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02], varint(inner.len() as u64), inner.clone()]),
+        cat(&[
+            vec![0x9a, 0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02],
+            varint(inner.len() as u64),
+            inner.clone(),
+        ]),
         // sıfır dolgulu uzun etiket
-        cat(&[vec![0x9a, 0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00], varint(inner.len() as u64), inner]),
+        cat(&[
+            vec![
+                0x9a, 0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00,
+            ],
+            varint(inner.len() as u64),
+            inner,
+        ]),
         // iç metin bozuk UTF-8
-        ld(19, &ld(2, b"a\xff b\xc4 c\xe2\x82 d\xed\xa0\x80 e\xf0\x80\x80 f\xc0\xaf")),
+        ld(
+            19,
+            &ld(
+                2,
+                b"a\xff b\xc4 c\xe2\x82 d\xed\xa0\x80 e\xf0\x80\x80 f\xc0\xaf",
+            ),
+        ),
         ld(19, &ld(2, b"\xf4\x90\x80\x80\x80\xfe")),
     ];
     // kullanıcı yükleri asistan alanına da (20 -> 1)
     out.push(ld(20, &ld(1, b"asistan")));
     out.push(ld(20, &cat(&[ld(3, b"dusunce"), ld(1, b"gorunur")])));
     out.push(ld(20, &ld(3, b"yalniz dusunce")));
-    let full = cat(&[ld(19, &ld(2, "kesik ğ".as_bytes())), ld(20, &ld(1, "kesik 😀".as_bytes()))]);
+    let full = cat(&[
+        ld(19, &ld(2, "kesik ğ".as_bytes())),
+        ld(20, &ld(1, "kesik 😀".as_bytes())),
+    ]);
     out.extend((0..=full.len()).map(|n| full[..n].to_vec()));
     out
 }
 
 /// Geçerli bir yapının rastgele bozulmuş biçimleri.
 fn random_payload(r: &mut Rng) -> Vec<u8> {
-    let text: Vec<u8> = (0..r.below(12)).map(|_| [b'a', b' ', 0xc4, 0x9f, 0xff, 0xe2, 0x82, 0xf0, 0x80][r.below(9)]).collect();
+    let text: Vec<u8> = (0..r.below(12))
+        .map(|_| [b'a', b' ', 0xc4, 0x9f, 0xff, 0xe2, 0x82, 0xf0, 0x80][r.below(9)])
+        .collect();
     let (outer, inner) = [(19, 2), (20, 1), (20, 3), (19, 1), (2, 19)][r.below(5)];
     let mut p = ld(outer, &ld(inner, &text));
     if r.below(3) == 0 {
@@ -755,7 +1138,10 @@ fn agy_cases(b: &mut Build<'_>) {
         b.push(c);
     }
     for (i, p) in agy_payloads().into_iter().enumerate() {
-        let c = b.agy(&format!("yuk-{i}"), agy_db(&[(14, Sql::Blob(p.clone())), (15, Sql::Blob(p))]));
+        let c = b.agy(
+            &format!("yuk-{i}"),
+            agy_db(&[(14, Sql::Blob(p.clone())), (15, Sql::Blob(p))]),
+        );
         b.push(c);
     }
     let mut r = Rng(7);
@@ -773,19 +1159,38 @@ fn agy_cases(b: &mut Build<'_>) {
         let c = b.agy(&format!("rastgele-{n}"), agy_db(&rows));
         b.push(c);
     }
-    let long: Vec<(i64, Sql)> =
-        (0..2000).map(|i| if i % 2 == 0 { (14, pu(&format!("s{i}"))) } else { (15, pa(&format!("c{i}"))) }).collect();
+    let long: Vec<(i64, Sql)> = (0..2000)
+        .map(|i| {
+            if i % 2 == 0 {
+                (14, pu(&format!("s{i}")))
+            } else {
+                (15, pa(&format!("c{i}")))
+            }
+        })
+        .collect();
     let c = b.agy("uzun", agy_db(&long));
     b.push(c);
-    let c = b.agy("dev-yuk", agy_db(&[(14, pu(&"s".repeat(2_000_000))), (15, pa(&"c".repeat(2_000_000)))]));
+    let c = b.agy(
+        "dev-yuk",
+        agy_db(&[
+            (14, pu(&"s".repeat(2_000_000))),
+            (15, pa(&"c".repeat(2_000_000))),
+        ]),
+    );
     b.push(c);
     // idx sırası ekleme sırasından farklı
-    let c = b.agy("idx-sirasi", agy_db_typed("INTEGER", &[
-        (5, Sql::Integer(15), pa("son")),
-        (1, Sql::Integer(14), pu("ilk")),
-        (3, Sql::Integer(15), pa("orta")),
-        (4, Sql::Integer(14), pu("ikinci")),
-    ]));
+    let c = b.agy(
+        "idx-sirasi",
+        agy_db_typed(
+            "INTEGER",
+            &[
+                (5, Sql::Integer(15), pa("son")),
+                (1, Sql::Integer(14), pu("ilk")),
+                (3, Sql::Integer(15), pa("orta")),
+                (4, Sql::Integer(14), pu("ikinci")),
+            ],
+        ),
+    );
     b.push(c);
     for affinity in ["", "TEXT", "REAL", "BLOB"] {
         let rows = [
@@ -796,20 +1201,40 @@ fn agy_cases(b: &mut Build<'_>) {
             (4, Sql::Real(14.5), pu("yarim")),
             (5, Sql::Null, pu("null")),
         ];
-        let c = b.agy(&format!("tur-tipi-{}", affinity.to_lowercase()), agy_db_typed(affinity, &rows));
+        let c = b.agy(
+            &format!("tur-tipi-{}", affinity.to_lowercase()),
+            agy_db_typed(affinity, &rows),
+        );
         b.push(c);
     }
     for (id, content) in [
-        ("bozuk-db", b"not a database at all, definitely not".to_vec()),
+        (
+            "bozuk-db",
+            b"not a database at all, definitely not".to_vec(),
+        ),
         ("bos-dosya", Vec::new()),
-        ("tablo-yok", db_with("CREATE TABLE x (a)", "INSERT INTO x VALUES (?)", &[])),
-        ("sutun-yok", db_with("CREATE TABLE steps (idx, step_type)", "INSERT INTO steps VALUES (?,?)", &[])),
+        (
+            "tablo-yok",
+            db_with("CREATE TABLE x (a)", "INSERT INTO x VALUES (?)", &[]),
+        ),
+        (
+            "sutun-yok",
+            db_with(
+                "CREATE TABLE steps (idx, step_type)",
+                "INSERT INTO steps VALUES (?,?)",
+                &[],
+            ),
+        ),
     ] {
         let c = b.agy(id, content);
         b.push(c);
     }
     let good = agy_db(&long);
-    for (id, keep) in [("kesik-baslik", 50), ("kesik-yari", good.len() / 2), ("kesik-sayfa", 4096)] {
+    for (id, keep) in [
+        ("kesik-baslik", 50),
+        ("kesik-yari", good.len() / 2),
+        ("kesik-sayfa", 4096),
+    ] {
         let c = b.agy(&format!("db-{id}"), good[..keep].to_vec());
         b.push(c);
     }
@@ -822,9 +1247,11 @@ fn agy_cases(b: &mut Build<'_>) {
         ("sid-yok-dosya", Some("nope"), Some("abc")),
         ("resume-dosyasiz", None, Some("nope")),
     ] {
-        let mut c = b
-            .case(&format!("agy-{id}"), "agy", sid)
-            .file(Fx::File(format!("{AGY_DIR}/abc.db"), db.clone(), 0o600));
+        let mut c = b.case(&format!("agy-{id}"), "agy", sid).file(Fx::File(
+            format!("{AGY_DIR}/abc.db"),
+            db.clone(),
+            0o600,
+        ));
         if let Some(x) = resume {
             let cache = json!({ b.cwd(): x }).to_string();
             c = c.file(Fx::File(AGY_CACHE.into(), cache.into_bytes(), 0o600));
@@ -833,23 +1260,37 @@ fn agy_cases(b: &mut Build<'_>) {
     }
     // mutlak yol veren kimlik dizinin dışını açar (Python `os.path.join` gibi)
     let outside = format!("{}/work/dis", b.e.root);
-    let c = b.case("agy-mutlak-kimlik", "agy", Some(&outside)).file(Fx::File("work/dis.db".into(), db.clone(), 0o600));
+    let c = b
+        .case("agy-mutlak-kimlik", "agy", Some(&outside))
+        .file(Fx::File("work/dis.db".into(), db.clone(), 0o600));
     b.push(c);
-    let c = b.case("agy-dizin-db-yerinde", "agy", Some("abc")).file(Fx::Dir(format!("{AGY_DIR}/abc.db"), 0o755));
+    let c = b
+        .case("agy-dizin-db-yerinde", "agy", Some("abc"))
+        .file(Fx::Dir(format!("{AGY_DIR}/abc.db"), 0o755));
     b.push(c);
-    let c = b.case("agy-izinsiz", "agy", Some("abc")).file(Fx::File(format!("{AGY_DIR}/abc.db"), db.clone(), 0o000));
+    let c = b.case("agy-izinsiz", "agy", Some("abc")).file(Fx::File(
+        format!("{AGY_DIR}/abc.db"),
+        db.clone(),
+        0o000,
+    ));
     b.push(c);
     // UTF-8 olmayan metin hücresi: yalnız BLOB yük çekildiğinden iki tarafta da sağlam satırlar okunur.
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("s.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
-    conn.execute_batch("CREATE TABLE steps (idx INTEGER, step_type, step_payload BLOB)").unwrap();
+    conn.execute_batch("CREATE TABLE steps (idx INTEGER, step_type, step_payload BLOB)")
+        .unwrap();
     let put = |idx: i64, t: i64, p: Sql| {
-        conn.execute("INSERT INTO steps VALUES (?,?,?)", rusqlite::params![idx, t, p]).unwrap();
+        conn.execute(
+            "INSERT INTO steps VALUES (?,?,?)",
+            rusqlite::params![idx, t, p],
+        )
+        .unwrap();
     };
     put(1, 14, pu("s"));
     put(2, 15, pa("c"));
-    conn.execute_batch("INSERT INTO steps VALUES (0, 14, CAST(X'FF' AS TEXT))").unwrap();
+    conn.execute_batch("INSERT INTO steps VALUES (0, 14, CAST(X'FF' AS TEXT))")
+        .unwrap();
     drop(conn);
     let c = b.agy("utf8-hucre", fs::read(&path).unwrap());
     b.agrees(
@@ -873,7 +1314,14 @@ fn agy_cases(b: &mut Build<'_>) {
 fn copilot_db(rows: &[(&str, i64, Sql, Sql)]) -> Vec<u8> {
     let rows: Vec<Vec<Sql>> = rows
         .iter()
-        .map(|(s, i, u, a)| vec![Sql::Text((*s).into()), Sql::Integer(*i), u.clone(), a.clone()])
+        .map(|(s, i, u, a)| {
+            vec![
+                Sql::Text((*s).into()),
+                Sql::Integer(*i),
+                u.clone(),
+                a.clone(),
+            ]
+        })
         .collect();
     db_with(
         "CREATE TABLE turns (session_id TEXT, turn_index INT, user_message, assistant_response)",
@@ -909,7 +1357,9 @@ fn copilot_cases(b: &mut Build<'_>) {
             Some(r) => with_sessions(&db, &[(Sql::Text(r.into()), Sql::Text(b.cwd()))]),
             None => db.clone(),
         };
-        let c = b.case(&format!("copilot-sohbet-{id}"), "copilot", sid).file(Fx::File(COPILOT_DB.into(), db, 0o600));
+        let c = b
+            .case(&format!("copilot-sohbet-{id}"), "copilot", sid)
+            .file(Fx::File(COPILOT_DB.into(), db, 0o600));
         b.push(c);
     }
     let cells = [
@@ -925,13 +1375,19 @@ fn copilot_cases(b: &mut Build<'_>) {
         ("blob-bos", Sql::Blob(Vec::new())),
     ];
     for (id, v) in cells {
-        let c = b.copilot(&format!("hucre-{id}"), copilot_db(&[("s1", 0, v.clone(), t("A")), ("s1", 1, t("u"), v)]));
+        let c = b.copilot(
+            &format!("hucre-{id}"),
+            copilot_db(&[("s1", 0, v.clone(), t("A")), ("s1", 1, t("u"), v)]),
+        );
         b.push(c);
     }
     for (id, content) in [
         ("bozuk", b"not a database at all, definitely not".to_vec()),
         ("bos-dosya", Vec::new()),
-        ("tablo-yok", db_with("CREATE TABLE x (a)", "INSERT INTO x VALUES (?)", &[])),
+        (
+            "tablo-yok",
+            db_with("CREATE TABLE x (a)", "INSERT INTO x VALUES (?)", &[]),
+        ),
         ("kesik", db[..db.len() / 2].to_vec()),
     ] {
         let c = b.copilot(&format!("db-{id}"), content);
@@ -951,9 +1407,15 @@ fn copilot_cases(b: &mut Build<'_>) {
     drop(conn);
     let c = b.copilot("utf8-hucre", fs::read(&path).unwrap());
     b.push(c);
-    for (id, blob, text) in [("blob", b"ham".to_vec(), "ham"), ("blob-bozuk", b"\xff\xfe".to_vec(), "")] {
+    for (id, blob, text) in [
+        ("blob", b"ham".to_vec(), "ham"),
+        ("blob-bozuk", b"\xff\xfe".to_vec(), ""),
+    ] {
         let c = b.copilot(id, copilot_db(&[("s1", 0, Sql::Blob(blob), t("A"))]));
-        b.agrees(c, json!({"last_exchange": {"user": text, "assistant": "A"}}));
+        b.agrees(
+            c,
+            json!({"last_exchange": {"user": text, "assistant": "A"}}),
+        );
     }
 }
 
@@ -977,7 +1439,11 @@ fn other_cases(b: &mut Build<'_>) {
     ];
     for (i, cwd) in cwds.iter().enumerate() {
         for cli in ["claude", "codex", "agy", "copilot", "ucli", "shell"] {
-            let c = Case::new(format!("chat-kok-{cli}-{i}"), "chat", json!({"cli": cli, "cwd": cwd, "sid": null}));
+            let c = Case::new(
+                format!("chat-kok-{cli}-{i}"),
+                "chat",
+                json!({"cli": cli, "cwd": cwd, "sid": null}),
+            );
             b.push(c);
         }
     }
@@ -1005,7 +1471,10 @@ fn random_rows(b: &mut Build<'_>) {
                 }
                 if r.below(4) == 0 {
                     row.insert("subtype".into(), json!("compact_boundary"));
-                    row.insert("compactMetadata".into(), json!({"trigger": "auto", "preTokens": r.below(100)}));
+                    row.insert(
+                        "compactMetadata".into(),
+                        json!({"trigger": "auto", "preTokens": r.below(100)}),
+                    );
                 }
                 Value::Object(row).to_string()
             })
@@ -1060,7 +1529,10 @@ fn value(v: &Py) -> Value {
 
 fn history(h: Option<Vec<ChatTurn>>) -> Value {
     match h {
-        Some(turns) => turns.iter().map(|t| json!({"role": value(&t.role), "text": value(&t.text)})).collect(),
+        Some(turns) => turns
+            .iter()
+            .map(|t| json!({"role": value(&t.role), "text": value(&t.text)}))
+            .collect(),
         None => Value::Null,
     }
 }
@@ -1072,11 +1544,23 @@ fn rs_chat(e: &Env, c: &Case) -> RsOut {
     let settings = e.settings();
     let paths = e.paths();
     let probe = FsProbe::new(e, c);
-    let live = Live { settings: &settings, paths: &paths, probe: &probe, clock: Clock { now: 0.0, utc_offset_secs: 0 } };
+    let live = Live {
+        settings: &settings,
+        paths: &paths,
+        probe: &probe,
+        clock: Clock {
+            now: 0.0,
+            utc_offset_secs: 0,
+        },
+    };
     let exchange = live
         .last_exchange(cli, cwd, sid)
         .map(|x| json!({"user": value(&x.user), "assistant": value(&x.assistant)}));
-    let roots: Vec<Value> = live.extra_file_roots(cli, cwd).into_iter().map(|(k, p)| json!([k, p])).collect();
+    let roots: Vec<Value> = live
+        .extra_file_roots(cli, cwd)
+        .into_iter()
+        .map(|(k, p)| json!([k, p]))
+        .collect();
     let mut out = map(json!({
         "last_exchange": exchange,
         "full_history": history(live.full_history(cli, cwd, sid)),
@@ -1085,7 +1569,10 @@ fn rs_chat(e: &Env, c: &Case) -> RsOut {
         "roots": [paths.codex_sessions_dir(), paths.agy_conversations_dir(), paths.copilot_session_db()],
     }));
     if cli == Cli::Ucli {
-        out.insert("read_chat_history".into(), history(live.read_chat_history(cwd, sid.unwrap_or(""))));
+        out.insert(
+            "read_chat_history".into(),
+            history(live.read_chat_history(cwd, sid.unwrap_or(""))),
+        );
     }
     RsOut::ret(Value::Object(out))
 }
@@ -1093,7 +1580,11 @@ fn rs_chat(e: &Env, c: &Case) -> RsOut {
 pub fn run() {
     let mut r = Runner::new();
     let (cases, expect) = {
-        let mut b = Build { e: &r.e, cases: Vec::new(), expect: HashMap::new() };
+        let mut b = Build {
+            e: &r.e,
+            cases: Vec::new(),
+            expect: HashMap::new(),
+        };
         claude_cases(&mut b);
         claude_divergences(&mut b);
         codex_cases(&mut b);

@@ -61,8 +61,12 @@ pub const STRAY_DIALOG_KEY_GAP_SECONDS: f64 = 0.2;
 pub const MODEL_SWITCH_DIALOG: &str = "Switch model?";
 pub const MODEL_SWITCH_DONE_MARKERS: [&str; 2] = ["Set model to", "Kept model as"];
 pub const EFFORT_SWITCH_DIALOG: &str = "Change effort level?";
-pub const EFFORT_SWITCH_DONE_MARKERS: [&str; 4] =
-    ["Set effort level to", "Not applied:", "exceeds the cap", "Failed to set effort level"];
+pub const EFFORT_SWITCH_DONE_MARKERS: [&str; 4] = [
+    "Set effort level to",
+    "Not applied:",
+    "exceeds the cap",
+    "Failed to set effort level",
+];
 
 /// Canlı geçişin nasıl bittiği (Python None döner; çağıran günlük ve karar için kullanır). `MarkerSeen` sonucu
 /// DOĞRULAMAZ: sonuç metni yakalamadaki eski bir satır da olabilir.
@@ -157,7 +161,12 @@ impl Cli {
 
     /// `/model <target>` gönderir; "Switch model?" görülürse onaylar. Çağıran `target`ı
     /// [`Cli::handover_model_downgrade`]den alır (serbest metin verme: komut satırına aynen girer).
-    pub fn apply_live_model_switch(self, pane: &dyn Pane, name: &str, target: &str) -> SwitchOutcome {
+    pub fn apply_live_model_switch(
+        self,
+        pane: &dyn Pane,
+        name: &str,
+        target: &str,
+    ) -> SwitchOutcome {
         if self != Cli::Claude {
             return SwitchOutcome::Unsupported;
         }
@@ -173,7 +182,12 @@ impl Cli {
 
     /// `/effort <target>` gönderir; "Change effort level?" görülürse onaylar. `target` için
     /// [`Cli::apply_live_model_switch`] notu geçerli.
-    pub fn apply_live_effort_switch(self, pane: &dyn Pane, name: &str, target: &str) -> SwitchOutcome {
+    pub fn apply_live_effort_switch(
+        self,
+        pane: &dyn Pane,
+        name: &str,
+        target: &str,
+    ) -> SwitchOutcome {
         if self != Cli::Claude {
             return SwitchOutcome::Unsupported;
         }
@@ -220,7 +234,12 @@ impl Cli {
         if self != Cli::Ucli || !text.contains(['\n', '\r', '\t']) {
             return Cow::Borrowed(text);
         }
-        Cow::Owned(text.split(py_isspace).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" "))
+        Cow::Owned(
+            text.split(py_isspace)
+                .filter(|w| !w.is_empty())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
     }
 
     /// Konuşma özetleme komutu (yoksa None).

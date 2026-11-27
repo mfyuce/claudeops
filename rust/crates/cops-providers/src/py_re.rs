@@ -27,7 +27,9 @@ enum Last {
     Nothing,
     Atom,
     /// Niceleyici; `lazy` = arkasından `?` geldi.
-    Quant { lazy: bool },
+    Quant {
+        lazy: bool,
+    },
 }
 
 struct P<'a> {
@@ -52,8 +54,15 @@ impl P<'_> {
 
     /// Ters bölü sonrası (`self.i` kaçış harfinde). Sınıf içinde mi dışında mı: `in_class`.
     /// Dönüş: (çıktı parçası, sınıf aralığında uç olabilecek tek karakter).
-    fn escape(&mut self, start: usize, in_class: bool, groups: usize) -> Result<(String, Option<char>, bool), String> {
-        let Some(n) = self.peek(0) else { return Err(err("bad escape (end of pattern)", start)) };
+    fn escape(
+        &mut self,
+        start: usize,
+        in_class: bool,
+        groups: usize,
+    ) -> Result<(String, Option<char>, bool), String> {
+        let Some(n) = self.peek(0) else {
+            return Err(err("bad escape (end of pattern)", start));
+        };
         self.i += 1;
         let lit = |c: char| Ok((hex_lit(c), Some(c), false));
         match n {
@@ -90,7 +99,10 @@ impl P<'_> {
                     }
                 }
                 if v > 0o377 {
-                    return Err(err(format!("octal escape value \\{:o} outside of range 0-0o377", v), start));
+                    return Err(err(
+                        format!("octal escape value \\{:o} outside of range 0-0o377", v),
+                        start,
+                    ));
                 }
                 lit(char::from_u32(v).unwrap())
             }
@@ -101,9 +113,14 @@ impl P<'_> {
                 if let (Some(a), Some(b)) = (d2, d3) {
                     if n < '8' && a < '8' && b < '8' {
                         self.i += 2;
-                        let v = n.to_digit(8).unwrap() * 64 + a.to_digit(8).unwrap() * 8 + b.to_digit(8).unwrap();
+                        let v = n.to_digit(8).unwrap() * 64
+                            + a.to_digit(8).unwrap() * 8
+                            + b.to_digit(8).unwrap();
                         if v > 0o377 {
-                            return Err(err(format!("octal escape value \\{n}{a}{b} outside of range 0-0o377"), start));
+                            return Err(err(
+                                format!("octal escape value \\{n}{a}{b} outside of range 0-0o377"),
+                                start,
+                            ));
                         }
                         return lit(char::from_u32(v).unwrap());
                     }
@@ -135,7 +152,9 @@ impl P<'_> {
         }
         let mut first = true;
         loop {
-            let Some(c) = self.peek(0) else { return Err(err("unterminated character set", start)) };
+            let Some(c) = self.peek(0) else {
+                return Err(err("unterminated character set", start));
+            };
             if c == ']' && !first {
                 self.i += 1;
                 break;
@@ -198,7 +217,11 @@ pub fn translate(pat: &str) -> Result<String, String> {
                 p.i += 1;
                 let (s, _, zero_width) = p.escape(pos, false, groups)?;
                 out.push_str(&s);
-                last = if zero_width { Last::Nothing } else { Last::Atom };
+                last = if zero_width {
+                    Last::Nothing
+                } else {
+                    Last::Atom
+                };
             }
             '[' => {
                 out.push_str(&p.class()?);
@@ -248,7 +271,9 @@ pub fn translate(pat: &str) -> Result<String, String> {
                         let mut name = String::new();
                         loop {
                             match p.peek(0) {
-                                None => return Err(err("missing >, unterminated name", name_start)),
+                                None => {
+                                    return Err(err("missing >, unterminated name", name_start))
+                                }
                                 Some('>') => {
                                     p.i += 1;
                                     break;
@@ -262,14 +287,24 @@ pub fn translate(pat: &str) -> Result<String, String> {
                         if name.is_empty() {
                             return Err(err("missing group name", name_start));
                         }
-                        let ident = name.chars().next().is_some_and(|f| f.is_alphabetic() || f == '_')
+                        let ident = name
+                            .chars()
+                            .next()
+                            .is_some_and(|f| f.is_alphabetic() || f == '_')
                             && name.chars().all(|x| x.is_alphanumeric() || x == '_');
                         if !ident {
-                            return Err(err(format!("bad character in group name '{name}'"), name_start));
+                            return Err(err(
+                                format!("bad character in group name '{name}'"),
+                                name_start,
+                            ));
                         }
                         if let Some(k) = names.iter().position(|n| *n == name) {
                             return Err(err(
-                                format!("redefinition of group name '{name}' as group {}; was group {}", groups + 1, group_index[k]),
+                                format!(
+                                    "redefinition of group name '{name}' as group {}; was group {}",
+                                    groups + 1,
+                                    group_index[k]
+                                ),
                                 name_start,
                             ));
                         }
@@ -287,7 +322,9 @@ pub fn translate(pat: &str) -> Result<String, String> {
                         let mut name = String::new();
                         loop {
                             match p.peek(0) {
-                                None => return Err(err("missing ), unterminated name", name_start)),
+                                None => {
+                                    return Err(err("missing ), unterminated name", name_start))
+                                }
                                 Some(')') => {
                                     p.i += 1;
                                     break;
@@ -334,9 +371,13 @@ pub fn translate(pat: &str) -> Result<String, String> {
                             return Err(err("x (verbose) bayrağı desteklenmiyor", pos + 1));
                         }
                         if on.contains('L') {
-                            return Err(err("bad inline flags: cannot use 'L' flag with a str pattern", p.i));
+                            return Err(err(
+                                "bad inline flags: cannot use 'L' flag with a str pattern",
+                                p.i,
+                            ));
                         }
-                        let keep = |s: &str| s.chars().filter(|x| "ims".contains(*x)).collect::<String>();
+                        let keep =
+                            |s: &str| s.chars().filter(|x| "ims".contains(*x)).collect::<String>();
                         match p.peek(0) {
                             Some(')') if off.is_empty() => {
                                 // küresel bayrak: Python'da desenin tamamına uygulanır
@@ -348,13 +389,18 @@ pub fn translate(pat: &str) -> Result<String, String> {
                                 p.i += 1;
                                 stack.push(pos);
                                 let (k_on, k_off) = (keep(&on), keep(&off));
-                                out.push_str(&format!("(?{k_on}{}{k_off}:", if k_off.is_empty() { "" } else { "-" }));
+                                out.push_str(&format!(
+                                    "(?{k_on}{}{k_off}:",
+                                    if k_off.is_empty() { "" } else { "-" }
+                                ));
                             }
                             Some(_) => return Err(err("unknown flag", p.i)),
                             None => return Err(err("missing -, : or )", p.i)),
                         }
                     }
-                    (Some('<'), Some(d)) => return Err(err(format!("unknown extension ?<{d}"), pos + 1)),
+                    (Some('<'), Some(d)) => {
+                        return Err(err(format!("unknown extension ?<{d}"), pos + 1))
+                    }
                     (Some(x), _) => return Err(err(format!("unknown extension ?{x}"), pos + 1)),
                     (None, _) => return Err(err("unexpected end of pattern", p.i)),
                 }
@@ -411,7 +457,11 @@ pub fn translate(pat: &str) -> Result<String, String> {
                             Last::Quant { .. } => return Err(err("multiple repeat", pos)),
                             Last::Atom => {}
                         }
-                        let lo_n: u64 = if lo.is_empty() { 0 } else { lo.parse().unwrap_or(u64::MAX) };
+                        let lo_n: u64 = if lo.is_empty() {
+                            0
+                        } else {
+                            lo.parse().unwrap_or(u64::MAX)
+                        };
                         if let Some(h) = hi.as_deref().filter(|h| !h.is_empty()) {
                             if h.parse::<u64>().unwrap_or(u64::MAX) < lo_n {
                                 return Err(err("min repeat greater than max repeat", pos + 1));
@@ -452,7 +502,11 @@ pub fn translate(pat: &str) -> Result<String, String> {
     if let Some(open) = stack.last() {
         return Err(err("missing ), unterminated subpattern", *open));
     }
-    Ok(if global_flags.is_empty() { out } else { format!("(?{global_flags}){out}") })
+    Ok(if global_flags.is_empty() {
+        out
+    } else {
+        format!("(?{global_flags}){out}")
+    })
 }
 
 /// Çevrilmiş deseni derle (Python'un kabul ettiği ama fancy-regex'in reddettiği nadir durumda fancy iletisi).

@@ -42,7 +42,10 @@ impl FileLock {
         let meta = file.metadata()?;
         // SAFETY: `getuid` her zaman başarılı, argümansız sistem çağrısı.
         if !meta.is_file() || meta.uid() != unsafe { libc::getuid() } {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "lock file not ours"));
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "lock file not ours",
+            ));
         }
         let deadline = Instant::now() + timeout;
         loop {

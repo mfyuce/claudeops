@@ -13,10 +13,16 @@ pub const TEXT_MAX_BYTES: u64 = 64 << 20;
 
 /// Normal dosyayı okumak için açar; boyutu da döner.
 pub fn open_regular(path: &str) -> io::Result<(File, u64)> {
-    let file = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY).open(path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path)?;
     let meta = file.metadata()?;
     if !meta.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "normal dosya değil"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "normal dosya değil",
+        ));
     }
     Ok((file, meta.len()))
 }
@@ -54,7 +60,11 @@ pub fn read_range(path: &str, start: u64, len: u64) -> Option<Vec<u8>> {
 /// Python metin kipi: UTF-8, evrensel satır sonu (`\r\n`, `\r` -> `\n`).
 pub fn read_text(path: &str) -> Option<String> {
     let text = String::from_utf8(read_bytes(path, TEXT_MAX_BYTES)?).ok()?;
-    Some(if text.contains('\r') { text.replace("\r\n", "\n").replace('\r', "\n") } else { text })
+    Some(if text.contains('\r') {
+        text.replace("\r\n", "\n").replace('\r', "\n")
+    } else {
+        text
+    })
 }
 
 /// `os.listdir`: okuma sırası korunur; UTF-8 olmayan adlar atlanır; yarıda hata = None.
@@ -73,7 +83,10 @@ pub fn stat(path: &str) -> Option<FileStat> {
     let m = fs::metadata(path).ok()?;
     Some(FileStat {
         is_file: m.is_file(),
-        mtime_ns: m.mtime().saturating_mul(1_000_000_000).saturating_add(m.mtime_nsec()),
+        mtime_ns: m
+            .mtime()
+            .saturating_mul(1_000_000_000)
+            .saturating_add(m.mtime_nsec()),
         size: m.len(),
     })
 }

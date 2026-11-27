@@ -54,7 +54,11 @@ fn effort_without_dialog_sends_no_enter() {
 
 #[test]
 fn effort_dialog_is_confirmed_once_and_waits_for_a_done_marker() {
-    let p = FakePane::screens(&["Change effort level?", "Change effort level?", "Set effort level to high"]);
+    let p = FakePane::screens(&[
+        "Change effort level?",
+        "Change effort level?",
+        "Set effort level to high",
+    ]);
     assert_eq!(effort(&p), SwitchOutcome::MarkerSeen { confirmed: true });
     assert_eq!(p.keys(), ["Enter"]);
 }
@@ -72,23 +76,41 @@ fn each_switch_ignores_the_other_dialog() {
 #[test]
 fn every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read() {
     for (budget, step, run) in [
-        (20.0, 0.3, (|p| { let _ = model(p); }) as fn(&FakePane)),
-        (8.0, 0.3, |p| { let _ = effort(p); }),
+        (
+            20.0,
+            0.3,
+            (|p| {
+                let _ = model(p);
+            }) as fn(&FakePane),
+        ),
+        (8.0, 0.3, |p| {
+            let _ = effort(p);
+        }),
         (6.0, 0.5, |p| Cli::Claude.dismiss_stray_dialog(p, "s")),
     ] {
         let p = FakePane::new(Script::default());
         run(&p);
-        assert!(p.elapsed() >= budget && p.elapsed() < budget + 2.0 * step, "{budget}: {}", p.elapsed());
+        assert!(
+            p.elapsed() >= budget && p.elapsed() < budget + 2.0 * step,
+            "{budget}: {}",
+            p.elapsed()
+        );
         assert!(p.keys().is_empty());
     }
 }
 
 #[test]
 fn a_failed_send_returns_without_waiting() {
-    let p = FakePane::new(Script { send_ok: false, ..Script::default() });
+    let p = FakePane::new(Script {
+        send_ok: false,
+        ..Script::default()
+    });
     assert_eq!(model(&p), SwitchOutcome::SendFailed);
     assert_eq!(effort(&p), SwitchOutcome::SendFailed);
-    assert_eq!((p.calls("capture"), p.calls("sleep"), p.calls("key")), (0, 0, 0));
+    assert_eq!(
+        (p.calls("capture"), p.calls("sleep"), p.calls("key")),
+        (0, 0, 0)
+    );
 }
 
 #[test]
@@ -96,7 +118,11 @@ fn stray_dialog_is_refused_and_a_failed_down_sends_no_enter() {
     let p = FakePane::screens(&["Switch model?"]);
     Cli::Claude.dismiss_stray_dialog(&p, "s");
     assert_eq!(p.keys(), ["Down", "Enter"]);
-    let p = FakePane::new(Script { screens: vec![Some("Switch model?".into())], keys: vec![false], ..Script::default() });
+    let p = FakePane::new(Script {
+        screens: vec![Some("Switch model?".into())],
+        keys: vec![false],
+        ..Script::default()
+    });
     Cli::Claude.dismiss_stray_dialog(&p, "s");
     assert_eq!(p.keys(), ["Down"]);
 }
@@ -105,8 +131,14 @@ fn stray_dialog_is_refused_and_a_failed_down_sends_no_enter() {
 fn only_claude_touches_the_pane() {
     for cli in Cli::ALL.into_iter().filter(|c| *c != Cli::Claude) {
         let p = FakePane::screens(&["Switch model?\nChange effort level?"]);
-        assert_eq!(cli.apply_live_model_switch(&p, "s", "sonnet"), SwitchOutcome::Unsupported);
-        assert_eq!(cli.apply_live_effort_switch(&p, "s", "high"), SwitchOutcome::Unsupported);
+        assert_eq!(
+            cli.apply_live_model_switch(&p, "s", "sonnet"),
+            SwitchOutcome::Unsupported
+        );
+        assert_eq!(
+            cli.apply_live_effort_switch(&p, "s", "high"),
+            SwitchOutcome::Unsupported
+        );
         cli.dismiss_stray_dialog(&p, "s");
         assert!(p.log.borrow().is_empty(), "{}", cli.name());
     }
@@ -142,7 +174,12 @@ fn ucli_input_is_folded_to_one_line_without_truncation() {
     assert_eq!(u.prepare_input("a\tb\t\tc  d"), "a b c d");
     let long = format!("satır1\n{}\nson", "uzun ".repeat(400));
     let out = u.prepare_input(&long);
-    assert!(!out.contains('\n') && out.starts_with("satır1 uzun") && out.ends_with("son") && out.len() > 2000);
+    assert!(
+        !out.contains('\n')
+            && out.starts_with("satır1 uzun")
+            && out.ends_with("son")
+            && out.len() > 2000
+    );
 }
 
 #[test]
@@ -167,19 +204,37 @@ fn ucli_handover_message_is_one_line_and_the_dialog_scan_is_a_noop() {
 #[test]
 fn only_codex_needs_a_settle_delay_and_only_claude_compacts() {
     for cli in Cli::ALL {
-        assert_eq!(cli.input_settle_delay(), if cli == Cli::Codex { 0.15 } else { 0.0 });
-        assert_eq!(cli.compact_command(), (cli == Cli::Claude).then_some("/compact"));
+        assert_eq!(
+            cli.input_settle_delay(),
+            if cli == Cli::Codex { 0.15 } else { 0.0 }
+        );
+        assert_eq!(
+            cli.compact_command(),
+            (cli == Cli::Claude).then_some("/compact")
+        );
         assert_eq!(cli.cyclable_modes().is_empty(), cli != Cli::Claude);
-        assert_eq!(cli.mode_status_patterns().is_empty(), !matches!(cli, Cli::Claude | Cli::Copilot));
+        assert_eq!(
+            cli.mode_status_patterns().is_empty(),
+            !matches!(cli, Cli::Claude | Cli::Copilot)
+        );
     }
 }
 
 #[test]
 fn downgrades_only_go_down() {
-    assert_eq!(Cli::Claude.handover_model_downgrade("claude-opus-5-5"), Some("sonnet"));
-    assert_eq!(Cli::Claude.handover_model_downgrade("claude-haiku-5-5"), None);
+    assert_eq!(
+        Cli::Claude.handover_model_downgrade("claude-opus-5-5"),
+        Some("sonnet")
+    );
+    assert_eq!(
+        Cli::Claude.handover_model_downgrade("claude-haiku-5-5"),
+        None
+    );
     assert_eq!(Cli::Claude.handover_model_downgrade(""), None);
-    assert_eq!(Cli::Claude.handover_effort_downgrade("max", "high"), Some("high"));
+    assert_eq!(
+        Cli::Claude.handover_effort_downgrade("max", "high"),
+        Some("high")
+    );
     assert_eq!(Cli::Claude.handover_effort_downgrade("high", "high"), None);
     assert_eq!(Cli::Claude.handover_effort_downgrade("low", "high"), None);
     assert_eq!(Cli::Claude.handover_effort_downgrade("?", "high"), None);

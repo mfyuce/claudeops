@@ -68,7 +68,15 @@ fn passwd_name() -> Option<String> {
     let mut buffer = vec![0 as libc::c_char; 16 * 1024];
     let mut found: *mut libc::passwd = std::ptr::null_mut();
     // SAFETY: bütün işaretçiler bu çağrıya özel ve geçerli; tampon boyu doğru veriliyor.
-    let rc = unsafe { libc::getpwuid_r(uid(), &mut record, buffer.as_mut_ptr(), buffer.len(), &mut found) };
+    let rc = unsafe {
+        libc::getpwuid_r(
+            uid(),
+            &mut record,
+            buffer.as_mut_ptr(),
+            buffer.len(),
+            &mut found,
+        )
+    };
     if rc != 0 || found.is_null() || record.pw_name.is_null() {
         return None;
     }
@@ -91,12 +99,20 @@ pub fn container_name(owner: &str, home: &str, claudeops_dir: &str, cwd: &str) -
         }
     }
     let trimmed = safe.trim_matches(|c| matches!(c, '-' | '_' | '.'));
-    let safe = if trimmed.is_empty() { uid().to_string() } else { trimmed.to_string() };
+    let safe = if trimmed.is_empty() {
+        uid().to_string()
+    } else {
+        trimmed.to_string()
+    };
     let mut name = format!("claudeops-searxng-{safe}");
     let default = pathexec::realpath(&format!("{home}/.claude/claudeops"), cwd);
     let actual = pathexec::realpath(claudeops_dir, cwd);
     if actual != default {
-        let digest: String = Sha1::digest(actual.as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect();
+        let digest: String = Sha1::digest(actual.as_bytes())
+            .iter()
+            .take(4)
+            .map(|b| format!("{b:02x}"))
+            .collect();
         name.push('-');
         name.push_str(&digest);
     }
@@ -118,7 +134,8 @@ fn probe_health(port: u16, timeout: Duration) -> io::Result<bool> {
             Ok(d)
         }
     };
-    let mut stream = TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, port)), left()?)?;
+    let mut stream =
+        TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, port)), left()?)?;
     stream.set_write_timeout(Some(left()?))?;
     let request = format!(
         "GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUser-Agent: claudeops\r\nConnection: close\r\n\r\n"
@@ -136,7 +153,9 @@ fn probe_health(port: u16, timeout: Duration) -> io::Result<bool> {
         head.extend_from_slice(&buf[..n]);
     }
     let line = head.split(|b| *b == b'\n').next().unwrap_or_default();
-    let mut words = line.split(|b| b.is_ascii_whitespace()).filter(|w| !w.is_empty());
+    let mut words = line
+        .split(|b| b.is_ascii_whitespace())
+        .filter(|w| !w.is_empty());
     Ok(words.next().is_some_and(|v| v.starts_with(b"HTTP/")) && words.next() == Some(b"200"))
 }
 
@@ -150,8 +169,13 @@ pub struct Provision {
 impl Provision {
     /// `<python> -m claudeops searxng provision`, `<depo>/py` dizininde.
     pub fn python(python: &str, repo_dir: &str) -> Provision {
-        let argv = [python, "-m", "claudeops", "searxng", "provision"].map(String::from).to_vec();
-        Provision { argv, cwd: format!("{repo_dir}/py") }
+        let argv = [python, "-m", "claudeops", "searxng", "provision"]
+            .map(String::from)
+            .to_vec();
+        Provision {
+            argv,
+            cwd: format!("{repo_dir}/py"),
+        }
     }
 }
 
@@ -175,7 +199,11 @@ enum Fail {
 
 /// `_tail`: son boş olmayan satır, en çok 240 karakter.
 fn tail(text: &str) -> String {
-    let last = splitlines(strip(text)).into_iter().map(strip).rfind(|l| !l.is_empty()).unwrap_or("");
+    let last = splitlines(strip(text))
+        .into_iter()
+        .map(strip)
+        .rfind(|l| !l.is_empty())
+        .unwrap_or("");
     last.chars().take(240).collect()
 }
 
@@ -205,7 +233,9 @@ fn object_or_empty(v: Option<&Py>) -> Option<Py> {
 }
 
 fn parse_inspect(stdout: &str) -> Option<Container> {
-    let Py::Array(list) = Py::parse(stdout)? else { return None };
+    let Py::Array(list) = Py::parse(stdout)? else {
+        return None;
+    };
     let info = list.first().filter(|i| i.is_object())?;
     let labels = object_or_empty(object_or_empty(info.get("Config"))?.get("Labels"))?;
     let state = object_or_empty(info.get("State"))?;
@@ -219,7 +249,11 @@ fn parse_inspect(stdout: &str) -> Option<Container> {
         exists: true,
         ours: labels.get(LABEL_KEY).and_then(Py::as_str) == Some(LABEL_VALUE),
         running: state.get("Running").is_some_and(Py::truthy),
-        status: state.get("Status").filter(|s| s.truthy()).map(Py::py_str).unwrap_or_default(),
+        status: state
+            .get("Status")
+            .filter(|s| s.truthy())
+            .map(Py::py_str)
+            .unwrap_or_default(),
         port,
     })
 }
@@ -241,7 +275,13 @@ pub struct ManagedSearch {
 
 impl ManagedSearch {
     /// `home` = `os.path.expanduser("~")`, `claudeops_dir` = durum dizini ([`crate::Paths`]).
-    pub fn new(home: &str, claudeops_dir: &str, env: Env, diag: DiagLog, provision: Provision) -> ManagedSearch {
+    pub fn new(
+        home: &str,
+        claudeops_dir: &str,
+        env: Env,
+        diag: DiagLog,
+        provision: Provision,
+    ) -> ManagedSearch {
         let container = container_name(&owner(&env), home, claudeops_dir, "/");
         ManagedSearch {
             state_dir: format!("{claudeops_dir}/searxng"),
@@ -257,7 +297,10 @@ impl ManagedSearch {
     }
 
     /// Sağlık yoklaması yerine başka kaynak (test).
-    pub fn with_health(mut self, health: impl Fn(u16) -> bool + Send + Sync + 'static) -> ManagedSearch {
+    pub fn with_health(
+        mut self,
+        health: impl Fn(u16) -> bool + Send + Sync + 'static,
+    ) -> ManagedSearch {
         self.health = Arc::new(health);
         self
     }
@@ -292,7 +335,9 @@ impl ManagedSearch {
     /// `_update_state`: en iyi çaba; kilit alınamazsa yazılmaz.
     fn update_state(&self, key: &str, value: Py) {
         let path = self.state_path();
-        let Ok(_lock) = FileLock::acquire(&path, "/", LOCK_TIMEOUT) else { return };
+        let Ok(_lock) = FileLock::acquire(&path, "/", LOCK_TIMEOUT) else {
+            return;
+        };
         let mut state = self.read_state();
         match state.iter_mut().find(|(k, _)| k == key) {
             Some(slot) => slot.1 = value,
@@ -307,8 +352,12 @@ impl ManagedSearch {
 
     /// Bu modüldeki tek docker çağrı noktası. Komutun kendi hatası (rc != 0) hata DEĞİL.
     fn docker(&self, args: &[&str], timeout: Duration) -> Result<(i32, String, String), Fail> {
-        let exe = pathexec::which(&self.env, "docker").ok_or_else(|| Fail::Docker("docker PATH'te yok".into()))?;
-        let argv: Vec<String> = std::iter::once(exe.as_str()).chain(args.iter().copied()).map(String::from).collect();
+        let exe = pathexec::which(&self.env, "docker")
+            .ok_or_else(|| Fail::Docker("docker PATH'te yok".into()))?;
+        let argv: Vec<String> = std::iter::once(exe.as_str())
+            .chain(args.iter().copied())
+            .map(String::from)
+            .collect();
         let spec = Spec {
             argv: &argv,
             cwd: None,
@@ -328,18 +377,30 @@ impl ManagedSearch {
                 RunError::Overflow => "docker çıktısı sınırı aştı".into(),
             })
         })?;
-        let text = |b: &[u8]| String::from_utf8_lossy(b).replace("\r\n", "\n").replace('\r', "\n");
+        let text = |b: &[u8]| {
+            String::from_utf8_lossy(b)
+                .replace("\r\n", "\n")
+                .replace('\r', "\n")
+        };
         Ok((out.code, text(&out.stdout), text(&out.stderr)))
     }
 
     fn inspect(&self) -> Result<Container, Fail> {
-        let (code, stdout, stderr) = self.docker(&["container", "inspect", &self.container], INSPECT_TIMEOUT)?;
+        let (code, stdout, stderr) =
+            self.docker(&["container", "inspect", &self.container], INSPECT_TIMEOUT)?;
         if code != 0 {
-            if format!("{stderr}{stdout}").to_lowercase().contains("no such") {
+            if format!("{stderr}{stdout}")
+                .to_lowercase()
+                .contains("no such")
+            {
                 return Ok(Container::default());
             }
             let reason = tail(if stderr.is_empty() { &stdout } else { &stderr });
-            return Err(Fail::Docker(if reason.is_empty() { format!("inspect rc={code}") } else { reason }));
+            return Err(Fail::Docker(if reason.is_empty() {
+                format!("inspect rc={code}")
+            } else {
+                reason
+            }));
         }
         parse_inspect(&stdout).ok_or_else(|| Fail::Docker("inspect çıktısı ayrıştırılamadı".into()))
     }
@@ -377,19 +438,31 @@ impl ManagedSearch {
 
     /// `_spawn_provision_child`: yeni oturumda, çıktısı `provision.log`a.
     fn spawn_provision(&self) -> bool {
-        let log = effects::makedirs(&self.state_dir, 0o777).ok().and_then(|()| {
-            OpenOptions::new()
-                .append(true)
-                .create(true)
-                .mode(0o666)
-                .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
-                .open(format!("{}/provision.log", self.state_dir))
-                .ok()
-        });
-        let output = || log.as_ref().and_then(|f| f.try_clone().ok()).map_or_else(Stdio::null, Stdio::from);
-        let Some((program, args)) = self.provision.argv.split_first() else { return false };
+        let log = effects::makedirs(&self.state_dir, 0o777)
+            .ok()
+            .and_then(|()| {
+                OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .mode(0o666)
+                    .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+                    .open(format!("{}/provision.log", self.state_dir))
+                    .ok()
+            });
+        let output = || {
+            log.as_ref()
+                .and_then(|f| f.try_clone().ok())
+                .map_or_else(Stdio::null, Stdio::from)
+        };
+        let Some((program, args)) = self.provision.argv.split_first() else {
+            return false;
+        };
         let mut cmd = Command::new(program);
-        cmd.args(args).current_dir(&self.provision.cwd).stdin(Stdio::null()).stdout(output()).stderr(output());
+        cmd.args(args)
+            .current_dir(&self.provision.cwd)
+            .stdin(Stdio::null())
+            .stdout(output())
+            .stderr(output());
         self.env.apply(&mut cmd);
         // SAFETY: `fork` ile `exec` arasında yalnız eşzamansız-sinyal-güvenli `setsid` çağrılır, bellek ayrılmaz.
         unsafe {
@@ -403,11 +476,16 @@ impl ManagedSearch {
         match cmd.spawn() {
             Ok(mut child) => {
                 // zombi kalmasın; iş parçacığı açılamazsa süreç bittiğinde ana süreçle toplanır
-                let _ = std::thread::Builder::new().name("searxng-provision".into()).spawn(move || child.wait());
+                let _ = std::thread::Builder::new()
+                    .name("searxng-provision".into())
+                    .spawn(move || child.wait());
                 true
             }
             Err(e) => {
-                self.log("searxng_provision_spawn_failed", &[("error", json!(clip(&oserr::text(&e, program))))]);
+                self.log(
+                    "searxng_provision_spawn_failed",
+                    &[("error", json!(clip(&oserr::text(&e, program))))],
+                );
                 false
             }
         }
@@ -419,12 +497,15 @@ impl ManagedSearch {
         let now = (self.clock)();
         // `isinstance(x, (int, float))` (bool dahil) ve `0 <= now - x < pencere`
         let within = |key: &str, window: f64| {
-            let at = state.iter().find(|(k, _)| k == key).and_then(|(_, v)| match v {
-                Py::Int(i) => Some(*i as f64),
-                Py::Float(f) => Some(*f),
-                Py::Bool(b) => Some(f64::from(u8::from(*b))),
-                _ => None,
-            });
+            let at = state
+                .iter()
+                .find(|(k, _)| k == key)
+                .and_then(|(_, v)| match v {
+                    Py::Int(i) => Some(*i as f64),
+                    Py::Float(f) => Some(*f),
+                    Py::Bool(b) => Some(f64::from(u8::from(*b))),
+                    _ => None,
+                });
             at.is_some_and(|at| (0.0..window).contains(&(now - at)))
         };
         if within("provision_failed_at", FAIL_COOLDOWN_S) {
@@ -434,7 +515,10 @@ impl ManagedSearch {
         if within("provision_started_at", KICK_WINDOW_S) {
             return Ok(());
         }
-        if !self.provision_idle().map_err(|e| Fail::Other(oserr::repr(&e)))? {
+        if !self
+            .provision_idle()
+            .map_err(|e| Fail::Other(oserr::repr(&e)))?
+        {
             return Ok(());
         }
         self.update_state("provision_started_at", Py::Float(now));
@@ -445,11 +529,19 @@ impl ManagedSearch {
     }
 
     fn mark_down(&self) {
-        *self.down_until.lock().unwrap_or_else(PoisonError::into_inner) = Some(Instant::now() + DOCKER_DOWN_TTL);
+        *self
+            .down_until
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now() + DOCKER_DOWN_TTL);
     }
 
     fn ensure(&self, session: &str, preview: bool) -> Result<Option<String>, Fail> {
-        let saved = port_of(self.read_state().iter().find(|(k, _)| k == "port").map(|(_, v)| v));
+        let saved = port_of(
+            self.read_state()
+                .iter()
+                .find(|(k, _)| k == "port")
+                .map(|(_, v)| v),
+        );
         if let Some(port) = saved.filter(|p| (self.health)(*p)) {
             return Ok(Some(search_url_for(port)));
         }
@@ -457,13 +549,22 @@ impl ManagedSearch {
         if preview {
             return Ok(None);
         }
-        let down = *self.down_until.lock().unwrap_or_else(PoisonError::into_inner);
+        let down = *self
+            .down_until
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if down.is_some_and(|until| Instant::now() < until) {
             return Ok(None);
         }
         let found = self.inspect()?;
         if found.exists && !found.ours {
-            self.log("searxng_name_conflict", &[("name", json!(session)), ("container", json!(self.container))]);
+            self.log(
+                "searxng_name_conflict",
+                &[
+                    ("name", json!(session)),
+                    ("container", json!(self.container)),
+                ],
+            );
             return Ok(None);
         }
         let Some(port) = found.port.filter(|_| found.exists) else {
@@ -474,11 +575,17 @@ impl ManagedSearch {
             let (code, stdout, stderr) = self.docker(&["start", &self.container], START_TIMEOUT)?;
             if code != 0 {
                 let reason = tail(if stderr.is_empty() { &stdout } else { &stderr });
-                self.log("searxng_start_failed", &[("name", json!(session)), ("error", json!(reason))]);
+                self.log(
+                    "searxng_start_failed",
+                    &[("name", json!(session)), ("error", json!(reason))],
+                );
                 self.kick(session)?;
                 return Ok(None);
             }
-            self.log("searxng_started", &[("name", json!(session)), ("port", json!(port))]);
+            self.log(
+                "searxng_started",
+                &[("name", json!(session)), ("port", json!(port))],
+            );
         }
         if self.wait_healthy(port) {
             self.update_state("port", Py::Int(i64::from(port)));
@@ -486,7 +593,11 @@ impl ManagedSearch {
         }
         self.log(
             "searxng_not_ready",
-            &[("name", json!(session)), ("port", json!(port)), ("status", json!(found.status))],
+            &[
+                ("name", json!(session)),
+                ("port", json!(port)),
+                ("status", json!(found.status)),
+            ],
         );
         if matches!(found.status.as_str(), "restarting" | "dead") {
             self.kick(session)?;
@@ -502,11 +613,17 @@ impl SearchUrl for ManagedSearch {
             Ok(url) => url,
             Err(Fail::Docker(reason)) => {
                 self.mark_down();
-                self.log("searxng_unavailable", &[("name", json!(session)), ("reason", json!(clip(&reason)))]);
+                self.log(
+                    "searxng_unavailable",
+                    &[("name", json!(session)), ("reason", json!(clip(&reason)))],
+                );
                 None
             }
             Err(Fail::Other(error)) => {
-                self.log("searxng_ensure_error", &[("name", json!(session)), ("error", json!(clip(&error)))]);
+                self.log(
+                    "searxng_ensure_error",
+                    &[("name", json!(session)), ("error", json!(clip(&error)))],
+                );
                 None
             }
         }

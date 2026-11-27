@@ -1,7 +1,9 @@
 //! agy sağlayıcısı: effort model kimliğine gömülü.
 
 use crate::effort::{nearest_effort, sort_levels, split_tier};
-use crate::model_sources::{bounded, lock, ModelIo, RunRequest, AGY_MODELS_MAX_BYTES, AGY_MODELS_TIMEOUT};
+use crate::model_sources::{
+    bounded, lock, ModelIo, RunRequest, AGY_MODELS_MAX_BYTES, AGY_MODELS_TIMEOUT,
+};
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{join_quoted, quote};
 use std::sync::{Arc, Mutex};
@@ -46,7 +48,11 @@ pub struct ModelsCache(Arc<Mutex<Cached>>);
 
 impl ModelsCache {
     /// Soğukta bloklayarak çeker; bayat ama doluysa eskiyi döndürür, yenisini arka planda çeker.
-    pub(crate) fn get(&self, io: &Arc<dyn ModelIo>, binary: impl FnOnce() -> String) -> Vec<String> {
+    pub(crate) fn get(
+        &self,
+        io: &Arc<dyn ModelIo>,
+        binary: impl FnOnce() -> String,
+    ) -> Vec<String> {
         let now = io.monotonic_secs();
         let stale = {
             let mut c = lock(&self.0);
@@ -62,15 +68,24 @@ impl ModelsCache {
             return lock(&self.0).models.clone();
         }
         let (io2, cache) = (Arc::clone(io), Arc::clone(&self.0));
-        io.spawn_background("agy-models-refresh", Box::new(move || refresh(io2.as_ref(), &cache, binary)));
+        io.spawn_background(
+            "agy-models-refresh",
+            Box::new(move || refresh(io2.as_ref(), &cache, binary)),
+        );
         stale
     }
 }
 
 /// `agy models`; hata, zaman aşımı, UTF-8 olmayan ya da modelsiz çıktı eski listeyi bırakır.
 fn refresh(io: &dyn ModelIo, cache: &Mutex<Cached>, binary: String) {
-    let req = RunRequest { argv: vec![binary, "models".into()], timeout: AGY_MODELS_TIMEOUT, max_stdout: AGY_MODELS_MAX_BYTES };
-    let Some(Ok(text)) = bounded(io.run_stdout(&req), req.max_stdout).map(String::from_utf8) else { return };
+    let req = RunRequest {
+        argv: vec![binary, "models".into()],
+        timeout: AGY_MODELS_TIMEOUT,
+        max_stdout: AGY_MODELS_MAX_BYTES,
+    };
+    let Some(Ok(text)) = bounded(io.run_stdout(&req), req.max_stdout).map(String::from_utf8) else {
+        return;
+    };
     let models = parse_models(&text);
     if !models.is_empty() {
         lock(cache).models = models;
@@ -105,7 +120,11 @@ pub(crate) fn build_inner_command(p: &Providers<'_>, a: &BuildArgs<'_>) -> Strin
         let effort = if effort.is_empty() { "medium" } else { &effort };
         parts.extend(["--effort".into(), quote(effort)]);
     }
-    parts.extend(permission_flags(a.permission_mode).iter().map(|s| s.to_string()));
+    parts.extend(
+        permission_flags(a.permission_mode)
+            .iter()
+            .map(|s| s.to_string()),
+    );
     parts.extend(a.extra_args.iter().map(|x| quote(x)));
     if let Some(pr) = a.prompt.filter(|s| !s.is_empty()) {
         parts.extend(["-i".into(), quote(pr)]);
@@ -114,6 +133,11 @@ pub(crate) fn build_inner_command(p: &Providers<'_>, a: &BuildArgs<'_>) -> Strin
 }
 
 pub(crate) fn mcp_setup_command(spec: &McpSpec) -> String {
-    let cmd = format!("agy mcp add {} {} {}", quote(&spec.name), quote(&spec.command), join_quoted(&spec.args));
+    let cmd = format!(
+        "agy mcp add {} {} {}",
+        quote(&spec.name),
+        quote(&spec.command),
+        join_quoted(&spec.args)
+    );
     crate::pyfmt::strip(&cmd).to_string()
 }

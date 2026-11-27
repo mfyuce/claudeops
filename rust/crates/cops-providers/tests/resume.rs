@@ -9,7 +9,8 @@ use cops_providers::pyjson::Py;
 use cops_providers::resume::HEAD_MAX_BYTES;
 use cops_providers::ucli_opts::Toolchain;
 use cops_providers::{
-    AgySidStore, Cli, FileStat, Live, LiveProbe, McpRegisterError, MetaCache, Paths, Probe, Settings, SqlCell,
+    AgySidStore, Cli, FileStat, Live, LiveProbe, McpRegisterError, MetaCache, Paths, Probe,
+    Settings, SqlCell,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -99,7 +100,10 @@ impl Probe for Mem {
     fn panel_port(&self) -> Option<u16> {
         unreachable!()
     }
-    fn apply_now(&self, _: &cops_providers::Effect) -> Result<(), cops_providers::real::effects::EffectError> {
+    fn apply_now(
+        &self,
+        _: &cops_providers::Effect,
+    ) -> Result<(), cops_providers::real::effects::EffectError> {
         unimplemented!()
     }
     fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<(), McpRegisterError> {
@@ -109,7 +113,9 @@ impl Probe for Mem {
 
 impl LiveProbe for Mem {
     fn read_range(&self, path: &str, start: u64, len: u64) -> Option<Vec<u8>> {
-        self.ranges.borrow_mut().push((path.to_string(), start, len));
+        self.ranges
+            .borrow_mut()
+            .push((path.to_string(), start, len));
         let data = &self.files.get(path)?.1;
         let from = (start as usize).min(data.len());
         let to = from.saturating_add(len as usize).min(data.len());
@@ -117,7 +123,10 @@ impl LiveProbe for Mem {
     }
     fn read_bytes(&self, path: &str, max: u64) -> Option<Vec<u8>> {
         self.whole.borrow_mut().push((path.to_string(), max));
-        self.files.get(path).filter(|f| f.1.len() as u64 <= max).map(|f| f.1.clone())
+        self.files
+            .get(path)
+            .filter(|f| f.1.len() as u64 <= max)
+            .map(|f| f.1.clone())
     }
     fn list_dir(&self, path: &str) -> Option<Vec<String>> {
         let prefix = format!("{path}/");
@@ -131,7 +140,11 @@ impl LiveProbe for Mem {
         (!names.is_empty()).then_some(names)
     }
     fn stat(&self, path: &str) -> Option<FileStat> {
-        self.files.get(path).map(|(mtime_ns, body)| FileStat { is_file: true, mtime_ns: *mtime_ns, size: body.len() as u64 })
+        self.files.get(path).map(|(mtime_ns, body)| FileStat {
+            is_file: true,
+            mtime_ns: *mtime_ns,
+            size: body.len() as u64,
+        })
     }
     fn proc_stat(&self, pid: i64) -> Option<Vec<u8>> {
         Some(format!("{pid} (c) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 777 0").into_bytes())
@@ -151,15 +164,33 @@ impl LiveProbe for Mem {
     fn sqlite_cell(&self, _: &str, _: &str, _: &str) -> Option<SqlCell> {
         unreachable!()
     }
-    fn sqlite_rows(&self, _: &str, _: &str, _: &[SqlCell], _: &mut dyn FnMut(Vec<SqlCell>) -> bool) -> bool {
+    fn sqlite_rows(
+        &self,
+        _: &str,
+        _: &str,
+        _: &[SqlCell],
+        _: &mut dyn FnMut(Vec<SqlCell>) -> bool,
+    ) -> bool {
         false
     }
 }
 
 fn with<T>(mem: &Mem, f: impl FnOnce(&Live<'_>) -> T) -> T {
     let settings = Settings::default();
-    let paths = Paths { claudeops_dir: "/s".into(), home: "/h".into(), repo_dir: "/r".into() };
-    f(&Live { settings: &settings, paths: &paths, probe: mem, clock: Clock { now: 0.0, utc_offset_secs: 0 } })
+    let paths = Paths {
+        claudeops_dir: "/s".into(),
+        home: "/h".into(),
+        repo_dir: "/r".into(),
+    };
+    f(&Live {
+        settings: &settings,
+        paths: &paths,
+        probe: mem,
+        clock: Clock {
+            now: 0.0,
+            utc_offset_secs: 0,
+        },
+    })
 }
 
 fn titled(title: &str) -> String {
@@ -170,9 +201,16 @@ fn titled(title: &str) -> String {
 fn only_a_sidless_lookup_guesses_the_newest_transcript() {
     let mem = Mem::with(&[("/p/mine.jsonl", 1, "{}"), ("/p/sibling.jsonl", 2, "{}")]);
     with(&mem, |l| {
-        assert_eq!(l.jsonl_path_for("/w", Some("mine")).as_deref(), Some("/p/mine.jsonl"));
+        assert_eq!(
+            l.jsonl_path_for("/w", Some("mine")).as_deref(),
+            Some("/p/mine.jsonl")
+        );
         for sid in [None, Some("")] {
-            assert_eq!(l.jsonl_path_for("/w", sid).as_deref(), Some("/p/sibling.jsonl"), "{sid:?}");
+            assert_eq!(
+                l.jsonl_path_for("/w", sid).as_deref(),
+                Some("/p/sibling.jsonl"),
+                "{sid:?}"
+            );
         }
         for sid in ["gone", "../p/mine", "mine\0"] {
             assert_eq!(l.jsonl_path_for("/w", Some(sid)), None, "{sid:?}");
@@ -184,7 +222,11 @@ fn only_a_sidless_lookup_guesses_the_newest_transcript() {
 fn unchanged_files_are_not_reread_but_changed_ones_are() {
     let mut mem = Mem::with(&[("/p/x.jsonl", 1, &titled("inst"))]);
     let cache = MetaCache::default();
-    let ask = |mem: &Mem, name: &str| with(mem, |l| l.sid_for_stopped_session(Cli::Claude, "/w", name, &cache));
+    let ask = |mem: &Mem, name: &str| {
+        with(mem, |l| {
+            l.sid_for_stopped_session(Cli::Claude, "/w", name, &cache)
+        })
+    };
     assert_eq!(ask(&mem, "inst").as_deref(), Some("x"));
     // başlık okuması 0'dan başlayan parça; stub taraması da öyle, ikisini uzunlukla ayır
     let heads = |mem: &Mem| mem.ranges.borrow().iter().filter(|r| r.2 == 65_536).count();
@@ -217,10 +259,16 @@ fn a_large_file_counts_as_real_without_being_scanned() {
     let mut large = titled("big").into_bytes();
     large.resize(STUB_MAX_BYTES as usize, b' ');
     mem.put("/p/large.jsonl", 2, large);
-    let got = with(&mem, |l| l.sid_for_stopped_session(Cli::Claude, "/w", "big", &MetaCache::default()));
+    let got = with(&mem, |l| {
+        l.sid_for_stopped_session(Cli::Claude, "/w", "big", &MetaCache::default())
+    });
     assert_eq!(got.as_deref(), Some("large"));
     // yalnız başlık parçaları okundu (stub taraması 8 MiB ister)
-    assert!(mem.ranges.borrow().iter().all(|r| r.2 == 65_536), "{:?}", mem.ranges.borrow());
+    assert!(
+        mem.ranges.borrow().iter().all(|r| r.2 == 65_536),
+        "{:?}",
+        mem.ranges.borrow()
+    );
 }
 
 #[test]
@@ -231,14 +279,23 @@ fn head_reading_is_bounded_and_drops_the_unfinished_line() {
     huge.extend(b"\"}\n");
     let mut mem = Mem::default();
     mem.put("/p/h.jsonl", 1, huge);
-    assert_eq!(with(&mem, |l| l.jsonl_meta("/p/h.jsonl")), Default::default());
+    assert_eq!(
+        with(&mem, |l| l.jsonl_meta("/p/h.jsonl")),
+        Default::default()
+    );
     let read: u64 = mem.ranges.borrow().iter().map(|r| r.2).sum();
     assert_eq!(read, HEAD_MAX_BYTES);
     // sınırın altında 64 KiB parçaları aşan satır tam okunur ve dosyanın kalanı okunmaz
-    let mut long = format!("{{\"x\":\"{}\"}}\n{{\"customTitle\":\"t\",\"cwd\":\"/w\"}}\n", "y".repeat(200_000));
+    let mut long = format!(
+        "{{\"x\":\"{}\"}}\n{{\"customTitle\":\"t\",\"cwd\":\"/w\"}}\n",
+        "y".repeat(200_000)
+    );
     long.push_str(&"{}\n".repeat(500_000));
     let mem = Mem::with(&[("/p/l.jsonl", 1, &long)]);
-    assert_eq!(with(&mem, |l| l.jsonl_meta("/p/l.jsonl")).title.as_deref(), Some("t"));
+    assert_eq!(
+        with(&mem, |l| l.jsonl_meta("/p/l.jsonl")).title.as_deref(),
+        Some("t")
+    );
     assert!(mem.ranges.borrow().len() <= 5);
 }
 
@@ -263,7 +320,10 @@ fn truncated_and_mutated_input_never_panics() {
         seed ^= seed >> 7;
         seed ^= seed << 17;
         let mut mem = Mem::default();
-        for (path, good) in [("/h/.claude/sessions/7.json", &session), ("/p/a.jsonl", &transcript)] {
+        for (path, good) in [
+            ("/h/.claude/sessions/7.json", &session),
+            ("/p/a.jsonl", &transcript),
+        ] {
             let mut bad = good.clone();
             let at = seed as usize % bad.len();
             if round % 2 == 0 {
@@ -274,7 +334,11 @@ fn truncated_and_mutated_input_never_panics() {
             }
             mem.put(path, 1, bad);
         }
-        mem.put("/h/.gemini/antigravity-cli/cache/last_conversations.json", 1, mem.files["/p/a.jsonl"].1.clone());
+        mem.put(
+            "/h/.gemini/antigravity-cli/cache/last_conversations.json",
+            1,
+            mem.files["/p/a.jsonl"].1.clone(),
+        );
         with(&mem, |l| {
             l.session_file_sid(7);
             l.session_file_sid(i64::MIN);
@@ -324,7 +388,12 @@ impl AgySidStore for Store {
 }
 
 fn object(pairs: &[(&str, &str)]) -> Py {
-    Py::Object(pairs.iter().map(|(k, v)| (k.to_string(), Py::Str(v.to_string()))).collect())
+    Py::Object(
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), Py::Str(v.to_string())))
+            .collect(),
+    )
 }
 
 #[test]
@@ -335,7 +404,10 @@ fn remember_saves_through_the_store_once() {
     assert_eq!(remember_agy_sid(&store, "b", "sid-2", false), Ok(true));
     assert_eq!(remember_agy_sid(&store, "a", "sid-3", false), Ok(true));
     // güncellenen ad yerinde kalır
-    assert_eq!(store.load(), Some(object(&[("a", "sid-3"), ("b", "sid-2")])));
+    assert_eq!(
+        store.load(),
+        Some(object(&[("a", "sid-3"), ("b", "sid-2")]))
+    );
 }
 
 #[test]
@@ -343,7 +415,13 @@ fn unchanged_value_does_not_rewrite_or_lock() {
     let store = Store::default();
     remember_agy_sid(&store, "a", "sid-1", false).unwrap();
     assert_eq!(remember_agy_sid(&store, "a", "sid-1", false), Ok(false));
-    assert_eq!((store.locks.load(Ordering::SeqCst), store.saves.load(Ordering::SeqCst)), (1, 1));
+    assert_eq!(
+        (
+            store.locks.load(Ordering::SeqCst),
+            store.saves.load(Ordering::SeqCst)
+        ),
+        (1, 1)
+    );
 }
 
 #[test]
@@ -354,16 +432,28 @@ fn value_is_checked_again_under_the_lock() {
     assert_eq!(store.saves.load(Ordering::SeqCst), 0);
     *store.race.lock().unwrap() = Some(object(&[("kardes", "k2")]));
     assert_eq!(remember_agy_sid(&store, "a", "sid-9", false), Ok(true));
-    assert_eq!(store.load(), Some(object(&[("kardes", "k2"), ("a", "sid-9")])));
+    assert_eq!(
+        store.load(),
+        Some(object(&[("kardes", "k2"), ("a", "sid-9")]))
+    );
 }
 
 #[test]
 fn preview_writes_nothing_and_save_errors_surface() {
     let store = Store::default();
     assert_eq!(remember_agy_sid(&store, "a", "s", true), Ok(false));
-    assert_eq!((store.locks.load(Ordering::SeqCst), store.load()), (0, None));
-    let broken = Store { fail_save: true, ..Default::default() };
-    assert_eq!(remember_agy_sid(&broken, "a", "s", false), Err("disk".into()));
+    assert_eq!(
+        (store.locks.load(Ordering::SeqCst), store.load()),
+        (0, None)
+    );
+    let broken = Store {
+        fail_save: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        remember_agy_sid(&broken, "a", "s", false),
+        Err("disk".into())
+    );
 }
 
 #[test]
@@ -374,11 +464,14 @@ fn concurrent_remembers_lose_nothing() {
             let store = &store;
             scope.spawn(move || {
                 for j in 0..8 {
-                    remember_agy_sid(store, &format!("s{i}_{j}"), &format!("id{i}_{j}"), false).unwrap();
+                    remember_agy_sid(store, &format!("s{i}_{j}"), &format!("id{i}_{j}"), false)
+                        .unwrap();
                 }
             });
         }
     });
-    let Some(Py::Object(entries)) = store.load() else { panic!("belge yok") };
+    let Some(Py::Object(entries)) = store.load() else {
+        panic!("belge yok")
+    };
     assert_eq!(entries.len(), 48);
 }

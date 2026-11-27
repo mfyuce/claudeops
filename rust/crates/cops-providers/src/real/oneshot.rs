@@ -115,7 +115,13 @@ pub struct OneShot<'a, 'b> {
 }
 
 impl OneShot<'_, '_> {
-    fn exec(&self, argv: &[String], cwd: Option<&str>, env: &Env, timeout: f64) -> Result<Text, Failed> {
+    fn exec(
+        &self,
+        argv: &[String],
+        cwd: Option<&str>,
+        env: &Env,
+        timeout: f64,
+    ) -> Result<Text, Failed> {
         let spec = Spec {
             argv,
             cwd,
@@ -129,13 +135,22 @@ impl OneShot<'_, '_> {
             RunError::Timeout => Failed::Timeout,
             RunError::Overflow => Failed::TooBig,
             // işletim sistemi kodu olmayan `InvalidInput`: std argümandaki NUL'u böyle reddeder
-            RunError::Spawn(e) if e.raw_os_error().is_none() && e.kind() == std::io::ErrorKind::InvalidInput => {
+            RunError::Spawn(e)
+                if e.raw_os_error().is_none() && e.kind() == std::io::ErrorKind::InvalidInput =>
+            {
                 Failed::BadArgument
             }
             RunError::Spawn(e) | RunError::Io(e) => Failed::Os(oserr::text(&e, program)),
         })?;
-        match (oneshot::decode_text(out.stdout), oneshot::decode_text(out.stderr)) {
-            (Some(stdout), Some(stderr)) => Ok(Text { code: out.code, stdout, stderr }),
+        match (
+            oneshot::decode_text(out.stdout),
+            oneshot::decode_text(out.stderr),
+        ) {
+            (Some(stdout), Some(stderr)) => Ok(Text {
+                code: out.code,
+                stdout,
+                stderr,
+            }),
             _ => Err(Failed::NotUtf8),
         }
     }
@@ -147,8 +162,14 @@ impl OneShot<'_, '_> {
         let sdir = ucli::state_dir_for(&p.paths.ucli_state_root(), &p.probe.realpath(root));
         let file = format!("{session}.jsonl");
         let in_new = p.probe.exists(&join_path(&sdir, &file));
-        let in_old = p.probe.exists(&join_path(&join_path(&join_path(root, ".ucli"), "chat"), &file));
-        if (p.settings.ucli_state_dir() || in_new) && !(in_old && !in_new) && self.supports(binary, "--state-dir") {
+        let in_old = p.probe.exists(&join_path(
+            &join_path(&join_path(root, ".ucli"), "chat"),
+            &file,
+        ));
+        if (p.settings.ucli_state_dir() || in_new)
+            && !(in_old && !in_new)
+            && self.supports(binary, "--state-dir")
+        {
             vec!["--state-dir".into(), sdir]
         } else {
             Vec::new()
@@ -168,7 +189,8 @@ impl OneShot<'_, '_> {
             None => ucli::resolve_binary(self.providers)?,
         };
         let session = req.session.filter(|s| !s.is_empty());
-        let mut extra = session.map_or_else(Vec::new, |s| self.state_dir_args(&binary, req.root, s));
+        let mut extra =
+            session.map_or_else(Vec::new, |s| self.state_dir_args(&binary, req.root, s));
         let run_key = req.approval_run_key.filter(|k| !k.is_empty());
         if let Some(key) = run_key {
             if !self.supports(&binary, "--approval-dir") {
@@ -182,7 +204,10 @@ impl OneShot<'_, '_> {
                     py_str_repr(key)
                 )));
             }
-            let dir = self.approvals.dir_for(key, true).map_err(|e| SpawnError(e.text))?;
+            let dir = self
+                .approvals
+                .dir_for(key, true)
+                .map_err(|e| SpawnError(e.text))?;
             extra.extend(["--approval-dir".into(), dir]);
         }
         extra.extend(req.extra_args.iter().cloned());
@@ -203,7 +228,10 @@ impl OneShot<'_, '_> {
         let (env, secret) = match &req.api_key {
             Some(ApiKey(key)) => {
                 if !oneshot::is_api_key_env_name(req.api_key_env) {
-                    return Err(SpawnError(format!("invalid api_key_env name: {}", py_str_repr(req.api_key_env))));
+                    return Err(SpawnError(format!(
+                        "invalid api_key_env name: {}",
+                        py_str_repr(req.api_key_env)
+                    )));
                 }
                 (self.env.with_var(req.api_key_env, key), Some(key.clone()))
             }
@@ -211,9 +239,13 @@ impl OneShot<'_, '_> {
         };
         let out = self.exec(&argv, None, &env, req.timeout).map_err(|f| {
             SpawnError(match f {
-                Failed::Timeout => format!("ucli {}s içinde cevap vermedi", float_repr(req.timeout)),
+                Failed::Timeout => {
+                    format!("ucli {}s içinde cevap vermedi", float_repr(req.timeout))
+                }
                 Failed::NotUtf8 => "ucli çıktısı UTF-8 değildi".into(),
-                Failed::BadArgument => "ucli çalıştırılamadı: geçersiz argüman ya da ortam değeri".into(),
+                Failed::BadArgument => {
+                    "ucli çalıştırılamadı: geçersiz argüman ya da ortam değeri".into()
+                }
                 Failed::TooBig => "ucli çıktısı sınırı aştı".into(),
                 Failed::Os(text) => format!("ucli çalıştırılamadı: {text}"),
             })
@@ -226,11 +258,20 @@ impl OneShot<'_, '_> {
                     argv_resume: &argv_resume,
                     owner: req.approval_owner,
                 };
-                let recorded = self.approvals.register(key, run).and_then(|_| self.approvals.set_state(key, "suspended"));
+                let recorded = self
+                    .approvals
+                    .register(key, run)
+                    .and_then(|_| self.approvals.set_state(key, "suspended"));
                 if let Err(e) = recorded {
                     // kayıt yoksa koşu sürdürülemez: sessizce düşmesin
-                    let short: String = format!("{}: {}", e.class, e.text).chars().take(200).collect();
-                    self.diag.log("ucli_approval_record_failed", &[("run_key", json!(key)), ("error", json!(short))]);
+                    let short: String = format!("{}: {}", e.class, e.text)
+                        .chars()
+                        .take(200)
+                        .collect();
+                    self.diag.log(
+                        "ucli_approval_record_failed",
+                        &[("run_key", json!(key)), ("error", json!(short))],
+                    );
                     return Err(SpawnError(format!(
                         "ucli koşusu onay bekliyor (onay {id}) ama kayıt yazılamadı: {}",
                         e.text
@@ -260,25 +301,38 @@ impl OneShot<'_, '_> {
         if cli == Cli::Ucli {
             return self.ucli_oneshot(prompt, model, cwd, timeout).map(Some);
         }
-        let Some(argv) = self.providers.oneshot_argv(cli, prompt, model) else { return Ok(None) };
+        let Some(argv) = self.providers.oneshot_argv(cli, prompt, model) else {
+            return Ok(None);
+        };
         self.run_argv(cli.name(), &argv, cwd, timeout).map(Some)
     }
 
     /// `CliProvider.oneshot`un gövdesi: `cwd` açılır, `argv` orada koşar, çıktı metni döner.
-    pub fn run_argv(&self, name: &str, argv: &[String], cwd: &str, timeout: f64) -> Result<String, OneshotError> {
+    pub fn run_argv(
+        &self,
+        name: &str,
+        argv: &[String],
+        cwd: &str,
+        timeout: f64,
+    ) -> Result<String, OneshotError> {
         let bad = || OneshotError(format!("{name}: çalıştırılamadı: geçersiz argüman"));
         if cwd.contains('\0') {
             return Err(bad());
         }
-        makedirs(cwd, 0o777)
-            .map_err(|(p, e)| OneshotError(format!("{name}: çalıştırılamadı: {}", oserr::text(&e, &p))))?;
-        let out = self.exec(argv, Some(cwd), self.env, timeout).map_err(|f| match f {
-            Failed::Timeout => OneshotError(format!("{name}: {timeout:.0}s içinde yanıt vermedi")),
-            Failed::NotUtf8 => OneshotError(format!("{name}: çıktı UTF-8 değil")),
-            Failed::BadArgument => bad(),
-            Failed::TooBig => OneshotError(format!("{name}: çıktı sınırı aşıldı")),
-            Failed::Os(text) => OneshotError(format!("{name}: çalıştırılamadı: {text}")),
+        makedirs(cwd, 0o777).map_err(|(p, e)| {
+            OneshotError(format!("{name}: çalıştırılamadı: {}", oserr::text(&e, &p)))
         })?;
+        let out = self
+            .exec(argv, Some(cwd), self.env, timeout)
+            .map_err(|f| match f {
+                Failed::Timeout => {
+                    OneshotError(format!("{name}: {timeout:.0}s içinde yanıt vermedi"))
+                }
+                Failed::NotUtf8 => OneshotError(format!("{name}: çıktı UTF-8 değil")),
+                Failed::BadArgument => bad(),
+                Failed::TooBig => OneshotError(format!("{name}: çıktı sınırı aşıldı")),
+                Failed::Os(text) => OneshotError(format!("{name}: çalıştırılamadı: {text}")),
+            })?;
         oneshot::argv_result(name, out.code, &out.stdout, &out.stderr)
     }
 
@@ -296,27 +350,49 @@ impl OneShot<'_, '_> {
             Ok(m) if !m.is_file() && !m.is_dir() => return Err(bad("normal dosya değil")),
             _ => {}
         }
-        let Ok((_, size)) = fsio::open_regular(&path) else { return Ok(None) };
+        let Ok((_, size)) = fsio::open_regular(&path) else {
+            return Ok(None);
+        };
         let Some(raw) = fsio::read_bytes(&path, fsio::TEXT_MAX_BYTES) else {
-            return if size > fsio::TEXT_MAX_BYTES { Err(bad("çok büyük")) } else { Ok(None) };
+            return if size > fsio::TEXT_MAX_BYTES {
+                Err(bad("çok büyük"))
+            } else {
+                Ok(None)
+            };
         };
         let text = String::from_utf8(raw).map_err(|_| bad("UTF-8 değil"))?;
         let key = strip(&text);
         Ok((!key.is_empty()).then(|| ApiKey(key.to_string())))
     }
 
-    fn ucli_oneshot(&self, prompt: &str, model: Option<&str>, cwd: &str, timeout: f64) -> Result<String, OneshotError> {
+    fn ucli_oneshot(
+        &self,
+        prompt: &str,
+        model: Option<&str>,
+        cwd: &str,
+        timeout: f64,
+    ) -> Result<String, OneshotError> {
         let key = self.oneshot_key()?;
-        makedirs(cwd, 0o777)
-            .map_err(|(p, e)| OneshotError(format!("ucli: çalışma dizini açılamadı: {}", oserr::text(&e, &p))))?;
+        makedirs(cwd, 0o777).map_err(|(p, e)| {
+            OneshotError(format!(
+                "ucli: çalışma dizini açılamadı: {}",
+                oserr::text(&e, &p)
+            ))
+        })?;
         let configured = self.providers.settings.ucli_endpoint();
-        let endpoint = if configured.is_empty() { DEFAULT_ENDPOINT } else { &configured };
+        let endpoint = if configured.is_empty() {
+            DEFAULT_ENDPOINT
+        } else {
+            &configured
+        };
         let mut req = ChatRequest::new(cwd, prompt);
         req.model = model;
         req.endpoint = Some(endpoint);
         req.api_key = key;
         req.timeout = timeout;
-        let value = self.chat_once(&req).map_err(|e| OneshotError(format!("ucli: {e}")))?;
+        let value = self
+            .chat_once(&req)
+            .map_err(|e| OneshotError(format!("ucli: {e}")))?;
         oneshot::ucli_answer(&value)
     }
 }

@@ -43,12 +43,17 @@ fn urandom(buf: &mut [u8]) -> io::Result<()> {
 }
 
 fn unix_now() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64())
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
 }
 
 impl Default for Sources {
     fn default() -> Self {
-        Sources { entropy: urandom, now: unix_now }
+        Sources {
+            entropy: urandom,
+            now: unix_now,
+        }
     }
 }
 
@@ -69,7 +74,11 @@ fn digest(token: &str) -> String {
 
 /// Sabit zamanlı eşitlik (`secrets.compare_digest`; uzunluk sızabilir).
 fn same_digest(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0
 }
 
 fn entry<'a>(object: &'a mut Vec<(String, Py)>, key: &str, empty: Py) -> &'a mut Py {
@@ -142,13 +151,23 @@ impl AgentRegistry {
         }
         let mut raw = Vec::new();
         file.take(DOC_MAX_BYTES).read_to_end(&mut raw)?;
-        let healthy = std::str::from_utf8(&raw).ok().and_then(Py::parse).is_some_and(|data| {
-            data.is_object() && ["parents", "children"].iter().all(|k| data.get(k).is_none_or(Py::is_object))
-        });
+        let healthy = std::str::from_utf8(&raw)
+            .ok()
+            .and_then(Py::parse)
+            .is_some_and(|data| {
+                data.is_object()
+                    && ["parents", "children"]
+                        .iter()
+                        .all(|k| data.get(k).is_none_or(Py::is_object))
+            });
         if healthy {
             return Ok(());
         }
-        let copy = format!("{}.corrupt-{}", self.state_file, &hex(&Sha256::digest(&raw))[..12]);
+        let copy = format!(
+            "{}.corrupt-{}",
+            self.state_file,
+            &hex(&Sha256::digest(&raw))[..12]
+        );
         let opened = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -168,7 +187,11 @@ impl AgentRegistry {
         if let Some((dir, _)) = self.state_file.rsplit_once('/') {
             effects::makedirs(dir, 0o700).map_err(|(_, e)| e)?;
         }
-        effects::atomic_write_text(&self.state_file, &Py::Object(data).dumps_pretty(), Some(0o600))
+        effects::atomic_write_text(
+            &self.state_file,
+            &Py::Object(data).dumps_pretty(),
+            Some(0o600),
+        )
     }
 
     fn write_token_file(&self, session: &str, token: &str) -> io::Result<String> {
@@ -199,14 +222,19 @@ impl AgentRegistry {
         self.keep_corrupt_copy().map_err(os)?;
         let mut data = self.load();
         // nesne olmayan eski üst kayıt: token yazılmadan ÖNCE ret
-        let bad = data.iter().find(|(k, _)| k == "parents").and_then(|(_, p)| p.get(session));
+        let bad = data
+            .iter()
+            .find(|(k, _)| k == "parents")
+            .and_then(|(_, p)| p.get(session));
         if bad.is_some_and(|r| !r.is_object()) {
             return Err("TypeError".into());
         }
         let path = self.write_token_file(session, &token).map_err(os)?;
         let parents = object_mut(entry(&mut data, "parents", Py::Object(Vec::new())));
         let record = parents.map(|p| entry(p, session, Py::Object(Vec::new())));
-        let Some(record) = record.and_then(object_mut) else { return Err("TypeError".into()) };
+        let Some(record) = record.and_then(object_mut) else {
+            return Err("TypeError".into());
+        };
         *entry(record, "sha256", Py::Null) = Py::Str(digest(&token));
         *entry(record, "issued", Py::Null) = Py::Float((self.sources.now)());
         entry(record, "seq", Py::Int(0));
@@ -221,10 +249,16 @@ impl AgentRegistry {
         }
         let wanted = digest(token);
         let data = self.load();
-        let Some((_, Py::Object(parents))) = data.iter().find(|(k, _)| k == "parents") else { return None };
+        let Some((_, Py::Object(parents))) = data.iter().find(|(k, _)| k == "parents") else {
+            return None;
+        };
         let mut found = None;
         for (name, record) in parents {
-            if record.get("sha256").and_then(Py::as_str).is_some_and(|d| same_digest(&wanted, d)) {
+            if record
+                .get("sha256")
+                .and_then(Py::as_str)
+                .is_some_and(|d| same_digest(&wanted, d))
+            {
                 found = Some(name.clone());
             }
         }

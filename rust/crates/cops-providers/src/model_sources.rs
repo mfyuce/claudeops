@@ -46,7 +46,11 @@ impl SecretValue {
     /// Python `http.client` gibi latin-1'e çevrilemeyen ya da satır sonu taşıyan değer gönderilemez (None). Python
     /// katlanmış satırı (`\r\n `) kabul eder; burada her CR/LF reddedilir.
     pub fn new(value: &str) -> Option<SecretValue> {
-        value.chars().map(|c| u8::try_from(c).ok().filter(|b| *b != b'\r' && *b != b'\n')).collect::<Option<_>>().map(Self)
+        value
+            .chars()
+            .map(|c| u8::try_from(c).ok().filter(|b| *b != b'\r' && *b != b'\n'))
+            .collect::<Option<_>>()
+            .map(Self)
     }
 
     /// Yalnız HTTP uygulayıcısı içindir: loglanmaz.
@@ -170,13 +174,24 @@ impl ModelSources {
 
     /// `cli` için [`ModelCatalog`]; yalnız o CLI'ın kaynağına dokunur. Python'dan farkı: agy'de effort'u kimliğinde
     /// taşıyan model ya da ucli'de `reasoning_effort=off` için de liste istenir (Python o yollarda çekmez).
-    pub fn catalog(&self, cli: Cli, settings: &Settings, paths: &Paths, probe: &dyn Probe) -> ModelCatalog {
+    pub fn catalog(
+        &self,
+        cli: Cli,
+        settings: &Settings,
+        paths: &Paths,
+        probe: &dyn Probe,
+    ) -> ModelCatalog {
         let mut c = ModelCatalog::default();
         match cli {
             Cli::Claude => c.claude_state = self.io.claude_models_doc(),
             Cli::Agy => {
                 let empty = ModelCatalog::default();
-                let p = Providers { settings, catalog: &empty, paths, probe };
+                let p = Providers {
+                    settings,
+                    catalog: &empty,
+                    paths,
+                    probe,
+                };
                 c.agy_models = self.agy_models(|| p.resolved_binary("agy"));
             }
             Cli::Codex => {

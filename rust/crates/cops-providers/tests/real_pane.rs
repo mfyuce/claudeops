@@ -36,7 +36,12 @@ fn write_exe(path: &Path, body: &str) {
         .stdin(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(body.as_bytes())
+        .unwrap();
     assert!(child.wait().unwrap().success());
 }
 
@@ -58,11 +63,17 @@ impl Server {
         static SEQ: AtomicU32 = AtomicU32::new(0);
         let socket = format!(
             "cxpane{}-{}-{}",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos(),
             SEQ.fetch_add(1, Ordering::Relaxed),
             std::process::id()
         );
-        Server { socket, dir: tempfile::tempdir().unwrap() }
+        Server {
+            socket,
+            dir: tempfile::tempdir().unwrap(),
+        }
     }
 
     fn path(&self) -> &Path {
@@ -82,13 +93,29 @@ impl Server {
             .env_remove("TMUX")
             .output()
             .unwrap();
-        assert!(out.status.success(), "tmux {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "tmux {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 
     fn spawn(&self, name: &str, command: &str) {
         let cwd = self.path().to_str().unwrap().to_string();
-        self.raw(&["new-session", "-d", "-s", name, "-x", "100", "-y", "30", "-c", &cwd, command]);
+        self.raw(&[
+            "new-session",
+            "-d",
+            "-s",
+            name,
+            "-x",
+            "100",
+            "-y",
+            "30",
+            "-c",
+            &cwd,
+            command,
+        ]);
     }
 
     fn screen(&self, name: &str) -> String {
@@ -100,7 +127,13 @@ impl Server {
     }
 
     fn in_mode(&self, name: &str) -> String {
-        self.raw(&["display-message", "-p", "-t", &format!("={name}:"), "#{pane_in_mode}"])
+        self.raw(&[
+            "display-message",
+            "-p",
+            "-t",
+            &format!("={name}:"),
+            "#{pane_in_mode}",
+        ])
     }
 
     /// Sahte claude TUI'si (`mode`): aldığı her baytı `<ad>.log`a yazar.
@@ -110,7 +143,14 @@ impl Server {
             write_exe(&script, FAKE_CLAUDE);
         }
         let log = self.path().join(format!("{name}.log"));
-        self.spawn(name, &format!("python3 -I '{}' '{}' {mode}", script.display(), log.display()));
+        self.spawn(
+            name,
+            &format!(
+                "python3 -I '{}' '{}' {mode}",
+                script.display(),
+                log.display()
+            ),
+        );
         self.wait_screen(name, "READY");
         log
     }
@@ -129,7 +169,11 @@ impl Server {
             .env("TMUX_TMPDIR", self.path())
             .output()
             .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 }
 
@@ -228,7 +272,10 @@ while True:
 
 /// Dosya `want` uzunluğuna ulaşana dek (en çok 15 sn) bekler, sonra kısa süre daha (fazlalık da görülsün).
 fn read_log(path: &Path, want: usize) -> Vec<u8> {
-    wait_until(|| fs::metadata(path).is_ok_and(|m| m.len() >= want as u64), "günlük boyutu");
+    wait_until(
+        || fs::metadata(path).is_ok_and(|m| m.len() >= want as u64),
+        "günlük boyutu",
+    );
     std::thread::sleep(Duration::from_millis(300));
     fs::read(path).unwrap()
 }
@@ -297,7 +344,10 @@ fn no_dialog_means_no_keys_on_either_side() {
         Cli::Claude.dismiss_stray_dialog(&s.pane(), "rs");
     });
     let took = t0.elapsed();
-    assert!(took >= Duration::from_secs(6) && took < Duration::from_secs(15), "{took:?}");
+    assert!(
+        took >= Duration::from_secs(6) && took < Duration::from_secs(15),
+        "{took:?}"
+    );
     assert_eq!(fs::read(py_log).unwrap(), b"");
     assert_eq!(fs::read(rs_log).unwrap(), b"");
 }
@@ -312,14 +362,20 @@ fn masked_pane_gets_no_text_and_rust_sends_no_keys() {
     let p = s.pane();
     assert_eq!(p.tmux().pane_is_masked_input("rs"), Some(true));
     s.python("model", "py", "sonnet");
-    assert_eq!(Cli::Claude.apply_live_model_switch(&p, "rs", "sonnet"), SwitchOutcome::SendFailed);
+    assert_eq!(
+        Cli::Claude.apply_live_model_switch(&p, "rs", "sonnet"),
+        SwitchOutcome::SendFailed
+    );
     assert!(!p.send_text("rs", "gizli", 0.0));
     assert!(!p.send_key("rs", Key::Enter));
     Cli::Claude.dismiss_stray_dialog(&p, "rs");
     s.python("dismiss", "py", "-");
     // Kanonik kip: `Down`+Enter satırı Enter ile tamamlanınca okunur.
     let py = read_log(&py_log, 4);
-    assert!(py == b"\x1b[B\r" || py == b"\x1bOB\r" || py == b"\x1b[B\n" || py == b"\x1bOB\n", "{py:?}");
+    assert!(
+        py == b"\x1b[B\r" || py == b"\x1bOB\r" || py == b"\x1b[B\n" || py == b"\x1bOB\n",
+        "{py:?}"
+    );
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(fs::read(rs_log).unwrap(), b"");
 }
@@ -351,9 +407,16 @@ fn text_never_appears_in_tmux_argv() {
     let wrapper = s.path().join("bin/tmux-wrap");
     write_exe(
         &wrapper,
-        &format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nexec tmux \"$@\"\n", argv_log.display()),
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nexec tmux \"$@\"\n",
+            argv_log.display()
+        ),
     );
-    let p = TmuxPane::new(Tmux::with_socket(s.socket.clone()).tmpdir(s.path()).program(&wrapper));
+    let p = TmuxPane::new(
+        Tmux::with_socket(s.socket.clone())
+            .tmpdir(s.path())
+            .program(&wrapper),
+    );
     let secret = "GIZLI-ARGV-7f3a satır;\niki";
     assert!(p.send_text("a", secret, 0.0));
     assert!(p.send_key("a", Key::Enter));
@@ -363,7 +426,10 @@ fn text_never_appears_in_tmux_argv() {
     assert_eq!(read_log(&log, want.len()), want);
     let argv = fs::read_to_string(&argv_log).unwrap();
     assert!(!argv.contains("GIZLI") && !argv.contains("satır"), "{argv}");
-    assert!(argv.contains("load-buffer -b") && argv.contains("send-keys -t =a: Enter"), "{argv}");
+    assert!(
+        argv.contains("load-buffer -b") && argv.contains("send-keys -t =a: Enter"),
+        "{argv}"
+    );
     assert!(argv.contains("capture-pane -t =a: -e -p -S -20"), "{argv}");
     assert!(!argv.contains("copy-mode"), "{argv}");
 }
@@ -383,7 +449,16 @@ fn capture_matches_python_and_keeps_ansi() {
     for (name, lines) in [("c", 20u32), ("c", 0), ("e", 2000), ("yok", 20)] {
         let rust = p.capture(name, lines);
         let out = Command::new("python3")
-            .args(["-I", "-c", PY_DRIVER, &repo(), &s.socket, "capture", name, &lines.to_string()])
+            .args([
+                "-I",
+                "-c",
+                PY_DRIVER,
+                &repo(),
+                &s.socket,
+                "capture",
+                name,
+                &lines.to_string(),
+            ])
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
             .env("HOME", s.path())
@@ -392,7 +467,11 @@ fn capture_matches_python_and_keeps_ansi() {
             .env("TMUX_TMPDIR", s.path())
             .output()
             .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let py: Option<String> = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(rust, py, "{name} {lines}");
     }
@@ -409,7 +488,11 @@ fn hung_tmux_times_out_to_false_and_none() {
     let s = Server::new();
     let wrapper = s.path().join("bin/tmux-hang");
     write_exe(&wrapper, "#!/bin/sh\nexec sleep 60\n");
-    let p = TmuxPane::new(Tmux::with_socket(s.socket.clone()).tmpdir(s.path()).program(&wrapper));
+    let p = TmuxPane::new(
+        Tmux::with_socket(s.socket.clone())
+            .tmpdir(s.path())
+            .program(&wrapper),
+    );
     let t0 = Instant::now();
     let (a, b, c) = std::thread::scope(|sc| {
         let a = sc.spawn(|| p.capture("x", 20));
@@ -419,5 +502,8 @@ fn hung_tmux_times_out_to_false_and_none() {
     });
     let took = t0.elapsed();
     assert_eq!((a, b, c), (None, false, false));
-    assert!(took >= Duration::from_millis(4900) && took < Duration::from_secs(9), "{took:?}");
+    assert!(
+        took >= Duration::from_millis(4900) && took < Duration::from_secs(9),
+        "{took:?}"
+    );
 }

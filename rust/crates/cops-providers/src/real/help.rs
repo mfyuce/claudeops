@@ -34,11 +34,17 @@ impl Default for HelpCache {
 
 impl HelpCache {
     pub fn with_timeout(timeout: Duration) -> HelpCache {
-        HelpCache { timeout, entries: Mutex::new(HashMap::new()) }
+        HelpCache {
+            timeout,
+            entries: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.entries.lock().unwrap_or_else(PoisonError::into_inner).len()
+        self.entries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -47,12 +53,27 @@ impl HelpCache {
 
     /// `<binary> <args...>` çıktısı (stdout + stderr); kullanılamıyorsa "". Çıkış koduna bakılmaz.
     pub fn text(&self, env: &Env, binary: &str, args: &[&str]) -> String {
-        let Some(st) = fsio::stat(binary) else { return String::new() };
-        let key: Key = (binary.to_string(), args.iter().map(|a| a.to_string()).collect(), st.mtime_ns, st.size);
-        if let Some(hit) = self.entries.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+        let Some(st) = fsio::stat(binary) else {
+            return String::new();
+        };
+        let key: Key = (
+            binary.to_string(),
+            args.iter().map(|a| a.to_string()).collect(),
+            st.mtime_ns,
+            st.size,
+        );
+        if let Some(hit) = self
+            .entries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+        {
             return hit.clone();
         }
-        let argv: Vec<String> = std::iter::once(binary).chain(args.iter().copied()).map(str::to_string).collect();
+        let argv: Vec<String> = std::iter::once(binary)
+            .chain(args.iter().copied())
+            .map(str::to_string)
+            .collect();
         let spec = Spec {
             argv: &argv,
             cwd: None,
@@ -61,8 +82,12 @@ impl HelpCache {
             stdout: Capture::Bounded(HELP_MAX_BYTES),
             stderr: Capture::Bounded(HELP_MAX_BYTES),
         };
-        let Ok(out) = process::run(&spec) else { return String::new() };
-        let (Ok(a), Ok(b)) = (String::from_utf8(out.stdout), String::from_utf8(out.stderr)) else { return String::new() };
+        let Ok(out) = process::run(&spec) else {
+            return String::new();
+        };
+        let (Ok(a), Ok(b)) = (String::from_utf8(out.stdout), String::from_utf8(out.stderr)) else {
+            return String::new();
+        };
         // Python metin kipi: evrensel satır sonu
         let text = (a.replace("\r\n", "\n") + &b.replace("\r\n", "\n")).replace('\r', "\n");
         if strip(&text).is_empty() {

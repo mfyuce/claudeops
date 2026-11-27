@@ -18,10 +18,20 @@ pub enum Cli {
 }
 
 impl Cli {
-    pub const ALL: [Cli; 6] = [Cli::Claude, Cli::Agy, Cli::Codex, Cli::Copilot, Cli::Shell, Cli::Ucli];
+    pub const ALL: [Cli; 6] = [
+        Cli::Claude,
+        Cli::Agy,
+        Cli::Codex,
+        Cli::Copilot,
+        Cli::Shell,
+        Cli::Ucli,
+    ];
 
     pub fn parse(name: &str) -> Cli {
-        Cli::ALL.into_iter().find(|c| c.name() == name).unwrap_or(Cli::Claude)
+        Cli::ALL
+            .into_iter()
+            .find(|c| c.name() == name)
+            .unwrap_or(Cli::Claude)
     }
 
     pub fn name(self) -> &'static str {
@@ -87,7 +97,9 @@ impl Cli {
         match self {
             Cli::Claude => Vec::new(),
             Cli::Ucli => vec![("TOKIO_WORKER_THREADS".into(), "1".into())],
-            Cli::Agy | Cli::Codex | Cli::Copilot | Cli::Shell => vec![("COPS_NAME".into(), session_name.into())],
+            Cli::Agy | Cli::Codex | Cli::Copilot | Cli::Shell => {
+                vec![("COPS_NAME".into(), session_name.into())]
+            }
         }
     }
 }
@@ -152,7 +164,9 @@ const CLAUDE_KNOWN_PATHS: [&str; 6] = [
 impl Providers<'_> {
     pub(crate) fn expand_user(&self, path: &str) -> String {
         match path.strip_prefix('~') {
-            Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("{}{rest}", self.paths.home),
+            Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+                format!("{}{rest}", self.paths.home)
+            }
             _ => path.to_string(),
         }
     }
@@ -261,7 +275,13 @@ impl Providers<'_> {
     }
 
     /// Çağrı başına MCP bağlama argv'si (boş = bu CLI'da yok ya da kurulamadı).
-    pub fn mcp_launch_args(&self, cli: Cli, spec: &McpSpec, cwd: &str, out: &mut BuildOutput) -> Vec<String> {
+    pub fn mcp_launch_args(
+        &self,
+        cli: Cli,
+        spec: &McpSpec,
+        cwd: &str,
+        out: &mut BuildOutput,
+    ) -> Vec<String> {
         match cli {
             Cli::Claude => claude::mcp_launch_args(self, spec, out),
             Cli::Codex => codex::mcp_launch_args(spec),
@@ -274,7 +294,9 @@ impl Providers<'_> {
     /// sağlayıcı dolu girdiyi reddeder.
     pub fn validate_cli_opts(&self, cli: Cli, raw: &Value) -> Result<Map<String, Value>, String> {
         if cli.accepts_cli_opts() {
-            return crate::ucli_opts::validate_opts(raw, self.settings, &|| self.probe.rust_toolchain());
+            return crate::ucli_opts::validate_opts(raw, self.settings, &|| {
+                self.probe.rust_toolchain()
+            });
         }
         if crate::pyfmt::truthy(raw) {
             Err(format!("{}: başlatma seçeneği desteklenmiyor", cli.name()))
@@ -312,7 +334,12 @@ impl Providers<'_> {
 }
 
 /// Sahip kuralı: değnekçinin açtığı claude ana oturumu hep en yeni Sonnet + `medium`.
-pub fn main_session_model_effort(model: &str, effort: &str, cli: &str, sonnet: &str) -> (String, String) {
+pub fn main_session_model_effort(
+    model: &str,
+    effort: &str,
+    cli: &str,
+    sonnet: &str,
+) -> (String, String) {
     let m = crate::pyfmt::strip(model);
     let claude_model = m.to_lowercase().starts_with("claude");
     let is_claude = cli == "claude" || (cli.is_empty() && claude_model);

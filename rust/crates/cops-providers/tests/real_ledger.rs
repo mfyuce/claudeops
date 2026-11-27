@@ -21,12 +21,18 @@ use support::{mkfifo, Tmp};
 
 /// Bugünün öğlesi: gün sınırında koşan test kararsız olmasın.
 fn noon() -> f64 {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
     ledger::day_start_ms(now) / 1000.0 + 43200.0
 }
 
 fn rec(t: f64, prompt: u64) -> String {
-    format!("{{\"t\": {}, \"usage\": {{\"prompt_tokens\": {prompt}, \"completion_tokens\": 0}}}}\n", t * 1000.0)
+    format!(
+        "{{\"t\": {}, \"usage\": {{\"prompt_tokens\": {prompt}, \"completion_tokens\": 0}}}}\n",
+        t * 1000.0
+    )
 }
 
 fn put(t: &Tmp, name: &str, body: &str) -> String {
@@ -37,7 +43,8 @@ fn put(t: &Tmp, name: &str, body: &str) -> String {
 
 fn set_mtime(path: &str, at: f64) {
     let file = fs::OpenOptions::new().write(true).open(path).unwrap();
-    file.set_modified(UNIX_EPOCH + Duration::from_secs_f64(at)).unwrap();
+    file.set_modified(UNIX_EPOCH + Duration::from_secs_f64(at))
+        .unwrap();
 }
 
 fn config(cap: f64, credit: f64) -> UcliCostConfig {
@@ -64,7 +71,10 @@ fn num(v: &Value, key: &str) -> f64 {
 
 #[test]
 fn a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not() {
-    let e = CostRefusal::CapExceeded { today_usd: 14.081, cap_usd: 10.0 };
+    let e = CostRefusal::CapExceeded {
+        today_usd: 14.081,
+        cap_usd: 10.0,
+    };
     assert_eq!(
         refusal(&e.to_string(), Some(&e)),
         json!({"ok": false, "code": "ucli_daily_cap", "today_usd": 14.08, "cap_usd": 10.0, "error": e.to_string()})
@@ -72,7 +82,9 @@ fn a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not() {
     assert!(e.to_string().contains("(14.08 / 10.00)"));
     assert_eq!(refusal("x", None), json!({"ok": false, "error": "x"}));
     let unknown = CostRefusal::Unverifiable("neden".into());
-    assert!(refusal(&unknown.to_string(), Some(&unknown)).get("code").is_none());
+    assert!(refusal(&unknown.to_string(), Some(&unknown))
+        .get("code")
+        .is_none());
 }
 
 #[test]
@@ -88,7 +100,10 @@ fn today_sums_only_todays_logs_and_uses_the_task_model() {
     put(&t, "note.txt", &rec(noon(), 1_000_000));
     // sonnet: 1M girdi tam fiyattan
     assert_eq!(ledger::today_usd(noon(), &t.path("usage"), 1.0), 2.0);
-    let names: Vec<String> = ledger::per_session_usd(noon(), &t.path("usage"), 1.0).into_iter().map(|(n, _)| n).collect();
+    let names: Vec<String> = ledger::per_session_usd(noon(), &t.path("usage"), 1.0)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(names, ["a"]);
     assert!(ledger::per_session_usd(noon(), &t.path("yok"), 1.0).is_empty());
     assert_eq!(ledger::today_usd(noon(), &t.path("yok"), 1.0), 0.0);
@@ -107,7 +122,11 @@ fn cap_zero_is_off_and_a_reached_cap_blocks() {
 fn state_lists_the_top_sessions_by_spend_and_totals_all() {
     let t = Tmp::new();
     for i in 0..BY_SESSION_TOP + 5 {
-        put(&t, &format!("s{i:02}.jsonl"), &rec(noon(), 1000 * (i as u64 + 1)));
+        put(
+            &t,
+            &format!("s{i:02}.jsonl"),
+            &rec(noon(), 1000 * (i as u64 + 1)),
+        );
     }
     put(&t, "bos.jsonl", "");
     let s = book(&t, 0.0).state(noon(), false);
@@ -116,7 +135,10 @@ fn state_lists_the_top_sessions_by_spend_and_totals_all() {
     assert_eq!(list[0]["session"], "s14");
     assert!(s["pct"].is_null());
     let capped = book(&t, 10.0).state(noon(), false);
-    assert_eq!(num(&capped, "pct"), cost::py_round(100.0 * num(&capped, "today_usd") / 10.0, 1));
+    assert_eq!(
+        num(&capped, "pct"),
+        cost::py_round(100.0 * num(&capped, "today_usd") / 10.0, 1)
+    );
 }
 
 #[test]
@@ -134,7 +156,10 @@ fn the_state_is_cached_until_ttl_or_invalidate() {
     assert!(num(&b.state(noon() + 11.0, true), "today_usd") > cached);
     put(&t, "d.jsonl", &rec(noon(), 1000));
     let before = num(&b.state(noon() + 12.0, true), "today_usd");
-    assert!(num(&b.state(noon() + 50.0, true), "today_usd") > before, "30 sn sonra yeniden taranır");
+    assert!(
+        num(&b.state(noon() + 50.0, true), "today_usd") > before,
+        "30 sn sonra yeniden taranır"
+    );
 }
 
 #[test]
@@ -143,8 +168,12 @@ fn credit_is_hidden_when_empty_counts_old_days_and_never_goes_negative() {
     let old = put(&t, "eski.jsonl", &rec(noon() - 5.0 * 86400.0, 1_000_000));
     set_mtime(&old, noon() - 5.0 * 86400.0);
     put(&t, "bugun.jsonl", &rec(noon(), 1_000_000));
-    assert!(book(&t, 0.0).state(noon(), false).get("credit_left_usd").is_none());
-    let with = |credit| CostLedger::new(t.path("usage"), fixed(config(0.0, credit))).state(noon(), false);
+    assert!(book(&t, 0.0)
+        .state(noon(), false)
+        .get("credit_left_usd")
+        .is_none());
+    let with =
+        |credit| CostLedger::new(t.path("usage"), fixed(config(0.0, credit))).state(noon(), false);
     let s = with(200.0);
     assert_eq!(num(&s, "credit_total_usd"), 200.0);
     assert!(num(&s, "spent_total_usd") > num(&s, "today_usd"));
@@ -196,7 +225,10 @@ fn the_credit_window_gives_days_left_and_a_daily_budget() {
     assert_eq!(w["days_left"], json!(9.5));
     assert_eq!(w["daily_budget_usd"], json!(cost::py_round(150.0 / 9.5, 2)));
     cfg.credit_until = "2026-11-01".into();
-    assert_eq!(cost::credit_window(&cfg, 0.0, now, &end)["days_left"], json!(0.0));
+    assert_eq!(
+        cost::credit_window(&cfg, 0.0, now, &end)["days_left"],
+        json!(0.0)
+    );
 }
 
 #[test]
@@ -217,7 +249,10 @@ fn the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows() {
     let sum: f64 = by.iter().map(|(_, v)| v).sum();
     assert!((sum - ledger::rate_usd_per_hour(noon(), 60.0, &base, 1.6)).abs() < 1e-9);
     assert!(ledger::rate_by_session(noon(), 0.0, &base, 1.6).is_empty());
-    assert_eq!(ledger::rate_usd_per_hour(noon(), 60.0, &t.path("yok"), 1.6), 0.0);
+    assert_eq!(
+        ledger::rate_usd_per_hour(noon(), 60.0, &t.path("yok"), 1.6),
+        0.0
+    );
 }
 
 #[test]
@@ -228,7 +263,13 @@ fn reservations_share_the_cap_replace_release_and_expire() {
     two.reserve("a", 1001.0).unwrap();
     assert_eq!(two.reserved_sessions(), ["a"]);
     two.reserve("b", 1001.0).unwrap();
-    assert_eq!(two.reserve("c", 1001.0), Err(CostRefusal::CapExceeded { today_usd: 2.0, cap_usd: 2.0 }));
+    assert_eq!(
+        two.reserve("c", 1001.0),
+        Err(CostRefusal::CapExceeded {
+            today_usd: 2.0,
+            cap_usd: 2.0
+        })
+    );
     two.release("a");
     two.release("a");
     two.reserve("c", 1001.0).unwrap();
@@ -266,7 +307,10 @@ fn concurrent_starts_cannot_oversubscribe_the_cap() {
 #[test]
 fn an_unreadable_or_invalid_ledger_closes_an_open_cap() {
     let refused = |t: &Tmp| {
-        assert!(matches!(book(t, 10.0).reserve("s", noon()), Err(CostRefusal::Unverifiable(_))));
+        assert!(matches!(
+            book(t, 10.0).reserve("s", noon()),
+            Err(CostRefusal::Unverifiable(_))
+        ));
         assert!(book(t, 10.0).check_and_reserve("s").is_err());
         book(t, 0.0).reserve("s", noon()).unwrap();
     };
@@ -277,17 +321,40 @@ fn an_unreadable_or_invalid_ledger_closes_an_open_cap() {
         "{\"t\": \"yarin\", \"usage\": {\"prompt_tokens\": 1}}\n",
     ] {
         let t = Tmp::new();
-        put(&t, "a.jsonl", &body.replace("NOW", &format!("{}", noon() * 1000.0)));
+        put(
+            &t,
+            "a.jsonl",
+            &body.replace("NOW", &format!("{}", noon() * 1000.0)),
+        );
         refused(&t);
     }
     // 512'den derin satır (Python okur) ve sınırdan uzun satır sayılamaz
     let t = Tmp::new();
-    put(&t, "a.jsonl", &format!("{{\"usage\": {{}}, \"x\": {}{}}}\n", "[".repeat(600), "]".repeat(600)));
+    put(
+        &t,
+        "a.jsonl",
+        &format!(
+            "{{\"usage\": {{}}, \"x\": {}{}}}\n",
+            "[".repeat(600),
+            "]".repeat(600)
+        ),
+    );
     refused(&t);
     let t = Tmp::new();
-    put(&t, "a.jsonl", &format!("{}\n{}", "x".repeat(ledger::LINE_MAX_BYTES + 10), rec(noon(), 1000)));
+    put(
+        &t,
+        "a.jsonl",
+        &format!(
+            "{}\n{}",
+            "x".repeat(ledger::LINE_MAX_BYTES + 10),
+            rec(noon(), 1000)
+        ),
+    );
     refused(&t);
-    assert!(ledger::today_usd(noon(), &t.path("usage"), 1.0) > 0.0, "uzun satırdan sonrası okunur");
+    assert!(
+        ledger::today_usd(noon(), &t.path("usage"), 1.0) > 0.0,
+        "uzun satırdan sonrası okunur"
+    );
     // FIFO bloklamaz
     let t = Tmp::new();
     fs::create_dir(t.path("usage")).unwrap();
@@ -308,10 +375,16 @@ fn an_unreadable_or_invalid_ledger_closes_an_open_cap() {
 /// FIFO açılmadan zamanı bugüne çekilemez; yeni oluşturulduğundan `noon()`dan eskiyse de bugünündür.
 fn set_fifo_time(path: &str) {
     let c = std::ffi::CString::new(path).unwrap();
-    let at = libc::timespec { tv_sec: noon() as libc::time_t, tv_nsec: 0 };
+    let at = libc::timespec {
+        tv_sec: noon() as libc::time_t,
+        tv_nsec: 0,
+    };
     let times = [at, at];
     // SAFETY: geçerli yol ve iki öğeli dizi.
-    assert_eq!(unsafe { libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), 0) }, 0);
+    assert_eq!(
+        unsafe { libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), 0) },
+        0
+    );
 }
 
 #[test]
@@ -319,9 +392,15 @@ fn a_log_with_a_non_utf8_name_still_counts() {
     use std::os::unix::ffi::OsStrExt;
     let t = Tmp::new();
     fs::create_dir(t.path("usage")).unwrap();
-    let path = std::path::Path::new(&t.path("usage")).join(std::ffi::OsStr::from_bytes(b"a\xff.jsonl"));
+    let path =
+        std::path::Path::new(&t.path("usage")).join(std::ffi::OsStr::from_bytes(b"a\xff.jsonl"));
     fs::write(&path, rec(noon(), 1_000_000)).unwrap();
-    fs::File::options().write(true).open(&path).unwrap().set_modified(UNIX_EPOCH + Duration::from_secs_f64(noon())).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_secs_f64(noon()))
+        .unwrap();
     assert!(ledger::today_usd(noon(), &t.path("usage"), 1.0) > 0.0);
 }
 
@@ -330,18 +409,40 @@ fn settings_are_read_on_every_call_and_an_unreadable_document_refuses() {
     let t = Tmp::new();
     put(&t, "a.jsonl", &rec(noon(), 1_000_000));
     let path = t.path("state/settings.json");
-    let b = CostLedger::new(t.path("usage"), file_cost_settings(path.clone())).with_clock(Arc::new(noon));
+    let b = CostLedger::new(t.path("usage"), file_cost_settings(path.clone()))
+        .with_clock(Arc::new(noon));
     b.check_and_reserve("s").unwrap();
-    t.write("state/settings.json", r#"{"ucli_cost": {"daily_cap_usd": 1}}"#, 0o600);
-    assert!(matches!(b.check_and_reserve("s"), Err(CostRefusal::CapExceeded { .. })));
+    t.write(
+        "state/settings.json",
+        r#"{"ucli_cost": {"daily_cap_usd": 1}}"#,
+        0o600,
+    );
+    assert!(matches!(
+        b.check_and_reserve("s"),
+        Err(CostRefusal::CapExceeded { .. })
+    ));
     // Python `json.load` NaN kabul eder: tavan kaybolmamalı
-    t.write("state/settings.json", r#"{"x": NaN, "ucli_cost": {"daily_cap_usd": 1}}"#, 0o600);
-    assert!(matches!(b.check_and_reserve("s"), Err(CostRefusal::CapExceeded { .. })));
-    t.write("state/settings.json", r#"{"ucli_cost": {"daily_cap_usd": 500}}"#, 0o600);
+    t.write(
+        "state/settings.json",
+        r#"{"x": NaN, "ucli_cost": {"daily_cap_usd": 1}}"#,
+        0o600,
+    );
+    assert!(matches!(
+        b.check_and_reserve("s"),
+        Err(CostRefusal::CapExceeded { .. })
+    ));
+    t.write(
+        "state/settings.json",
+        r#"{"ucli_cost": {"daily_cap_usd": 500}}"#,
+        0o600,
+    );
     b.check_and_reserve("s").unwrap();
     for broken in ["{bozuk", ""] {
         t.write("state/settings.json", broken, 0o600);
-        assert!(matches!(b.check_and_reserve("s"), Err(CostRefusal::Unverifiable(_))), "{broken:?}");
+        assert!(
+            matches!(b.check_and_reserve("s"), Err(CostRefusal::Unverifiable(_))),
+            "{broken:?}"
+        );
         assert_eq!(b.state(noon(), false)["cap_usd"], json!(0.0));
     }
     fs::remove_file(&path).unwrap();
@@ -362,7 +463,11 @@ fn reading_while_another_process_appends_never_flags_or_loses_records() {
         rest.trim_end()
     );
     let _guard = support::spawn_guard();
-    let mut writer = Command::new("/bin/sh").args(["-c", &script]).stdout(Stdio::piped()).spawn().unwrap();
+    let mut writer = Command::new("/bin/sh")
+        .args(["-c", &script])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
     drop(_guard);
     let done = Arc::new(AtomicBool::new(false));
     let flag = done.clone();
@@ -398,7 +503,10 @@ fn a_claude_service_build_is_refused_over_the_cap() {
     let ledger = Arc::new(book(&t, 10.0));
     let env = t.env(&[]);
     let deps = RealDeps {
-        docs: Arc::new(cops_providers::real::docs::FileDocs::new(&t.paths(), env.clone())),
+        docs: Arc::new(cops_providers::real::docs::FileDocs::new(
+            &t.paths(),
+            env.clone(),
+        )),
         projects: Arc::new(support::Projects(t.path("home"))),
         cost: ledger.clone(),
         search: Arc::new(support::NoSearch),
@@ -408,7 +516,12 @@ fn a_claude_service_build_is_refused_over_the_cap() {
     let probe = RealProbe::new(t.paths(), env, deps);
     let settings = Settings::from_json(r#"{"byok": {"ucli": {"ANTHROPIC_API_KEY": "sk-sir"}}}"#);
     let (catalog, paths) = (ModelCatalog::default(), t.paths());
-    let providers = Providers { settings: &settings, catalog: &catalog, paths: &paths, probe: &probe };
+    let providers = Providers {
+        settings: &settings,
+        catalog: &catalog,
+        paths: &paths,
+        probe: &probe,
+    };
     let opts = json!({"service": "claude"});
     let args = BuildArgs {
         cwd: &t.path("work"),
@@ -418,7 +531,10 @@ fn a_claude_service_build_is_refused_over_the_cap() {
         ..Default::default()
     };
     let mut out = BuildOutput::default();
-    let error = providers.build_inner_command(Cli::Ucli, &args, &mut out).unwrap_err().to_string();
+    let error = providers
+        .build_inner_command(Cli::Ucli, &args, &mut out)
+        .unwrap_err()
+        .to_string();
     let refused = out.cost_refusal.clone().expect("maliyet reddi");
     assert!(matches!(refused, CostRefusal::CapExceeded { cap_usd, .. } if cap_usd == 10.0));
     assert_eq!(refusal(&error, Some(&refused))["code"], "ucli_daily_cap");
@@ -438,6 +554,8 @@ fn a_panic_while_reserving_does_not_poison_later_starts() {
         Ok(config(5.0, 0.0))
     });
     let b = CostLedger::new(t.path("usage"), settings);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.reserve("a", 1.0))).is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.reserve("a", 1.0))).is_err()
+    );
     b.reserve("a", 1.0).unwrap();
 }

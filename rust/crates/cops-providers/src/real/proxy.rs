@@ -33,7 +33,10 @@ pub fn environment(vars: &[(String, String)]) -> Vec<(String, String)> {
     let mut seen = Vec::new();
     for (name, value) in vars {
         let n = name.len();
-        if n > 5 && name.is_char_boundary(n - 6) && name.as_bytes()[n - 6] == b'_' && name[n - 5..].eq_ignore_ascii_case("proxy")
+        if n > 5
+            && name.is_char_boundary(n - 6)
+            && name.as_bytes()[n - 6] == b'_'
+            && name[n - 5..].eq_ignore_ascii_case("proxy")
         {
             let proxy_name = name[..n - 6].to_lowercase();
             if !value.is_empty() {
@@ -73,11 +76,15 @@ pub fn bypass(host: &str, no_proxy: &str) -> bool {
     }
     let host = host.to_lowercase();
     let bare = without_port(&host);
-    no_proxy.split(',').map(strip).filter(|n| !n.is_empty()).any(|name| {
-        let name = name.trim_start_matches('.').to_lowercase();
-        let suffix = format!(".{name}");
-        bare == name || host == name || bare.ends_with(&suffix) || host.ends_with(&suffix)
-    })
+    no_proxy
+        .split(',')
+        .map(strip)
+        .filter(|n| !n.is_empty())
+        .any(|name| {
+            let name = name.trim_start_matches('.').to_lowercase();
+            let suffix = format!(".{name}");
+            bare == name || host == name || bare.ends_with(&suffix) || host.ends_with(&suffix)
+        })
 }
 
 /// `urllib.parse.unquote` (UTF-8, geçersiz baytlar U+FFFD).
@@ -88,7 +95,10 @@ fn unquote(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' {
-            if let (Some(a), Some(b)) = (bytes.get(i + 1).and_then(|b| hex(*b)), bytes.get(i + 2).and_then(|b| hex(*b))) {
+            if let (Some(a), Some(b)) = (
+                bytes.get(i + 1).and_then(|b| hex(*b)),
+                bytes.get(i + 2).and_then(|b| hex(*b)),
+            ) {
                 out.push((a * 16 + b) as u8);
                 i += 3;
                 continue;
@@ -110,7 +120,9 @@ struct Parsed<'a> {
 /// `_splittype`: `([^/:]+):(.*)`.
 fn split_type(url: &str) -> (Option<String>, &str) {
     match url.find([':', '/']) {
-        Some(i) if i > 0 && url.as_bytes()[i] == b':' => (Some(url[..i].to_lowercase()), &url[i + 1..]),
+        Some(i) if i > 0 && url.as_bytes()[i] == b':' => {
+            (Some(url[..i].to_lowercase()), &url[i + 1..])
+        }
         _ => (None, url),
     }
 }
@@ -134,27 +146,55 @@ fn parse_proxy(proxy: &str) -> Option<Parsed<'_>> {
         None => (None, authority),
     };
     let (user, password) = match userinfo {
-        Some(u) => u.split_once(':').map_or((Some(u), None), |(a, b)| (Some(a), Some(b))),
+        Some(u) => u
+            .split_once(':')
+            .map_or((Some(u), None), |(a, b)| (Some(a), Some(b))),
         None => (None, None),
     };
-    Some(Parsed { scheme, user, password, hostport })
+    Some(Parsed {
+        scheme,
+        user,
+        password,
+        hostport,
+    })
 }
 
 /// `scheme` (`http`/`https`) ve hedefin `host[:port]` metni için yol. Yalnız hedef şemasının değişkeni kullanılır
 /// (`all_proxy` Python'da etkisizdir).
 pub fn route(vars: &[(String, String)], scheme: &str, netloc: &str) -> Route {
     let proxies = environment(vars);
-    let get = |k: &str| proxies.iter().find(|(have, _)| have == k).map(|(_, v)| v.as_str());
-    let Some(proxy) = get(scheme) else { return Route::Direct };
-    let Some(Parsed { scheme: proxy_type, user, password, hostport }) = parse_proxy(proxy) else { return Route::Unusable };
+    let get = |k: &str| {
+        proxies
+            .iter()
+            .find(|(have, _)| have == k)
+            .map(|(_, v)| v.as_str())
+    };
+    let Some(proxy) = get(scheme) else {
+        return Route::Direct;
+    };
+    let Some(Parsed {
+        scheme: proxy_type,
+        user,
+        password,
+        hostport,
+    }) = parse_proxy(proxy)
+    else {
+        return Route::Unusable;
+    };
     if !netloc.is_empty() && get("no").is_some_and(|no| bypass(netloc, no)) {
         return Route::Direct;
     }
     let proxy_type = proxy_type.unwrap_or_else(|| scheme.to_string());
-    let auth = match (user.filter(|u| !u.is_empty()), password.filter(|p| !p.is_empty())) {
+    let auth = match (
+        user.filter(|u| !u.is_empty()),
+        password.filter(|p| !p.is_empty()),
+    ) {
         (Some(u), Some(p)) => {
             let raw = format!("{}:{}", unquote(u), unquote(p));
-            SecretValue::new(&format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(raw)))
+            SecretValue::new(&format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(raw)
+            ))
         }
         _ => None,
     };
@@ -167,5 +207,9 @@ pub fn route(vars: &[(String, String)], scheme: &str, netloc: &str) -> Route {
     if hostport.is_empty() {
         return Route::Unusable;
     }
-    Route::Proxy { hostport, tls_to_proxy, auth }
+    Route::Proxy {
+        hostport,
+        tls_to_proxy,
+        auth,
+    }
 }

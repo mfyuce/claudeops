@@ -37,12 +37,26 @@ pub fn claude_guidance_path(p: &Providers<'_>, out: &mut BuildOutput) -> Option<
     let current = p.probe.read_text(&path);
     // Okunamayan (bozuk UTF-8) var olan dosya EZİLMEZ: bayraksız açılır, günlüğe yazılır.
     if current.is_none() && p.probe.is_file(&path) {
-        out.diag("routing_guidance_unreadable", vec![("path", json!(path)), ("error", json!("UnicodeDecodeError"))]);
+        out.diag(
+            "routing_guidance_unreadable",
+            vec![
+                ("path", json!(path)),
+                ("error", json!("UnicodeDecodeError")),
+            ],
+        );
         return None;
     }
     // Yazılamazsa bayrak EKLENMEZ (spawn yönerge yüzünden düşmez).
     if current.as_deref() != Some(text.as_str())
-        && out.apply_now(p.probe, Effect::WriteAtomic { path: path.clone(), content: text }).is_err()
+        && out
+            .apply_now(
+                p.probe,
+                Effect::WriteAtomic {
+                    path: path.clone(),
+                    content: text,
+                },
+            )
+            .is_err()
     {
         return None;
     }
@@ -57,7 +71,11 @@ pub fn with_block(existing: &str, body: Option<&str>) -> String {
         if let Some(begin) = existing[..end].rfind(BLOCK_BEGIN) {
             let head = existing[..begin].trim_end_matches('\n');
             let tail = existing[end + BLOCK_END.len()..].trim_start_matches('\n');
-            let sep = if !head.is_empty() && !tail.is_empty() { "\n\n" } else { "" };
+            let sep = if !head.is_empty() && !tail.is_empty() {
+                "\n\n"
+            } else {
+                ""
+            };
             text = format!("{head}{sep}{tail}");
         }
     }
@@ -67,7 +85,10 @@ pub fn with_block(existing: &str, body: Option<&str>) -> String {
         }
         return text;
     };
-    let block = format!("{BLOCK_BEGIN}\n{}\n{BLOCK_END}\n", body.trim_end_matches(crate::pyfmt::py_isspace));
+    let block = format!(
+        "{BLOCK_BEGIN}\n{}\n{BLOCK_END}\n",
+        body.trim_end_matches(crate::pyfmt::py_isspace)
+    );
     if strip(&text).is_empty() {
         block
     } else {
@@ -86,19 +107,34 @@ pub enum SyncAction {
     /// Dosyayı sil (biz oluşturduk, içinde başka şey kalmadı).
     Remove,
     /// Yaz. `backup` = ilk yazımdan önce `<yol>.bak-routing` yoksa kopyala; `removed` = blok kaldırıldı.
-    Write { content: String, backup: bool, removed: bool },
+    Write {
+        content: String,
+        backup: bool,
+        removed: bool,
+    },
 }
 
 /// `_sync_one`: `current` = dosyanın HAM içeriği (yoksa None), `create` = yoksa oluştur (agy). Satır sonları Python
 /// metin okuması gibi (`\r\n`, `\r` -> `\n`) burada çevrilir.
-pub fn sync_plan(settings: &Settings, bundled: Option<&str>, current: Option<&[u8]>, create: bool) -> SyncAction {
+pub fn sync_plan(
+    settings: &Settings,
+    bundled: Option<&str>,
+    current: Option<&[u8]>,
+    create: bool,
+) -> SyncAction {
     if current.is_none() && !create {
         return SyncAction::SkippedNoFile;
     }
     let exists = current.is_some();
-    let Ok(current) = std::str::from_utf8(current.unwrap_or_default()) else { return SyncAction::SkippedBadUtf8 };
+    let Ok(current) = std::str::from_utf8(current.unwrap_or_default()) else {
+        return SyncAction::SkippedBadUtf8;
+    };
     let current = current.replace("\r\n", "\n").replace('\r', "\n");
-    let body = if settings.routing_guidance_enabled() { routing_text(settings, bundled) } else { String::new() };
+    let body = if settings.routing_guidance_enabled() {
+        routing_text(settings, bundled)
+    } else {
+        String::new()
+    };
     let has_body = !strip(&body).is_empty();
     let new = with_block(&current, has_body.then_some(body.as_str()));
     if new == current {
@@ -106,7 +142,11 @@ pub fn sync_plan(settings: &Settings, bundled: Option<&str>, current: Option<&[u
     } else if exists && strip(&new).is_empty() && create {
         SyncAction::Remove
     } else {
-        SyncAction::Write { content: new, backup: exists, removed: !has_body }
+        SyncAction::Write {
+            content: new,
+            backup: exists,
+            removed: !has_body,
+        }
     }
 }
 
@@ -120,8 +160,14 @@ mod tests {
     fn with_block_matches_python() {
         let (b, e) = (BLOCK_BEGIN, BLOCK_END);
         let block = |body: &str| format!("{b}\n{body}\n{e}\n");
-        assert_eq!(with_block("ust\n", Some("govde\n\n")), format!("ust\n\n{}", block("govde")));
-        assert_eq!(with_block(&format!("a\n{b}\neski\n{e}\nb"), None), "a\n\nb\n");
+        assert_eq!(
+            with_block("ust\n", Some("govde\n\n")),
+            format!("ust\n\n{}", block("govde"))
+        );
+        assert_eq!(
+            with_block(&format!("a\n{b}\neski\n{e}\nb"), None),
+            "a\n\nb\n"
+        );
         assert_eq!(with_block("", None), "");
         assert_eq!(with_block("x", None), "x\n");
         // Yetim BEGIN kullanıcı metni sayılır, silinmez.
@@ -130,6 +176,9 @@ mod tests {
             format!("{b}\nyetim\n\n{}", block("yeni"))
         );
         assert_eq!(with_block("  \n", Some("g")), block("g"));
-        assert_eq!(with_block(&format!("a\n\n{b}\nx\n{e}\n\n\nb\n"), Some("y")), format!("a\n\nb\n\n{}", block("y")));
+        assert_eq!(
+            with_block(&format!("a\n\n{b}\nx\n{e}\n\n\nb\n"), Some("y")),
+            format!("a\n\nb\n\n{}", block("y"))
+        );
     }
 }

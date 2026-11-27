@@ -59,11 +59,15 @@ impl Pane for TmuxPane {
         let Some(settle) = settle_duration(settle) else {
             return false;
         };
-        self.tmux.send_text(name, text, settle, MaskGuard::RefuseMasked).is_ok()
+        self.tmux
+            .send_text(name, text, settle, MaskGuard::RefuseMasked)
+            .is_ok()
     }
 
     fn send_key(&self, name: &str, key: Key) -> bool {
-        self.tmux.send_special_key(name, key.name(), MaskGuard::RefuseMasked).is_ok()
+        self.tmux
+            .send_special_key(name, key.name(), MaskGuard::RefuseMasked)
+            .is_ok()
     }
 
     fn capture(&self, name: &str, lines: u32) -> Option<String> {
