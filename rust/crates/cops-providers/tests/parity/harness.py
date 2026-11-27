@@ -188,6 +188,7 @@ ucli_cost.cap_exceeded = _fake_cap_exceeded
 ucli_cost.state = _fake_cost_state
 ucli_cost.reserve = lambda *a, **k: None
 ucli_checks.load_registry = _fake_load_registry
+_ORIG_SPAWN_ENV, _ORIG_EXT_MCP = authz.spawn_env, extensions.session_mcp_spec     # gerçekleri `g9_*` işlemleri
 authz.spawn_env = _fake_spawn_env
 extensions.session_mcp_spec = _fake_ext_mcp
 _ORIG_IDS_HELD = spawn._ids_held_by_others
@@ -1251,7 +1252,203 @@ def op_g10_pure(a):
     }
 
 
-OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith(("op_g8_", "op_g8x_", "op_g10_"))})
+
+
+# ------------------------------------------------------------------------------------------------ G9: spawn yürütme
+# tmux, gnome-terminal (`Popen`), saat, süreç taraması, devam çözümü sahte; kanca ve eklenti MCP'si GERÇEK (`authz.spawn_env`,
+# `extensions.session_mcp_spec`) ama kayıtları vakadan. İş parçacıkları `start()`ta EŞZAMANLI koşar (Rust bekçiyi join eder);
+# bekçideki istisna Python'da yalnız iş parçacığını öldürür: burada yutulur.
+
+class _G9:
+    def __init__(self, a):
+        self.calls = []
+        f = FACTS
+        self.has = list(f.get("has_session") or [])
+        self.popen = list(f.get("popen") or [])
+        self.t = 100.0
+        self.saved = []
+
+    def _set(self, obj, name, value):
+        own = isinstance(obj, types.ModuleType) or name in vars(obj)
+        self.saved.append((obj, name, getattr(obj, name), own))
+        setattr(obj, name, value)
+
+    def __enter__(self):
+        c, f = self.calls, FACTS
+        g9 = self
+
+        def avail():
+            c.append(["tmux_available"])
+            return bool(f.get("tmux", True))
+
+        def frag(n, cwd, inner):
+            c.append(["frag", n, cwd, inner])
+            return f"TMUXFRAG<{n}|{cwd}|{inner}>"
+
+        def attach(n):
+            c.append(["attach", n])
+            return f"TMUXATTACH<{n}>"
+
+        def direct(n, cwd, inner, env):
+            c.append(["direct", n, cwd, inner, [[k, v] for k, v in env.items()]])
+            return bool(f.get("direct_ok", True))
+
+        def has_session(n):
+            c.append(["has", n])
+            return bool(self.has.pop(0)) if self.has else bool(f.get("has_default", True))
+
+        def ghost(n):
+            c.append(["ghost", n])
+            return bool(f.get("ghost"))
+
+        def capture(n, lines=2000):
+            c.append(["capture", n, lines])
+            return f.get("capture")
+
+        def kill(n):
+            c.append(["kill", n])
+
+        class Popen:
+            def __init__(self, argv, env=None, **kw):
+                c.append(["launch", [str(x) for x in argv], [[k, v] for k, v in (env or {}).items()]])
+                r = g9.popen.pop(0) if g9.popen else "ok"
+                if r == "oserror":
+                    raise FileNotFoundError(2, "No such file or directory")
+                if r == "value":
+                    raise ValueError("embedded null byte")
+
+            def wait(self, *a, **k):
+                return 0
+
+        class Thread:
+            def __init__(self, target=None, args=(), daemon=None, **kw):
+                self.target, self.args = target, args
+
+            def start(self):
+                try:
+                    self.target(*self.args)
+                except Exception:      # noqa: BLE001
+                    pass
+
+        def which(n):
+            if n == "gnome-terminal":
+                c.append(["gt_available"])
+                return "/usr/bin/gnome-terminal" if f.get("gt", True) else None
+            return shutil.which(n)
+
+        def sleep(s):
+            c.append(["sleep", s])
+            self.t += s
+
+        live = f.get("live")
+
+        def find_sessions(**kw):
+            if live == "raise":
+                raise RuntimeError("tarama düştü")
+            return [types.SimpleNamespace(name=n, sid=s) for n, s in (live or [])]
+
+        def resolve(cwd, in_use=frozenset(), session_name=""):
+            c.append(["resolve", cwd, sorted(in_use), session_name])
+            return f.get("resume")
+
+        import claudeops.tmux_backend as tb
+        for name, v in (("tmux_available", avail), ("tmux_new_session_shell_fragment", frag),
+                        ("tmux_attach_shell_fragment", attach), ("tmux_spawn_direct", direct),
+                        ("tmux_has_session", has_session), ("find_sessions", find_sessions),
+                        ("_ids_held_by_others", _ORIG_IDS_HELD)):
+            self._set(spawn, name, v)
+        for name, v in (("tmux_ghost_session", ghost), ("tmux_capture", capture), ("tmux_kill_session", kill)):
+            self._set(tb, name, v)
+        self._set(spawn, "subprocess", types.SimpleNamespace(Popen=Popen, DEVNULL=subprocess.DEVNULL))
+        self._set(spawn, "threading", types.SimpleNamespace(Thread=Thread))
+        self._set(spawn, "shutil", types.SimpleNamespace(which=which))
+        self._set(spawn, "time", types.SimpleNamespace(monotonic=lambda: self.t, sleep=sleep))
+        self._set(authz, "spawn_env", _ORIG_SPAWN_ENV)
+        self._set(extensions, "session_mcp_spec", _ORIG_EXT_MCP)
+        cli = (self.args_cli or "claude")
+        self._set(providers.get_provider(cli), "resolve_resume_id", resolve)
+
+        hook = f.get("hook")
+        if hook is not None:
+            def spawn_hook(principal, cli, name, cwd):
+                c.append(["hook", cli, name, cwd])
+                if "refuse" in hook:
+                    raise authz.SpawnRefused(*hook["refuse"])
+                if "raise" in hook:
+                    raise RuntimeError(hook["raise"])
+                return {k: v for k, v in hook.get("env") or []}
+            authz.set_spawn_hook(spawn_hook)
+        self.sess = dict(extensions._SESSION_MCP)
+        self.mcp = dict(extensions._MCP)
+        extensions._SESSION_MCP.clear()
+        extensions._MCP.clear()
+        for e in f.get("ext") or []:
+            def pred(cwd, e=e):
+                c.append(["pred", e["sid"], cwd])
+                if e["cwd"] == "raise":
+                    raise RuntimeError("koşul")
+                return e["cwd"] == "*" or e["cwd"] == cwd
+            extensions._SESSION_MCP[e["sid"]] = pred
+            if e.get("tools") == "bozuk":
+                extensions._MCP[e["sid"]] = {"tools": [{"yok": 1}]}
+            elif e.get("tools") is not None:
+                extensions._MCP[e["sid"]] = {"tools": [{"name": t} for t in e["tools"]]}
+        return self
+
+    def __exit__(self, *exc):
+        authz.set_spawn_hook(None)
+        extensions._SESSION_MCP.clear(); extensions._SESSION_MCP.update(self.sess)
+        extensions._MCP.clear(); extensions._MCP.update(self.mcp)
+        for obj, name, v, own in reversed(self.saved):
+            if own:
+                setattr(obj, name, v)
+            else:
+                delattr(obj, name)
+        return False
+
+
+def _g9_call(a, fn):
+    g = _G9(a)
+    g.args_cli = a.get("cli")
+    with g:
+        try:
+            ret = fn()
+        except Exception as e:      # noqa: BLE001
+            kind = "refused" if isinstance(e, ValueError) else type(e).__name__
+            return {"exc": [kind, str(e)], "calls": g.calls}
+    return {"ret": ret, "calls": g.calls}
+
+
+def op_g9_spawn(a):
+    mcp = _spec(a["mcp"]) if a.get("mcp") else None
+    return _g9_call(a, lambda: spawn.spawn_session(
+        a["name"], a["cwd"], a.get("model", "m"), display=a.get("display"), permission_mode=a.get("perm", "auto"),
+        effort=a.get("effort", "max"), force_new=bool(a.get("force_new")), prompt=a.get("prompt"),
+        dry_run=bool(a.get("dry_run")), cli=a.get("cli", "claude"), mcp_server=mcp, hidden=bool(a.get("hidden")),
+        cli_opts=a.get("cli_opts")))
+
+
+def op_g9_window(a):
+    return _g9_call(a, lambda: spawn.open_window(a["name"], a["cwd"], display=a.get("display")))
+
+
+def op_g9_mirror(a):
+    return _g9_call(a, lambda: spawn.open_mirror_window(a["host"], a["name"], a["port"], display=a.get("display")))
+
+
+def op_g9_reclaim(a):
+    return _g9_call(a, lambda: spawn._reclaim_ghost_session(a["name"], a["cli"]))
+
+
+def op_g9_sync(a):
+    return routing.sync_global_files(a["codex"], a["agy"])
+
+
+def op_g9_repo_dir(a):
+    return paths.REPO_DIR
+
+
+OPS.update({k[3:]: v for k, v in list(globals().items()) if k.startswith(("op_g8_", "op_g8x_", "op_g10_", "op_g9_"))})
 
 
 def main():
