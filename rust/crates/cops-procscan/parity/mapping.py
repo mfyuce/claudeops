@@ -478,7 +478,7 @@ DEFS["providers/ucli_provider.py"] = [
         "_live_models reasoning_effort_for _API_KEY_FILE _API_KEY_MANAGED_MARKER _sync_api_key_file _web_args "
         "_script_args _stream_args _reasoning_display_args _metrics_file_args _interactive_args _state_dir_args "
         "_timeout_args _history_args _effort_args _set_flag_value _service_key_file _INSTRUCTIONS_MAX_BYTES "
-        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _TOP_TIER_PRICES "
+        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS "
         "_claudeops_price _argv_model _has_price _default_session_cap "
         "_max_cost_args _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
         "_apply_cli_opts _agent_setup "
