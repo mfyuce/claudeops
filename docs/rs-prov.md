@@ -1,12 +1,13 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, gece): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve
-TAŞINDI-TESTSİZ satır yok; G9 gerçek uygulayıcıları `real/tmux.rs` + `real/scan.rs` yazıldı; açık: ders listesinin izin
-tamamı için madde madde karşılanması, gerçek `Pane` (G4), bağlayan uç). Birleşik ağaç (`origin/main` `c834dbbc` dalda,
-rs/proc + rs/cli dahil): `cargo test --workspace` 905 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets
--D warnings` temiz; Python tam paket 6095 OK (23 atlanan, 470 sn); eşleme denetimleri (hosts `--check`, rs-proc
-`--check --strict`, review `map_table --check`) temiz. `cargo test -p cops-providers` 211/211 (yeni: `real_tmux` 8,
-`real_scan` 6, `py_rows` 6).
+Durum (27 Kas 2026, gece, kod `4b2b58f5`): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve
+TAŞINDI-TESTSİZ satır yok; G4 gerçek `Pane` `real/pane.rs::TmuxPane` ve G9 gerçek uygulayıcıları `real/tmux.rs` +
+`real/scan.rs` yazıldı; ders listesi crate'in tamamı için tek tabloda karşılandı. Açık: tablodaki gerekçeli AÇIK
+satırlar (Python farkı gerektirenler sahip/cops kararı bekliyor) ve bağlayan uç). Birleşik ağaç (`origin/main`
+`1f6d71c9` dalda, rs/tmux + webui dist düzeltmesi dahil): `cargo test --workspace` 924 geçti, 0 kaldı, 1 atlandı;
+`clippy --workspace --all-targets -D warnings` temiz; Python tam paket 6096 OK (23 atlanan, 528 sn); eşleme denetimleri
+(hosts `--check`, rs-proc `--check --strict`, review `map_table --check`) temiz. `cargo test -p cops-providers` 230/230
+(yeni: `real_pane` 10, `secrets_argv` 3, birim 6); `cargo fmt --check -p cops-providers` temiz.
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
@@ -57,7 +58,8 @@ rs/proc + rs/cli dahil): `cargo test --workspace` 905 geçti, 0 kaldı, 1 atland
 
 ## EK (sahip 26 Kas): Python dersleri
 `docs/rust-lessons-from-python.md` genel liste + bu izin kontrol listesi ZORUNLU; her madde burada test adı ya da gerekçeyle karşılanır.
-Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 taşımaları yazdıkları kodda uyguladı; izin tamamı için madde madde karşılama hâlâ açık.
+Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). 27 Kas: crate'in tamamı için madde madde karşılandı,
+tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekçeli).
 
 ## EK 2 (sahip 26 Kas): işlevce eşlik
 - Rust'ta Python'dan eksik hiçbir şey kalmayacak. Aşağıdaki EŞLEME TABLOSU: kapsamdaki modüllerin HER işlev/metot/sınıf/modül düzeyi
@@ -76,20 +78,25 @@ Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Bağlayan uç (copsd/panel) `SpawnRuntime` + `CopsTmux` + `ProcScan` ile; o izlerin işi. Gerçek `Pane` (G4) uygulayıcısı.
-2. (kapandı 27 Kas) TAŞINDI-TESTSİZ satırlar.
-3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
-4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
-5. Birim testi `pyfmt.rs`de 3 test: effort, `with_block`, `validate_opts`, "sır argv'de yok" için ekle (G6 ile `bg_work.rs`e 3 test eklendi).
-6. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
+1. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
+   (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
+2. Ders tablosundaki AÇIK satırların Python farkı gerektirenleri (G4 aday 1, 2, 5; G10 aday 1, 5; G9 aday 6; sid/ad yola
+   ekleme; kanca ortamı argv'de; yutulan hataların günlüğü): sahip/cops kararı; karar gelince iki tarafta `fix:` + test.
+3. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve
+   ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
+4. Kapandı (27 Kas): TAŞINDI-TESTSİZ satırlar; gerçek `Pane` (`real/pane.rs`); ders listesinin madde madde karşılanması;
+   `cargo fmt` (diğer bütün crate'ler varsayılan rustfmt ile temizdi: `style:` commit'i yalnız cops-providers); effort,
+   `with_block`, `validate_opts` birim testleri ve "sır argv'de yok" testi (`tests/secrets_argv.rs`).
 
 ## Parite testinde bakılacak bilinen farklar / şüpheler
 Parite testinde kayıtlı ayrışmalar yukarıdaki "Parite" bölümünde. Açık kalanlar:
-- Kapandı (G8): Python'da yazım hatasının KOMUTU değiştirdiği dallar (metrics dizini, `--usage-log` dizini, yönerge override)
-  `Probe::apply_now` ile Python gibi (parite `dizin-*`, `claude-routing-override-dizin` artık ayrışma değil); anahtar dosyası
-  yazılamazsa `apply_all` hata verir (spawn düşer). `register_mcp` silme, zaman aşımı ve hata metni gerçek süreçle paritede
-  (`mcp-*`).
-- G5/G11 Python hatası şüpheleri (Rust Python gibi davranır; yalnız ilki kayıtlı ayrışma, sahibe sorulmadı):
+- Gerçek tmux ile Python'a karşı (paritenin dışında, `tests/real_pane.rs`): bilinçli tek fark özel tuşta maske denetimi
+  (Python `tmux_send_special_key` denetlemez, Rust `RefuseMasked`): gizli girdi bekleyen pane'de Python diyaloğu `Down` +
+  Enter ile kapatır, Rust hiçbir şey göndermez (`masked_pane_gets_no_text_and_rust_sends_no_keys` ikisini de ölçer).
+  `settle` NaN/inf: Python metni yapıştırıp düşer ya da boş metinde Enter gönderir, Rust hiçbir şey göndermez (çağıranlar
+  yalnız sabit verir).
+- G5/G11 Python hatası adayları (Rust Python gibi davranır; yalnız ilki kayıtlı ayrışma; canlı davranışı değiştirmeyen
+  ayrıştırma hataları: kalıcı kurala göre iki tarafta `fix:` + test adayı, 27 Kas turunda `py/` yazımı kapsam dışıydı):
   - `normalize_ucli_services`: `models` sıfır olmayan sayı ya da `true` ise `TypeError` ile `ucli_services()` düşer (başlat penceresi,
     spawn). Rust boş liste sayar (parite `servis-models-sayi`, kayıtlı ayrışma).
   - `ucli_metrics._num`: `"nan"` sınırlanmaz (`max(nan, lo)` = nan), `interval_s` NaN kalır (örnekleyici `sleep(nan)`). Rust aynı (parite `metrics-nan`).
@@ -102,6 +109,56 @@ Parite testinde kayıtlı ayrışmalar yukarıdaki "Parite" bölümünde. Açık
 - G5 notu: ayrıştırıcılar ANSI ayıklamaz (Python gibi; çağıran `strip_ansi` uygular). ANSI'li girdiler paritede var, sonuç Python'la aynı.
 - `Settings` yalnız ayrıştırılmış nesneyi yorumlar; Python `load_settings`in varsayılan birleştirmesi ve bilinmeyen anahtar süzmesi rs/state'te. Birleştirmede iki okuyucu aynı belgeyi görmeli.
 
+## Ders listesi: crate'in tamamı (tek tablo, 27 Kas)
+`docs/rust-lessons-from-python.md` §3 genel gözden geçirme listesi (20 madde), §2.5 bu izin kontrol listesi (11 madde) ve
+"Rust'a özgü yeni riskler" (7 madde). Her test adı koddan doğrulandı (dosya::ad; `parity_*` = `tests/parity.rs` ailesi ve
+vaka kimliği). Grup bölümlerindeki eski ders tabloları buraya taşındı ve yeniden doğrulandı; oralarda yalnız işaretçi kaldı.
+Durum: TAMAM = madde crate için karşılandı; UYGULANMAZ = crate o işi yapmaz (gerekçe); AÇIK = karşılanmadı, neden yazılı.
+Bu turda düzeltilenler: `SystemClock::sleep` `Duration`a sığmayan sürede panik atıyordu (`try_from_secs_f64`);
+`TmuxPane` (G4 gerçek `Pane`) yazıldı; `py_re` çevirmenine rastgele desen testi; effort, `with_block`, `validate_opts`,
+sır-argv birim testleri.
+
+| Madde | Karşılama (test ya da gerekçe) | Durum |
+|---|---|---|
+| §3.1 hedef `Unique`; yıkıcı eylem ön ek / "en yeni" ile çalışmaz (H7) | tmux hedefi hep `=ad:` (`cops-tmux`), hedeflenemeyen ad hiçbir tmux komutu çalıştırmaz: `real_tmux::unaddressable_names_run_no_tmux_command_and_open_nothing`; ön ek kardeşe dokunulmaz: `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`, `real_pane::prefix_name_never_reaches_another_session`, `real_tmux::reclaim_kills_only_the_exact_old_childless_shell`, `open_window_attaches_to_the_exact_existing_session`; sid verilince tahmin yok: `resume::only_a_sidless_lookup_guesses_the_newest_transcript`, `claude_transcript::cache_candidates_are_exact_files_and_newest_wins` | TAMAM (yıkıcı yollar). AÇIK: (a) sid'siz okumalar (`jsonl_path_for`, codex rollout, `live_or_spawn_*`) Python gibi cwd'deki en yeniye düşer (G1, G3 şüphe 4; kaldırmak Python farkı); (b) agy `resolve_resume_id` önbellek kimliğinin başka ada kayıtlı olmasına bakmaz (G1 şüphe 5, Python farkı); (c) `ids_held_by_others` taraması ile spawn arasındaki yarış: kilit çağıranın (`guard.lock`, `guard.py` taşıması; G9 bölümü) |
+| §3.2 atomik yazım; çok yazarlı belgede kilit sözleşmesi (H2) | `real_fs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `concurrent_atomic_writes_never_expose_a_partial_file` (dosya `sync_all`, aynı dizinde benzersiz tmp); Python'la aynı `flock`: `real_agy_store::rust_and_python_writers_across_processes_lose_nothing`, `the_lock_is_the_one_python_takes_and_waiting_is_bounded`, `real_oneshot::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing`, `concurrent_registrations_lose_nothing_and_one_key_has_one_winner`, `real_searxng::the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`; pay: `real_ledger::concurrent_starts_cannot_oversubscribe_the_cap`; token: `real_fs::concurrent_issue_keeps_file_and_digest_consistent`; `resume::value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing` | TAMAM. AÇIK: `db` kipindeki belge deposu (DB doğruluk kaynağı) rs/state'in; `DocAgySidStore` o kipte yazımı reddeder (`real_agy_store::db_backend_documents_are_neither_read_from_nor_written_to_the_mirror`) |
+| §3.3 belirsiz / okunamayan durum `Allow`, başarı ya da "yok" olmaz (H13, H10, H9) | pane maskesi bilinmiyor = hiçbir şey gönderilmez: `real_pane::hung_tmux_times_out_to_false_and_none`, `masked_pane_gets_no_text_and_rust_sends_no_keys`; okunamayan defter/ayar tavanı kapatır: `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`; kanca hatası ret: `parity_g9` `kanca-hata`, `kanca-hata-uzun`; `/proc` okunamazsa tarama düşer: `real_scan::unreadable_process_list_drops_the_scan_and_writes_nothing`; okunamayan transkript "bilinmiyor": `claude_transcript::truncated_file_and_read_errors_mean_unknown`; okunamayan `--help` = bayrak yok: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAMAM. AÇIK: açılamayan (izin) ucli anahtar dosyası "yok" sayılıp miras ortam anahtarıyla sürer (G10 aday 5; Python farkı, sahibe). Uzak host (H10) UYGULANMAZ: crate uzak çağrı yapmaz |
+| §3.4 eylem sonucu tipte; NEGATİF test (H9) | `#[must_use] SwitchOutcome`; `tui::a_failed_send_returns_without_waiting`, `permission_dialog_is_not_confirmed`, `stray_dialog_is_refused_and_a_failed_down_sends_no_enter`; gerçek tmux: `real_pane::masked_pane_gets_no_text_and_rust_sends_no_keys` (`SendFailed`); `Effect` uygulaması `Result`: `real_fs::apply_all_stops_at_the_first_failure_and_reports_where`; `register_mcp` hata metni: `real_process::register_mcp_errors_carry_python_reprs`; spawn `SpawnFailure` + pay iadesi (`parity_g9` her vakada `release`) | TAMAM. AÇIK: `MarkerSeen` başarının kanıtı değil: eski sonuç satırı ilk yoklamada döngüyü bitirir, onay Enter'ının sonucuna bakılmaz (G4 aday 1, 5; Python farkı, sahibe/cops) |
+| §3.5 hata yutma / panik yok; yutulana sayaç ya da günlük (H9, H20) | üretim kodunda `panic!`/`unreachable!` yok; `unwrap`/`expect` yalnız sabit desen derlemesi ve önceden denetlenmiş değişmez (`py_re` kaçışları sınır denetiminden sonra; `claude.rs::refresh_stored_model`, `ucli.rs` ön ayar, `ucli_opts.rs` elenmiş `None`). Rastgele girdi: `py_re::tests::random_patterns_never_panic`, `*::truncated_and_mutated_input_never_panics` (`claude_transcript`, `resume`, `chat`, `bg_work`), `model_sources::broken_and_mutated_model_answers_never_panic`. Bu turda bulunan panik: `SystemClock::sleep(1e300)` (`g9::system_clock_is_monotonic_and_ignores_bad_sleeps`), `TmuxPane` geçersiz `settle` (`real::pane::tests::settle_maps_python_values_and_never_panics`). `let _ =` olanlar Python'un `except: pass` dallarının karşılığı (çocuğu öldür+topla, tmp sil, dizin fsync, `kill-session`, iş parçacığı başlatma: `a_background_job_that_cannot_start_keeps_the_old_list`) | TAMAM (panik). AÇIK: yutulan G/Ç hatası (model kaynakları `HttpError`, `Remove`, `DiagLog`, atlanan aday) sayılmıyor ve günlüğe yazılmıyor: Python da yazmaz, eklemek `diag.log` içeriğini değiştirir (H20; sahip/cops kararı) |
+| §3.6 önbellek / ayar bayatlamaz; hata `last_good`u ezmez (H3) | `model_sources::repeated_errors_never_replace_the_last_good_list`, `a_background_job_that_cannot_start_keeps_the_old_list`, `codex_choices_are_cached_but_effort_levels_read_the_current_file`; ayar her çağrıda: `real_ledger::settings_are_read_on_every_call_and_an_unreadable_document_refuses`, `the_state_is_cached_until_ttl_or_invalidate`; dosya imzası: `resume::unchanged_files_are_not_reread_but_changed_ones_are`, `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`; canlı model/effort jsonl'den (G3): `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM |
+| §3.7 her bekleme sınırlı; bildirim durumu kalıcı (H8) | `tui::every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read`; gerçek tmux: `real_pane::no_dialog_means_no_keys_on_either_side` (6 sn), `hung_tmux_times_out_to_false_and_none` (5 sn); bekçi `g9::watchdog_retries_then_falls_back_to_headless_tmux`; süreç: `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_hits_the_deadline_like_python` (`Spec.timeout` zorunlu alan); HTTP: `real_http::the_timeout_is_the_total_time_not_per_read`, `an_endless_body_stops_at_the_limit`; docker: `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (kalıcı "down"); `flock` 30 sn: `real_agy_store::the_lock_is_the_one_python_takes_and_waiting_is_bounded`. Üretim `loop`ları okuma sınırı ya da son tarihle biter | TAMAM. AÇIK: maliyet günlüğü taraması dosya boyutuyla sınırsız (Python gibi; G8 ikinci parça). Nag/bildirim UYGULANMAZ |
+| §3.8 dış TUI davranışı fixture ile; `Unknown` ekranda gönderim yok (H4) | kelime kelime ANSI'li diyalog basan sahte claude TUI'sine Python `ClaudeProvider` ve Rust `TmuxPane` aynı baytları gönderir: `real_pane::model_switch_confirms_the_dialog_like_python`, `model_switch_without_dialog_sends_no_extra_enter_like_python`, `effort_switch_confirms_the_dialog_like_python`, `stray_dialog_is_declined_with_down_enter_like_python`; `parity_tui` 1079 (sahte pane); diyalog görünmüyorsa Enter yok: `tui::applied_without_dialog_sends_no_key`, `effort_without_dialog_sends_no_enter`; maske bilinmiyorsa metin ve tuş yok (yukarıda) | AÇIK: gerçek claude sürümünden yakalanmış ekran fixture'ı yok (canlı claude ister; teslim doğrulaması ve mod tespiti çağıran izlerde, T4/T10); diyalog metni ekranın herhangi bir yerinde aranır (G4 aday 2, Python farkı) |
+| §3.9 süreç / bağlantı sahipliği, fd sızıntısı (H1) | `real_fd::a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child`; `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `closed_pipes_with_a_running_child_still_time_out`, `bounded_capture_overflows_and_tail_capture_keeps_the_end` (akışlar boşaltılır); `real_oneshot::timeouts_kill_the_whole_group_and_return_promptly`; `g9::gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again`. Sinyal yalnız kendi başlattığı çocuğun grubuna (`real/process.rs`, `process_group(0)`); oturum öldürme yok (`kill.py` kuralı); tmux istemcisi `cops-tmux`ta öldür+topla | TAMAM. Bekçi iş parçacığı: kısa ömürlü çağıran `Watchdog`u `join` etmeli (G9; bağlayan uç) |
+| §3.10 girdi sınırları: boş, negatif, NaN/inf, bozuk UTF-8, tip (H5) | NaN/inf: `real::pane::tests::settle_maps_python_values_and_never_panics`, `g9::system_clock_is_monotonic_and_ignores_bad_sleeps`, `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap` (NaN, negatif, metin), `ucli_opts::tests::validate_opts_matches_python` (`nan`, `inf`, `-1`), `parity_panel` `metrics-nan`; UTF-8: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached`, `real_ledger::a_log_with_a_non_utf8_name_still_counts`, `real_pane::capture_matches_python_and_keeps_ansi`; başlık olamayan anahtar: `model_sources::a_key_that_cannot_be_a_header_value_sends_nothing`; FIFO: `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo`, `real_oneshot::a_fifo_key_file_or_index_is_refused_without_blocking`; bozuk/kesik girdi: §3.5 rastgele testleri | TAMAM. AÇIK: bozuk `agy_sids` belgesi Python gibi üzerine yazılır, `.corrupt` yedeği yok (G1 şüphe 7; `ucli_agents`te var: `real_fs::a_corrupt_agent_registry_is_copied_aside_and_an_unreadable_one_is_not_overwritten`) |
+| §3.11 işaret / ad ayrıştırma tek modül, corpus, Python vektörü (H6, H14) | crate STEWARD/RFH işareti ayrıştırmaz (UYGULANMAZ, değnekçi izi). Crate'in ayrıştırıcıları Python'a karşı: kota/bağlam `parity_usage`, transkript `parity_transcript`, protobuf/SQLite sohbet `parity_chat`, `exec_cmds` regex çevirmeni `parity_ucli` + `py_re::tests::random_patterns_never_panic`, oturum adı `ucli::is_child_name` `parity_ucli` | TAMAM |
+| §3.12 Python ile paylaşılan kural / yol diferansiyel testle eşit; `$HOME` doğrudan yok (H14) | `tests/parity.rs` 20 aile (sayılar "Parite"); gerçek tmux/pane Python'a karşı: `real_tmux::fragments_match_python`, `real_pane::*_like_python`, `capture_matches_python_and_keeps_ansi`; durum yolları yalnız `Paths`ten (çağıran verir; `src/`de `HOME` okuması yok); `strip_ansi` tek kaynak `cops-tmux` | TAMAM. AÇIK: `is_safe_env_name`, `py_*` yardımcıları ve ayar okuma rs/proc ve rs/state ile ortaklaştırılmadı; `Settings` varsayılan birleştirmesi rs/state'te (birleştirme işi) |
+| §3.13 sır tipte; log / argv / URL'de yok (H12, H13) | `Effect::WriteSecret` `Debug`ta `<redacted>`; `model_sources::SecretValue` + `the_key_stays_out_of_urls_argv_and_debug_output`; BYOK anahtarı yalnız 0600 dosyada: `secrets_argv::copilot_byok_key_goes_to_a_private_file_not_argv`, `ucli_evren_key_goes_to_a_private_file_not_argv`, `ucli_service_key_goes_to_a_private_file_not_argv`; çocuk ortamı: `real_oneshot::the_key_reaches_only_the_child_environment`; hata metni: `oneshot::tests::secrets_are_removed_from_every_error_text`; token yalnız özetiyle kayıtlı: `real_fs::agent_token_is_0600_and_only_its_hash_is_registered`; pane metni argv'de değil: `real_pane::text_never_appears_in_tmux_argv`; hayalet ekranı günlüğe girmez (`parity_g9` `hayalet-`) | TAMAM. AÇIK: kanca ve `env_overrides` ortamı tmux komut satırına `KEY=VAL` gömülür (Python gibi; kanca sır döndürürse `/proc/*/cmdline`da görünür; tmux 3.0a'da `new-session -e` yok, taşımak Python farkı: "Sır / argv notları"). Kimlik matrisi UYGULANMAZ (crate yetki vermez) |
+| §3.14 yol / adres girdisi, symlink (H17) | `real_fs::secret_files_are_private_from_creation_and_links_are_not_followed`, `atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `realpath_handles_links_loops_and_missing_parts`; `real_agy_store::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `g9::dangling_backup_link_writes_neither_backup_nor_target`; env beyaz liste: `parity_spawn` `filter`, `kanca` (`LD_PRELOAD`), `parity_g9` `ortam-supurme`; HTTP: `real_http::unusable_addresses_send_nothing`, `redirects_are_never_followed_and_the_key_does_not_leave` | AÇIK (hepsi Python farkı): oturum adı / sid dosya yoluna denetimsiz eklenir, mutlak sid dizini aşar (yalnız okuma; G1 `agy-mutlak-kimlik`, G3 `istek-mutlak`, G6); okuma yolları bağlantı izler; ayardaki uç noktaya iç ağ engeli yok (G7) |
+| §3.15 vekil / WS kullanıcı yolundan e2e (H15, H18, H21) | crate sunucu, vekil, WS değil: UYGULANMAZ. İstemci tarafı: `real_http::a_2xx_body_is_returned_for_every_framing`, `error_statuses_broken_and_truncated_answers_are_errors_without_details`, `https_is_tunnelled_with_connect_and_proxy_auth_stays_outside_the_tunnel`, `tls_verification_is_on_for_untrusted_roots_and_wrong_names` | UYGULANMAZ (bağlayan uç copsd'nin e2e'si) |
+| §3.16 yeni uç / route tablo eşitliği (H10, H14) | crate uç eklemez | UYGULANMAZ |
+| §3.17 test yalıtımı (H16) | her test `TempDir` (RAII); parite koşucusu boş ortam, geçici HOME/CLAUDEOPS_DIR, ağ kapalı (`parity_searxng` `arama-ag-engeli`); tmux yalnız özel sunucu (geçici `TMUX_TMPDIR` + rastgele soket; `real_tmux`, `real_pane`), kapanış o soketle; çalıştırılan betikler alt süreçle (`write_exe`, `spawn_guard`); `/proc` sahte ve sıralı (`real_scan`); HTTP `127.0.0.1:0`; üretim kodu durum yolunu kendisi türetmez (`Paths`) | TAMAM |
+| §3.18 uzak host sürüm / devre kesici / deploy (H10, H11) | crate uzak host çağırmaz | UYGULANMAZ. Not: bu dalın `py/` `fix:` commit'leri (45) canlıya web restart ve uzak deploy ile ulaşır (cops) |
+| §3.19 ikili sürümü, canlı = main, restart'ta yarım iş (H11) | kütüphane crate, ikili yok | UYGULANMAZ (copsd). Bekçi iş parçacığı süreçle ölür (G9, bağlayan uç `join`) |
+| §3.20 ölçüm / kanıt; `--dry-run` yan etkisiz; Python'a özellik yok (H21) | kuru kip: `real_fs::a_dry_run_build_issues_no_token_and_writes_nothing`, `real_scan::preview_scan_writes_nothing`, `resume::preview_writes_nothing_and_save_errors_surface`, `parity_g9` `{cli}-kuru`; daldaki `py/` commit'leri yalnız `fix:` (commit-gate); performans iddiası yok | TAMAM. AÇIK: spawn kancası kuru koşuda da çağrılır (G9 aday 6, Python gibi; sahibe) |
+| §2.5.1 sağlayıcı başına tek modül, if-zinciri yok (H4) | `claude.rs`, `agy.rs`, `codex.rs`, `copilot.rs`, `shell.rs`, `ucli.rs`; dağıtım tek `match Cli` (`Providers::build_inner_command`, `tui.rs` `Cli` yöntemleri); `tui::only_claude_touches_the_pane`, `parity_build` | TAMAM |
+| §2.5.2 bayrak desteği `--help`'ten; desteklenmeyen eklenmez (H4) | `real/help.rs` (anahtar yol + mtime + boyut): `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`, `empty_failed_slow_huge_or_non_utf8_help_is_not_cached`; tanınmayan bayrak eklenmez + `ucli_flag_unsupported` (`parity_g8`), güvenlik izni bayrağı tanınmazsa spawn reddi (`Ctx::require`, `parity_ucli`) | TAMAM. AÇIK: ikilinin SÜRÜMÜ günlüğe yazılmaz (Python da yazmaz; yeni diag olayı = Python farkı) |
+| §2.5.3 effort / model tek geçit; agy kademesi (H4) | `resolve_effort` tek giriş; agy `-high` kademesi `effort::split_tier`; `parity_model_effort`, `effort::tests::tiers_sorting_and_nearest_match_python`; ana oturum Sonnet + medium `main_session_model_effort` (`parity_spawn`) | TAMAM |
+| §2.5.4 gerçek model kanıtı sağlayıcının kendi logundan (agy `Propagating ... label=`) (H4, H21) | crate agy günlüğü okumaz; Python'da bu okuma yalnız `review.py`de (review izi) | UYGULANMAZ (rs/rev) |
+| §2.5.5 canlı model / effort jsonl'den (H3) | G3 `claude_transcript.rs`; `parity_transcript`; `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM (sid'siz düşüş §3.1 AÇIK) |
+| §2.5.6 kuru çalıştırma yan etkisiz, pay iadesi (H9, H21) | §3.20 testleri; `release` kuru ve hatalı başlatmada tam bir kez (`parity_g9` her vaka) | TAMAM (§3.20 AÇIK aday 6) |
+| §2.5.7 spawn env beyaz liste, sırlar argv'de değil (H12, H17) | `spawn::filter_env_overrides` (`parity_spawn` `filter`, `kanca`), çocuk ortamı CLI kimlik değişkeni süpürme (`parity_g9` `ortam-supurme`, `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`); sır testleri §3.13 | TAMAM. AÇIK: kanca ortamı argv'de (§3.13); tek atımlık çağrıda çocuk ortamı miras, `api_key_env` serbest (G10 aday 1, Python farkı, sahibe) |
+| §2.5.8 cwd başına tek konuşma kimliği; kardeş oturumlar (H4, H7) | `parity_resume` `tutulan`, `agy-sahipli-*`, `devam-claude-kardes`, `devam-agy-onbellek-tutulan`; `parity_transcript` `istek-` (`sibling`, `onek`) | TAMAM. AÇIK: §3.1 (b), (c) |
+| §2.5.9 trust / izin diyaloğu sürüm fixture'ları (H4) | diyalog işleyicisi (`trust_dialog.py`) bu crate'te değil; crate yalnız copilot `trustedFolders` düzenlemesini yazar (`parity_build` copilot vakaları) | UYGULANMAZ (T4/T10) |
+| §2.5.10 başarısız spawn'da kayıt temizliği (H9, H2) | pay iadesi `parity_g9` `release`; tavan reddi `real_ledger::a_claude_service_build_is_refused_over_the_cap`; instance kaydı çağıranın | TAMAM (crate payı) |
+| §2.5.11 kota / maliyet: önbellek token sayımı, kaynak yoksa "bilinmiyor" (H3, H21) | defter önbellek alanlarını sayar (`parity_ledger` `cache_read_*`), okunamayan defter sıfır değil RED (`an_unreadable_or_invalid_ledger_closes_an_open_cap`); kota ayrıştırıcıları eşleşme yoksa `None` (`parity_usage`) | TAMAM |
+| R1 async içinde bloke eden iş | crate API'leri eşzamanlı (`Pane`, `Probe`, `ModelIo`, `CostGate`): async çağıran `spawn_blocking` ister (belgeli: `tui::Pane`, `real/pane.rs`); HTTP kendi runtime'ını async içinden de kurabilir: `real_http::it_can_be_called_from_inside_an_async_runtime` | TAMAM (bağlayan uçta `spawn_blocking` zorunlu) |
+| R2 sınırlı kuyruk `try_send` ile düşürme | crate kuyruk kullanmaz | UYGULANMAZ |
+| R3 `OnceCell` kurulumu asılınca her istek bozulur | `real/http.rs` TLS kökleri ve `SystemClock` başlangıcı `OnceLock`; kurulum G/Ç beklemez (yerel sertifika okuma, `Instant::now`) | TAMAM |
+| R4 sır dosyası izin / symlink çalışma zamanında | `real_fs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape`, `secret_files_are_private_from_creation_and_links_are_not_followed`, `real_oneshot::a_fifo_key_file_or_index_is_refused_without_blocking`, `real_agy_store::a_symlinked_lock_file_is_refused_and_nothing_is_written` | TAMAM |
+| R5 panik sonrası zehirli `Mutex` | `real_ledger::a_panic_while_reserving_does_not_poison_later_starts`; kilitler `PoisonError::into_inner` ile | TAMAM |
+| R6 `cargo deny` / `cargo audit`, rev eşitliği | çalışma alanı düzeyi; `rust/Cargo.lock` commit'li | UYGULANMAZ (cops, çalışma alanı) |
+| R7 Python'a yeni özellik yazmamak (commit-gate) | daldaki `py/` commit'leri 45 `fix:` (+ birleştirmeler); her biri `py/tests/test_rsprov_*.py` ile | TAMAM |
+
 ## EKSİK taşıma grupları
 Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + test satırı).
 
@@ -110,7 +167,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | G1 oturum kimliği ve devam | resume çözümü (claude/codex/agy/copilot transkript taraması, `_ids_held_by_others`), durdurulmuş oturum sid'i, canlı sid anlık görüntüsü/keşfi, agy sid yazımı, transkript yolu düşüşü | 0 (39 TAŞINDI) | 0 (24 TAŞINDI, 11 kapsam dışı) | bitti: `resume.rs`, `claude_resume.rs`, `codex_resume.rs`, `agy_resume.rs`, `copilot.rs`; parite `parity_resume`, `tests/resume.rs` |
 | G2 sohbet geçmişi okuma | `last_exchange`/`full_history`/`extra_file_roots` (claude, codex, agy protobuf, copilot SQLite, ucli jsonl) | 0 (38 TAŞINDI) | 0 (17 TAŞINDI, 8 kapsam dışı) | bitti: `chat.rs`, parite `parity_chat` |
 | G3 transkriptten model/effort ve önbellek sıcaklığı | `last_assistant_*`, `live_or_spawn_*`, `last_real_request_epoch`, TTL ve effort-önbellek kuralı | 0 (18 TAŞINDI) | 0 (23 TAŞINDI, 31 kapsam dışı) | bitti: `claude_transcript.rs`, parite `parity_transcript` |
-| G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 0 (37 TAŞINDI) | 0 (16 TAŞINDI, 1 kapsam dışı) | bitti: `tui.rs`, parite `parity_tui`, `tests/tui.rs`; gerçek `Pane` uygulayıcısı G9 |
+| G4 TUI girdisi, canlı geçiş, devir kancaları | canlı model/effort değiştirme, başıboş diyalog, `prepare_input`, mod kalıpları, `wants_*` | 0 (37 TAŞINDI) | 0 (16 TAŞINDI, 1 kapsam dışı) | bitti: `tui.rs`, `real/pane.rs`; parite `parity_tui`, `tests/{tui,real_pane}.rs` |
 | G5 kota/bağlam komutları ve ayrıştırma | `usage_*`, `context_*`, `parse_*` ve regex'leri | 0 (36 TAŞINDI) | 0 (9 TAŞINDI) | bitti: `usage.rs`, parite `parity_usage` |
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo`: `real/modelio.rs` (G8) |
@@ -138,10 +195,10 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
   `MarkerSeen` başarının KANITI DEĞİL (aşağıda aday 1).
 - Diag olayı yok (Python bu yöntemlerde günlük yazmaz).
 
-### `Pane` sözleşmesi (gerçek uygulayıcı G9; `cops-tmux` bu dalda yok, bağımlılık eklenmedi)
-| `Pane` | `rs/tmux` karşılığı (`origin/rs/tmux`, 27 Kas) | Zorunlu anlam |
+### `Pane` sözleşmesi (gerçek uygulayıcı `real/pane.rs::TmuxPane`, 27 Kas; `cops-tmux` üstüne, o crate'e dokunulmadı)
+| `Pane` | `TmuxPane` (`cops-tmux` çağrısı) | Zorunlu anlam |
 |---|---|---|
-| `send_text(ad, metin, settle)` | `Tmux::send_text(ad, metin, Duration, MaskGuard::RefuseMasked)`; `Ok` = true | hedef `exact_target` (ön ek eşleşmesi yok); metin argv'ye girmez; gizli girdi ya da durumu bilinmeyen pane'e hiçbir şey; metin + tek Enter; süre `max(5, 5 + karakter/1500)` sn; yarım kalan gönderim = false (metin kutuda kalmış olabilir, çağıran yeniden göndermez) |
+| `send_text(ad, metin, settle)` | `Tmux::send_text(ad, metin, Duration, MaskGuard::RefuseMasked)`; `Ok` = true; `settle` negatif = 0, NaN/inf/sığmayan = false (hiçbir şey gönderilmez) | hedef `exact_target` (ön ek eşleşmesi yok); metin argv'ye girmez; gizli girdi ya da durumu bilinmeyen pane'e hiçbir şey; metin + tek Enter; süre `max(5, 5 + karakter/1500)` sn; yarım kalan gönderim = false (metin kutuda kalmış olabilir, çağıran yeniden göndermez) |
 | `send_key(ad, tuş)` | `Tmux::send_special_key(ad, tuş.name(), MaskGuard::RefuseMasked)` | TAM ad; tek tuş; 5 sn; her hata ve zaman aşımı false. Python özel tuşta maske denetlemez: Rust daha sıkı (kapalı yön) |
 | `capture(ad, satır)` | `Tmux::capture(ad, satır)` (ANSI korunur, `capture_plain` DEĞİL) | `-e -p -S -satır` (geçmişten `satır` + görünür alan); 5 sn; hata, oturum yok, UTF-8 olmayan çıktı = None; Python `text=True` `\r\n`/`\r`yi `\n` yapar (işaretler tek satırda, sonucu etkilemez); pane copy-mode'a sokulmaz |
 | `monotonic` / `sleep` | `Instant` / `thread::sleep` | geri gitmez; `sleep(s)` saati en az `s` ilerletir (döngülerin bitişi buna bağlı). Yöntemler bloklayıcıdır (async'te `spawn_blocking`) |
@@ -149,8 +206,14 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 - Hiçbir `Pane` yöntemi panik atmaz; hata değeri (false / None) döner.
 - Süre sınırı çağrıların toplamı değil, döngü başındaki saattir (Python gibi): son yakalama ve son bakış sınırı en çok iki
   tmux zaman aşımı kadar aşabilir.
-- Birleştirmede `tui.rs::strip_ansi` yerine `cops_tmux::strip_ansi`: `rs/tmux` OSC desenini `ESC \` bitişini de
-  silecek biçimde iki dilde değiştiriyor; `parity_tui` `g4-strip` o birleşmede fark verirse beklenen budur.
+- `tui::strip_ansi` = `cops_tmux::strip_ansi` (tek kaynak; OSC `ESC \` bitişi dahil).
+- Sınayan (yalıtılmış tmux sunucusu, `tests/real_pane.rs` 10): tam hedef ve ön ek (`prefix_name_never_reaches_another_session`),
+  metin argv'de değil (araya konan sahte tmux argv'yi kaydeder: `text_never_appears_in_tmux_argv`), maske
+  (`masked_pane_gets_no_text_and_rust_sends_no_keys`), 5 sn zaman aşımı (hiç dönmeyen sahte tmux:
+  `hung_tmux_times_out_to_false_and_none`), ANSI korunan yakalama Python `tmux_capture` ile aynı ve copy-mode'a girilmez
+  (`capture_matches_python_and_keeps_ansi`, her senaryoda `#{pane_in_mode}` = 0), Python `ClaudeProvider` ile aynı bayt
+  (`*_like_python`, `no_dialog_means_no_keys_on_either_side`). Copy-mode kuralı: `TmuxPane` hiçbir zaman `copy-mode`
+  çağırmaz (argv kaydında da yok).
 
 ### Mod kalıpları (tüketici notu, T2/T4)
 `mode_status_patterns` Python `re` metnini ve sözlük sırasını verir; Python `IGNORECASE` ile ANSI'si temizlenmiş son 8 dolu
@@ -181,24 +244,11 @@ ayrışma yok.
    satır sonundan oluşan metin boş metne iner ve tek Enter gönderilir.
 
 ### Test edilemeyenler
-Gerçek tmux ve gerçek claude diyaloğu (`Pane` gerçek uygulayıcısı yok; "Change effort level?" ve `Down`+Enter'ın 2.
-seçeneği seçtiği Python'da da canlı doğrulanmamış).
+Gerçek claude diyaloğu (gerçek tmux artık `tests/real_pane.rs`te, sahte claude TUI'siyle; "Change effort level?" ve
+`Down`+Enter'ın 2. seçeneği seçtiği Python'da da canlı doğrulanmamış).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G4 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| 2.5 sağlayıcı başına tek modül, if-zinciri yok (H4) | `Cli` eşlemesi; `only_claude_touches_the_pane`, `g4-sabit-` |
-| 2.5 effort tek geçit (H4) | canlı effort yalnız `handover_effort_downgrade` sonucu ile; `downgrades_only_go_down`, `g4-sabit-` effort çiftleri |
-| H3 canlı model/effort jsonl'den | G4 girdi alır; okuma G3 (`claude_transcript.rs`) |
-| H4 ekran okuma, kör Enter yok; ANSI | `permission_dialog_is_not_confirmed`, `effort_without_dialog_sends_no_enter`, `g4-pane-*-ansi-`, `g4-strip`; AÇIK: sürüm başına gerçek ekran fixture'ı yok, sınıflandırıcı Python gibi alt metin (aday 1, 2) |
-| H5 sınır girdi | okunamayan/boş yakalama `g4-pane-*-yakalama-yok`, `-ekran-hic`; Unicode `g4-sabit-`, `g4-pane-rastgele-` (900) |
-| H7 hedef tam eşleşme | `Pane` sözleşmesi (uygulayıcı G9) |
-| H8, 3.7 sınırlı bekleme | `every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read`; parite sahte pane 5000 yakalamada düşer |
-| H9 sessiz başarı | `SwitchOutcome` (`must_use`), `a_failed_send_returns_without_waiting`; AÇIK: aday 1 ve 5 |
-| H1, 3.9 zaman aşımı ve süreç; H12 metin argv'de değil | sözleşme (G9 / `cops-tmux`); bu kod süreç açmaz |
-| H14, 3.12 diferansiyel test | `parity_tui` 1079 vaka; `Down` denetimi ya da son bakış kaldırılınca düşüyor (elle mutasyonla denendi) |
-| H16, 3.17 test yalıtımı | gerçek tmux yok; geçici HOME/CLAUDEOPS_DIR |
-| Uygulanmaz | H2, H6, H10, H11, H13, H15, H17-H19, H21: bu kod yazmaz, işaret ayrıştırmaz, uzak/auth/vekil işi yapmaz. H20: Python gibi günlük yok (T4 günlükler) |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G6: canlı durum okuyucuları
 
@@ -234,22 +284,7 @@ seçeneği seçtiği Python'da da canlı doğrulanmamış).
 6. `bg_work`: liste biçimli araç sonucunda yalnız metin blokları, gerçek satır sonlarıyla taranır (`bg-transkript-`).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G6 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| 2.5 sağlayıcı başına tek modül (H4) | dağıtım `Cli` eşlemesi `live.rs`, ucli okuyucuları `ucli_status.rs`, kalıp sabitleri sağlayıcı modüllerinde; `varsayilan-` |
-| 2.5 kota kaynağı yoksa "bilinmiyor", sıfır değil (H3, H21) | tüm okuyucular `Option`; `durum-` (alan yok/bozuk), `varsayilan-` |
-| 3.3 okunamayan durum "yok/başarı"ya dönmesin (H13, H10, H9) | None döner. İstisna (Python gibi): `transcript_pending_path`/`tail_lines` okunamazsa false/boş; `bg-dosya` |
-| 3.5 ve 3.10 panik yok, girdi sınırları (H5, H9) | `bg_work::tests::truncated_and_mutated_input_never_panics`, `durum-`, `rastgele-` (400), `bg-damga-` (6000); `unwrap`/`expect` yalnız sabit desenlerde. Okuma hatasının NEDENİ loglanmıyor (Python da loglamaz; H20 açık) |
-| 3.6 bayat önbellek (H3) | okuyucularda önbellek yok, her çağrı dosyayı okur |
-| 3.7 sınırsız döngü (H8) | döngüler yalnız sınırlı girdi üzerinde |
-| 3.9 kaynak sahibi ve sınırı (H1) | okuma sınırları `TRANSCRIPT_TAIL_BYTES`, `CODEX_CONTEXT_TAIL_BYTES`, `STATUS_MAX_BYTES`, `RECORD_MAX_BYTES`; `bg-kuyruk-`, `codex-ctx-`, `sinir-`. Dosya/SQLite kapanışı G8'de sınandı (`real_fd`) |
-| 3.11 işaret ayrıştırma tek modül + Python'la eşit (H6, H14) | `bg_work.rs`; `bg-ekran` (3000 rastgele metin), `bg-transkript-` |
-| 3.12 diferansiyel test (H14) | `parity_bg_work`, `parity_live`; `$HOME` yolları yalnız `Paths` üzerinden |
-| 3.14 yol girdisi (H17) | AÇIK: oturum adı Python gibi dosya yoluna eklenir (`..`/`/` denetlenmez); yalnız okuma. G1 de denetim eklemedi (birebir): denetim çağıranda |
-| 3.17 test yalıtımı (H16) | geçici HOME/CLAUDEOPS_DIR; koşucu bunu `assert` eder |
-| 3.20 performans (H21) | desenler doğrusal `regex`: geri izlemeli motor 4 MB satırda sessizce 0 sayıyordu, `very_long_screen_line_is_still_scanned` |
-| H7 "en yeni" tahmini | claude transkripti ve copilot resume Python'da "en yeni"ye düşer; G1 birebir taşıdı (G1 şüphe listesi) |
-| Uygulanmaz | 3.1, 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: bu kod yazmaz, süreç/ağ/uç açmaz, sır okumaz |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G2: sohbet geçmişi okuma
 
@@ -289,18 +324,7 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
 7. copilot BLOB hücre: geçerli UTF-8 ise metin, değilse "" (`blob`, `blob-bozuk`).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G2 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| 2.5 sağlayıcı başına tek modül (H4) | KISMİ: beş okuyucu tek `chat.rs`de bölümlere ayrılı, dağıtım `Cli` eşlemesi; Python'daki sağlayıcı dosyalarına bölünmedi |
-| 3.3 okunamayan durum "yok"a dönmesin | ucli None (Python gibi). claude/codex/agy/copilot okunamayanı boş geçmiş sayar (Python sözleşmesi); `chat-...izinsiz`, `db-bozuk` |
-| 3.5 hata yutma | atlanan satır ve SQLite hatasının NEDENİ sayılmıyor/loglanmıyor (Python da loglamaz; H20 açık) |
-| 3.9 kaynak sahibi ve sınırı (H1) | boyut sınırı YOK (işlevce eşlik); SQLite bağlantısı ve 2 sn bekleme `sqlite_rows` uygulayıcısının sözleşmesi; G8: `sqlite_waits_two_seconds_*`, `real_fd`, WAL `sqlite_reads_a_wal_database_*` (yalnız Rust testi) |
-| 3.10 girdi sınırları, panik yok (H5) | `truncated_and_mutated_protobuf_never_panics` (20000), `varint_limits`, `huge_length_and_field_number_do_not_wrap`, `broken_transcript_lines_are_skipped_not_fatal`, `agy-yuk-`, `agy-rastgele-`, `claude-kesik-`, `satir-` |
-| 3.12 diferansiyel test (H14) | `parity_chat` (1156 vaka; 500 rastgele jsonl, 150 rastgele protobuf veritabanı); `strip` Python kuralı `claude-satir-kirpma` |
-| 3.14 yol girdisi (H17) | AÇIK: `sid` Python gibi yola eklenir (mutlak yol dizin dışını açar, `agy-mutlak-kimlik`); yalnız okuma |
-| 3.17 test yalıtımı (H16) | geçici HOME; tüm veri sentetik |
-| H7 "en yeni" tahmini | transkript/resume çözümü G1'de taşındı (Python gibi) |
-| Uygulanmaz | 3.1, 3.2, 3.4, 3.6-3.8 (önbellek, döngü, yazım yok), 3.13, 3.15, 3.16, 3.18, 3.19 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G3: transkriptten model/effort ve önbellek sıcaklığı
 
@@ -343,21 +367,7 @@ bu ize yönlendirilmeli.
 7. `Path.is_file` aşırı uzun sid'de `OSError` atar. Rust adayı yok sayar.
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G3 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| 2.5 sağlayıcı başına tek modül (H4) | claude'a özgü kod `claude_transcript.rs`; sağlayıcı farkı kapsayıcı `match` (`_` kolu yok) |
-| 2.5 canlı model/effort jsonl'den (H3) | `surec-sonrasi`, `onceki-surec`, `canli`; `synthetic_and_unexpected_rows_do_not_hide_the_real_model` |
-| 2.5 kardeş oturum (H4, H7); 3.1 hedef çözümü | `last_request_epoch` yalnız tam ad: `istek-` (`sibling`, `onek`), `cache_candidates_are_exact_files_and_newest_wins`. AÇIK: `live_or_spawn_*` düşüşü Python gibi (G3 şüphe 4) |
-| 2.5 kaynak yoksa "bilinmiyor" (H3, H21); 3.3 | okuyucular `Option`; `yollar`, `truncated_file_and_read_errors_mean_unknown` |
-| 3.5 hata yutma, panik | `expect` yalnız sabit desende. Atlanan satır sayılmıyor/loglanmıyor (Python da; H20 açık). Regex motoru hatası "önbellek korunur" sayılır (başa demirli desen, tetikleyen girdi bilinmiyor) |
-| 3.6 bayat önbellek | okuyucularda önbellek yok; `rows_appended_after_the_size_was_read_are_not_seen` |
-| 3.7 sınırlı döngü (H8); 3.9 kaynak sınırı (H1) | en çok 4 okuma, en çok 4 MiB: `window_grows_four_times_and_stops_at_the_limit`, `pencere-`. Dosya kapanışı `real_fd` (G8) |
-| 3.10 girdi sınırları (H5) | `satir-`, `kullanim-`, `damga-`, `bozuk-utf8`, `dev-sayi`, `rastgele-` (400), `truncated_and_mutated_input_never_panics` |
-| 3.12 diferansiyel test (H14) | `parity_transcript` (536; effort kuralı için 4000'den çok rastgele model adı, 6000'den çok rastgele damga) |
-| 3.14 yol girdisi (H17) | AÇIK: sid Python gibi yola eklenir (mutlak ad dizini aşar, `istek-mutlak`); yalnız okuma |
-| 3.17 test yalıtımı (H16) | geçici HOME / bellek içi `Probe`; tüm veri sentetik |
-| 3.20 ölçüm | performans iddiası yok, ölçülmedi |
-| Uygulanmaz | 3.2, 3.4, 3.8, 3.13, 3.15, 3.16, 3.18, 3.19: yazım, süreç, ağ, uç, sır yok |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G7: model kaynakları
 
@@ -417,27 +427,7 @@ bu ize yönlendirilmeli.
 10. ucli sayı id listeye `int` olarak girer. Yeniden üretildi (`src-ucli-sapma-sayi-id`).
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G7 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H1, 3.9 süreç/bağlantı sahibi ve zaman aşımı | süre ve üst sınır istekte (`agy_catalog_runs_the_resolved_binary_without_a_shell`, `oversized_answers_are_ignored_even_if_the_implementation_returns_them`). öldür+bekle, boru boşaltma, fd sızıntısı G8'de: `tests/real_process.rs`, `tests/real_fd.rs` |
-| H3, 3.6 bayat önbellek, hata `last_good`u ezmez | `repeated_errors_never_replace_the_last_good_list` (6 ardışık hata), `src-ucli-akis`, `src-codex-akis`, `src-agy-akis`; `service_models` BİLEREK ezer (şüphe 6). Ayar/anahtar her çekimde yeniden okunur (hizmet önbelleği hariç, şüphe 7). Tek denemede kalıcılaşma yok (D:1506): `src-ucli-akis` |
-| H3 arka plan akışı sağlığı | yenileme takılırsa deneme damgası sonraki TTL'de yeni iş başlatır; iş parçacığı birikimi G8 zaman aşımıyla sınırlı |
-| H4, 2.5 sağlayıcı başına tek modül | her önbellek kendi sağlayıcı modülünde; dağıtım yalnız `ModelSources::catalog` (`_` kolu yok) |
-| 2.5 `--help` yoklaması, gerçek model kanıtı | uygulanmaz (liste okuma; bayrak eklenmiyor) |
-| 2.5 effort/model tek geçit | `resolve_effort` değişmedi; liste ve yetenek aynı çekimden (`model_list_and_effort_gate_share_one_fetch`); `codex_choices_are_cached_but_effort_levels_read_the_current_file` |
-| 2.5 kaynak yoksa "bilinmiyor" (H21) | boş agy listesi / boş `caps` = bilgi yok (`--effort` eklenmez) |
-| H5, 3.10 girdi sınırları, panik yok | `broken_and_mutated_model_answers_never_panic`, `src-svc-govde-*`, rastgele diziler (agy 150, codex 150, ucli 150, hizmet 200); boş/boşluk anahtar `no_request_without_a_key`. `unwrap`/`expect` yok; zehirli kilit geri alınır |
-| H5 boş token | `no_request_without_a_key`, `src-ucli-anahtarsiz`, `src-svc-istek-yok` |
-| H7 hedef çözümü | uygulanmaz (oturum hedefi yok); ikili `resolved_binary` ile yalnız çekim gerekince (`binary_is_resolved_only_when_a_fetch_is_due`) |
-| H8, 3.7 sınırsız tekrar | döngü yok; başarısız çekim TTL (hizmette 60 sn) dolmadan yinelenmez. İstisna Python gibi: ucli'de ilk liste oluşana dek eşzamanlı çağıranlar ayrı istek yapar |
-| H9, 3.3, 3.5 hata yutma | her G/Ç hatası `None`, eski değer kalır; neden sayılmıyor/loglanmıyor (Python da; H20 AÇIK) |
-| H12, 3.13 sır | `the_key_stays_out_of_urls_argv_and_debug_output`, `a_key_that_cannot_be_a_header_value_sends_nothing`; yönlendirme G8'de izlenmiyor (`redirects_are_never_followed_*`) |
-| H13 kapalı yön | uygulanmaz (yetki kararı yok) |
-| H17, 3.14 adres girdisi | uç nokta mevcut doğrulayıcılardan (`ucli_endpoint`, `ucli_services`); iç ağ adresine istek engeli yok (Python gibi, AÇIK) |
-| H14, 3.12 diferansiyel test | `parity_model_sources` (700 vaka; istek URL'i, başlık, zaman aşımı, argv, arka plan başlatma da karşılaştırılır) |
-| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR; süreç, HTTP, saat sahte; birim testlerde dosya sistemi de sahte |
-| H1/H21 performans | `/api/status` yolunda bayat agy beklemez (`agy_stale_list_is_returned_at_once_while_a_real_thread_refreshes`); ölçüm yapılmadı |
-| Uygulanmaz | H2/3.2 (yazım yok), H6, H10, H11, H15, H18, H19 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G1: oturum kimliği ve devam
 
@@ -498,25 +488,7 @@ bu ize yönlendirilmeli.
     (`devam-sapma-*-sayi`); komut kurucuda ne olduğu sınanmadı.
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G1 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H7, 3.1 hedef çözümü; 2.10 "en yeni" tahmini | Python birebir: `jsonl_path_for` ve codex rollout en yeniye düşer (G3 şüphe 4). Kesin eşleşme isteyen yollar düşmez: `sid_for_stopped_session` (`devam-claude-kardes`, `-yeni-gercek`), `last_request_epoch`. `Unique` kanıtı tipi YOK (AÇIK: yıkıcı eylem sahibi çağıran) |
-| 2.10 kilit içinde çözüm | uygulanmaz: crate eylem yapmaz; `ids_held_by_others` ile spawn arasındaki yarış G9'da (AÇIK) |
-| 2.5 cwd başına tek kimlik, kardeş oturumlar | `devam-claude-kardes`, `devam-agy-onbellek-tutulan`, `devam-agy-ogrenilen-`, `devam-tutulan`; şüphe 5 AÇIK |
-| 2.5 sağlayıcı başına tek modül (H4) | `claude_resume`, `codex_resume`, `agy_resume`, `copilot`; dağıtımda `_` kolu yok |
-| H2, 3.2 atomik/kilitli yazım | `value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing`; atomik yazım, DB ve `flock` gerçek `AgySidStore`ta (AÇIK, rs/state) |
-| H5 bozuk belge yedeği | AÇIK: Python gibi üzerine yazılır (şüphe 7) |
-| H3, 3.6 bayat önbellek | `unchanged_files_are_not_reread_but_changed_ones_are` (imza değişince yeniden okuma); `agy_sids` ve cwd önbelleği her çağrıda okunur |
-| H21, 3.3 "bilinmiyor" | her okuyucu `Option`; `devam-claude-dizin-yok`, `devam-copilot-db-yok`, `devam-agy-dizin-yok`. agy `snapshot` dizin yoksa boş küme (Python gibi) |
-| H9, 3.5 hata yutma, panik | `save`/kilit hatası `Result` ile döner (`preview_writes_nothing_and_save_errors_surface`); `unwrap` yok, `expect` yalnız sabit desende; zehirli kilit geri alınır. Atlanan aday loglanmıyor (Python da; H20 AÇIK) |
-| H5, 3.10 girdi sınırları | `devam-meta-` (150 rastgele), `devam-kayit-`, `devam-codex-satir-`, `truncated_and_mutated_input_never_panics` (3000) |
-| H1, H8, 3.7, 3.9 kaynak/döngü sınırı | taramalar 25 / 500 / 500 (`-sinir-`); `head_reading_is_bounded_and_drops_the_unfinished_line`, `whole_file_reads_carry_a_limit`, `meta_cache_is_bounded`. Dizin girdi sayısı sınırsız (Python da) |
-| H17, 3.14 yol girdisi | claude `sid` Python gibi yola eklenir (mutlak ad dizini aşar), agy kimliği `{kimlik}.db` olarak eklenir; codex joker/`/` daha sıkı. Yalnız okuma. copilot SQL parametreli |
-| H14, 3.12 diferansiyel test | `parity_resume` (334 vaka; sabitler ve kök yollar dahil) |
-| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR, `/proc` ve süreç taraması sahte, depo `files` kipi; birim testler bellek içi |
-| H12, H13 | uygulanmaz (sır ve yetki kararı yok) |
-| H21 performans | ölçüm yapılmadı: `jsonl_path_for` düşüşü ve codex taraması her çağrıda dosya listeler (Python gibi) |
-| Uygulanmaz | H6, H10, H11, H15, H18, H19 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G8 (birinci parça): gerçek uygulayıcılar
 
@@ -593,25 +565,7 @@ bu ize yönlendirilmeli.
 | 12 | `path_executables` satır sonlu dosya adını listeliyor | DÜZELDİ |
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G8 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H1, 3.9 süreç/fd sahipliği, zaman aşımı, kill+wait, boru boşaltma | `a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_*`, `closed_pipes_with_a_running_child_*`, `bounded_capture_overflows_*`; fd ve çocuk sayımı `a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child` (100 tur) |
-| H2, 3.2 atomik/kilitli yazım | `concurrent_atomic_writes_never_expose_a_partial_file`, `rust_and_python_writers_across_processes_lose_nothing` (4+4 süreç, 320 kayıt), `the_lock_is_the_one_python_takes_*`, `concurrent_issue_keeps_file_and_digest_consistent`, `concurrent_diag_writers_never_interleave_lines`; `ucli_agents` kilidi artık ortak (Python `test_every_writer_waits_for_the_file_lock`) |
-| H2/H5 bozuk belge yedeği (`.corrupt-<sha>`) | `ucli_agents`: `a_corrupt_agent_registry_is_copied_aside_*`. AÇIK: `agy_sids` Python gibi üzerine yazar (G1 şüphe 7) |
-| H3, 3.6 bayat durum | önbellek yalnız yardım çıktısı (yol, argüman, mtime, boyut): `help_probe_runs_once_per_binary_version_*`; belge kipi her çağrıda yeniden okunur; maliyet ayarı her kapı çağrısında okunur (`settings_are_read_on_every_call_*`) |
-| H4, 2.5 `--help` yoklaması | gerçek yoklama + önbellek; sürümün günlüğe yazılması YOK (Python'da da yok) |
-| H5, 3.10 girdi sınırları, panik yok | `reading_takes_only_regular_files_*`, `bounded_reads_*`, `checks_registry_*`, `empty_failed_slow_huge_or_non_utf8_help_*`, `unusable_addresses_send_nothing`, `error_statuses_broken_and_truncated_*`; `real/`de `expect` yalnız sabit desenlerde, `unwrap` yok |
-| H8, 3.7 sınırlı bekleme | süreç, HTTP, `flock` (30 sn), SQLite (2 sn) süre sınırlı; testlerdeki bekleme döngüleri de süreli |
-| H9, 3.3, 3.5 başarı/hata yutma | yazım ve kilit hatası döner (`apply_all_stops_at_the_first_failure_*`); yutulanlar Python gibi: `Remove`, `DiagLog` (bool döner), `ModelIo` her hatayı `None` yapar (`HttpError` nedeni loglanmıyor: H20 AÇIK) |
-| H12, 3.13 sır | `secret_files_are_private_from_creation_*`, `agent_token_is_0600_*`, `a_dry_run_build_issues_no_token_*` (token argv ve diag'da yok), `HttpError`/`EffectError` içerik ve adres taşımaz, başlık `sensitive`, `Env` Debug maskeli, TLS doğrulaması düşünce anahtar gönderilmez, yönlendirmede taşınmaz |
-| H13 kapalı yön | maliyet tavanı (`an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`), `db` kipi (`db_backend_documents_are_neither_read_*`), kilit, TLS, kullanılamayan proxy (doğrudan gidilmez) |
-| H14, 3.12 diferansiyel test | `parity_real` 124 vaka (yol, zincir, checks, token, günlük, `agy_sids`, yardım, MCP, proxy); tüm eski aileler gerçek dosya uygulayıcısıyla |
-| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR/PATH, yalnız sahte betikler ve loopback; gerçek `claude`/`agy`/ucli/docker/ağ yok |
-| H17, 3.14 yol/adres girdisi | `O_NOFOLLOW` yazımlar (`*_links_are_not_followed`, `a_symlinked_lock_file_is_refused_*`), token adı deseni (`agent_children_get_no_token_*`), SQLite yolu olduğu gibi. AÇIK: okuma bağlantı izler (Python gibi); iç ağ adresine istek engeli yok |
-| H20 gözlemlenebilirlik | AÇIK (yukarıda) |
-| H21 performans | ölçülmedi (HTTP istemcisi istek başına iş parçacığı + çalışma zamanı kurar) |
-| 2.5 spawn env beyaz listesi, başarısız spawn temizliği, kota sayımı | kota sayımı ve eşzamanlı pay `concurrent_starts_cannot_oversubscribe_the_cap`; env beyaz listesi ve başarısız spawn'da `release` G9 (AÇIK) |
-| Uygulanmaz | H6, H7, H10, H11, H15, H18, H19 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G8 (ikinci parça): maliyet defteri ve SearXNG
 
@@ -663,16 +617,7 @@ UsageScan}` ile tek kopya kalmalı. Eşitleme kaynağı Python'un 27 Kas düzelt
 4. SearXNG hızlı yolu kayıtlı portta `/healthz` 200 veren HERHANGİ bir süreci kabul ediyor (çok kullanıcılı makine).
 
 ### Ders listesi, ikinci parça koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H1, 3.9 süreç sahipliği | docker: `a_hanging_docker_is_killed_marked_down_and_not_asked_again`; ayrık kurulum bekleyen iş parçacığıyla toplanır |
-| H2, 3.2 kilitli/atomik yazım | `the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`, `a_held_provision_lock_prevents_a_second_process`, eşzamanlı pay `concurrent_starts_cannot_oversubscribe_the_cap` |
-| H5, 3.10 girdi sınırları | satır 16 MiB, docker çıktısı 4 MiB, durum belgesi 16 MiB; `an_unreadable_or_invalid_ledger_closes_an_open_cap`, parite 260 rastgele günlük |
-| H8, 3.7 sınırlı bekleme | docker 5/15 sn, sağlık 1,5 sn toplam, hazır bekleme 8 sn, `flock` 30 sn; AÇIK: günlük taraması dosya boyutuyla sınırsız (Python gibi) |
-| H12, 3.13 sır | ret metninde yalnız dosya adı ve tutar; `a_claude_service_build_is_refused_over_the_cap` anahtar metne girmiyor |
-| H13 kapalı yön | yukarıdaki kapı kuralları |
-| H16, 3.17 test yalıtımı | sahte docker, loopback, geçici dizin; ağ engeli vakayla sınanır |
-| H21 performans | ölçülmedi (kapı bir çağrıda günlükleri birkaç kez tarar, Python gibi) |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G10: tek atımlık çağrı ve onay
 
@@ -735,23 +680,7 @@ Gerçek `ucli`/`claude` ikilisi, gerçek API çağrısı ve ucli'nin kendi onay 
 kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G10 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H1, 3.9 süreç/fd sahipliği, zaman aşımı, kill+wait | `timeouts_kill_the_whole_group_and_return_promptly`, `a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child` (G10 turları eklendi) |
-| H2, 3.2 kilitli/atomik yazım, Python ile ortak sözleşme | `concurrent_registrations_lose_nothing_and_one_key_has_one_winner`, `the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` |
-| H5, 3.10 girdi sınırları, panik yok; bozuk ≠ yok | `oversized_output_is_refused`, `kayit-belge` `kayit-utf8` `kayit-derin`, `saf` (rastgele metin) |
-| H6 işaret ayrıştırma | `suspended` satırı: `saf` 1500+ rastgele metin, `suspended_line_is_searched_from_the_end` |
-| H7 hedef çözümü, 2.10 kayıt çakışması | `a_live_run_key_is_refused_before_the_binary_starts`, `onay-yaris` |
-| H9, H20 başarı yutma, gözlemlenebilirlik | kayıt yazılamazsa hata + `ucli_approval_record_failed` (`onay-kayit-yazilamadi`) |
-| H12, 3.13 sır | `the_key_reaches_only_the_child_environment`, `secrets_are_removed_from_every_error_text`, `sir-` |
-| H13 kapalı yön | düzeltme tablosu 1, 5, 8, 9, 10; tanınmayan `--approval-dir` desteği = ret (`onay-bayrak-yok`) |
-| H14, 3.12 diferansiyel test | `parity_oneshot` 198 vaka |
-| H16, 3.17 test yalıtımı | geçici HOME/CLAUDEOPS_DIR/PATH; ikili yalnız vaka ağacından (koşucu `_g10_guard`) |
-| H17, 3.14 yol/env girdisi | `kayit-baglanti`, `onay-kilit-baglanti`, `only_api_key_names_may_receive_a_secret` |
-| H4, 2.5 bayrak yoklaması | `--state-dir`/`--approval-dir` yalnız `--help`te varsa (`durum-dizini-`, `onay-bayrak-yok`) |
-| 2.5 env beyaz listesi | AÇIK: çocuk ortamı Python gibi miras (yalnız `*_API_KEY` eklenir; aday 1) |
-| H8, 3.7 sınırlı bekleme | süreç süre sınırlı, `flock` 30 sn |
-| Uygulanmaz | H3, H10, H11, H15, H18, H19, H21 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## G9: spawn yürütme ve küresel yönerge (27 Kas: TAŞINDI ve sınandı; gerçek tmux ve süreç taraması uygulayıcıları yazıldı)
 
@@ -809,7 +738,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
   `write_json` istisnası `find_sessions`i düşürür); kilit alınamazsa tarama sürer, `agy_sids_lock_busy` (metin 200
   karakter). `scan_config(paths)` kökleri `Paths`ten kurar (`HOME`suz süreçte de çalışır).
 - Bağlayan uç (copsd/panel `_start`, rc, handover) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `spawn_session` çağrısı: o
-  izlerin işi. Gerçek `Pane` (G4) uygulayıcısı hâlâ yazılmadı (`cops-tmux` `send_text`/`capture` üstüne; ayrı iş).
+  izlerin işi. Gerçek `Pane` (G4) uygulayıcısı: `real/pane.rs::TmuxPane` (G4 bölümü).
 
 ### Gerçek uygulayıcıların Python'dan bilinen farkları (davranış `cops-procscan`/`cops-tmux`ta; o crate'lere dokunulmadı)
 - Kuru çalıştırmada agy öğrenmesi: `cops-procscan` `AgyState` öğrenilen kimliği bellekteki `known`a ekler; Python kuru
@@ -861,18 +790,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | 6 | Kanca kuru çalıştırmada da çağrılır (TODO "spawn kancası kuru koşuda da yazıyor") | `dry_run=True` + çok kullanıcı kancası | ÖLÇÜLDÜ: `{cli}-kuru`, `kanca-red-kuru` |
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G9 koduna düşen maddeler
-| Madde | Durum / test |
-|---|---|
-| H1 süreç yaşam döngüsü (zombi) | `gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; öldürme yok, hayalet yalnız tam adla `kill-session` |
-| H8 sınırlı bekleme | bekçi en çok (RETRY+1) x WAIT; `watchdog_retries_then_falls_back_to_headless_tmux`; tmux zaman aşımları `cops-tmux`ta |
-| H9, 2.5/2.10 başarısız ya da kuru spawn'da pay iadesi | `release` denetimi her `parity_g9` vakasında |
-| H12, 2.5 sır argv'de değil, env beyaz liste | `ortam-supurme`, `{cli}-kanca` (filtre); kanca ortamı hâlâ komut satırına gömülü ("Sır / argv notları"); hayalet ekranı ve bekçi hata metni günlüğe girmez (`hayalet-`, `bekci-valueerror`) |
-| H13 kapalı yön | kanca hatası = `hook_error` reddi (`kanca-hata`, `kanca-hata-uzun`) |
-| H14, 3.12 diferansiyel test | `parity_g9` 172 vaka; `real_tmux.rs::fragments_match_python` (Python parça metniyle bayt eşitliği) |
-| H16 test yalıtımı | sahte tmux/`Popen`/saat; betikler alt süreçle yazılır (`write_exe`); gerçek gnome-terminal YOK; gerçek tmux yalnız geçici `TMUX_TMPDIR` + rastgele soketli kendi sunucusunda (`tests/real_tmux.rs`, kapanış yalnız o soketle `kill-server`); süreç taraması sahte `/proc` (`tests/real_scan.rs`, `/proc` testleri tek kilitle sıralı) |
-| H17 symlink | `esitle-*-5` (bağlantı hedefine yazım), `copy2` hedef bağlantı; hedefsiz yedek bağlantısı reddi `esitle-kirik-yedek*` `esitle-dongu-yedek` |
-| H20 gözlemlenebilirlik | olaylar Python adlarıyla (`spawn_retry*`, `spawn_fallback_used`, `spawn_no_gnome_terminal`, `spawn_launch_failed`, `spawn_hidden_no_tmux`, `spawn_retry_launch_error`) |
-| Uygulanmaz | H2-H7, H10, H11, H15, H18, H19, H21 |
+Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
