@@ -203,7 +203,7 @@ class Cost(unittest.TestCase):
               f"15 sn aralıkta ~%{cpu / 15000 * 100:.3f} çekirdek")
         last = um.query("cost", path=s.path)["samples"][-1]
         self.assertGreaterEqual(last["procs"], 11)
-        self.assertLess(wall, 500)
+        self.assertLess(cpu, 500)       # duvar süresi makine yükünü ölçer; maliyet sınırı sürecin CPU süresine
 
 
 if __name__ == "__main__":

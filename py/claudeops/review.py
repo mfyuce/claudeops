@@ -1635,6 +1635,10 @@ def decide_finding(paths: Any, fid: str, action: str, now: float, by: str = "own
         data = load_findings(p)
         rec = data.get(fid)
         if not isinstance(rec, dict):
+            try:
+                _refuse_corrupt(p.findings)         # bozuk depo boş okunur: sorun bulguda değil depoda
+            except StoreCorrupt:
+                return {"ok": False, "error": "bozuk depo, yazım reddedildi: findings"}
             return {"ok": False, "error": f"unknown finding: {fid}"}
         st = rec.get("state")
         if action == "undup":
