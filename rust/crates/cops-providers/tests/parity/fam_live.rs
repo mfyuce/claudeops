@@ -747,14 +747,15 @@ fn codex_context(b: &mut Build<'_>) {
             0o600,
         ));
     b.push(c);
+    // Yer tutucu metinle: serde_json anahtar sırası özellik birleşmesine bağlıdır (`preserve_order`, çalışma alanı
+    // koşusunda `cops-steward-core` açar); sıraya bağlı bir desen sayacı sessizce değiştirmeden bırakır.
+    let huge = token_count(json!("DEV"));
+    assert_eq!(huge.matches("\"DEV\"").count(), 1);
     let c = b
         .case("codex-ctx-dev", "codex", Some("sidabc"), "")
         .file(file(
             ROLLOUT,
-            &token_count(json!(1)).replace(
-                "\"input_tokens\":1}",
-                "\"input_tokens\":99999999999999999999}",
-            ),
+            &huge.replace("\"DEV\"", "99999999999999999999"),
             0o600,
         ))
         .known("i64'e sığmayan sayaç: Python sınırsız int, Rust i64::MAX");
