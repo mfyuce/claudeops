@@ -1,15 +1,16 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G9 YARIM: kod var, testsiz, aşağıdaki "G9" bölümü; eşleme tablosunda EKSİK G9 ve ders listesi açık; G1, G2, G3,
-G4, G5, G6, G7, G8 (iki parça), G10 ve G11 taşındı). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
-`cargo test -p cops-providers` 175/175 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 19, TUI
-sözleşmesi 18; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16, SearXNG 8,
-tek atımlık çağrı ve onay 8).
+Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı, eşleme tablolarında EKSİK satır yok; açık: test tablosunda 19
+TAŞINDI-TESTSİZ satır, ders listesinin izin tamamı için madde madde karşılanması; G9'un gerçek tmux uygulayıcısı `cops-tmux`
+birleşimini, süreç taraması rs/proc'u bekliyor, "G9" bölümü). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
+`cargo test -p cops-providers` 190/190 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 20, TUI
+sözleşmesi 18, G9 14; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16,
+SearXNG 8, tek atımlık çağrı ve onay 8).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 7081 vaka: tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
+- 7242 vaka: spawn yürütme 161 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
   (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1177 (G2), bg_work 73 ve live 653 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
@@ -25,8 +26,8 @@ tek atımlık çağrı ve onay 8).
   ailesi iki tarafta vaka ağacındaki sahte `docker` betiğini çalıştırır (`PATH`teki `docker` ağaç dışındaysa vaka düşer).
 - G10 ailesinde `repo_dir`/`OWN_UCLI` vaka ağacına çevrilir: depodaki gerçek `bin/ucli` seçilemez. Tek normalleştirme:
   "ucli çıktısı JSON değildi" metnindeki `JSONDecodeError` ayrıntısı atılır.
-- Kapsanmayan: oturum başlatma, tmux parçası, hayalet oturum temizliği (G9); `db` kipindeki belge deposu (rs/state).
-- Rust'ta henüz yok: `_sync_one` dosya adımları (G9). `ucli_web_searxng_error` diag'ı BİLEREK yok: Rust arama yöneticisi
+- Kapsanmayan: gerçek tmux komutları (`SpawnTmux` uygulayıcısı `cops-tmux`), gerçek süreç taraması (rs/proc); `db` kipindeki belge deposu (rs/state).
+- `parity_misc` `sync*` vakaları gerçek `real::routing_sync::sync_one` ile koşar (G9). `ucli_web_searxng_error` diag'ı BİLEREK yok: Rust arama yöneticisi
   istisna üretemez (her hata kendi içinde `None` + `searxng_*` olayı).
 - TBD#386, TBD#389 ve G2/G6 Python hataları (TBD#383 kalıcı kuralı) iki tarafta düzeltildi; ayrıntı ilgili grup bölümünde.
   Eklenen özel yardımcılar (Rust karşılığı): `claude_provider._row_model` (`claude_transcript::assistant_model`),
@@ -74,7 +75,7 @@ Dosya 26 Kas akşamı worktree'ye geldi (takipsiz, git add edilmez). G6, G2, G3 
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. EŞLEME TABLOSU'ndaki EKSİK grubu taşı (aşağıdaki liste): G9.
+1. G9 gerçek uygulayıcıları: `SpawnTmux` (`cops-tmux` birleşince), `SessionScan` (rs/proc); bağlayan uç (copsd/panel) `SpawnRuntime` ile.
 2. TAŞINDI-TESTSİZ test satırları için parite vakası ya da birim testi ekle.
 3. `docs/rust-lessons-from-python.md` genel liste ve bu izin kontrol listesini madde madde karşıla.
 4. `cargo fmt --check` şu an farklı (rustfmt.toml yok; satır genişliği elle 120): diğer crate'lerin biçimine bak, karar ver.
@@ -113,7 +114,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | G6 canlı durum okuyucuları | ucli durum dosyası (`live_*`, faz, hata kayıtları), `background_work` (`bg_work`), codex/copilot bağlamı, meşgul kalıpları | 0 (39 TAŞINDI) | 0 (48 TAŞINDI, 2 kapsam dışı, 1 G2ye) | bitti: `live.rs`, `ucli_status.rs`, `bg_work.rs`, `pyjson.rs`; parite `parity_live` + `parity_bg_work` |
 | G7 model kaynakları | `agy models`, codex/claude belge okuma, ucli `/models` HTTP, `service_models`, TTL önbellekleri | 0 (17 TAŞINDI) | 0 (11 TAŞINDI) | bitti: `model_sources.rs`, parite `parity_model_sources`, `tests/model_sources.rs`; gerçek `ModelIo`: `real/modelio.rs` (G8) |
 | G8 `Probe` ve `Effect` gerçek uygulayıcısı | `real/` (dosya, süreç, HTTP, belge, günlük, token, MCP, checks, `agy_sids`), maliyet defteri (`cost.rs`, `real/ledger.rs`), SearXNG spawn yolu (`real/searxng.rs`) | 0 (53 TAŞINDI) | 0 (47 TAŞINDI, 5 kapsam dışı) | bitti: parite `parity_real`, `parity_ledger`, `parity_searxng`; `tests/real_{fs,process,http,ledger,searxng,fd,agy_store}.rs` |
-| G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 15 | 14 | YARIM: kod `spawn_exec.rs`, `hooks.rs`, `real/{launch,routing_sync,runtime}.rs`, testsiz ("G9" bölümü); rs/tmux ve G1/G8'e bağlı, canlı filoyu etkiler |
+| G9 spawn yürütme ve küresel yönerge | `spawn_session` akışı, gnome/headless, hayalet temizliği, fallback bekçisi, pencere açma, kanca/eklenti çağrıları, `sync_global_files` | 0 (15 TAŞINDI) | 0 (14 TAŞINDI) | bitti: `spawn_exec.rs`, `hooks.rs`, `real/{launch,routing_sync,runtime}.rs`; parite `parity_g9`, `tests/g9.rs`; gerçek `SpawnTmux` `cops-tmux`, `SessionScan` rs/proc birleşince ("G9" bölümü) |
 | G10 tek atımlık çağrı ve onay | `oneshot`, `ucli_chat_once`, onay kaydı (`ucli_approval` yazılan kısım), bütçe notu | 0 (26 TAŞINDI, 18 kapsam dışı) | 0 (41 TAŞINDI, 8 kapsam dışı) | bitti: `oneshot.rs`, `approval.rs`, `real/{oneshot,approval}.rs`; parite `parity_oneshot`, `tests/real_oneshot.rs` |
 | G11 ayar ve panel okuyucu artıkları | hizmet `label`/`models`, `ucli_cost_config` tavan/kredi, `ucli_metrics.get_config`, `instructions_check` | 0 (8 TAŞINDI) | 0 (12 TAŞINDI) | bitti: `settings.rs`, `ucli.rs::instructions_check`, parite `parity_panel` + `parity_settings_pyfmt` `servis-*` |
 
@@ -751,39 +752,78 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | H8, 3.7 sınırlı bekleme | süreç süre sınırlı, `flock` 30 sn |
 | Uygulanmaz | H3, H10, H11, H15, H18, H19, H21 |
 
-## G9: spawn yürütme ve küresel yönerge (YARIM, 27 Kas devir)
+## G9: spawn yürütme ve küresel yönerge (27 Kas: TAŞINDI ve sınandı; gerçek tmux/süreç taraması bekliyor)
 
-### Nerede kaldı
-- Kodda (derleniyor, clippy temiz, G9'a özel testi YOK; eşleme tablosundaki EKSİK(G9) satırları bu yüzden DEĞİŞMEDİ):
-  - `spawn.rs`: `plan_spawn_with` + `HookFn` (kanca ortamı Python sırasında: MCP argümanlarından sonra, komuttan önce);
-    `plan_spawn` ona sarmalayıcı (mevcut parite değişmedi).
-  - `hooks.rs`: `authz.spawn_env` (ret aynen, başka hata `authz_spawn_hook_failed` + `hook_error`), `session_mcp_spec`,
-    `mcp_ext.default_spec`, `Hooks`/`SpawnHooks`.
-  - `spawn_exec.rs`: `spawn_session` akışı, `reclaim_ghost_session`, `fallback_watchdog` (+ `FALLBACK_*` sabitleri),
-    `open_window`, `open_mirror_window`; sınırlar `SpawnTmux` (gerçek: `cops-tmux`), `Terminal`, `Clock`, `DiagSink`,
-    `SessionScan` (rs/proc), `ResumeResolver` (`Live`), `CostRelease`. Kuru ya da hatalı başlatmada `release` burada
-    (Python'da web çağıranları yapar). `SpawnFailure::web_refusal` = `cost::refusal`. Bekçi `Watchdog` (join edilmeli:
-    Python `daemon=False`).
-  - `real/launch.rs`: `GnomeTerminal` (env miras yok, NUL/`=` -> `ValueError` karşılığı, çocuk arka planda toplanır),
-    `SystemClock`, `DiagLog: DiagSink`, `repo_dir_of` (`REPO_DIR`).
-  - `real/routing_sync.rs`: `_sync_one` dosya adımları + `sync_global_files` (`copy2` yedeği, realpath'e atomik yazım).
-  - `real/runtime.rs`: `SpawnRuntime` (süreç başına tek `CostLedger`/`ManagedSearch`/`HelpCache`, `settings_saved` =
-    `invalidate`, `Provision::python` panel Python'u).
-  - `Paths::{codex_agents_md, agy_gemini_md}` (`CODEX_AGENTS`, `AGY_GEMINI`).
-- `rs/prov-g9-wip` dalında (sınanmamış): parite koşucusuna (`harness.py`) `g9_spawn`, `g9_window`, `g9_mirror`,
-  `g9_reclaim`, `g9_sync`, `g9_repo_dir` işlemleri (sahte tmux/Popen/saat/tarama, GERÇEK `authz.spawn_env` +
-  `extensions.session_mcp_spec` vaka kayıtlarıyla, iş parçacıkları eşzamanlı).
+### Sahiplik
+Taşınan: `spawn_session` akışı, `_launch_gnome_terminal`, `_reclaim_ghost_session`, `_fallback_watchdog` (+ `FALLBACK_*`),
+`open_window`, `open_mirror_window`, `authz.spawn_env` (çağrı anlamı), `extensions.session_mcp_spec` + `mcp_ext.default_spec`,
+`routing._sync_one` dosya adımları + `sync_global_files` (+ `CODEX_AGENTS`, `AGY_GEMINI`), `paths.REPO_DIR`. Kanca ve
+eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` listesini okur.
 
-### İlk yapılacak
-1. `rs/prov-g9-wip`teki koşucu işlemlerini al; Rust tarafı `tests/parity/fam_g9.rs` yaz (sahte `SpawnTmux`/`Terminal`/
-   `Clock` çağrı günlüğü Python'un `calls` listesiyle aynı biçimde; `fam_spawn::parent_env` paylaşılmalı; `release`
-   yalnız Rust'ta: ayrıca denetle). `fam_misc::rs_sync_one`i `routing_sync::sync_one` ile değiştir.
-2. Birim testleri: ReclaimTest x4, `GnomeTerminal` sahte betikle (env'deki PATH, Popen hatası false), bekçi sahte saatle,
-   `copy2` zaman/izin, `repo_dir_of` bağlantıyla.
-3. Sonra EKSİK(G9) satırlarını TAŞINDI yap; Python hatası adayları: hayalet son ekranı diag'a (sır olabilir), kırık bağlantılı
-   `.bak-routing` hedefine yazım, `Popen` `ValueError`ı spawn'ı düşürür ama bekçide iş parçacığını sessizce öldürür,
-   gizli + tmux'suz başlatma sessizce hiçbir şey açmaz (hepsi davranış değiştirir: UYGULANMADI).
-4. Gerçek `Pane` (G4) ve `SpawnTmux` uygulayıcısı `cops-tmux` birleşince; sözleşme yukarıdaki trait belgelerinde.
+### Tasarım
+- `spawn.rs`: `plan_spawn_with` + `HookFn` (kanca ortamı Python sırasında: MCP argümanlarından sonra, komuttan önce);
+  `plan_spawn` ona sarmalayıcı.
+- `hooks.rs`: `spawn_env` (ret aynen; başka hata `authz_spawn_hook_failed` + `hook_error`, kapalı yön), `session_mcp_spec`,
+  `default_spec`, `Hooks`/`SpawnHooks`.
+- `spawn_exec.rs`: `spawn_session`, `reclaim_ghost_session`, `fallback_watchdog`, `open_window`, `open_mirror_window`;
+  sınırlar `SpawnTmux` (gerçek: `cops-tmux`), `Terminal`, `Clock`, `DiagSink`, `SessionScan` (rs/proc `find_sessions`),
+  `ResumeResolver` (`Live`), `CostRelease`. Kuru ya da hatalı başlatmada başlatma payı burada geri verilir (Python'da web
+  çağıranları yapar). `SpawnFailure::web_refusal` = `cost::refusal`.
+- Bekçi gerçek iş parçacığı, `Watchdog` tanıtıcısı döner: kısa ömürlü çağıran (CLI) çıkmadan önce `join` ETMELİ (Python
+  `daemon=False` süreci kendiliğinden canlı tutar; Rust'ta ana iş parçacığı dönünce süreç biter).
+- `real/launch.rs`: `GnomeTerminal` (ortam miras YOK, program `env`deki `PATH`te aranır, NUL ve `=` `ValueError`
+  karşılığı, çocuk arka planda toplanır), `SystemClock`, `DiagLog: DiagSink`, `repo_dir_of`.
+- `real/routing_sync.rs`: `sync_one`, `sync_global_files{,_at}`, `copy2`. `real/runtime.rs`: `SpawnRuntime` (süreç başına
+  tek defter/arama yöneticisi/`--help` önbelleği; `launcher(tmux, env)`).
+
+### Testler (ölçülen, 27 Kas)
+- `parity_g9` 161 vaka, kayıtlı ayrışma 0: spawn 119 (7 CLI x 13 kip + ekran, ortam süpürme, bekçi 8, ilk başlatma 3,
+  kanca 5, eklenti 6, tarama düştü, tırnak), pencere 5, ayna 4, hayalet 10, eşitleme 22, `REPO_DIR` 1. tmux, `Popen`,
+  saat, süreç taraması ve devam çözümü iki tarafta aynı olgularla sahte; çağrı günlüğü (`calls`) sırasıyla, diag, dosya
+  ağacı, `mcp add` argv'si karşılaştırılır. Kanca ve eklenti MCP'si iki tarafta GERÇEK kod. `release` her vakada ayrıca
+  denetlenir (kuru ya da hatalı başlatmada tam bir kez).
+- `parity_misc` `sync*` artık gerçek `sync_one` ile (önceden test koşucusunda yazılmış kopya).
+- `tests/g9.rs` 14: `ReclaimTest` x4 karşılığı, bekçi sahte saatle (4), `SystemClock`, `GnomeTerminal` sahte betikle (yalnız
+  verilen ortam, argv, zombi kalmaz; `OSError`/`ValueError` yolları), `copy2` (içerik, izin, ns zaman, hedef bağlantı),
+  `repo_dir_of` (bağlantılar), varsayılan yönerge yolları.
+- Testin bulduğu Rust hatası: yok (ilk koşuda 161/161 ve 14/14).
+
+### Bekleyen (yazılmadı, bilerek)
+- Gerçek `SpawnTmux` uygulayıcısı: `cops-tmux` (rs/tmux) birleşince (`Tmux::cops()` üstüne ince sarmalayıcı; sözleşme
+  trait belgelerinde, hedef her zaman `=ad:`). Gerçek `Pane` (G4) de aynı birleşimi bekliyor.
+- Gerçek `SessionScan`: rs/proc `find_sessions(measure_cpu=False)` birleşince.
+- Bağlayan uç (copsd/panel `_start`, rc, handover) `SpawnRuntime` + `spawn_session` çağrısı: o izlerin işi.
+
+### Bilinen ayrışmalar (`parity_g9`ta kayıtlı ayrışma yok: bunlar ya yalnız Rust testinde ya da testsiz)
+- `release` yalnız Rust'ta (Python web çağıranları yapar).
+- `spawn_ghost_reclaim_error` dalı yok: tmux sınırı hata yükseltemez.
+- Bekçi `join` edilmezse kısa ömürlü süreçte yedek yol çalışmaz (yukarıda).
+- `sync_one` 16 MiB üstü dosyayı `skipped:OSError` sayar (Python sınırsız okur); yollar UTF-8 olmalı.
+- Toplayıcı iş parçacığı başlatılamazsa Rust çocuğu eşzamanlı toplar, sonra `RuntimeError` döner.
+
+### Python hatası adayları (UYGULANMADI; Rust Python gibi; davranış değiştirir: sahibe/cops'a)
+| # | Aday | Üretim adımı | Kanıt |
+|---|---|---|---|
+| 1 | Kırık bağlantı `.bak-routing`: `os.path.exists` false, `copy2` bağlantıyı izler ve HEDEFİ oluşturur (dizin dışına yazım) | `~/.codex/AGENTS.md.bak-routing` hedefi olmayan bir bağlantıyken yönerge eşitlemesi | ÖLÇÜLDÜ: `esitle-kirik-yedek`, iki tarafta `home/baska-yer.md` 0600 oluştu |
+| 2 | Hayaletin son ekranı (40 satır, son 1500 karakter) `spawn_ghost_reclaimed` ile `diag.log`a düz yazılır; ekranda sır olabilir | CLI'si çıkmış oturum aynı adla yeniden açılırken | ÖLÇÜLDÜ: `hayalet-*` ekran aynen günlükte; sır içerdiği OKUNDU/çıkarım |
+| 3 | Gizli başlatma tmux yokken hiçbir şey açmaz ve günlüğe de yazmaz (`kind` döner) | `hidden=True` + tmux kurulu değil | ÖLÇÜLDÜ: `{cli}-gizli-tmuxsuz` (çağrı yok, diag yok) |
+| 4 | Bekçideki `Popen` `ValueError`ı iş parçacığını sessizce öldürür; penceresiz yedek açılmaz, diag yok | ilk deneme aynı argv/ortamla geçtiği için üretimde ulaşılamaz görünüyor (OKUNDU) | ÖLÇÜLDÜ: `bekci-valueerror` (yalnız `spawn_retry`) |
+| 5 | Hayalet temizliği başlatmadan ÖNCE: ilk `Popen` `ValueError` ile reddedilse de eski oturum kapatılmış olur | argv/ortamda NUL | ÖLÇÜLDÜ: `ilk-valueerror` (`kill` sonra ret) |
+| 6 | Kanca kuru çalıştırmada da çağrılır (TODO "spawn kancası kuru koşuda da yazıyor") | `dry_run=True` + çok kullanıcı kancası | ÖLÇÜLDÜ: `{cli}-kuru`, `kanca-red-kuru` |
+
+### Ders listesi (`docs/rust-lessons-from-python.md`), G9 koduna düşen maddeler
+| Madde | Durum / test |
+|---|---|
+| H1 süreç yaşam döngüsü (zombi) | `gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; öldürme yok, hayalet yalnız tam adla `kill-session` |
+| H8 sınırlı bekleme | bekçi en çok (RETRY+1) x WAIT; `watchdog_retries_then_falls_back_to_headless_tmux`; tmux zaman aşımları `cops-tmux`ta |
+| H9, 2.5/2.10 başarısız ya da kuru spawn'da pay iadesi | `release` denetimi her `parity_g9` vakasında |
+| H12, 2.5 sır argv'de değil, env beyaz liste | `ortam-supurme`, `{cli}-kanca` (filtre); kanca ortamı hâlâ komut satırına gömülü ("Sır / argv notları"); aday 2 |
+| H13 kapalı yön | kanca hatası = `hook_error` reddi (`kanca-hata`, `kanca-hata-uzun`) |
+| H14, 3.12 diferansiyel test | `parity_g9` 161 vaka |
+| H16 test yalıtımı | sahte tmux/`Popen`/saat; betikler alt süreçle yazılır (`write_exe`); gerçek gnome-terminal/tmux YOK |
+| H17 symlink | `esitle-*-5` (bağlantı hedefine yazım), `copy2` hedef bağlantı; aday 1 |
+| H20 gözlemlenebilirlik | olaylar Python adlarıyla (`spawn_retry*`, `spawn_fallback_used`, `spawn_no_gnome_terminal`, `spawn_launch_failed`); aday 3 |
+| Uygulanmaz | H2-H7, H10, H11, H15, H18, H19, H21 |
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
@@ -793,7 +833,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 660 satır: TAŞINDI 573, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 15.
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 660 satır: TAŞINDI 588, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1199,16 +1239,16 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `OVERRIDE_PATH` (py/claudeops/routing.py:22) | `probe.rs::Paths::routing_override` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `BLOCK_BEGIN` (py/claudeops/routing.py:23) | `routing.rs::BLOCK_BEGIN` | `parity.rs::parity_misc` `blok` | TAŞINDI |
 | `BLOCK_END` (py/claudeops/routing.py:24) | `routing.rs::BLOCK_END` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `CODEX_AGENTS` (py/claudeops/routing.py:25) | yok | - | EKSİK(G9) |
-| `AGY_GEMINI` (py/claudeops/routing.py:26) | yok | - | EKSİK(G9) |
+| `CODEX_AGENTS` (py/claudeops/routing.py:25) | `probe.rs::Paths::codex_agents_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `AGY_GEMINI` (py/claudeops/routing.py:26) | `probe.rs::Paths::agy_gemini_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
 | `routing_text` (py/claudeops/routing.py:29) | `routing.rs::routing_text` | `parity.rs::parity_misc` `sync`; ve `parity_build` `claude-routing-` | TAŞINDI |
 | `claude_guidance_path` (py/claudeops/routing.py:41) | `routing.rs::claude_guidance_path` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `_with_block` (py/claudeops/routing.py:66) | `routing.rs::with_block` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `_sync_one` (py/claudeops/routing.py:81) | yok: karar `routing.rs::sync_plan` TAŞINDI (parite `sync*`); yedek, silme, atomik yazım, OSError dönüşü yalnız test koşucusunda. | - | EKSİK(G9) |
-| `sync_global_files` (py/claudeops/routing.py:109) | yok | - | EKSİK(G9) |
+| `_sync_one` (py/claudeops/routing.py:81) | `real/routing_sync.rs::sync_one` (karar `routing.rs::sync_plan`; yedek `copy2`, silme, realpath'e atomik yazım, `skipped:<OSError sınıfı>`) | `parity.rs::parity_misc` `sync` (gerçek uygulayıcı); `parity.rs::parity_g9` `esitle-` | TAŞINDI |
+| `sync_global_files` (py/claudeops/routing.py:109) | `real/routing_sync.rs::{sync_global_files, sync_global_files_at}` | `parity.rs::parity_g9` `esitle-`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
 | `_DANGEROUS_ENV_NAMES` (py/claudeops/spawn.py:36) | `spawn.rs::DANGEROUS_ENV` | `parity.rs::parity_spawn` `filter` | TAŞINDI |
-| `FALLBACK_ATTEMPT_WAIT_SECONDS` (py/claudeops/spawn.py:50) | yok | - | EKSİK(G9) |
-| `FALLBACK_RETRY_COUNT` (py/claudeops/spawn.py:51) | yok | - | EKSİK(G9) |
+| `FALLBACK_ATTEMPT_WAIT_SECONDS` (py/claudeops/spawn.py:50) | `spawn_exec.rs::FALLBACK_ATTEMPT_WAIT_SECONDS` (+ `FALLBACK_POLL_SECONDS`) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
+| `FALLBACK_RETRY_COUNT` (py/claudeops/spawn.py:51) | `spawn_exec.rs::FALLBACK_RETRY_COUNT` | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
 | `_filter_env_overrides` (py/claudeops/spawn.py:54) | `spawn.rs::filter_env_overrides` | `parity.rs::parity_spawn` `filter` `-kanca` | TAŞINDI |
 | `DRY_RUN_PREVIEW_MAX` (py/claudeops/spawn.py:59) | `spawn.rs::DRY_RUN_PREVIEW_MAX` | `parity.rs::parity_spawn` `preview-sinir` `preview-sinir2` | TAŞINDI |
 | `_SECRET_ENV_RE` (py/claudeops/spawn.py:60) | `spawn.rs::{SECRET_WORDS, fold_char}` | `parity.rs::parity_spawn` `preview` | TAŞINDI |
@@ -1219,12 +1259,12 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `_apply_hook_session_cap` (py/claudeops/spawn.py:113) | `spawn.rs::apply_hook_session_cap` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
 | `BRAIN_NAME_PREFIXES` (py/claudeops/spawn.py:138) | `spawn.rs::BRAIN_NAME_PREFIX` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
 | `spawn_priority_prefix` (py/claudeops/spawn.py:141) | `spawn.rs::priority_prefix` + `Settings::spawn_nice` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
-| `spawn_session` (py/claudeops/spawn.py:163) | yok: komut kurma kısmı `spawn.rs::{plan_spawn, child_env, window_command, gnome_terminal_argv}` (parite `parity_spawn` `{cli}-{mode}`); resume, eklenti/kanca çağrıları, hayalet temizliği, gnome/tmux başlatma yok. Python hatası? dry_run yan etkisi (TBD#373) | - | EKSİK(G9) |
-| `_launch_gnome_terminal` (py/claudeops/spawn.py:325) | yok: yalnız argv `spawn.rs::gnome_terminal_argv` (parite `gt`, `ayna`); Popen ve zombi toplama yok | - | EKSİK(G9) |
-| `_reclaim_ghost_session` (py/claudeops/spawn.py:366) | yok: rs/tmux `ghost_session`/`kill_session` var; sıralama ve diag yok | - | EKSİK(G9) |
-| `_fallback_watchdog` (py/claudeops/spawn.py:384) | yok | - | EKSİK(G9) |
-| `open_window` (py/claudeops/spawn.py:409) | yok: rs/tmux `attach_shell_fragment` var; işlev yok | - | EKSİK(G9) |
-| `open_mirror_window` (py/claudeops/spawn.py:425) | yok: `spawn.rs::{mirror_window_command, mirror_child_env, gnome_terminal_argv}` TAŞINDI (parite `ayna ayna-tirnak`); başlatma yok | - | EKSİK(G9) |
+| `spawn_session` (py/claudeops/spawn.py:163) | `spawn_exec.rs::spawn_session` (komut kurma `spawn.rs::plan_spawn_with`; sınırlar `SpawnTmux`/`Terminal`/`Clock`/`DiagSink`/`SessionScan`/`ResumeResolver`/`SpawnHooks`/`CostRelease`; kuru ya da hatalı başlatmada `release` burada). Gerçek `SpawnTmux` uygulayıcısı `cops-tmux` birleşimini, `SessionScan` rs/proc'u bekler. Python hatası? dry_run yan etkisi (TBD#373) | `parity.rs::parity_g9` `{cli}-gt|gizli|gizli-tmuxsuz|gtsiz|gtsiz-tmuxsuz|tmuxsuz|kuru|hayalet|devam|yeni-zorla|eklenti|kanca|kanca-red`, `ekran-`, `ortam-supurme`, `bekci-`, `ilk-`, `kanca-`, `eklenti-`, `tarama-dustu`, `ad-tirnak`; `release` her vakada ayrıca | TAŞINDI |
+| `_launch_gnome_terminal` (py/claudeops/spawn.py:325) | `real/launch.rs::GnomeTerminal` (`Terminal::launch`; argv `spawn.rs::gnome_terminal_argv`) | `tests/g9.rs::{gnome_terminal_runs_with_only_the_given_env_and_is_reaped, gnome_terminal_popen_failures}`; `parity.rs::parity_g9` `ilk-oserror` `ilk-valueerror` `bekci-baslatilamadi` | TAŞINDI |
+| `_reclaim_ghost_session` (py/claudeops/spawn.py:366) | `spawn_exec.rs::reclaim_ghost_session` (hata dalı yok: tmux sınırı yükseltmez) | `parity.rs::parity_g9` `hayalet-`, `{cli}-hayalet`; `tests/g9.rs` ReclaimTest karşılıkları | TAŞINDI |
+| `_fallback_watchdog` (py/claudeops/spawn.py:384) | `spawn_exec.rs::fallback_watchdog` (+ `Watchdog` join tanıtıcısı) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_*` | TAŞINDI |
+| `open_window` (py/claudeops/spawn.py:409) | `spawn_exec.rs::open_window` | `parity.rs::parity_g9` `pencere-` | TAŞINDI |
+| `open_mirror_window` (py/claudeops/spawn.py:425) | `spawn_exec.rs::open_mirror_window` (argv/ortam `spawn.rs::{mirror_window_command, mirror_child_env}`) | `parity.rs::parity_g9` `ayna-`; `parity_spawn` `ayna ayna-tirnak` | TAŞINDI |
 | `EFFORT_LADDER` (py/claudeops/effort.py:19) | `effort.rs::EFFORT_LADDER` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `_RANK` (py/claudeops/effort.py:20) | `effort.rs::effort_rank` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `_ID_TIERS` (py/claudeops/effort.py:25) | `effort.rs::ID_TIERS` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
@@ -1274,7 +1314,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `HOME` (py/claudeops/paths.py:5) | `rs/state` `paths.rs` / `probe.rs::Paths::home` girdisi | rs/state (yol çözümü); crate girdi alır | KAPSAM DIŞI |
 | `CLAUDE_DIR` (py/claudeops/paths.py:6) | `rs/proc` `Config::claude_dir` | rs/proc | KAPSAM DIŞI |
 | `CLAUDEOPS_DIR` (py/claudeops/paths.py:45) | `rs/state` `paths.rs::StateDir::resolve` | rs/state; crate `Paths::claudeops_dir` girdisi alır | KAPSAM DIŞI |
-| `REPO_DIR` (py/claudeops/paths.py:50) | yok: `Paths::repo_dir` girdisi var; değeri çözen kod yok | - | EKSİK(G9) |
+| `REPO_DIR` (py/claudeops/paths.py:50) | `real/launch.rs::repo_dir_of` (`Paths::repo_dir` değeri) | `parity.rs::parity_g9` `depo-dizini`; `tests/g9.rs::repo_dir_resolves_links_and_two_parents` | TAŞINDI |
 | `CLAUDE_MODELS_JSON` (py/claudeops/paths.py:54) | `probe.rs::Paths::claude_models_json`; okuma `ModelIo::claude_models_doc` sözleşmesi (DB/dosya kipi rs/state `statedocs`, gerçek uygulama G8) | `tests/model_sources.rs::catalog_touches_only_its_own_source` | TAŞINDI |
 | `SESSIONS_DIR` (py/claudeops/paths.py:56) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
 | `PROJECTS_DIR` (py/claudeops/paths.py:57) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
@@ -1447,7 +1487,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `atomic_write_json` (py/claudeops/atomic_json.py:71) | `rs/state` `fsutil.rs::atomic_write_json` | rs/state | KAPSAM DIŞI |
 | `atomic_write_text` (py/claudeops/atomic_json.py:101) | `real/effects.rs::atomic_write_text` (birleştirmede rs/state `fsutil`) | `parity.rs` (tüm `Effect` aileleri gerçek uygulayıcıyla); `tests/real_fs.rs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp` | TAŞINDI |
 | `file_lock` (py/claudeops/atomic_json.py:132) | `rs/state` `fsutil.rs::FileLock` | rs/state | KAPSAM DIŞI |
-| `spawn_env` (py/claudeops/authz.py:493) | yok: `SpawnRequest::hook_env` girdisi | - | EKSİK(G9) |
+| `spawn_env` (py/claudeops/authz.py:493) | `hooks.rs::spawn_env` (`Hooks`/`SpawnHooks`; kanca kaydı çağıranın) | `parity.rs::parity_g9` `{cli}-kanca` `{cli}-kanca-red` `kanca-` | TAŞINDI |
 | `codex_screen_count` (py/claudeops/bg_work.py:130) | `bg_work.rs::codex_screen_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
 | `codex_subagents_pending` (py/claudeops/bg_work.py:136) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-sekil-rollout-` | TAŞINDI |
 | `screen_bg_count` (py/claudeops/bg_work.py:32) | `bg_work.rs::screen_bg_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
@@ -1455,7 +1495,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `transcript_pending_path` (py/claudeops/bg_work.py:112) | `live.rs::Live::transcript_pending_path` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
 | `diag_log` (py/claudeops/diaglog.py:39) | `real/diaglog.rs::DiagLog` (DB aynası `Mirror` kancası; bağlama rs/state) | `parity.rs::parity_real` `gunluk-`; `tests/real_fs.rs::diag_log_appends_ordered_json_lines_rotates_and_never_fails_the_caller` | TAŞINDI |
 | `find_sessions` (py/claudeops/discovery.py:200) | `rs/proc` `discovery.rs::find_sessions` | rs/proc: `fake_proc::discovers_each_cli_and_names` | KAPSAM DIŞI |
-| `session_mcp_spec` (py/claudeops/extensions.py:440) | yok: `SpawnRequest::extension_mcp` girdisi | - | EKSİK(G9) |
+| `session_mcp_spec` (py/claudeops/extensions.py:440) | `hooks.rs::{session_mcp_spec, default_spec}` (kayıt `SessionMcpEntry` listesi çağıranın) | `parity.rs::parity_g9` `eklenti-` `{cli}-eklenti` `eklenti-acik-mcp` | TAŞINDI |
 | `ensure_search_url` (py/claudeops/searxng.py:526) | `real/searxng.rs::ManagedSearch::search_url` (yalnız spawn yolu bağımlılıklarıyla) | `parity.rs::parity_searxng`; `tests/real_searxng.rs` | TAŞINDI |
 | `read_json` (py/claudeops/statedocs.py:130) | `rs/state` `statedocs.rs::StateDocs::read` | rs/state | KAPSAM DIŞI |
 | `write_json` (py/claudeops/statedocs.py:175) | `rs/state` `statedocs.rs::StateDocs::write` | rs/state | KAPSAM DIŞI |
@@ -1473,7 +1513,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 
 ## TEST EŞLEME TABLOSU
 
-1381 satır: TAŞINDI 586, TAŞINDI-TESTSİZ 19, KAPSAM DIŞI 762, EKSİK 14.
+1381 satır: TAŞINDI 600, TAŞINDI-TESTSİZ 19, KAPSAM DIŞI 762, EKSİK 0 (G9 satırları 27 Kas).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -1491,7 +1531,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `AgySidsStoreTest.test_remember_writes_db_and_mirror` (py/tests/test_agy_sids_store.py:34) | DB + ayna yazımı `AgySidStore` gerçek uygulamasının işi (rs/state `statedocs`; uygulama henüz yazılmadı). Crate yalnız `save` çağırır: `tests/resume.rs::remember_saves_through_the_store_once` | KAPSAM DIŞI |
 | `AgySidsStoreTest.test_unchanged_value_does_not_rewrite` (py/tests/test_agy_sids_store.py:42) | `tests/resume.rs::unchanged_value_does_not_rewrite_or_lock` | TAŞINDI |
 | `AgySidsStoreTest.test_concurrent_remembers_lose_nothing` (py/tests/test_agy_sids_store.py:48) | `tests/resume.rs::concurrent_remembers_lose_nothing` (oku-değiştir-yaz kilit içinde; süreçler arası `flock` gerçek `AgySidStore`ta sınanmalı) | TAŞINDI |
-| `RoutingSymlink.test_symlink_kept_and_target_written_with_mode` (py/tests/test_atomic_users_symlink.py:13) | yok: karar `parity_misc` `sync-symlink`; gerçek yazım uygulayıcısı yok | EKSİK(G9) |
+| `RoutingSymlink.test_symlink_kept_and_target_written_with_mode` (py/tests/test_atomic_users_symlink.py:13) | `parity.rs::parity_misc` `sync-symlink` (gerçek `sync_one`); `parity.rs::parity_g9` `esitle-*-5` | TAŞINDI |
 | `TokenFile.test_token_file_0600_atomic` (py/tests/test_atomic_users_symlink.py:30) | `tests/real_fs.rs::agent_token_is_0600_and_only_its_hash_is_registered` | TAŞINDI |
 | `OrphanMarker.test_orphan_begin_does_not_eat_user_text` (py/tests/test_atomic_users_symlink.py:41) | `parity.rs::parity_misc` `blok` | TAŞINDI |
 | `OrphanMarker.test_normal_block_replaced_and_removed` (py/tests/test_atomic_users_symlink.py:50) | `parity.rs::parity_misc` `blok` | TAŞINDI |
@@ -1618,9 +1658,9 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `McpHook.test_validation` (py/tests/test_extensions_mcp.py:22) | T9: `extensions` MCP kancası ve stdio sunucusu | KAPSAM DIŞI |
 | `McpHook.test_stdio_roundtrip` (py/tests/test_extensions_mcp.py:34) | T9: `extensions` MCP kancası ve stdio sunucusu | KAPSAM DIŞI |
 | `McpHook.test_unknown_server_exit_2` (py/tests/test_extensions_mcp.py:51) | T9: `extensions` MCP kancası ve stdio sunucusu | KAPSAM DIŞI |
-| `SessionAttach.test_attach_predicate_and_spec` (py/tests/test_extensions_mcp.py:68) | yok: eklenti cwd koşulu ve `session_mcp_spec` çağrısı yok | EKSİK(G9) |
+| `SessionAttach.test_attach_predicate_and_spec` (py/tests/test_extensions_mcp.py:68) | `parity.rs::parity_g9` `eklenti-0` (eşleşmeyen + eşleşen, araç adları), `eklenti-1` (koşul hatası yutulur), `eklenti-3`; kayıt API'si (`attach_mcp_to_sessions` kayıtsız kimlik reddi) çağıranın (eklenti katmanı) | TAŞINDI |
 | `SessionAttach.test_claude_config_path_per_ext_and_spawn_wiring` (py/tests/test_extensions_mcp.py:82) | `parity.rs::parity_spawn` `-eklenti-mcp` `-mcp` | TAŞINDI |
-| `SessionAttach.test_spawn_attaches_only_matching_cwd_and_claude` (py/tests/test_extensions_mcp.py:89) | yok: eklenti cwd koşulu ve `session_mcp_spec` çağrısı yok | EKSİK(G9) |
+| `SessionAttach.test_spawn_attaches_only_matching_cwd_and_claude` (py/tests/test_extensions_mcp.py:89) | `parity.rs::parity_g9` `{cli}-eklenti` (yalnız `claude` koşulu sorar), `eklenti-0`, `eklenti-acik-mcp`, `{cli}-kuru` | TAŞINDI |
 | `LastRealRequestEpochTests.test_returns_the_time_of_the_latest_real_request` (py/tests/test_handover_cache_policy.py:76) | `parity_transcript` `son-istek` | TAŞINDI |
 | `LastRealRequestEpochTests.test_synthetic_placeholder_after_a_real_request_does_not_refresh_the_cache` (py/tests/test_handover_cache_policy.py:80) | `parity_transcript` `sentetik-sifir-effortlu` `istek-model-sentetik` | TAŞINDI |
 | `LastRealRequestEpochTests.test_subagent_rows_are_a_separate_context_and_do_not_count` (py/tests/test_handover_cache_policy.py:86) | `parity_transcript` `alt-ajan` `kullanim-sidechain-` | TAŞINDI |
@@ -1728,7 +1768,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `OpenMirrorWindowSpawnTests.test_a_failing_viewer_keeps_the_window_open_and_a_clean_exit_closes_it` (py/tests/test_mirror_window.py:151) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
 | `OpenMirrorWindowSpawnTests.test_arguments_are_shell_quoted` (py/tests/test_mirror_window.py:158) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
 | `OpenMirrorWindowSpawnTests.test_environment` (py/tests/test_mirror_window.py:162) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_popen_failure_is_false` (py/tests/test_mirror_window.py:170) | yok | EKSİK(G9) |
+| `OpenMirrorWindowSpawnTests.test_popen_failure_is_false` (py/tests/test_mirror_window.py:170) | `parity.rs::parity_g9` `ayna-1`; `tests/g9.rs::gnome_terminal_popen_failures` | TAŞINDI |
 | `OpenMirrorWindowBackendTests.test_success_spawns_once_with_the_panels_port` (py/tests/test_mirror_window.py:211) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
 | `OpenMirrorWindowBackendTests.test_local_sessions_are_rejected` (py/tests/test_mirror_window.py:215) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
 | `OpenMirrorWindowBackendTests.test_bad_characters_never_reach_the_command_line` (py/tests/test_mirror_window.py:222) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
@@ -1778,11 +1818,11 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `GuidanceTest.test_off_disables_flag` (py/tests/test_routing_guidance.py:65) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `GuidanceTest.test_override_text_is_written_and_used` (py/tests/test_routing_guidance.py:71) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
 | `GuidanceTest.test_guidance_failure_never_breaks_spawn` (py/tests/test_routing_guidance.py:80) | `routing.rs::claude_guidance_path`; sınanmayan senaryo: paketli dosya okunamayınca bayraksız açılış | TAŞINDI-TESTSİZ |
-| `CodexSyncTest.test_agy_file_is_created_with_only_the_block_and_removed_with_it` (py/tests/test_routing_guidance.py:90) | yok: karar `parity_misc` `sync`; `sync_global_files` dosya adımları yok | EKSİK(G9) |
-| `CodexSyncTest.test_existing_agy_file_keeps_user_text` (py/tests/test_routing_guidance.py:98) | yok: karar `parity_misc` `sync`; `sync_global_files` dosya adımları yok | EKSİK(G9) |
-| `CodexSyncTest.test_missing_file_is_not_created` (py/tests/test_routing_guidance.py:117) | yok: karar `parity_misc` `sync`; `sync_global_files` dosya adımları yok | EKSİK(G9) |
-| `CodexSyncTest.test_write_is_idempotent_keeps_rest_and_backs_up` (py/tests/test_routing_guidance.py:122) | yok: karar `parity_misc` `sync`; `sync_global_files` dosya adımları yok | EKSİK(G9) |
-| `CodexSyncTest.test_text_change_replaces_block_and_off_removes_it` (py/tests/test_routing_guidance.py:131) | yok: karar `parity_misc` `sync`; `sync_global_files` dosya adımları yok | EKSİK(G9) |
+| `CodexSyncTest.test_agy_file_is_created_with_only_the_block_and_removed_with_it` (py/tests/test_routing_guidance.py:90) | `parity.rs::parity_g9` `esitle-0-0` (oluşturulur), `esitle-1-3` (kalkınca silinir) | TAŞINDI |
+| `CodexSyncTest.test_existing_agy_file_keeps_user_text` (py/tests/test_routing_guidance.py:98) | `parity.rs::parity_g9` `esitle-0-2` `esitle-1-2`; `parity_misc` `sync1-3-true` | TAŞINDI |
+| `CodexSyncTest.test_missing_file_is_not_created` (py/tests/test_routing_guidance.py:117) | `parity.rs::parity_g9` `esitle-0-0` `esitle-0-2`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `CodexSyncTest.test_write_is_idempotent_keeps_rest_and_backs_up` (py/tests/test_routing_guidance.py:122) | `parity.rs::parity_g9` `esitle-0-1` (yedek), `esitle-yedek-var`; `parity_misc` `sync2-6-false` (değişmedi) | TAŞINDI |
+| `CodexSyncTest.test_text_change_replaces_block_and_off_removes_it` (py/tests/test_routing_guidance.py:131) | `parity.rs::parity_g9` `esitle-2-3`, `esitle-1-3`; `parity_misc` `sync1-3-false` | TAŞINDI |
 | `RustToolchainPickTest.test_single_toolchain_without_env` (py/tests/test_rust_toolchain_pick.py:30) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
 | `RustToolchainPickTest.test_prefix_match` (py/tests/test_rust_toolchain_pick.py:35) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
 | `RustToolchainPickTest.test_mismatch_is_error_not_fallback` (py/tests/test_rust_toolchain_pick.py:40) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
@@ -1805,10 +1845,10 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `GhostDetectTest.test_bash_with_child_is_not_ghost` (py/tests/test_spawn_ghost_reclaim.py:34) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `GhostDetectTest.test_no_session_or_garbage` (py/tests/test_spawn_ghost_reclaim.py:37) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `GhostDetectTest.test_mixed_panes` (py/tests/test_spawn_ghost_reclaim.py:42) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
-| `ReclaimTest.test_ghost_killed_and_tail_logged` (py/tests/test_spawn_ghost_reclaim.py:57) | yok | EKSİK(G9) |
-| `ReclaimTest.test_shell_provider_untouched` (py/tests/test_spawn_ghost_reclaim.py:63) | yok | EKSİK(G9) |
-| `ReclaimTest.test_not_ghost_untouched` (py/tests/test_spawn_ghost_reclaim.py:66) | yok | EKSİK(G9) |
-| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:69) | yok | EKSİK(G9) |
+| `ReclaimTest.test_ghost_killed_and_tail_logged` (py/tests/test_spawn_ghost_reclaim.py:57) | `tests/g9.rs::ghost_is_killed_and_its_tail_logged`; `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
+| `ReclaimTest.test_shell_provider_untouched` (py/tests/test_spawn_ghost_reclaim.py:63) | `tests/g9.rs::shell_provider_is_untouched`; `parity.rs::parity_g9` `hayalet-shell` | TAŞINDI |
+| `ReclaimTest.test_not_ghost_untouched` (py/tests/test_spawn_ghost_reclaim.py:66) | `tests/g9.rs::non_ghost_and_missing_tmux_are_untouched`; `parity.rs::parity_g9` `hayalet-degil` `hayalet-tmuxsuz` | TAŞINDI |
+| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:69) | `tests/g9.rs::reclaim_never_panics_and_trims_the_tail` (Rust'ta tmux sınırı hata yükseltemez; `spawn_ghost_reclaim_error` dalı gereksiz) | TAŞINDI |
 | `SpawnPriority.test_default_and_exempt_and_off` (py/tests/test_spawn_priority.py:17) | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
 | `SpawnPriority.test_child_inherits_nice` (py/tests/test_spawn_priority.py:27) | `spawn.rs::priority_prefix`; sınanmayan senaryo: önekin gerçek kabukta çocuk sürece nice aktarması | TAŞINDI-TESTSİZ |
 | `TestDefaultClaudeMdGolden.test_default_output_is_byte_identical_to_pre_p5` (py/tests/test_steward_brain.py:62) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
@@ -2814,7 +2854,7 @@ kaynağındaki argüman tanımından çıkarıldı, ikiliyle denenmedi.
 | `ProviderBinTypeTest.test_resolved_binary_ignores_non_string_override` (py/tests/test_provider_bin_type.py) | `parity.rs::parity_build` `-override-tip` `override-tip-sayi` | TAŞINDI |
 | `ProviderBinTypeTest.test_ucli_resolve_binary_ignores_non_string_override` (py/tests/test_provider_bin_type.py) | `parity.rs::parity_build` `-override-tip` `override-tip-sayi` | TAŞINDI |
 | `BadUtf8Test.test_claude_override_unreadable_is_logged_and_left_untouched` (py/tests/test_guidance_bad_utf8.py) | `parity.rs::parity_build` `claude-routing-override-bozuk-utf8` | TAŞINDI |
-| `BadUtf8Test.test_sync_skips_bad_file_and_still_syncs_the_other` (py/tests/test_guidance_bad_utf8.py) | yok: `sync_global_files` yok (karar `sync-bozuk-utf8`) | EKSİK(G9) |
+| `BadUtf8Test.test_sync_skips_bad_file_and_still_syncs_the_other` (py/tests/test_guidance_bad_utf8.py) | `parity.rs::parity_g9` `esitle-*-4`; `parity_misc` `sync-bozuk-utf8` | TAŞINDI |
 | `BadUtf8Test.test_sync_bad_agy_file_is_not_removed` (py/tests/test_guidance_bad_utf8.py) | `parity.rs::parity_misc` `sync-bozuk-utf8-kapali` | TAŞINDI |
 | `ModelsPayloadTest.test_non_object_or_non_list_payload_returns_none` (py/tests/test_ucli_models_payload.py) | `parity.rs::parity_misc` `live-bicim` `live0` | TAŞINDI |
 | `ModelsPayloadTest.test_valid_payload_still_works` (py/tests/test_ucli_models_payload.py) | `parity.rs::parity_misc` `live-bicim` `live0` | TAŞINDI |
