@@ -5,7 +5,9 @@
 #[path = "g8/support.rs"]
 mod support;
 
-use cops_providers::{BuildArgs, BuildOutput, Cli, Effect, ModelCatalog, Providers, Settings};
+use cops_providers::{
+    BuildArgs, BuildOutput, Cli, Effect, ModelCatalog, Paths, Providers, Settings,
+};
 use serde_json::{json, Map, Value};
 
 const KEY: &str = "sk-proj-GIZLI-ANAHTAR-0123456789";
@@ -15,8 +17,26 @@ const UCLI_HELP: &str = "echo 'Usage: ucli [OPTIONS]'; for f in --model --effort
 --provider --state-dir --session --usage-log --interactive --request-timeout-secs --max-steps --instructions-auto \
 --metrics-dir --allow-exec --allow-write --write-root --allow-net; do echo \"  $f <X>\"; done";
 
+/// Varsayılan (canlı) örnek: durum dizini ortak kök; anahtar dosyaları yazılır.
+fn default_instance(t: &support::Tmp) -> Paths {
+    Paths {
+        claudeops_dir: t.path("home/.claude/claudeops"),
+        ..t.paths()
+    }
+}
+
 fn build(
     t: &support::Tmp,
+    cli: Cli,
+    settings: &Settings,
+    opts: Option<&Map<String, Value>>,
+) -> (String, BuildOutput) {
+    build_at(t, default_instance(t), cli, settings, opts)
+}
+
+fn build_at(
+    t: &support::Tmp,
+    paths: Paths,
     cli: Cli,
     settings: &Settings,
     opts: Option<&Map<String, Value>>,
@@ -24,7 +44,6 @@ fn build(
     let _g = support::spawn_guard();
     let probe = t.probe();
     let catalog = ModelCatalog::default();
-    let paths = t.paths();
     let p = Providers {
         settings,
         catalog: &catalog,
@@ -122,4 +141,31 @@ fn ucli_service_key_goes_to_a_private_file_not_argv() {
         cmd.contains("OPENAI_API_KEY"),
         "anahtar ADI (değeri değil) komutta: {cmd}"
     );
+}
+
+/// İkinci örnek (TBD#412 b): ortak anahtar dosyası yazılmaz, farklı anahtar komuta da dosyaya da girmez.
+#[test]
+fn a_second_instance_writes_no_shared_key_file() {
+    let t = support::Tmp::new();
+    t.script("bin/ucli", UCLI_HELP);
+    t.script("bin/copilot", "echo copilot");
+    for (cli, settings) in [
+        (Cli::Ucli, json!({"byok": {"ucli": {"UCLI_API_KEY": KEY}}})),
+        (
+            Cli::Copilot,
+            json!({"byok": {"copilot": {"COPILOT_API_KEY": KEY}}}),
+        ),
+    ] {
+        let settings = Settings::from_json(&settings.to_string());
+        let (cmd, out) = build_at(&t, t.paths(), cli, &settings, None);
+        assert!(!cmd.contains("GIZLI") && !format!("{out:?}").contains("GIZLI"));
+        assert!(
+            !out.effects
+                .iter()
+                .any(|e| matches!(e, Effect::WriteSecret { .. } | Effect::Remove { .. })),
+            "{:?}",
+            out.effects
+        );
+        assert!(out.diags.iter().any(|d| d.event == "shared_key_readonly"));
+    }
 }
