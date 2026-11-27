@@ -1281,6 +1281,12 @@ for raw in ["²", "①", "³", "ß", "ﬁ", "ŉ", "ǰ", "²²", "٢", "ª", "b",
     add("resolve_answer", {"q": Q("q", "p", "t", options=["bir", "iki", "üç"]), "raw": raw})
 for raw in ["simdi verecegim", "Simdi verecegim.", "kararlari simdi verecegim", "kararlari sonra verecegim", "SİMDİ VERECEGİM", "sımdı verecegım", "simdi verecegim: b", "verecegim", "sonra verecegim"]:
     add("is_defer_answer", {"raw": raw})
+# aynı projeye iki cevap: tek `start`, yuva öteki projeye kalır (uzops R-13)
+for phase in ("planned", "paused", "done"):
+    projects = {"alfa": P("alfa", phase=phase), "beta": P("beta", phase="planned")}
+    qs = [Q(i, p, "hangi ad?", status="answered", answer="evet, aç", answered_at=NOW - 30, created_at=NOW - 90) for i, p in (("q1", "alfa"), ("q2", "alfa"), ("q3", "beta"))]
+    cfg = C(enabled=True, max_active=2, max_starts_per_tick=2)
+    add("plan_tick", {"views": [], "projects": projects, "state": {}, "cfg": cfg, "now": NOW, "questions": qs, "ideas": [], "world": None})
 sw.save_questions([])
 for t in ["Kapak rengi ne olsun?", "Dergi hangisi seçilsin?", "Sunum tarihi ne zaman?", sw._HELD_ANSWER_PREFIX + " pr projesi done/paused, cevap (q9) oturum açmadı.", "Yazar sırası nasıl olacak?"]:
     a = {"project": "p", "text": t, "source": "motor", "options": None, "routine": False, "detail": ""}

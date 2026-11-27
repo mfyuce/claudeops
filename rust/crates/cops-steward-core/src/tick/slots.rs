@@ -168,12 +168,16 @@ impl<'a> Tick<'a> {
                 let pairs =
                     [("question_id", Value::from(q.id.as_str())), ("held", Value::from(held_instruction_item(q)))];
                 self.act("close_negative_answer", target, "olumsuz sahip cevabı", &pairs);
-            } else if halted(p) && !py_in(target, self.st.get("no_work_paused"))? && self.can_start(target)? {
+            } else if halted(p)
+                && !py_in(target, self.st.get("no_work_paused"))?
+                && !self.busy.contains(target) // aynı tick'te ikinci cevap ikinci kez açmasın
+                && self.can_start(target)?
+            {
                 // sahip cevabı geldi: done/paused proje planned'a döner ve açılır
                 self.act("set_phase", target, "sahip cevabı geldi", &[("phase", "planned".into())]);
                 self.act("start", target, "answer → start", &[("question_id", Value::from(q.id.as_str()))]);
                 self.started(target);
-            } else if active_phase(p) && self.can_start(target)? {
+            } else if active_phase(p) && !self.busy.contains(target) && self.can_start(target)? {
                 self.act("start", target, "answer → start", &[("question_id", Value::from(q.id.as_str()))]);
                 self.started(target);
             }

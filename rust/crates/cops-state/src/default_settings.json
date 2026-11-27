@@ -4,6 +4,7 @@
   "handover_cache_aware": true,
   "history_warn_at": 1900,
   "fleet_sort": "name",
+  "spawn_desktop": 1,
   "layout_reserve": 0,
   "layout_grid": 4,
   "default_model": {},
