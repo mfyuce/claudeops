@@ -130,8 +130,8 @@ def _random_line(rng):
     if roll == 1:
         model = rng.choice(["claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1", "x", 5, "", None, ["sonnet-5-5"], "\ud800"])
         return json.dumps({"event": "task_start", "model": model, "t": ms}).encode()
-    if roll == 2:      # nesneyle birlikte 511-513 katlı satır: Python okur (daha derinini rs/rev kopyası saymaz; koşucusu bu çağrıları da görür)
-        depth = rng.choice([510, 511, 512])
+    if roll == 2:      # nesneyle birlikte 511-512 katlı satır (sınırda; daha derini artık sayılmaz, `test_rsprov_cost_depth`)
+        depth = rng.choice([510, 511])
         return ('{"t": %r, "usage": {"input_tokens": 1000}, "x": %s%s}' % (ms, "[" * depth, "]" * depth)).encode()
     if roll == 3:      # eşi olmayan vekil
         return ('{"t": %r, "n": "\\ud800", "usage": {"input_tokens": 500000}}' % ms).encode()
@@ -326,7 +326,7 @@ class SameDecisionAsBefore(_Tree):
 
     def test_each_problem_kind(self):
         ms = NOW * 1000.0
-        deep = ('{"t": %r, "usage": {"input_tokens": 1000}, "x": %s%s}' % (ms, "[" * 512, "]" * 512)).encode()
+        deep = ('{"t": %r, "usage": {"input_tokens": 1000}, "x": %s%s}' % (ms, "[" * 511, "]" * 511)).encode()
         kinds = {
             "bozuk-satir": [b"{yarim", b"\xff\xfe", _good_line(ms)],
             "gecersiz-sayac": [b'{"t": %d, "usage": {"input_tokens": -1, "output_tokens": 5}}' % int(ms)],

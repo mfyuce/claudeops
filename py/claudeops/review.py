@@ -1858,6 +1858,26 @@ def _usage_number(v: Any) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= _MAX_USAGE_TOKENS     # NaN karşılaştırması False
 
 
+_MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `report::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
+_DEPTH_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.S)      # dize (yarım da olur) içindeki ayraç sayılmaz
+_UNCOUNTABLE_SPENT_USD = 1e18      # sayılamayan satır varken bütçe kapısının gördüğü harcama (sonlu: günlüğe JSON olarak yazılır)
+
+
+def _too_deep(line: str) -> bool:
+    if line.count("[") + line.count("{") <= _MAX_LINE_DEPTH:
+        return False
+    depth = 0
+    for m in _DEPTH_TOKEN_RE.finditer(line):
+        token = m.group()
+        if token in ("[", "{"):
+            depth += 1
+            if depth > _MAX_LINE_DEPTH:
+                return True
+        elif token in ("]", "}"):
+            depth = max(0, depth - 1)
+    return False
+
+
 def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: float = 1.0) -> float:
     """Bir `.usage.jsonl` dosyasının $ maliyeti (istek başına ucli `usage`: girdi/çıktı/önbellek okuma/yazma). Tanınmayan
     ya da geçersiz (negatif, NaN, sayı olmayan) alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner
@@ -1866,9 +1886,9 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
 
 
 def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tuple[float, str]:
-    """(usd, sorun). `sorun` boş değilse toplama GÜVENİLMEZ (dosya okunamadı, normal dosya değil ya da bir istek kaydında
-    geçersiz sayı): açık bir harcama tavanı bunu "izin" saymamalı. Olmayan dosya ve ayrıştırılamayan (yarım yazılmış) satır
-    sorun sayılmaz."""
+    """(usd, sorun). `sorun` boş değilse toplama GÜVENİLMEZ (dosya okunamadı, normal dosya değil, bir istek kaydında
+    geçersiz sayı ya da `_MAX_LINE_DEPTH`ten derin satır): açık bir harcama tavanı bunu "izin" saymamalı. Olmayan dosya ve
+    ayrıştırılamayan (yarım yazılmış) satır sorun sayılmaz."""
     usd, problem, skipped = _scan_usage_windows(path, model, (since_ms,), write_mult)[since_ms]
     for what in skipped:
         _log_bad(what, path)
@@ -1913,11 +1933,19 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
                 except UnicodeDecodeError:
                     _skip("usage.line", every)      # yalnız bozuk satır atlanır; kalan istekler maliyete girer
                     continue
+                if _too_deep(line):      # toplama girmez ama sessiz de kalmaz: pencere bilinmediği için hepsi güvenilmez
+                    _fail("çok derin satır", every)
+                    _skip("usage.depth", every)
+                    continue
                 try:
                     rec = json.loads(line)
                     if not isinstance(rec, dict):
                         continue
-                except (ValueError, RecursionError):
+                except ValueError:
+                    continue
+                except RecursionError:      # sınır içinde ama çağıranın yığını yetmedi: yine sayılamadı
+                    _fail("çok derin satır", every)
+                    _skip("usage.depth", every)
                     continue
                 if not model and rec.get("event") == "task_start" and rec.get("model"):
                     pi, po, pr, pw = anthropic_price(str(rec["model"]))
@@ -1980,9 +2008,11 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
 
 def anthropic_spent_usd(reviews_root: str) -> float:
     """Tüm `anthropic` koşularının toplam $ (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik SABİT varsayılmaz
-    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir."""
+    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği yüzünden sayılamayan
+    satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
     import glob
     tot = 0.0
+    uncountable = False
     for adir in glob.glob(os.path.join(glob.escape(reviews_root), "*", "anthropic")):
         for dirpath, _dirs, files in os.walk(adir):
             for fn in files:
@@ -1992,8 +2022,12 @@ def anthropic_spent_usd(reviews_root: str) -> float:
                 rel = os.path.relpath(f, adir).split(os.sep)
                 if len(rel) < 2:
                     continue
-                tot += usage_cost_usd(f, rel[0])
-    return tot
+                usd, _problem, skipped = _scan_usage_windows(f, rel[0], (0.0,), 1.0)[0.0]
+                for what in skipped:
+                    _log_bad(what, f)
+                tot += usd
+                uncountable = uncountable or "usage.depth" in skipped
+    return _UNCOUNTABLE_SPENT_USD if uncountable else tot
 
 
 # Genişleme noktası: `claudeops_enterprise` yüklüyse mercekleri kaydeder, yoksa sessizce geçer (çekirdek paketi ASLA doğrudan import etmez).
