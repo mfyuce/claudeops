@@ -592,9 +592,29 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
     return argv
 
 
-# ucli'nin `--max-cost-usd` için YERLEŞİK fiyatı olan modeller (unified-cli `usage.rs` `Price::builtin`). Fiyatsız modelde
-# ucli bayrağı HATA ile reddeder (oturum açılmaz): o modelde bayrak eklenmez, günlüğe yazılır.
+# ucli'de YERLEŞİK fiyatı olan modeller (unified-cli `usage.rs` `Price::builtin`). Fiyatı olmayan modelde (`--price` de yoksa)
+# ucli USD tavanı bayraklarını HATA ile reddeder (oturum açılmaz).
 _PRICED_MODELS = frozenset({"claude-opus-5-5", "claude-sonnet-5-5"})
+
+# ucli'nin bilmediği ama claudeops tablosunda (`review.ANTHROPIC_PRICES`) olan Claude modelleri için `--price`. İstem boyutuna
+# göre dilimli modelde EN PAHALI dilim: ucli tek fiyat alır, USD tavanı harcamayı eksik saymasın.
+_TOP_TIER_PRICES = {"haiku-5-5": (0.50, 2.50, 0.05, 0.625)}
+
+
+def _claudeops_price(model: str) -> str:
+    """`--price` değeri (`IN,OUT,CACHE_READ,CACHE_WRITE`, USD/milyon token); fiyat bilinmiyorsa ""."""
+    from ..review import ANTHROPIC_PRICES
+    key = model[len("claude-"):] if model.startswith("claude-") else ""
+    row = _TOP_TIER_PRICES.get(key) or ANTHROPIC_PRICES.get(key)
+    return ",".join(f"{v:g}" for v in row) if row else ""
+
+
+def _argv_model(argv: List[str]) -> str:
+    return argv[argv.index("--model") + 1] if "--model" in argv and argv.index("--model") + 1 < len(argv) else ""
+
+
+def _has_price(argv: List[str]) -> bool:
+    return "--price" in argv or _argv_model(argv) in _PRICED_MODELS
 
 
 def _default_session_cap() -> float:
@@ -608,14 +628,14 @@ def _default_session_cap() -> float:
 
 def _max_cost_args(argv: List[str], usd: float, session_name: str = "") -> List[str]:
     """`--max-cost-usd USD` (tur başına tahmini USD tavanı; aşılınca tur toparlanır). YALNIZ ikili bayrağı tanıyorsa ve
-    modelin yerleşik fiyatı varsa; aksi halde argv değişmez, günlüğe yazılır."""
+    modelin fiyatı (yerleşik ya da argv'de `--price`) varsa; aksi halde argv değişmez, günlüğe yazılır."""
     binary = argv[0]
-    model = argv[argv.index("--model") + 1] if "--model" in argv and argv.index("--model") + 1 < len(argv) else ""
+    model = _argv_model(argv)
     if not binary_supports_flag(binary, "--max-cost-usd"):
         diag_log("ucli_flag_unsupported", name=session_name, flag="--max-cost-usd", binary=binary)
         return argv
-    if model not in _PRICED_MODELS:
-        diag_log("ucli_max_cost_skipped", name=session_name, model=model, reason="no built-in price")
+    if not _has_price(argv):
+        diag_log("ucli_max_cost_skipped", name=session_name, model=model, reason="no price")
         return argv
     return _set_flag_value(argv, "--max-cost-usd", f"{usd:g}")
 
@@ -713,13 +733,27 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
                 diag_log("ucli_usage_log_dir_failed", name=session_name, error=str(e)[:120])
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--usage-log", binary=argv[0])
+    # Fiyat, tavanlardan ÖNCE: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu.
+    price = str(opts.get("price") or "")
+    if not price and service == "claude" and _argv_model(argv) not in _PRICED_MODELS:
+        price = _claudeops_price(_argv_model(argv))
+    if price:
+        if binary_supports_flag(argv[0], "--price"):
+            argv = _set_flag_value(argv, "--price", price)
+        else:
+            diag_log("ucli_flag_unsupported", name=session_name, flag="--price", binary=argv[0])
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
-    # Evren (ücretsiz, fiyatsız) hizmette varsayılan tavan eklenmez: ucli "needs a price for this model" ile çıkar; açık değer yine geçer
+    # Evren (ücretsiz, fiyatsız) hizmette varsayılan tavan eklenmez; açıkça verilen tavan fiyat ister (aşağıda ret)
     sess_cap = float(opts.get("max_session_usd") or 0) or (0.0 if service in ("", "evren") else _default_session_cap())
     if sess_cap:
         binary = argv[0]
         if binary_supports_flag(binary, "--max-session-usd"):
+            if _argv_model(argv) and not _has_price(argv):
+                # ucli bu halde "needs a price for this model" ile hemen çıkar (panel yalnız "proc görünmedi" görürdü);
+                # tavanı sessizce düşürmek yerine nedeniyle reddet.
+                raise ValueError(f"{_argv_model(argv)}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. "
+                                 "Başlatma seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın.")
             argv = _set_flag_value(argv, "--max-session-usd", f"{sess_cap:g}")
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--max-session-usd", binary=binary)
@@ -733,7 +767,7 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
     for key, flag in (("max_prompt_tokens", "--max-prompt-tokens"), ("max_repeated_calls", "--max-repeated-calls"),
                       ("max_consecutive_failures", "--max-consecutive-failures"),
                       ("max_continuation_steps", "--max-continuation-steps"), ("exec_per_script", "--exec-per-script"),
-                      ("price", "--price"), ("no_prompt_cache", "--no-prompt-cache"), ("show_usage", "--show-usage"), ("checkpoint", "--checkpoint"),
+                      ("no_prompt_cache", "--no-prompt-cache"), ("show_usage", "--show-usage"), ("checkpoint", "--checkpoint"),
                       ("instructions_user", "--instructions-user"), ("instructions_max_kib", "--instructions-max-kib")):
         val = opts.get(key)
         if not val:
