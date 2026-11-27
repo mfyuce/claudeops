@@ -200,3 +200,46 @@ fn taken_port_is_reported_with_the_reason() {
     assert!(!e.is_empty());
     println!("{e}");
 }
+
+/// Token açılışta yoksa uçlar kapalıdır (istek Python'a); SONRADAN 0600 yazılınca yeniden başlatmadan açılır. Boş ya da
+/// grup/diğer okuyabilen dosya açmaz; kimliksiz istek hiçbir aşamada Rust'tan veri almaz.
+#[test]
+fn endpoints_open_when_token_appears_after_start() {
+    let home = tmp("home4");
+    let state = tmp("state4");
+    std::fs::create_dir_all(state.0.join("derbent")).unwrap();
+    let mounts = state.0.join("derbent/mounts.json");
+    std::fs::write(&mounts, r#"[{"path":"/uyg/","upstream":"127.0.0.1:1"}]"#).unwrap();
+    std::fs::set_permissions(&mounts, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let (_p, port) = spawn(&home.0, Some(&state.0), &[]);
+    let names = "/api/metrics/names";
+    let named = "/api/metrics/names?token=late-token-NOT-REAL";
+    let local = "/api/steward/questions?all=1";
+    let closed = |why: &str| {
+        for path in [names, named, local, "/uyg/"] {
+            assert_eq!(status(port, path), Some(502), "{why}: {path}");
+        }
+    };
+    closed("token yok");
+    token(&state.0, "\n");
+    closed("boş token");
+    let tf = state.0.join("web.token");
+    token(&state.0, "late-token-NOT-REAL\n");
+    std::fs::set_permissions(&tf, std::fs::Permissions::from_mode(0o644)).unwrap();
+    closed("gevşek izin");
+
+    std::fs::set_permissions(&tf, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(status(port, named), Some(200));
+    assert_eq!(status(port, names), Some(401));
+    assert_eq!(status(port, "/uyg/"), Some(401));
+    // DB henüz yok: yerel soru ucu kapalı; oluşunca açılır
+    assert_eq!(status(port, local), Some(502));
+    std::fs::File::create(state.0.join("claudeops.db")).unwrap();
+    assert_eq!(status(port, local), Some(401));
+
+    // açıldıktan sonra silme eskisi gibi anında geçersiz kılar (Python'a düşmez, 401)
+    std::fs::remove_file(&tf).unwrap();
+    for path in [names, named, local, "/uyg/"] {
+        assert_eq!(status(port, path), Some(401), "silindi: {path}");
+    }
+}
