@@ -2,7 +2,10 @@
 
 Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı, eşleme tablolarında EKSİK satır yok; açık: test tablosunda 19
 TAŞINDI-TESTSİZ satır, ders listesinin izin tamamı için madde madde karşılanması; G9'un gerçek tmux uygulayıcısı `cops-tmux`
-birleşimini, süreç taraması rs/proc'u bekliyor, "G9" bölümü). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
+birleşimini, süreç taraması rs/proc'u bekliyor, "G9" bölümü). Birleşik ağaç (`origin/main` `b993fbe1` dalda, 27 Kas):
+`cargo test --workspace` 872 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings` temiz; Python tam paket
+6091 OK (23 atlanan, 607 sn); eşleme denetimleri (hosts `--check`, rs-proc `--check --strict`, review `map_table --check`)
+temiz. `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
 `cargo test -p cops-providers` 191/191 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 20, TUI
 sözleşmesi 18, G9 15; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16,
 SearXNG 8, tek atımlık çağrı ve onay 8).
