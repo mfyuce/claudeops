@@ -30,6 +30,9 @@ pub const ANTHROPIC_PRICES: [(&str, [f64; 4]); 4] = [
     ("opus-5-5", [4.0, 20.0, 0.20, 5.0]),
     ("fable-5-1", [10.0, 50.0, 0.25, 12.5]),
 ];
+/// Haiku 5.5, istemin tamamı `HAIKU_LONG_PROMPT`u aşan istek.
+pub const HAIKU_LONG_PRICE: [f64; 4] = [0.50, 2.50, 0.05, 0.625];
+pub const HAIKU_LONG_PROMPT: f64 = 100_000.0;
 pub const PAIR_STATUSES: [&str; 6] = [
     "running",
     "done",
