@@ -49,7 +49,7 @@ def _path() -> str:
 
 
 def valid_name(name: Any) -> bool:
-    return isinstance(name, str) and bool(NAME_RE.match(name))
+    return isinstance(name, str) and bool(NAME_RE.fullmatch(name))      # `match` + `$` sondaki satır sonunu geçirirdi
 
 
 def key_for(name: str, blueprint: Optional[str] = None) -> str:
@@ -91,7 +91,7 @@ def definitions() -> Dict[str, Dict[str, Any]]:
     """Sistem + kullanıcı tanımları: {ad: {color, desc, system}} (sistem önce)."""
     out: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in SYSTEM.items()}
     for k, v in _read_raw()["defs"].items():
-        color = v.get("color") if isinstance(v.get("color"), str) and _COLOR_RE.match(v["color"]) else DEFAULT_COLOR
+        color = v.get("color") if isinstance(v.get("color"), str) and _COLOR_RE.fullmatch(v["color"]) else DEFAULT_COLOR
         out[k] = {"color": color, "desc": str(v.get("desc") or "")[:200], "system": False}
     return out
 
@@ -150,7 +150,7 @@ def define(name: str, color: str = "", desc: str = "") -> Dict[str, Any]:
     if name in SYSTEM:
         return {"ok": False, "error": f"{name} sistem etiketi, değiştirilemez"}
     color = (color or "").strip() or DEFAULT_COLOR
-    if not _COLOR_RE.match(color):
+    if not _COLOR_RE.fullmatch(color):
         return {"ok": False, "error": "renk #rrggbb olmalı"}
     with file_lock(_path()):
         d = _read_raw()

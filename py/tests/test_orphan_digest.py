@@ -23,5 +23,5 @@ class BrainTourRatioTest(unittest.TestCase):
             + [{"ts": d + "T10:02:00", "event": "directive", "name": "a"}]
         tr = steward.daily_summary(es, d, "tr")
         self.assertIn("beyin turu: 4 tur, 3 skip (%75), 1 direktif", tr)
-        self.assertIn("brain tours: 4 tours, 3 skips (%75), 1 directives", steward.daily_summary(es, d, "en"))
+        self.assertIn("brain tours: 4 tours, 3 skips (75%), 1 directives", steward.daily_summary(es, d, "en"))
         self.assertNotIn("beyin turu", steward.daily_summary([], d, "tr"))

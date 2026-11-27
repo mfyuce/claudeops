@@ -242,7 +242,7 @@ def _subprocess_env(api_key_env: str, api_key: Optional[str]) -> Optional[Dict[s
     (ör. web formu) açıkça bir anahtar geçtiğinde devreye girer."""
     if api_key is None:
         return None
-    if not _SAFE_ENV_NAME_RE.match(api_key_env or ""):
+    if not _SAFE_ENV_NAME_RE.fullmatch(api_key_env or ""):
         raise UcliError(f"invalid api_key_env name: {api_key_env!r}")
     return {**os.environ, api_key_env: api_key}
 

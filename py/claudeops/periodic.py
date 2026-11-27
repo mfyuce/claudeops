@@ -124,7 +124,7 @@ def load_config() -> Dict[str, Dict[str, Any]]:
         out[name] = cfg
     custom = raw.get("custom") if isinstance(raw.get("custom"), dict) else {}
     for cid, c in custom.items():
-        if not _ID_RE.match(str(cid)) or not isinstance(c, dict) or cid in out:
+        if not _ID_RE.fullmatch(str(cid)) or not isinstance(c, dict) or cid in out:
             continue
         cfg = dict(CUSTOM_DEFAULTS)
         cfg.update({k: v for k, v in c.items() if k in CUSTOM_DEFAULTS})
@@ -181,7 +181,7 @@ def _locked_config(fn):
 @_locked_config
 def add_custom(cid: str, fields: Dict[str, Any]) -> Dict[str, Any]:
     """Kullanıcı tanımlı iş ekler (KAPALI açılır; sahip `enabled=on` yapar). Kimlik `[a-z][a-z0-9_]{1,31}`, yerleşik adlarla çakışmaz."""
-    if not _ID_RE.match(cid) or cid in JOBS:
+    if not _ID_RE.fullmatch(cid) or cid in JOBS:
         raise ValueError("geçersiz ya da çakışan iş kimliği")
     raw = _read_raw()
     custom = raw.get("custom") if isinstance(raw.get("custom"), dict) else {}

@@ -148,6 +148,8 @@ MARK_DONE_CONFIRMED = "STEWARD-DONE-CONFIRMED"   # kanıtlı teyit ("<kısa hash
 DONE_CONFIRM_TTL = 6 * 3600.0          # aynı projeye bu süre içinde ikinci teyit direktifi gitmez
 _CONFIRM_HASH_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 _CONFIRM_ZERO_RE = re.compile(r"(?<![\w.])0(?![\w.])")
+_CONFIRM_COLON_RE = re.compile(r"[`*_\s]*[:：]")      # işaretin hemen ardında `:` (biçimlendirme arada olabilir)
+_CONFIRM_LEAD_HASH_RE = re.compile(r"[`*_\s]*(?:[(\[,;=→>\-–—][`*_\s]*)*[0-9a-f]{7,40}\b")   # `:`siz biçim: doğrudan commit hash'i
 NO_DONE_TAG = "NO-STEWARD-DONE"           # proje notunda: STEWARD-DONE işareti yok sayılır (sürekli geliştirme)
 READY_FOR_HANDOVER = "READY FOR HANDOVER"
 from .needs_ho import rfh_marker_in
@@ -764,14 +766,25 @@ def _clear_project_state(name: str, projects: Dict[str, Project], paths: Any = N
     return gone
 
 
+_PROJECT_TEXT_FIELDS = ("goal", "model", "effort", "last_directive")   # diğer metin alanları listeyle ya da str() ile zaten korunur
+
+
+class _BadFieldType(ValueError):
+    """`upsert_project`: metin alanına metin olmayan değer. `ValueError`: HTTP ucu ve CLI hata yanıtı verir."""
+    def __init__(self, field_name: str):
+        super().__init__(f"bad field type: {field_name} (expected a string)")
+
+
 def upsert_project(name: str, *, paths: Any = None, force: bool = False,
-                   running: Optional[Any] = None, **fields: Any) -> Project:
+                   running: Optional[Any] = None, must_exist: bool = False, **fields: Any) -> Project:
     """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır.
 
     `host` (uzak proje): `hosts.json`'da kayıtlı olmalı (`normalize_host`: "local"/"" = yerel), aksi halde
     `HostChangeRefused`. Mevcut projenin host'u DEĞİŞİYORSA `running()` (çağıranın "projenin herhangi bir host'ta
     çalışan oturumu var mı" denetimi: True/False/None=bilinmiyor) yalnız False dönerse kabul edilir; `force` denetimi
-    atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok."""
+    atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok.
+
+    `must_exist`: yalnız mevcut projeyi güncelle (kilit altında denetlenir); proje yoksa `ValueError`, yeni kayıt açılmaz."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
     if is_reviewer(_pp(paths)):
@@ -786,6 +799,8 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
         if other:
             raise OwnedElsewhere(name, other)
         projects = load_projects(paths)
+        if must_exist and name not in projects:
+            raise ValueError(f"project {name!r} no longer exists")
         if name not in projects:   # yeni talep: rezerve ad reddi (mevcut kayıt hiç etkilenmez)
             why = reserved_reason(name, ownership_index(fresh=True))
             if why:
@@ -819,6 +834,8 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
                 v = str(v)[:_MAX_NOTE_CHARS]
             if k == "review_where" and v not in review_remote.WHERE_VALUES:
                 continue
+            if k in _PROJECT_TEXT_FIELDS and not isinstance(v, str):      # kayıt yazılmadan reddedilir (`goal=5` kalıcı olmasın)
+                raise _BadFieldType(k)
             if k == "local_path":
                 v = os.path.expanduser(str(v).strip())
                 if v and not os.path.isabs(v):
@@ -1008,9 +1025,10 @@ def resolve_answer(q: Question, raw: str) -> str:
     (büyük/küçük harf duyarsız) tam eşleşen de kanonik metin; diğer her şey serbest metin olarak kalır."""
     raw = " ".join(str(raw).split())
     if q.options and raw:
-        if raw.isdigit() and 1 <= int(raw) <= len(q.options):
+        if raw.isdecimal() and 1 <= int(raw) <= len(q.options):      # `isdigit` "²"/"①"i de sayar, `int` kabul etmez
             return q.options[int(raw) - 1]
-        if len(raw) == 1 and raw.upper().isalpha() and ord(raw.upper()) - 65 < len(q.options):
+        if (len(raw) == 1 and len(raw.upper()) == 1 and raw.upper().isalpha()       # "ß".upper() iki karakter
+                and ord(raw.upper()) - 65 < len(q.options)):
             return q.options[ord(raw.upper()) - 65]
         for o in q.options:
             if o.casefold() == raw.casefold():
@@ -1021,7 +1039,8 @@ def resolve_answer(q: Question, raw: str) -> str:
 DEFER_SECONDS = 24 * 3600          # D19: ertelenen sorunun sessiz kalma süresi
 _DEFER_ANSWER_RE = re.compile(
     r"^\W*(?:sonra|şimdi değil|simdi degil|daha sonra|sonra bakarım|sonra veririm|bekle|tbd|later|not now|"
-    r"kararları şimdi vereceğim|kararlari simdi vereceğim|kararları sonra vereceğim|şimdi vereceğim|simdi vereceğim)\W*$", re.I)
+    r"kararları şimdi vereceğim|kararlari simdi vereceğim|kararları sonra vereceğim|şimdi vereceğim|simdi vereceğim|"
+    r"kararlari (?:simdi|sonra) verecegim|simdi verecegim)\W*$", re.I)
 
 
 def is_defer_answer(raw: str) -> bool:
@@ -1366,7 +1385,7 @@ def add_question_ex(project: str, text: str, source: str = "", options: Any = No
             sim.text = text
             if source:
                 sim.source = source
-        if sim is None and not is_job and not routine:
+        if sim is None and not solo and not routine:
             # L7b: proje başına açık soru sınırı. Sahibe giden (rutin olmayan, iş isteği olmayan) açık soru sayısı sınıra ulaştıysa yeni soru
             # AÇILMAZ: en yeni açık soruya "ek" olarak eklenir (sahip tek yerde okur, tek cevapla kapatır; konu benzerliği düşük olsa da).
             opened = [q for q in questions if q.status == "open" and q.project == project and not q.routine
@@ -1492,7 +1511,7 @@ def apply_review_where_answer(q: Question, paths: Any = None) -> None:
         fields = {"review_where": where}
     try:
         if fields:
-            upsert_project(q.project, paths=paths, **fields)
+            upsert_project(q.project, paths=paths, must_exist=True, **fields)    # silinen proje geri gelmesin
     except Exception as e:      # proje silinmiş / kimlik değişmiş: cevap kayıtta kalır, sahip elle düzeltir
         log_event("review_where_failed", paths=paths, project=q.project, error=str(e))
         fields = {}
@@ -1508,10 +1527,11 @@ def find_question(question_id: str, paths: Any = None) -> Optional[Question]:
 def mark_notified(question_id: str, paths: Any = None) -> None:
     with steward_lock(paths):
         questions = load_questions(paths)
-        for q in questions:
-            if q.id == question_id:
-                q.notified_at = _now()
-        save_questions(questions, paths)
+        hits = [q for q in questions if q.id == question_id]
+        for q in hits:
+            q.notified_at = _now()
+        if hits:
+            save_questions(questions, paths)
 
 
 def question_link(q: Question, base: str, sid: str = "default") -> str:
@@ -1666,10 +1686,11 @@ def escalate_routine(question_id: str, paths: Any = None) -> Optional[Question]:
 def mark_delivered(question_id: str, paths: Any = None) -> None:
     with steward_lock(paths):
         questions = load_questions(paths)
-        for q in questions:
-            if q.id == question_id:
-                q.delivered_at = _now()
-        save_questions(questions, paths)
+        hits = [q for q in questions if q.id == question_id]
+        for q in hits:
+            q.delivered_at = _now()
+        if hits:
+            save_questions(questions, paths)
 
 
 _TBD_ID_RE = re.compile(r"TBD\s*#?\s*(\d+)", re.I)
@@ -1885,12 +1906,13 @@ def compact_log(date: str, paths: Any = None) -> int:
     """O günün (`YYYY-MM-DD`) `tick` satırlarını (günde ~720: her 2 dakikada bir) TEK bir `ticks` satırına katla:
     `{"ts": "<date>T23:59:59", "event": "ticks", "n", "manual", "errors", "mode"}`. Günlük özet yazıldıktan SONRA
     çağrılır; `daily_summary` bu toplamı sayar, dolayısıyla o günün özeti sıkıştırmadan sonra da AYNI çıkar. Diğer
-    olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı)."""
+    olaylar (eylem, soru, kart, özet...) yerinde kalır. Dönen: katlanan tick sayısı (0 = dosyaya dokunulmadı). Dosya
+    okunamıyorsa ya da geçerli UTF-8 değilse yeniden yazılmaz (0)."""
     with _LOG_LOCK, _log_guard(paths):
         try:
             with open(_pp(paths).log, encoding="utf-8") as f:
                 lines = f.readlines()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return 0
         agg = {"n": 0, "manual": 0, "errors": 0, "mode": ""}
         out: List[str] = []
@@ -1936,17 +1958,21 @@ def rotate_log(max_bytes: int = LOG_MAX_BYTES, paths: Any = None) -> bool:
 
 
 def tail_log(n: int = 50, paths: Any = None) -> List[Dict[str, Any]]:
+    """Son `n` satırın kayıtları; bozuk satır (geçersiz UTF-8/JSON, sözlük olmayan) atlanır."""
     try:
-        with open(_pp(paths).log, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8", errors="surrogateescape") as f:
             lines = f.readlines()[-n:]
     except OSError:
         return []
     out = []
     for ln in lines:
         try:
-            out.append(json.loads(ln))
-        except json.JSONDecodeError:
+            ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
+            e = json.loads(ln)
+        except ValueError:
             continue
+        if isinstance(e, dict):
+            out.append(e)
     return out
 
 
@@ -2337,6 +2363,19 @@ def _bare_marker(line: str, mark: str) -> bool:
     return not rest or rest.startswith(":")    # işaret tek başına ya da `:` ile gövde alır; "… yazmıyorum" düzyazısı değil
 
 
+def _is_confirm_line(prefix: str, tail: str) -> bool:
+    """`STEWARD-DONE-CONFIRMED` satırı teyit mi, düzyazıda ANMA mı ("… yazmıyorum", "… geldi ama")? `_bare_marker`ın eşi,
+    bilinçli olarak ondan gevşek (canlı motor: gerçek teyit kaybolmasın). İşaretin ardında `:` varsa satırın neresinde
+    olursa olsun teyit; `:` yoksa işaret satır başında (ya da `…:` ardında) olmalı ve ardından commit hash'i gelmeli
+    ya da hiçbir şey gelmemeli (boş teyit denemesi)."""
+    if _CONFIRM_COLON_RE.match(tail):
+        return True
+    head = prefix.strip("`*_#.) 0123456789✅✔")     # başlık/kalın/numaralı madde/onay imi düzyazı değil
+    if head and not head.endswith(":"):
+        return False
+    return bool(_CONFIRM_LEAD_HASH_RE.match(tail)) or not tail.strip("`*_ .!")
+
+
 def scan_markers(text: str) -> Dict[str, Any]:
     """Bir oturum yanıtındaki `STEWARD-*` satırlarını çıkar. Dönen: {asks:[...], ideas:[...],
     blocked:[...], plan_ready: bool, done: bool, confirmed: str|None}. Satır başındaki madde/boşluk toleranslı;
@@ -2393,8 +2432,10 @@ def scan_markers(text: str) -> Dict[str, Any]:
                 out["plan_ready"] = True
             elif MARK_DONE_CONFIRMED in line:      # `STEWARD-DONE` alt dizgesini içerir: önce bakılır, düz DONE sayılmaz
                 idx = line.find(MARK_DONE_CONFIRMED)
-                body = _unwrap_ticks(line[:idx], line[idx + len(MARK_DONE_CONFIRMED):].lstrip(":").strip())
-                if not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body and line[:idx].count("`") % 2 == 0:
+                tail = line[idx + len(MARK_DONE_CONFIRMED):]
+                body = _unwrap_ticks(line[:idx], tail.lstrip(":").strip())
+                if (_is_confirm_line(line[:idx], tail) and not _PLACEHOLDER_BODY_RE.match(body) and "<" not in body
+                        and line[:idx].count("`") % 2 == 0):
                     out["confirmed"] = body       # boş gövde de bir teyit denemesi (kanıtsız: geçersiz sayılır)
             elif _bare_marker(line, MARK_DONE) and MARK_END not in line:
                 out["done"] = True
@@ -2611,7 +2652,9 @@ def build_directive(project: Project, lang: str = "tr", extra: str = "", answer:
 
 def _clip(text: str, n: int) -> str:
     text = (text or "").strip()
-    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+    if len(text) <= n:
+        return text
+    return text[: n - 1].rstrip() + "…" if n > 0 else ""      # n=0'da `text[:-1]` sınırı aşıyordu
 
 
 def card_lines(card: Dict[str, Any], tr: bool = True, now: Optional[float] = None) -> List[str]:
@@ -2690,7 +2733,8 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
             lines.append(f"id={it.get('id')}  {_clip(it.get('text', ''), 600)}")
             continue
         if it.get("phase"):
-            lines.append(("faz: " if tr else "phase: ") + str(it["phase"]) + (f"  tür: {it['kindp']}" if it.get("kindp") else ""))
+            kindp = ("  tür: " if tr else "  kind: ") + str(it["kindp"]) if it.get("kindp") else ""
+            lines.append(("faz: " if tr else "phase: ") + str(it["phase"]) + kindp)
         if it.get("goal"):
             lines.append(("amaç: " if tr else "goal: ") + _clip(it["goal"], 300))
         if it.get("idle_minutes") is not None:
@@ -2710,7 +2754,7 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
                          + _clip(it["stated_next"], 300))
         card = it.get("card")
         if card:
-            lines += card_lines(card, tr)
+            lines += card_lines(card, tr, now)
         else:
             for doc, body in (it.get("docs") or {}).items():
                 if body:
@@ -3040,6 +3084,7 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     skip_seen = skip_seen or {}
     lda = last_directive_at or {}
     rva = reviewed_at or {}
+    en = cfg.lang == "en"
     if world is not None:
         projects = world.own_projects(projects)
     items: List[Dict[str, Any]] = []
@@ -3074,8 +3119,12 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
         sn = marker_next_work(v.last_assistant or "")
         if sn:      # "son yanıt" 700 karakterde kesilir, STEWARD-NEXT satırı sonda kaybolurdu: ayrı alan + çelişki uyarısı
             items[-1]["stated_next"] = sn
-            items[-1]["contradictions"] = [f"oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{sn}». 'Sahipsiz yeni iş yok' diye skip etme: "
-                                           "steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."]
+            items[-1]["contradictions"] = [
+                f"the session reported UNOWNED work with STEWARD-NEXT: «{sn}». Do not skip it as 'no new unowned work': "
+                "if no pending owner answer blocks it, keep the session on it with steward_directive."
+                if en else
+                f"oturum STEWARD-NEXT ile SAHİPSİZ iş bildirdi: «{sn}». 'Sahipsiz yeni iş yok' diye skip etme: "
+                "steward_directive ile bu işe devam ettir (sahip cevabı bekleyen soru bunu engellemiyorsa)."]
         if claim_check is not None:
             contradictions = claim_check(v.project)
             if contradictions:
@@ -3086,24 +3135,32 @@ def review_items(views: List[SessionView], projects: Dict[str, Project], cfg: Co
     for q in questions:
         if q.status == "open" and q.routine:
             age = max(0, int((now - float(q.created_at or now)) / 60))
+            if en:
+                head = f"Routine question [{q.id}] (answer it with steward_answer id answer)"
+                waiting_note = f" [asked {age} min ago: still waiting, do it first]"
+            else:
+                head = f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
+                waiting_note = f" [{age} dk önce soruldu: beklemede, öncelik ver]"
             items.append({"kind": "routine", "name": q.project or "-", "id": q.id, "age_min": age,
-                          "text": f"Rutin soru [{q.id}] (steward_answer id cevap ile cevapla)"
-                                  + (f" [{age} dk önce soruldu: beklemede, öncelik ver]" if age >= 20 else "") + f": {q.text}"})
+                          "text": head + (waiting_note if age >= 20 else "") + f": {q.text}"})
     if cfg.ask_gate != "off":
         from . import steward_ask
         for q in questions:
             if steward_ask.tour_eligible(q, projects, cfg, state or {}, now):
-                opts = f"\nSeçenekler: {_clip(' | '.join(q.options), 120)}" if q.options else ""
+                opts = f"\n{'Options' if en else 'Seçenekler'}: {_clip(' | '.join(q.options), 120)}" if q.options else ""
+                head = (f"Owner question [{q.id}] (steward_answer id answer; your answer passes through the gate, skip it if unsure): "
+                        if en else
+                        f"Sahip sorusu [{q.id}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): ")
                 items.append({"kind": "ask", "name": q.project, "id": q.id,
-                              "text": f"Sahip sorusu [{q.id}] (steward_answer id cevap; cevabın kapıdan geçer, emin değilsen atla): "
-                                      f"{_clip(q.text, ASK_ITEM_CHARS)}{opts}"})
+                              "text": f"{head}{_clip(q.text, ASK_ITEM_CHARS)}{opts}"})
     stale_ids = {q.id for q in stale_answers(questions, projects, cfg, now, {v.name for v in views if v.running})}
     for q in undelivered_answers(questions):
         if q.id in stale_ids:
             continue
         if not q.project or q.project == cfg.brain_name or q.project not in projects:
             items.append({"kind": "blocked", "name": q.project or "-", "id": q.id,
-                          "text": f"Cevaplanan soru [{q.id}]: {q.text}\nCevap: {q.answer}"})
+                          "text": f"Answered question [{q.id}]: {q.text}\nAnswer: {q.answer}" if en else
+                                  f"Cevaplanan soru [{q.id}]: {q.text}\nCevap: {q.answer}"})
     return items
 
 
@@ -3384,6 +3441,8 @@ def plan_deliveries(entries, mine, taken, state: Dict[str, Any], now: float, lim
     `last_directive_at` damgasını `now` yap. `taken` yerinde güncellenir. Dönüş: (eylemler, yeni state); eylem yoksa ([], state)."""
     out: List[Action] = []
     lda: Optional[Dict[str, float]] = None
+    if limit <= 0:
+        return out, state
     for proj, make in entries:
         v = pick_delivery_view(mine, proj, "")
         if (v is None or v.busy or v.name in taken
@@ -3556,12 +3615,26 @@ def plan_shutdown(views: List[SessionView], projects: Dict[str, Project], sd: Di
 _CTX_Q_SESSION_RE = re.compile(r"bu oturum|this session", re.I)
 _CTX_Q_HANDOVER_RE = re.compile(r"devir|yeni oturum|handover|new session", re.I)
 _CTX_Q_EXCLUDE_RE = re.compile(r"commit|push|merge|deploy|force|\bsil|delete", re.I)   # sahip kararları otomatik cevaplanmaz
+# Bağlam ÖLÇÜSÜ olarak "token" ("210K token", "250,000 tokens", "token sayısı", "tokens: 200K"): kimlik bilgisi değil. Yalnız bu
+# bölümde `OWNER_ONLY_RE`den önce ayıklanır; sayı büyüklük eki/binlik ayracı ister ("2 token", "yeni token" kimlik bilgisi sayılır).
+_CTX_NUM = r"(?:\d+(?:[.,]\d+)?\s*(?:[km]|bin|milyon|thousand|million)(?!\w)|\d{1,3}(?:[.,]\d{3})+|\d{5,})"
+_CTX_TOKEN_MEASURE_RE = re.compile(
+    r"(?<![\w.,])" + _CTX_NUM + r"(?:'?l[ıiuü]k)?(?:\s*/\s*" + _CTX_NUM + r")?\+?\s*\btokens?\b"
+    r"|\btokens?\s+(?:say[ıi]s[ıi]|kullan[ıi]m[ıi]|count|usage)\b"
+    r"|\btokens?\s*[:=]\s*~?\d+(?:[.,]\d+)?\s*[km](?!\w)", re.I)
+
+
+def _context_owner_topic(text: str) -> bool:
+    """SAF (TBD#382). Metin sahibe ait bir konu (`OWNER_ONLY_RE`: kurulum, harcama, parola/token/yetki, silme, force) geçiriyor
+    mu; bağlam ölçüsü olarak geçen "token" sayılmaz."""
+    return bool(OWNER_ONLY_RE.search(_CTX_TOKEN_MEASURE_RE.sub(" ", text or "")))
 
 
 def is_context_question(text: str) -> bool:
     """'Bu oturumda mı sürdüreyim, devir notuyla yeni oturuma mı bırakayım?' kalıbı: cevabı bağlam ölçümünden çıkar."""
     t = text or ""
-    return bool(_CTX_Q_SESSION_RE.search(t) and _CTX_Q_HANDOVER_RE.search(t) and not _CTX_Q_EXCLUDE_RE.search(t))
+    return bool(_CTX_Q_SESSION_RE.search(t) and _CTX_Q_HANDOVER_RE.search(t) and not _CTX_Q_EXCLUDE_RE.search(t)
+                and not _context_owner_topic(t))
 
 
 def context_answer(tokens: int, warn: int, ratio: float, lang: str = "tr") -> Tuple[bool, str]:
@@ -3784,7 +3857,7 @@ def upper_tier_approved(questions: List["Question"], project: str, model: str, e
     tag = upper_tier_tag(project, model, effort)
     for q in questions:
         if q.status == "answered" and q.source == UPPER_MODEL_SOURCE and tag in (q.text or ""):
-            if (q.answer or "").strip().lower().rstrip(".!") in APPROVE_WORDS:
+            if re.sub(r"[\s.!]+\Z", "", (q.answer or "").strip().lower()) in APPROVE_WORDS:      # "evet ." / "onayla !"
                 return True
     return False
 
@@ -3952,7 +4025,7 @@ def note_project_next(st: Dict[str, Any], proj: str, session: str, m: Dict[str, 
     if not proj or not val:
         return
     body = str(val).strip()
-    none = body.strip(" .`").lower() in _NO_WORK_VALUES
+    none = _is_no_work_value(body)
     pn = dict(st.get("project_next") or {})
     pn[proj] = {"text": clip_words(body, 200), "at": now, "session": session, "none": none}
     st["project_next"] = pn
@@ -3982,7 +4055,7 @@ def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: 
         proj = v.project if v.project in projects else ""
         mk = scan_markers(v.last_assistant)
         actions.extend(marker_record_actions(v.name, proj, mk))
-        note_project_next(st, proj, v.name, mk, time.time())
+        note_project_next(st, proj, v.name, mk, _now())
     st["seen_assistant"] = seen
     return actions, st
 
@@ -4014,7 +4087,9 @@ BRAIN_MCP_RESTART_COOLDOWN = 6 * 3600.0     # araçsızlıktan yeniden açma en 
 BRAIN_NOTOOLS_MIN_AGE = 180.0               # önceki turdan bu kadar süre geçmeden "çağrı yok" hükmü verilmez (beyin yanıt vermiş olmalı)
 _NO_TOOLS_RE = re.compile(
     r"araçlar(?:ım)?\s+(?:yok|mevcut değil|erişilebilir değil|bulunam)|steward_\w+\s+(?:araç\w*\s+)?(?:yok|bulunamad|mevcut değil)|"
-    r"no (?:matching )?(?:deferred )?tools?\b|tools? (?:are )?(?:not available|unavailable|missing)|"
+    r"no (?:matching )?(?:deferred )?tools?\b"
+    r"(?!(?:[\s-]+(?:calls?|use))?\s+(?:(?:is|are|was|were|will\s+be)\s+)?(?:needed|required|necessary)\b)|"     # "no tools needed" olağan cümle
+    r"tools? (?:are )?(?:not available|unavailable|missing)|"
     r"(?:cops-steward|steward)\s+(?:mcp\s+)?(?:server\s+)?(?:is\s+)?not (?:connected|available)|karar\s+veremedim", re.I)
 
 
@@ -4245,6 +4320,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         for q in questions:
             if q.status != "open" or not is_context_question(q.text):
                 continue
+            if any(_context_owner_topic(t) for t in (*q.options, q.detail, *q.extra_texts, *q.prev_texts)):
+                continue    # sahibe ait konu seçenekte/detayda/birleşen metinde: cevap soruyu kapatırdı
             v = by_name.get(q.source)
             if v is None or not v.running or not v.tmux or not v.context_tokens or not _managed(v.name):
                 continue
@@ -4875,7 +4952,7 @@ def loop_guard(actions: List["Action"], views: List["SessionView"], st: Dict[str
             rec.update(until=now + pause, n=0, first=now)
             guard[key] = rec
             breaks.append(Action("loop_break", a.name, f"{a.kind}: {LOOP_MAX} kez hedefte değişiklik olmadan tekrarlandı",
-                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(pause // 3600), "pause_min": int(pause // 60),
+                                 {"kind": a.kind, "n": LOOP_MAX, "pause_h": int(-(-pause // 3600)), "pause_min": int(pause // 60),
                                   "last_reason": a.reason[:200]}))
             continue
         guard[key] = rec
@@ -5092,7 +5169,15 @@ def _observe_cluster(a: Action) -> str:
 
 _AJ_CHILD_RE = re.compile(r"_aj\d+$")                          # ucli alt ajanı (`<üst>_aj<N>`): proje oturumu DEĞİL
 _NEXT_NOTE_RE = re.compile(r"(?:sıradaki|siradaki|next)\s*(?:iş|is|adım|adim|step|task)?\s*[:：]\s*(.+)", re.IGNORECASE)
-_NO_WORK_VALUES = {"yok", "none", "-", "—", "n/a", "bitti", "done"}
+_NO_WORK_VALUES = {"yok", "none", "-", "—", "–", "n/a", "bitti", "done"}
+# TBD#387/2: "-", "n/a", "bitti", "done" ardında noktalama ya da açıklamayla da iş değildir; "done.md düzenle", "- testleri koş" iştir.
+_NEXT_DONE_VALUE_RE = re.compile(r"^[`*_\s]*(?:[-—–][`*_\s.,;:!]*$|(?:n/a|bitti|done)[`*_]*(?:\s*$|[.,;:!](?=[`*_\s]|$)|\s*\(|\s+[-—–]\s))",
+                                 re.IGNORECASE)
+
+
+def _is_no_work_value(value: str) -> bool:
+    """"sıradaki" değeri "iş yok" anlamında mı (yok/none/-/n/a/bitti/done). SAF."""
+    return value.strip(" .`*_,;:!").lower() in _NO_WORK_VALUES or bool(_NEXT_DONE_VALUE_RE.match(value))
 
 
 def marker_next_work(text: str) -> str:
@@ -5102,7 +5187,7 @@ def marker_next_work(text: str) -> str:
     if not text or "STEWARD-NEXT" not in text:
         return ""
     val = str(scan_markers(text).get("next") or "").strip()
-    if not val or val.strip(" .`").lower() in _NO_WORK_VALUES or is_conditional_note(val):
+    if not val or _is_no_work_value(val) or is_conditional_note(val):
         return ""
     return clip_words(val, 200)
 _DONE_TEXT_RE = re.compile(r"(?<![-\w])STEWARD-DONE(?![-\w])")
@@ -5117,7 +5202,7 @@ def next_none_stated(text: str) -> bool:
     """Son cevap "sıradaki: yok" (ya da `STEWARD-NEXT: yok`) diyor mu. SAF."""
     t = text or ""
     nx = scan_markers(t).get("next")
-    if nx is not None and str(nx).strip(" .`").lower() in _NO_WORK_VALUES:
+    if nx is not None and _is_no_work_value(str(nx)):
         return True
     return bool(_NEXT_NONE_LINE_RE.search(t))
 _NO_WORK_PHRASES = ("yapacak iş yok", "yapılacak iş yok", "yapacak başka iş yok", "yapılacak başka iş yok",
@@ -5287,7 +5372,7 @@ def next_work_hint(proj: Project, open_work: Optional[Callable[[str], Optional[i
         m = _NEXT_NOTE_RE.search(line)
         if m:
             val = clip_words(m.group(1), 160)
-            if val.strip(" .").lower() in _NO_WORK_VALUES:
+            if _is_no_work_value(val):
                 return ""
             if is_conditional_note(val):
                 return ""      # koşullu not: dürtme/keepwarm `devam:` göndermez (koşulu oturum bilir, motor değerlendiremez)
@@ -5375,19 +5460,29 @@ def without_stale_note(proj: Project, todo_text: str, lang: str = "tr", done_tex
 _OWNER_WAIT_PHRASES = ("sahipte", "sahibin kararı", "sahip kararı bekl", "sahibin cevab", "owner's decision", "waiting on the owner", "waiting for the owner")
 
 
-_NEXT_LINE_RE = re.compile(r"^[ \t>*_-]*(?:sıradaki|siradaki|next)\s*:\s*(?P<what>.+)$", re.IGNORECASE | re.MULTILINE)
+_NEXT_LINE_RE = re.compile(r"^[ \t>*_-]*(?:sıradaki|siradaki|next)\s*:(?P<what>.*)$", re.IGNORECASE)     # TEK satıra uygulanır
 _NEXT_NONE_RE = re.compile(r"^[`*_\s]*(?:yok|none|nothing|-)\b", re.IGNORECASE)
 
 
+def _last_next_line(text: str) -> Optional[Tuple[str, List[str]]]:
+    """SON "sıradaki:" satırı: (aynı satırdaki değer, sonraki satırlar); yoksa None. Değer satır sonunu GEÇMEZ. SAF."""
+    lines = (text or "").splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        m = _NEXT_LINE_RE.match(lines[i])
+        if m:
+            return m.group("what").strip(), lines[i + 1:]
+    return None
+
+
 def next_line(text: str) -> Tuple[bool, str]:
-    """Cevaptaki SON "sıradaki: <iş>" satırı (ayıklama turu biçimi): (var_mı, iş). "sıradaki: yok" -> (True, ""). SAF."""
-    m = None
-    for m in _NEXT_LINE_RE.finditer(text or ""):
-        pass
-    if m is None:
+    """Cevaptaki SON "sıradaki: <iş>" satırı (ayıklama turu biçimi): (var_mı, iş). "sıradaki: yok" ve boş satır -> (True, ""). SAF."""
+    found = _last_next_line(text)
+    if found is None:
         return False, ""
-    what = m.group("what").strip()
-    return True, ("" if _NEXT_NONE_RE.match(what) else clip_words(" ".join(what.split()), 220))
+    what = found[0]
+    if not what.strip("`*_ ") or _NEXT_NONE_RE.match(what) or _is_no_work_value(what):
+        return True, ""
+    return True, clip_words(" ".join(what.split()), 220)
 
 
 _STATED_NEXT_RE = re.compile(
@@ -5434,6 +5529,9 @@ def idle_finish_marker(text: str) -> Tuple[str, bool]:
     has, what = next_line(t)
     if has and what:
         return "", False         # cevap açık bir sıradaki iş söylüyor: "STEWARD-DONE yazmıyorum" / eski devir bölümü anması bitti sayılmaz
+    found = _last_next_line(t)
+    if found and not found[0].strip("`*_ ") and any(l.strip() for l in found[1]):
+        return "", False         # boş "sıradaki:" ardında metin: iş listesi olabilir (belirsiz), bitti sayılıp oturum kapatılmaz
     ready = rfh_marker_in(t)
     if ready:
         return READY_FOR_HANDOVER, True
@@ -5880,7 +5978,7 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     since = float(v.last_activity or 0.0)
     if since <= 0 or now - since < cfg.claude_idle_nudge_secs:
         left = int(max(0, cfg.claude_idle_nudge_secs - (now - since)) // 60) if since > 0 else 0
-        return _why("idle_wait", lang, f"{left} dk" if since > 0 else "?", minutes_left=left)
+        return _why("idle_wait", lang, (f"{left} min" if lang == "en" else f"{left} dk") if since > 0 else "?", minutes_left=left)
     rec = dict(state.get("claude_idle") or {}).get(v.name) or {}
     chain = 0 if since > float(rec.get("at") or 0) else int(rec.get("n") or 0)
     if rec.get("mode", "dry") != cfg.claude_idle:
@@ -5989,17 +6087,21 @@ def daily_path(date: str, paths: Any = None) -> str:
 
 
 def log_entries_for_date(date: str, paths: Any = None) -> List[Dict[str, Any]]:
-    """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz)."""
+    """`log.jsonl`'dan o güne (`YYYY-MM-DD`, yerel) ait kayıtlar; dosyayı satır satır okur (bütününü belleğe almaz).
+    Bozuk satır (geçersiz UTF-8/JSON, sözlük olmayan) atlanır."""
     out: List[Dict[str, Any]] = []
     try:
-        with open(_pp(paths).log, encoding="utf-8") as f:
+        with open(_pp(paths).log, encoding="utf-8", errors="surrogateescape") as f:
             for ln in f:
                 if f'"ts": "{date}' not in ln[:40]:
                     continue
                 try:
-                    out.append(json.loads(ln))
-                except json.JSONDecodeError:
+                    ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
+                    e = json.loads(ln)
+                except ValueError:
                     continue
+                if isinstance(e, dict):
+                    out.append(e)
     except OSError:
         pass
     return out
@@ -6012,20 +6114,32 @@ DRY_KIPS = {"wake_repeat": "wake_gate", "wake_cap": "wake_gate", "brain_wake_cap
 DRY_REPORT_HOURS = 72
 
 
+def _count_or_zero(value: Any) -> int:
+    """Günlük/state sayısı: `int(value or 0)`; sayıya çevrilemiyorsa 0 (bozuk alan raporu/özeti düşürmesin)."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
     """`log.jsonl`(+`.1`) içindeki `would:<tür>` olaylarını son `hours` saatte türe göre sayar: `{tür: {count, names:{ad:n},
-    chars, first, last}}` (`first`/`last` epoch). Yalnız okur."""
+    chars, first, last}}` (`first`/`last` epoch). Yalnız okur. Bozuk satır (geçersiz UTF-8/JSON/`ts`, sözlük olmayan) atlanır,
+    sayıya çevrilemeyen `chars` 0 sayılır."""
     t = time.time() if now is None else now
     lp = _pp(paths).log
     out: Dict[str, Dict[str, Any]] = {}
     for fn in (lp + ".1", lp):
         try:
-            with open(fn, encoding="utf-8") as f:
+            with open(fn, encoding="utf-8", errors="surrogateescape") as f:
                 for ln in f:
                     if '"would:' not in ln:
                         continue
                     try:
+                        ln.encode("utf-8")      # geçersiz UTF-8 satır: UnicodeEncodeError (ValueError)
                         e = json.loads(ln)
+                        if not isinstance(e, dict):
+                            continue
                         ts = time.mktime(time.strptime(str(e.get("ts"))[:19], "%Y-%m-%dT%H:%M:%S"))
                     except (ValueError, OverflowError):
                         continue
@@ -6035,21 +6149,22 @@ def dry_report(paths: Any = None, hours: float = DRY_REPORT_HOURS, now: Optional
                     r = out.setdefault(ev[6:], {"count": 0, "names": {}, "chars": 0, "first": ts, "last": ts})
                     r["count"] += 1
                     r["names"][str(e.get("name") or "-")] = r["names"].get(str(e.get("name") or "-"), 0) + 1
-                    r["chars"] += int(e.get("chars") or 0)
+                    r["chars"] += _count_or_zero(e.get("chars"))
                     r["first"], r["last"] = min(r["first"], ts), max(r["last"], ts)
         except OSError:
             continue
     return out
 
 
-def dry_report_text(rep: Dict[str, Dict[str, Any]], hours: float = DRY_REPORT_HOURS) -> str:
+def dry_report_text(rep: Dict[str, Dict[str, Any]], hours: float = DRY_REPORT_HOURS, lang: str = "tr") -> str:
+    en = lang == "en"
     if not rep:
-        return f"Son {int(hours)} saatte `would:*` olayı yok.\n"
-    lines = [f"Ölçüm (dry) kipleri, son {int(hours)} saat:"]
+        return f"No `would:*` events in the last {int(hours)} hours.\n" if en else f"Son {int(hours)} saatte `would:*` olayı yok.\n"
+    lines = [f"Measurement (dry) modes, last {int(hours)} hours:" if en else f"Ölçüm (dry) kipleri, son {int(hours)} saat:"]
     for kind, r in sorted(rep.items(), key=lambda kv: -kv[1]["count"]):
         top = ", ".join(f"{n}×{c}" for n, c in sorted(r["names"].items(), key=lambda kv: -kv[1])[:3])
-        extra = f", ~{r['chars']} karakter" if r["chars"] else ""
-        lines.append(f"- would:{kind}{' [' + DRY_KIPS[kind] + ']' if kind in DRY_KIPS else ''}: {r['count']} olay{extra} ({top})")
+        extra = f", ~{r['chars']} {'characters' if en else 'karakter'}" if r["chars"] else ""
+        lines.append(f"- would:{kind}{' [' + DRY_KIPS[kind] + ']' if kind in DRY_KIPS else ''}: {r['count']} {'events' if en else 'olay'}{extra} ({top})")
     return "\n".join(lines) + "\n"
 
 
@@ -6137,7 +6252,7 @@ def _ask_gate_lines(events: List[Dict[str, Any]], answered_by: Dict[str, str], e
     if not events:
         return []
     applied = [e for e in events if e.get("applied")]
-    shadow = [e for e in events if e.get("mode") == "shadow"]
+    shadow = [e for e in events if e.get("mode") == "shadow" and not e.get("applied")]     # yazılan cevap bir kez (uygulanan) sayılır
     denied = len(events) - len(applied) - len(shadow)
     passed = sum(1 for e in shadow if e.get("allow"))
     head = (f"- ASK gate: brain answered for the owner {len(applied)}, refused {denied}, shadow {len(shadow)} ({passed} would pass)" if en else
@@ -6158,7 +6273,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     uygulanan eylemler ve observe'da `would:` olanlar (türe göre), açılan/cevaplanan soru, fikir, yenilenen kart,
     handover, direktif, faz değişimi; `pending` (depodan: açık soru, yeni fikir, bekleyen madde, iletilmemiş cevap)."""
     T = _SUMMARY_TXT["en" if lang == "en" else "tr"]
-    day = [e for e in entries if str(e.get("ts", "")).startswith(date)]
+    day = [e for e in entries if isinstance(e, dict) and str(e.get("ts", "")).startswith(date)]
     ev = lambda name: [e for e in day if e.get("event") == name]   # noqa: E731
     ticks = ev("tick")
     folded = ev("ticks")            # `compact_log` sonrası: o günün tick'leri tek toplam satırında
@@ -6171,7 +6286,7 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     handovers = [e for e in actions if e.get("kind") == "handover" and e.get("ok")] + ev("handover")
     applied = [e for e in actions if e.get("kind") not in ("ask_user", "idea", "set_phase")]
     mode = next((str(e.get("mode")) for e in reversed(ticks + folded) if e.get("mode")), "")
-    n_ticks = len(ticks) + sum(int(e.get("n") or 0) for e in folded)
+    n_ticks = len(ticks) + sum(_count_or_zero(e.get("n")) for e in folded)
 
     lines = [f"# {T['title']} — {date}"]
     if mode:
@@ -6179,8 +6294,8 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
     lines.append("")
     if n_ticks:
         extra = []
-        manual = sum(1 for e in ticks if e.get("trigger") != "timer") + sum(int(e.get("manual") or 0) for e in folded)
-        bad = sum(1 for e in ticks if e.get("error")) + sum(int(e.get("errors") or 0) for e in folded)
+        manual = sum(1 for e in ticks if e.get("trigger") != "timer") + sum(_count_or_zero(e.get("manual")) for e in folded)
+        bad = sum(1 for e in ticks if e.get("error")) + sum(_count_or_zero(e.get("errors")) for e in folded)
         if manual:
             extra.append(f"{manual} {T['manual']}")
         if bad:
@@ -6212,15 +6327,17 @@ def daily_summary(entries: List[Dict[str, Any]], date: str, lang: str = "tr",
         lines.append(f"- {T['handovers']}: {len(handovers)} ({_names([str(e.get('name')) for e in handovers])})")
     held_ev = ev("review_store_held")
     if held_ev:
+        held_files = held_ev[-1].get("files")
         lines.append(f"- {'review store: files held back by the secret scan' if lang == 'en' else 'review saklama: gizli değer taramasında dışarıda kalan dosya'}: "
-                     f"{int(held_ev[-1].get('n') or 0)} ({_names([str(x) for x in (held_ev[-1].get('files') or [])])})")
+                     f"{_count_or_zero(held_ev[-1].get('n'))} ({_names([str(x) for x in held_files] if isinstance(held_files, list) else [])})")
     dirs = ev("directive")
     if dirs:
         lines.append(f"- {T['directives']}: {len(dirs)} ({_names([str(e.get('name')) for e in dirs])})")
     tours, skips = ev("tour"), ev("skip")
     if tours or skips:
         # D16 (beyin turu ekonomisi): tur başına skip oranı yüksekse maddeler gereksiz turlanıyor demektir
-        ratio = f"%{round(100 * len(skips) / len(tours))}" if tours else "-"
+        pct = round(100 * len(skips) / len(tours)) if tours else 0
+        ratio = (f"{pct}%" if lang == "en" else f"%{pct}") if tours else "-"
         lines.append(f"- {'brain tours: ' if lang == 'en' else 'beyin turu: '}{len(tours)} tur, {len(skips)} skip ({ratio}), {len(dirs)} direktif"
                      if lang != "en" else f"- brain tours: {len(tours)} tours, {len(skips)} skips ({ratio}), {len(dirs)} directives")
     if phases:
@@ -6240,7 +6357,7 @@ def summary_text(date: Optional[str] = None, lang: str = "tr", paths: Any = None
     state = load_state(paths)
     pending = {"open_questions": len(open_questions(paths=paths)),
                "ideas_new": sum(1 for i in load_ideas(paths) if i.status == "new"),
-               "pending_items": int(state.get("pending_items") or 0),
+               "pending_items": _count_or_zero(state.get("pending_items")),
                "undelivered_answers": len(undelivered_answers(paths=paths))}
     try:    # sahipsiz kaynak (orphan_watch durum dosyasından; tarama yok); okunamazsa satır atlanır
         from .periodic import orphan_summary
