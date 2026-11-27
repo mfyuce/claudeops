@@ -3,18 +3,19 @@
 Durum (27 Kas 2026, `origin/main` `7ac858e0` birleşimi `59135fb8` + kalıcı kurala göre Python hata düzeltmeleri):
 **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve TAŞINDI-TESTSİZ satır yok. Açık: ders
 tablosundaki gerekçeli AÇIK satırlar, sahip/cops kararı bekleyen Python farkları (G4 aday 1, 2, 5; G10 aday 1; G9 aday 5, 6;
-G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen): `cargo test --workspace` 1234 geçti, 0 kaldı,
-1 atlandı (tam koşuda `parity_live` `live-codex-ctx-dev` bir kez "kayıtlı ayrışma eşit çıktı" verdi: birleşim öncesi ağaçta da
-görüldü, tek başına üç koşuda yeşil; yük altında oynak, nedeni açık); `clippy --workspace --all-targets -D warnings` temiz;
-`cargo fmt --check -p cops-providers` temiz; Python tam paket 6225 OK (23 atlanan) + yeni `test_rsprov_*` dosyaları;
-eşleme denetimleri (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`) temiz.
+G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `bf4d3ed7`, TBD#397
+düzeltmeleri dahil): `cargo test --workspace` 1239 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings`
+ve `cargo fmt --check -p cops-providers` temiz; Python tam paket 6263 OK (23 atlanan); eşleme denetimleri (hosts `--check`,
+rs-proc `--check --strict`, steward `map.py --check`) temiz. Oynak testler (yük altında bir kez): `parity_live`
+`live-codex-ctx-dev` (önceki turda) ve `real_fs::concurrent_issue_keeps_file_and_digest_consistent` (yük ortalaması ~20 iken
+30 sn kilit sınırı aşıldı; tek başına üç koşuda ve tam koşuda yeşil).
 27 Kas düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
 denetimi, yutulan model çekimi ve `agy_sids` hatalarının günlüğü; her biri Python + Rust + test (aşağıda grup bölümleri).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 7288 vaka: spawn yürütme 172 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
+- 7325 vaka: spawn yürütme 172 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 334 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
   (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 344 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
@@ -540,9 +541,9 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - HTTP: yönlendirme iki tarafta da izlenmez (TBD#389; `redirects_are_never_followed_*`). Fark:
   `User-Agent: claudeops` (Python `Python-urllib/3.10`); adreste `kullanıcı@` ve başlıkta denetim karakteri reddedilir; süre
   toplam; gövde sınırlı; kök sertifikalar `rustls-native-certs`; yalnız `http`/`https` (Python `file:`/`ftp:` de açar).
-- Süreç: zaman aşımında torunlar da öldürülür; `ucli chat --help` stdin'i boş (Python miras verir); UTF-8 olmayan yardım çıktısı
-  "" (Python istisna), `mcp add` çıktısı U+FFFD (Python istisna); çıktı sınırlı; `agy models` stderr'i atılır.
-- Kilit alınamazsa yazım hata döner (Python iş parçacığı kilidiyle sürer).
+- Süreç: `ucli chat --help` stdin'i boş; çıktı sınırlı; `agy models` stderr'i atılır. Zaman aşımında grup sonlandırma, UTF-8
+  olmayan yardım / `mcp add` çıktısı ve alınamayan kilit artık iki tarafta aynı (TBD#397 bölümü). Kalan fark: kuru kurulumda
+  UTF-8 olmayan yardım Rust'ta günlüğe girer (`HelpCache` kuru kipi bilmez; Python yazmaz).
 - Belge `db` kipinde `agy_sids`/`claude_models` okunmaz ve yazılmaz (rs/state bağlanana dek).
 - `realpath` 256 farklı bağlantıda durur (Python `RecursionError`); metin/belge okuma sınırları (16 MiB üstü ajan defteri
   Rust'ta üzerine yazılmaz).
@@ -557,11 +558,11 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | 3 | bozuk defter boş sayılıp yedeksiz eziliyor | DÜZELDİ: `.corrupt-<özet>` kopyası (0600); okunamayan defter ezilmez (oturum ajansız açılır) |
 | 4 | `check_shape`/`_OWNER` `Infinity`/`NaN` adı ve sondaki satır sonunu kabul ediyor | DÜZELDİ (tam eşleşme, ad dize olmalı) |
 | 5 | `load_registry` derin JSON ve bağlantı yarışı | DÜZELDİ (`O_NOFOLLOW` + tanıtıcıdan tür/izin; `RecursionError` hata metni) |
-| 6 | yardım yoklaması/`mcp add` UTF-8 olmayan çıktıda istisna | DOKUNULMADI, sahibe: bugün spawn reddi; düzeltme oturum açılmasını değiştirir |
+| 6 | yardım yoklaması/`mcp add` UTF-8 olmayan çıktıda istisna | DÜZELDİ (TBD#397, sahip adına cops cevabı) |
 | 7 | `ucli chat --help` stdin'i miras alıyor | DÜZELDİ (`DEVNULL`) |
-| 8 | zaman aşımında torun süreç yetim | DOKUNULMADI, sahibe: süreç grubu öldürmek "yalnız `kill.py`" kuralına dokunur |
+| 8 | zaman aşımında torun süreç yetim | DÜZELDİ (TBD#397; yalnız yardımcı çocuğun kendi grubu) |
 | 9 | UTF-8 olmayan rustup ayarı istisna | DÜZELDİ (varsayılan bilinmiyor; birden çok adayda "belirsiz" reddi) |
-| 10 | `file_lock` kilit alamazsa kilitsiz yazıyor | DOKUNULMADI, sahibe: bütün durum yazımlarını etkiler (Rust reddediyor) |
+| 10 | `file_lock` kilit alamazsa kilitsiz yazıyor | DÜZELDİ (yazmama: TBD#374 main birleşimi; günlük: TBD#397) |
 | 11 | anahtar/damga yolunda FIFO spawn'ı bloklar | DÜZELDİ (`base._open_private_target`: bloklamadan `OSError`, boruya sır yazılmaz) |
 | 12 | `path_executables` satır sonlu dosya adını listeliyor | DÜZELDİ |
 
@@ -599,8 +600,9 @@ UsageScan}` ile tek kopya kalmalı. Eşitleme kaynağı Python'un 27 Kas düzelt
 
 ### Bilinen ayrışmalar (testte kayıtlı olan yok: yalnız Rust testinde ya da testsiz)
 - Defter: 512'den derin ya da 16 MiB'tan uzun satır Rust'ta "sayılamıyor" reddi (Python 1000'e dek okur / sınırsız); var ama
-  ayrıştırılamayan `settings.json`da Rust reddeder, Python varsayılana düşer (tavan kapanır; sahibe); `credit_window`
-  sonlu olmayan girdiyi `null` yazar.
+  ayrıştırılamayan `settings.json` ve geçersiz tavan iki tarafta reddedilir (TBD#397); `credit_window` sonlu olmayan
+  girdiyi `null` yazar. 512'den derin `settings.json`da Rust "bozuk" reddi verir, Python daha derine dek okur, çok derinde
+  `load_settings` `RecursionError` atar (başlatma yine olmaz; düzeltilmedi).
 - SearXNG: docker çıktısı 4 MiB sınırlı; zaman aşımında docker süreç grubu öldürülür; sağlık yoklaması yalnız durum satırına
   bakar, `User-Agent: claudeops`; kilit alınamazsa durum yazılmaz; hata metinleri (`repr(OSError)`) testsiz köşelerde
   farklı olabilir; docker zaman aşımı metni yalnız Rust testinde.
@@ -612,13 +614,26 @@ UsageScan}` ile tek kopya kalmalı. Eşitleme kaynağı Python'un 27 Kas düzelt
   dosyasında kayıp güncelleme; beklenmeyen `inspect` yapısı istisna veriyordu.
 
 ### Sahibe bırakılanlar (uygulanmadı)
-1. Bozuk/okunamayan `settings.json` ya da geçersiz `daily_cap_usd` ("abc", negatif) tavanı sessizce KAPATIYOR.
+1. DÜZELDİ (TBD#397 soru 1 a): bozuk/okunamayan `settings.json` ya da geçersiz `daily_cap_usd` artık Claude hizmetli
+   başlatmayı reddettiriyor.
 2. Başlatma payı süreçler arası paylaşılmıyor (panel + CLI; ileride Python + Rust).
 3. Ayrıştırılamayan günlük satırı 0 harcama sayılıyor (yarım yazım ile kalıcı bozukluk ayrılmıyor).
 4. SearXNG hızlı yolu kayıtlı portta `/healthz` 200 veren HERHANGİ bir süreci kabul ediyor (çok kullanıcılı makine).
 
 ### Ders listesi, ikinci parça koduna düşen maddeler
 Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
+
+## TBD#397: sahip onaylı dört düzeltme (27 Kas, iki tarafta)
+| # | Konu | Davranış | Python testi | Rust testi / parite |
+|---|---|---|---|---|
+| A | günlük USD tavanı | var olan `settings.json` bozuk/okunamaz, `ucli_cost` sözlük değil ya da `daily_cap_usd` sayı değil/negatif/sonlu değil ise Claude hizmetli başlatma reddi; dosya/anahtar yok, boş, 0 = tavan yok; `state` ve öteki hizmetler değişmez | `test_rsprov_cap_settings.py` | `real_ledger::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity_ledger` `tavan-ayari*` |
+| B | UTF-8 olmayan çıktı | yardım = "" (bayrak tanınmaz, güvenlik izni isteyen başlatma reddi), ikili sürümü başına bir kez `help_output_not_utf8`; `mcp add` sonucu çıkış kodundan, `ucli_mcp_output_not_utf8` | `test_rsprov_help_utf8.py` | `real_process::{non_utf8_help_gives_no_flags_and_is_logged_once_per_binary_version, register_mcp_with_non_utf8_output_follows_the_exit_code}`; `parity_real` `yardim` `mcp-bozuk-cikti*` |
+| C | yetim torun | yardım yoklaması, `mcp add`, `claude -p`/ucli tek atımlık, onay sürdürme, `agy models`, docker CLI yeni grupta; zaman aşımında/kesilmede grup `SIGKILL`; çağıranın grubuna ve beklenmiş çocuğa sinyal yok | `test_rsprov_child_group.py` | `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `real_oneshot::timeouts_kill_the_whole_group_and_return_promptly`, `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (davranış Rust'ta vardı) |
+| D | alınamayan kilit | yazım yok (önceden vardı) + `file_lock_refused` (`path`) | `test_state_lock_fail_closed.py` | `real_agy_store::a_symlinked_lock_file_is_refused_and_nothing_is_written`, `real_oneshot::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing`; `parity_oneshot` `kayit-kok-*` |
+
+- Bağlayan uç: `ApprovalStore::with_diag` ve `DocAgySidStore::with_diag` verilmeli (`RealProbe` ajan defterine kendi bağlar,
+  `SpawnRuntime` `HelpCache`e ve arama yöneticisine bağlar). `rs/state` `cops-state::fsutil::FileLock` bu olayı yazmaz (o iz).
+- TBD#397 maddeleri 4, 5, 6 (süreçler arası pay, ayrıştırılamayan günlük satırı, SearXNG port sahibi) DEĞİŞMEDİ.
 
 ## G10: tek atımlık çağrı ve onay
 
@@ -672,7 +687,7 @@ Taşınan: `OneshotError`, `CliProvider.oneshot`, `UcliProvider.oneshot`, `ucli_
 | 1 | `api_key_env` yalnız `api_key` verilince denetleniyor: `/api/io/ask` alanları `api_key_env` + `endpoint` serbest, yani ortamdaki HERHANGİ bir değişken ucli ile seçilen adrese "API anahtarı" olarak gönderilebilir | güvenlik, ama kimlik davranışını görünür değiştirir (özel adlı değişken kullananlar reddedilir): sahibe |
 | 2 | `done` anahtar yeniden kullanılınca eski `consumed` işareti ve `pending/`, `answers/` dosyaları kalır: yeni koşu sürdürülemez ya da eski onay kimliği yeni koşuda görünür | T7 (cevap/sürdürme) kapsamı; üretimde `run_key` veren yok |
 | 3 | `register` ile `set_state` arasında çökme `running` kaydı bırakır; 8 numaralı ret yüzünden o anahtar elle temizlenene dek kullanılamaz | kapalı yön; kurtarma T7 `recover_resuming` ile |
-| 4 | zaman aşımında torun süreç yetim (G8 adayı 8 ile aynı) | süreç grubu öldürmek "yalnız `kill.py`" kuralına dokunur: sahibe |
+| 4 | zaman aşımında torun süreç yetim (G8 adayı 8 ile aynı) | DÜZELDİ (TBD#397) |
 | 5 | DÜZELDİ (27 Kas): açılamayan (izin) anahtar dosyası "yok" sayılmaz, `ucli: anahtar dosyası okunamadı (açılamadı)` (ikili başlatılmaz); yok, `ENOTDIR` ve dizin hâlâ anahtarsız | `test_rsprov_paths_keyfile.py`, `real_oneshot::an_unreadable_key_file_is_refused_not_treated_as_missing` |
 | 6 | `claude -p <prompt>`: `-` ile başlayan prompt denetlenmiyor (bugün prompt yalnız iç kart metni) | dış girdi yolu yok |
 
@@ -752,7 +767,8 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
   `in_use` kümesine girmez. `cops-cli` bu durumda da devreder; spawn yolunda devredilecek Python yok, satır yalnız atlanır.
 - `cops-tmux::tmux_available` sürecin `PATH`ine bakar; `CopsTmux::available` verilen `Env`e (Python `shutil.which`
   `os.environ`a bakar: canlıda ikisi aynı). Kilit (`real/lock.rs`) Python'dan sıkı: alınamayan kilit (sembolik bağ,
-  başkasının dosyası) Python'da devam, Rust'ta `agy_sids_lock_busy`.
+  başkasının dosyası) iki tarafta da yazım yok, `file_lock_refused` + `agy_sids_lock_busy` (Rust'ta ilki için
+  `DocAgySidStore::with_diag`).
 
 ### `ids_held_by_others` taraması ile spawn arasındaki yarış (27 Kas incelemesi; KOD YAZILMADI)
 - Pencere: `spawn_session` taramayı (`find_sessions`) yapar, devam kimliğini çözer, terminali başlatır ve DÖNER; yeni CLI
@@ -801,13 +817,17 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 665 satır: TAŞINDI 593, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 669 satır: TAŞINDI 597, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
+| `_run_grouped` (py/claudeops/childgroup.py:25) | `real/process.rs::run` | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
+| `_kill_group` (py/claudeops/childgroup.py:13) | `real/process.rs::Guard` (`Drop`) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
+| `_ucli_cap_problem` (py/claudeops/settings.py:885) | `settings.rs::Settings::ucli_cap_problem`, `real/ledger.rs::{file_cost_settings, non_finite_cap}` | `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `_log_lock_refused` (py/claudeops/atomic_json.py:236) | `real/lock.rs::{FileLock::acquire_logged, log_refused}` | `parity.rs::parity_oneshot` `kayit-kok-` | TAŞINDI |
 | `DEFAULT_CLI` (py/claudeops/providers/__init__.py:14) | `provider.rs::Cli::parse` (bilinmeyen = claude) | `parity.rs::parity_spawn` `bogus-*` | TAŞINDI |
 | `PROVIDERS` (py/claudeops/providers/__init__.py:16) | `provider.rs::Cli`, `Cli::ALL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `get_provider` (py/claudeops/providers/__init__.py:26) | `provider.rs::Cli::parse` | `parity.rs::parity_build` `bogus`; ayrıca `parity_spawn` `bogus-*` | TAŞINDI |
@@ -1486,7 +1506,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## TEST EŞLEME TABLOSU
 
-1392 satır: TAŞINDI 630, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 762, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+1424 satır: TAŞINDI 662, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 762, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -2889,3 +2909,35 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `UcliOneshot.test_fifo_key_file_does_not_block` (py/tests/test_rsprov_g10_oneshot.py:63) | `parity.rs::parity_oneshot` `ucli-dosya-aygit` (aygıt; FIFO dalı aynı `is_file/is_dir` denetimi, `tests/real_oneshot.rs::a_fifo_key_file_or_index_is_refused_without_blocking`) | TAŞINDI |
 | `UcliOneshot.test_missing_key_file_and_directory_mean_no_key` (py/tests/test_rsprov_g10_oneshot.py:82) | `parity.rs::parity_oneshot` `ucli-anahtarsiz` `ucli-dosya-dizin` | TAŞINDI |
 | `UcliOneshot.test_unopenable_cwd` (py/tests/test_rsprov_g10_oneshot.py:88) | `parity.rs::parity_oneshot` `ucli-cwd-dosya` | TAŞINDI |
+| `BrokenDocumentRefuses.test_unparsable_or_non_object_documents` (py/tests/test_rsprov_cap_settings.py:58) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `BrokenDocumentRefuses.test_directory_and_fifo` (py/tests/test_rsprov_cap_settings.py:63) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `BrokenDocumentRefuses.test_unreadable_file` (py/tests/test_rsprov_cap_settings.py:73) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `InvalidCapRefuses.test_invalid_values` (py/tests/test_rsprov_cap_settings.py:80) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `InvalidCapRefuses.test_invalid_block` (py/tests/test_rsprov_cap_settings.py:85) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `NoCapStaysOpen.test_missing_file` (py/tests/test_rsprov_cap_settings.py:92) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `NoCapStaysOpen.test_dangling_link_is_a_missing_file` (py/tests/test_rsprov_cap_settings.py:95) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `NoCapStaysOpen.test_absent_or_zero_or_empty` (py/tests/test_rsprov_cap_settings.py:99) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `NoCapStaysOpen.test_valid_cap_still_applies` (py/tests/test_rsprov_cap_settings.py:106) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `OnlyTheClaudeServiceIsAffected.test_broken_settings_refuse_claude_only` (py/tests/test_rsprov_cap_settings.py:134) | `real_ledger.rs::a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open`; `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `HelpProbe.test_non_utf8_help_means_no_flags_and_is_logged_once` (py/tests/test_rsprov_help_utf8.py:47) | `tests/real_process.rs::non_utf8_help_gives_no_flags_and_is_logged_once_per_binary_version`; `parity.rs::parity_real` `yardim` | TAŞINDI |
+| `HelpProbe.test_a_fixed_binary_is_probed_again` (py/tests/test_rsprov_help_utf8.py:56) | `tests/real_process.rs::non_utf8_help_gives_no_flags_and_is_logged_once_per_binary_version`; `parity.rs::parity_real` `yardim` | TAŞINDI |
+| `HelpProbe.test_the_security_permission_flag_is_still_refused` (py/tests/test_rsprov_help_utf8.py:62) | `tests/real_process.rs::non_utf8_help_gives_no_flags_and_is_logged_once_per_binary_version`; `parity.rs::parity_real` `yardim` | TAŞINDI |
+| `McpAdd.test_success_follows_the_exit_code` (py/tests/test_rsprov_help_utf8.py:81) | `tests/real_process.rs::register_mcp_with_non_utf8_output_follows_the_exit_code`; `parity.rs::parity_real` `mcp-bozuk-cikti` | TAŞINDI |
+| `McpAdd.test_failure_is_reported_not_raised` (py/tests/test_rsprov_help_utf8.py:86) | `tests/real_process.rs::register_mcp_with_non_utf8_output_follows_the_exit_code`; `parity.rs::parity_real` `mcp-bozuk-cikti` | TAŞINDI |
+| `McpAdd.test_clean_output_logs_nothing_extra` (py/tests/test_rsprov_help_utf8.py:91) | `tests/real_process.rs::register_mcp_with_non_utf8_output_follows_the_exit_code`; `parity.rs::parity_real` `mcp-bozuk-cikti` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_claude_help` (py/tests/test_rsprov_child_group.py:60) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_ucli_help_when_only_the_grandchild_is_left_holding_the_pipe` (py/tests/test_rsprov_child_group.py:65) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_mcp_add` (py/tests/test_rsprov_child_group.py:70) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_oneshot` (py/tests/test_rsprov_child_group.py:76) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_ucli_chat_once` (py/tests/test_rsprov_child_group.py:87) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_resume` (py/tests/test_rsprov_child_group.py:94) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_agy_models` (py/tests/test_rsprov_child_group.py:103) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `EveryHelperKillsItsOwnGroup.test_docker_cli` (py/tests/test_rsprov_child_group.py:109) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `NeverSignalsAForeignGroup.test_child_in_the_callers_group_gets_no_group_signal` (py/tests/test_rsprov_child_group.py:126) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `NeverSignalsAForeignGroup.test_own_new_group_is_signalled` (py/tests/test_rsprov_child_group.py:130) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `NeverSignalsAForeignGroup.test_group_equal_to_the_callers_is_never_signalled` (py/tests/test_rsprov_child_group.py:134) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `NeverSignalsAForeignGroup.test_a_reaped_child_is_never_signalled` (py/tests/test_rsprov_child_group.py:142) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `NeverSignalsAForeignGroup.test_normal_run_matches_subprocess_run` (py/tests/test_rsprov_child_group.py:150) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
+| `FileLockFailsClosed.test_unusable_directory_is_logged_too` (py/tests/test_state_lock_fail_closed.py:59) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+| `FileLockFailsClosed.test_refusal_reaches_the_real_diag_log_even_for_the_settings_file` (py/tests/test_state_lock_fail_closed.py:64) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+| `FileLockFailsClosed.test_success_logs_nothing` (py/tests/test_state_lock_fail_closed.py:75) | `tests/real_agy_store.rs::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `tests/real_oneshot.rs::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |

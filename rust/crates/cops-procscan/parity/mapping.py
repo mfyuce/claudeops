@@ -329,7 +329,7 @@ DEFS["providers/claude_provider.py"] = [
     ok(C + "extract_name", "providers.rs::Cli::extract_name", "I:fake_proc.rs::discovers_each_cli_and_names"),
     ok(C + "extract_info", "providers.rs::Cli::extract_info", f"{G_INFO} U:providers.rs::claude_info"),
     oos("MODEL_CHOICES PERMISSION_MODES EFFORT_LEVELS _SONNET_PIN_RE _sonnet_version _EFFORT_BUSTS_CACHE_RE "
-        "MCP_CONFIG_PATH _mcp_config_path _write_mcp_config_file _HELP_CACHE _HELP_TIMEOUT_SECONDS claude_help_text "
+        "MCP_CONFIG_PATH _mcp_config_path _write_mcp_config_file _HELP_CACHE _HELP_UNREADABLE _HELP_TIMEOUT_SECONDS claude_help_text "
         "claude_supports_flag claude_supports_flag::re1 "
         + " ".join(C + n for n in
                    "build_inner_command oneshot_argv mcp_launch_args preferred_default_model default_effort "
@@ -926,6 +926,9 @@ FILES = {
     "provider_wants_split": ("devir/kurtarma bayrakları", T4),
     "review_self_verify": ("reviewer doğrulaması", T8),
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
+    "rsprov_cap_settings": ("bozuk ayar / geçersiz günlük USD tavanı (açılış kapısı)", SAG),
+    "rsprov_child_group": ("yardımcı alt sürecin zaman aşımında süreç grubu", f"{SAG}; {T10}"),
+    "rsprov_help_utf8": ("UTF-8 olmayan yardım ve mcp add çıktısı (açılış)", SAG),
     "rsprov_chat_readers": (_HIST + " (bozuk bayt/biçim, ucli yarım satır)", CHAT),
     "rsprov_g10_oneshot": ("tek atımlık model çağrısı", f"{SAG}; {T10}"),
     "rsprov_g4_dismiss": ("başıboş diyalog kapatma tuşları", f"{SAG}; {T2}"),
@@ -1425,6 +1428,9 @@ paths_isolation:5:5103a70284
 proc08_model_switch_no_blind_enter:3:7cba6c87a9
 provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a
+rsprov_cap_settings:10:ec39da701f
+rsprov_child_group:13:1224408fb8
+rsprov_help_utf8:6:88fc88f6f4
 review_self_verify:18:4b125a8002
 routing_guidance:13:964131411b
 rsprov_chat_readers:15:6e732c13dd
