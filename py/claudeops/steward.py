@@ -776,13 +776,15 @@ class _BadFieldType(ValueError):
 
 
 def upsert_project(name: str, *, paths: Any = None, force: bool = False,
-                   running: Optional[Any] = None, **fields: Any) -> Project:
+                   running: Optional[Any] = None, must_exist: bool = False, **fields: Any) -> Project:
     """Alan bazlı güncelle (None/verilmeyen alanlar korunur). Geçersiz faz/tür/priority yok sayılır.
 
     `host` (uzak proje): `hosts.json`'da kayıtlı olmalı (`normalize_host`: "local"/"" = yerel), aksi halde
     `HostChangeRefused`. Mevcut projenin host'u DEĞİŞİYORSA `running()` (çağıranın "projenin herhangi bir host'ta
     çalışan oturumu var mı" denetimi: True/False/None=bilinmiyor) yalnız False dönerse kabul edilir; `force` denetimi
-    atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok."""
+    atlar. Değişince o projenin `state` izleri (`_HOST_STATE_KEYS`) temizlenir. Yeni projede çalışma denetimi yok.
+
+    `must_exist`: yalnız mevcut projeyi güncelle (kilit altında denetlenir); proje yoksa `ValueError`, yeni kayıt açılmaz."""
     if not valid_name(name):
         raise ValueError(f"invalid project name: {name!r}")
     if is_reviewer(_pp(paths)):
@@ -797,6 +799,8 @@ def upsert_project(name: str, *, paths: Any = None, force: bool = False,
         if other:
             raise OwnedElsewhere(name, other)
         projects = load_projects(paths)
+        if must_exist and name not in projects:
+            raise ValueError(f"project {name!r} no longer exists")
         if name not in projects:   # yeni talep: rezerve ad reddi (mevcut kayıt hiç etkilenmez)
             why = reserved_reason(name, ownership_index(fresh=True))
             if why:
@@ -1507,7 +1511,7 @@ def apply_review_where_answer(q: Question, paths: Any = None) -> None:
         fields = {"review_where": where}
     try:
         if fields:
-            upsert_project(q.project, paths=paths, **fields)
+            upsert_project(q.project, paths=paths, must_exist=True, **fields)    # silinen proje geri gelmesin
     except Exception as e:      # proje silinmiş / kimlik değişmiş: cevap kayıtta kalır, sahip elle düzeltir
         log_event("review_where_failed", paths=paths, project=q.project, error=str(e))
         fields = {}
