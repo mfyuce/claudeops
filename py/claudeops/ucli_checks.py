@@ -39,7 +39,7 @@ def check_shape(data: Any) -> Tuple[bool, str]:
         return False, f"en çok {MAX_CHECKS} kontrol"
     seen = set()
     for c in items:
-        if not isinstance(c, dict) or not _NAME.match(str(c.get("name") or "")):
+        if not isinstance(c, dict) or not _NAME.fullmatch(str(c.get("name") or "")):
             return False, "her kontrolün adı [a-z][a-z0-9_-]{0,47} olmalı"
         if c["name"] in seen:
             return False, f"kontrol adı yinelendi: {c['name']}"

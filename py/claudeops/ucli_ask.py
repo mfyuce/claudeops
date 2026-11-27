@@ -25,7 +25,7 @@ _SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
 
 
 def dir_for(name: str, create: bool = False) -> str:
-    if not _SAFE.match(name or ""):
+    if not _SAFE.fullmatch(name or ""):
         raise ValueError("geçersiz oturum adı")
     d = os.path.join(ROOT, name)
     if create:
