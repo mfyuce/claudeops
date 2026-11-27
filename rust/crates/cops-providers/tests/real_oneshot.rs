@@ -391,3 +391,35 @@ fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
     assert_eq!(fs::read(store.index_path()).unwrap(), before);
     store.register("r2", run).unwrap();
 }
+
+/// 27 Kas (G10 aday 5): açılamayan (izin) anahtar dosyası "yok" sayılıp miras ortam anahtarıyla sürülmez: ret, ikili
+/// başlatılmaz. Yok ya da dizin hâlâ anahtarsız.
+#[test]
+fn an_unreadable_key_file_is_refused_not_treated_as_missing() {
+    use std::os::unix::fs::PermissionsExt;
+    if unsafe { libc::geteuid() } == 0 {
+        return; // root izin denetimini atlar
+    }
+    let _g = spawn_guard();
+    let c = Ctx::new("{}");
+    let marker = c.t.path("calisti");
+    let bin = c.ucli(&format!("touch '{marker}'; echo '{{\"answer\":\"x\"}}'"));
+    let c = Ctx {
+        settings: Settings::from_json(&format!(r#"{{"provider_bin": {{"ucli": "{bin}"}}}}"#)),
+        ..c
+    };
+    let key = c.paths.ucli_key_file("");
+    fs::create_dir_all(std::path::Path::new(&key).parent().unwrap()).unwrap();
+    fs::write(&key, "sk-gizli").unwrap();
+    fs::set_permissions(&key, fs::Permissions::from_mode(0o000)).unwrap();
+    let error = c
+        .with(|s| s.oneshot(Cli::Ucli, "p", None, &c.t.path("work/notr"), 5.0))
+        .unwrap_err()
+        .0;
+    assert_eq!(error, "ucli: anahtar dosyası okunamadı (açılamadı)");
+    assert!(!std::path::Path::new(&marker).exists());
+    fs::set_permissions(&key, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::remove_file(&key).unwrap();
+    let out = c.with(|s| s.oneshot(Cli::Ucli, "p", None, &c.t.path("work/notr"), 5.0));
+    assert_eq!(out.unwrap().as_deref(), Some("x"));
+}

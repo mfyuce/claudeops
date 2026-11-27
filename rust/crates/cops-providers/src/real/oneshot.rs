@@ -336,8 +336,8 @@ impl OneShot<'_, '_> {
         oneshot::argv_result(name, out.code, &out.stdout, &out.stderr)
     }
 
-    /// Ayarlardaki anahtar, yoksa anahtar dosyası. Dosya yok / açılamıyor / dizin: anahtarsız. Var ama normal dosya ya
-    /// da UTF-8 değil: ret.
+    /// Ayarlardaki anahtar, yoksa anahtar dosyası. Dosya yok / dizin: anahtarsız. Var ama açılamıyor (izin), normal dosya
+    /// değil ya da UTF-8 değil: ret (açılamayan dosya "yok" sayılıp miras ortam anahtarıyla sürülmez).
     fn oneshot_key(&self) -> Result<Option<ApiKey>, OneshotError> {
         let p = self.providers;
         let configured = p.settings.byok_value("ucli", "UCLI_API_KEY");
@@ -350,15 +350,26 @@ impl OneShot<'_, '_> {
             Ok(m) if !m.is_file() && !m.is_dir() => return Err(bad("normal dosya değil")),
             _ => {}
         }
-        let Ok((_, size)) = fsio::open_regular(&path) else {
-            return Ok(None);
+        let size = match fsio::open_regular(&path) {
+            Ok((_, size)) => size,
+            Err(e) => {
+                let gone = matches!(
+                    e.raw_os_error(),
+                    Some(libc::ENOENT | libc::ENOTDIR | libc::EISDIR)
+                ) || fs::metadata(&path).is_ok_and(|m| m.is_dir());
+                return if gone {
+                    Ok(None)
+                } else {
+                    Err(bad("açılamadı"))
+                };
+            }
         };
         let Some(raw) = fsio::read_bytes(&path, fsio::TEXT_MAX_BYTES) else {
-            return if size > fsio::TEXT_MAX_BYTES {
-                Err(bad("çok büyük"))
+            return Err(bad(if size > fsio::TEXT_MAX_BYTES {
+                "çok büyük"
             } else {
-                Ok(None)
-            };
+                "açılamadı"
+            }));
         };
         let text = String::from_utf8(raw).map_err(|_| bad("UTF-8 değil"))?;
         let key = strip(&text);

@@ -1024,8 +1024,10 @@ class UcliProvider(CliProvider):
                 try:
                     with open(_API_KEY_FILE, encoding="utf-8") as f:
                         key = f.read().strip() or None
-                except OSError:
+                except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
                     key = None
+                except OSError:             # var ama açılamıyor (izin): "yok" sayılıp miras ortam anahtarıyla sürülmez
+                    bad_key = "açılamadı"
                 except UnicodeDecodeError:
                     bad_key = "UTF-8 değil"
         if bad_key:     # `except` dışında: istisna zinciri anahtar baytlarını taşımasın
