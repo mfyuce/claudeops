@@ -1368,10 +1368,9 @@ def get_tier(name: str) -> str:
         return _tier.get(name, "rest")
 
 
-def _stream_tier(host: Dict[str, str]) -> str:
+def _stream_tier(name: str, host: Dict[str, str]) -> str:
     """Akış kurulurken kullanılan kademe. Kayıtta `grpc_url` yoksa (kaldırılmış) `grpc` kademesi o anda `ws`e iner:
     yoklayıcının düşme toleransı beklenirse akışlar boş adrese gRPC dener."""
-    name = host["name"]
     tier = get_tier(name)
     if tier != "grpc" or host.get("grpc_url"):
         return tier
@@ -1588,7 +1587,7 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
     iyileşir, host ASLA "gitti" gibi görünmez, sadece bir tick'lik ek
     gecikme olur."""
     name = host["name"]
-    tier = _stream_tier(host)
+    tier = _stream_tier(name, host)
     if tier == "rest":
         with _status_consumer_lock:
             old = _status_consumers.pop(name, None)
@@ -1807,7 +1806,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                 del _term_relays[key]
                 relay = None
             if relay is None:
-                tier = _stream_tier(host)
+                tier = _stream_tier(host_name, host)
                 if tier == "grpc" and time.monotonic() < _grpc_term_refused.get(refused_key, 0.0):
                     tier = "ws"
                 token = host["token"]
