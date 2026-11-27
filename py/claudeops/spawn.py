@@ -10,14 +10,18 @@ TAMAMEN `providers/` paketinde — burada `cli` string'ine göre dallanma YOK, s
 `get_provider(cli)` ile arayüz üzerinden çağrı var.
 """
 from __future__ import annotations
+import errno
 import os
 import re
+import secrets
 import shlex
 import shutil
+import stat
 import subprocess
 import threading
 import time
 from pathlib import Path
+from time import time as _wall_time     # S4 artık temizliği: `time` modülü testte/koşucuda sahteyle değişir
 from typing import Optional
 
 from . import preview
@@ -67,6 +71,73 @@ def _dry_run_preview(cwd: str, overrides: dict, cli_invocation: str) -> str:
     env_part = "".join(f"{k}={'***' if _SECRET_ENV_RE.search(k) else shlex.quote(v)} " for k, v in overrides.items())
     out = f"cd {shlex.quote(cwd)} && {env_part}{cli_invocation}"
     return out if len(out) <= DRY_RUN_PREVIEW_MAX else out[:DRY_RUN_PREVIEW_MAX] + "..."
+
+
+# S4 (sahip, 27 Kas): bu son eklerle biten açılış ortamı komut satırına (tmux/gnome-terminal argv'si, `/proc/*/cmdline`)
+# gömülmez; `CLAUDEOPS_DIR/spawn-env/<rastgele>.env` (dizin 0700, dosya 0600) dosyasına yazılır, kabuk onu ALT KABUKTA
+# yükleyip hemen siler. Yalnız makinedeki BAŞKA Unix hesaplarına karşı korur: çok kullanıcı kipinde oturumlar aynı Unix
+# kullanıcısında koştuğundan panel kullanıcıları arasında koruma DEĞİLDİR (enterprise docs/MULTI-USER.md S1, TBD#177).
+_SECRET_ENV_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET")
+_SPAWN_ENV_DIRNAME = "spawn-env"
+_SPAWN_ENV_STALE_SECONDS = 3600     # yüklenmeden kalan (pencere hiç açılmadı) dosyalar sonraki yazımda silinir
+
+
+def _spawn_env_token() -> str:
+    """Dosya adındaki rastgele parça: eşzamanlı açılışlar birbirinin dosyasını ezmez (yazım ayrıca `O_EXCL`)."""
+    return secrets.token_hex(8)
+
+
+def _prune_spawn_env(dfd: int, now: float) -> None:
+    """Eski `.env`/`.tmp` artıklarını siler (bağlantı izlenmez, hata yutulur)."""
+    try:
+        names = os.listdir(dfd)
+    except OSError:
+        return
+    for ent in names:
+        if not ent.endswith((".env", ".tmp")):
+            continue
+        try:
+            st = os.stat(ent, dir_fd=dfd, follow_symlinks=False)
+            if now - st.st_mtime > _SPAWN_ENV_STALE_SECONDS:
+                os.unlink(ent, dir_fd=dfd)
+        except OSError:
+            pass
+
+
+def _write_spawn_env_file(dirpath: str, fname: str, content: str) -> None:
+    """Sır ortam dosyası. Dizin: yoksa 0700 kurulur; bağlantı (O_NOFOLLOW), dizin olmayan ya da başkasına ait ise
+    `OSError`; grup/diğer izni varsa 0700'e daraltılır. Dosya: geçici adla `O_EXCL|O_NOFOLLOW` 0600 yazılır, sonra
+    `link` ile (var olanı EZMEDEN) asıl adına bağlanır. Her hata `OSError` (metinde içerik yok)."""
+    os.makedirs(os.path.dirname(dirpath), 0o700, exist_ok=True)
+    try:
+        os.mkdir(dirpath, 0o700)
+    except FileExistsError:
+        pass
+    dfd = os.open(dirpath, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        st = os.fstat(dfd)
+        if st.st_uid != os.geteuid():
+            raise PermissionError(errno.EPERM, "başka kullanıcıya ait dizin", dirpath)
+        if stat.S_IMODE(st.st_mode) & 0o077:
+            os.fchmod(dfd, 0o700)
+        _prune_spawn_env(dfd, _wall_time())
+        tmp = f".{fname}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=dfd)
+        try:
+            try:
+                data = memoryview(content.encode("utf-8", "surrogateescape"))
+                while data:
+                    data = data[os.write(fd, data):]
+            finally:
+                os.close(fd)
+            os.link(tmp, fname, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
+        finally:
+            try:
+                os.unlink(tmp, dir_fd=dfd)
+            except OSError:
+                pass
+    finally:
+        os.close(dfd)
 
 
 def detect_display() -> str:
@@ -265,11 +336,29 @@ def spawn_session(
     # kritik bulgu). Geçersiz bir isim sessizce ATLANIR (fırlatmaz) — COPS_NAME
     # gibi zaten-güvenli, kod-içi sabit isimler asla bu filtreye takılmaz.
     overrides = _filter_env_overrides(overrides)
-    env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items())
-    inner = f"cd {shlex.quote(cwd)} && {spawn_priority_prefix(name)}{env_prefix}{cli_invocation}"
+    # S4: sır adlı değerler komut satırına girmez (bkz. `_SECRET_ENV_SUFFIXES`); dosya alt kabukta yüklenip silinir,
+    # kalan `exec bash` kabuğuna sızmaz. Sır yoksa komut eskisiyle birebir aynı.
+    secret_env = {k: v for k, v in overrides.items() if k.endswith(_SECRET_ENV_SUFFIXES)}
+    env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items() if k not in secret_env)
+    launch = f"{env_prefix}{cli_invocation}"
+    env_dir = env_file = ""
+    if secret_env:
+        env_dir = os.path.join(CLAUDEOPS_DIR, _SPAWN_ENV_DIRNAME)
+        env_file = os.path.join(env_dir, f"{_spawn_env_token()}.env")
+        q = shlex.quote(env_file)
+        launch = f"( . {q} && rm -f {q} && {launch} )"
+    inner = f"cd {shlex.quote(cwd)} && {spawn_priority_prefix(name)}{launch}"
 
     if dry_run:
         return f"[dry-run] {kind}  cmd: {_dry_run_preview(cwd, overrides, cli_invocation)}"
+
+    if secret_env:     # kapalı yön: dosya güvenle yazılamazsa sır komut satırına düşmez, oturum açılmaz
+        try:
+            _write_spawn_env_file(env_dir, os.path.basename(env_file),
+                                  "".join(f"export {k}={shlex.quote(v)}\n" for k, v in secret_env.items()))
+        except OSError as e:
+            diag_log("spawn_env_file_refused", name=name, cli=cli, error=type(e).__name__)
+            raise _authz.SpawnRefused("secret_env_file", type(e).__name__) from None
 
     if not any("\0" in s for s in (name, cwd, inner, display)):     # NUL'lu açılış başlayamaz: eski oturuma dokunulmaz
         _reclaim_ghost_session(name, cli)
