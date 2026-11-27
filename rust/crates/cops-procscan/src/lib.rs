@@ -25,7 +25,7 @@ pub mod status;
 pub mod transcript;
 pub mod usage;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use discovery::{find_by_name, find_sessions, CpuMode, Scan, ScanDiag};
 pub use procfs::{Liveness, ProcId};
@@ -49,21 +49,56 @@ pub struct Config {
 }
 
 impl Config {
-    /// Canlı makine: `$HOME`, `$CLAUDEOPS_DIR` ve sürecin gerçek uid'i. `HOME` yoksa `None`.
+    /// Canlı makine: `$HOME`, durum dizini ([`cops_state::StateDir::resolve`]: `CLAUDEOPS_DIR`, test ikilisinde süreç başına
+    /// geçici dizin, yoksa `$HOME/.claude/claudeops`; H14) ve sürecin gerçek uid'i. `HOME` yoksa ya da boşsa `None`
+    /// (çağıran Python'a devreder; Python `expanduser` burada parola veritabanına düşer, bkz. `docs/rs-proc.md` madde 12).
     pub fn from_env() -> Option<Self> {
-        let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-        let home = var("HOME")?;
-        let claude_dir = home.join(".claude");
-        let state = var("CLAUDEOPS_DIR").unwrap_or_else(|| claude_dir.join("claudeops"));
+        let home = cops_state::paths::home_env().filter(|v| !v.is_empty()).map(PathBuf::from)?;
+        let state = cops_state::StateDir::resolve().ok()?;
+        Some(Self::for_dirs(&home, state.root()))
+    }
+
+    /// Açık kökler (ör. copsd `--state-dir`): `home` = `$HOME`, `state_dir` = claudeops durum dizini.
+    pub fn for_dirs(home: &Path, state_dir: &Path) -> Self {
         // SAFETY: ikisi de argümansız/salt okuma libc çağrısı.
         let (uid, tck) = unsafe { (libc::getuid(), libc::sysconf(libc::_SC_CLK_TCK)) };
-        Some(Config {
+        Config {
             proc_root: PathBuf::from("/proc"),
             agy_cache: home.join(".gemini/antigravity-cli/cache/last_conversations.json"),
-            agy_sids: state.join("agy_sids.json"),
-            claude_dir,
+            agy_sids: state_dir.join("agy_sids.json"),
+            claude_dir: home.join(".claude"),
             uid,
             clk_tck: u64::try_from(tck).ok().filter(|t| *t > 0).unwrap_or(100),
-        })
+        }
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    /// H14: durum dizini `cops-state` kuralından gelir; test ikilisinde `CLAUDEOPS_DIR` yokken CANLI dizin asla dönmez.
+    #[test]
+    fn from_env_state_dir_comes_from_cops_state() {
+        let Some(c) = Config::from_env() else {
+            return; // HOME yok: devredilir
+        };
+        let want = cops_state::StateDir::resolve().unwrap();
+        assert_eq!(c.agy_sids, want.join("agy_sids.json"));
+        if std::env::var_os(cops_state::paths::ENV_DIR).is_none() {
+            assert!(c.agy_sids.starts_with(std::env::temp_dir()), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn for_dirs_layout() {
+        let c = Config::for_dirs(Path::new("/h"), Path::new("/s"));
+        assert_eq!(c.claude_dir, PathBuf::from("/h/.claude"));
+        assert_eq!(c.agy_sids, PathBuf::from("/s/agy_sids.json"));
+        assert_eq!(
+            c.agy_cache,
+            PathBuf::from("/h/.gemini/antigravity-cli/cache/last_conversations.json")
+        );
+        assert_eq!(c.proc_root, PathBuf::from("/proc"));
     }
 }

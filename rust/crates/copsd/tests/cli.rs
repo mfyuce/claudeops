@@ -362,11 +362,11 @@ fn registered_routes_have_authz_actions() {
     let mut t = cops_proxy::routes::RouteTable::new();
     copsd::routes::register(
         &mut t,
-        &copsd::routes::RouteCtx {
-            state_dir: "/nonexistent".into(),
-            db: "/nonexistent/claudeops.db".into(),
-            instances: "/nonexistent/instances.json".into(),
-        },
+        &copsd::routes::RouteCtx::new(
+            "/nonexistent".into(),
+            "/nonexistent/claudeops.db".into(),
+            "/nonexistent/instances.json".into(),
+        ),
     );
     for (method, pattern) in t.routes() {
         let path = pattern.replace('*', "x");

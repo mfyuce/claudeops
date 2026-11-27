@@ -304,6 +304,7 @@ dependencies = [
 name = "cops-procscan"
 version = "0.1.0"
 dependencies = [
+ "cops-state",
  "libc",
  "regex",
  "serde",
@@ -392,8 +393,12 @@ version = "0.1.0"
 dependencies = [
  "cops-auth",
  "cops-metrics",
+ "cops-parity",
  "cops-progress",
  "cops-proxy",
+ "cops-state",
+ "cops-tmux",
+ "rusqlite",
  "serde_json",
  "tokio",
 ]

@@ -19,6 +19,7 @@
 //! ([`cops_proxy::gate::ForwardFilter`]) ve Rust'ın kendisinin cevapladığı uçlar ([`cops_proxy::gate::RouteHook`], ör. enterprise
 //! `/api/auth/*`) takabilir; kanca yoksa davranış `copsd` ile aynıdır.
 pub mod routes;
+pub mod state;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -48,20 +49,46 @@ pub fn arg(name: &str) -> Option<String> {
         .and_then(|i| a.get(i + 1).cloned())
 }
 
-/// Durum dizini: `--state-dir`, yoksa `CLAUDEOPS_DIR` (boş değilse), yoksa `$HOME/.claude/claudeops` (Python
-/// `paths.CLAUDEOPS_DIR` ile aynı kural; enterprise `copsd-ent` de bunu kullanır).
+/// Durum dizini: `--state-dir`, yoksa [`cops_state::StateDir::resolve`] (`CLAUDEOPS_DIR` boş değilse; cargo test ikilisinde
+/// süreç başına GEÇİCİ dizin, H16; yoksa `$HOME/.claude/claudeops`), `HOME` tanımsız/boşsa `os.path.expanduser("~")` kuralı
+/// (passwd ev dizini; Python `paths.CLAUDEOPS_DIR` ile aynı). Enterprise `copsd-ent` de bunu kullanır.
 pub fn state_dir() -> std::path::PathBuf {
     if let Some(d) = arg("--state-dir") {
         return d.into();
     }
-    match std::env::var("CLAUDEOPS_DIR") {
-        Ok(d) if !d.is_empty() => d.into(),
-        _ => format!(
-            "{}/.claude/claudeops",
-            std::env::var("HOME").unwrap_or_default()
-        )
-        .into(),
+    match cops_state::StateDir::resolve() {
+        Ok(d) => d.root().to_path_buf(),
+        Err(_) => std::path::PathBuf::from(cops_state::paths::home()).join(".claude/claudeops"),
     }
+}
+
+/// `cops-tmux`un yutulan hatası için copsd günlük satırı. Metin tmux stderr'i ya da G/Ç hatasıdır (gönderilen metni
+/// içermez, `cops-tmux` sözleşmesi); yine de günlüğe yalnız İLK satırı, denetim karakterleri `?` yapılarak ve
+/// [`SWALLOW_TEXT_MAX`] karakterle kırpılarak girer (çok satırlı/uzun bir çıktı pane metni taşıyabilir).
+pub fn tmux_swallow_line(kind: cops_tmux::Swallowed, count: u64, err: &str) -> String {
+    let first = err.lines().next().unwrap_or("");
+    let mut text: String = first
+        .chars()
+        .take(SWALLOW_TEXT_MAX)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect();
+    if first.chars().count() > SWALLOW_TEXT_MAX || err.trim_end().contains('\n') {
+        text.push_str(" [kırpıldı]");
+    }
+    format!(
+        "copsd: tmux yutulan hata {} (toplam {count}): {text}",
+        kind.code()
+    )
+}
+
+/// Günlüğe giren yutulan hata metninin üst sınırı (karakter).
+pub const SWALLOW_TEXT_MAX: usize = 160;
+
+fn log_tmux_swallow(kind: cops_tmux::Swallowed, err: &str) {
+    eprintln!(
+        "{}",
+        tmux_swallow_line(kind, cops_tmux::swallowed_count(kind), err)
+    );
 }
 
 /// `flag` verildiyse o yol, yoksa [`state_dir`] altındaki `name`.
@@ -170,6 +197,9 @@ where
     F: FnOnce(Ctx) -> Fut,
     Fut: Future<Output = Hooks>,
 {
+    // `cops-tmux` yutulan hataları copsd günlüğüne (yoksa kendi stderr satırı). İkinci kurulum (aynı süreçte yeniden
+    // `run_*`) değişiklik yapmaz.
+    cops_tmux::set_swallow_hook(log_tmux_swallow);
     let listen: SocketAddr = arg("--listen")
         .or_else(|| std::env::var("COPSD_LISTEN").ok())
         .unwrap_or_else(|| "127.0.0.1:8765".into())
@@ -319,11 +349,7 @@ where
     let mut table = cops_proxy::routes::RouteTable::new();
     routes::register(
         &mut table,
-        &routes::RouteCtx {
-            state_dir: state_dir(),
-            db: db_path.clone(),
-            instances: instances.clone(),
-        },
+        &routes::RouteCtx::new(state_dir(), db_path.clone(), instances.clone()),
     );
     let proxy = if table.is_empty() {
         proxy
