@@ -809,7 +809,7 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         v.push(
             ucase(
                 e,
-                &format!("fiyat-{id}"),
+                format!("fiyat-{id}"),
                 json!({"cli_opts": o, "model": model}),
             )
             .settings_json(byok.clone()),
