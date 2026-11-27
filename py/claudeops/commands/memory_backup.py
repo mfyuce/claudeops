@@ -111,18 +111,27 @@ def remotes_of(repo: str) -> Dict[str, str]:
     return res
 
 
-def is_private(kind: str, path: str) -> bool:
+def is_private(kind: str, path: str, why: Optional[List[str]] = None) -> bool:
+    """True YALNIZ görünürlük "private" okunduysa. False ise `why`ye neden eklenir (yalnız ileti için, kararı değiştirmez)."""
+    why = [] if why is None else why
     if kind == "github":
         rc, out = _run(["gh", "repo", "view", path, "--json", "visibility"])
     else:
         rc, out = _run(["glab", "repo", "view", path, "-F", "json"])
     if rc != 0:
+        why.append(f"sorgu başarısız rc={rc}: ağ/DNS ya da giriş olabilir")
         return False
     try:
         v = json.loads(out).get("visibility")
     except (ValueError, AttributeError):
+        v = None
+    if not isinstance(v, str) or not v.strip():
+        why.append("yanıt okunamadı")
         return False
-    return isinstance(v, str) and v.strip().lower() == "private"
+    if v.strip().lower() != "private":
+        why.append(f"görünürlük {v.strip().lower()[:20]}")
+        return False
+    return True
 
 
 def visibility_of(kind: str, path: str) -> Optional[str]:
