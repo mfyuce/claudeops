@@ -158,10 +158,12 @@ def tmux_has_session(name: str) -> bool:
         return False
 
 
-def tmux_capture(name: str, lines: int = 2000) -> Optional[str]:
+def tmux_capture(name: str, lines: int = 2000, join: bool = False) -> Optional[str]:
+    """`join=True`: tmux'un sardığı uzun satırlar tek satır döner (`-J`)."""
     try:
         r = subprocess.run(
-            _base_argv() + ["capture-pane", "-t", _exact(name), "-e", "-p", "-S", f"-{lines}"],
+            _base_argv() + ["capture-pane", "-t", _exact(name), "-e", "-p", "-S", f"-{lines}"]
+            + (["-J"] if join else []),
             capture_output=True, text=True, timeout=_TIMEOUT,
         )
         if r.returncode != 0:

@@ -60,9 +60,25 @@ fn status(port: u16, path: &str) -> Option<u16> {
     buf.split_whitespace().nth(1)?.parse().ok()
 }
 
-/// copsd'yi başlatır ve dinlemeye başlayana dek bekler.
+/// copsd'yi başlatır ve dinlemeye başlayana dek bekler. Seçilen port arada kapılıp süreç çıkarsa yeni portla dener.
 fn spawn(home: &Path, env_dir: Option<&Path>, extra: &[&str]) -> (Proc, u16) {
-    let port = free_port();
+    let mut last = String::new();
+    for _ in 0..3 {
+        match try_spawn(home, env_dir, extra, free_port()) {
+            Ok(v) => return v,
+            Err(e) => last = e,
+        }
+    }
+    panic!("copsd açılmadı: {last}");
+}
+
+/// Süreç dinlemeden çıkarsa `Err` (çıkış durumu + stderr); yaşadığı hâlde açılmazsa panik.
+fn try_spawn(
+    home: &Path,
+    env_dir: Option<&Path>,
+    extra: &[&str],
+    port: u16,
+) -> Result<(Proc, u16), String> {
     let up = free_port(); // kapalı: vekillenen istek 502
     let mut c = Command::new(env!("CARGO_BIN_EXE_copsd"));
     c.args([
@@ -76,17 +92,37 @@ fn spawn(home: &Path, env_dir: Option<&Path>, extra: &[&str]) -> (Proc, u16) {
     .env_remove("CLAUDEOPS_DIR")
     .env_remove("CLAUDEOPS_FRONT_SECRET")
     .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    .stderr(Stdio::piped());
     if let Some(d) = env_dir {
         c.env("CLAUDEOPS_DIR", d);
     }
-    let p = Proc(c.spawn().unwrap());
+    let mut p = Proc(c.spawn().unwrap());
+    // stderr boru dolup süreci kilitlemesin: ayrı iş parçacığında okunur
+    let mut pipe = p.0.stderr.take().unwrap();
+    let err = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = pipe.read_to_string(&mut s);
+        s
+    });
     let t = Instant::now();
-    while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(t.elapsed() < Duration::from_secs(10), "copsd açılmadı");
+    loop {
+        // bağlantıdan SONRA da canlılık: portu başkası kaptıysa bağlantı tutar ama copsd çıkar
+        let up_now = TcpStream::connect(("127.0.0.1", port)).is_ok();
+        if up_now {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if let Some(st) = p.0.try_wait().unwrap() {
+            return Err(format!("{st}: {}", err.join().unwrap_or_default()));
+        }
+        if up_now {
+            return Ok((p, port));
+        }
+        assert!(
+            t.elapsed() < Duration::from_secs(60),
+            "copsd 60 sn içinde dinlemedi"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
-    (p, port)
 }
 
 #[test]
@@ -150,4 +186,17 @@ fn other_default_paths_follow_the_state_dir() {
     assert_eq!(status(port, "/api/steward/questions?all=1"), Some(401));
     assert!(state.0.join("metrics.db").exists());
     assert!(!home.0.join(".claude").exists());
+}
+
+/// Dolu port: süreç çıkışı sebebiyle birlikte döner (`spawn` bu yolda yeni port dener).
+#[test]
+fn taken_port_is_reported_with_the_reason() {
+    let home = tmp("home3");
+    let hold = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = hold.local_addr().unwrap().port();
+    let Err(e) = try_spawn(&home.0, None, &[], port) else {
+        panic!("dolu portta açıldı sayıldı");
+    };
+    assert!(!e.is_empty());
+    println!("{e}");
 }

@@ -611,16 +611,12 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
 # ucli USD tavanı bayraklarını HATA ile reddeder (oturum açılmaz).
 _PRICED_MODELS = frozenset({"claude-opus-5-5", "claude-sonnet-5-5"})
 
-# ucli'nin bilmediği ama claudeops tablosunda (`review.ANTHROPIC_PRICES`) olan Claude modelleri için `--price`. İstem boyutuna
-# göre dilimli modelde EN PAHALI dilim: ucli tek fiyat alır, USD tavanı harcamayı eksik saymasın.
-_TOP_TIER_PRICES = {"haiku-5-5": (0.50, 2.50, 0.05, 0.625)}
-
-
 def _claudeops_price(model: str) -> str:
-    """`--price` değeri (`IN,OUT,CACHE_READ,CACHE_WRITE`, USD/milyon token); fiyat bilinmiyorsa ""."""
-    from ..review import ANTHROPIC_PRICES
+    """ucli'nin bilmediği Claude modeli için `--price` (`IN,OUT,CACHE_READ,CACHE_WRITE`, USD/milyon token), claudeops tablosundan;
+    fiyat bilinmiyorsa "". Dilimli modelde (Haiku 5.5) EN PAHALI dilim: ucli tek fiyat alır, USD tavanı eksik saymasın."""
+    from ..review import ANTHROPIC_PRICES, HAIKU_LONG_PRICE
     key = model[len("claude-"):] if model.startswith("claude-") else ""
-    row = _TOP_TIER_PRICES.get(key) or ANTHROPIC_PRICES.get(key)
+    row = HAIKU_LONG_PRICE if key == "haiku-5-5" else ANTHROPIC_PRICES.get(key)
     return ",".join(f"{v:g}" for v in row) if row else ""
 
 

@@ -3,7 +3,7 @@ use crate::badrec;
 use crate::error::Result;
 use crate::py::{self, S};
 use crate::store::round_to;
-use crate::targets::{ci, ANTHROPIC_PRICES};
+use crate::targets::{ci, ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
 use cops_state::json::{Json, Map};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -464,6 +464,9 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
         let Some(u) = rec.get("usage").and_then(Json::as_object) else {
             continue;
         };
+        if py::is_str(rec.get("event"), "task_end") {
+            continue; // görevin toplamı: istek satırları zaten sayıldı
+        }
         let broken = |v: &Json| {
             matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_))
                 && !py::float(v).is_some_and(f64::is_finite)
@@ -507,10 +510,21 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             } else {
                 pi
             };
-        total += (inp * inp_price
-            + g(&["output_tokens", "completion_tokens"]) * po
-            + cr * pr
-            + cw * pw * write_mult)
+        let (mut out_price, mut read_price, mut write_price, mut in_price) =
+            (po, pr, pw, inp_price);
+        if [pi, po, pr, pw] == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
+            let long_in;
+            [long_in, out_price, read_price, write_price] = HAIKU_LONG_PRICE;
+            in_price = if inp_price == pi {
+                long_in
+            } else {
+                write_price
+            };
+        }
+        total += (inp * in_price
+            + g(&["output_tokens", "completion_tokens"]) * out_price
+            + cr * read_price
+            + cw * write_price * write_mult)
             / 1e6;
     }
     Ok(total)

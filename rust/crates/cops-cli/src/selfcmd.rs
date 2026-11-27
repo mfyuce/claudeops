@@ -131,7 +131,13 @@ fn json_files(dir: &Path) -> Vec<PathBuf> {
         .flatten()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "json") && p.is_file())
+        // bash `*.json` globu noktalı dosyaları almaz
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| !n.as_encoded_bytes().starts_with(b"."))
+                && p.extension().is_some_and(|x| x == "json")
+                && p.is_file()
+        })
         .collect();
     v.sort();
     v
@@ -152,11 +158,11 @@ pub fn find_self_pid(c: &SelfCfg) -> Option<u32> {
             if py_str(got) != sid {
                 continue;
             }
-            let Some(pid) = d
-                .get("pid")
-                .and_then(Value::as_u64)
-                .and_then(|p| u32::try_from(p).ok())
-            else {
+            // bash metin `pid`i de kabul eder
+            let Some(pid) = d.get("pid").and_then(|v| match v {
+                Value::String(s) => s.parse::<u32>().ok(),
+                v => v.as_u64().and_then(|p| u32::try_from(p).ok()),
+            }) else {
                 continue;
             };
             if pid > 0 && proc_uid(&c.proc_root, pid) == Some(c.uid) {
