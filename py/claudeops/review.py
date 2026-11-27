@@ -1860,8 +1860,7 @@ def _usage_number(v: Any) -> bool:
 
 _MAX_LINE_DEPTH = 512      # iç içe dizi/nesne sınırı (Rust `usage::MAX_LINE_DEPTH` ile aynı); gerçek kayıt 2-3 katlı
 _DEPTH_TOKEN_RE = re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"?|[\[\]{}]', re.S)      # dize (yarım da olur) içindeki ayraç sayılmaz
-_UNCOUNTABLE_SPENT_USD = 1e18      # sayılamayan satır varken bütçe kapısının gördüğü harcama (sonlu: günlüğe JSON olarak yazılır)
-_UNCOUNTABLE_KINDS = ("usage.depth", "usage.number", "usage.length")      # atlanan satır türlerinden harcaması bilinemeyenler
+_UNCOUNTABLE_SPENT_USD = 1e18      # harcama sayılamıyorken `anthropic_spent_usd`in döndürdüğü değer (sonlu)
 _MAX_LINE_BYTES = 16 << 20      # tek kullanım satırının (satır sonu hariç) bayt sınırı (Rust `usage::MAX_LINE_BYTES` ile aynı)
 
 
@@ -1900,8 +1899,8 @@ def _too_deep(line: str) -> bool:
 
 def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: float = 1.0) -> float:
     """Bir `.usage.jsonl` dosyasının $ maliyeti (istek başına ucli `usage`: girdi/çıktı/önbellek okuma/yazma). Tanınmayan
-    ya da geçersiz (negatif, NaN, sayı olmayan) alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner
-    (bütçe kapısı `anthropic_spent_usd` yedek tahmin ekler)."""
+    ya da geçersiz (negatif, NaN, sayı olmayan) alan 0 sayılır; hiç ayrıştırılamazsa dosya boyutundan bağımsız 0 döner.
+    Toplamın güvenilirliğini bildirmez (kapılar `_scan_usage` / `_anthropic_spend` kullanır)."""
     return _scan_usage(path, model, since_ms, write_mult)[0]
 
 
@@ -2034,28 +2033,78 @@ def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
     return {since: (t[0], t[1], t[2]) for since, t in tallies.items()}
 
 
-def anthropic_spent_usd(reviews_root: str) -> float:
-    """Tüm `anthropic` koşularının toplam $ (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik SABİT varsayılmaz
-    (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir. Derinliği, satır ya da sayı
-    uzunluğu yüzünden sayılamayan satır varsa `_UNCOUNTABLE_SPENT_USD` döner: bütçe kapısı eksik toplamla açık kalmaz."""
-    import glob
+def _anthropic_spend(reviews_root: str) -> Tuple[float, str]:
+    """Tüm `anthropic` koşularının (toplam $, sorun) (`<root>/<proje>/anthropic/<model>/**/<ts>.usage.jsonl`). Derinlik
+    SABİT varsayılmaz (effortsız/lensli koşular da sayılır); model, `anthropic/` altındaki İLK bileşendir.
+
+    `sorun` boş değilse harcama SAYILAMIYOR (`<köke göre yol>: <neden>`, ilk görülen): günlük dolar tavanıyla
+    (`ucli_cost._ledger_problem`) aynı kural, yani listelenemeyen dizin, okunamayan ya da normal olmayan dosya,
+    `_scan_usage`ın sorunları. Ağaç özyinelemeli gezildiğinden içine girilmeyen bağlantı dizini de sorundur. Olmayan
+    kök/dizin/dosya ve ayrıştırılamayan (yarım yazılmış) satır sorun değildir."""
+    root = reviews_root or "."
     tot = 0.0
-    uncountable = False
-    for adir in glob.glob(os.path.join(glob.escape(reviews_root), "*", "anthropic")):
-        for dirpath, _dirs, files in os.walk(adir):
+    problems: List[str] = []
+
+    def _problem(path: str, why: str) -> None:
+        rel = os.path.relpath(path, root)
+        text = f"{'reviews' if rel == '.' else rel}: {why}"
+        problems.append(text.encode("utf-8", "backslashreplace").decode("utf-8"))     # UTF-8 olmayan ad günlüğü düşürmesin
+
+    def _unlisted(path: str, exc: OSError) -> None:
+        if not isinstance(exc, FileNotFoundError):
+            _problem(path, "dizin okunamadı")
+
+    try:
+        names = os.listdir(root)
+    except OSError as e:
+        _unlisted(root, e)
+        names = []
+    for name in names:
+        if name.startswith("."):
+            continue
+        adir = os.path.join(root, name, "anthropic")
+        try:
+            os.lstat(adir)
+        except (FileNotFoundError, NotADirectoryError):      # `anthropic` koşusu yok / kökte proje olmayan dosya
+            continue
+        except OSError:
+            _problem(adir, "okunamadı")
+            continue
+        for dirpath, dirs, files in os.walk(adir, onerror=lambda e: _unlisted(e.filename or adir, e)):
+            for dn in dirs:
+                sub = os.path.join(dirpath, dn)
+                if os.path.islink(sub):      # `os.walk` izlemez: içindeki harcama sayılmaz
+                    _problem(sub, "bağlantı dizini sayılamıyor")
+                elif dn.endswith(".usage.jsonl"):
+                    _problem(sub, "normal dosya değil")
             for fn in files:
-                if not fn.endswith(".usage.jsonl"):
-                    continue
                 f = os.path.join(dirpath, fn)
+                if not fn.endswith(".usage.jsonl"):
+                    try:      # hedefine bakılamayan bağlantı bir dizin olabilir
+                        if stat.S_ISLNK(os.lstat(f).st_mode):
+                            os.stat(f)
+                    except (FileNotFoundError, NotADirectoryError):
+                        pass
+                    except OSError:
+                        _problem(f, "okunamadı")
+                    continue
                 rel = os.path.relpath(f, adir).split(os.sep)
                 if len(rel) < 2:
                     continue
-                usd, _problem, skipped = _scan_usage_windows(f, rel[0], (0.0,), 1.0)[0.0]
+                usd, why, skipped = _scan_usage_windows(f, rel[0], (0.0,), 1.0)[0.0]
                 for what in skipped:
                     _log_bad(what, f)
                 tot += usd
-                uncountable = uncountable or any(what in skipped for what in _UNCOUNTABLE_KINDS)
-    return _UNCOUNTABLE_SPENT_USD if uncountable else tot
+                if why:
+                    _problem(f, why)
+    return tot, (problems[0] if problems else "")
+
+
+def anthropic_spent_usd(reviews_root: str) -> float:
+    """`_anthropic_spend`in toplamı; harcama sayılamıyorsa `_UNCOUNTABLE_SPENT_USD`: eksik toplam bütçenin altında
+    görünmesin."""
+    usd, problem = _anthropic_spend(reviews_root)
+    return _UNCOUNTABLE_SPENT_USD if problem else usd
 
 
 # Genişleme noktası: `claudeops_enterprise` yüklüyse mercekleri kaydeder, yoksa sessizce geçer (çekirdek paketi ASLA doğrudan import etmez).

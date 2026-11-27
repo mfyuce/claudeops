@@ -96,13 +96,13 @@ MAP = {
     "_DEPTH_TOKEN_RE": _m("usage", "too_deep"),
     "_UNCOUNTABLE_SPENT_USD": _m("report", "UNCOUNTABLE_SPENT_USD"),
     "_too_deep": _m("usage", "too_deep"),
-    "_UNCOUNTABLE_KINDS": _m("report", "scan_report"),
     "_MAX_LINE_BYTES": _m("usage", "MAX_LINE_BYTES"),
     "_usage_lines": _m("usage", "next_line"),
     "_USAGE_COUNT_KEYS": _m("usage", "Record::charge"),
     "_usage_number": _m("usage", "Record::charge"),
     "_scan_usage": _m("report", "usage_cost_usd"),
     "_scan_usage_windows": _m("report", "usage_cost_usd"),
+    "_anthropic_spend": _m("report", "anthropic_spend"),
     "StoreCorrupt": _m("error", "Error"),
     "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
     "_keep_verdict_state": _m("flow", "keep_verdict_state"),
@@ -120,18 +120,20 @@ NOTES = {
     "StoreCorrupt": "`Error::StoreCorrupt` varyantı",
     "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
-    "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
-                         "sorun bayrağını `usage.rs::Record::charge` üretir, tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
+    "_USAGE_COUNT_KEYS": "yalnız sorun bayrağı (geçersiz sayaç) için: `usage.rs::Record::charge` üretir; tüketenler `report::scan_report` "
+                         "(inceleme bütçe kapısı) ve `cops-providers` `cost.rs::UsageScan` (günlük tavan)",
     "_usage_lines": "dolaylı parite: bütün `usage_cost_usd`/`anthropic_spent_usd` çağrıları bu okuyucudan geçer; satır sınırı "
                     "ve akış `cops-providers` `tests/usage_two_copies.rs`",
-    "_UNCOUNTABLE_KINDS": "Rust'ta liste yok: `scan_report` her türde `uncountable` bayrağını kurar; "
-                          "`long_integer` Python'da yorumlayıcının `ValueError`ıdır",
+    "_anthropic_spend": "`report::anthropic_spend`; toplam `anthropic_spent_usd` paritesinden, neden metni `cops-providers` "
+                        "`tests/usage_two_copies.rs` + Python `test_rsprov_budget_gate`; `long_integer` Python'da "
+                        "yorumlayıcının `ValueError`ıdır",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
                  "`tests/usage_two_copies.rs`",
     "_usage_number": "`usage.rs` içindeki özel `usage_number` (bool değil, 0..=1e15); `charge` çağırır",
-    "_scan_usage": "satır kuralları `usage.rs::read_line` (iki crate'in tek kaynağı); maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) bu crate'te yok: `cops-providers` "
-                   "`cost.rs::UsageScan` (rs/prov, `parity_ledger`). FIFO/normal olmayan dosya Rust'ta da bloklamadan 0",
+    "_scan_usage": "satır kuralları `usage.rs::read_line` (iki crate'in tek kaynağı); maliyet payı `usage_cost_usd`; `sorun` dönüşü inceleme bütçe kapısında "
+                   "`report::scan_report`, günlük tavanda `cops-providers` `cost.rs::UsageScan` (rs/prov, `parity_ledger`). "
+                   "FIFO/normal olmayan dosya Rust'ta da bloklamaz",
     "_scan_usage_windows": "tek geçişte çok pencereli tarama: maliyet payı `usage_cost_usd`; çok pencereli karşılığı "
                            "`cops-providers` `cost.rs::UsageScan::feed_all` + `real/ledger.rs::read_windows` (rs/prov)",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
@@ -204,6 +206,9 @@ def tests(prefix, value, names):
     for n in names.split():
         TESTS[f"{prefix}.test_{n}"] = value
 
+
+classes("test_rsprov_budget_gate", CORE, "Untrusted Trusted")
+classes("test_rsprov_budget_gate", out(WR, "bütçe kapısının koşucudaki kararı (`anthropic_filter`)"), "GateOffAndDisplay")
 
 classes("test_body_sensitive_c", out(ADV + " + " + WR, "gövdeye göre hassas bulgu elemesi (iletim/otomatik onay)"),
         "BodySensitive AutoApprove")

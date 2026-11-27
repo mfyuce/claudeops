@@ -3,7 +3,9 @@
 //! sınır satırları ve rastgele dosyalar.
 
 use cops_providers::real::ledger::scan_usage;
-use cops_review_core::report::{anthropic_spent_usd, usage_cost_usd, UNCOUNTABLE_SPENT_USD};
+use cops_review_core::report::{
+    anthropic_spend, anthropic_spent_usd, usage_cost_usd, UNCOUNTABLE_SPENT_USD,
+};
 use cops_review_core::usage::{next_line, Raw, MAX_LINE_BYTES};
 use std::fs;
 use std::io::{self, BufReader, Read};
@@ -378,6 +380,148 @@ fn both_copies_draw_the_line_length_limit_at_the_same_byte() {
             assert!(spent > 0.0 && spent < 1.0, "{id}: {spent}");
         }
     }
+}
+
+/// İnceleme bütçe kapısı günlük tavanla AYNI günlüğe güvenmez (TBD#422): her sınır ve rastgele dosyada defterin
+/// `problem`i neyse kapının nedeni odur; güvenilir dosyada toplamlar bit düzeyinde aynıdır.
+#[test]
+fn the_review_budget_distrusts_exactly_what_the_daily_cap_distrusts() {
+    let root = tempfile::tempdir().unwrap();
+    let rel = "p/anthropic/claude-sonnet-5-5/a.usage.jsonl";
+    let file = root.path().join(rel);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let reviews = root.path().to_string_lossy().into_owned();
+    let mut cases = edge_lines();
+    cases.extend(random_files(3000));
+    let mut distrusted = std::collections::BTreeSet::new();
+    for (id, data) in &cases {
+        fs::write(&file, data).unwrap();
+        let ledger = scan_usage(&file, "claude-sonnet-5-5", 0.0, 1.0);
+        let (total, reason) = anthropic_spend(&reviews);
+        assert_eq!(
+            reason,
+            ledger.problem.map(|why| format!("{rel}: {why}")),
+            "{id}"
+        );
+        match ledger.problem {
+            Some(why) => {
+                distrusted.insert(why);
+            }
+            None => assert_eq!(total.to_bits(), ledger.total.to_bits(), "{id}"),
+        }
+    }
+    // vakalar kuralın satır nedenlerini gerçekten üretiyor
+    for why in ["geçersiz sayaç", "geçersiz zaman damgası"] {
+        assert!(distrusted.contains(why), "{why}: {distrusted:?}");
+    }
+}
+
+/// Dosya ve dizin nedenleri (Python `test_rsprov_budget_gate`).
+#[test]
+fn the_review_budget_refuses_unreadable_files_and_directories() {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let reviews = tmp.path().join("reviews");
+    let root = reviews.to_string_lossy().into_owned();
+    assert_eq!(anthropic_spend(&root), (0.0, None), "olmayan kök");
+    let model = reviews.join("p/anthropic/claude-sonnet-5-5");
+    fs::create_dir_all(&model).unwrap();
+    let good = model.join("a.usage.jsonl");
+    fs::write(&good, format!("{{{USAGE}}}\nyarım {{\n")).unwrap();
+    let (one, none) = anthropic_spend(&root);
+    assert!(one > 0.0 && none.is_none());
+
+    let refused = |want: &str| {
+        let (_, reason) = anthropic_spend(&root);
+        assert_eq!(reason.as_deref(), Some(want));
+        assert_eq!(anthropic_spent_usd(&root).unwrap(), UNCOUNTABLE_SPENT_USD);
+    };
+    let trusted = || assert_eq!(anthropic_spend(&root), (one, None));
+    let bad = model.join("b.usage.jsonl");
+    let at = |tail: &str| format!("p/anthropic/claude-sonnet-5-5/{tail}");
+
+    // olmayan hedefe bağlantılar sorun değil
+    symlink("yok", &bad).unwrap();
+    symlink("yok", model.join("bag")).unwrap();
+    symlink(&good, model.join("dosya-bagi")).unwrap();
+    fs::write(reviews.join("README"), "").unwrap();
+    trusted();
+    fs::remove_file(&bad).unwrap();
+
+    symlink("b.usage.jsonl", &bad).unwrap();
+    refused(&at("b.usage.jsonl: okunamadı"));
+    fs::remove_file(&bad).unwrap();
+
+    if std::path::Path::new("/proc/self/mem").exists() {
+        // açılır ve normal dosyadır, okuma EIO verir
+        symlink("/proc/self/mem", &bad).unwrap();
+        refused(&at("b.usage.jsonl: okunamadı"));
+        fs::remove_file(&bad).unwrap();
+    }
+
+    fs::create_dir(&bad).unwrap();
+    refused(&at("b.usage.jsonl: normal dosya değil"));
+    fs::remove_dir(&bad).unwrap();
+
+    let fifo = std::ffi::CString::new(bad.as_os_str().as_bytes()).unwrap();
+    // SAFETY: geçerli, NUL ile biten yol.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    refused(&at("b.usage.jsonl: normal dosya değil"));
+    fs::remove_file(&bad).unwrap();
+
+    // UTF-8 olmayan adlı günlük de okunur
+    let raw = model.join(std::ffi::OsStr::from_bytes(b"\xff.usage.jsonl"));
+    fs::write(&raw, format!("{{{USAGE}}}\n")).unwrap();
+    assert_eq!(anthropic_spend(&root), (one + one, None));
+    fs::write(&raw, "{\"usage\":{\"input_tokens\":-1}}\n").unwrap();
+    refused(&at("\\udcff.usage.jsonl: geçersiz sayaç"));
+    fs::remove_file(&raw).unwrap();
+
+    let outside = tmp.path().join("dis");
+    fs::create_dir(&outside).unwrap();
+    let link = reviews.join("p/anthropic/claude-opus-5-5");
+    symlink(&outside, &link).unwrap();
+    refused("p/anthropic/claude-opus-5-5: bağlantı dizini sayılamıyor");
+    fs::remove_file(&link).unwrap();
+
+    let other = reviews.join("q");
+    fs::create_dir(&other).unwrap();
+    fs::write(other.join("anthropic"), "").unwrap();
+    refused("q/anthropic: dizin okunamadı");
+    fs::remove_file(other.join("anthropic")).unwrap();
+    symlink("anthropic", other.join("anthropic")).unwrap();
+    refused("q/anthropic: dizin okunamadı");
+    fs::remove_file(other.join("anthropic")).unwrap();
+    trusted();
+
+    // SAFETY: argümansız, yan etkisiz.
+    if unsafe { libc::geteuid() } != 0 {
+        for (path, want) in [
+            (good.clone(), at("a.usage.jsonl: okunamadı")),
+            (
+                model.clone(),
+                at("").trim_end_matches('/').to_string() + ": dizin okunamadı",
+            ),
+            (reviews.join("p"), "p/anthropic: okunamadı".to_string()),
+            (reviews.clone(), "reviews: dizin okunamadı".to_string()),
+        ] {
+            let before = fs::metadata(&path).unwrap().permissions();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+            let got = anthropic_spend(&root).1;
+            fs::set_permissions(&path, before).unwrap();
+            assert_eq!(got, Some(want));
+        }
+    }
+    trusted();
+
+    fs::write(tmp.path().join("kok"), "").unwrap();
+    let file_root = tmp.path().join("kok").to_string_lossy().into_owned();
+    assert_eq!(
+        anthropic_spend(&file_root).1.as_deref(),
+        Some("reviews: dizin okunamadı")
+    );
 }
 
 /// Satır sonu olmayan dev satır belleğe alınmaz: tampon sınır + 1 bayttan (ayırma payıyla iki katından) büyümez, kalanı

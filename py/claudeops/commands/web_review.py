@@ -2451,13 +2451,19 @@ def anthropic_trial_complete(cfg: Any, pool: Any, hist: Any, targets: List[rv.Re
 
 
 def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget], pool: Any = None, hist: Any = None) -> List[rv.ReviewTarget]:
-    """Toplam harcama `review_anthropic_budget_usd`'ye ulaştıysa anthropic hedefleri bu turda planlanmaz (koşan iş biter)."""
+    """Toplam harcama `review_anthropic_budget_usd`'ye ulaştıysa ya da (bütçe açıkken) sayılamıyorsa anthropic hedefleri bu
+    turda planlanmaz (koşan iş biter)."""
     if not any(t.mode == "anthropic" for t in targets):
         return targets
     if hist is not None and anthropic_trial_complete(cfg, pool, hist, targets):
         return [t for t in targets if t.mode != "anthropic"]
     cap = float(getattr(cfg, "review_anthropic_budget_usd", 100.0) or 0)
-    spent = rv.anthropic_spent_usd(p.reviews)
+    spent, problem = rv._anthropic_spend(p.reviews)
+    if cap > 0 and problem:      # sayılamayan harcama "bütçenin altında" DEĞİLDİR (günlük dolar tavanıyla aynı kural)
+        sw.log_event("review_anthropic_budget_unverifiable", paths=p, cap=cap, reason=problem,
+                     message=f"anthropic inceleme koşuları başlatılmıyor: harcama sayılamıyor ({problem}); reviews altındaki "
+                             "bu kaydı düzeltin ya da review_anthropic_budget_usd=0 ile bütçe denetimini kapatın")
+        return [t for t in targets if t.mode != "anthropic"]
     if cap > 0 and spent >= cap:
         sw.log_event("review_anthropic_budget_reached", paths=p, spent=round(spent, 2), cap=cap)
         return [t for t in targets if t.mode != "anthropic"]

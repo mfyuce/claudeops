@@ -8,6 +8,10 @@ use crate::usage::{self, Line, Raw};
 use cops_state::json::{Json, Map};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ffi::OsStr;
+use std::io;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::sync::LazyLock;
 
 pub const HEALTH_DAYS: f64 = 7.0;
@@ -404,34 +408,53 @@ pub fn anthropic_price(model: &str) -> [f64; 4] {
         .map_or_else(|| ANTHROPIC_PRICES[2].1, |(_, v)| *v)
 }
 
-/// Python `_scan_usage` açılışı: `O_NONBLOCK` (FIFO açılışta bloklamaz), açılan tanıtıcı normal dosya değilse ya da
-/// açılamazsa None (maliyet 0).
-fn open_regular_nonblocking(path: &str) -> Option<std::fs::File> {
+/// Python `_scan_usage_windows` açılışı: `O_NONBLOCK` (FIFO açılışta bloklamaz). Olmayan dosya `Err(None)` (sorun
+/// değil); açılamayan ya da normal olmayan dosya `Err(Some(neden))`.
+fn open_regular_nonblocking(
+    path: &Path,
+) -> std::result::Result<std::fs::File, Option<&'static str>> {
     use std::os::unix::fs::OpenOptionsExt;
     let f = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
         .open(path)
-        .ok()?;
-    f.metadata().ok()?.is_file().then_some(f)
+        .map_err(|e| (e.kind() != io::ErrorKind::NotFound).then_some(UNREADABLE))?;
+    match f.metadata() {
+        Ok(m) if m.is_file() => Ok(f),
+        Ok(_) => Err(Some(NOT_REGULAR)),
+        Err(_) => Err(Some(UNREADABLE)),
+    }
 }
 
-/// Sayılamayan satır varken bütçe kapısının gördüğü harcama (Python `_UNCOUNTABLE_SPENT_USD`).
+const UNREADABLE: &str = "okunamadı";
+const NOT_REGULAR: &str = "normal dosya değil";
+const UNLISTED: &str = "dizin okunamadı";
+
+/// Harcama sayılamıyorken [`anthropic_spent_usd`]in döndürdüğü değer (Python `_UNCOUNTABLE_SPENT_USD`).
 pub const UNCOUNTABLE_SPENT_USD: f64 = 1e18;
 
-/// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası.
+/// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası. Toplamın
+/// güvenilirliğini bildirmez.
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
-    Ok(scan_report(path, model, since_ms, write_mult).0)
+    Ok(scan_report(Path::new(path), model, since_ms, write_mult).0)
 }
 
-/// (toplam, harcaması sayılamayan satır var mı).
-fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64, bool) {
+/// (toplam, sorun). `sorun` doluysa toplama güvenilmez (Python `_scan_usage`ın ikinci dönüşü; neden listesi aynı).
+fn scan_report(
+    path: &Path,
+    model: &str,
+    since_ms: f64,
+    write_mult: f64,
+) -> (f64, Option<&'static str>) {
     let mut price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
-    let mut uncountable = false;
-    let Some(file) = open_regular_nonblocking(path) else {
-        return (0.0, false);
+    let mut problem = None;
+    let file = match open_regular_nonblocking(path) {
+        Ok(file) => file,
+        Err(why) => return (0.0, why),
     };
+    let key = path.to_string_lossy();
+    let path: &str = &key;
     let mut reader = std::io::BufReader::new(file);
     let mut raw = Vec::new();
     loop {
@@ -445,12 +468,12 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
                 };
                 usage::read_line(line, model.is_empty())
             }
-            Err(_) => return (0.0, false), // okunamayan dosya
+            Err(_) => return (0.0, Some(UNREADABLE)), // yarıda okunamayan dosyanın toplamı 0
         };
         let record = match read {
             Line::Ignored => continue,
-            Line::Uncountable { kind, .. } => {
-                uncountable = true;
+            Line::Uncountable { problem: why, kind } => {
+                problem = Some(why);
                 badrec::log_bad(kind, path);
                 continue;
             }
@@ -460,6 +483,9 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
             }
             Line::Record(record) => record,
         };
+        if record.bad_time {
+            problem = Some("geçersiz zaman damgası");
+        }
         if !record.time.is_finite() {
             badrec::log_bad("usage.record", path);
             continue;
@@ -467,54 +493,170 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
         if since_ms != 0.0 && record.time < since_ms {
             continue;
         }
-        match record.charge(price, write_mult).map(|c| c.usd) {
-            Some(Some(usd)) => total += usd,
-            Some(None) => badrec::log_bad("usage.record", path),
-            None => {}
+        let Some(charge) = record.charge(price, write_mult) else {
+            continue;
+        };
+        if charge.bad_count {
+            problem = Some("geçersiz sayaç");
+        }
+        match charge.usd {
+            Some(usd) => total += usd,
+            None => badrec::log_bad("usage.record", path),
         }
     }
-    (total, uncountable)
+    (total, problem)
 }
 
-/// Tüm `anthropic` koşularının toplam $.
-pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
-    let mut total = 0.0;
-    let mut uncountable = false;
-    let Ok(rd) = std::fs::read_dir(if reviews_root.is_empty() {
+/// `ENOENT`.
+fn absent(e: &io::Error) -> bool {
+    e.kind() == io::ErrorKind::NotFound
+}
+
+/// Python `_anthropic_spend`: tüm `anthropic` koşularının (toplam $, sorun). `sorun` doluysa harcama SAYILAMIYOR
+/// (`<köke göre yol>: <neden>`, ilk görülen): günlük dolar tavanıyla aynı kural (listelenemeyen dizin, okunamayan ya da
+/// normal olmayan dosya, satır sorunları) + içine girilmeyen bağlantı dizini. Olmayan kök/dizin/dosya ve
+/// ayrıştırılamayan satır sorun değildir. Yollar ham baytlarla gezilir (UTF-8 olmayan adlı günlük sayımdan düşmez).
+pub fn anthropic_spend(reviews_root: &str) -> (f64, Option<String>) {
+    let root = Path::new(if reviews_root.is_empty() {
         "."
     } else {
         reviews_root
-    }) else {
-        return Ok(0.0);
+    });
+    let mut spend = Spend {
+        root,
+        total: 0.0,
+        problem: None,
     };
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
+    let entries = match std::fs::read_dir(root) {
+        Ok(rd) => rd.collect::<io::Result<Vec<_>>>(),
+        Err(e) if absent(&e) => return (0.0, None),
+        Err(e) => Err(e),
+    };
+    let Ok(entries) = entries else {
+        spend.note(root, UNLISTED);
+        return (spend.total, spend.problem);
+    };
+    for entry in entries {
+        let name = entry.file_name();
+        if name.as_encoded_bytes().starts_with(b".") {
             continue;
         }
-        let adir = py::path_join(reviews_root, &[&name, "anthropic"]);
-        if std::fs::symlink_metadata(&adir).is_err() {
-            continue;
+        let adir = root.join(&name).join("anthropic");
+        match std::fs::symlink_metadata(&adir) {
+            Ok(_) => spend.tree(&adir),
+            // `anthropic` koşusu yok / kökte proje olmayan dosya
+            Err(e) if absent(&e) || e.raw_os_error() == Some(libc::ENOTDIR) => {}
+            Err(_) => spend.note(&adir, UNREADABLE),
         }
-        walk(&adir, &mut |dir, files| {
-            for f in files {
-                if !f.ends_with(".usage.jsonl") {
-                    continue;
-                }
-                let path = py::path_join(dir, &[f]);
-                let rel = py::relpath(&path, &adir);
-                let parts: Vec<&str> = rel.split('/').collect();
-                if parts.len() < 2 {
-                    continue;
-                }
-                let (usd, deep) = scan_report(&path, parts[0], 0.0, 1.0);
-                total += usd;
-                uncountable |= deep;
-            }
-            Ok(())
-        })?;
     }
-    Ok(if uncountable {
+    (spend.total, spend.problem)
+}
+
+struct Spend<'a> {
+    root: &'a Path,
+    total: f64,
+    problem: Option<String>,
+}
+
+impl Spend<'_> {
+    /// İlk görülen sorun kalır.
+    fn note(&mut self, path: &Path, why: &str) {
+        if self.problem.is_some() {
+            return;
+        }
+        let rel = path.strip_prefix(self.root).unwrap_or(path);
+        let rel = if rel.as_os_str().is_empty() {
+            "reviews".into()
+        } else {
+            py_backslashed(rel.as_os_str().as_bytes())
+        };
+        self.problem = Some(format!("{rel}: {why}"));
+    }
+
+    /// Bir `anthropic/` ağacı (Python `os.walk`: yukarıdan aşağı, bağlantı dizinine girmez).
+    fn tree(&mut self, adir: &Path) {
+        let mut stack = vec![adir.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(rd) => rd.collect::<io::Result<Vec<_>>>(),
+                Err(e) if absent(&e) => continue,
+                Err(e) => Err(e),
+            };
+            let Ok(entries) = entries else {
+                self.note(&dir, UNLISTED);
+                continue;
+            };
+            // Python: önce dizinler denetlenir, sonra dosyalar okunur
+            let (dirs, files): (Vec<_>, Vec<_>) =
+                entries.into_iter().partition(|e| e.path().is_dir());
+            let mut next = Vec::new();
+            for entry in dirs {
+                let path = entry.path();
+                if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+                    self.note(&path, "bağlantı dizini sayılamıyor");
+                    continue;
+                }
+                if is_usage_log(&entry.file_name()) {
+                    self.note(&path, NOT_REGULAR);
+                }
+                next.push(path);
+            }
+            for entry in files {
+                self.file(adir, &entry.path());
+            }
+            stack.extend(next.into_iter().rev());
+        }
+    }
+
+    fn file(&mut self, adir: &Path, path: &Path) {
+        if !path.file_name().is_some_and(is_usage_log) {
+            // hedefine bakılamayan bağlantı bir dizin olabilir
+            let looked = std::fs::symlink_metadata(path).and_then(|m| {
+                if m.file_type().is_symlink() {
+                    std::fs::metadata(path)?;
+                }
+                Ok(())
+            });
+            if looked.is_err_and(|e| !absent(&e) && e.raw_os_error() != Some(libc::ENOTDIR)) {
+                self.note(path, UNREADABLE);
+            }
+            return;
+        }
+        let Ok(rel) = path.strip_prefix(adir) else {
+            return;
+        };
+        let mut parts = rel.components();
+        let (Some(model), Some(_)) = (parts.next(), parts.next()) else {
+            return;
+        };
+        let (usd, why) = scan_report(path, &model.as_os_str().to_string_lossy(), 0.0, 1.0);
+        self.total += usd;
+        if let Some(why) = why {
+            self.note(path, why);
+        }
+    }
+}
+
+fn is_usage_log(name: &OsStr) -> bool {
+    name.as_encoded_bytes().ends_with(b".usage.jsonl")
+}
+
+/// Python `os.fsdecode(b).encode("utf-8", "backslashreplace")`: UTF-8 olmayan her bayt `\udcXX` yazılır.
+fn py_backslashed(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    for chunk in bytes.utf8_chunks() {
+        out.push_str(chunk.valid());
+        for b in chunk.invalid() {
+            out.push_str(&format!("\\udc{b:02x}"));
+        }
+    }
+    out
+}
+
+/// [`anthropic_spend`]in toplamı; harcama sayılamıyorsa [`UNCOUNTABLE_SPENT_USD`].
+pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
+    let (total, problem) = anthropic_spend(reviews_root);
+    Ok(if problem.is_some() {
         UNCOUNTABLE_SPENT_USD
     } else {
         total
