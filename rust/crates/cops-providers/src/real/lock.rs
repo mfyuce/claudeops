@@ -52,6 +52,13 @@ impl FileLock {
 
     /// `path` kilitlenen BELGENİN yolu (`.lock` eki burada).
     pub fn acquire(path: &str, cwd: &str, timeout: Duration) -> io::Result<FileLock> {
+        // SAFETY: `getuid` her zaman başarılı, argümansız sistem çağrısı.
+        let uid = unsafe { libc::getuid() };
+        FileLock::acquire_as(path, cwd, timeout, uid)
+    }
+
+    /// `uid`: kilit dosyasının sahibi olması gereken kullanıcı (testte başka sahip; Python testi `getuid`i değiştirir).
+    fn acquire_as(path: &str, cwd: &str, timeout: Duration, uid: u32) -> io::Result<FileLock> {
         let path = abspath(path, cwd);
         if let Some((dir, _)) = path.rsplit_once('/') {
             if !dir.is_empty() {
@@ -67,8 +74,7 @@ impl FileLock {
             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_NOCTTY)
             .open(format!("{path}.lock"))?;
         let meta = file.metadata()?;
-        // SAFETY: `getuid` her zaman başarılı, argümansız sistem çağrısı.
-        if !meta.is_file() || meta.uid() != unsafe { libc::getuid() } {
+        if !meta.is_file() || meta.uid() != uid {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "lock file not ours",
@@ -87,5 +93,24 @@ impl FileLock {
                 Err(TryLockError::Error(e)) => return Err(e),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Python `FileLockFailsClosed.test_s5_foreign_owner_raises`: sahibi beklenen kullanıcı olmayan kilit dosyası
+    /// reddedilir ve kilit TUTULMAZ (hemen ardından gerçek sahip alabilir).
+    #[test]
+    fn a_lock_file_owned_by_someone_else_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let doc = dir.path().join("x.json").to_string_lossy().into_owned();
+        // SAFETY: `getuid` her zaman başarılı, argümansız sistem çağrısı.
+        let me = unsafe { libc::getuid() };
+        let err = FileLock::acquire_as(&doc, "/", Duration::ZERO, me.wrapping_add(1)).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!std::path::Path::new(&doc).exists());
+        FileLock::acquire(&doc, "/", Duration::ZERO).unwrap();
     }
 }
