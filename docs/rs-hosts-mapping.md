@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
 | tanım | 368 | 251 | 117 | 0 |
-| test durumu (67 dosya) | 942 | 173 | 769 | 0 |
+| test durumu (67 dosya) | 943 | 173 | 770 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
@@ -389,23 +389,23 @@ Yok.
 | `commands/web_steward.py::_REMOTE_CREATABLE` | sabit:6794 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::_remote_before` | işlev:6797 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::_remote_edit_doc` | işlev:6811 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8678 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8685 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8687 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8692 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8696 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8699 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8708 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8714 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8726 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8733 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8736 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8775 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8786 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8801 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8812 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8859 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8871 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8702 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8709 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8711 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8716 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8720 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8723 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8732 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8738 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8750 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8757 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8760 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8799 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8810 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8825 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8836 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8883 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8895 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
 
 ### `py/claudeops/authz.py`
 
@@ -1197,9 +1197,10 @@ Yok.
 | `test_steward_remote_destructive.py::TestRemoteRespawn.test_old_host_respawn_is_refused_without_any_post` | 317 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
 | `test_steward_remote_destructive.py::TestRemoteRespawn.test_two_respawns_on_one_host_second_is_deferred_to_next_tick` | 325 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
 | `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_stops_waits_then_directs` | 340 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
-| `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_without_confirmed_stop_sends_nothing_more` | 352 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
-| `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_host_mismatch_is_denied` | 361 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
-| `test_steward_remote_destructive.py::TestLocalUnchanged.test_local_stop_and_respawn_use_the_local_callbacks` | 381 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
+| `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_leaves_open_remote_question_alone` | 352 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
+| `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_without_confirmed_stop_sends_nothing_more` | 359 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
+| `test_steward_remote_destructive.py::TestRemoteRespawn.test_restart_host_mismatch_is_denied` | 368 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
+| `test_steward_remote_destructive.py::TestLocalUnchanged.test_local_stop_and_respawn_use_the_local_callbacks` | 388 | kapsam dışı | yok | uzak değnekçi politikası (yalnız sahte `_remote`/`web_hosts` ile). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_remote_facts.py`
 

@@ -1265,7 +1265,7 @@ snapshot_mirrors:40:9b4093b114
 steward_remote:28:d4daee9dff
 steward_remote_actions:18:cde799e0c0
 steward_remote_cards:16:4ea5fb6fea
-steward_remote_destructive:18:f08bb035a9
+steward_remote_destructive:19:776b9222d3
 steward_remote_session_resolve:19:ea0e53d4f5
 steward_remote_surface:25:c2b96c4156
 steward_review_api:14:8168429dc9

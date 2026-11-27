@@ -7499,6 +7499,27 @@ def _dialog_still_open(name: str) -> bool:
     return False
 
 
+def _restart_dialog_refusal(name: str, host: str, data: Dict[str, Any], sid: str) -> Optional[Dict[str, Any]]:
+    """Restart önce DURDURUR: açık diyaloğu olan oturum durdurulursa soru cevapsız kaybolur. Yalnız insanın `force`u geçer
+    (`http_stop` ile aynı kural). Uzakta ölçüt host'un `question_open` olgusu; olgu alınamazsa engel yok."""
+    if bool(data.get("force")) and str(data.get("actor") or "") != "brain":
+        return None
+    blocked = None
+    if host:
+        _fresh, row, err = _remote_session(host, name, None, _world(sid), sid=sid, actor=str(data.get("actor") or ""), kind="stop")
+        if err is None and row is not None:
+            real = str(row.get("name") or name)
+            if (_probe_facts(host, [real], 5.0)[1].get(real) or {}).get("question_open") is True:
+                blocked = {"ok": False, "error": "question_open", "code": "question_open", "name": real, "host": host}
+    else:
+        blocked = next(filter(None, (_dialog_refusal(s, sid) for s in _live_sessions(name, sid))), None)
+    if blocked is None:
+        return None
+    sw.log_event("restart_refused_dialog", paths=sid, name=name, kind="question_open", **({"host": host} if host else {}))
+    return dict(blocked, detail="oturum bir diyalogda cevap bekliyor; durdurulursa soru kaybolur. Sahip cevaplasın ya da "
+                "insan `steward restart --force` ile zorlasın")
+
+
 def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
     name = str(data.get("name") or "").strip()
     if not sw.valid_name(name):
@@ -7523,6 +7544,9 @@ def http_restart(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]:
         return {"ok": False, "error": "dialog_blocked:" + str(d.get("kind") or "unknown_dialog"), "code": "dialog_blocked",
                 "detail": "oturum bir diyalogda bekliyor; restart bunu çözmez, sahibe bildirildi (panelden terminali açıp geçin)"}
     with _ctx(sid).lock:      # yeniden girişli: içerideki http_directive aynı kilidi yeniden alır
+        asking = _restart_dialog_refusal(name, host, data, sid)
+        if asking is not None:
+            return asking
         if host:
             # Uzak restart = durdurma (`_remote_stop` koşulları + kapanma beklemesi) + yönerge (kapalıysa uzak başlatma).
             # Durdurma doğrulanmadıysa yönerge GÖNDERİLMEZ: kapanmakta olan oturuma yazılır ya da ikinci oturum açılırdı.
