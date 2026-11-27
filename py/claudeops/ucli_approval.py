@@ -49,13 +49,9 @@ def dir_for(run_key: str, create: bool = False) -> str:
     return d
 
 
-def _read_index() -> Optional[bytes]:
-    """Defterin ham baytları; yoksa None. Okunamıyorsa ya da normal dosya değilse (FIFO bloklamaz) `OSError`."""
-    path = _index_path()
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-    except FileNotFoundError:
-        return None
+def _read_regular(path: str) -> bytes:
+    """Normal dosyanın baytları; okunamıyorsa ya da normal dosya değilse (FIFO bloklamaz) `OSError`."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise OSError(errno.EINVAL, "normal dosya değil", path)
@@ -63,6 +59,14 @@ def _read_index() -> Optional[bytes]:
             return f.read()
     finally:
         os.close(fd)
+
+
+def _read_index() -> Optional[bytes]:
+    """Defterin ham baytları; yoksa None. Okunamıyorsa ya da normal dosya değilse `OSError`."""
+    try:
+        return _read_regular(_index_path())
+    except FileNotFoundError:
+        return None
 
 
 def _parse_index(raw: bytes) -> Optional[Dict[str, Any]]:
@@ -253,9 +257,8 @@ def _pending_files(run_key: str) -> List[Dict[str, Any]]:
         if not fn.endswith(".json"):
             continue
         try:
-            with open(os.path.join(pdir, fn), encoding="utf-8") as f:
-                q = json.load(f)
-        except (OSError, ValueError):
+            q = json.loads(_read_regular(os.path.join(pdir, fn)).decode("utf-8"))
+        except (OSError, ValueError, RecursionError):
             continue
         if isinstance(q, dict) and isinstance(q.get("id"), str) and _ID.fullmatch(q["id"]):
             out.append(q)
