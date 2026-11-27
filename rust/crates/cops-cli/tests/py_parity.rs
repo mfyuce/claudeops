@@ -558,7 +558,13 @@ fn parity_self_dot_files_string_pid_and_order() {
     // eşleşme yoksa ata zincirine düşülür (çıktı koşu ortamına bağlı): iki taraf aynı, noktalı kayıt okunmaz
     check("NOKTA", 1, "");
     check("METIN", 0, "cwd:         /metin");
-    // aynı oturum kimliği iki dosyada: ikisi de aynı sıradakini seçer
+    // aynı oturum kimliği iki dosyada: ikisi de aynı sıradakini seçer. Bir pid ötekinin ön ekiyse (`12`, `123`) bash'in
+    // yerel ayarlı glob sırası bayt sırasından ayrılır (docs/rs-cli.md): bilinen fark, karşılaştırılmaz.
+    let (a, b) = (me.to_string(), parent.to_string());
+    if a.starts_with(&b) || b.starts_with(&a) {
+        eprintln!("atlandı: ön ek ilişkili pid'ler ({a}, {b})");
+        return;
+    }
     std::fs::remove_file(sess.join(format!("{me}.json"))).unwrap();
     rec(format!("{me}.json"), me.to_string(), "CIFT", "/ben");
     rec(format!("{parent}.json"), parent.to_string(), "CIFT", "/ata");

@@ -137,9 +137,10 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | betik girişi (`set -u`, `mkdir -p /tmp/claudeops`, `PATH` eki) | yok | yok | kapsam dışı: `cmd_self`in parçası değil, silinecek bash aracının genel hazırlığı (TBD#12) |
 
 27 Kas: noktalı `*.json` atlanır ve metin `pid` kabul edilir (bash gibi; `parity_self_dot_files_string_pid_and_order`, aynı
-test iki dosyada aynı oturum kimliğinde seçilen kaydı da karşılaştırır). Sıralama bash'te yerel ayara, Rust'ta bayt sırasına
-göredir; oturum dosyaları `<pid>.json` (yalnız rakam) olduğundan sıra aynıdır. UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET` iki
-tarafta da dolu sayılır (`parity_front_status_non_utf8_env_secret_counts_as_set`).
+test iki dosyada aynı oturum kimliğinde seçilen kaydı da karşılaştırır). Sıralama bash'te yerel ayara, Rust'ta bayt
+sırasına göredir. BİLİNEN FARK: bir pid ötekinin ön ekiyse (`en_US`: `123.json` < `12.json`; bayt: tersi) ve iki dosya
+aynı oturum kimliğini taşıyorsa farklı kayıt seçilir; test bu pid ilişkisinde karşılaştırmayı atlar.
+UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET` iki tarafta da dolu sayılır (`parity_front_status_non_utf8_env_secret_counts_as_set`).
 
 ### `list` / `ls`
 
@@ -357,6 +358,7 @@ bekleme olmaz (yalnız ikinci taramada çıkan kuşkuda iki bekleme kalır). Tes
 | `--version` (ders H11) | stderr'e `cops-rs <GIT_SHA>`; stdout ve çıkış kodu Python'unki. SHA `copsd/build.rs` ile | yok (yalnız Rust) | `version_reports_binary_git_sha_without_changing_python_stdout` |
 | web adresi: argparse kısaltmaları | `--po`, `--ho=` çözülür; belirsiz (`--p`, `--h`) adres bilinmiyor (ön kapı `--listen`ine düşer) | `P10WebAddrAbbrevAndDropins` | `web_addr_resolves_argparse_abbreviations` |
 | web adresi: drop-in'ler | `front.conf` dışındakiler ad sırasıyla; son `ExecStart=` kazanır, boş atama sıfırlar; okunamayan drop-in = adres bilinmiyor | `P10WebAddrAbbrevAndDropins` | `off_follows_overriding_dropins_in_name_order`, `off_falls_back_on_unreadable_dropin`, `web_addr_last_execstart_wins_and_empty_resets` |
+| `on` temel komutu | birim + adı `front.conf`tan önce gelen drop-in'lerin geçerli `ExecStart=`ı; sonraki drop-in `ExecStart=` atıyorsa ya da biri okunamıyorsa ENGEL | `P11OnUsesEffectiveExecStart` | `on_builds_front_dropin_from_earlier_dropin_override`, `on_blocks_late_override_empty_execstart_and_unreadable_dropin`, `on_allows_late_dropin_without_execstart` |
 
 ## Kapı notu düzeltmeleri (27 Kas, iki tarafta; TBD#396)
 
@@ -386,7 +388,7 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `bin/cops-py` ve `cops-rs`yi hiçbir kurulum yazmıyor: `COPS_PY` ya da elle `ln -s <depo>/py/cops <durum>/bin/cops-py` yoksa
   devir 125 ile düşer. Kurulum betiği (`scripts/`) bu izin yolları dışında; CANLIYA ALMADAN ÖNCE gerekli.
 - `web_addr` yalnız kullanıcı birim dizinindeki drop-in'leri okur (`/etc/systemd/user`, `service.d` genel drop-in'leri değil);
-  `front on` yeni drop-in'i hâlâ ana birimin `ExecStart=`ından üretir (başka drop-in ezerse iç port doğrulaması geri alır).
+  `front on` ve `off` aynı kaynağı okur; genel dizinlerdeki bir ezme `on`da iç port doğrulamasına takılıp geri alınır.
 - py/ değişti (`front_cmd.py`, `front.py`, `paths.py`): birleşince `systemctl --user restart claudeops-web.service` + uzak deploy
   (yuhem, ulak_31; CLAUDE.md "Federasyon"). `paths.py` her süreçte yüklenir: göreli `CLAUDEOPS_DIR` artık açılışta hata.
 
