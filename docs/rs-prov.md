@@ -1,27 +1,30 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `f4679f51` birleşimi; ayrıntı "main `f4679f51` eşitlemesi"):
-**BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve TAŞINDI-TESTSİZ satır yok. Açık: ders
-tablosundaki gerekçeli AÇIK satırlar, sahip/cops kararı bekleyen Python farkları (G10 aday 1; G9 aday 5, 6;
-G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `f4679f51` birleşim ağacı): `cargo test
---workspace` 1261 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings` ve `cargo fmt --check -p
-cops-providers -p cops-tmux` temiz; Python tam paket 6336 OK (23 atlanan, 924 sn); eşleme denetimleri (hosts `--check`,
-rs-proc `--check --strict`, steward `map.py --check`, rev `map_table.py --check`) temiz; rs-tmux tablosunda `ast`
-karşılaştırması tanım ve (`tmux_backend` anan dosyalarda) test farkı 0. Önceki turlarda oynak (yük altında bir kez): `parity_live`
-`live-codex-ctx-dev` (önceki turda) ve `real_fs::concurrent_issue_keeps_file_and_digest_consistent` (yük ortalaması ~20 iken
-30 sn kilit sınırı aşıldı; tek başına üç koşuda ve tam koşuda yeşil).
-27 Kas düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
-denetimi, yutulan model çekimi ve `agy_sids` hatalarının günlüğü; her biri Python + Rust + test (aşağıda grup bölümleri).
+Durum (27 Kas 2026, `origin/main` `ec82eac5` birleşimi `bfdb55cc`):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 711 satır (TAŞINDI 638, KAPSAM DIŞI 73) ve test tablosu
+1523 satır (TAŞINDI 738, KAPSAM DIŞI 785), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
+("Birleştirme engelleri": kim kapatır) ve sahipteki dört soru (S1-S4).
+Son ağaçta ölçülen: `cargo test --workspace` 1270 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D
+warnings` ve `cargo fmt --check -p cops-providers -p cops-tmux -p cops-review-core` temiz (Rust `bfdb55cc`, sonrasında Rust
+kodu değişmedi); Python tam paket 6362 OK (23 atlanan, 524 sn, `2c2c89c3`); eşleme denetimleri çıkış 0 (hosts `--check`,
+rs-proc `--check --strict`, steward `map.py --check`, rev parite raporu + `map_table.py --check`). rs-tmux tablosu bu turda
+yeniden denetlenmedi. Önceki turlarda yük altında oynak görülenler: `parity_live` `live-codex-ctx-dev`,
+`real_fs::concurrent_issue_keeps_file_and_digest_consistent`; bu turda ara koşuda bir kez
+`test_review_io_history::test_real_pipes_stream_and_heartbeat` (yük ~31; tek dosya ve tam koşuda yeşil).
+27 Kas ikinci tur: `726888f1` ve `ec82eac5` eşitlemesi, X gönderimi ve yabancı kilit testleri, G3 3 ve 5, G7 8 (`agy models`),
+G9 5, TBD#401, TBD#411 kaydı, maliyet toplayıcısı eşlik testi (aşağıda ilgili bölümler).
+27 Kas ilk düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8), G5/G11 ayrıştırıcıları, G10 aday 5,
+sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının günlüğü.
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 9207 vaka (27 Kas, `f4679f51` birleşim ağacı): spawn yürütme 243 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 370 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
-  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 355 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
+- 9245 vaka (27 Kas, `ec82eac5` birleşim ağacı `bfdb55cc`): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 370 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 355 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
-- 38 "bilinen ayrışma" (1i G1, 3ü G7, 8i G3, 2si G2, 5i G6, 2si G4, 7si ayar/pyfmt, 8i misc, 2si model/effort) testte
-  gerekçesiyle kayıtlı (eşit çıkarsa test düşer). 27 Kas'ta 20'si iki tarafta düzeldi (vakalar `fixed(` ile kaldı: Python'a
+- 33 "bilinen ayrışma" (1i G1, 3ü G7, 3ü G3, 2si G2, 5i G6, 2si G4, 7si ayar/pyfmt, 8i misc, 2si model/effort) testte
+  gerekçesiyle kayıtlı (eşit çıkarsa test düşer). 27 Kas'ta 25'i iki tarafta düzeldi (vakalar `fixed(` ile kaldı: Python'a
   eşit + Rust `expect`). Türleri ve gerekçeleri testteki `known(`/`known_if(`/`diverges(` kayıtlarındadır.
 - Tek vakanın Python çıktısı: `COPS_PARITY_DUMP=<vaka-id> cargo test -p cops-providers --test parity -- --nocapture`.
 - Dosya, dizin, `stat`, SQLite, yol çözümü ve `Effect` uygulaması paritede GERÇEK uygulayıcıyla (`real`) koşar; yalnız
@@ -82,16 +85,60 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): iz işleri ve bekleyen sorular S1-S4.
+2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
-2. Ders tablosundaki AÇIK satırların Python farkı gerektirenleri (G10 aday 1; G9 aday 5, 6; kanca ortamı
-   argv'de; G3 aday 3-6): sahip/cops kararı; karar gelince iki tarafta `fix:` + test. 27 Kas'ta kapandı: G1 1-11 (2 ve 3 uygulanmadı, G1 bölümü), G7
-   (agy çıkış kodu dışında), G5/G11, G10 aday 5, sid/ad yola ekleme, model çekimi ve `agy_sids` günlükleri.
 3. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve
    ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
 4. Kapandı (27 Kas): TAŞINDI-TESTSİZ satırlar; gerçek `Pane` (`real/pane.rs`); ders listesinin madde madde karşılanması;
-   `cargo fmt` (diğer bütün crate'ler varsayılan rustfmt ile temizdi: `style:` commit'i yalnız cops-providers); effort,
-   `with_block`, `validate_opts` birim testleri ve "sır argv'de yok" testi (`tests/secrets_argv.rs`).
+   `cargo fmt`; effort, `with_block`, `validate_opts` birim testleri ve "sır argv'de yok" testi (`tests/secrets_argv.rs`);
+   G1 1-11 (2 ve 3 bilerek uygulanmadı), G3 1-3, 5, 7, G5/G11, G7 (1-10), G9 aday 5, G10 aday 1 (TBD#401) ve 5, TBD#397,
+   TBD#399, TBD#411 (kod değişmez).
+
+## Birleştirme engelleri (27 Kas; kural: "AÇIK satır varken BİRLEŞTİRMEYE HAZIR yazılmaz")
+Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders tablosundaki AÇIK satırlardır:
+
+| Ders satırı | Açık | Kim kapatabilir |
+|---|---|---|
+| §3.1 (a), §2.5.8 | sid'siz okuma cwd'deki en yeni transkripte düşer | sahip (S1), sonra iz |
+| §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
+| §3.2 | `db` kipindeki belge deposu bağlı değil (`DocAgySidStore` yazımı reddeder) | iz (rs/state artık main'de) |
+| §3.5 | atlanan bozuk aday, `Effect::Remove` hatası ve günlüğün kendi yazım hatası günlüğe girmiyor | iz (tekilleştirmeli günlük, iki tarafta) ya da cops kabulü |
+| §3.7 | maliyet günlüğü taraması dosya boyutuyla sınırsız (Python gibi) | iz; sınır harcama reddine dönerse sahip |
+| §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
+| §3.12 | yardımcılar ve ayar okuma rs/proc, rs/state ile ortak değil | iz (iki iz de main'de) |
+| §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | sahip (S4), sonra iz |
+| §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
+| §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | sahip (S3), sonra enterprise/iz |
+| §2.5.2 | ikilinin sürümü günlüğe yazılmaz | iz (yeni günlük olayı, iki tarafta) ya da cops kabulü |
+
+Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops).
+
+## Bekleyen sorular (sahip)
+- **S1 (sid'siz transkript okuma).** Claude oturumunun konuşma kimliği (sid) bilinmiyorsa (`--resume`suz taze açılış) devir
+  kararı ve takılan oturumun yeniden açılışı, o dizindeki EN YENİ konuşma dosyasından model/effort okur; aynı dizinde iki
+  oturum varsa kardeşinki alınabilir. (a) sid yoksa dosya okunmasın, açılıştaki `--model/--effort` kullanılsın: karışma
+  biter, ama terminalden `/model` ile değiştirilmiş taze oturumda devir düşürmesi tetiklenmez ve yeniden açılış eski
+  değerle olur. (b) önce `~/.claude/sessions/<pid>.json`dan sid çözülsün (kodda `session_file_sid` var), bulunamazsa açılış
+  değeri: tahmin kalkar, taze oturumlar doğru kalır. (c) aynen. Öneri: (b).
+- **S2 (eski satırdan effort).** Son yanıt satırında `effort` alanı yoksa (ör. effort desteklemeyen modele geçiş) daha eski
+  satırın effort'u "canlı" sayılıp devir ve yeniden açılışta kullanılıyor. (a) yalnız son yanıt satırı sayılsın, yoksa
+  açılış değeri: güncel claude'un her satıra effort yazdığı ölçülmedi, yazmıyorsa canlı effort sık sık açılış değerine
+  döner. (b) effort yalnız son satırla AYNI modele ait satırlardan alınsın: model değişince eski effort taşınmaz, aynı
+  modelde davranış değişmez. (c) aynen. Öneri: (b).
+- **S3 (kuru koşuda spawn kancası).** `spawn_session(dry_run=True)` çok kullanıcı kancasını yine çağırıyor; TODO'daki kod
+  okumasına göre enterprise kancası bu sırada dizin açıyor, ret denetim kaydı yazıyor ve bellekte kota ayırıyor (bu turda
+  ölçülmedi). Panel, oturumu başka CLI ile devralırken eski oturumu kapatmadan önce reddi bu kuru koşuyla görüyor. (a)
+  çağrı kalsın, enterprise kancası kuru koşuyu (`preview.active()`) görünce yazmasın: ön denetim korunur, çekirdek
+  değişmez. (b) kuru koşuda kanca hiç çağrılmasın: yan etki biter, ama kota/yetki reddi ancak eski oturum kapandıktan sonra
+  görünür. (c) aynen. Öneri: (a).
+- **S4 (ortam değişkenleri komut satırında).** Oturum açılırken sağlayıcı ve kanca ortamı `AD=DEĞER` olarak komut satırına
+  gömülüyor; kanca sır döndürürse makinedeki başka kullanıcılar süreç listesinden görebilir. Bugünkü sağlayıcı değerleri
+  sır içermiyor; enterprise kancasının döndürdükleri bu turda incelenmedi. (a) adı `_KEY`/`_TOKEN`/`_SECRET` ile biten
+  değerler 0600 dosyaya yazılıp oradan yüklensin (copilot anahtarındaki yöntem): açılış komutu değişir. (b) kanca böyle
+  bir ad döndürürse oturum açılmasın. (c) aynen kalsın, kural olarak "kanca sır döndürmez" yazılsın. Öneri: (a).
+- Not (soru değil, açık kalan): TBD#401 `endpoint` alanını sınırlamadı; `/api/io/ask` izinli bir anahtar adını (ör.
+  `ANTHROPIC_API_KEY`) çağıranın verdiği adrese hâlâ gönderebilir.
 
 ## Parite testinde bakılacak bilinen farklar / şüpheler
 Parite testinde kayıtlı ayrışmalar yukarıdaki "Parite" bölümünde. Açık kalanlar:
@@ -165,7 +212,8 @@ sır-argv birim testleri.
 | R7 Python'a yeni özellik yazmamak (commit-gate) | daldaki `py/` commit'leri 61 `fix:` + 1 `test:` (+ birleştirmeler); her `fix:` testiyle | TAMAM |
 
 ## EKSİK taşıma grupları
-Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + test satırı).
+Satır sayıları ilk taşıma turundaki gruplamadır (işlev/atama satırı + test satırı); sonraki eşitleme bölümlerinin
+satırları gruplara dağıtılmadı. Güncel toplamlar iki tablonun başında.
 
 | Grup | Kapsam | işlev/atama | test | zorluk notu |
 |---|---|---|---|---|
@@ -334,9 +382,9 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
    derin ya da dev sayılı satır None (`sekil-`).
 3. agy ve copilot SQLite URI'sinde yol kaçışlanır (`base._ro_sqlite_uri`; parite `agy-uri-`, copilot yalnız Python testi).
 4. agy: yalnız BLOB yük çekilir; bozuk metin hücresi ne önceki satırı ne tam geçmişi düşürür (`utf8-hucre`).
-5. claude `last_exchange`: sıkıştırma özeti (`isCompactSummary`) kullanıcı mesajı sayılmaz (`ozet-`). AÇIK (sahip kararı
-   bekliyor, iki tarafta aynı): son asistan satırı yalnız `tool_use` ise yanıt "" döner. Önceki metne bakmak değnekçinin
-   işaret okumasını ve devir teslimini değiştirir.
+5. claude `last_exchange`: sıkıştırma özeti (`isCompactSummary`) kullanıcı mesajı sayılmaz (`ozet-`). KAPANDI (TBD#395
+   soru 2, sahip adına cops 27 Kas: aynen kalsın): son asistan satırı yalnız `tool_use` ise yanıt "" döner (iki tarafta);
+   önceki metne bakmak değnekçinin işaret okumasını ve devir teslimini değiştirirdi.
 6. ucli: yarım yazılmış son satır (satır sonu yok, ayrışmıyor) atlanır; o sırada `last_message_role` eskisi gibi None
    (`yarim-son-`).
 7. copilot BLOB hücre: geçerli UTF-8 ise metin, değilse "" (`blob`, `blob-bozuk`).
@@ -374,13 +422,13 @@ bu ize yönlendirilmeli.
    `esit-sentetik-yalniz-yeni`, `canli-sentetik`).
 2. DÜZELDİ (TBD#386): `_last_assistant_value` nesne olmayan satırı, model okuyucu nesne olmayan `message`i atlar (`esit-`).
 3. DÜZELDİ (27 Kas, `fdfa1f91`): metin olmayan model okuyucuda atlanır (`test_rsprov_g3_fixes.py`, parite `esit-model-`).
-4. `live_or_spawn_*` sid yoksa ya da dosyası yoksa cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
+4. SAHİPTE (S1). `live_or_spawn_*` sid yoksa (dosyası olmayan sid'de DÜŞMEZ, TBD#365) cwd'deki EN YENİ transkripti okur: ortak dizindeki kardeş oturumun
    modeli/effort'u devir kararına ve takılan oturumun yeniden açılışına girer (aynı modüldeki `last_request_epoch` bu
    düşüşü bilerek reddediyor). G1 birebir taşıdı (düşüş korundu).
 5. DÜZELDİ (27 Kas, `fdfa1f91` + `37fd9676`): `last_assistant_model`/`_effort` alt ajan (`isSidechain`) satırını atlar
    (parite `esit-alt-ajan-`). Güncel claude'un ana dosyaya bu satırı yazıp yazmadığı ölçülmedi (canlı transkript
    okunmadı); yazmıyorsa davranış değişmez.
-6. Effort ayrı taranır: en son satır effort taşımıyorsa (ör. effort desteklemeyen modele geçiş) eski modelin effort'u
+6. SAHİPTE (S2). Effort ayrı taranır: en son satır effort taşımıyorsa (ör. effort desteklemeyen modele geçiş) eski modelin effort'u
    döner. Rust aynı (parite `effort-eski-satirda`).
 7. DÜZELDİ (27 Kas, G1 9. madde ile): `last_request_epoch`/`jsonl_path_for` aşırı uzun sid'i yok sayar (parite
    `transkript-sapma-uzun-sid` eşit); `/` ya da NUL taşıyan aday proje dizininin dışını açmaz (`istek-mutlak`).
@@ -605,7 +653,7 @@ Fiyat tablosu, Haiku dilim sabitleri ve `anthropic_price` tek kaynaktan: `cops-r
 - **Dil/süreç uyumu:** başlatma payı iki dilde de süreç belleğinde (`_RESERVED` / `CostLedger::reserved`). Aynı anda Python ve
   Rust süreci Claude oturumu açarsa birbirlerinin payını görmez (Python'da panel ile CLI arasında da böyle): tavan en çok
   eşzamanlı başlatma sayısı kadar aşılabilir. Birleşimde spawn tek süreçte kalmalı. Ortak pay dosyası Python'a yeni
-  davranış olacağından eklenmedi (sahibe).
+  davranış olacağından eklenmedi (TBD#397 madde 4: şimdilik kalsın).
 - Para sınırı kapalı yön (iki dilde): tavan açıkken okunamayan dizin/dosya, normal olmayan dosya, geçersiz sayaç ya da zaman
   damgası başlatmayı reddeder (`claude: günlük USD tavanı denetlenemiyor (...)`; `code` YOK). Geçersiz sayaç toplamaya girmez.
   Ayrıştırılamayan satır eskisi gibi atlanır (yarım yazım ile bozukluk ayrılamaz).
@@ -637,6 +685,8 @@ Fiyat tablosu, Haiku dilim sabitleri ve `anthropic_price` tek kaynaktan: `cops-r
   dosyasında kayıp güncelleme; beklenmeyen `inspect` yapısı istisna veriyordu.
 
 ### Sahibe bırakılanlar (uygulanmadı)
+2-4: TBD#397 cevabı (27 Kas): şimdilik kalsın, TODO'da açık.
+
 1. DÜZELDİ (TBD#397 soru 1 a): bozuk/okunamayan `settings.json` ya da geçersiz `daily_cap_usd` artık Claude hizmetli
    başlatmayı reddettiriyor.
 2. Başlatma payı süreçler arası paylaşılmıyor (panel + CLI; ileride Python + Rust).
@@ -680,7 +730,8 @@ zaman damgası bozuksa dalın kuralıyla yine `problem` olur.
 - **TBD#399 canlı geçiş `-J`den ETKİLENMEZ:** `join` varsayılanı kapalı; Python'da tek `join=True` çağıranı
   `web._with_ucli_error`. `Pane::capture` (giriş kutusu, diyalog, sonuç satırı) iki dilde de sarılmış satırlarla okur.
 - Parite koşucusu X sunucusuna ve `wmctrl`e dokunmaz (`harness.py` `startup_env`i varsayılan kapatır). Gerçek X gönderimi
-  (`send_startup_x11`) Rust'ta CANLI DENENMEDİ; yalnız yapı düzeni, kitaplık yükleme ve açılamayan ekran sınandı.
+  (`send_startup_x11`) sonradan özel `Xvfb`de Python'la olay olay sınandı (`tests/real_x11.rs`); gerçek masaüstünde
+  (Mutter pencereyi hedefe taşıyor mu) Rust yolu CANLI DENENMEDİ.
 - Bilinen ayrışma (yalnız bozuk `spawn_desktop`, testte vaka yok): `Infinity` Python'da `startup_desktop_error`, Rust'ta
   `settings.json` ayrıştırılamaz (varsayılanlar); `i64`a sığmayan eksi sayı METNİ Python'da kapalı, Rust'ta varsayılan.
 
@@ -787,7 +838,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 - `parity_misc` `sync*` artık gerçek `sync_one` ile (önceden test koşucusunda yazılmış kopya).
 - Kötü ad (27 Kas): `{cli}-kotu-ad` 7 + `pencere-kotu-ad` 1 (Python `bb26564e` `spawn_bad_name`; Rust önceden reddediyordu,
   `d1bf8ff5` ile düzeltildi). Paritede `parity_g9` artık 172 vaka (`f4679f51` birleşiminden sonra `masaustu-*` 71 vakayla
-  243).
+  243; `726888f1` sonrası `bekci-pencere-*` ve `nul-*` ile 261).
 - `tests/real_tmux.rs` 8 (yalıtılmış sunucu: tam ad/ön ek, miras almayan ortam, kötü adlarda tmux çalışmaz, sunucusuz
   durum, `PATH` yoklaması, Python parça metniyle bayt eşitliği, gerçek hayalet temizliği, bekçinin gerçek penceresiz
   yedeği, `open_window` tam hedef); `tests/real_scan.rs` 6 (sahte `/proc`: satırlar, öğrenilen agy kaydı, kuru kip,
@@ -868,13 +919,13 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## Sır / argv notları (Python'a dokunulmadı)
 - `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
-  yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Sorulacak/izlenecek.
+  yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Soru: "Bekleyen sorular" S4.
 - ucli anahtarı argv'de değil (`$(cat dosya)`); dosya yolu iki tarafta tırnaklı (TBD#373/7).
 - copilot BYOK: dosya source edilir, argv temiz.
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 690 satır: TAŞINDI 618, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 711 satır: TAŞINDI 638, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 73, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1615,7 +1666,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## TEST EŞLEME TABLOSU
 
-1461 satır: TAŞINDI 694, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 767, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+Güncel sayım (27 Kas): 1523 satır: TAŞINDI 738, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 785, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
