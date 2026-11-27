@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
 | tanım | 361 | 245 | 116 | 0 |
-| test durumu (64 dosya) | 914 | 165 | 749 | 0 |
+| test durumu (65 dosya) | 923 | 165 | 758 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
@@ -958,6 +958,20 @@ Yok.
 | `test_review_uzops_p3b.py::P3b.test_stop_before_connect_closes_call` | 22 | karşılandı | `tests/fake_ws.rs::dropped_streams_close_their_sockets_and_leak_no_fds` | Rust'ta bağlantı öncesi düşürme = açılış görevi iptal |
 | `test_review_uzops_p3b.py::P3b.test_status_consumer_replaced_when_endpoint_changes` | 40 | karşılandı | `tests/fake_ws.rs::status_stream_is_rebuilt_when_address_or_token_changes_not_extra_urls` | yok |
 | `test_review_uzops_p3b.py::SharedRustup.test_rustup_home_points_to_real_home_when_toolchains_exist` | 66 | kapsam dışı | yok | tanı günlüğü döndürme ve rustup ortamı. İz: T7 (periyodik) |
+
+### `py/tests/test_send_mask_guard.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_send_mask_guard.py::BackendGuardTests.test_default_refuses_masked_and_unknown` | 31 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::BackendGuardTests.test_default_sends_when_known_unmasked` | 39 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::BackendGuardTests.test_user_typed_input_is_not_probed` | 43 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::BackendGuardTests.test_raw_is_unguarded_for_live_typing_and_guarded_on_request` | 47 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_panel_input_reaches_a_password_prompt` | 65 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_automatic_input_is_refused_with_a_reason` | 70 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_automatic_input_keeps_the_backend_guard` | 77 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::TermInputTests.test_remote_orchestration_marks_itself_automatic` | 82 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
+| `test_send_mask_guard.py::RealPasswordPromptTests.test_automatic_send_does_not_answer_a_password_prompt` | 92 | kapsam dışı | yok | parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te). İz: T2 (terminal) |
 
 ### `py/tests/test_session_lock.py`
 

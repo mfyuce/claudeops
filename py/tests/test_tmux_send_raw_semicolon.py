@@ -1,30 +1,10 @@
-"""tmux_send_raw: `;` ile biten parça tmux'ta komut ayıracı sayılıyordu (sondaki `;` kayboluyordu, review cliops R-1)."""
+"""tmux_send_raw: `;` ile biten veri tmux'ta komut ayıracı sayılıp kaybolmasın (review cliops R-1; TBD#385ten beri veri argv'de değil)."""
 import subprocess
 import unittest
 from unittest import mock
 
 from claudeops import tmux_backend as tb
 from _tmux_sock import unlink_socket  # noqa: E402
-
-
-class SemicolonArgv(unittest.TestCase):
-    def sent(self, data):
-        calls = []
-
-        def run(argv, **kw):
-            calls.append(argv)
-            return mock.Mock(returncode=0)
-        with mock.patch.object(tb.subprocess, "run", run):
-            self.assertTrue(tb.tmux_send_raw("x", data))
-        return [c[-1] for c in calls]
-
-    def test_trailing_semicolon_escaped(self):
-        self.assertEqual(self.sent("foo;"), ["foo\;"])
-        self.assertEqual(self.sent("bar\;"), ["bar\\\;"])       # kullanıcının ters-bölüsü korunur
-        self.assertEqual(self.sent("a;b"), ["a;b"])               # ortadaki `;` dokunulmaz
-
-    def test_whole_semicolon_chunk(self):
-        self.assertEqual(self.sent(";"), ["\;"])
 
 
 @unittest.skipUnless(subprocess.run(["which", "tmux"], capture_output=True).returncode == 0, "tmux yok")

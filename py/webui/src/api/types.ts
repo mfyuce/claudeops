@@ -491,8 +491,8 @@ export interface UsageResult {
 
 /** `web.py`'nin `_context()`'i — `UsageProviderResult` ile AYNI şekil ama
  * hesap değil TEK, isimle hedeflenen session (`/api/context`, name gerekir).
- * `reason` ("unsupported"|"no_tmux"|"busy"|"masked"|"send_failed"|
- * "parse_failed") `ok:true, available:false` iken dolu; `checked_via`/
+ * `reason` ("unsupported"|"no_tmux"|"busy"|"masked"|"mask_unknown"|
+ * "send_failed"|"parse_failed") `ok:true, available:false` iken dolu; `checked_via`/
  * `supported` yok, o kavramlar "provider başına rastgele seç" hesap-modeline
  * özgü. `ok:false` (name yok/session yok/isim belirsiz — `_err()`'in HER
  * ZAMANKİ şekli, `ApiResult` ile aynı) iken `error` zaten seçili dilde

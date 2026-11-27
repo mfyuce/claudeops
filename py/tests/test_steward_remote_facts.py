@@ -124,7 +124,7 @@ class TestExact(unittest.TestCase):
                                     lambda pid, grace=0, name="": self.killed.append(name) or {"ok": True}),
                   mock.patch.object(web, "is_tmux_backed", lambda pid: True),
                   mock.patch.object(web, "tmux_has_session", lambda name: True),
-                  mock.patch.object(web, "tmux_send_keys", lambda name, text, settle_delay=0: self.sent.append(name) or True),
+                  mock.patch.object(web, "tmux_send_keys", lambda name, text, settle_delay=0, guard=True: self.sent.append(name) or True),
                   mock.patch.object(web.web_ws, "notify_term_activity", lambda name: None)):
             p.start()
             self.addCleanup(p.stop)

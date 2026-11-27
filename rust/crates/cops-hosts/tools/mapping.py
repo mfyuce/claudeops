@@ -818,6 +818,8 @@ FILES = {
     "review_remote_run": ("uzak review koşusu", T8),
     "review_20261125_upload_newchat": ("yeni sohbet adı yarışı", T4),
     "review_uzops_p3b": ("tanı günlüğü döndürme ve rustup ortamı", T7),
+    "send_mask_guard": ("parola istemi bilinmiyorken otomatik gönderim koruması (yerel pane + gövdeye `auto` yazan "
+                        "çağıranlar; bu crate maske sınamaz, maske `cops-tmux`te)", T2),
     "session_lock": ("oturum kilidi ucu (yerel)", T7),
     "snapshot_mirrors": ("anlık görüntü ve yansılar", T3),
     "steward_remote": (_STEW_POL, T10),
@@ -1224,6 +1226,7 @@ review_remote:21:51fe8afa5f
 review_remote_export:10:0548d3c6e8
 review_remote_run:13:0ca51d4ddc
 review_uzops_p3b:2:618c9ca3d3
+send_mask_guard:9:5798b2960e
 session_lock:11:1deed1d545
 snapshot_mirrors:40:9b4093b114
 steward_remote:28:d4daee9dff
