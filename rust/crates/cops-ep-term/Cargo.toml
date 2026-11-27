@@ -1,0 +1,21 @@
+[package]
+name = "cops-ep-term"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+# Dalga 2 İz B2a: terminal OKUMA uçları (`GET /api/term/output`, `GET /api/term/history`), yalnız yerel pane. copsd bağlar.
+# Yazan uç (`/api/term/input|key|raw|resize`), `/ws/term` ve bilet deposu bu crate'te YOK (B2b, sahip onayı).
+# DIKKAT: `cops-steward-core`a BAĞLANMAZ (serde_json `preserve_order` copsd ikilisine yayılır: docs/rs-b0.md R1).
+[dependencies]
+cops-auth = { path = "../cops-auth" }
+cops-proxy = { path = "../cops-proxy" }
+cops-state = { path = "../cops-state" }
+cops-procscan = { path = "../cops-procscan" }
+cops-tmux = { path = "../cops-tmux" }
+cops-ep-state = { path = "../cops-ep-state" }
+regex = "1"
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
