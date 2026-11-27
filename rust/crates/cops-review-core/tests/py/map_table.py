@@ -95,6 +95,7 @@ MAP = {
     "_USAGE_COUNT_KEYS": _m("report", "usage_cost_usd"),
     "_usage_number": _m("report", "usage_cost_usd"),
     "_scan_usage": _m("report", "usage_cost_usd"),
+    "_scan_usage_windows": _m("report", "usage_cost_usd"),
     "StoreCorrupt": _m("error", "Error"),
     "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
     "_keep_verdict_state": _m("flow", "keep_verdict_state"),
@@ -117,6 +118,8 @@ NOTES = {
     "_usage_number": "Rust'ta ayrı yardımcı yok: `usage_cost_usd` içindeki `numeric` kapanışı (bool değil, 0..=1e15)",
     "_scan_usage": "maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) bu crate'te yok: `cops-providers` "
                    "`cost.rs::UsageScan` (rs/prov, `parity_ledger`). FIFO/normal olmayan dosya Rust'ta da bloklamadan 0",
+    "_scan_usage_windows": "tek geçişte çok pencereli tarama: maliyet payı `usage_cost_usd`; çok pencereli karşılığı "
+                           "`cops-providers` `cost.rs::UsageScan::feed_all` + `real/ledger.rs::read_windows` (rs/prov)",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
     "_LENS_FORMAT_EXTRA": "modül genel sözlüğü yerine kayıt nesnesinin alanı",
     "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"; `file://` öneki silinmiyor: bilinen Python davranışı, "
@@ -171,6 +174,10 @@ _store = out(RS, "git deposu görünürlüğü, sır taraması ve commit kapıs�
 
 TESTS = {}
 
+# Bu koşucunun sarmadığı özel adlar, yalnız adı verilen test modülünde: karşılaştırmaları o testte (dondurulmuş eski
+# Python'a karşı) ve `cops-providers`ta.
+ELSEWHERE = {"test_rsprov_cost_one_pass": {"_finite", "_log_bad", "_usage_number", "_scan_usage", "_scan_usage_windows"}}
+
 
 def classes(module, value, names):
     for n in names.split():
@@ -212,6 +219,8 @@ tests("test_rsprov_cost_ledger.InvalidCountsNeverLowerTheSpend",
       "open_cap_refuses_a_ledger_with_an_invalid_value torn_lines_null_counts_and_old_files_do_not_block")
 classes("test_rsprov_cost_ledger", out("rs/prov + T7 `ucli_cost.py`", "günlük tavan kapısı: okunamayan defter ve "
                                        "geçersiz kılma yarışı"), "UnreadableLedgerClosesTheGate InvalidateRace")
+classes("test_rsprov_cost_one_pass", out("rs/prov + T7 `ucli_cost.py`", "günlük tavan açılış denetimi (tek okuma, eski "
+                                         "davranışla eşlik)"), "EveryLogIsReadOnce SameDecisionAsBefore")
 classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
 tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),
@@ -658,6 +667,11 @@ def build(report):
             if got:
                 text += "; bu testte yan çağrı olarak parite altında: " + ", ".join(f"`{g}`" for g in got)
             skipped = [d for d in direct if d not in got and any(n == d and k == "işlev" for n, _, k, _ in items)]
+            elsewhere = [s for s in skipped if s in ELSEWHERE.get(mod, ()) and not calls.get(s)]
+            skipped = [s for s in skipped if s not in elsewhere]
+            if elsewhere:
+                text += "; bu koşucunun sarmadığı özel adlar (karşılaştırma testin kendisinde ve `cops-providers`ta): " + \
+                        ", ".join(f"`{s}`" for s in elsewhere)
             for s in skipped:
                 if not calls.get(s):
                     errors.append(f"{tid}: `{s}` hiçbir testte karşılaştırılmadı")

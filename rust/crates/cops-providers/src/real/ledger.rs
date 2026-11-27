@@ -20,7 +20,7 @@ use crate::pyjson::Py;
 use crate::real::{docs::DOC_MAX_BYTES, fsio};
 use crate::settings::{Settings, UcliCostConfig, BAD_CAP, BAD_COST_BLOCK};
 use serde_json::{json, Map, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -193,6 +193,21 @@ pub fn forget_bad_records() {
 pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64) -> UsageScan {
     let key = path.as_ref().to_string_lossy().into_owned();
     let mut scan = UsageScan::new(model, since_ms, mult);
+    read_windows(path.as_ref(), std::slice::from_mut(&mut scan));
+    for what in scan.skipped.drain(..) {
+        log_bad(what, &key);
+    }
+    scan
+}
+
+/// `review._scan_usage_windows`: dosya TEK geçişte okunur, her satır bütün toplayıcılara beslenir. Günlüğe yazmaz: her
+/// toplayıcının `skipped`i atlanan türleri ilk görülme sırasıyla (her tür bir kez) taşır.
+fn read_windows(path: &Path, scans: &mut [UsageScan]) {
+    let fail = |scans: &mut [UsageScan], why| {
+        for scan in scans {
+            scan.problem = Some(why);
+        }
+    };
     let opened = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
@@ -201,21 +216,15 @@ pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64)
         Ok(f) => f,
         Err(e) => {
             if e.kind() != io::ErrorKind::NotFound {
-                scan.problem = Some("okunamadı");
+                fail(scans, "okunamadı");
             }
-            return scan;
+            return;
         }
     };
     match file.metadata() {
         Ok(m) if m.is_file() => {}
-        Ok(_) => {
-            scan.problem = Some("normal dosya değil");
-            return scan;
-        }
-        Err(_) => {
-            scan.problem = Some("okunamadı");
-            return scan;
-        }
+        Ok(_) => return fail(scans, "normal dosya değil"),
+        Err(_) => return fail(scans, "okunamadı"),
     }
     let mut reader = BufReader::new(file);
     let mut line = Vec::new();
@@ -228,12 +237,12 @@ pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64)
             Ok(0) => break,
             Ok(_) => {}
             Err(_) => {
-                scan.problem = Some("okunamadı");
+                fail(scans, "okunamadı");
                 break;
             }
         }
         if line.len() > LINE_MAX_BYTES && !line.ends_with(b"\n") {
-            scan.problem = Some("çok uzun satır");
+            fail(scans, "çok uzun satır");
             if reader.skip_until(b'\n').is_err() {
                 break;
             }
@@ -241,14 +250,77 @@ pub fn scan_usage(path: impl AsRef<Path>, model: &str, since_ms: f64, mult: f64)
         }
         // Python ikili okur: yalnız `\n` satır ayırır; UTF-8 olmayan satır atlanır
         match std::str::from_utf8(&line) {
-            Ok(text) => scan.feed(text),
-            Err(_) => scan.skipped.push("usage.line"),
+            Ok(text) => UsageScan::feed_all(scans, text),
+            Err(_) => {
+                for scan in scans.iter_mut() {
+                    scan.skipped.push("usage.line");
+                }
+            }
         }
-        for what in scan.skipped.drain(..) {
-            log_bad(what, &key);
+        // bozuk satır sayısı kadar büyümesin
+        for scan in scans.iter_mut() {
+            let mut seen: Vec<&str> = Vec::new();
+            scan.skipped.retain(|what| {
+                let first = !seen.contains(what);
+                seen.push(what);
+                first
+            });
         }
     }
-    scan
+}
+
+/// Tek bir açılış denetimi boyunca okunan günlükler (`ucli_cost._ReadPass`): her dosya bir kez açılır, bütün pencereler
+/// o geçişte toplanır. Denetim bitince atılır.
+#[derive(Default)]
+struct ReadPass {
+    /// Denetimin isteyeceği pencereler (`since_ms`).
+    windows: Vec<f64>,
+    /// (yol, yazma çarpanının bitleri) -> pencere başına toplayıcı
+    files: HashMap<(PathBuf, u64), Vec<UsageScan>>,
+}
+
+impl ReadPass {
+    fn scan(&mut self, path: &Path, since_ms: f64, mult: f64) -> (f64, Option<&'static str>) {
+        let scans = self
+            .files
+            .entry((path.to_path_buf(), mult.to_bits()))
+            .or_default();
+        let wanted = |s: &UsageScan| s.since_ms().to_bits() == since_ms.to_bits();
+        if !scans.iter().any(wanted) {
+            *scans = std::iter::once(&since_ms)
+                .chain(&self.windows)
+                .map(|since| UsageScan::new("", *since, mult))
+                .collect();
+            read_windows(path, scans);
+        }
+        let key = path.to_string_lossy();
+        scans
+            .iter()
+            .find(|s| wanted(s))
+            .map_or((0.0, None), |scan| {
+                // her çağrı eskisi gibi günlüğe bildirir; tekrarı `log_bad` eler
+                for what in &scan.skipped {
+                    log_bad(what, &key);
+                }
+                (scan.total, scan.problem)
+            })
+    }
+}
+
+/// (usd, sorun): açılış denetimindeyse ortak okumadan, değilse dosyayı okuyarak.
+fn usage_of(
+    pass: Option<&mut ReadPass>,
+    path: &Path,
+    since_ms: f64,
+    mult: f64,
+) -> (f64, Option<&'static str>) {
+    match pass {
+        Some(pass) => pass.scan(path, since_ms, mult),
+        None => {
+            let scan = scan_usage(path, "", since_ms, mult);
+            (scan.total, scan.problem)
+        }
+    }
 }
 
 /// Bir kullanım günlüğü adayı. `stem` gösterim içindir; yol dosya adının ham baytlarını taşır (UTF-8 olmayan adlı
@@ -308,10 +380,19 @@ fn logs_in(dirs: &[String], since_ms: Option<f64>) -> impl Iterator<Item = Log> 
 
 /// `per_session_usd`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
 pub fn per_session_in(now: f64, dirs: &[String], mult: f64) -> Vec<(String, f64)> {
+    per_session_from(None, now, dirs, mult)
+}
+
+fn per_session_from(
+    mut pass: Option<&mut ReadPass>,
+    now: f64,
+    dirs: &[String],
+    mult: f64,
+) -> Vec<(String, f64)> {
     let since = day_start_ms(now);
     let mut out = Vec::new();
     for l in logs_in(dirs, Some(since)) {
-        let usd = scan_usage(&l.path, "", since, mult).total;
+        let usd = usage_of(pass.as_deref_mut(), &l.path, since, mult).0;
         add_to(&mut out, l.stem, usd);
     }
     out
@@ -331,13 +412,28 @@ pub fn rate_by_session(now: f64, window_min: f64, base: &str, mult: f64) -> Vec<
 
 /// `rate_by_session`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
 pub fn rate_in(now: f64, window_min: f64, dirs: &[String], mult: f64) -> Vec<(String, f64)> {
+    rate_from(None, now, window_min, dirs, mult)
+}
+
+/// `_rate_since`.
+fn rate_since(now: f64, window_min: f64) -> f64 {
+    now * 1000.0 - window_min * 60_000.0
+}
+
+fn rate_from(
+    mut pass: Option<&mut ReadPass>,
+    now: f64,
+    window_min: f64,
+    dirs: &[String],
+    mult: f64,
+) -> Vec<(String, f64)> {
     if window_min <= 0.0 {
         return Vec::new();
     }
-    let since = now * 1000.0 - window_min * 60_000.0;
+    let since = rate_since(now, window_min);
     let mut out = Vec::new();
     for l in logs_in(dirs, Some(since)) {
-        let usd = scan_usage(&l.path, "", since, mult).total;
+        let usd = usage_of(pass.as_deref_mut(), &l.path, since, mult).0;
         if usd > 0.0 {
             add_to(&mut out, l.stem, usd * 60.0 / window_min);
         }
@@ -359,9 +455,13 @@ pub fn total_usd(base: &str, mult: f64, since_ms: f64) -> f64 {
 
 /// `total_usd`in çok dizinlisi ([`crate::Paths::usage_read_dirs`]).
 pub fn total_in(dirs: &[String], mult: f64, since_ms: f64) -> f64 {
+    total_from(None, dirs, mult, since_ms)
+}
+
+fn total_from(mut pass: Option<&mut ReadPass>, dirs: &[String], mult: f64, since_ms: f64) -> f64 {
     let filter = (since_ms > 0.0).then_some(since_ms);
     logs_in(dirs, filter).fold(0.0, |a, l| {
-        a + scan_usage(&l.path, "", since_ms, mult).total
+        a + usage_of(pass.as_deref_mut(), &l.path, since_ms, mult).0
     })
 }
 
@@ -372,6 +472,15 @@ pub fn ledger_problem(now: f64, base: &str, mult: f64) -> Option<String> {
 
 /// [`ledger_problem`], toplamın okuduğu bütün dizinlerde ([`crate::Paths::usage_read_dirs`]).
 pub fn ledger_problem_in(now: f64, dirs: &[String], mult: f64) -> Option<String> {
+    ledger_problem_from(None, now, dirs, mult)
+}
+
+fn ledger_problem_from(
+    mut pass: Option<&mut ReadPass>,
+    now: f64,
+    dirs: &[String],
+    mult: f64,
+) -> Option<String> {
     let since = day_start_ms(now);
     for dir in dirs {
         let all = match entries(dir) {
@@ -382,7 +491,7 @@ pub fn ledger_problem_in(now: f64, dirs: &[String], mult: f64) -> Option<String>
         for log in all {
             let why = match mtime_ms(&log.path) {
                 Ok(t) if t < since => continue,
-                Ok(_) => scan_usage(&log.path, "", since, mult).problem,
+                Ok(_) => usage_of(pass.as_deref_mut(), &log.path, since, mult).1,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(_) => Some("okunamadı"),
             };
@@ -455,10 +564,16 @@ impl CostLedger {
     /// `state`: panel özeti. Ayar okunamıyorsa varsayılanla gösterilir (kapı ayrıca reddeder).
     pub fn state(&self, now: f64, use_cache: bool) -> Value {
         let cfg = (self.settings)().unwrap_or_else(|_| Settings::default().ucli_cost_config());
-        self.state_with(&cfg, now, use_cache)
+        self.state_with(&cfg, now, use_cache, None)
     }
 
-    fn state_with(&self, cfg: &UcliCostConfig, now: f64, use_cache: bool) -> Value {
+    fn state_with(
+        &self,
+        cfg: &UcliCostConfig,
+        now: f64,
+        use_cache: bool,
+        mut pass: Option<&mut ReadPass>,
+    ) -> Value {
         let cached = self
             .cache
             .lock()
@@ -469,15 +584,24 @@ impl CostLedger {
             Some(s) => s,
             None => {
                 let mult = write_mult(cfg);
-                let by = per_session_in(now, &self.dirs, mult);
+                let credit_since = date_ms(&cfg.credit_since, false);
+                if let Some(pass) = pass.as_deref_mut() {
+                    pass.windows = vec![
+                        day_start_ms(now),
+                        credit_since,
+                        rate_since(now, 60.0),
+                        rate_since(now, 15.0),
+                    ];
+                }
+                let by = per_session_from(pass.as_deref_mut(), now, &self.dirs, mult);
                 let fresh = Snapshot {
                     at: now,
                     day: day_key(now),
-                    total: total_in(&self.dirs, mult, date_ms(&cfg.credit_since, false)),
+                    total: total_from(pass.as_deref_mut(), &self.dirs, mult, credit_since),
                     usd: by.iter().fold(0.0, |a, (_, v)| a + v),
                     by,
-                    rate_1h: rate_in(now, 60.0, &self.dirs, mult),
-                    rate_15m: rate_in(now, 15.0, &self.dirs, mult),
+                    rate_1h: rate_from(pass.as_deref_mut(), now, 60.0, &self.dirs, mult),
+                    rate_15m: rate_from(pass, now, 15.0, &self.dirs, mult),
                 };
                 *self.cache.lock().unwrap_or_else(PoisonError::into_inner) = Some(fresh.clone());
                 fresh
@@ -540,8 +664,13 @@ impl CostLedger {
     }
 
     /// (yuvarlanmış bugünkü harcama, tavan) — taze tarama.
-    fn fresh_totals(&self, cfg: &UcliCostConfig, now: f64) -> (f64, f64) {
-        let state = self.state_with(cfg, now, false);
+    fn fresh_totals(
+        &self,
+        cfg: &UcliCostConfig,
+        now: f64,
+        pass: Option<&mut ReadPass>,
+    ) -> (f64, f64) {
+        let state = self.state_with(cfg, now, false, pass);
         // sonlu olmayan sayı JSON'a giremez (`null`): sayaçlar sınırlı olduğundan beklenmez, olursa kapalı yön
         (
             state
@@ -555,16 +684,25 @@ impl CostLedger {
     /// `cap_exceeded`. Ayar okunamıyorsa hata.
     pub fn cap_exceeded(&self, now: f64) -> Result<bool, CostRefusal> {
         let cfg = self.config()?;
-        let (usd, cap) = self.fresh_totals(&cfg, now);
+        let (usd, cap) = self.fresh_totals(&cfg, now, None);
         Ok(cap > 0.0 && usd >= cap)
     }
 
     /// `reserve`: başlatma payı ayır. Tavan (bugün + başkalarının payı) doluysa ya da harcama sayılamıyorsa ret.
     pub fn reserve(&self, session: &str, now: f64) -> Result<(), CostRefusal> {
+        self.reserve_from(session, now, None)
+    }
+
+    fn reserve_from(
+        &self,
+        session: &str,
+        now: f64,
+        mut pass: Option<&mut ReadPass>,
+    ) -> Result<(), CostRefusal> {
         let mut held = self.reserved.lock().unwrap_or_else(PoisonError::into_inner);
         held.retain(|(_, _, until)| *until > now);
         let cfg = self.config()?;
-        let (usd, cap) = self.fresh_totals(&cfg, now);
+        let (usd, cap) = self.fresh_totals(&cfg, now, pass.as_deref_mut());
         if let Some(why) = cfg.cap_problem {
             return Err(CostRefusal::BadSettings(why.to_string()));
         }
@@ -572,7 +710,7 @@ impl CostLedger {
             held.retain(|(n, _, _)| n != session);
             return Ok(());
         }
-        if let Some(why) = ledger_problem_in(now, &self.dirs, write_mult(&cfg)) {
+        if let Some(why) = ledger_problem_from(pass, now, &self.dirs, write_mult(&cfg)) {
             return Err(CostRefusal::Unverifiable(why));
         }
         let others = held
@@ -611,17 +749,19 @@ impl CostLedger {
             .collect()
     }
 
-    /// `_claude_service_flags`in kapısı: `cap_exceeded` + `reserve`.
+    /// `_claude_service_flags`in kapısı: `cap_exceeded` + `reserve`; iki adım günlükleri birlikte, dosya başına bir kez
+    /// okur (`ucli_cost._one_read`).
     pub fn check_and_reserve_at(&self, session: &str, now: f64) -> Result<(), CostRefusal> {
         let cfg = self.config()?;
-        let (usd, cap) = self.fresh_totals(&cfg, now);
+        let mut pass = ReadPass::default();
+        let (usd, cap) = self.fresh_totals(&cfg, now, Some(&mut pass));
         if cap > 0.0 && usd >= cap {
             return Err(CostRefusal::CapExceeded {
                 today_usd: usd,
                 cap_usd: cap,
             });
         }
-        self.reserve(session, now)
+        self.reserve_from(session, now, Some(&mut pass))
     }
 }
 

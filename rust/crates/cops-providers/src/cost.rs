@@ -184,34 +184,63 @@ impl UsageScan {
         }
     }
 
+    /// Pencerenin başı (epoch ms; 0 = süzme yok).
+    pub(crate) fn since_ms(&self) -> f64 {
+        self.since_ms
+    }
+
     /// Tek satır (satır sonu olsa da olur). Ayrıştırılamayan (yarım yazılmış) satır atlanır.
     pub fn feed(&mut self, line: &str) {
+        UsageScan::feed_all(std::slice::from_mut(self), line)
+    }
+
+    /// Satırı BİR kez ayrıştırıp yalnız zaman penceresi (`since_ms`) farklı toplayıcılara besler; her birinin sonucu tek
+    /// başına [`UsageScan::feed`] ile aynıdır. Model ve yazma çarpanı hepsinde aynı olmalı.
+    pub(crate) fn feed_all(scans: &mut [UsageScan], line: &str) {
+        let Some((price, fixed_model, write_mult)) = scans
+            .first()
+            .map(|s| (s.price, s.fixed_model, s.write_mult))
+        else {
+            return;
+        };
         let Some(rec) = Py::parse(line) else {
             // Python 512'den derin satırı da (~1000'e dek) okur: sayılamayan kayıt sessizce 0 olmasın
             if maybe_too_deep(line) {
-                self.problem = Some("çok derin satır");
+                for scan in scans {
+                    scan.problem = Some("çok derin satır");
+                }
             }
             return;
         };
         if !rec.is_object() {
             return;
         }
-        if !self.fixed_model && rec.get("event").and_then(Py::as_str) == Some("task_start") {
+        if !fixed_model && rec.get("event").and_then(Py::as_str) == Some("task_start") {
             if let Some(model) = rec.get("model").filter(|m| m.truthy()) {
-                self.price = anthropic_price(&model.py_str());
+                let price = anthropic_price(&model.py_str());
+                for scan in scans {
+                    scan.price = price;
+                }
                 return;
             }
         }
         let (t, t_ok) = timestamp(rec.get("t"));
         let usage = rec.get("usage").filter(|u| u.is_object());
         if !t_ok && usage.is_some() {
-            self.problem = Some("geçersiz zaman damgası");
+            for scan in scans.iter_mut() {
+                scan.problem = Some("geçersiz zaman damgası");
+            }
         }
         if !t.is_finite() {
-            self.skipped.push("usage.record"); // sonlu olmayan damgalı kayıt toplama girmez (TBD#375)
+            // sonlu olmayan damgalı kayıt toplama girmez (TBD#375)
+            for scan in scans {
+                scan.skipped.push("usage.record");
+            }
             return;
         }
-        if self.since_ms != 0.0 && t < self.since_ms {
+        // kaydı sayan pencereler
+        let counts = |s: &UsageScan| !(s.since_ms != 0.0 && t < s.since_ms);
+        if !scans.iter().any(counts) {
             return;
         }
         let Some(u) = usage else { return };
@@ -222,11 +251,16 @@ impl UsageScan {
             u.get(k)
                 .is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())
         }) {
-            self.problem = Some("geçersiz sayaç");
+            for scan in scans.iter_mut().filter(|s| counts(s)) {
+                scan.problem = Some("geçersiz sayaç");
+            }
         }
         if let Py::Object(fields) = u {
             if !fields.iter().all(|(_, v)| finite(v)) {
-                self.skipped.push("usage.record"); // sonlu olmayan sayaçlı istek bütünüyle atlanır
+                // sonlu olmayan sayaçlı istek bütünüyle atlanır
+                for scan in scans.iter_mut().filter(|s| counts(s)) {
+                    scan.skipped.push("usage.record");
+                }
                 return;
             }
         }
@@ -242,7 +276,7 @@ impl UsageScan {
             "cache_read_tokens",
         ]);
         let cw = g(&["cache_creation_input_tokens", "cache_write_tokens"]);
-        let [pi, po, pr, pw] = self.price;
+        let [pi, po, pr, pw] = price;
         let inp = match usage_number(u.get("input_tokens")) {
             Some(i) => {
                 let read = if u.get("cache_read_input_tokens").is_some() {
@@ -263,7 +297,7 @@ impl UsageScan {
             u.get("cached_tokens").is_some() && u.get("cache_creation_input_tokens").is_none();
         let mut inp_price = if normalized { pw } else { pi };
         let (mut out_price, mut read_price, mut write_price) = (po, pr, pw);
-        if self.price == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
+        if price == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
             let long_in;
             [long_in, out_price, read_price, write_price] = HAIKU_LONG_PRICE;
             inp_price = if inp_price == pi {
@@ -273,11 +307,12 @@ impl UsageScan {
             };
         }
         let out = g(&["output_tokens", "completion_tokens"]);
-        self.total += (inp * inp_price
-            + out * out_price
-            + cr * read_price
-            + cw * write_price * self.write_mult)
-            / 1e6;
+        let usd =
+            (inp * inp_price + out * out_price + cr * read_price + cw * write_price * write_mult)
+                / 1e6;
+        for scan in scans.iter_mut().filter(|s| counts(s)) {
+            scan.total += usd;
+        }
     }
 }
 

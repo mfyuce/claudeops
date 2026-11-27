@@ -1865,17 +1865,39 @@ def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tu
     """(usd, sorun). `sorun` boş değilse toplama GÜVENİLMEZ (dosya okunamadı, normal dosya değil ya da bir istek kaydında
     geçersiz sayı): açık bir harcama tavanı bunu "izin" saymamalı. Olmayan dosya ve ayrıştırılamayan (yarım yazılmış) satır
     sorun sayılmaz."""
-    # `model` boş: modeli kaydın kendisinden (task_start) izle (uzun ömürlü oturum günlüğü). `since_ms` > 0: yalnız o andan sonraki
+    usd, problem, skipped = _scan_usage_windows(path, model, (since_ms,), write_mult)[since_ms]
+    for what in skipped:
+        _log_bad(what, path)
+    return usd, problem
+
+
+def _scan_usage_windows(path: str, model: str, windows: Sequence[float],
+                        write_mult: float) -> Dict[float, Tuple[float, str, List[str]]]:
+    """Dosyayı TEK geçişte okuyup her pencere (`since_ms`) için (usd, sorun, atlanan kayıt türleri) döndürür; her pencerenin
+    sonucu o pencereyle tek başına yapılan taramanınkiyle aynıdır. Günlüğe yazmaz: türleri (ilk görülme sırasıyla) çağıran
+    `_log_bad`e verir."""
+    # `model` boş: modeli kaydın kendisinden (task_start) izle (uzun ömürlü oturum günlüğü). pencere > 0: yalnız o andan sonraki
     # istekler (günlük toplam). `write_mult`: önbellek YAZMA fiyatına çarpan (1h TTL yazma 2x = 5 dk 1,25x'in 1,6 katı).
     pi, po, pr, pw = anthropic_price(model or "opus-5-5")
-    tot = 0.0
-    problem = ""
+    tallies: Dict[float, list] = {since: [0.0, "", []] for since in windows}      # since -> [usd, sorun, atlanan türler]
+    every = list(tallies.values())
+
+    def _fail(why: str, into: Sequence[list]) -> None:
+        for tally in into:
+            tally[1] = why
+
+    def _skip(what: str, into: Sequence[list]) -> None:
+        for tally in into:
+            if what not in tally[2]:
+                tally[2].append(what)
+
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)      # FIFO açılışta bloklamasın
         try:
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 os.close(fd)
-                return 0.0, "normal dosya değil"
+                _fail("normal dosya değil", every)
+                return {since: (t[0], t[1], t[2]) for since, t in tallies.items()}
             f = os.fdopen(fd, "rb")
         except OSError:
             os.close(fd)
@@ -1885,7 +1907,7 @@ def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tu
                 try:
                     line = raw.decode("utf-8")
                 except UnicodeDecodeError:
-                    _log_bad("usage.line", path)      # yalnız bozuk satır atlanır; kalan istekler maliyete girer
+                    _skip("usage.line", every)      # yalnız bozuk satır atlanır; kalan istekler maliyete girer
                     continue
                 try:
                     rec = json.loads(line)
@@ -1905,19 +1927,19 @@ def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tu
                     t_rec, t_ok = math.inf, False
                 u = rec.get("usage")
                 if (not t_ok or not math.isfinite(t_rec)) and isinstance(u, dict):
-                    problem = "geçersiz zaman damgası"
+                    _fail("geçersiz zaman damgası", every)
                 if not math.isfinite(t_rec):
-                    _log_bad("usage.record", path)
+                    _skip("usage.record", every)
                     continue
-                if since_ms and t_rec < since_ms:
+                hit = [t for since, t in tallies.items() if not (since and t_rec < since)]      # kaydı sayan pencereler
+                if not hit:
                     continue
                 if not isinstance(u, dict) or rec.get("event") == "task_end":     # task_end: görevin TOPLAMI, istekler zaten sayıldı
                     continue
-                    continue
                 if any(u.get(n) is not None and not _usage_number(u[n]) for n in _USAGE_COUNT_KEYS):
-                    problem = "geçersiz sayaç"
+                    _fail("geçersiz sayaç", hit)
                 if not all(_finite(v) for v in u.values() if isinstance(v, (int, float))):
-                    _log_bad("usage.record", path)
+                    _skip("usage.record", hit)
                     continue
                 def g(*names: str) -> float:
                     for n in names:
@@ -1941,13 +1963,15 @@ def _scan_usage(path: str, model: str, since_ms: float, write_mult: float) -> Tu
                 if (pi, po, pr, pw) == ANTHROPIC_PRICES["haiku-5-5"] and inp + cr + cw > HAIKU_LONG_PROMPT:
                     long_in, out_price, read_price, write_price = HAIKU_LONG_PRICE
                     inp_price = long_in if inp_price == pi else write_price
-                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * out_price + cr * read_price
+                cost = (inp * inp_price + g("output_tokens", "completion_tokens") * out_price + cr * read_price
                         + cw * write_price * write_mult) / 1e6
+                for tally in hit:
+                    tally[0] += cost
     except FileNotFoundError:
         pass
     except OSError:
-        problem = "okunamadı"
-    return tot, problem
+        _fail("okunamadı", every)
+    return {since: (t[0], t[1], t[2]) for since, t in tallies.items()}
 
 
 def anthropic_spent_usd(reviews_root: str) -> float:

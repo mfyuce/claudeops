@@ -937,6 +937,7 @@ FILES = {
     "review_self_verify": ("reviewer doğrulaması", T8),
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
     "rsprov_cap_settings": ("bozuk ayar / geçersiz günlük USD tavanı (açılış kapısı)", SAG),
+    "rsprov_cost_one_pass": ("günlük tavan açılış denetimi: harcama günlüğü tek geçişte okunur", SAG),
     "rsprov_child_group": ("yardımcı alt sürecin zaman aşımında süreç grubu", f"{SAG}; {T10}"),
     "rsprov_help_utf8": ("UTF-8 olmayan yardım ve mcp add çıktısı (açılış)", SAG),
     "rsprov_chat_readers": (_HIST + " (bozuk bayt/biçim, ucli yarım satır)", CHAT),
@@ -1450,6 +1451,7 @@ tbd399_control_chars:5:bfcb26369c
 tbd399_live_switch:25:2807ab8040
 ucli_unpriced_model_cap:7:11fa4f0ea5
 rsprov_cap_settings:10:ec39da701f
+rsprov_cost_one_pass:12:5220e6a9d5
 rsprov_child_group:13:1224408fb8
 rsprov_help_utf8:6:88fc88f6f4
 review_self_verify:18:4b125a8002

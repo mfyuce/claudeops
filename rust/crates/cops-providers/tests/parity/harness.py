@@ -1086,10 +1086,11 @@ def op_g8x_ledger(a):
                 elif op == "problem":
                     r = ucli_cost._ledger_problem(args[0], base, mult())
                 elif op == "gate":       # `_claude_service_flags`in kapısı
-                    if ucli_cost.cap_exceeded(args[1], base):
-                        st = ucli_cost.state(args[1], base=base, use_cache=False)
-                        raise ucli_cost.DailyCapExceeded(st["today_usd"], st["cap_usd"])
-                    r = ucli_cost.reserve(args[0], args[1], base)
+                    with ucli_cost._one_read():
+                        if ucli_cost.cap_exceeded(args[1], base):
+                            st = ucli_cost.state(args[1], base=base, use_cache=False)
+                            raise ucli_cost.DailyCapExceeded(st["today_usd"], st["cap_usd"])
+                        r = ucli_cost.reserve(args[0], args[1], base)
                 elif op == "cap":
                     r = ucli_cost.cap_exceeded(args[0], base)
                 elif op == "reserve":

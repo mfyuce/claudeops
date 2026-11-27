@@ -5,6 +5,7 @@ oturumu açılmaz (`cap_exceeded`); çalışan oturumlara DOKUNULMAZ (sahibin el
 tablosu `review.ANTHROPIC_PRICES`, 1h yazma çarpanı 1,6 (= 2x / 1,25x), >100K istem kademesi ayrılmaz."""
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import time
@@ -96,6 +97,66 @@ def _day_start_ms(now: float) -> float:
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)) * 1000.0
 
 
+class _ReadPass:
+    """Tek bir açılış denetimi boyunca okunan günlükler: her dosya bir kez açılır, bütün pencereler o geçişte toplanır."""
+
+    def __init__(self) -> None:
+        self.at: Optional[float] = None          # pencerelerin saati: denetimin ilk taraması
+        self.windows: Tuple[float, ...] = ()
+        self.files: Dict[Tuple[str, float], Dict[float, Tuple[float, str, List[str]]]] = {}
+
+
+_PASS = threading.local()      # `.cur`: bu iş parçacığında süren açılış denetimi
+
+
+@contextlib.contextmanager
+def _one_read():
+    """İçindeki `cap_exceeded`/`state`/`reserve` çağrıları harcama dosyalarını bir kez okur. Blok bitince hiçbir şey
+    saklanmaz; başka iş parçacığını etkilemez."""
+    prev = getattr(_PASS, "cur", None)
+    _PASS.cur = _ReadPass()
+    try:
+        yield
+    finally:
+        _PASS.cur = prev
+
+
+def _rate_since(now: float, window_min: float) -> float:
+    return now * 1000.0 - window_min * 60_000.0
+
+
+def _window_clock(now: float, credit_since: str) -> float:
+    """`state`in taramada kullanacağı saat. Açılış denetiminde ilk taramanın saatidir (gün değişmedikçe): sonraki çağrılar
+    aynı pencereleri ister ve dosya yeniden okunmaz. Denetim dışında `now`."""
+    cur = getattr(_PASS, "cur", None)
+    if cur is None:
+        return now
+    if cur.at is None or _day_start_ms(cur.at) != _day_start_ms(now):
+        cur.at = now
+    cur.windows = (_day_start_ms(cur.at), _date_ms(credit_since), _rate_since(cur.at, 60.0), _rate_since(cur.at, 15.0))
+    return cur.at
+
+
+def _scan(path: str, since_ms: float, write_mult: float) -> Tuple[float, str]:
+    """`rv._scan_usage(path, "", ..)`; açılış denetiminde dosyanın tek okumasından (günlük olayları her çağrıda aynen)."""
+    cur = getattr(_PASS, "cur", None)
+    if cur is None:
+        return rv._scan_usage(path, "", since_ms, write_mult)
+    got = cur.files.get((path, write_mult))
+    if got is None or since_ms not in got:
+        got = cur.files[(path, write_mult)] = rv._scan_usage_windows(path, "", (since_ms, *cur.windows), write_mult)
+    usd, problem, skipped = got[since_ms]
+    for what in skipped:
+        rv._log_bad(what, path)
+    return usd, problem
+
+
+def _usd(path: str, since_ms: float, write_mult: float) -> float:
+    if getattr(_PASS, "cur", None) is None:
+        return rv.usage_cost_usd(path, "", since_ms=since_ms, write_mult=write_mult)
+    return _scan(path, since_ms, write_mult)[0]
+
+
 def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT) -> Dict[str, float]:
     """Bugünkü (yerel gün) $ — OTURUM (kodcu) başına: {oturum günlük adı (.jsonl'siz): usd}. Dizin yoksa {}."""
     t = time.time() if now is None else now
@@ -107,7 +168,7 @@ def per_session_usd(now: Optional[float] = None, base: str = USAGE_DIR, write_mu
                 continue
         except OSError:
             continue
-        out[name] = out.get(name, 0.0) + rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
+        out[name] = out.get(name, 0.0) + _usd(p, since, write_mult)
     return out
 
 
@@ -122,7 +183,7 @@ def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base:
         return {}
     if win <= 0:
         return {}
-    since = t * 1000.0 - win * 60_000.0
+    since = _rate_since(t, win)
     out: Dict[str, float] = {}
     for name, p in _logs(base):
         try:
@@ -130,7 +191,7 @@ def rate_by_session(now: Optional[float] = None, window_min: float = 60.0, base:
                 continue
         except OSError:
             continue
-        usd = rv.usage_cost_usd(p, "", since_ms=since, write_mult=write_mult)
+        usd = _usd(p, since, write_mult)
         if usd > 0:
             out[name] = out.get(name, 0.0) + usd * 60.0 / win
     return out
@@ -151,7 +212,7 @@ def total_usd(base: str = USAGE_DIR, write_mult: float = CACHE_1H_WRITE_MULT, si
                 continue        # dönem başlamadan önce son yazılmış günlük: o döneme harcama yazamaz
         except OSError:
             continue
-        out += rv.usage_cost_usd(p, "", since_ms=since_ms, write_mult=write_mult)
+        out += _usd(p, since_ms, write_mult)
     return out
 
 
@@ -197,9 +258,10 @@ def state(now: Optional[float] = None, base: str = USAGE_DIR, use_cache: bool = 
     snap = dict(_CACHE)     # yanıt YALNIZ bu kopyadan okunur: arada gelen invalidate() tavan denetimine 0 USD göstermesin
     if not use_cache or t - snap["at"] > _TTL or snap["day"] != time.strftime("%Y-%m-%d", time.localtime(t)):
         mult = write_mult(cfg)
-        by = per_session_usd(t, base, mult)
+        st = _window_clock(t, cfg.get("credit_since") or "")
+        by = per_session_usd(st, base, mult)
         snap = dict(at=t, total=total_usd(base, mult, _date_ms(cfg.get("credit_since") or "")), usd=sum(by.values()), by=by, day=time.strftime("%Y-%m-%d", time.localtime(t)),
-                      rate_1h=rate_by_session(t, 60.0, base, mult), rate_15m=rate_by_session(t, 15.0, base, mult))
+                      rate_1h=rate_by_session(st, 60.0, base, mult), rate_15m=rate_by_session(st, 15.0, base, mult))
         _CACHE.update(snap)
     cap = float(cfg["daily_cap_usd"])
     usd = float(snap["usd"])
@@ -262,7 +324,7 @@ def _ledger_problem(now: float, base: str, write_mult: float) -> str:
                 continue
             except OSError:
                 return f"{n}: okunamadı"
-            why = rv._scan_usage(p, "", since, write_mult)[1]
+            why = _scan(p, since, write_mult)[1]
             if why:
                 return f"{n}: {why}"
     return ""

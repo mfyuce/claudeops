@@ -11,8 +11,9 @@ use cops_providers::real::{RealDeps, RealProbe};
 use cops_providers::settings::UcliCostConfig;
 use cops_providers::{BuildArgs, BuildOutput, Cli, ModelCatalog, Providers, Settings};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -606,4 +607,281 @@ fn a_panic_while_reserving_does_not_poison_later_starts() {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.reserve("a", 1.0))).is_err()
     );
     b.reserve("a", 1.0).unwrap();
+}
+
+// ---- §3.7 (S5 = b): açılış denetimi her günlüğü TEK geçişte okur ----
+
+/// `f` süresince `dirs`teki dosyaların açılış sayısı (inotify). Kapanışlar da izlenir: aynı dosyanın ardışık açılışları
+/// kuyrukta tek olayda birleşmesin. Anahtar `<dizin sırası>/<ad>`.
+fn opens(dirs: &[&str], f: impl FnOnce()) -> BTreeMap<String, usize> {
+    // SAFETY: bayraklar geçerli; dönen tanıtıcı aşağıda `File`a devredilir.
+    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+    assert!(fd >= 0, "inotify açılamadı");
+    // SAFETY: `fd` az önce açıldı ve başka sahibi yok.
+    let mut queue = unsafe { <fs::File as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+    let mask = libc::IN_OPEN | libc::IN_CLOSE_NOWRITE | libc::IN_CLOSE_WRITE;
+    let watches: Vec<i32> = dirs
+        .iter()
+        .map(|d| {
+            let c = std::ffi::CString::new(*d).unwrap();
+            // SAFETY: geçerli tanıtıcı ve NUL sonlu yol.
+            let w = unsafe { libc::inotify_add_watch(fd, c.as_ptr(), mask) };
+            assert!(w >= 0, "izlenemedi: {d}");
+            w
+        })
+        .collect();
+    f();
+    let mut seen = BTreeMap::new();
+    let mut buf = [0u8; 16384];
+    loop {
+        let n = match queue.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(e) => panic!("{e}"),
+        };
+        let mut at = 0;
+        // struct inotify_event { i32 wd; u32 mask, cookie, len; char name[len] }
+        while at < n {
+            let word =
+                |i: usize| u32::from_ne_bytes(buf[at + 4 * i..at + 4 * i + 4].try_into().unwrap());
+            let (wd, mask, len) = (word(0) as i32, word(1), word(3) as usize);
+            assert_eq!(mask & libc::IN_Q_OVERFLOW, 0);
+            let name: Vec<u8> = buf[at + 16..at + 16 + len]
+                .iter()
+                .copied()
+                .take_while(|b| *b != 0)
+                .collect();
+            if mask & libc::IN_OPEN != 0 && mask & libc::IN_ISDIR == 0 && !name.is_empty() {
+                let dir = watches.iter().position(|w| *w == wd).unwrap();
+                let key = format!("{dir}/{}", String::from_utf8_lossy(&name));
+                *seen.entry(key).or_insert(0) += 1;
+            }
+            at += 16 + len;
+        }
+    }
+    seen
+}
+
+/// Ortak dizin + ikinci örneğin dizini; her pencereye düşen kayıtlar ve dönemden eski bir dosya.
+fn two_dirs(t: &Tmp) -> (String, String) {
+    let n = noon();
+    let mixed = [n, n - 300.0, n - 1800.0, n - 3.0 * 86400.0]
+        .map(|at| rec(at, 100_000))
+        .concat();
+    put(t, "good.jsonl", &mixed);
+    let old = put(t, "eski.jsonl", &rec(n - 3.0 * 86400.0, 100_000));
+    set_mtime(&old, n - 3.0 * 86400.0);
+    for (name, body) in [
+        ("good.jsonl", rec(n, 7000)),
+        ("yeni.jsonl", rec(n - 1200.0, 5000)),
+    ] {
+        let path = t.write(&format!("own/{name}"), &body, 0o600);
+        set_mtime(&path, n);
+    }
+    (t.path("usage"), t.path("own"))
+}
+
+fn dated(cap: f64, since: &str) -> CostSettings {
+    let mut cfg = config(cap, 100.0);
+    cfg.credit_since = since.to_string();
+    fixed(cfg)
+}
+
+#[test]
+fn every_log_is_opened_once_per_start() {
+    let t = Tmp::new();
+    let (shared, own) = two_dirs(&t);
+    let want = |extra: &[&str]| {
+        [
+            "0/good.jsonl",
+            "0/eski.jsonl",
+            "1/good.jsonl",
+            "1/yeni.jsonl",
+        ]
+        .iter()
+        .chain(extra)
+        .map(|k| (k.to_string(), 1))
+        .collect::<BTreeMap<_, _>>()
+    };
+    let ledger = |cap: f64| CostLedger::new(&shared, dated(cap, "")).with_write_dir(own.clone());
+    let dirs = [shared.as_str(), own.as_str()];
+
+    // izin verilen açılış
+    let got = opens(&dirs, || {
+        ledger(1e9).check_and_reserve_at("s", noon()).unwrap()
+    });
+    assert_eq!(got, want(&[]));
+    // tavan aşıldı
+    let got = opens(&dirs, || {
+        let r = ledger(0.001).check_and_reserve_at("s", noon());
+        assert!(matches!(r, Err(CostRefusal::CapExceeded { .. })), "{r:?}");
+    });
+    assert_eq!(got, want(&[]));
+    // kredi dönemi: dönemden önce son yazılmış dosya hiç açılmaz
+    let since = ledger_day(noon() - 86400.0);
+    let b = CostLedger::new(&shared, dated(1e9, &since)).with_write_dir(own.clone());
+    let got = opens(&dirs, || b.check_and_reserve_at("s", noon()).unwrap());
+    let mut trimmed = want(&[]);
+    trimmed.remove("0/eski.jsonl");
+    assert_eq!(got, trimmed);
+    // sayılamayan harcama ve kapalı tavan
+    put(
+        &t,
+        "bozuk.jsonl",
+        &format!(
+            "{{\"t\": {}, \"usage\": {{\"input_tokens\": -1}}}}\n",
+            noon() * 1000.0
+        ),
+    );
+    let got = opens(&dirs, || {
+        let r = ledger(1e9).check_and_reserve_at("s", noon());
+        assert_eq!(
+            r,
+            Err(CostRefusal::Unverifiable(
+                "bozuk.jsonl: geçersiz sayaç".into()
+            ))
+        );
+    });
+    assert_eq!(got, want(&["0/bozuk.jsonl"]));
+    let got = opens(&dirs, || {
+        ledger(0.0).check_and_reserve_at("s", noon()).unwrap()
+    });
+    assert_eq!(got, want(&["0/bozuk.jsonl"]));
+}
+
+#[test]
+fn nothing_is_kept_between_two_starts() {
+    let t = Tmp::new();
+    put(&t, "a.jsonl", &rec(noon(), 1000));
+    let b = book(&t, 100.0);
+    b.check_and_reserve("s").unwrap();
+    put(&t, "a.jsonl", &rec(noon(), 1_000_000_000));
+    assert!(matches!(
+        b.check_and_reserve("s"),
+        Err(CostRefusal::CapExceeded { .. })
+    ));
+}
+
+/// Eski kapı: `cap_exceeded` + `reserve`, her biri dosyaları kendi okur (ikisi de tek tek hâlâ öyle).
+fn separate_reads(b: &CostLedger, session: &str, now: f64, cap: f64) -> Result<(), CostRefusal> {
+    if b.cap_exceeded(now)? {
+        let today = num(&b.state(now, false), "today_usd");
+        return Err(CostRefusal::CapExceeded {
+            today_usd: today,
+            cap_usd: cap,
+        });
+    }
+    b.reserve(session, now)
+}
+
+#[test]
+fn the_start_gate_decides_like_the_separate_reads() {
+    let mut seed = 0x2026_1127_u64;
+    let mut rng = move |n: u64| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed % n
+    };
+    let n = noon();
+    let ms = n * 1000.0;
+    let deep = format!(
+        "{{\"t\": {ms}, \"usage\": {{\"input_tokens\": 1000}}, \"x\": {}{}}}",
+        "[".repeat(513),
+        "]".repeat(513)
+    );
+    let odd: Vec<Vec<u8>> = [
+        "{yarim",
+        "{\"t\": NOW, \"usage\": {\"input_tokens\": -1}}",
+        "{\"t\": OLD, \"usage\": {\"input_tokens\": -1}}",
+        "{\"t\": NOW, \"usage\": {\"input_tokens\": Infinity}}",
+        "{\"t\": OLD, \"usage\": {\"output_tokens\": NaN}}",
+        "{\"t\": \"abc\", \"usage\": {\"input_tokens\": 5}}",
+        "{\"t\": NaN, \"usage\": {\"input_tokens\": 5}}",
+        "{\"t\": NOW, \"n\": \"\\ud800\", \"usage\": {\"input_tokens\": 500000}}",
+        "{\"event\": \"task_start\", \"model\": \"claude-haiku-5-5\"}",
+        "{\"event\": \"task_start\", \"model\": \"claude-sonnet-5-5\"}",
+        "{\"t\": NOW, \"event\": \"task_end\", \"usage\": {\"input_tokens\": 9000000}}",
+    ]
+    .iter()
+    .map(|s| {
+        s.replace("NOW", &ms.to_string())
+            .replace("OLD", &(ms - 3.0 * 86400e3).to_string())
+            .into_bytes()
+    })
+    .chain([deep.into_bytes(), b"\xff\xfe".to_vec()])
+    .collect();
+    let mut kinds = BTreeMap::new();
+    let mut logged = 0;
+    for round in 0..400 {
+        let t = Tmp::new();
+        fs::create_dir(t.path("usage")).unwrap();
+        fs::create_dir(t.path("own")).unwrap();
+        for i in 0..1 + rng(4) {
+            let dir = if rng(3) == 0 { "own" } else { "usage" };
+            let path = t.path(&format!("{dir}/o{i}.jsonl"));
+            let broken = rng(3) == 0;
+            let mut body = Vec::new();
+            for _ in 0..1 + rng(8) {
+                if broken && rng(2) == 0 {
+                    body.extend_from_slice(&odd[rng(odd.len() as u64) as usize]);
+                    body.push(b'\n');
+                } else {
+                    let at = n - [0, 300, 1800, 10800, 259_200, 3_456_000][rng(6) as usize] as f64;
+                    body.extend_from_slice(rec(at, rng(400_000)).as_bytes());
+                }
+            }
+            fs::write(&path, body).unwrap();
+            set_mtime(&path, n - [0, 0, 600, 259_200][rng(4) as usize] as f64);
+        }
+        if rng(20) == 0 {
+            fs::create_dir(t.path("usage/dizin.jsonl")).unwrap();
+            set_fifo_time(&t.path("usage/dizin.jsonl"));
+        }
+        let cap = [0.0, 1e-9, 0.3, 2.0, 1e9][rng(5) as usize];
+        let since = ["".to_string(), ledger_day(n - 5.0 * 86400.0)][rng(2) as usize].clone();
+        let make =
+            || CostLedger::new(t.path("usage"), dated(cap, &since)).with_write_dir(t.path("own"));
+        let run = |old: bool| {
+            ledger::forget_bad_records();
+            drop(ledger::take_bad_record_diags());
+            let b = make();
+            // başka bir oturumun duran payı
+            let held = b.reserve("a", n).is_ok();
+            ledger::forget_bad_records();
+            drop(ledger::take_bad_record_diags());
+            let got = if old {
+                separate_reads(&b, "s", n, cap)
+            } else {
+                b.check_and_reserve_at("s", n)
+            };
+            // günlük süreç genelinde: yalnız bu ağacın olayları
+            let own_tree = t.path("");
+            let events: Vec<String> = ledger::take_bad_record_diags()
+                .iter()
+                .map(|d| format!("{d:?}"))
+                .filter(|d| d.contains(&own_tree))
+                .collect();
+            // `to_string`: aynı toplam bit bit
+            (
+                held,
+                got.map_err(|e| e.to_string()),
+                b.state(n, true).to_string(),
+                b.reserved_sessions(),
+                events,
+            )
+        };
+        let (old, new) = (run(true), run(false));
+        assert_eq!(new, old, "tur {round}");
+        logged += new.4.len();
+        let kind = match &new.1 {
+            Ok(()) => "ok",
+            Err(e) if e.contains("aşıldı") => "tavan",
+            Err(_) => "sayilamiyor",
+        };
+        *kinds.entry(kind).or_insert(0) += 1;
+    }
+    assert_eq!(kinds.len(), 3, "{kinds:?}");
+    assert!(logged > 0, "günlük olayı hiç karşılaştırılmadı");
 }

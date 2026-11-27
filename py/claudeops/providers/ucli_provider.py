@@ -594,10 +594,11 @@ def _claude_service_flags(argv: List[str], session_name: str, cwd: str = "") -> 
     aşıldıysa REDDET; `--cache-ttl` (ayar, varsayılan 1h: insan hızında turlar arası 5 dk önbelleği soğutur), `--max-output-tokens`
     16000 (4096'da uzun bir write_file araç argümanının ortasında kesiliyordu), `--usage-log` (dolar sayacı: `ucli_cost`),
     `--instructions-auto` (AGENTS.md/CLAUDE.md). Her bayrak YALNIZ ikili tanıyorsa eklenir, yoksa günlüğe yazılır."""
-    if ucli_cost.cap_exceeded():
-        st = ucli_cost.state(use_cache=False)
-        raise ucli_cost.DailyCapExceeded(st['today_usd'], st['cap_usd'])
-    ucli_cost.reserve(session_name)      # eşanlı başlatmalar: her biri kısa süreli pay ayırır (tavan aşılırsa DailyCapExceeded)
+    with ucli_cost._one_read():      # kapının bütün adımları harcama günlüklerini birlikte, dosya başına bir kez okur
+        if ucli_cost.cap_exceeded():
+            st = ucli_cost.state(use_cache=False)
+            raise ucli_cost.DailyCapExceeded(st['today_usd'], st['cap_usd'])
+        ucli_cost.reserve(session_name)      # eşanlı başlatmalar: her biri kısa süreli pay ayırır (tavan aşılırsa DailyCapExceeded)
     binary = argv[0]
     cfg = ucli_cost_config()
     argv = _set_flag_value(argv, "--max-output-tokens", "16000")
