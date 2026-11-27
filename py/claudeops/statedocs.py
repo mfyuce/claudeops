@@ -30,14 +30,22 @@ def backend() -> str:
         if now - _CACHE["at"] < 5.0:
             return _CACHE["mode"]
         mode = "files"
+        path = None
         try:
             from .paths import CLAUDEOPS_DIR
-            with open(os.path.join(CLAUDEOPS_DIR, "settings.json"), encoding="utf-8") as f:
+            path = os.path.join(CLAUDEOPS_DIR, "settings.json")
+            with open(path, encoding="utf-8") as f:
                 v = str((json.load(f) or {}).get("store_backend") or "").strip().lower()
             if v in MODES:
                 mode = v
-        except (OSError, ValueError, AttributeError):
+            _CACHE["good"] = (path, mode)
+        except FileNotFoundError:
             pass
+        except (OSError, ValueError, AttributeError):
+            # bozuk/okunamayan ayar dosyası canlı `db` kipini sessizce `files`a çevirmesin (TBD#374 S2/S7)
+            good = _CACHE.get("good")
+            if good and good[0] == path:
+                mode = good[1]
         _CACHE.update(at=now, mode=mode)
         return mode
 
@@ -127,6 +135,36 @@ def _sig(path: str):
         return None
 
 
+_FALLBACKS: dict = {}   # ad -> db okuması hata verip dosyaya düşme sayısı (düşen okuma önbelleğe girmesin)
+
+
+def _db_stamp(name: str, path: str) -> Optional[tuple]:
+    """db kipinde okuyucu önbelleğinin damgası (DB satır sürümü + yazım anı). None = önbelleğe ALMA: kip db değil, yol
+    durum dizini dışında, son DB yazımı başarısız (dosya daha yeni), satır yok ya da DB okunamıyor."""
+    if _effective(name) != "db" or not _db_ok(path) or name in _DIRTY:
+        return None
+    try:
+        from .store import default_store
+        st = default_store()
+        row = st._doc_stamp(name)
+    except Exception:
+        return None
+    return None if row is None else (str(st.path), row, _FALLBACKS.get(name, 0))
+
+
+def db_truth(name: str, path: str) -> Any:
+    """AYNA dosya bozukken kullanılacak DB değeri. None = DB doğruluğu kesin değil (kip db değil, yol durum dizini
+    dışında, son DB yazımı başarısız, satır yok ya da DB okunamıyor): çağıran bozuk dosyayı reddetsin."""
+    if _effective(name) != "db" or not _db_ok(path) or name in _DIRTY:
+        return None
+    try:
+        from .store import default_store
+        return default_store().get_doc(name)
+    except Exception as e:
+        _log(f"read {name}: {e!r} (ayna bozuk)")
+        return None
+
+
 def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = True, on_corrupt: Any = None) -> Any:
     """`dual`: DOSYA doğruluk kaynağı, DB gölge kopya (uzun yaşayan eski kodlu süreçler yalnız dosyaya yazabilir; elle düzenleme
     ezilmez). Dosya imzası (mtime,size) son eşitlemeden değiştiyse DB ile karşılaştırılır, fark loglanır ve DB uydurulur;
@@ -168,6 +206,7 @@ def read_json(name: str, path: str, default: Any = None, *, file_truth: bool = T
             return v
         return default
     except Exception as e:                       # DB sorunu geçişi kırmasın
+        _FALLBACKS[name] = _FALLBACKS.get(name, 0) + 1
         _log(f"read {name}: {e!r} -> dosya")
         return _file_read(path, default, on_corrupt)
 

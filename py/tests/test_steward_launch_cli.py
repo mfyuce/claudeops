@@ -1,5 +1,5 @@
 """TBD#156: değnekçi devir/yeniden açma/start oturumu BAŞLADIĞI cli + cli_opts ile açar (instances.json son kayıt;
-roster cli yalnız kayıt yoksa yedek). Gerçek spawn/tmux/ağ YOK; `inst_mod.load_instances` sahte, INSTANCES_JSON geçici.
+roster cli yalnız kayıt yoksa yedek). Gerçek spawn/tmux/ağ YOK; kayıt okuması (`inst_mod._shared`) sahte, INSTANCES_JSON geçici.
 Çalıştırma: python3 -m unittest discover -s py/tests"""
 import os
 import sys
@@ -17,7 +17,7 @@ UREC = {"cli": "ucli", "model": "claude-sonnet-5-5", "effort": "medium", "cli_op
 
 
 def recs(**r):
-    return mock.patch.object(inst, "load_instances", lambda: dict(r))
+    return mock.patch.object(inst, "_shared", lambda: dict(r))
 
 
 class LaunchKwargsTest(unittest.TestCase):

@@ -186,11 +186,18 @@ def check_target(host: str, name: str) -> None:
 
 
 def find_row(status: dict, host: str, name: str) -> Optional[dict]:
-    """`/api/status` toplu yanıtında (host, ad) satırı. Aynı ad birden çok host'ta olabilir (`mgw…` yerelde ve uzakta)."""
-    for s in status.get("sessions") or []:
-        if s.get("name") == name and (s.get("host") or LOCAL_HOST) == host:
-            return s
-    return None
+    """`/api/status` toplu yanıtında (host, ad) satırı. Aynı ad birden çok host'ta olabilir (`mgw…` yerelde ve uzakta).
+    Aynı host'ta adaş satırlar: tek çalışan; çalışan yoksa klasörleri ortaksa ilki; aksi belirsiz (None, TBD#390)."""
+    hits = _named_rows(status, host, name)
+    live = [s for s in hits if s.get("running")]
+    if live:
+        return live[0] if len(live) == 1 else None
+    return hits[0] if hits and len({str(s.get("cwd") or "") for s in hits}) == 1 else None
+
+
+def _named_rows(status: dict, host: str, name: str) -> list:
+    return [s for s in status.get("sessions") or []
+            if s.get("name") == name and (s.get("host") or LOCAL_HOST) == host]
 
 
 def _cli_options(status: dict, host: str, cli: str) -> dict:
@@ -298,6 +305,8 @@ def run_action(client: PanelClient, action_id: str, host: str, name: str, *,
     except PanelError as e:
         return Result(False, f"✗ {action.label}: panel durumu alınamadı: {e.detail}")
     row = find_row(status, host, name)
+    if row is None and len(_named_rows(status, host, name)) > 1:
+        return Result(False, f"✗ {action.label}: {host}:{name} adında birden çok oturum var; hedef belirsiz, eylem yapılmadı")
     problem = preflight(action, row, host, name)
     if problem:
         return Result(False, f"✗ {action.label}: {problem}")

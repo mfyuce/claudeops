@@ -12,6 +12,7 @@ from types import SimpleNamespace as NS
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from claudeops import atomic_json
 from claudeops import atomic_json, files, hosts, settings, snapshot  # noqa: E402
 
 
@@ -188,8 +189,9 @@ class TestHostsLock(unittest.TestCase):
         hj = os.path.join(d, "hosts.json")
         os.symlink(victim, hj + ".lock")                 # dangling: O_CREAT onu izlerse hedef OLUŞUR
         with mock.patch.object(hosts, "HOSTS_JSON", hj):
-            with hosts._write_txn():                     # kilit alınamaz; thread kilidiyle devam
-                pass
+            with self.assertRaises(atomic_json.LockError):   # kilit alınamaz: gövde çalışmaz (TBD#374 S5)
+                with hosts._write_txn():
+                    self.fail("kilitsiz gövde çalıştı")
         self.assertFalse(os.path.exists(victim))
         self.assertTrue(os.path.islink(hj + ".lock"))
 

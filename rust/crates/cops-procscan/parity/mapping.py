@@ -892,6 +892,7 @@ FILES = {
     "chat_compaction_view": (_HIST, CHAT),
     "check_cmd": ("`cops check` komutu", T6),
     "claude_models_store": ("model listesi belgesi", f"{W0A}; {SAG}"),
+    "context_mask_unknown": ("`/context` maske denetimi (TBD#367)", f"{T2}; {W0B}"),
     "copilot_trust": ("klasöre güven kaydı", T4),
     "cpu_hogs": ("CPU yakan süreç uyarısı", T7),
     "diag_log_isolation": (_PATHS, W0A),
@@ -918,6 +919,10 @@ FILES = {
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
+    "state_backend_last_good": (_PATHS, W0A),
+    "state_instances_cache_copy": (_PATHS, W0A),
+    "state_instances_corrupt_mirror": (_PATHS, W0A),
+    "state_instances_db_version_cache": (_PATHS, W0A),
     "statedocs": (_PATHS, W0A),
     "statedocs_hosts_diag": (_PATHS, W0A),
     "statedocs_writers": (_PATHS, W0A),
@@ -940,6 +945,7 @@ FILES = {
     "stopped_session_chat": ("durmuş oturumun sohbeti", CHAT),
     "store_tsv": (_PATHS, W0A),
     "stuck_kills_parent": ("takılan oturumu kurtarma", T4),
+    "tmux_list_utf8": ("tmux liste sorgularında UTF-8 (TBD#366 P5)", W0B),
     "ucli_agents": ("ucli alt ajan bayrak/env", SAG),
     "ucli_ask_dir": ("ucli `--ask-dir`", SAG),
     "ucli_brain_mcp": ("ucli MCP kaydı ve beyin argv'si", f"{SAG}; {T10}"),
@@ -1373,6 +1379,7 @@ cache_info:12:9f2b8b4e3c
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
+context_mask_unknown:3:9d143dbe0c
 copilot_trust:4:005b70de22
 cpu_hogs:3:887f0c1e4a
 diag_log_isolation:2:5ecbb7a6c7
@@ -1397,6 +1404,10 @@ review_self_verify:18:4b125a8002
 routing_guidance:13:964131411b
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
+state_backend_last_good:3:5531228f00
+state_instances_cache_copy:2:22e22aae4c
+state_instances_corrupt_mirror:6:27e0a53c31
+state_instances_db_version_cache:5:aeb31a0dc5
 statedocs:15:dbd456badd
 statedocs_hosts_diag:4:a184027db4
 statedocs_writers:7:817e74b52a
@@ -1415,10 +1426,11 @@ steward_remote_facts:19:8999b83aa6
 steward_ucli_idle:47:59d0c5886e
 steward_ucli_send:16:193aaaa4bf
 steward_ui_api:19:922b3bb2a8
-stop_with_handover:30:1888241d42
+stop_with_handover:34:841cd91175
 stopped_session_chat:29:b4c521a883
 store_tsv:6:310f8c657f
 stuck_kills_parent:4:f6dcaf3ebf
+tmux_list_utf8:3:1f73edfe38
 ucli_agents:14:5ef9105ef1
 ucli_ask_dir:6:78468c20fd
 ucli_brain_mcp:26:f5509e6d5a

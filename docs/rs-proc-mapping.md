@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 549 | 153 | 396 | 0 |
-| test durumu (116 dosya) | 1579 | 115 | 1464 | 0 |
+| test durumu (122 dosya) | 1605 | 115 | 1490 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -435,56 +435,56 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `providers/agy_provider.py::CONVERSATIONS_CACHE` | sabit:84 | karşılandı | `lib.rs::Config.agy_cache`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_sessions` | yok |
-| `providers/agy_provider.py::CONVERSATIONS_DIR` | sabit:85 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AGY_SIDS_JSON` | sabit:94 | karşılandı | `lib.rs::Config.agy_sids`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | yok |
-| `providers/agy_provider.py::_STEP_TYPE_USER` | sabit:98 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_STEP_TYPE_ASSISTANT` | sabit:99 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_STEP_TYPE_CHECKPOINT` | sabit:101 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_read_varint` | işlev:104 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_iter_fields` | işlev:116 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_get_bytes_field` | işlev:144 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_get_text_field` | işlev:160 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_step_user_text` | işlev:165 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_step_assistant_text` | işlev:172 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::_conversation_ids` | işlev:179 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::PERMISSION_MODES` | sabit:187 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::EFFORT_LEVELS` | sabit:188 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::BUSY_STATUS_PATTERN` | sabit:195 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/agy_provider.py::_PERMISSION_FLAGS` | sabit:197 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::_MODELS_TTL` | sabit:203 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::_load_agy_sids` | işlev:206 | karşılandı | `providers.rs::AgyState::load`<br>`providers.rs::read_object` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | sapma 3: DB yerine dosya aynası okunur (DB okuma W0-a) |
-| `providers/agy_provider.py::_remember_agy_sid` | işlev:215 | karşılandı | `providers.rs::AgyState::resolve`<br>`providers.rs::AgyState.learned` | `providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | yalnız 'yazılacak mı' kararı; KİLİTLİ YAZIM TAŞINMADI (W0-a durum (rs/state); T1 (durum) bağlanmadan şart, sapma 3) |
-| `providers/agy_provider.py::_sid_claimed_by_other` | işlev:230 | karşılandı | `providers.rs::AgyState::resolve` | `providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
-| `providers/agy_provider.py::AgyProvider` | sınıf:237 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
-| `providers/agy_provider.py::AgyProvider.name` | sabit:238 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/agy_provider.py::AgyProvider.__init__` | işlev:240 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.resolve_resume_id` | işlev:244 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
-| `providers/agy_provider.py::AgyProvider.build_inner_command` | işlev:271 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.env_overrides` | işlev:320 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.mcp_setup_command` | işlev:323 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.matches_proc` | işlev:333 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/agy_provider.py::AgyProvider.extract_name` | işlev:336 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/agy_provider.py::AgyProvider.extract_info` | işlev:343 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::AgyState::resolve` | `golden.rs::provider_detect_and_info`<br>`providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
-| `providers/agy_provider.py::AgyProvider._fetch_models` | işlev:380 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.model_choices` | işlev:394 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.permission_modes` | işlev:411 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.effort_levels` | işlev:414 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.model_effort_levels` | işlev:417 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.busy_status_pattern` | işlev:430 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/agy_provider.py::AgyProvider.usage_command` | işlev:433 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_fresh_argv` | işlev:444 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_auth_missing` | işlev:449 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.parse_fresh_usage` | işlev:454 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_needs_dismiss` | işlev:457 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/agy_provider.py::AgyProvider.parse_usage_text` | işlev:467 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:498 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:528 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:554 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.full_history` | işlev:573 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:591 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.snapshot_for_live_sid` | işlev:601 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
-| `providers/agy_provider.py::AgyProvider.discover_live_sid` | işlev:611 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::CONVERSATIONS_CACHE` | sabit:85 | karşılandı | `lib.rs::Config.agy_cache`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_sessions` | yok |
+| `providers/agy_provider.py::CONVERSATIONS_DIR` | sabit:86 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AGY_SIDS_JSON` | sabit:95 | karşılandı | `lib.rs::Config.agy_sids`<br>`lib.rs::Config::from_env` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | yok |
+| `providers/agy_provider.py::_STEP_TYPE_USER` | sabit:99 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_STEP_TYPE_ASSISTANT` | sabit:100 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_STEP_TYPE_CHECKPOINT` | sabit:102 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_read_varint` | işlev:105 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_iter_fields` | işlev:117 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_get_bytes_field` | işlev:145 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_get_text_field` | işlev:161 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_step_user_text` | işlev:166 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_step_assistant_text` | işlev:173 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::_conversation_ids` | işlev:180 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::PERMISSION_MODES` | sabit:188 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::EFFORT_LEVELS` | sabit:189 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::BUSY_STATUS_PATTERN` | sabit:196 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/agy_provider.py::_PERMISSION_FLAGS` | sabit:198 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::_MODELS_TTL` | sabit:204 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::_load_agy_sids` | işlev:207 | karşılandı | `providers.rs::AgyState::load`<br>`providers.rs::read_object` | `tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | sapma 3: DB yerine dosya aynası okunur (DB okuma W0-a) |
+| `providers/agy_provider.py::_remember_agy_sid` | işlev:216 | karşılandı | `providers.rs::AgyState::resolve`<br>`providers.rs::AgyState.learned` | `providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files`<br>`run.py:scan_agy_learned` | yalnız 'yazılacak mı' kararı; KİLİTLİ YAZIM TAŞINMADI (W0-a durum (rs/state); T1 (durum) bağlanmadan şart, sapma 3) |
+| `providers/agy_provider.py::_sid_claimed_by_other` | işlev:234 | karşılandı | `providers.rs::AgyState::resolve` | `providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
+| `providers/agy_provider.py::AgyProvider` | sınıf:241 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
+| `providers/agy_provider.py::AgyProvider.name` | sabit:242 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/agy_provider.py::AgyProvider.__init__` | işlev:244 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.resolve_resume_id` | işlev:248 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.build_inner_command` | işlev:275 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.env_overrides` | işlev:324 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.mcp_setup_command` | işlev:327 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.matches_proc` | işlev:337 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/agy_provider.py::AgyProvider.extract_name` | işlev:340 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/agy_provider.py::AgyProvider.extract_info` | işlev:347 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::AgyState::resolve` | `golden.rs::provider_detect_and_info`<br>`providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
+| `providers/agy_provider.py::AgyProvider._fetch_models` | işlev:384 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.model_choices` | işlev:398 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.permission_modes` | işlev:415 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.effort_levels` | işlev:418 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.model_effort_levels` | işlev:421 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.busy_status_pattern` | işlev:434 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/agy_provider.py::AgyProvider.usage_command` | işlev:437 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_fresh_argv` | işlev:448 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_auth_missing` | işlev:453 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.parse_fresh_usage` | işlev:458 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_needs_dismiss` | işlev:461 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/agy_provider.py::AgyProvider.parse_usage_text` | işlev:471 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:502 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:532 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:558 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.full_history` | işlev:577 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:595 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.snapshot_for_live_sid` | işlev:605 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.discover_live_sid` | işlev:615 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
 
 ### `py/claudeops/providers/shell_provider.py`
 
@@ -657,40 +657,40 @@ Yok.
 | `paths.py::_test_code_loaded` | işlev:9 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
 | `paths.py::_under_test_runner` | işlev:24 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
 | `paths.py::CLAUDEOPS_DIR` | sabit:45 | karşılandı | `lib.rs::Config::from_env` | `run.py:scan_agy_learned` | yalnız canlı parite `CLAUDEOPS_DIR` ile koşar; test yalıtımı kuralı `_under_test_runner` satırında |
-| `paths.py::STATE_DIR` | sabit:46 | karşılandı | `needs_ho.rs::NeedsHo.state_dir`<br>`needs_ho.rs::NeedsHo::new` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | dizini çağıran verir |
-| `paths.py::REPO_DIR` | sabit:50 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::ROSTER_TSV` | sabit:52 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::MODELS_TSV` | sabit:53 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::CLAUDE_MODELS_JSON` | sabit:54 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::SESSIONS_DIR` | sabit:56 | karşılandı | `discovery.rs::sessions_from_json` | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
-| `paths.py::PROJECTS_DIR` | sabit:57 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid` | yok |
-| `paths.py::CONFIG_JSON` | sabit:58 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::parse_proc_stat` | işlev:60 | karşılandı | `procfs.rs::parse_stat` | `procfs.rs::stat_with_parens_in_comm` | dört alan döner; `)` yoksa istisna yerine `None` |
-| `paths.py::proc_stat_fields` | işlev:66 | karşılandı | `procfs.rs::OwnProc::try_stat`<br>`procfs.rs::OwnProc::stat` | `tests/fake_proc.rs::broken_proc_fields` | yalnız kendi kullanıcımızın süreci |
-| `paths.py::proc_ppid` | işlev:72 | karşılandı | `procfs.rs::Stat.ppid` | `tests/fake_proc.rs::own_ppid_from_real_proc` | yok |
-| `paths.py::ucli_key_file` | işlev:76 | kapsam dışı | yok | yok | ucli anahtar dosyası yolu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `paths.py::GUARD_LOCK` | sabit:83 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::ensure_private_state_dir` | işlev:86 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::STATE_DIR` | sabit:51 | karşılandı | `needs_ho.rs::NeedsHo.state_dir`<br>`needs_ho.rs::NeedsHo::new` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | dizini çağıran verir |
+| `paths.py::REPO_DIR` | sabit:55 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::ROSTER_TSV` | sabit:57 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::MODELS_TSV` | sabit:58 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::CLAUDE_MODELS_JSON` | sabit:59 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::SESSIONS_DIR` | sabit:61 | karşılandı | `discovery.rs::sessions_from_json` | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
+| `paths.py::PROJECTS_DIR` | sabit:62 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid` | yok |
+| `paths.py::CONFIG_JSON` | sabit:63 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::parse_proc_stat` | işlev:65 | karşılandı | `procfs.rs::parse_stat` | `procfs.rs::stat_with_parens_in_comm` | dört alan döner; `)` yoksa istisna yerine `None` |
+| `paths.py::proc_stat_fields` | işlev:71 | karşılandı | `procfs.rs::OwnProc::try_stat`<br>`procfs.rs::OwnProc::stat` | `tests/fake_proc.rs::broken_proc_fields` | yalnız kendi kullanıcımızın süreci |
+| `paths.py::proc_ppid` | işlev:77 | karşılandı | `procfs.rs::Stat.ppid` | `tests/fake_proc.rs::own_ppid_from_real_proc` | yok |
+| `paths.py::ucli_key_file` | işlev:81 | kapsam dışı | yok | yok | ucli anahtar dosyası yolu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `paths.py::GUARD_LOCK` | sabit:88 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::ensure_private_state_dir` | işlev:91 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
 
 ### `py/claudeops/commands/web.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `commands/web.py::_find_gnome_terminal_server` | işlev:1118 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
-| `commands/web.py::_diag_status` | işlev:1134 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1625 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1677 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1684 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1687 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1716 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_find_gnome_terminal_server` | işlev:1130 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
+| `commands/web.py::_diag_status` | işlev:1146 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1637 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1689 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1696 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1699 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1728 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `tmux_backend.py::TMUX_SOCKET` | sabit:22 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
-| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:24 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
-| `tmux_backend.py::is_tmux_backed` | işlev:768 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
+| `tmux_backend.py::TMUX_SOCKET` | sabit:23 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
+| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:25 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
+| `tmux_backend.py::is_tmux_backed` | işlev:900 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
 
 ## Python test durumları
 
@@ -807,6 +807,14 @@ Yok.
 | `test_close_base_name.py::BaseName.test_single_source` | 12 | kapsam dışı | yok | Python modülleri arası aynı regex nesnesi denetimi. İz: T4 (yaşam döngüsü) |
 | `test_close_base_name.py::BaseName.test_date_and_conflict_suffixes_reduce` | 16 | karşılandı | `session.rs::base_matches_python_regex`<br>`golden.rs::names_paths_and_token_format` | `close` komutunun kendisi T4 |
 | `test_close_base_name.py::TsvFinder.test_find_and_edit` | 28 | kapsam dışı | yok | roster/models dosyası düzenleme. İz: W0-a durum (rs/state); T4 (yaşam döngüsü) |
+
+### `py/tests/test_context_mask_unknown.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_unknown_mask_state_sends_nothing_and_says_why` | 32 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_masked_still_refused` | 37 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_known_unmasked_pane_gets_the_command` | 42 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
 
 ### `py/tests/test_copilot_trust.py`
 
@@ -1385,6 +1393,42 @@ Yok.
 | `test_split_names.py::SplitNames.test_comma_space_mixed_dedup_order` | 10 | kapsam dışı | yok | CLI ad listesi ayrıştırma. İz: T6 (CLI) |
 | `test_split_names.py::SplitNames.test_empty` | 13 | kapsam dışı | yok | CLI ad listesi ayrıştırma. İz: T6 (CLI) |
 | `test_split_names.py::SplitNames.test_cli_commands_use_it` | 17 | kapsam dışı | yok | CLI ad listesi ayrıştırma. İz: T6 (CLI) |
+
+### `py/tests/test_state_backend_last_good.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_state_backend_last_good.py::BackendLastGood.test_corrupt_or_unreadable_keeps_last_good` | 30 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_backend_last_good.py::BackendLastGood.test_missing_file_is_files` | 38 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_backend_last_good.py::BackendLastGood.test_corrupt_from_start_is_files` | 43 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+
+### `py/tests/test_state_instances_cache_copy.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_state_instances_cache_copy.py::CacheCopy.test_db` | 52 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_cache_copy.py::CacheCopy.test_files` | 55 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+
+### `py/tests/test_state_instances_corrupt_mirror.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_state_instances_corrupt_mirror.py::CorruptMirror.test_db_row_serves_reads_and_writes_mirror_backed_up` | 57 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_corrupt_mirror.py::CorruptMirror.test_no_row_refused` | 70 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_corrupt_mirror.py::CorruptMirror.test_dirty_refused` | 74 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_corrupt_mirror.py::CorruptMirror.test_db_unreadable_refused` | 80 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_corrupt_mirror.py::CorruptMirror.test_bad_db_doc_refused` | 87 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_corrupt_mirror.py::CorruptMirrorDual.test_db_row_serves_reads_and_writes_mirror_backed_up` | 97 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+
+### `py/tests/test_state_instances_db_version_cache.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_state_instances_db_version_cache.py::DbVersionCache.test_unchanged_doc_parsed_once_and_change_seen` | 49 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_db_version_cache.py::DbVersionCache.test_returned_dict_is_a_copy` | 58 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_db_version_cache.py::DbVersionCache.test_delete_and_recreate_with_same_version_seen` | 63 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_db_version_cache.py::DbVersionCache.test_dirty_mirror_not_cached` | 70 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_db_version_cache.py::DbVersionCache.test_db_read_failure_fallback_not_cached` | 78 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_statedocs.py`
 
@@ -2030,28 +2074,32 @@ Yok.
 | `test_stop_with_handover.py::LocalTest.test_english_message` | 94 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
 | `test_stop_with_handover.py::ReaskTest.test_reask_then_ready` | 115 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
 | `test_stop_with_handover.py::ReaskTest.test_reask_still_none_does_not_close` | 122 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_success_handover_then_forced_exact_stop` | 148 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_timeout_does_not_stop` | 155 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_handover_failure_does_not_stop` | 160 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_unreadable_baseline_does_nothing` | 165 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_not_applicable_returns_none` | 170 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_unreadable_host_does_not_stop` | 174 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteTest.test_each_outcome_is_logged` | 180 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RemoteFallbackTest.test_fallback_stop_is_exact_and_logged` | 190 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_without_ho_field_old_behaviour_byte_for_byte` | 265 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_force_with_ho_is_a_400_conflict_never_a_silent_plain_stop` | 271 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_still_hands_over_with_the_exact_flag` | 278 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_not_applicable_falls_back_to_exact_plain_stop` | 290 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_exact_without_ho_stays_plain_stop` | 298 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_remote_without_ho_goes_straight_to_proxy` | 302 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_returns_pending_immediately_while_job_blocks` | 308 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_failure_is_reported_and_never_plain_stops` | 314 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_success` | 322 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_ho_not_applicable_falls_back_to_plain_stop_inside_the_job` | 329 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_second_ho_while_pending_does_not_start_second_job` | 336 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_remote_ho_runs_remote_helper_in_job` | 344 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_job_exception_becomes_error_with_force_hint` | 350 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
-| `test_stop_with_handover.py::RouteTest.test_status_unknown_after_restart_is_none` | 356 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_success_handover_then_forced_exact_stop` | 150 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_timeout_does_not_stop` | 157 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_handover_failure_does_not_stop` | 162 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_unreadable_baseline_does_nothing` | 167 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_not_applicable_returns_none` | 172 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_unreadable_host_does_not_stop` | 176 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteTest.test_each_outcome_is_logged` | 182 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_stale_cache_recovers_within_the_wait` | 212 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_stale_cache_gives_up_after_the_wait` | 217 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_twin_rows_are_ambiguous_without_waiting` | 222 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteRepollTest.test_ambiguous_message_in_both_languages` | 227 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RemoteFallbackTest.test_fallback_stop_is_exact_and_logged` | 237 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_without_ho_field_old_behaviour_byte_for_byte` | 312 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_force_with_ho_is_a_400_conflict_never_a_silent_plain_stop` | 318 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_still_hands_over_with_the_exact_flag` | 325 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_with_ho_not_applicable_falls_back_to_exact_plain_stop` | 337 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_exact_without_ho_stays_plain_stop` | 345 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_remote_without_ho_goes_straight_to_proxy` | 349 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_returns_pending_immediately_while_job_blocks` | 355 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_failure_is_reported_and_never_plain_stops` | 361 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_success` | 369 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_ho_not_applicable_falls_back_to_plain_stop_inside_the_job` | 376 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_second_ho_while_pending_does_not_start_second_job` | 383 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_remote_ho_runs_remote_helper_in_job` | 391 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_job_exception_becomes_error_with_force_hint` | 397 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
+| `test_stop_with_handover.py::RouteTest.test_status_unknown_after_restart_is_none` | 403 | kapsam dışı | yok | devir + kapatma. İz: T4 (yaşam döngüsü) |
 
 ### `py/tests/test_stopped_session_chat.py`
 
@@ -2106,6 +2154,14 @@ Yok.
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_unknown_permission_uses_provider_default` | 28 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_dry_run_kills_nothing` | 40 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` | 46 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
+
+### `py/tests/test_tmux_list_utf8.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_tmux_list_utf8.py::Utf8FlagArgvTests.test_tab_separated_queries_force_utf8` | 25 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
+| `test_tmux_list_utf8.py::Utf8FlagArgvTests.test_other_queries_and_the_server_starting_spawn_do_not` | 30 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
+| `test_tmux_list_utf8.py::CLocaleRealTmuxTests.test_client_session_and_ghost_are_found_in_the_c_locale` | 38 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
 
 ### `py/tests/test_triage_fixes_20261107.py`
 

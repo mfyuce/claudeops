@@ -410,7 +410,7 @@ BRAIN_PREFIX = "degnekci"
 
 def valid_custom_id(sid: str) -> bool:
     """`default` DIŞI bir kimlik için geçerli mi: `^[a-z]{2,16}$`, rezerve değil, beyin öneki (`degnekci*`) değil."""
-    return (isinstance(sid, str) and bool(STEWARD_ID_RE.match(sid)) and sid not in RESERVED_IDS
+    return (isinstance(sid, str) and bool(STEWARD_ID_RE.fullmatch(sid)) and sid not in RESERVED_IDS
             and not sid.startswith(BRAIN_PREFIX))
 
 
@@ -483,7 +483,7 @@ def _new_id(prefix: str) -> str:
 
 
 def valid_name(name: str) -> bool:
-    return bool(name) and bool(_NAME_RE.match(name)) and len(name) <= 48
+    return bool(name) and bool(_NAME_RE.fullmatch(name)) and len(name) <= 48      # `match` + `$` sondaki satır sonunu geçirirdi
 
 
 # ── depo ──────────────────────────────────────────────────────────────────────
@@ -491,6 +491,11 @@ def valid_name(name: str) -> bool:
 def _corrupt_backup(path: str) -> None:
     try:        # bozuk dosya: kanıt yedeği (sonraki yazım üstüne yazıp bulguları/soruları sessizce silmesin)
         import shutil
+        st = os.stat(path)
+        for old in glob.glob(glob.escape(path) + ".corrupt-*"):     # aynı içerik zaten yedekli (copy2 mtime korur): her okumada yeni kopya yok
+            o = os.stat(old)
+            if (o.st_size, o.st_mtime_ns) == (st.st_size, st.st_mtime_ns):
+                return
         shutil.copy2(path, f"{path}.corrupt-{int(time.time())}")
     except OSError:
         pass

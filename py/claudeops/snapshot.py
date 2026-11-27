@@ -141,12 +141,9 @@ def _backup_if_corrupt() -> None:
     except (ValueError, UnicodeDecodeError):
         pass
     dest = f"{SNAPSHOTS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
-    if os.path.exists(dest):
-        return
     try:
-        fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as out:
-            out.write(raw)
+        from .atomic_json import _write_corrupt_copy
+        _write_corrupt_copy(dest, raw)
     except OSError:
         pass
 

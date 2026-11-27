@@ -16,6 +16,7 @@ import dataclasses
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -783,7 +784,7 @@ def read_chat(cfg: Any, rel: str) -> Dict[str, Any]:
     running = False
     status = ""
     for key, rec in hist["pairs"].items():
-        io = str((rec or {}).get("io_file") or "")
+        io = str(rec.get("io_file") or "") if isinstance(rec, dict) else ""
         if io and os.path.realpath(io) == os.path.realpath(os.path.join(p.reviews, r["path"])):
             status = str(rec.get("status") or "")
             running = key in running_keys(cfg.sid)
@@ -797,7 +798,7 @@ def _pid_tree(root: Any) -> List[int]:
     Okunamazsa yalnız kök; pid yoksa boş."""
     try:
         root = int(root)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return []
     if root <= 0:
         return []
@@ -845,7 +846,7 @@ def review_runs(cfg: Any) -> List[Dict[str, Any]]:
         ts = started if started else (stamp if re.fullmatch(r"\d{14}", stamp) else None)
         rows[rel] = {"sid": cfg.sid, "project": proj, "mode": mode, "model": slug, "status": status, "io": rel,
                      "file": md, "started_at": started, "finished_at": finished, "running": is_run,
-                     "error": error, "duration": (float(finished) - float(started)) if started and finished else None,
+                     "error": error, "duration": (rv._num(finished) - rv._num(started)) if rv._num(started) and rv._num(finished) else None,
                      "title": rv.review_title(proj, mode, slug, ts),
                      "pids": _pid_tree(pid) if is_run else []}
     for r in hist.get("runs") or []:
@@ -877,7 +878,8 @@ def read_live(cfg: Any, project: str, target_key: str, offset: Any = 0) -> Dict[
     if not match or not proj:
         return {"ok": False, "error": "unknown target"}
     tg = match[0]
-    rec = rv.load_history(p)["pairs"].get(rv.pair_key(proj, tg)) or {}
+    rec = rv.load_history(p)["pairs"].get(rv.pair_key(proj, tg))
+    rec = rec if isinstance(rec, dict) else {}
     running = rv.pair_key(proj, tg) in running_keys(cfg.sid)
     io = str(rec.get("io_file") or "")
     if not io:
@@ -1718,7 +1720,7 @@ def _adopt(p: Any, cfg: Any, key: str, rec: Dict[str, Any], target: rv.ReviewTar
     with _SLOT_LOCK:      # yuva sınırı aşılsa bile kaydedilir: süreç zaten çalışıyor
         used = {i for m, i in _ACTIVE.values() if m == target.mode}
         _ACTIVE[key] = (target.mode, min(set(range(len(used) + 1)) - used))
-    started = float(rec.get("started_at") or time.time())
+    started = rv._num(rec.get("started_at")) or time.time()
     th = threading.Thread(target=_execute, daemon=True, name=f"review-adopt-{key}",
                           args=(job, p, cfg, key.split("|", 1)[0], target, [], {}, "", path, started, _default_popen,
                                 str(rec.get("agy_log_dir") or AGY_LOG_DIR), time.time),
@@ -2202,7 +2204,7 @@ def copilot_quota_info(t: float) -> Optional[Tuple[float, float, str]]:
     rec = usage_state.provider("copilot", now=t)
     if not rec or not rec.get("available") or rec.get("stale"):
         return None
-    return rv.parse_copilot_entries(rec.get("entries") or [], t, base=float(rec.get("at") or 0) or None)
+    return rv.parse_copilot_entries(rec.get("entries") or [], t, base=rv._num(rec.get("at")) or None)
 
 
 def _copilot_quota_view(cfg: Any, hist: Any, t: float) -> Dict[str, Any]:
@@ -2210,7 +2212,7 @@ def _copilot_quota_view(cfg: Any, hist: Any, t: float) -> Dict[str, Any]:
     try:
         info = copilot_quota_info(t)
         blk = (hist.get("blocks") or {}).get("copilot") if isinstance(hist, dict) else None
-        until = float(blk.get("until") or 0) if isinstance(blk, dict) else 0.0
+        until = rv._num(blk.get("until")) if isinstance(blk, dict) else 0.0
         out: Dict[str, Any] = {"stop_pct": int(getattr(cfg, "review_copilot_stop_pct", 95) or 0)}
         if info:
             out.update(used_pct=info[0], resets_at=info[1], detail=info[2])
@@ -2307,7 +2309,7 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
     if getattr(cfg, "drain", False):      # "bitir, yeni başlatma": koşan iş sürdü (iptal edilmez), yenisi açılmaz; restart öncesi boşalt
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "draining": True}
     hist = rv.load_history(p)
-    last = max([float(r.get("started_at") or 0) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
+    last = max([rv._num(r.get("started_at")) for r in hist["pairs"].values() if isinstance(r, dict)] or [0.0])
     gap = max(0, int(getattr(cfg, "review_min_gap_minutes", 0))) * 60
     if last and t - last < gap:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "waiting": int(gap - (t - last))}
@@ -2499,6 +2501,23 @@ def _ext_status() -> Dict[str, Any]:
     return extensions.status()
 
 
+def _finite_only(v: Any, key: str = "") -> Any:
+    """Yanıt geçerli JSON kalsın: sonlu olmayan sayı sözlükten atılır, listede None olur; loglanır (değer yazılmaz)."""
+    def _bad(x: Any) -> bool:
+        return isinstance(x, float) and not math.isfinite(x)
+    if isinstance(v, dict):
+        for k, x in v.items():
+            if _bad(x):
+                rv._log_bad("view.nonfinite", k)
+        return {k: _finite_only(x, str(k)) for k, x in v.items() if not _bad(x)}
+    if isinstance(v, (list, tuple)):
+        return [_finite_only(x, key) for x in v]
+    if _bad(v):
+        rv._log_bad("view.nonfinite", key)
+        return None
+    return v
+
+
 def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
     t = time.time() if now is None else now
     p = sw.paths_for(cfg.sid)
@@ -2516,7 +2535,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
                      "complete": rv.project_complete(hist, name, targets, t,
                                                      rv.window_seconds(getattr(cfg, "review_window_hours", 720))),
                      "pairs": {tg.key: hist["pairs"].get(rv.pair_key(name, tg)) for tg in targets}})
-    return {"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
+    return _finite_only({"ok": True, "enabled": bool(cfg.enabled), "role": cfg.role,
             "remote_projects": remote_where_rows(),
             "lenses": list(rv.lenses()), "extension": _ext_status(),
             "targets": [{"mode": x.mode, "model": x.model, "slug": x.slug, "key": x.key, "effort": x.effort} for x in targets],
@@ -2544,7 +2563,7 @@ def review_state(cfg: Any, now: Optional[float] = None) -> Dict[str, Any]:
             "verify_mode": str(getattr(cfg, "review_verify_mode", "") or ""),
             "verify_provider": str(getattr(cfg, "review_verify_provider", "") or ""),
             "verify_model": str(getattr(cfg, "review_verify_model", "") or ""),
-            "verify_effective": f"{verify_provider(cfg)}/{verify_model(cfg)}"}
+            "verify_effective": f"{verify_provider(cfg)}/{verify_model(cfg)}"})
 
 
 def read_review_file(cfg: Any, rel: str) -> Dict[str, Any]:
@@ -2575,7 +2594,7 @@ def list_findings(cfg: Any, project: str = "", state: str = "") -> Dict[str, Any
     rows = [dict(v, id=k) for k, v in data.items() if isinstance(v, dict)
             and (not project or v.get("project") == project) and (not state or v.get("state") == state)]
     rows.sort(key=lambda r: (str(r.get("project")), str(r.get("review_file")), str(r.get("ref"))))
-    return {"ok": True, "findings": rows}
+    return _finite_only({"ok": True, "findings": rows})
 
 
 def remote_where_rows() -> List[Dict[str, Any]]:
@@ -2819,7 +2838,7 @@ def _self_verify_fail(p: Any, fids: Sequence[str], reason: str, now: float, sess
             rec = data.get(fid)
             if not isinstance(rec, dict) or rec.get("state") != "verify_sent" or rec.get("verify_session") != session:
                 continue
-            tries = int(rec.get("verify_tries") or 0) + 1
+            tries = int(rv._num(rec.get("verify_tries"))) + 1
             if tries >= SELF_VERIFY_MAX_TRIES:
                 rec.update(state="unclear", verdict=f"otomatik doğrulama {tries} denemede sonuç vermedi: {reason}"[:rv.VERDICT_REASON_MAX],
                            verdict_at=now, verify_tries=tries)
@@ -3030,7 +3049,8 @@ class RemoteVerifyIO:
         return res if isinstance(res, dict) else {"ok": False}
 
     def send(self, host: str, name: str, text: str) -> Dict[str, Any]:
-        res, _ = self._wh().proxy_action("/api/term/input", host, {"name": name, "text": text, "exact": True}, timeout=60)
+        res, _ = self._wh().proxy_action("/api/term/input", host, {"name": name, "text": text, "exact": True, "auto": True},
+                                        timeout=60)
         return res if isinstance(res, dict) else {"ok": False}
 
     def last_assistant(self, host: str, name: str) -> Optional[str]:
@@ -3559,6 +3579,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
                 data = rv.load_findings(p)
                 for fid, why in stale.items():
                     if fid in data and data[fid].get("state") in states:
+                        rv._keep_verdict_state(data[fid])
                         data[fid].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rv.save_findings(p, data)
             rows = [r for r in rows if r["id"] not in stale]
@@ -3580,6 +3601,7 @@ def _export_remote(cfg: Any, project: str, fname: str, t: float, by: str, states
         data = rv.load_findings(p)
         for fid in ids:
             if fid in data and data[fid].get("state") in states:
+                rv._keep_verdict_state(data[fid])
                 data[fid].update(state="exported", exported_to=target, exported_at=t)
                 if by:
                     data[fid]["exported_by"] = by
@@ -3627,6 +3649,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
             chk, chk_root = rv.row_in_repo(r, rv.export_root(r, project, cwd, project_cwd), cwd)
             why = rv.stale_reason(chk, chk_root)
             if why:
+                rv._keep_verdict_state(data[r["id"]])
                 data[r["id"]].update(state="rejected", decided_by="stale-check", decided_at=t, stale_reason=why)
                 rows.remove(r)
                 dropped = True
@@ -3674,6 +3697,7 @@ def export_findings(cfg: Any, project: str, fname: str, now: Optional[float] = N
                 fid = r["id"]
                 if fid not in w:
                     already.append(fid)
+                rv._keep_verdict_state(data[fid])
                 data[fid].update(state="exported", exported_to=target, exported_at=t)
                 if by:
                     data[fid]["exported_by"] = by

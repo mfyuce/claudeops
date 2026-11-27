@@ -243,10 +243,8 @@ def _backup_corrupt() -> None:
             with open(HOSTS_JSON, "rb") as f:
                 raw = f.read()
         dest = f"{HOSTS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
-        if not os.path.exists(dest):
-            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "wb") as out:
-                out.write(raw)
+        from .atomic_json import _write_corrupt_copy
+        _write_corrupt_copy(dest, raw)
     except OSError:
         pass
 
@@ -292,7 +290,7 @@ def _write_hosts(hosts: List[Dict[str, str]]) -> None:
 @contextlib.contextmanager
 def _write_txn():
     """oku-değiştir-yaz döngüsünün TAMAMI tek kilit altında: iş parçacıkları arası kilit + süreçler arası `flock`
-    (`hosts.json.lock`; `atomic_json.file_lock`: O_NOFOLLOW + sahiplik denetimi, olmazsa yalnız iş parçacığı kilidi)."""
+    (`hosts.json.lock`; `atomic_json.file_lock`: O_NOFOLLOW + sahiplik denetimi, olmazsa `LockError`, yazım yok)."""
     with file_lock(HOSTS_JSON):
         yield
 

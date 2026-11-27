@@ -298,7 +298,12 @@ def spawn_session(
     # installed, degrade silently to today's exact plain-bash spawn — a missing
     # optional binary must never fail the spawn itself.
     if tmux_available():
-        window_cmd = f"{tmux_new_session_shell_fragment(name, cwd, inner)}; exec bash"
+        try:
+            window_cmd = f"{tmux_new_session_shell_fragment(name, cwd, inner)}; exec bash"
+        except ValueError:
+            # tmux'ta hedeflenemeyen ad: hiçbir şey açılmaz; çağıran süreç yokluğundan "olmadı" görür.
+            diag_log("spawn_bad_name", name=name, cwd=cwd)
+            return kind
     else:
         window_cmd = f"{inner}; exec bash"
 
