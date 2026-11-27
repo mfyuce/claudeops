@@ -1,6 +1,6 @@
 """generic değnekçi rolü (TODO 2026-10-22 (20)): normal kimlik (kendi projects.json'u, motor/beyin/kart/tur aynı) +
-Sonnet medium varsayılanı + dinamik proje ekle/çıkar + tur maddesine otonom/karar-gerekir iş listesi + beynin üst model
-(Opus/Fable, high/xhigh/max) isteğine sahibin onay kapısı.
+ana oturum varsayılanı (`GENERIC_MODEL` + medium; 28 Kas 2026'dan beri Opus) + dinamik proje ekle/çıkar + tur maddesine
+otonom/karar-gerekir iş listesi + beynin üst model (Fable, high/xhigh/max) isteğine sahibin onay kapısı.
 
 Canlı servis/tmux/ağ/gerçek `~/.claude/claudeops/` YOK (`_Engine` = `_Tmp` + sahte oturum geri çağrıları; spawn_session
 AssertionError'a bağlı, `_give_directive`/`_notify`/`_send` sahte).
@@ -42,7 +42,7 @@ class _Generic(NoRealReviewMixin, _Engine):
 
 
 class TestConfig(_Generic):
-    def test_generic_defaults_to_sonnet_medium(self):
+    def test_generic_defaults_to_main_default_medium(self):
         cfg = settings.steward_config("gen")
         self.assertEqual(cfg.role, "generic")
         self.assertEqual((cfg.planning_model, cfg.planning_effort, cfg.planned_model, cfg.planned_effort),
@@ -153,9 +153,10 @@ class TestBacklog(unittest.TestCase):
 
 class TestUpperTier(unittest.TestCase):
     def test_is_upper_tier(self):
-        for m, e in (("claude-opus-5-5", ""), ("claude-fable-5-1", "medium"), ("", "high"), ("x", "XHIGH"), ("", "max")):
+        for m, e in (("claude-opus-5-5", "high"), ("claude-fable-5-1", "medium"), ("", "high"), ("x", "XHIGH"), ("", "max")):
             self.assertTrue(sw.is_upper_tier(m, e), (m, e))
-        for m, e in (("", ""), ("claude-sonnet-5-5", "medium"), ("claude-haiku-5-5", "low")):
+        for m, e in (("", ""), ("claude-opus-5-5", ""), ("claude-opus-5-5", "medium"), ("claude-sonnet-5-5", "medium"),
+                     ("claude-haiku-5-5", "low")):
             self.assertFalse(sw.is_upper_tier(m, e), (m, e))
 
     def test_approval_is_specific_to_project_model_effort(self):
@@ -189,7 +190,7 @@ class TestUpperGate(_Generic):
         self.assertEqual(ws.http_directive(dict(body), "gen")["question"], qs[0].id)
         self.assertEqual(len(self._qs()), 1)
         self.assertTrue(any(e["event"] == "upper_model_denied" for e in sw.tail_log(20, "gen")))
-        # model vermeden (Sonnet medium) aynı iş sürer
+        # model vermeden (ana oturum varsayılanı, Opus medium) aynı iş sürer
         self.assertTrue(ws.http_directive({"name": "p", "text": "yaz", "actor": "brain"}, "gen")["ok"])
         self.assertEqual(self.directives, [("p", "yaz", "", "")])
 
@@ -201,6 +202,15 @@ class TestUpperGate(_Generic):
         self.assertEqual(self.directives, [("p", "yaz", "claude-opus-5-5", "high")])
         # başka model hâlâ kapalı
         self.assertFalse(ws.http_directive(dict(body, model="claude-fable-5-1"), "gen")["ok"])
+
+    def test_opus_medium_passes_gate_opus_high_and_fable_do_not(self):
+        """Sahip kararı 28 Kas 2026: Opus medium ana oturum varsayılanı, onay sorusu açılmaz; effort üstü ve Fable kapıda kalır."""
+        self.assertTrue(ws.http_directive({"name": "p", "text": "yaz", "model": "claude-opus-5-5", "effort": "medium",
+                                           "actor": "brain"}, "gen")["ok"])
+        self.assertEqual(self._qs(), [])
+        for model, effort in (("claude-opus-5-5", "high"), ("claude-fable-5-1", "medium")):
+            r = ws.http_directive({"name": "p", "text": "yaz", "model": model, "effort": effort, "actor": "brain"}, "gen")
+            self.assertEqual(r["code"], "upper_model_needs_approval", (model, effort))
 
     def test_owner_rejection_keeps_it_closed(self):
         body = {"name": "p", "text": "yaz", "effort": "max", "actor": "brain"}
@@ -218,7 +228,7 @@ class TestUpperGate(_Generic):
 
     def test_restart_refused_before_stop(self):
         with mock.patch.object(ws, "_running", lambda name: NS(name=name, cli="claude", pid=1)):
-            r = ws.http_restart({"name": "p", "text": "d", "model": "claude-opus-5-5", "actor": "brain"}, "gen")
+            r = ws.http_restart({"name": "p", "text": "d", "model": "claude-fable-5-1", "actor": "brain"}, "gen")
         self.assertEqual(r["code"], "upper_model_needs_approval")
         self.assertNotIn(("stop", "p"), self.calls)
 
@@ -236,7 +246,7 @@ class TestUpperGate(_Generic):
 
     def test_register_gate_before_side_effects(self):
         cwd = os.path.join(self.dir.name, "yeni")
-        r = ws.http_register({"name": "yeni", "cwd": cwd, "goal": "g", "model": "claude-opus-5-5", "actor": "brain"}, "gen")
+        r = ws.http_register({"name": "yeni", "cwd": cwd, "goal": "g", "model": "claude-fable-5-1", "actor": "brain"}, "gen")
         self.assertEqual(r["code"], "upper_model_needs_approval")
         self.assertFalse(os.path.exists(cwd))
         self.assertNotIn(("register", "yeni"), self.calls)

@@ -316,7 +316,7 @@ class Config:
     brain_max_cost_usd: float = 1.0   # YALNIZ brain_cli=ucli: tur başına `--max-cost-usd` (ikili tanırsa, model fiyatlıysa; 0 = yok)
     brain_name: str = "degnekci"
     planning_model: str = ""
-    planning_effort: str = "medium"   # sahibin kalıcı kuralı: proje ANA oturumu Sonnet medium; ağır iş alt ajanda
+    planning_effort: str = "medium"   # sahibin kalıcı kuralı: proje ANA oturumu medium effort (model: Opus, 28 Kas 2026); ağır iş alt ajanda
     planned_model: str = ""
     planned_effort: str = ""
     lang: str = "tr"
@@ -372,7 +372,7 @@ class Config:
     wake_gate: str = "dry"             # uyandırma kapısı (TBD#121): aynı metinli `due`/`idle`/`review` direktifi `wake_repeat_minutes` içinde tekrar giderse: off = denetim yok | dry = YALNIZ `would:wake_repeat` olayı (gönderir) | act = göndermez
     brain_wake_max_per_day: int = 6    # uyandırma kapısı (TBD#138): BEYİN direktifi (`reason=brain`, actor=brain, cevapsız) oturum başına 24 saatte en çok bu kadar; aşımda `wake_gate` kipine uyar (dry = `would:brain_wake_cap`); 0 = sınırsız
     wake_repeat_minutes: int = 240     # uyandırma kapısı penceresi (dk); 0 = kapalı
-    upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen Sonnet medium üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
+    upper_main_warn: bool = True       # denetim: proje ANA oturumu fiilen ana oturum varsayılanı (Opus medium) üstüne çıktıysa (canlı model/effort) `upper_main` olayı + oturuma tek HATIRLATMA (zorlamaz; `off` = kapalı)
     advance_findings: bool = False     # İLERLETME değnekçisi: sahibin onayladığı (`exported`) review bulgularını KENDİ projelerinin çalışan oturumuna direktifle iletir (steward_advance.py)
     review_auto_verify: bool = False   # reviewer: `new` bulguları projenin çalışan oturumuna KENDİLİĞİNDEN doğrulatır (tick başına en çok 1 proje; oturum meşgulse bekler)
     review_verify_provider: str = ""   # self doğrulayıcı sağlayıcısı: "" = claude (abonelik `claude -p`, Sonnet) | codex | evren | agy (hepsi salt okunur)
@@ -2789,9 +2789,10 @@ def build_tour_prompt(items: List[Dict[str, Any]], lang: str = "tr", open_qs: Op
 
 
 MODEL_RULE_TR = (
-    "\n## Model kuralı (sahibin KALICI kararı, 2026-10-20; pazarlık yok)\n"
-    "- Proje ANA oturumu HER ZAMAN Sonnet 5.5 + medium. `steward_directive`/`steward_restart`/`steward_set_project` ile model/effort verirken "
-    "ana oturumu Fable, Opus ya da high YAPMA; boş bırakma, `claude-sonnet-5-5` + `medium` yaz.\n"
+    "\n## Model kuralı (sahibin KALICI kararı, 2026-10-20; ana model 2026-11-28'de Opus oldu; pazarlık yok)\n"
+    "- Proje ANA oturumu HER ZAMAN Opus 5.5 + medium (sahip, 28 Kas 2026: \"ben tersini söyleyene kadar\"; Ayarlar'daki claude varsayılan "
+    "modeli doluysa o). `steward_directive`/`steward_restart`/`steward_set_project` ile model/effort verirken ana oturumu Fable ya da "
+    "high/xhigh/max YAPMA; boş bırakma, `claude-opus-5-5` + `medium` yaz.\n"
     "- Ağır iş İŞE GÖRE ALT AJANDA, modeli direktife AÇIK yaz: araştırma/doğrulama/çekme = Sonnet; ilk taslak (bölüm, nesir, analiz) = Opus high "
     "(mekanik kısım: tablo, kaynakça, özet = Opus medium); Fable YALNIZ bitmiş işin son cilası/denetimi (tek geçiş, bir kez okuma).\n"
     "- Aynı anda en fazla 1 Fable ajanı; ajana yalnız gereken dosyaları okut (alt ajan bağlamı cache yazmayı şişirir). "
@@ -2824,9 +2825,10 @@ MODEL_RULE_TR = (
     "alınamaz ya da yorum belirsizse tahmin etme, `steward_ask_user` ile seçenekli yeniden sor.\n"
 )
 MODEL_RULE_EN = (
-    "\n## Model rule (owner's PERMANENT decision, 2026-10-20; not negotiable)\n"
-    "- A project's MAIN session is ALWAYS Sonnet 5.5 + medium. When you pass model/effort via `steward_directive`/`steward_restart`/"
-    "`steward_set_project`, never make the main session Fable, Opus or high; never leave it blank, write `claude-sonnet-5-5` + `medium`.\n"
+    "\n## Model rule (owner's PERMANENT decision, 2026-10-20; main model became Opus on 2026-11-28; not negotiable)\n"
+    "- A project's MAIN session is ALWAYS Opus 5.5 + medium (owner, 28 Nov 2026: \"until I say otherwise\"; the claude default model in "
+    "Settings wins when set). When you pass model/effort via `steward_directive`/`steward_restart`/`steward_set_project`, never make the "
+    "main session Fable or high/xhigh/max; never leave it blank, write `claude-opus-5-5` + `medium`.\n"
     "- Heavy work goes to a SUB-AGENT chosen by task, with the model written EXPLICITLY in the directive: research/verification/fetching = Sonnet; "
     "first draft (chapter, prose, analysis) = Opus high (mechanical parts: tables, references, summaries = Opus medium); Fable ONLY for the final "
     "polish/audit of finished work (one pass, read once).\n"
@@ -2975,10 +2977,11 @@ def phase_model_effort(project: Project, cfg: Config) -> Tuple[str, str]:
 
 
 def main_session_model_effort(model: str, effort: str, cli: str, sonnet: str) -> Tuple[str, str]:
-    """Sahip kuralı (18 Kas 2026, "kayıtlı modeli olsa bile değnekçide her zaman sonnet medium"): değnekçinin AÇTIĞI
-    claude ana oturumu kayıtlı/proje modeli ne olursa olsun en yeni Sonnet + `medium`; ağır iş alt ajanda işe göre seçilir.
-    claude dışı cli (ucli/agy/codex...) ve claude ailesinden olmayan model dokunulmadan döner; `sonnet` boşsa (liste yok)
-    davranış değişmez. SAF."""
+    """Sahip kuralı (18 Kas 2026, "kayıtlı modeli olsa bile değnekçide her zaman ... medium"): değnekçinin AÇTIĞI
+    claude ana oturumu kayıtlı/proje modeli ne olursa olsun ana oturum modeli + `medium`; ağır iş alt ajanda işe göre seçilir.
+    `sonnet` = ana oturum modeli (adı tarihsel: 18 Kas'ta en yeni Sonnet'ti; 28 Kas'tan beri Ayarlar'daki claude varsayılanı,
+    o boşsa Opus, bkz. `web_steward._main_model_effort`). claude dışı cli (ucli/agy/codex...) ve claude ailesinden olmayan
+    model dokunulmadan döner; `sonnet` boşsa (liste yok) davranış değişmez. SAF."""
     m = (model or "").strip()
     is_claude = cli == "claude" or (not cli and m.lower().startswith("claude"))
     if not is_claude or not sonnet or (m and not m.lower().startswith("claude")):
@@ -3784,11 +3787,13 @@ def directive_defer_reason(busy: Optional[bool], last_directive_at: float, now: 
     return ""
 
 
-# ── generic rolü (2026-10-22, TODO (20)): normal kimlik + Sonnet medium varsayılanı + üst model onay kapısı ──
+# ── generic rolü (2026-10-22, TODO (20)): normal kimlik + ana oturum varsayılanı + üst model onay kapısı ──
+# Sahip kararı 28 Kas 2026 ("opus yapalım, ben tersini söyleyene kadar"): ana oturum Opus + medium (önce Sonnet medium).
+# Opus artık ana oturum için ÜST SAYILMAZ; üst = Fable ya da high/xhigh/max effort.
 
-GENERIC_MODEL = "claude-sonnet-5-5"
+GENERIC_MODEL = "claude-opus-5-5"
 GENERIC_EFFORT = "medium"
-UPPER_MODEL_RE = re.compile(r"opus|fable", re.I)
+UPPER_MODEL_RE = re.compile(r"fable", re.I)
 UPPER_EFFORTS = frozenset({"high", "xhigh", "max"})
 UPPER_MODEL_SOURCE = "upper_model"      # onay sorusunun `source`u (beyin cevaplayamaz: rutin değil)
 APPROVE_WORDS = frozenset({"onayla", "onay", "onaylıyorum", "evet", "approve", "approved", "yes"})
@@ -3802,13 +3807,14 @@ def is_generic(cfg: Any) -> bool:
 
 
 def is_upper_tier(model: str, effort: str) -> bool:
-    """Ana oturum için üst kademe mi: Opus/Fable modeli ya da high/xhigh/max effort. SAF."""
+    """Ana oturum için üst kademe mi: Fable modeli ya da high/xhigh/max effort (Opus 28 Kas 2026'dan beri ana oturum
+    varsayılanı, üst değil). SAF."""
     return bool(UPPER_MODEL_RE.search(model or "")) or (effort or "").strip().lower() in UPPER_EFFORTS
 
 
 def is_claude_model(model: str) -> bool:
     """Claude ailesi model kimliği mi (`claude-` öneki; `[1m]` gibi ekler sorun değil). SAF.
-    ucli/evren gibi claude dışı sağlayıcıların modelleri (deepseek-v4-flash ...) için Sonnet-medium kuralı geçerli değil."""
+    ucli/evren gibi claude dışı sağlayıcıların modelleri (deepseek-v4-flash ...) için ana oturum model kuralı geçerli değil."""
     return (model or "").strip().lower().startswith("claude-")
 
 
@@ -3838,7 +3844,8 @@ def upper_main_views(views: List[SessionView], projects: Dict[str, "Project"], c
 
 
 def upper_main_text(project: str, model: str, effort: str, lang: str = "tr") -> str:
-    """Ana oturumun canlı model/effort'u Sonnet medium üstünde: HATIRLATMA metni (emir değil; model değiştirilmez)."""
+    """Ana oturumun canlı model/effort'u ana oturum varsayılanı (`GENERIC_MODEL` + `GENERIC_EFFORT`) üstünde: HATIRLATMA metni
+    (emir değil; model değiştirilmez)."""
     if lang == "en":
         return (f"Reminder (steward audit): this MAIN session of '{project}' is currently running on {model or '-'} / "
                 f"{effort or '-'}. The owner's rule is that the main session stays on {GENERIC_MODEL} + {GENERIC_EFFORT}; "
@@ -3860,9 +3867,10 @@ def upper_tier_question_text(project: str, model: str, effort: str, lang: str = 
     tag = upper_tier_tag(project, model, effort)
     if lang == "en":
         return (f"{tag} The steward wants to run the MAIN session of '{project}' with model {model or '-'} / effort "
-                f"{effort or '-'} (above Sonnet medium). Approve? Until approved it stays on Sonnet medium.")
+                f"{effort or '-'} (above {GENERIC_MODEL} + {GENERIC_EFFORT}). Approve? Until approved it stays on "
+                f"{GENERIC_MODEL} + {GENERIC_EFFORT}.")
     return (f"{tag} Değnekçi '{project}' ANA oturumunu {model or '-'} / {effort or '-'} ile çalıştırmak istiyor "
-            f"(Sonnet medium üstü). Onaylıyor musun? Onaya kadar Sonnet medium sürer.")
+            f"({GENERIC_MODEL} + {GENERIC_EFFORT} üstü). Onaylıyor musun? Onaya kadar {GENERIC_MODEL} + {GENERIC_EFFORT} sürer.")
 
 
 def upper_tier_approved(questions: List["Question"], project: str, model: str, effort: str) -> bool:
@@ -3912,9 +3920,9 @@ GENERIC_RULE_TR = (
     "GEREKTİRMEYEN EN ÖNEMLİ tek işi seç ve `steward_directive` ile ver; liste boşsa kartın sıradaki adımına bak.\n"
     "- `karar gerekir` listesindeki maddeleri ATLA: her biri için (zaten açık değilse) `steward_ask_user` ile seçenekli soru aç. "
     "Önerilen bir varsayılan olsa bile onu KENDİN UYGULAMA, projeye de \"varsayılanı uygula\" deme; cevap gelince motor iletir.\n"
-    "- Model: ana oturum HEP `claude-sonnet-5-5` + `medium`; model/effort alanını boş bırakırsan zaten budur. Opus/Fable ya da "
+    "- Model: ana oturum HEP `claude-opus-5-5` + `medium` (sahip, 28 Kas 2026); model/effort alanını boş bırakırsan zaten budur. Fable ya da "
     "high/xhigh/max effort'a çeken directive/restart/set_project çağrısı sahibin onayı yoksa REDDEDİLİR (`upper_model_needs_approval`) "
-    "ve motor sahibe onay sorusu açar; reddi tekrarlama, aynı işi model vermeden Sonnet medium ile sürdür. Onay gelince (soru "
+    "ve motor sahibe onay sorusu açar; reddi tekrarlama, aynı işi model vermeden Opus medium ile sürdür. Onay gelince (soru "
     "cevaplanınca) aynı model/effort ile yeniden deneyebilirsin.\n"
     "- Ağır işi alt ajana (fork) ver ve direktife modelini AÇIK yaz: araştırma/çekme/doğrulama = Sonnet. Opus ya da Fable alt ajanı "
     "da bu kimlikte YALNIZ sahibin onayıyla (`steward_ask_user`); onaya kadar Sonnet alt ajanla ilerle.\n"
@@ -3928,10 +3936,10 @@ GENERIC_RULE_EN = (
     "important task that does NOT need the owner's answer and send it with `steward_directive`; if the list is empty use the card's next step.\n"
     "- SKIP the items under `needs a decision`: for each one (unless already open) open a question with options via `steward_ask_user`. "
     "Even if a default is suggested, NEVER apply it yourself and never tell the project to apply it; the engine delivers the answer.\n"
-    "- Model: the main session is ALWAYS `claude-sonnet-5-5` + `medium`; leaving model/effort empty gives exactly that. A "
-    "directive/restart/set_project that raises it to Opus/Fable or high/xhigh/max effort is REFUSED without the owner's approval "
+    "- Model: the main session is ALWAYS `claude-opus-5-5` + `medium` (owner, 28 Nov 2026); leaving model/effort empty gives exactly that. A "
+    "directive/restart/set_project that raises it to Fable or high/xhigh/max effort is REFUSED without the owner's approval "
     "(`upper_model_needs_approval`) and the engine opens an approval question; do not retry the refusal, continue the same work on "
-    "Sonnet medium without a model. Once the question is answered with approval you may retry with that model/effort.\n"
+    "Opus medium without a model. Once the question is answered with approval you may retry with that model/effort.\n"
     "- Give heavy work to a sub-agent (fork) and write its model EXPLICITLY in the directive: research/fetching/verification = Sonnet. "
     "Opus or Fable sub-agents also need the owner's approval in this identity (`steward_ask_user`); until then use Sonnet sub-agents.\n"
     "- Commit/push/merge/build/deploy are permanently allowed (owner, 2026-10-27): do not ask, have the project do them. Force-push, delete, spending, "

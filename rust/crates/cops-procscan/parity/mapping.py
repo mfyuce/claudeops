@@ -941,6 +941,7 @@ FILES = {
     "steward_ho_on_open": (_STEW, f"{T10}; {T4}"),
     "steward_http": (_STEW, T10),
     "steward_job_gate_and_qcap": (_STEW, T10),
+    "steward_main_model": (_STEW, T10),
     "steward_open_dialog": (_STEW, f"{T10}; {T1}"),
     "steward_owned": (_STEW, T10),
     "steward_remote_facts": (_STEW + " ve uzak olgu ucu", f"{T10}; {T5}"),

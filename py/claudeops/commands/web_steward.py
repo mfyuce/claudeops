@@ -2106,18 +2106,32 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
     return inst_mod.get_instance(next(n for n, r in recs.items() if r is rec))     # yalnız dönen kayıt kopyalanır
 
 
+def _main_default_model() -> str:
+    """Değnekçinin açtığı claude ana oturumunun modeli (sahip, 28 Kas 2026: "opus yapalım, ben tersini söyleyene kadar"):
+    Ayarlar'daki `default_model.claude` geçerliyse o (sahip Ayarlar'dan Sonnet'e geri alabilir), boşsa/geçersizse
+    `sw.GENERIC_MODEL` (Opus), o da listede yoksa `default_model_for` (provider tercihi). "" = model listesi yok. Fırlatmaz."""
+    try:
+        provider = get_provider("claude")
+        choices = provider.model_choices()
+        override = (load_settings().get("default_model") or {}).get(provider.name) or ""
+        if override in choices:
+            return override
+        if sw.GENERIC_MODEL in choices:
+            return sw.GENERIC_MODEL
+        return default_model_for(provider) or ""
+    except Exception:
+        return ""
+
+
 def _main_model_effort(project: "sw.Project", cfg: "sw.Config", name: str = "", host: str = "",
                        model: str = "", effort: str = "") -> Tuple[str, str]:
     """Değnekçinin açtığı ana oturumun (model, effort)u: faz/proje değeri `sw.main_session_model_effort` kuralından geçer
-    (claude = her zaman en yeni Sonnet + medium, sahip 18 Kas). Uzak projede cli bilinmez: yalnız claude-* model düşürülür."""
+    (claude = her zaman `_main_default_model()` + medium; sahip 18 Kas kuralı, ana model 28 Kas'tan beri Opus). Uzak projede
+    cli bilinmez: yalnız claude-* model düşürülür."""
     if not model and not effort:      # açık değer (beyin/direktif) de aynı kuraldan geçer
         model, effort = sw.phase_model_effort(project, cfg)
     cli = "" if host else _project_cli(name or project.name)
-    try:
-        sonnet = get_provider("claude").preferred_default_model() or ""
-    except Exception:
-        sonnet = ""
-    m, e = sw.main_session_model_effort(model, effort, cli, sonnet)
+    m, e = sw.main_session_model_effort(model, effort, cli, _main_default_model())
     if (m, e) != (model, effort) and (model or effort):
         sw.log_event("steward_main_model", paths=sw.paths_for(cfg.sid), name=name or project.name,
                      registered=f"{model}/{effort}", used=f"{m}/{e}")
@@ -4633,7 +4647,7 @@ def _upper_main_same(ent: Dict[str, Any], v: sw.SessionView) -> bool:
 
 def _audit_upper_main(cfg: sw.Config, views: List[sw.SessionView], projects: Dict[str, sw.Project], world: Any,
                       paths: Any, rt: Optional[_RemoteTick] = None) -> None:
-    """Proje ANA oturumu fiilen (canlı model/effort) Sonnet medium üstündeyse `upper_main` olayı (YALNIZ log: oturuma hiçbir şey
+    """Proje ANA oturumu fiilen (canlı model/effort) ana oturum varsayılanı (Opus medium) üstündeyse `upper_main` olayı (YALNIZ log: oturuma hiçbir şey
     gönderilmez, model değiştirilmez). Aynı oturum + aynı model/effort + aynı süreç için KALICI olarak bir kez."""
     if not cfg.upper_main_warn:
         return
@@ -7103,9 +7117,9 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
 
 def _upper_model_gate(name: str, model: str, effort: str, sid: str, actor: str,
                       project_name: str = "") -> Optional[Dict[str, Any]]:
-    """generic kimlikte BEYNİN proje ana oturumunu üst kademeye (Opus/Fable ya da high/xhigh/max) çeken isteği: sahibin
+    """generic kimlikte BEYNİN proje ana oturumunu üst kademeye (Fable ya da high/xhigh/max; Opus 28 Kas'tan beri değil) çeken isteği: sahibin
     cevaplanmış onay sorusu yoksa red + (yoksa) onay sorusu açılır. İnsan (actor != brain) ve diğer roller serbest.
-    Yanıt `upper_model_needs_approval`; onaya kadar beyin modelsiz (Sonnet medium) sürdürür."""
+    Yanıt `upper_model_needs_approval`; onaya kadar beyin modelsiz (ana oturum varsayılanı, Opus medium) sürdürür."""
     if actor != "brain" or not sw.is_upper_tier(model, effort):
         return None
     cfg = steward_config(sid)
