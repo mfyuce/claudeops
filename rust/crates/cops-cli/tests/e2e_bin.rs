@@ -42,7 +42,8 @@ fn on_apply_with_failing_systemctl_rolls_back_files() {
     let log = std::fs::read_to_string(sb.sc_log()).unwrap();
     assert_eq!(
         log,
-        "--user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
+        "--user show claudeops-web.service -p FragmentPath -p DropInPaths\n\
+         --user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
          --user daemon-reload\n--user restart claudeops-web.service\n--user daemon-reload\n--user restart claudeops-web.service\n"
     );
     assert!(!sb.unit_dir().join("claudeops-front.service").exists());
@@ -71,7 +72,7 @@ fn bad_internal_is_blocked_before_any_side_effect() {
             "{bad}"
         );
     }
-    assert!(!sb.sc_log().exists());
+    assert_eq!(sb.sc_changes(), "");
     assert!(!sb.state().join("front.secret").exists());
 }
 

@@ -21,7 +21,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from .. import front as front_mod
 from .web_static import DIST_DIR
@@ -314,7 +314,8 @@ def plan_on(listen: str, internal: str, binp: str, web_unit_text: str) -> Tuple[
     return p["steps"], p["blockers"]
 
 
-def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err: Optional[str] = None) -> dict:
+def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err: Optional[str] = None,
+             dropin_paths: Sequence[str] = (), units_err: Optional[str] = None) -> dict:
     """Plan kararı (Rust `plan_on` ile aynı engel sırası ve metni): steps, blockers, reapply (drop-in var ve iç portu
     bizim web birimimiz tutuyor), new_execstart, la, ia. Geçersiz/çakışan adres ENGEL; drop-in varken iç portu başka bir
     süreç tutuyorsa ENGEL (eskiden "yeniden uygulama" sayılıp ön kapı yabancı porta vekil oluyordu)."""
@@ -325,16 +326,19 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err
         blockers.append(f"ikili çalıştırılabilir dosya değil: {binp}")
     if not binp.startswith("/"):        # systemd ExecStart= göreli yolu reddeder; py/cops `cd py/` da yolu kaydırır
         blockers.append(f"ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)")
-    files = _web_dropin_files()
+    files = _web_dropin_files(dropin_paths)
     es, late = None, []
     if files is not None:
         mine = os.fsencode(DROPIN.name)
         early = "".join("\n" + t for n, t in files if os.fsencode(n) < mine)
         es = _effective_execstart(web_unit_text + early)
-        late = [n for n, t in files if os.fsencode(n) > mine and web_execstart(t) is not None]
+        # `==`: bizim `front.conf`u ezen daha öncelikli aynı adlı dosya
+        late = [n for n, t in files if os.fsencode(n) >= mine and web_execstart(t) is not None]
     new = with_internal_port(es, internal) if es else None
     if read_err is not None:
         blockers.append(f"claudeops-web.service okunamadı: {read_err}")
+    elif units_err is not None:
+        blockers.append(f"claudeops-web.service birim yolları okunamadı: {units_err}")
     elif files is None:
         blockers.append(f"claudeops-web.service drop-in'leri okunamadı: {DROPIN.parent}")
     elif new is None:
@@ -408,18 +412,34 @@ def _run_sc(cmd) -> Optional[str]:
     return None if rc == 0 else f"çıkış {rc}"
 
 
-def _read_web_unit() -> Tuple[str, Optional[str]]:
-    """(metin, okuma hatası): yoksa ("", None); okunamaz ya da UTF-8 değilse hata metni (Rust `read_web_unit`)."""
+def _unit_paths() -> Tuple[str, List[str]]:
+    """Web biriminin systemd'nin bildirdiği (FragmentPath, DropInPaths): /etc, /run, `user.control` ve genel `service.d`
+    de görünür. Okunamazsa `_ScError`."""
     try:
-        b = WEB_UNIT.read_bytes()
+        r = subprocess.run(["systemctl", "--user", "show", WEB_UNIT_NAME, "-p", "FragmentPath", "-p", "DropInPaths"],
+                           capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise _ScError(f"systemctl başlatılamadı: {e}") from None
+    if r.returncode:
+        raise _ScError(f"çıkış {r.returncode if r.returncode > 0 else 128 - r.returncode}")
+    props = dict(x.partition("=")[::2] for x in os.fsdecode(r.stdout).split("\n"))
+    return props.get("FragmentPath", ""), props.get("DropInPaths", "").split()
+
+
+def _read_web_unit(fragment: str = "") -> Tuple[str, Optional[str]]:
+    """(metin, okuma hatası): yoksa ("", None); okunamaz ya da UTF-8 değilse hata metni (Rust `read_web_unit`).
+    Kullanıcı dizininde birim yoksa systemd'nin bildirdiği `fragment` okunur."""
+    path = WEB_UNIT if os.path.lexists(WEB_UNIT) or not fragment else Path(fragment)
+    try:
+        b = path.read_bytes()
     except FileNotFoundError:
         return "", None
     except OSError as e:
-        return "", f"{WEB_UNIT}: {e}"
+        return "", f"{path}: {e}"
     try:
         return b.decode("utf-8"), None
     except UnicodeDecodeError:
-        return "", f"{WEB_UNIT}: UTF-8 değil"
+        return "", f"{path}: UTF-8 değil"
 
 
 def _snapshot(p: Path):
@@ -592,28 +612,44 @@ def _effective_execstart(text: str) -> Optional[str]:
     return cur
 
 
-def _web_dropin_files() -> Optional[List[Tuple[str, str]]]:
-    """Web biriminin `front.conf` dışındaki drop-in'leri (ad, metin), ad sırasıyla; biri okunamazsa None."""
-    out = []
+def _overrides_user_dir(path: str) -> bool:
+    """Kullanıcı yapılandırma dizininden ÖNCELİKLİ systemd dizinleri."""
+    return os.path.basename(os.path.dirname(os.path.dirname(path))) in ("user.control", "transient")
+
+
+def _web_dropin_files(dropin_paths: Sequence[str] = ()) -> Optional[List[Tuple[str, str]]]:
+    """Web biriminin geçerli drop-in'leri (ad, metin), ad sırasıyla: systemd'nin bildirdikleri + kullanıcı dizini (henüz
+    `daemon-reload` edilmemiş olanlar da; aynı adda kullanıcı dosyası kazanır). Bizim `front.conf` ve onun ezdiği aynı adlı
+    dosyalar girmez. Biri okunamazsa None; silinmiş ama yeniden yüklenmemiş yol atlanır."""
+    paths = {os.path.basename(p): p for p in dropin_paths}
     try:
-        names = sorted(os.listdir(DROPIN.parent), key=os.fsencode)
+        names = os.listdir(DROPIN.parent)
     except FileNotFoundError:
-        return []
+        names = []
     except OSError:
         return None
+    user = set()
     for n in names:
-        if not n.endswith(".conf") or n.startswith(".") or n == DROPIN.name:
+        if n.endswith(".conf") and not n.startswith(".") and not (n in paths and _overrides_user_dir(paths[n])):
+            paths[n] = str(DROPIN.parent / n)
+            user.add(n)
+    out = []
+    for n in sorted(paths, key=os.fsencode):
+        if n == DROPIN.name and not _overrides_user_dir(paths[n]):
             continue
         try:
-            out.append((n, (DROPIN.parent / n).read_bytes().decode("utf-8")))
+            out.append((n, Path(paths[n]).read_bytes().decode("utf-8")))
+        except FileNotFoundError:
+            if n in user:
+                return None
         except (OSError, UnicodeDecodeError):
             return None
     return out
 
 
-def _web_dropins() -> Optional[str]:
+def _web_dropins(dropin_paths: Sequence[str] = ()) -> Optional[str]:
     """`_web_dropin_files` metinleri birleşik; biri okunamazsa None."""
-    files = _web_dropin_files()
+    files = _web_dropin_files(dropin_paths)
     return None if files is None else "".join("\n" + t for _, t in files)
 
 
@@ -685,8 +721,13 @@ def run(args) -> int:
 def _on(args) -> int:
     """`on`: yarıda kalırsa (yazım, systemctl, ön kapının dinlememesi, web'in iç adrese geçmemesi) önceki dosya ve birim
     durumuna dönülür; her dönüş adımı yazılır (Rust `front::on`)."""
-    text, read_err = _read_web_unit()
-    plan = _plan_on(args.listen, args.internal, args.bin, text, read_err)
+    frag, drops, units_err = "", [], None
+    try:
+        frag, drops = _unit_paths()
+    except _ScError as e:
+        units_err = str(e)
+    text, read_err = _read_web_unit(frag)
+    plan = _plan_on(args.listen, args.internal, args.bin, text, read_err, drops, units_err)
     print("PLAN:\n  " + "\n  ".join(plan["steps"]))
     if plan["blockers"]:
         print("ENGEL:\n  " + "\n  ".join(plan["blockers"]))
@@ -793,8 +834,12 @@ def _off(args) -> int:
     if not args.apply:
         print("(plan; uygulamak için --apply)")
         return 0
-    text, read_err = _read_web_unit()
-    extra = _web_dropins()
+    try:
+        frag, drops = _unit_paths()
+    except _ScError:                    # geri dönüş komutu engellenmez: kullanıcı dizini okunur
+        frag, drops = "", []
+    text, read_err = _read_web_unit(frag)
+    extra = _web_dropins(drops)
     wa = _web_addr(text + extra) if read_err is None and extra is not None else None
     if wa is None:
         try:

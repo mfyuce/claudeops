@@ -66,6 +66,15 @@ impl Sandbox {
         self.t.path().join("sc.log")
     }
 
+    /// Salt okuma `show` dışındaki systemctl çağrıları.
+    pub fn sc_changes(&self) -> String {
+        std::fs::read_to_string(self.sc_log())
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.starts_with("--user show "))
+            .collect()
+    }
+
     pub fn cmd(&self, prog: &Path) -> Command {
         let mut c = Command::new(prog);
         c.env_clear()

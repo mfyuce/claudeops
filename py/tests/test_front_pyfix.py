@@ -12,6 +12,7 @@ from claudeops.commands import front_cmd as f  # noqa: E402
 LIVE = "[Service]\nExecStart=/bin/bash -ic '/usr/bin/python3 -m claudeops web'\n"
 L, I = "127.0.0.1:8765", "127.0.0.1:28765"
 REAL_OWNER = f._port_owner      # Env sahtesiyle değiştirir; gerçek /proc taraması testleri bunu çağırır
+REAL_UNIT_PATHS = getattr(f, "_unit_paths", None)
 
 
 class World:
@@ -26,6 +27,12 @@ class World:
         self.front_active = False
         self.front_enabled = False
         self.query_err = False
+        self.units = ("", [])          # `systemctl --user show` (FragmentPath, DropInPaths); str = hata
+
+    def unit_paths(self):
+        if isinstance(self.units, str):
+            raise f._ScError(self.units)
+        return self.units
 
     def busy(self, hp):
         return self.owners.get(hp, ("none",)) != ("none",)
@@ -71,7 +78,7 @@ class Env(unittest.TestCase):
                   mock.patch.object(f, "WEB_UNIT", self.web), mock.patch.object(f, "FRONT_UNIT", self.front),
                   mock.patch.object(f, "DROPIN", self.dropin), mock.patch.object(f, "DIST_DIR", "/repo/py/webui/dist"),
                   mock.patch.object(f, "port_busy", self.w.busy), mock.patch.object(f, "_port_owner", self.w.owner),
-                  mock.patch.object(f, "_sc", self.w.sc),
+                  mock.patch.object(f, "_sc", self.w.sc), mock.patch.object(f, "_unit_paths", self.w.unit_paths, create=True),
                   mock.patch.dict(f._TIMING, {"front_up": 0.05, "port_free": 0.05, "web_up": 0.05, "poll": 0.005}),
                   mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": ""})):
             p.start(); self.addCleanup(p.stop)
@@ -668,6 +675,98 @@ class P11OnUsesEffectiveExecStart(Env):
         self.other("zz.conf", "[Service]\nEnvironment=A=1\n")
         rc, out = self.run_front("on")
         self.assertEqual(rc, 0, out)
+
+
+class P12SystemdUnitPaths(Env):
+    """`on`/`off` yalnız kullanıcı drop-in dizinini değil systemd'nin bildirdiği birim yollarını okur."""
+
+    def ext(self, rel, body):
+        p = self.root / "etc" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body)
+        return str(p)
+
+    ES = "[Service]\nExecStart=\nExecStart=/z -m claudeops web{}\n"
+
+    def assert_blocked(self, want):
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn(want, out)
+        self.assertEqual(self.w.calls, [])
+        self.assertFalse(self.front.exists() or self.dropin.exists())
+
+    def test_later_outside_dropin_blocks(self):
+        self.w.units = (str(self.web), [self.ext("service.d/zz.conf", self.ES.format(""))])
+        self.assert_blocked("zz.conf")
+
+    def test_earlier_outside_dropin_is_the_base(self):
+        self.web_outside()
+        self.w.units = (str(self.web), [self.ext("service.d/aa.conf", self.ES.format(""))])
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ExecStart=/z -m claudeops web --host 127.0.0.1 --port 28765\n", self.dropin.read_text())
+
+    def test_user_dropin_shadows_same_name_outside(self):
+        self.web_outside()
+        self.w.units = (str(self.web), [self.ext("d/aa.conf", "[Service]\nExecStart=\n")])
+        self.dropin.parent.mkdir(parents=True)
+        (self.dropin.parent / "aa.conf").write_text(self.ES.format(""))
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ExecStart=/z ", self.dropin.read_text())
+
+    def test_control_dir_wins_over_user_dir(self):
+        self.w.units = (str(self.web), [self.ext("user.control/claudeops-web.service.d/aa.conf", "[Service]\nExecStart=\n")])
+        self.dropin.parent.mkdir(parents=True)
+        (self.dropin.parent / "aa.conf").write_text(self.ES.format(""))
+        self.assert_blocked("tanınmadı")
+
+    def test_front_conf_elsewhere(self):
+        self.w.units = (str(self.web), [self.ext("user.control/claudeops-web.service.d/front.conf", self.ES.format(""))])
+        self.assert_blocked("front.conf sonrasındaki drop-in ExecStart= atıyor")
+        self.web_outside()
+        self.w.units = (str(self.web), [self.ext("d/front.conf", self.ES.format(""))])   # bizimki bunu ezer
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("/z ", self.dropin.read_text())
+
+    def test_main_unit_outside_user_dir(self):
+        self.web_outside()
+        self.web.unlink()
+        self.w.units = (self.ext("claudeops-web.service", "[Service]\nExecStart=/e -m claudeops web\n"), [])
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ExecStart=/e -m claudeops web --host", self.dropin.read_text())
+
+    def test_deleted_but_not_reloaded_dropin_is_skipped(self):
+        self.w.units = (str(self.web), [str(self.root / "etc" / "yok.conf")])
+        rc, out = self.run_front("on")
+        self.assertEqual(rc, 0, out)
+
+    def test_query_error_blocks_on_but_not_off(self):
+        self.w.units = "çıkış 1"
+        self.assert_blocked("claudeops-web.service birim yolları okunamadı: çıkış 1")
+        self.front_on()
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+
+    def test_off_reads_outside_dropin_address(self):
+        self.front_on()
+        self.w.units = (str(self.web), [self.ext("d/aa.conf", self.ES.format(" --port 9004"))])
+        self.w.effects[2] = ("restart claudeops-web.service", "127.0.0.1:9004", unit(f.WEB_UNIT_NAME))
+        rc, out = self.run_front("off", True)
+        self.assertEqual(rc, 0, out)
+
+    def test_show_output_is_parsed(self):
+        out = b"FragmentPath=/a/w.service\nDropInPaths=/a/x.conf /b/y.conf\n"
+        done = SimpleNamespace(returncode=0, stdout=out)
+        with mock.patch.object(f.subprocess, "run", return_value=done) as run:
+            self.assertEqual(REAL_UNIT_PATHS(), ("/a/w.service", ["/a/x.conf", "/b/y.conf"]))
+        self.assertEqual(run.call_args[0][0], ["systemctl", "--user", "show", "claudeops-web.service",
+                                              "-p", "FragmentPath", "-p", "DropInPaths"])
+        for bad in (dict(return_value=SimpleNamespace(returncode=1, stdout=b"")), dict(side_effect=OSError("x"))):
+            with mock.patch.object(f.subprocess, "run", **bad), self.assertRaises(f._ScError):
+                REAL_UNIT_PATHS()
 
 
 class P9SlowWebAndSymlinkUnits(Env):

@@ -4283,7 +4283,8 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
 
 
 def _todo_sha_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
-    """Projenin YEREL TODO.md içeriğinin sha256'sı (todo_triage'ın tekrar kapısı); bilinmiyor/uzak/okunamayan = ''."""
+    """Projenin YEREL TODO.md içeriğinin sha256'sı (todo_triage'ın tekrar kapısı, TODO değişimi tetikleri); bilinmiyor/uzak/okunamayan ya da
+    dosya başka projenin (`_todo_owned_by_other`, açık iş sayacıyla aynı kural) = ''."""
     import hashlib
 
     def sha(proj: str) -> str:
@@ -4291,8 +4292,10 @@ def _todo_sha_of(projects: Dict[str, sw.Project]) -> Callable[[str], str]:
             p = projects.get(proj)
             if p is None or p.host:
                 return ""
-            real = _doc_path(_cwd_resolver()(proj), "TODO.md")
-            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
+            resolve = _cwd_resolver()
+            cwd = resolve(proj)
+            real = _doc_path(cwd, "TODO.md")
+            if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES or _todo_owned_by_other(projects, proj, cwd, real, resolve):
                 return ""
             with open(real, "rb") as f:
                 return hashlib.sha256(f.read()).hexdigest()

@@ -21,12 +21,13 @@ use crate::argp::{Action, FrontArgs};
 use crate::pyenv::{normpath, pathlib_str, Roots};
 use fsx::Prev;
 use net::{Net, FRONT_UNIT_NAME, WEB_UNIT_NAME};
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::io::Write;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use systemctl::{show, Systemctl};
+use systemctl::{show, Systemctl, UnitPaths};
 
 /// `front_cmd.DEFAULT_LISTEN`
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:8765";
@@ -278,12 +279,14 @@ pub struct Plan {
 }
 
 /// Python `plan_on` (+ düzeltmeler a, b). `web_unit_text`: `WEB_UNIT` içeriği; yoksa `Ok("")`, okunamadıysa `Err`.
+/// `units`: systemd'nin bildirdiği birim yolları ya da sorgu hatası.
 pub fn plan_on(
     ctx: &Ctx<'_>,
     listen: &str,
     internal: &str,
     binp: &str,
     web_unit_text: Result<String, String>,
+    units: Result<&UnitPaths, &str>,
 ) -> Plan {
     let p = &ctx.paths;
     let mut blockers = Vec::new();
@@ -304,12 +307,14 @@ pub fn plan_on(
         Ok(t) => (t, None),
         Err(e) => (String::new(), Some(e)),
     };
-    let files = web_dropin_files(Path::new(&p.dropin));
+    let dropin_paths = units.map(|u| u.dropins.as_slice()).unwrap_or_default();
+    let files = web_dropin_files(Path::new(&p.dropin), dropin_paths);
     let mine = Path::new(&p.dropin).file_name();
     let (mut es, mut late) = (None, Vec::new());
     if let Some(files) = &files {
         let mut base = text.clone();
         for (n, t) in files {
+            // else dalındaki eşit ad: bizim `front.conf`u ezen daha öncelikli aynı adlı dosya
             if Some(n.as_os_str()) < mine {
                 base.push('\n');
                 base.push_str(t);
@@ -322,6 +327,10 @@ pub fn plan_on(
     let new = es.as_deref().and_then(|e| with_internal_port(e, internal));
     if let Some(e) = read_err {
         blockers.push(format!("claudeops-web.service okunamadı: {e}"));
+    } else if let Err(e) = units {
+        blockers.push(format!(
+            "claudeops-web.service birim yolları okunamadı: {e}"
+        ));
     } else if files.is_none() {
         let dir = Path::new(&p.dropin).parent().unwrap_or(Path::new(""));
         blockers.push(format!(
@@ -427,7 +436,13 @@ fn is_exec_file(p: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn read_web_unit(p: &str) -> Result<String, String> {
+/// Kullanıcı dizininde birim yoksa systemd'nin bildirdiği `fragment` okunur.
+fn read_web_unit(user: &str, fragment: &str) -> Result<String, String> {
+    let p = if std::fs::symlink_metadata(user).is_ok() || fragment.is_empty() {
+        user
+    } else {
+        fragment
+    };
     match std::fs::read(p) {
         Ok(b) => String::from_utf8(b).map_err(|_| format!("{p}: UTF-8 değil")),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
@@ -631,7 +646,11 @@ fn on(
     bin: &str,
 ) -> std::io::Result<i32> {
     let p = ctx.paths.clone();
-    let plan = plan_on(ctx, listen, internal, bin, read_web_unit(&p.web_unit));
+    let units = ctx.sc.unit_paths();
+    let fragment = units.as_ref().map(|u| u.fragment.as_str()).unwrap_or("");
+    let text = read_web_unit(&p.web_unit, fragment);
+    let units = units.as_ref().map_err(String::as_str);
+    let plan = plan_on(ctx, listen, internal, bin, text, units);
     writeln!(ctx.out, "PLAN:\n  {}", plan.steps.join("\n  "))?;
     if !plan.blockers.is_empty() {
         writeln!(ctx.out, "ENGEL:\n  {}", plan.blockers.join("\n  "))?;
@@ -835,36 +854,61 @@ fn effective_execstart(text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Python `_web_dropin_files`: `front.conf` dışındaki drop-in'ler (ad, metin) ad sırasıyla; biri okunamazsa `None`.
-fn web_dropin_files(dropin: &Path) -> Option<Vec<(OsString, String)>> {
+/// Python `_overrides_user_dir`: kullanıcı yapılandırma dizininden ÖNCELİKLİ systemd dizinleri.
+fn overrides_user_dir(p: &Path) -> bool {
+    p.parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .is_some_and(|n| n == "user.control" || n == "transient")
+}
+
+/// Python `_web_dropin_files`: geçerli drop-in'ler (ad, metin), ad sırasıyla: systemd'nin bildirdikleri + kullanıcı
+/// dizini (aynı adda kullanıcı dosyası kazanır); `front.conf` ve ezdiği aynı adlılar girmez. Biri okunamazsa `None`;
+/// silinmiş ama yeniden yüklenmemiş yol atlanır.
+fn web_dropin_files(dropin: &Path, known: &[String]) -> Option<Vec<(OsString, String)>> {
     let dir = dropin.parent()?;
-    let rd = match std::fs::read_dir(dir) {
-        Ok(r) => r,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),
+    // ad -> (yol, kullanıcı dizininden mi)
+    let mut paths: BTreeMap<OsString, (PathBuf, bool)> = known
+        .iter()
+        .filter_map(|p| {
+            let p = PathBuf::from(p);
+            Some((p.file_name()?.to_os_string(), (p, false)))
+        })
+        .collect();
+    let names = match std::fs::read_dir(dir) {
+        Ok(rd) => rd
+            .map(|e| e.map(|e| e.file_name()))
+            .collect::<std::io::Result<Vec<_>>>()
+            .ok()?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(_) => return None,
     };
-    let mut names = rd
-        .map(|e| e.map(|e| e.file_name()))
-        .collect::<std::io::Result<Vec<_>>>()
-        .ok()?;
-    names.retain(|n| {
+    for n in names {
         let b = n.as_encoded_bytes();
-        b.ends_with(b".conf") && !b.starts_with(b".") && Some(n.as_os_str()) != dropin.file_name()
-    });
-    names.sort();
-    names
-        .into_iter()
-        .map(|n| {
-            let t = std::fs::read_to_string(dir.join(&n)).ok()?;
-            Some((n, t))
-        })
-        .collect()
+        let outranked = paths.get(&n).is_some_and(|(p, _)| overrides_user_dir(p));
+        if b.ends_with(b".conf") && !b.starts_with(b".") && !outranked {
+            let p = dir.join(&n);
+            paths.insert(n, (p, true));
+        }
+    }
+    let mut out = Vec::new();
+    for (n, (p, user)) in paths {
+        if Some(n.as_os_str()) == dropin.file_name() && !overrides_user_dir(&p) {
+            continue;
+        }
+        match std::fs::read_to_string(&p) {
+            Ok(t) => out.push((n, t)),
+            Err(e) if !user && e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return None,
+        }
+    }
+    Some(out)
 }
 
 /// Python `_web_dropins`: drop-in metinleri birleşik; biri okunamazsa `None`.
-fn web_dropins(dropin: &Path) -> Option<String> {
+fn web_dropins(dropin: &Path, known: &[String]) -> Option<String> {
     Some(
-        web_dropin_files(dropin)?
+        web_dropin_files(dropin, known)?
             .iter()
             .map(|(_, t)| format!("\n{t}"))
             .collect(),
@@ -925,9 +969,11 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         return Ok(0);
     }
     // Doğrulanacak adres: web'in kendi adresi (ön kapının `--listen`i farklı olabilir; web oraya değil kendi portuna döner).
-    let wa = match read_web_unit(&p.web_unit)
+    // Sorgu hatası geri dönüş komutunu engellemez: kullanıcı dizini okunur.
+    let units = ctx.sc.unit_paths().unwrap_or_default();
+    let wa = match read_web_unit(&p.web_unit, &units.fragment)
         .ok()
-        .zip(web_dropins(Path::new(&p.dropin)))
+        .zip(web_dropins(Path::new(&p.dropin), &units.dropins))
         .and_then(|(unit, extra)| web_addr(&(unit + &extra)))
     {
         Some(a) => a,

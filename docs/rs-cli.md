@@ -90,7 +90,8 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | `_sc` (374) | `src/front/systemctl.rs` `Systemctl`, `RealSystemctl` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
 | `_show` (383) | `src/front/systemctl.rs` `show` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
 | `_run_sc` (387) | `src/front/mod.rs` `run_sc` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
-| `_read_web_unit` (396) | `src/front/mod.rs` `read_web_unit` | `unreadable_web_unit_is_a_blocker` | karşılandı |
+| `_unit_paths` | `src/front/systemctl.rs` `Systemctl::unit_paths`, `parse_unit_paths`, `UnitPaths` | `show_output_is_parsed`, `unit_query_error_blocks_on_but_not_off` | karşılandı |
+| `_read_web_unit` (396) | `src/front/mod.rs` `read_web_unit` | `unreadable_web_unit_is_a_blocker`, `on_reads_main_unit_outside_user_dir_and_skips_deleted_dropin` | karşılandı |
 | `_snapshot` (410) | `src/front/fsx.rs` `snapshot`, `Prev` | `write_snapshot_restore_roundtrip` | karşılandı |
 | `_atomic_write` (424) | `src/front/fsx.rs` `atomic_write` | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
 | `_restore` (459) | `src/front/fsx.rs` `restore` | `write_snapshot_restore_roundtrip` | karşılandı |
@@ -107,7 +108,8 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | `_WEB_LONG_OPTS` (569) | `src/front/mod.rs` `WEB_LONG_OPTS` | `web_addr_resolves_argparse_abbreviations` | karşılandı |
 | `_effective_execstart` (572) | `src/front/mod.rs` `effective_execstart` | `web_addr_last_execstart_wins_and_empty_resets` | karşılandı |
 | `regex ^ExecStart=(.*)$` (575) | `effective_execstart` (satır bölme + `strip_prefix`) | `web_addr_last_execstart_wins_and_empty_resets` | karşılandı |
-| `_web_dropins` (580) | `src/front/mod.rs` `web_dropins` | `off_follows_overriding_dropins_in_name_order`, `off_falls_back_on_unreadable_dropin` | karşılandı |
+| `_overrides_user_dir`, `_web_dropin_files` | `src/front/mod.rs` `overrides_user_dir`, `web_dropin_files` | `on_blocks_later_outside_dropin`, `on_uses_earlier_outside_dropin_as_base`, `user_dropin_shadows_same_name_outside_but_not_control_dir`, `front_conf_elsewhere_blocks_only_when_it_wins` | karşılandı |
+| `_web_dropins` (580) | `src/front/mod.rs` `web_dropins` | `off_follows_overriding_dropins_in_name_order`, `off_falls_back_on_unreadable_dropin`, `off_reads_outside_dropin_address` | karşılandı |
 | `_web_addr` (599) | `src/front/mod.rs` `web_addr` | `web_addr_follows_web_unit_flags`, `off_verifies_web_on_its_own_port_when_front_listen_differs` | karşılandı |
 | `run` (643) | `src/front/mod.rs` `run`, `status`; `src/main.rs` `run_front` | `parity_front_status_variants`, `fix_a_status_reports_bad_address_without_crashing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
 | `_on` (664) | `src/front/mod.rs` `on` | `plan_only_changes_nothing`, `applied_unit_passes_the_secret_state_dir`, `fix_b_our_web_on_internal_port_is_a_reapply`, `fix_c_on_rolls_back_at_every_systemctl_step`, `on_restarts_an_already_running_front_so_the_new_unit_applies`, `parity_apply_rollback_on_systemctl_failure`, `parity_on_restarts_running_front_then_rolls_back_unverified` | karşılandı |

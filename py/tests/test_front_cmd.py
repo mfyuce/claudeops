@@ -44,6 +44,7 @@ class T(unittest.TestCase):
                     mock.patch.object(f, "WEB_UNIT", web), mock.patch.object(f, "FRONT_UNIT", unit), \
                     mock.patch.object(f, "DROPIN", root / "d" / "front.conf"), \
                     mock.patch.object(f, "port_busy", lambda hp: False), mock.patch.object(f, "_sc", lambda *a: 0), \
+                    mock.patch.object(f, "_unit_paths", lambda: ("", []), create=True), \
                     mock.patch.object(f, "_port_owner", lambda hp: ("holders", [(1, f.FRONT_UNIT_NAME if hp == "127.0.0.1:1"
                                                                                 else f.WEB_UNIT_NAME)])), \
                     mock.patch.dict(os.environ, {"CLAUDEOPS_FRONT_SECRET": ""}), mock.patch("builtins.print"):
