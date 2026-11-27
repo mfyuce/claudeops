@@ -135,7 +135,8 @@ impl<'a> Tick<'a> {
                             cls == "own" || (w.is_adhoc_owner && cls == "adhoc")
                         })
                 });
-                let ready = |v: &&SessionView| !self.busy.contains(&v.name) && v.busy != Some(true) && !v.subagent_active;
+                let ready =
+                    |v: &&SessionView| !self.busy.contains(&v.name) && v.busy != Some(true) && !v.subagent_active;
                 if let Some(v) = v.filter(ready) {
                     self.act("deliver_answer", &v.name, "answer", &[("question_id", Value::from(q.id.as_str()))]);
                     self.busy.insert(v.name.clone());
