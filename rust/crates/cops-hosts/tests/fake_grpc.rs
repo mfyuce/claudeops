@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use cops_hosts::consts::CONSECUTIVE_FAILURES_BEFORE_ERROR;
+use cops_hosts::consts::{CONSECUTIVE_FAILURES_BEFORE_ERROR, GRPC_TERM_REFUSED_TTL};
 use cops_hosts::grpc::pb;
 use cops_hosts::net::Connector;
 use cops_hosts::tier::Tier;
@@ -217,6 +217,141 @@ async fn grpc_term_relay_serves_frames_and_error_updates() {
         })
         .await;
         assert!(v.get("text").is_none());
+    })
+    .await
+}
+
+/// TBD#392: gRPC terminali `PERMISSION_DENIED` ile reddeden uzak host → relay hemen WS'ten kurulur (2 sn yeniden
+/// kurma arası beklenmez); süre dolana dek yeni relay'ler doğrudan WS, sonra gRPC yeniden denenir. Durum akışı etkilenmez.
+#[tokio::test]
+async fn grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later() {
+    // Sanal saat süre kadar ileri alınır; tavan ondan büyük olmalı.
+    deadline_within(GRPC_TERM_REFUSED_TTL * 3, async {
+        let g = GrpcFake::start(None).await;
+        g.refuse_term(true);
+        let w = WsFake::start(rest_status(), default_opener(), None).await;
+        let src = MemSource::new(vec![grpc_host(&w.url(), &g.url())]);
+        let (fed, _) = fed_with(client(), &src);
+        grpc_tier(&fed);
+        let o = TermOpts::default();
+
+        let t0 = Instant::now();
+        let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+        assert!(
+            t0.elapsed() < Duration::from_millis(1500),
+            "{:?}",
+            t0.elapsed()
+        );
+        assert!(!v["text"].as_str().unwrap().contains("#grpc"), "{v}");
+        assert_eq!(g.count("StreamTermOutput"), 1);
+        assert_eq!(w.upgrades(), 1);
+        assert_eq!(fed.tiers.get("a"), Tier::Grpc, "tier is not downgraded");
+
+        // Aynı host'ta başka oturum: gRPC hiç denenmez.
+        let end = tokio::time::Instant::now() + Duration::from_secs(5);
+        while fed.term_output("a", "s2", "en", &o)["ok"] != true {
+            assert!(tokio::time::Instant::now() < end);
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(g.count("StreamTermOutput"), 1);
+        assert_eq!(w.upgrades(), 2);
+
+        // Süre dolunca yeni relay yine gRPC.
+        g.refuse_term(false);
+        tokio::time::pause();
+        tokio::time::advance(GRPC_TERM_REFUSED_TTL).await;
+        tokio::time::resume();
+        let end = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let v = fed.term_output("a", "s3", "en", &o);
+            if v["ok"] == true {
+                assert_eq!(v["text"], "s3/en#grpc");
+                break;
+            }
+            assert!(tokio::time::Instant::now() < end, "{v}");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+}
+
+/// Akış ortasında red (kip açıkken değişti) de düşürür; başka bir gRPC hatası WS'e geçirmez.
+#[tokio::test]
+async fn grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not() {
+    deadline(async {
+        for (status, falls_back) in [
+            (tonic::Status::permission_denied("signature_required"), true),
+            (tonic::Status::unavailable("PermissionDenied"), false),
+        ] {
+            let g = GrpcFake::start(None).await;
+            let w = WsFake::start(rest_status(), default_opener(), None).await;
+            let src = MemSource::new(vec![grpc_host(&w.url(), &g.url())]);
+            let (fed, _) = fed_with(client(), &src);
+            grpc_tier(&fed);
+            let o = TermOpts::default();
+            wait_term(&fed, &o, |v| v["text"] == "s1/en#grpc").await;
+            g.fail_streams(status);
+            // Yeniden kurma arası (2 sn) geçsin: iki yolda da yeni bir akış kurulur.
+            tokio::time::sleep(Duration::from_millis(2200)).await;
+            let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+            assert_eq!(
+                !v["text"].as_str().unwrap().contains("#grpc"),
+                falls_back,
+                "{v}"
+            );
+            assert_eq!(w.upgrades() > 0, falls_back);
+        }
+    })
+    .await
+}
+
+/// Red, reddeden relay'in adresine yazılır: kayıt o arada düzenlendiyse yeni adres gRPC'den denenir.
+#[tokio::test]
+async fn grpc_term_refusal_is_remembered_for_the_refusing_address_only() {
+    deadline(async {
+        let old = GrpcFake::start(None).await;
+        old.refuse_term(true);
+        let new = GrpcFake::start(None).await;
+        let w = WsFake::start(rest_status(), default_opener(), None).await;
+        let src = MemSource::new(vec![grpc_host(&w.url(), &old.url())]);
+        let (fed, ev) = fed_with(client(), &src);
+        grpc_tier(&fed);
+        let o = TermOpts::default();
+        fed.term_output("a", "s1", "en", &o);
+        wait_until("refused stream ends", Duration::from_secs(5), || {
+            !deaths(&ev).is_empty()
+        })
+        .await;
+        src.hosts.lock().unwrap()[0].grpc_url = new.url();
+        let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+        assert_eq!(v["text"], "s1/en#grpc", "{v}");
+        assert_eq!(new.count("StreamTermOutput"), 1);
+        assert_eq!(w.upgrades(), 0);
+    })
+    .await
+}
+
+/// Kademe gRPC iken kayıttan `grpc_url` kaldırılırsa relay ve durum akışı beklemeden WS'ten kurulur.
+#[tokio::test]
+async fn removed_grpc_url_moves_streams_to_websocket_at_once() {
+    deadline(async {
+        let w = WsFake::start(rest_status(), default_opener(), None).await;
+        let src = MemSource::new(vec![host("a", &w.url())]);
+        let (fed, ev) = fed_with(client(), &src);
+        grpc_tier(&fed);
+        let o = TermOpts::default();
+        let v = wait_term(&fed, &o, |v| v["ok"] == true).await;
+        assert!(!v["text"].as_str().unwrap().contains("#grpc"), "{v}");
+        assert_eq!(fed.tiers.get("a"), Tier::Ws);
+
+        grpc_tier(&fed);
+        fed.ensure_status_consumer(&host("a", &w.url()));
+        wait_until("status websocket", Duration::from_secs(5), || {
+            w.count_path("/ws") == 1
+        })
+        .await;
+        assert_eq!(fed.tiers.get("a"), Tier::Ws);
+        assert!(deaths(&ev).is_empty());
     })
     .await
 }

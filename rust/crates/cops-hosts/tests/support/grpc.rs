@@ -49,6 +49,7 @@ struct Shared {
     senders: Mutex<Vec<mpsc::Sender<Result<StreamItem, Status>>>>,
     /// true = durum akışı ilk iletiden sonra biter (ölü akış).
     end_streams: std::sync::atomic::AtomicBool,
+    refuse_term: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Clone)]
@@ -212,6 +213,9 @@ impl ServerStreamingService<pb::StreamTermOutputRequest> for TermSvc {
             c.term = Some((r.name.clone(), r.lang.clone()));
         }
         Box::pin(async move {
+            if sh.refuse_term.load(Ordering::SeqCst) {
+                return Err(Status::permission_denied("signature_required"));
+            }
             let first = pb::TermUpdate {
                 ok: true,
                 text: format!("{}/{}#grpc", r.name, r.lang),
@@ -353,6 +357,16 @@ impl GrpcFake {
     }
     pub fn count(&self, method: &str) -> usize {
         self.calls().iter().filter(|c| c.method == method).count()
+    }
+    /// `StreamTermOutput` `PERMISSION_DENIED` döner (Python `authz` gRPC terminal kapısı).
+    pub fn refuse_term(&self, on: bool) {
+        self.sh.refuse_term.store(on, Ordering::SeqCst);
+    }
+    /// Açık tüm akışları sunucu tarafında verilen durumla bitir.
+    pub fn fail_streams(&self, status: Status) {
+        for tx in self.sh.senders.lock().unwrap().drain(..) {
+            let _ = tx.try_send(Err(status.clone()));
+        }
     }
     pub fn end_streams(&self, on: bool) {
         self.sh.end_streams.store(on, Ordering::SeqCst);

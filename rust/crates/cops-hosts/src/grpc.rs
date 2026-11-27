@@ -1,5 +1,5 @@
 //! `host_bridge.proto` istemcisi (Python `web_grpc` istemci tarafı). Mesajlar elle tanımlı (derlemede protoc yok); alan
-//! numaralarını `.proto` ile karşılaştıran test henüz YOK (docs/rs-hosts.md). Bağlantı ortak kurucudan geçer (her bağlanışta peer
+//! numaralarını `tests/parity.rs` `.proto` ile karşılaştırır. Bağlantı ortak kurucudan geçer (her bağlanışta peer
 //! denetimi).
 
 use std::collections::HashMap;
@@ -204,6 +204,17 @@ pub fn term_to_value(m: &pb::TermUpdate) -> Value {
            "cols": m.cols, "rows": m.rows, "history_size": m.history_size})
 }
 
+/// Uzak host terminal akışını bu taşıma yolunda reddetti (`PERMISSION_DENIED`) nedeninin öneki; bağlantı hatası DEĞİL.
+pub(crate) const REFUSED_BY_HOST: &str = "grpc permission denied: ";
+
+fn stream_error(s: tonic::Status) -> String {
+    if s.code() == tonic::Code::PermissionDenied {
+        format!("{REFUSED_BY_HOST}{}", s.message())
+    } else {
+        s.to_string()
+    }
+}
+
 /// URL başına TEK kalıcı kanal (keepalive açık; kopunca tonic yeniden bağlanır, her bağlanış kurucudan geçer).
 #[derive(Clone)]
 pub struct GrpcClient {
@@ -336,11 +347,11 @@ impl GrpcClient {
                     ProstCodec::default(),
                 )
                 .await
-                .map_err(|s| s.to_string())?
+                .map_err(stream_error)?
                 .into_inner();
             let frames = stream.map(move |m| match m {
                 Ok(m) => Ok(Some(map(&m))),
-                Err(s) => Err(s.to_string()),
+                Err(s) => Err(stream_error(s)),
             });
             Ok(Box::pin(frames) as FrameStream)
         })

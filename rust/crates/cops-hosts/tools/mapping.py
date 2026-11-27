@@ -128,6 +128,8 @@ DEFS["hosts.py"] = [
     ok("save_host", "record.rs::Draft::new record.rs::Draft::apply",
        f"U:record.rs::validation_order U:record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals {P_SAVE}",
        "yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark"),
+    ok("_clean_url", "record.rs::Draft::new",
+       f"U:record.rs::trailing_slashes_and_whitespace_are_all_removed {P_SAVE}"),
     ok("save_host::re1", "record.rs::Draft::new", f"{P_SAVE}", "`[,\\n]+` bölme"),
     ok("promote_base_url", "record.rs::promote_base_url",
        f"U:record.rs::promote_and_remove {FP}extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure"),
@@ -139,7 +141,11 @@ DEFS["hosts.py"] = [
 _GRPC_PRB = f"{FG}grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python"
 _GRPC_ST = f"{FG}grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest"
 _GRPC_TERM = f"{FG}grpc_term_relay_serves_frames_and_error_updates"
+_GRPC_REF = f"{FG}grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later"
+_GRPC_MID = f"{FG}grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not"
 DEFS["commands/web_grpc.py"] = [
+    oos("_server_options", "sunucu keepalive payı (istemci aralığı `shared_constants…` ile sabit)", SRV),
+    ok("is_term_refused", "grpc.rs::stream_error grpc.rs::REFUSED_BY_HOST", f"{_GRPC_REF} {_GRPC_MID}"),
     oos("_GRPC_MAX_WORKERS _STATUS_TICK_SECONDS _STATUS_DICT_KEYS _reduce_status _dict_to_session_row "
         "_cli_options_to_proto _extras_to_proto _status_dict_to_proto _term_dict_to_proto",
         "sunucu tarafı (dict -> proto, yayın kadansı)", SRV),
@@ -312,6 +318,8 @@ DEFS["commands/web_hosts.py"] = [
     ok("_tier_lock _tier _tier_downgrade_streak _update_tier get_tier",
        "tier.rs::TierBook::update tier.rs::TierBook::get",
        f"U:tier.rs::upgrade_is_immediate_downgrade_is_tolerated {P_POLL} {_WSPROBE}"),
+    ok("_stream_tier", "federation.rs::Federation::stream_tier tier.rs::TierBook::drop_grpc",
+       f"{FG}removed_grpc_url_moves_streams_to_websocket_at_once"),
     ok("_ws_url", "ws.rs::HostClient::ws_connect", f"{FW}base_path_is_kept_for_ws_and_signed_over_it",
        "taban yolu korunur (belgeli fark)"),
     ok("_probe_ws", "ws.rs::HostClient::ws_probe", _WSPROBE),
@@ -344,6 +352,9 @@ DEFS["commands/web_hosts.py"] = [
     ok("_TERM_RELAY_IDLE_TTL_SECONDS _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS _TERM_RELAY_SILENCE_SECONDS",
        "consts.rs::TERM_RELAY_IDLE_TTL consts.rs::TERM_RELAY_RESTART_MIN_INTERVAL consts.rs::TERM_RELAY_SILENCE",
        f"{P_CONST} {_REAP} {_DEAD} {_SILR}"),
+    ok("_GRPC_TERM_REFUSED_TTL_SECONDS", "consts.rs::GRPC_TERM_REFUSED_TTL", f"{P_CONST} {_GRPC_REF}"),
+    ok("_grpc_term_refused _TermRelay.grpc_refused", "relay.rs::Relays.refused relay.rs::Relay::grpc_refused",
+       f"{_GRPC_REF} {_GRPC_MID}"),
     ok("_TermRelay _TermRelay.__init__ _TermRelay.__init__.on_item _TermRelay.read _TermRelay.idle_seconds",
        "relay.rs::Relay relay.rs::Federation::term_output", f"{_RELAY} {_REAP}"),
     ok("_TermRelay.is_alive _TermRelay.silent_seconds _TermRelay.stop", "relay.rs::Federation::term_output",
@@ -481,6 +492,8 @@ CASES["test_hosts.py"] = [
     t_ok("ReachLoopbackTest.test_https_base_may_fall_back_to_reach_loopback",
          f"U:guard.rs::https_never_downgrades_to_public_http {P_ADDR}"),
     t_ok(cls("ReachLoopbackTest", "test_helper test_setting_overrides_ports"), f"U:guard.rs::reach_ports_setting {P_ADDR}"),
+    t_ok("UrlCleanupTest.test_trailing_slashes_and_whitespace_are_all_removed",
+         f"U:record.rs::trailing_slashes_and_whitespace_are_all_removed {P_SAVE}"),
     t_oos("DbModeIrregularTest.test_irregular_detected_from_db_not_stale_file", "DB kipi okuma", W0A),
 ]
 CASES["test_hosts_corrupt.py"] = [
@@ -545,6 +558,18 @@ CASES["test_ws_grpc_peer_guard.py"] = [
     t_ok("GrpcGuardTest.test_unresolvable_is_fail_closed", f"{FG}grpc_unresolvable_name_is_fail_closed"),
     t_ok("GrpcGuardTest.test_public_and_literal_pass", _GRPC_PRB),
 ]
+CASES["test_grpc_term_gate.py"] = [
+    t_oos(cls("ServerGateTest", "test_without_hook_stream_serves_as_before "
+              "test_closed_gate_refuses_before_reading_the_terminal test_raising_or_non_true_gate_is_refused "
+              "test_open_stream_is_cut_when_gate_closes test_ping_and_status_stream_are_not_gated "
+              "test_extension_api_registers_the_gate_and_reset_clears_it"),
+          "sunucu tarafı kapı ve eklenti kancası", SRV),
+    t_ok("ClientFallbackTest.test_refused_grpc_term_stream_falls_back_to_websocket", _GRPC_REF),
+    t_ok("ClientFallbackTest.test_other_session_goes_straight_to_websocket_then_grpc_is_retried_after_ttl", _GRPC_REF),
+    t_ok("ClientFallbackTest.test_other_grpc_failure_does_not_move_to_websocket", _GRPC_MID),
+    t_ok("ClientFallbackTest.test_refusal_is_remembered_for_the_refusing_address_only",
+         f"{FG}grpc_term_refusal_is_remembered_for_the_refusing_address_only"),
+]
 CASES["test_web_hosts_keepalive_idle_close.py"] = [
     t_ok("KeepAliveIdleCloseTests.test_peer_closed_idle_connection_is_replaced_silently", _IDLE_CLOSE),
     t_ok("KeepAliveIdleCloseTests.test_race_dead_conn_judged_alive_is_retried_once_without_error", _STALE_GET),
@@ -593,6 +618,12 @@ CASES["test_ucli_checks_host_routing.py"] = [
     t_ok("Routing.test_sets", P_ROUTES),
     t_oos(cls("Routing", "test_get_branches_proxy_when_host_given test_metrics_routed test_compare_routed"),
           "`web.py` GET dalının vekile bağlanması", GATE),
+]
+CASES["test_grpc_keepalive.py"] = [
+    t_oos(cls("KeepAliveTest", "test_silent_stream_is_not_cut_for_pinging test_idle_channel_keeps_its_connection"),
+          "sunucunun ping kabulü", SRV),
+    t_ok("KeepAliveValuesTest.test_server_allows_pings_more_often_than_the_client_sends_them", P_CONST,
+         "Rust istemci aralığı Python istemci sabitiyle aynı"),
 ]
 CASES["test_web_grpc_ucli_flags.py"] = [
     t_ok(cls("GrpcUcliFlagsTest", "test_roundtrip_never_raises_and_keeps_core_fields test_no_flags_means_none "
@@ -660,6 +691,8 @@ CASES["test_web_hosts_term_relay.py"] = [
     t_ok(cls("TermRelayTests", "test_consumer_death_is_logged_once_per_label test_lite_relay_death_is_logged_under_its_own_label"),
          f"U:push.rs::consumer_death_is_logged_once_a_minute_per_label {_DEAD}"),
     t_ok("TermRelayTests.test_intentional_stop_is_not_logged_as_death", f"{_SILR} {_REAP}"),
+    t_ok(cls("RemovedGrpcUrlTests", "test_term_relay_uses_websocket test_status_consumer_uses_websocket"),
+         f"{FG}removed_grpc_url_moves_streams_to_websocket_at_once"),
 ]
 CASES["test_outbound_signer.py"] = [
     t_ok("OutboundSignerTest.test_no_signer_no_header", f"{FX}unbound_caller_is_never_signed {_POOL}",

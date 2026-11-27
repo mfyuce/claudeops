@@ -202,6 +202,8 @@ def reset() -> None:
     with _LOCK:
         global _AUTHENTICATOR, _AUTHORIZER, _STATUS_FILTER, _SPAWN_HOOK, _OUTBOUND_SIGNER
         _AUTHENTICATOR = _AUTHORIZER = _STATUS_FILTER = _SPAWN_HOOK = _OUTBOUND_SIGNER = None
+        global _GRPC_TERM_GATE
+        _GRPC_TERM_GATE = None
         _AUDIT_SINKS.clear()
         _STATUS_EXTRAS.clear()
         _EVENT_SINKS.clear()
@@ -491,6 +493,29 @@ def outbound_headers(host_name: str, method: str, path: str, body: Optional[byte
         _log("authz_outbound_signer_failed", error=f"{type(e).__name__}: {e}"[:200], host=host_name)
         return {}
     return {str(k): str(v) for k, v in (out or {}).items()}
+
+
+# gRPC köprüsü istek imzası taşımaz ve kimlik kancasından geçmez; imza isteyen kip terminal akışını buradan kapatır
+# (TBD#392). fn() -> True = akış açık. Kanca yoksa açık (davranış aynı).
+_GRPC_TERM_GATE: Optional[Callable[[], bool]] = None
+
+
+def set_grpc_term_gate(fn: Optional[Callable[[], bool]]) -> None:
+    global _GRPC_TERM_GATE
+    with _LOCK:
+        _GRPC_TERM_GATE = fn
+
+
+def grpc_term_allowed() -> bool:
+    """FAIL CLOSED: kanca istisna atarsa ya da `True` dışında bir şey döndürürse akış reddedilir."""
+    fn = _GRPC_TERM_GATE
+    if fn is None:
+        return True
+    try:
+        return fn() is True
+    except Exception as e:      # noqa: BLE001
+        _log("authz_grpc_term_gate_failed", error=f"{type(e).__name__}: {e}"[:200])
+        return False
 
 
 def spawn_env(cli: str, name: str, cwd: str) -> Dict[str, str]:

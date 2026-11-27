@@ -254,5 +254,53 @@ class TermRelayTests(unittest.TestCase):
         self.assertEqual(self._deaths()[0]["label"], "term:fakehost/s1?lite")
 
 
+class RemovedGrpcUrlTests(unittest.TestCase):
+    """Kademe `grpc` kalırken kayıttan `grpc_url` kaldırılmış: boş adresle gRPC denenmez, kademe hemen `ws` olur."""
+
+    def setUp(self):
+        self.addCleanup(self._reset)
+        self._reset()
+        web_hosts._update_tier("fakehost", "grpc")
+        self.conns = []
+
+        def fake_connect(url, **kwargs):
+            self.conns.append((url, FakeWS()))
+            return self.conns[-1][1]
+
+        self.grpc_opens = []
+        for p in (
+            mock.patch.object(web_hosts.hosts_mod, "get_host", lambda name: dict(FAKE_HOST)),
+            mock.patch.object(web_hosts, "ws_connect", fake_connect),
+            mock.patch.object(web_hosts.web_grpc, "open_term_stream", lambda *a: self.grpc_opens.append(a)),
+            mock.patch.object(web_hosts.web_grpc, "open_status_stream", lambda *a: self.grpc_opens.append(a)),
+            mock.patch.object(web_hosts, "diag_log", lambda *a, **k: None),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _reset(self):
+        for book in (web_hosts._term_relays, web_hosts._status_consumers):
+            for c in list(book.values()):
+                c.stop()
+            book.clear()
+        with web_hosts._tier_lock:
+            web_hosts._tier.pop("fakehost", None)
+            web_hosts._tier_downgrade_streak.pop("fakehost", None)
+
+    def test_term_relay_uses_websocket(self):
+        web_hosts.term_output_relay("fakehost", "s1", "en")()
+        self.assertTrue(wait_for(lambda: len(self.conns) == 1))
+        self.assertIn("/ws/term?", self.conns[0][0])
+        self.assertEqual(self.grpc_opens, [])
+        self.assertEqual(web_hosts.get_tier("fakehost"), "ws")
+
+    def test_status_consumer_uses_websocket(self):
+        web_hosts._ensure_status_consumer(dict(FAKE_HOST))
+        self.assertTrue(wait_for(lambda: len(self.conns) == 1))
+        self.assertIn("/ws?", self.conns[0][0])
+        self.assertEqual(self.grpc_opens, [])
+        self.assertEqual(web_hosts.get_tier("fakehost"), "ws")
+
+
 if __name__ == "__main__":
     unittest.main()

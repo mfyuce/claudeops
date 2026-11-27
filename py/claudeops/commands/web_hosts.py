@@ -1368,6 +1368,19 @@ def get_tier(name: str) -> str:
         return _tier.get(name, "rest")
 
 
+def _stream_tier(name: str, host: Dict[str, str]) -> str:
+    """Akış kurulurken kullanılan kademe. Kayıtta `grpc_url` yoksa (kaldırılmış) `grpc` kademesi o anda `ws`e iner:
+    yoklayıcının düşme toleransı beklenirse akışlar boş adrese gRPC dener."""
+    tier = get_tier(name)
+    if tier != "grpc" or host.get("grpc_url"):
+        return tier
+    with _tier_lock:
+        if _tier.get(name) == "grpc":
+            _tier[name] = "ws"
+            _tier_downgrade_streak[name] = 0
+    return "ws"
+
+
 def _capability_prober_loop() -> None:
     while True:
         try:
@@ -1438,6 +1451,7 @@ class _PushConsumer:
         self._alive = threading.Event()
         self._alive.set()
         self.last_msg_mono = time.monotonic()    # kuruluş = ilk "mesaj" (bağlanana dek haksız sessizlik sayılmasın)
+        self.error: Optional[BaseException] = None    # akışı bitiren istisna (ölümden ÖNCE yazılır)
         self.has_data = False    # en az bir öğe `on_item`a ulaştı mı (FED-01: veri gelene kadar REST yoklaması sürer)
         self._call: Any = None
         self._call_lock = threading.Lock()
@@ -1464,6 +1478,7 @@ class _PushConsumer:
                     self.has_data = True
         except Exception as e:
             # bağlantı koptu/hata verdi — çağıran bir sonraki tick'te REST'e düşer / yeniden kurar
+            self.error = e
             reason = f"{type(e).__name__}: {e}"[:200]
         finally:
             self._alive.clear()
@@ -1572,7 +1587,7 @@ def _ensure_status_consumer(host: Dict[str, str]) -> bool:
     iyileşir, host ASLA "gitti" gibi görünmez, sadece bir tick'lik ek
     gecikme olur."""
     name = host["name"]
-    tier = get_tier(name)
+    tier = _stream_tier(name, host)
     if tier == "rest":
         with _status_consumer_lock:
             old = _status_consumers.pop(name, None)
@@ -1649,6 +1664,7 @@ class _TermRelay:
     def __init__(self, tier: str, make_call: Callable[[], Any], parse_item: Callable[[Any], Optional[dict]],
                  label: str = ""):
         self.latest: Optional[dict] = None
+        self.grpc_url = ""    # kurulduğu andaki gRPC adresi (red bu adrese yazılır)
         self.created_mono = time.monotonic()
         self.last_read_mono = self.created_mono
         self._lock = threading.Lock()
@@ -1665,6 +1681,10 @@ class _TermRelay:
         eklememişti: her tick `AttributeError`, `_term_poll_loop` yutuyor, uzak host
         için `/ws/term` ilk karede ölüyordu)."""
         return self._consumer.is_alive()
+
+    def grpc_refused(self) -> bool:
+        """Akış, uzak host gRPC'de terminali reddettiği için mi bitti."""
+        return self._consumer.tier == "grpc" and web_grpc.is_term_refused(self._consumer.error)
 
     def read(self) -> Optional[dict]:
         self.last_read_mono = time.monotonic()
@@ -1688,6 +1708,12 @@ _term_relay_lock = threading.Lock()
 # uzaktan ~4 KB'lık, öteki ~200 KB'lık kare bekler. `interval` de aynı sebeple: 1 sn'de bir yoklayan mirror
 # ile 0,2 sn'de bir yoklayan popup farklı uzak akışlar ister. `interval` yoksa anahtar eski 4'lü kalır.
 _term_relays: Dict[Tuple[Any, ...], _TermRelay] = {}
+
+
+# gRPC'de terminal akışını reddeden host (imza isteyen kip, TBD#392): bu süre boyunca term relay'i WS'ten kurulur, sonra
+# gRPC yeniden denenir. Durum akışı ve kademe etkilenmez. `_term_relay_lock` altında okunur/yazılır.
+_GRPC_TERM_REFUSED_TTL_SECONDS = 60.0
+_grpc_term_refused: Dict[Tuple[str, str], float] = {}  # (host, grpc_url) -> monotonic bitiş
 
 
 def _parse_ws_term_frame(raw: Any) -> Optional[dict]:
@@ -1757,8 +1783,15 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
         if host is None:
             return {"ok": False, "error": f"unknown host: {host_name}", "code": "unknown_host"}
         dead = None
+        refused_key = (host_name, host.get("grpc_url") or "")
         with _term_relay_lock:
             relay = _term_relays.get(key)
+            if relay is not None and not relay.is_alive() and relay.grpc_refused():
+                # reddeden, relay'in KENDİ adresi: kayıt o arada düzenlendiyse yeni adres engellenmez
+                _grpc_term_refused[(host_name, relay.grpc_url)] = time.monotonic() + _GRPC_TERM_REFUSED_TTL_SECONDS
+                dead = relay            # taşıma değişiyor: yeniden kurma arası beklenmez
+                del _term_relays[key]
+                relay = None
             if relay is not None and relay.is_alive() and relay.silent_seconds() > _TERM_RELAY_SILENCE_SECONDS:
                 diag_log("term_relay_silent_restart", host=host_name, name=name, silent=int(relay.silent_seconds()))
                 dead = relay            # yarı açık bağlantı: durdur + yeniden kur (donmuş kareyi VERME)
@@ -1773,7 +1806,9 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                 del _term_relays[key]
                 relay = None
             if relay is None:
-                tier = get_tier(host_name)
+                tier = _stream_tier(host_name, host)
+                if tier == "grpc" and time.monotonic() < _grpc_term_refused.get(refused_key, 0.0):
+                    tier = "ws"
                 token = host["token"]
                 if tier == "grpc":
                     make_call: Callable[[], Any] = lambda: web_grpc.open_term_stream(host.get("grpc_url") or "", token, name, lang)
@@ -1792,6 +1827,7 @@ def term_output_relay(host_name: str, name: str, lang: str, lite: bool = False,
                                    label=f"term:{host_name}/{name}" + ("?lite" if lite else "")
                                    + (f"@{interval:g}s" if interval is not None else "")
                                    + ("+viewport" if viewport else ""))
+                relay.grpc_url = host.get("grpc_url") or ""
                 _term_relays[key] = relay
         if dead is not None:
             dead.stop()
