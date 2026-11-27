@@ -1,16 +1,19 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `ec82eac5` birleşimi `bfdb55cc`):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 711 satır (TAŞINDI 638, KAPSAM DIŞI 73) ve test tablosu
-1523 satır (TAŞINDI 738, KAPSAM DIŞI 785), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
-("Birleştirme engelleri": kim kapatır) ve sahipteki dört soru (S1-S4).
-Son ağaçta ölçülen: `cargo test --workspace` 1270 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D
-warnings` ve `cargo fmt --check -p cops-providers -p cops-tmux -p cops-review-core` temiz (Rust `bfdb55cc`, sonrasında Rust
-kodu değişmedi); Python tam paket 6362 OK (23 atlanan, 524 sn, `2c2c89c3`); eşleme denetimleri çıkış 0 (hosts `--check`,
-rs-proc `--check --strict`, steward `map.py --check`, rev parite raporu + `map_table.py --check`). rs-tmux tablosu bu turda
-yeniden denetlenmedi. Önceki turlarda yük altında oynak görülenler: `parity_live` `live-codex-ctx-dev`,
-`real_fs::concurrent_issue_keeps_file_and_digest_consistent`; bu turda ara koşuda bir kez
-`test_review_io_history::test_real_pipes_stream_and_heartbeat` (yük ~31; tek dosya ve tam koşuda yeşil).
+Durum (27 Kas 2026, `origin/main` `d0054ada` birleşimi `04f4f23f`):
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 715 satır (TAŞINDI 641, KAPSAM DIŞI 74) ve test tablosu
+1532 satır (TAŞINDI 747, KAPSAM DIŞI 785), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0. Engel: ders tablosundaki AÇIK satırlar
+("Birleştirme engelleri": kim kapatır); sahipte altı soru (S1-S6).
+Son ağaçta ölçülen: `cargo test --workspace` 1273 geçti, 0 kaldı, 1 atlandı (`c18580a2`); `clippy --workspace --all-targets -D warnings` temiz (`771df9be`; sonraki test commit'inde
+`-p cops-providers` temiz) ve `cargo fmt --check -p cops-providers -p cops-state` temiz; Python tam paket 6376 OK (23
+atlanan, 308 sn, `771df9be`; sonrasında Python kodu değişmedi); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc
+`--check --strict`, steward `map.py --check`, rev parite raporu + `map_table.py --check`). rs-tmux tablosu geçici bir
+betikle denetlendi (69 tanımın hepsi tabloda; `tmux_backend` geçen test dosyalarında eksik satır 0; depoda denetim betiği
+yok). Oynak görülenler: önceki turlardan `parity_live` `live-codex-ctx-dev`,
+`real_fs::concurrent_issue_keeps_file_and_digest_consistent`,
+`test_review_io_history::test_real_pipes_stream_and_heartbeat`; bu turda bir ara koşuda bir kez `parity_real`
+(`ucli_mcp_register_failed` günlüğü farkı; sonraki üç tek koşu ve tam koşular yeşil, neden incelenmedi).
+27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
 27 Kas ikinci tur: `726888f1` ve `ec82eac5` eşitlemesi, X gönderimi ve yabancı kilit testleri, G3 3 ve 5, G7 8 (`agy models`),
 G9 5, TBD#401, TBD#411 kaydı, maliyet toplayıcısı eşlik testi (aşağıda ilgili bölümler).
 27 Kas ilk düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8), G5/G11 ayrıştırıcıları, G10 aday 5,
@@ -19,8 +22,8 @@ sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 9245 vaka (27 Kas, `ec82eac5` birleşim ağacı `bfdb55cc`): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 370 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
-  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 355 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
+- 9276 vaka (27 Kas; `bfdb55cc`de ölçülen 9245 + üçüncü turda eklenen 43 örnek kipi vakası - rs/stew'e taşınan 12; toplam hesapla, koşucudan yeniden sayılmadı): spawn yürütme 261 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 216 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 2843 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 388 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 131
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 538 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 376, ucli 368 + tırnaklama 5, spawn 390, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 30 "bilinen ayrışma" (1i G1, 3ü G7, 3ü G3, 2si G2, 5i G6, 2si G4, 4ü ayar/pyfmt, 8i misc, 2si model/effort; `url-nfkc`, `byok-sozluk`, `servis-models-ic-liste` rs/state okuyucularına devirle kapandı) testte
@@ -86,7 +89,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): iz işleri ve bekleyen sorular S1-S4.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): cops kabulü bekleyenler ve sorular S1-S6.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -111,7 +114,8 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 | §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | sahip (S3), sonra enterprise/iz |
 | §2.5.2 | ikilinin sürümü günlüğe yazılmaz (ders maddesi istiyor; Python da yazmaz, eklemek Python'a yeni günlük olayı = özellik) | cops kabulü |
 
-Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops).
+Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç (başka izler), uzak deploy ve web restart (cops);
+`d0054ada` sonrası ikinci örnekte hizmet anahtar dosyası sorusu (S6).
 
 ## Bekleyen sorular (sahip)
 - **S1 (sid'siz transkript okuma).** Claude oturumunun konuşma kimliği (sid) bilinmiyorsa (`--resume`suz taze açılış) devir
