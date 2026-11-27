@@ -1178,3 +1178,59 @@ fn off_falls_back_to_front_listen_when_web_unit_is_missing() {
     assert_eq!(rc, 0, "{out}");
     assert!(out.ends_with("kapandı\n"), "{out}");
 }
+
+fn other_dropin(e: &Env, name: &str, body: &[u8]) -> PathBuf {
+    let dir = Path::new(&e.paths.dropin).parent().unwrap();
+    std::fs::create_dir_all(dir).unwrap();
+    let p = dir.join(name);
+    std::fs::write(&p, body).unwrap();
+    p
+}
+
+#[test]
+fn on_builds_front_dropin_from_earlier_dropin_override() {
+    let e = env();
+    e.web_outside();
+    other_dropin(
+        &e,
+        "enterprise.conf",
+        b"[Service]\nExecStart=\nExecStart=/opt/py -m claudeops web\n",
+    );
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    assert_eq!(
+        std::fs::read_to_string(&e.paths.dropin).unwrap(),
+        "[Service]\nExecStart=\nExecStart=/opt/py -m claudeops web --host 127.0.0.1 --port 28765\n"
+    );
+}
+
+#[test]
+fn on_blocks_late_override_empty_execstart_and_unreadable_dropin() {
+    let e = env();
+    for (name, body, want) in [
+        (
+            "zz.conf",
+            &b"[Service]\nExecStart=\nExecStart=/z -m claudeops web\n"[..],
+            "zz.conf",
+        ),
+        ("a.conf", &b"[Service]\nExecStart=\n"[..], "tanınmadı"),
+        ("a.conf", &b"\xff"[..], "drop-in'leri okunamadı"),
+    ] {
+        let p = other_dropin(&e, name, body);
+        let (rc, out) = e.run(Action::On, true, L, I);
+        assert_eq!(rc, 1, "{name}: {out}");
+        assert!(out.contains(want), "{out}");
+        assert!(e.calls().is_empty());
+        assert!(!Path::new(&e.paths.front_unit).exists());
+        assert!(!Path::new(&e.paths.dropin).exists());
+        std::fs::remove_file(p).unwrap();
+    }
+}
+
+#[test]
+fn on_allows_late_dropin_without_execstart() {
+    let e = env();
+    other_dropin(&e, "zz.conf", b"[Service]\nEnvironment=A=1\n");
+    let (rc, out) = e.run(Action::On, false, L, I);
+    assert_eq!(rc, 0, "{out}");
+}

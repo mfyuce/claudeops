@@ -620,6 +620,40 @@ class P10WebAddrAbbrevAndDropins(Env):
         self.off_with({"bozuk.conf": b"\xff"}, 8765)
 
 
+class P11OnUsesEffectiveExecStart(Env):
+    """`on` iç port drop-in'ini web biriminin GEÇERLİ ExecStart'ından üretir (`off` ile aynı kaynak)."""
+
+    def other(self, name, body):
+        self.dropin.parent.mkdir(parents=True, exist_ok=True)
+        (self.dropin.parent / name).write_bytes(body if isinstance(body, bytes) else body.encode())
+
+    def test_earlier_dropin_override_is_the_base_of_front_dropin(self):
+        self.web_outside()
+        self.other("enterprise.conf", "[Service]\nExecStart=\nExecStart=/opt/py -m claudeops web\n")
+        rc, out = self.run_front("on", True)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.dropin.read_text(),
+                         "[Service]\nExecStart=\nExecStart=/opt/py -m claudeops web --host 127.0.0.1 --port 28765\n")
+
+    def test_blockers_change_nothing(self):
+        cases = (("zz.conf", "[Service]\nExecStart=\nExecStart=/z -m claudeops web\n", "zz.conf"),
+                 ("a.conf", "[Service]\nExecStart=\n", "tanınmadı"),
+                 ("a.conf", b"\xff", "drop-in'leri okunamadı"))
+        for name, body, want in cases:
+            self.other(name, body)
+            rc, out = self.run_front("on", True)
+            self.assertEqual(rc, 1, f"{name}: {out}")
+            self.assertIn(want, out)
+            self.assertEqual(self.w.calls, [])
+            self.assertFalse(self.front.exists() or self.dropin.exists())
+            (self.dropin.parent / name).unlink()
+
+    def test_later_dropin_without_execstart_is_fine(self):
+        self.other("zz.conf", "[Service]\nEnvironment=A=1\n")
+        rc, out = self.run_front("on")
+        self.assertEqual(rc, 0, out)
+
+
 class P9SlowWebAndSymlinkUnits(Env):
     """9 (rs/cli kapı notu): web yeniden başlatılırken `front_up` yetmez; sembolik bağlı birim dosyası düz dosyaya dönmesin."""
 
