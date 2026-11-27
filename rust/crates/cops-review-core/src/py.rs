@@ -153,23 +153,9 @@ pub fn truthy(v: Option<&Json>) -> bool {
     v.is_some_and(Json::truthy)
 }
 
-/// Python `float(str)`: baş/son boşluk, `_` ayraçları (rakamlar arasında), `inf`/`nan`/`infinity`.
+/// Python `float(str)`: boşluk kırpma, `_` ayraçları, `inf`/`nan`/`infinity`, ASCII olmayan ondalık rakamlar.
 pub fn float_str(s: &str) -> Option<f64> {
-    let t = strip(s);
-    if t.contains('_') {
-        let b = t.as_bytes();
-        let ok = b.iter().enumerate().all(|(i, c)| {
-            *c != b'_'
-                || (i > 0
-                    && b[i - 1].is_ascii_digit()
-                    && b.get(i + 1).is_some_and(u8::is_ascii_digit))
-        });
-        if !ok {
-            return None;
-        }
-        return t.replace('_', "").parse().ok();
-    }
-    t.parse().ok()
+    cops_state::pycompat::parse_float(s)
 }
 
 /// Python `float(değer)`; dönüştürülemezse `None` (TypeError/ValueError/OverflowError).

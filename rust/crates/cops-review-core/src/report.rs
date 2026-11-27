@@ -438,7 +438,8 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             continue;
         };
         let line = line.trim_end_matches('\r');
-        let Ok(Json::Object(rec)) = Json::parse(line) else {
+        // Python `json.loads` eşlenmemiş vekili kabul eder: satır sayımdan düşmez.
+        let Ok((Json::Object(rec), _)) = Json::parse_lossy(line) else {
             continue;
         };
         if model.is_empty()
