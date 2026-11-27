@@ -91,6 +91,10 @@ MAP = {
     **_same("badrec", "_BAD_SEEN _BAD_SEEN_MAX _field"),
     "_log_bad": _m("badrec", "log_bad"),
     "_finite": _m("report", "usage_cost_usd"),
+    "_MAX_USAGE_TOKENS": _m("report", "MAX_USAGE_TOKENS"),
+    "_USAGE_COUNT_KEYS": _m("report", "usage_cost_usd"),
+    "_usage_number": _m("report", "usage_cost_usd"),
+    "_scan_usage": _m("report", "usage_cost_usd"),
     "StoreCorrupt": _m("error", "Error"),
     "_refuse_corrupt": _m("store", "ReviewStore::refuse_corrupt"),
     "_keep_verdict_state": _m("flow", "keep_verdict_state"),
@@ -108,6 +112,11 @@ NOTES = {
     "StoreCorrupt": "`Error::StoreCorrupt` varyantı",
     "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
+    "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
+                         "tavan kapısı `ucli_cost.py`de (rs/prov + T7)",
+    "_usage_number": "Rust'ta ayrı yardımcı yok: `usage_cost_usd` içindeki `numeric` kapanışı (bool değil, 0..=1e15)",
+    "_scan_usage": "maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) Rust'ta yok: `ucli_cost.py` "
+                   "(rs/prov + T7). FIFO/normal olmayan dosya Rust'ta da bloklamadan 0",
     "claude_catalog": "çekirdek payı; `claude_models` belgesini okumak çağıranda (T8)",
     "_LENS_FORMAT_EXTRA": "modül genel sözlüğü yerine kayıt nesnesinin alanı",
     "finding_key": "`casefold` sapması: \"Bilinen küçük sapmalar\"; `file://` öneki silinmiyor: bilinen Python davranışı, "
@@ -197,6 +206,12 @@ tests("test_review.TestDsnRedact", out(WR, "`IoLog` olaylar arası parola öğre
 classes("test_review", out("rs/state + " + ST, "`settings.steward_config` okuma ve varsayılanlar"), "TestConfigRole")
 classes("test_review", _runner, "TestClaudeArgv TestCodexArgv TerminateReapsTest")
 classes("test_review_anthropic", CORE, "TestAnthropicCost")
+classes("test_rsprov_cost_ledger", CORE, "UnreadableLinesDoNotRaise InvalidCountsNeverLowerTheSpend")
+tests("test_rsprov_cost_ledger.InvalidCountsNeverLowerTheSpend",
+      out("rs/prov + T7 `ucli_cost.py`", "günlük tavan kapısı (`_scan_usage` sorun bayrağı)"),
+      "open_cap_refuses_a_ledger_with_an_invalid_value torn_lines_null_counts_and_old_files_do_not_block")
+classes("test_rsprov_cost_ledger", out("rs/prov + T7 `ucli_cost.py`", "günlük tavan kapısı: okunamayan defter ve "
+                                       "geçersiz kılma yarışı"), "UnreadableLedgerClosesTheGate InvalidateRace")
 classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_review_bad_records", CORE, "BadRecordTest CorruptStoreTest")
 tests("test_review_bad_records.CorruptStoreTest", out(ST, "`steward._corrupt_backup`; review payı `store.rs::backed_up`"),

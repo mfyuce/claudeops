@@ -640,6 +640,25 @@ class TestNonFinite(unittest.TestCase):
                            {"pairs": {rv.pair_key("p", T): {"status": "error", "attempts": b, "started_at": b,
                                                             "finished_at": b, "retry_at": b}}}, [T], 200.0)
 
+    def test_usage_counter_bounds(self):
+        """Geçersiz sayaç (`_usage_number`: bool, negatif, 1e15 üstü) toplanmaz; sınır değerleri ve FIFO iki tarafta aynı."""
+        d = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        vals = (True, False, -1, -0.0, 0, 1e15, 10 ** 15, 10 ** 15 + 1, 1e15 * 1.0000001, 2 ** 63, 12.5, None, [1], {"a": 1})
+        path = d + "/u.usage.jsonl"
+        with open(path, "w") as f:
+            for v in vals:
+                for k in ("input_tokens", "prompt_tokens", "output_tokens", "completion_tokens", "cache_read_input_tokens",
+                          "cached_tokens", "cache_creation_input_tokens", "cache_write_tokens"):
+                    f.write(json.dumps({"t": 9, "usage": {k: v, "output_tokens": 3}}) + "\n")
+                    f.write(json.dumps({"t": 9, "usage": {k: v, "prompt_tokens": 50, "cached_tokens": 10}}) + "\n")
+        for model in ("", "sonnet-5-5"):
+            rv.usage_cost_usd(path, model)
+        os.mkfifo(d + "/p.usage.jsonl")
+        rv.usage_cost_usd(d + "/p.usage.jsonl", "m")
+        os.mkdir(d + "/dir.usage.jsonl")
+        rv.usage_cost_usd(d + "/dir.usage.jsonl", "m")
+
 
 class TestRealData(unittest.TestCase):
     """Canlı deponun KOPYASI üzerinde okuma-yazma ve türetme; veri yoksa atlanır."""

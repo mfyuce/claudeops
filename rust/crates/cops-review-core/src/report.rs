@@ -404,11 +404,32 @@ pub fn anthropic_price(model: &str) -> [f64; 4] {
 }
 
 /// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası.
+/// Python `_MAX_USAGE_TOKENS`: tek istek sayacı için akla yatkın üst sınır (üstü bozuk kayıt).
+pub const MAX_USAGE_TOKENS: f64 = 1e15;
+
+/// Python `_scan_usage` açılışı: `O_NONBLOCK` (FIFO açılışta bloklamaz), açılan tanıtıcı normal dosya değilse ya da
+/// okunamazsa None (maliyet 0).
+fn read_regular_nonblocking(path: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+        .ok()?;
+    if !f.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    f.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
     let [mut pi, mut po, mut pr, mut pw] =
         anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
-    let Ok(bytes) = std::fs::read(path) else {
+    let Some(bytes) = read_regular_nonblocking(path) else {
         return Ok(0.0);
     };
     for raw in bytes.split(|b| *b == b'\n') {
@@ -451,10 +472,12 @@ pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -
             badrec::log_bad("usage.record", path);
             continue;
         }
-        // `isinstance(x, (int, float))`: bool de sayılır.
-        let numeric = |k: &str| match u.get(k) {
-            Some(Json::Str(_)) | None => None,
-            Some(v) => py::float(v),
+        // Python `_usage_number`: int/float (bool DEĞİL), 0 <= x <= `MAX_USAGE_TOKENS`; geçersiz sayaç 0 sayılır.
+        let numeric = |k: &str| {
+            u.get(k)
+                .filter(|v| matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_)))
+                .and_then(py::float)
+                .filter(|x| (0.0..=MAX_USAGE_TOKENS).contains(x))
         };
         let g = |names: &[&str]| names.iter().find_map(|n| numeric(n)).unwrap_or(0.0);
         let cr = g(&[
