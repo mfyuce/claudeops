@@ -205,10 +205,18 @@ def strip_ansi(text: str) -> str:
     return ANSI_OSC_RE.sub("", ANSI_SGR_RE.sub("", text))
 
 
+# Yapıştırılan metinden atılan denetim karakterleri: C0 (sekme ve satır sonları hariç), DEL, C1 (TBD#399/6).
+_TEXT_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
+
 def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0, guard: bool = True) -> bool:
     """`guard` (varsayılan AÇIK, TBD#367): pane gizli girdi bekliyorsa YA DA durum bilinmiyorsa hiçbir şey yazılmaz,
     False döner. Yalnız insanın kendi yazdığı girdi (parola yazmak meşru) `guard=False` verir. Denetim ile yazım ayrı
     tmux çağrılarıdır: arada açılan bir parola istemi yakalanmaz (kapatılamayan yarış).
+
+    Denetim karakterleri (sekme ve satır sonu dışında) metinden ATILIR (Esc yapıştırma ayracını bitirebilir, Ctrl-C
+    oturumu keser). Boş olmayan metinden geriye yalnız boşluk/satır sonu kalıyorsa HİÇBİR ŞEY gönderilmez (False):
+    yalın bir Enter ekrandaki seçili düğmeyi onaylardı. Bilerek yalın Enter isteyen çağıran `""` verir. NUL: False.
 
     `settle_delay` — literal metni gönderdikten SONRA, Enter'ı göndermeden
     ÖNCE bekle (saniye). Varsayılan 0.0: claude/agy/shell zaten anlık Enter'ı
@@ -227,6 +235,10 @@ def tmux_send_keys(name: str, text: str, settle_delay: float = 0.0, guard: bool 
         target = _exact(name)     # hedeflenemeyen ad: tampon bile yüklenmeden False (TBD#366)
         if "\x00" in text:
             return False
+        if text:
+            text = _TEXT_CONTROL_RE.sub("", text)
+            if not text.strip():
+                return False
         if guard and not _mask_allows(name):
             return False
         if text:

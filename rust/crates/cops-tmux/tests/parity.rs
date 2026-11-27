@@ -305,6 +305,12 @@ fn writes_match_python() {
             "a\nb;\n- c",
             "cr\r\nlf",
             "tek\r",
+            "a\u{3}b\u{1b}[201~c\u{7f}d\u{9b}e\tf",
+            "\u{1}\u{8}\u{b}\u{c}\u{e}\u{1f}\u{85}x\u{9f}\u{a0}y",
+            "\n",
+            "\r\n \t",
+            "\u{3}",
+            "\u{a0}\u{2028}",
         ];
         let raws = [
             "foo;",
@@ -870,6 +876,11 @@ fn every_tmux_call_matches_python_argv_and_result_on_a_fake_tmux() {
         (&[("send-keys.rc", "1")][..], "tek"),
         (&[("send-keys.rc", "0\n1")][..], "tek"),
         (&[("send-keys.rc", "1")][..], "a\nb"),
+        (&[][..], "a\u{3}b\u{1b}c\u{7f}\u{9b}"),
+        (&[][..], "\n"),
+        (&[][..], " \t\r\n"),
+        (&[][..], "\u{1b}\u{4}"),
+        (&[][..], "\u{2028}\u{3000}"),
     ] {
         t(
             files,

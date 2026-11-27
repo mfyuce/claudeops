@@ -925,10 +925,11 @@ class UcliProvider(CliProvider):
     def prepare_input(self, text: str) -> str:
         """ucli çok satırlı girdide her satırı AYRI komut/tur sayar: tek satıra indir
         (satır sonları ve sekmeler boşluğa, boş satırlar atılır; tüm boşluklar tek boşluk, KESME YOK).
-        Sekme tek satırda bile Tab tamamlamayı tetikleyebilir."""
+        Sekme tek satırda bile Tab tamamlamayı tetikleyebilir. Geriye hiçbir şey kalmıyorsa metin AYNEN döner (boş
+        metne inerse yalın Enter olurdu; `tmux_send_keys` onu reddeder)."""
         if not isinstance(text, str) or ("\n" not in text and "\r" not in text and "\t" not in text):
             return text
-        return " ".join(text.split())
+        return " ".join(text.split()) or text
 
     def has_conversation(self) -> bool:
         return True  # gerçek bir sohbet: .ucli/chat/NAME.jsonl geçmişi tutuyor

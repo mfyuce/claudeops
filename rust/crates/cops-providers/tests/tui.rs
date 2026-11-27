@@ -171,6 +171,8 @@ fn ucli_input_is_folded_to_one_line_without_truncation() {
     assert_eq!(u.prepare_input("a\nb\n\n  c  \r\nd\re"), "a b c d e");
     assert_eq!(u.prepare_input("  tek satır  "), "  tek satır  ");
     assert_eq!(u.prepare_input("x\n"), "x");
+    // yalnız satır sonu boş metne inmez (yalın Enter olurdu): aynen döner, pane katmanı reddeder
+    assert_eq!(u.prepare_input("\r\n \t\n"), "\r\n \t\n");
     assert_eq!(u.prepare_input("a\tb\t\tc  d"), "a b c d");
     let long = format!("satır1\n{}\nson", "uzun ".repeat(400));
     let out = u.prepare_input(&long);

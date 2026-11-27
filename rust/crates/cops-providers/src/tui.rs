@@ -229,17 +229,21 @@ impl Cli {
     }
 
     /// Pane'e gönderilmeden önce metin. ucli her satırı ayrı tur sayar (sekme tamamlamayı tetikler): satır sonu ya da
-    /// sekme varsa tüm boşluklar tek boşluğa iner, KESME YOK. Diğerleri ve tek satır: aynen.
+    /// sekme varsa tüm boşluklar tek boşluğa iner, KESME YOK. Diğerleri ve tek satır: aynen. Geriye hiçbir şey
+    /// kalmıyorsa metin AYNEN döner (boş metne inerse yalın Enter olurdu; [`Pane::send_text`] onu reddeder).
     pub fn prepare_input(self, text: &str) -> Cow<'_, str> {
         if self != Cli::Ucli || !text.contains(['\n', '\r', '\t']) {
             return Cow::Borrowed(text);
         }
-        Cow::Owned(
-            text.split(py_isspace)
-                .filter(|w| !w.is_empty())
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
+        let folded = text
+            .split(py_isspace)
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if folded.is_empty() {
+            return Cow::Borrowed(text);
+        }
+        Cow::Owned(folded)
     }
 
     /// Konuşma özetleme komutu (yoksa None).

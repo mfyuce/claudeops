@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use crate::diag::{swallow, Swallowed};
 use crate::runner::{exact_target, Call, Tmux, DEFAULT_TIMEOUT};
-use crate::text::py_isspace;
+use crate::text::{py_isspace, py_strip};
 use crate::TmuxError;
 
 /// Literal olmayan `send-keys` yoluna yalnız bu tuş adları girer.
@@ -69,7 +69,9 @@ impl Tmux {
     /// Metni yazar ve tek Enter gönderir. Metin ASLA argv'ye girmez (TBD#369: `/proc/<pid>/cmdline`ı başka kullanıcı
     /// okuyabilir): stdin'den tampona yüklenir, tek parça bracketed paste ile yapıştırılır (satır sonu TUI'de Enter
     /// sayılıp mesajı bölmez). Yapıştırma olmazsa (hata, zaman aşımı) tampon silinir. `settle`: metinle Enter arasındaki
-    /// bekleme (codex ister). NUL içeren metin `BadArgument("text")`.
+    /// bekleme (codex ister). NUL içeren metin `BadArgument("text")`. Diğer denetim karakterleri (sekme ve satır sonu
+    /// dışında) ATILIR; boş olmayan metinden yalnız boşluk/satır sonu kalıyorsa hiçbir şey gönderilmez (yalın Enter
+    /// seçili düğmeyi onaylardı): `BadArgument("text")`. Bilerek yalın Enter isteyen çağıran `""` verir.
     ///
     /// YARIŞ (kapatılamaz): `guard` denetimi ile yapıştırma AYRI tmux çağrılarıdır; arada açılan bir parola istemi
     /// yakalanmaz. Pencere, yoklama + iki tmux süreci kadardır.
@@ -84,6 +86,15 @@ impl Tmux {
         if text.contains('\0') {
             return Err(TmuxError::BadArgument("text"));
         }
+        // Python `_TEXT_CONTROL_RE` (C0 sekme/satır sonu hariç, DEL, C1) = `char::is_control` eksi `\t \n \r`.
+        let clean: String = text
+            .chars()
+            .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+            .collect();
+        if !text.is_empty() && py_strip(&clean).is_empty() {
+            return Err(TmuxError::BadArgument("text"));
+        }
+        let text = clean.as_str();
         self.guard(name, guard)?;
         if text.is_empty() {
             thread::sleep(settle);
