@@ -4426,7 +4426,8 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         Atlama: `done_handover` kapalı, devir zaten sürüyor, oturum tmux'suz/yönetilmeyen ya da bağlam bilinir ve
         eşiğin `done_handover_min_ratio` oranından küçük (küçük bağlamda devir israf)."""
         busy_names.add(v.name)
-        if v.question_open:      # devir de kapatma da diyalog kapandıktan sonra
+        if v.question_open:      # devir de kapatma da diyalog kapandıktan sonra: istek durumda kalır (2b), işaret yeniden okunmaz
+            request_pause_close(st, proj, now)
             return
         warn = context_threshold(cfg, v.model)
         small = bool(cfg.done_handover_min_ratio and warn and v.context_tokens
@@ -4444,25 +4445,34 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
         uygulanmazdı (`subagent_unknown` uzak görünümde hep True başlar; iggy@ulak_31 2026-10-29)."""
         return bool(v.busy is False and v.last_activity and (now - v.last_activity) >= SHUTDOWN_QUIET_SECONDS)
 
-    # 2b) Sahip/CLI projeyi paused yaptı (`state.pause_close`): oturum boştaysa HEMEN devir + kapat (idle_close'u bekleme),
-    #     meşgulse tur bitince (sonraki tick). Faz paused değilse (geri açıldı) ya da oturum yoksa/süre dolduysa istek düşer.
+    # 2b) Sahip/CLI projeyi paused yaptı ya da done/paused kapanışı diyalog yüzünden ertelendi (`state.pause_close`): oturum
+    #     boştaysa HEMEN devir + kapat (idle_close'u bekleme), meşgulse tur bitince (sonraki tick). Diyalog açıkken istek eskimez,
+    #     sahip yeni cevap verdiyse `ho_grace_minutes` sessizlik beklenir. Faz geri açıldıysa ya da oturum yoksa/süre dolduysa düşer.
     for proj, req_at in list((st.get("pause_close") or {}).items()):
         pc = dict(st.get("pause_close") or {})
         p = projects.get(proj)
         mine = [v for v in views if v.running and v.name != cfg.brain_name
-                and (world.project_key(v.name) if world is not None else _project_key(v.name, projects)) == proj]
-        if p is None or p.phase != "paused" or not mine or (now - float(req_at)) >= PAUSE_CLOSE_EXPIRE_SECONDS:
+                and (world.project_key(v.name) if world is not None else _project_key(v.name, projects)) == proj
+                and (p is None or p.phase != "done" or world is None or world.session_class(v.name, v.blueprint) != "manual")]
+        asking = any(v.question_open for v in mine)
+        if p is None or p.phase not in ("paused", "done") or not mine \
+                or (not asking and (now - float(req_at)) >= PAUSE_CLOSE_EXPIRE_SECONDS):
             pc.pop(proj, None)
             st["pause_close"] = pc
             continue
+        if asking:
+            pc[proj] = now
+            st["pause_close"] = pc
         left = False
         for v in mine:
             if v.name in busy_names or v.name in ho_pending:
                 continue
-            if v.busy is True or v.question_open:
+            answering = bool(v.owner_input_at) and (now - v.owner_input_at) < cfg.ho_grace_minutes * 60
+            if v.busy is True or v.question_open or v.subagent_active or answering:
                 left = True
                 continue
-            _close_done(v, proj, "sahip paused yaptı: boşta oturum devir + kapat")
+            _close_done(v, proj, "sahip paused yaptı: boşta oturum devir + kapat" if p.phase == "paused"
+                        else "ertelenen STEWARD-DONE kapanışı: boşta oturum devir + kapat")
         if not left:
             pc.pop(proj, None)
             st["pause_close"] = pc

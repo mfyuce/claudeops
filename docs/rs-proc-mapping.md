@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 557 | 153 | 404 | 0 |
-| test durumu (127 dosya) | 1672 | 115 | 1557 | 0 |
+| test durumu (127 dosya) | 1675 | 115 | 1560 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -1986,12 +1986,15 @@ Yok.
 | `test_steward_open_dialog.py::Plan.test_threshold_handover_is_never_typed_into_a_dialog` | 78 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
 | `test_steward_open_dialog.py::Plan.test_expired_grace_waits_while_dialog_open_and_records_once` | 84 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
 | `test_steward_open_dialog.py::Plan.test_grace_restarts_when_the_owner_answers` | 94 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Plan.test_pause_close_waits_for_the_dialog` | 104 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Plan.test_shutdown_does_not_type_into_a_dialog` | 112 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Plan.test_no_nudge_keepwarm_or_no_work_close` | 116 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Send.test_web_handover_refuses_while_dialog_open` | 129 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Send.test_refused_engine_handover_is_not_left_pending` | 140 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
-| `test_steward_open_dialog.py::Send.test_remote_facts_carry_the_dialog` | 154 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_done_close_is_retried_after_the_dialog` | 118 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_done_close_is_dropped_when_project_reopens` | 130 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_deferred_done_close_survives_a_dialog` | 136 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_pause_close_waits_for_the_dialog` | 145 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_shutdown_does_not_type_into_a_dialog` | 153 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Plan.test_no_nudge_keepwarm_or_no_work_close` | 157 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Send.test_web_handover_refuses_while_dialog_open` | 170 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Send.test_refused_engine_handover_is_not_left_pending` | 181 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
+| `test_steward_open_dialog.py::Send.test_remote_facts_carry_the_dialog` | 196 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi); T1 (durum) |
 
 ### `py/tests/test_steward_owned.py`
 

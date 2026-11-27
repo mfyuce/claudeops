@@ -1287,6 +1287,19 @@ for phase in ("planned", "paused", "done"):
     qs = [Q(i, p, "hangi ad?", status="answered", answer="evet, aç", answered_at=NOW - 30, created_at=NOW - 90) for i, p in (("q1", "alfa"), ("q2", "alfa"), ("q3", "beta"))]
     cfg = C(enabled=True, max_active=2, max_starts_per_tick=2)
     add("plan_tick", {"views": [], "projects": projects, "state": {}, "cfg": cfg, "now": NOW, "questions": qs, "ideas": [], "world": None})
+# diyalog yüzünden ertelenen done/paused kapanışı (2b): işaretle kayıt, eskimeme, cevap sessizliği, alt ajan, el oturumu
+_DONE = "STEWARD-DONE-CONFIRMED: abc1234 kalan açık iş 0, kanıt"
+for phase in ("planned", "paused", "done"):
+    views = [V("alfa", True, tmux=True, busy=False, question_open=True, last_assistant=_DONE)]
+    add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {}, "cfg": C(enabled=True), "now": NOW, "questions": [], "ideas": [], "world": None})
+_MANUAL = sw.World(sid="default", owners={"alfa": "default"}, brains={"degnekci": "default"})
+for phase in ("planned", "paused", "done"):
+    for kw in ({}, {"question_open": True}, {"owner_input_at": NOW - 60}, {"owner_input_at": NOW - 3600}, {"subagent_active": True}, {"busy": True}):
+        for req_at in (NOW - 60, NOW - 30000):
+            for world in (None, _MANUAL):
+                views = [V("alfa", True, **dict({"tmux": True, "busy": False}, **kw))]
+                add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {"pause_close": {"alfa": req_at}},
+                                  "cfg": C(enabled=True), "now": NOW, "questions": [], "ideas": [], "world": world})
 sw.save_questions([])
 for t in ["Kapak rengi ne olsun?", "Dergi hangisi seçilsin?", "Sunum tarihi ne zaman?", sw._HELD_ANSWER_PREFIX + " pr projesi done/paused, cevap (q9) oturum açmadı.", "Yazar sırası nasıl olacak?"]:
     a = {"project": "p", "text": t, "source": "motor", "options": None, "routine": False, "detail": ""}
