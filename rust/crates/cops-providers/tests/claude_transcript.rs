@@ -425,3 +425,49 @@ fn sidless_live_values_come_only_from_the_processes_own_record() {
         pair("kendi", "high")
     );
 }
+
+/// Effort yalnız son yanıt satırıyla AYNI modele ait satırlardan; model değiştiyse "bilinmiyor".
+#[test]
+fn effort_never_outlives_its_model() {
+    let turn = |model: &str, effort: &str| {
+        format!(r#"{{"type":"assistant","message":{{"model":"{model}"}},"effort":"{effort}"}}"#)
+    };
+    let bare = |model: &str| format!(r#"{{"type":"assistant","message":{{"model":"{model}"}}}}"#);
+    let effort = |rows: &[String]| {
+        let mem = one(rows.join("\n"));
+        with(&mem, |l| l.last_assistant_effort("/p/s.jsonl", None))
+    };
+    let max = Some("max".to_string());
+    assert_eq!(effort(&[turn("a", "max"), bare("b")]), None);
+    assert_eq!(
+        effort(&[turn("b", "low"), turn("a", "max"), bare("a")]),
+        max
+    );
+    assert_eq!(
+        effort(&[turn("a", "max"), turn("b", "low"), bare("a")]),
+        None
+    );
+    let skipped = [
+        r#"{"type":"assistant","effort":"low"}"#.to_string(),
+        turn("<synthetic>", "low"),
+        turn("b", "low").replacen('{', r#"{"isSidechain":true,"#, 1),
+        turn("", "low"),
+    ];
+    let mut rows = vec![turn("a", "max")];
+    rows.extend(skipped);
+    assert_eq!(effort(&rows), max);
+    assert_eq!(
+        effort(&[r#"{"type":"assistant","effort":"low"}"#.into()]),
+        None
+    );
+    // pencere büyürken de aynı kural
+    let pad = format!(r#"{{"type":"user","pad":"{}"}}"#, "x".repeat(1000));
+    let far = |last: String| {
+        let mut rows = vec![turn("a", "max")];
+        rows.extend(vec![pad.clone(); 100]);
+        rows.push(last);
+        effort(&rows)
+    };
+    assert_eq!(far(bare("b")), None);
+    assert_eq!(far(bare("a")), max);
+}

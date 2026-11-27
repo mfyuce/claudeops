@@ -444,6 +444,45 @@ fn divergences(b: &mut Build<'_>) {
             ]),
         );
     }
+    // Effort yalnız son yanıt satırının modelinden (27 Kas iki tarafta): model değişince eskisi taşınmaz.
+    let (a, other) = ("claude-sonnet-5-5", "claude-haiku-5-5");
+    for (id, rows, model, effort) in [
+        (
+            "effort-model-degisti",
+            vec![turn(5, a, Some("max")), turn(9, other, None)],
+            other,
+            None,
+        ),
+        (
+            "effort-modele-donus",
+            vec![
+                turn(3, a, Some("max")),
+                turn(5, other, Some("low")),
+                turn(9, a, None),
+            ],
+            a,
+            None,
+        ),
+        (
+            "effort-ayni-model",
+            vec![turn(5, a, Some("max")), turn(9, a, None)],
+            a,
+            Some("max"),
+        ),
+        (
+            "effort-modelsiz-satir",
+            vec![
+                turn(5, a, Some("max")),
+                r#"{"type":"assistant","effort":"low"}"#.into(),
+                turn(9, "<synthetic>", Some("low")),
+            ],
+            a,
+            Some("max"),
+        ),
+    ] {
+        let both = both(Some(model), effort, None);
+        b.agree(id, lines(&rows), json!([both, both]));
+    }
     b.agree(
         "sentetik-yalniz-yeni",
         lines(&[base.clone(), turn(7, "<synthetic>", None)]),

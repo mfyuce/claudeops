@@ -371,13 +371,34 @@ def _row_effort(obj: Dict[str, Any]) -> Optional[str]:
     return effort if isinstance(effort, str) and not obj.get("isSidechain") else None
 
 
+_OTHER_MODEL = object()     # `last_assistant_effort`: daha geride başka modelin satırı, tarama biter
+
+
 def last_assistant_effort(jsonl_path: Path, since: Optional[float] = None) -> Optional[str]:
     """En son `type:"assistant"` satırının TOP-LEVEL `effort`'u (her assistant
     satırı o API çağrısının effort seviyesini taşıyor — 2.1.293'te canlı
     doğrulandı, ör. `"effort":"max"`), yoksa None. Sadece string kabul edilir:
     CLI sayısal/özel effort da tanıyor, onlar "bilinmiyor" sayılıp çağırana
-    düşer."""
-    return _last_assistant_value(jsonl_path, _row_effort, since)
+    düşer.
+
+    Yalnız son yanıt satırıyla (`last_assistant_model`) AYNI modele ait satırlar
+    sayılır (rs/prov S2, sahip onayı 27 Kas): geriye okurken başka model görülünce
+    tarama biter, model değiştiyse eski effort taşınmaz. Gerçek modeli olmayan
+    satır (`<synthetic>`, alt ajan) ne effort verir ne taramayı bitirir."""
+    answering: List[str] = []
+
+    def extract(obj: Dict[str, Any]):
+        model = _row_model(obj)
+        if not model:
+            return None
+        if not answering:
+            answering.append(model)
+        elif model != answering[0]:
+            return _OTHER_MODEL
+        return _row_effort(obj)
+
+    value = _last_assistant_value(jsonl_path, extract, since)
+    return None if value is _OTHER_MODEL else value
 
 
 # TBD#87 (2026-10-16): Claude Code istem önbelleğini 1 saatlik sınıfta yazıyor

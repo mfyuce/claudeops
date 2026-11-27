@@ -348,7 +348,7 @@ DEFS["providers/claude_provider.py"] = [
         "devam kimliği, devir ve canlı model/effort değiştirme", T4),
     oos("session_file_sid _session_record " + C + "resolve_resume_id", "oturum kimliği ve devam kimliği", RESUME),
     oos("_LAST_MODEL_CHUNK_BYTES _LAST_MODEL_MAX_BYTES _row_epoch _row_model _row_effort _last_assistant_value last_assistant_model "
-        "last_assistant_effort PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
+        "_OTHER_MODEL last_assistant_effort last_assistant_effort.extract PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
         "_live_transcript live_or_spawn_model live_or_spawn_effort " + C + "prompt_cache_ttl_seconds " + C + "last_request_epoch",
         "transkriptten canlı model/effort ve önbellek yaşı", LIVE),
     oos("_extract_text _is_real_user_text _row_content "
@@ -952,6 +952,7 @@ FILES = {
     "rsprov_g1_fixes": ("oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude)", RESUME),
     "rsprov_g7_fixes": ("model kaynakları hata düzeltmeleri (önbellek, çekim günlüğü)", SAG),
     "rsprov_g3_fixes": ("transkript model/effort okuyucusu: alt ajan satırı ve metin olmayan model", LIVE),
+    "rsprov_s2_effort_model": ("canlı effort yalnız son yanıtın modelinden", LIVE),
     "rsprov_s1_own_session": ("sid'siz oturumda model/effort yalnız sürecin kendi kaydından (devir, yeniden açma)",
                               f"{LIVE}; {T4}"),
     "rsprov_g10_keyfile": ("tek atımlık çağrıda açılamayan anahtar dosyası", f"{SAG}; {T10}"),
@@ -1460,6 +1461,7 @@ rsprov_g1_fixes:20:ad2924daca
 rsprov_g4_dismiss:2:71df770dc0
 rsprov_g3_fixes:5:cd4ad4129c
 rsprov_s1_own_session:12:fe574b76b3
+rsprov_s2_effort_model:7:a9e1100892
 rsprov_g5_fixes:9:5e8c310c26
 rsprov_g7_fixes:11:787c25c89f
 rsprov_g8_spawn_helpers:6:4aee24f4a0

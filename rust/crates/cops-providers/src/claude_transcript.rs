@@ -118,7 +118,7 @@ impl Live<'_> {
         &self,
         path: &str,
         since: Option<f64>,
-        extract: impl Fn(&Py) -> Option<T>,
+        mut extract: impl FnMut(&Py) -> Option<T>,
     ) -> Option<T> {
         let size = self.probe.file_size(path)?;
         let mut window = FIRST_WINDOW_BYTES;
@@ -159,9 +159,19 @@ impl Live<'_> {
         self.last_assistant_value(path, since, assistant_model)
     }
 
-    /// En son effort taşıyan assistant satırının effort'u (modelden daha eski bir satır olabilir).
+    /// Son yanıt satırıyla AYNI modele ait en son effort. Geriye okurken başka model görülünce tarama biter (model
+    /// değiştiyse eski effort taşınmaz); gerçek modeli olmayan satır ne effort verir ne taramayı bitirir.
     pub fn last_assistant_effort(&self, path: &str, since: Option<f64>) -> Option<String> {
-        self.last_assistant_value(path, since, assistant_effort)
+        let mut answering: Option<String> = None;
+        // `Some(None)`: başka model, dur.
+        self.last_assistant_value(path, since, |row| {
+            let model = assistant_model(row)?;
+            if *answering.get_or_insert_with(|| model.clone()) != model {
+                return Some(None);
+            }
+            assistant_effort(row).map(Some)
+        })
+        .flatten()
     }
 
     /// Dosyadaki son gerçek model isteğinin zamanı (epoch sn).
