@@ -23,6 +23,8 @@ Kalan:
   relay'ini WS'ten kurar, sonra gRPC'yi yeniden dener; başka gRPC hatası WS'e geçirmez. WS de olmazsa tarayıcının
   3 sn'lik REST yedeği (imzalı vekil) kalır. Eski yerel panel + yeni uzak: relay WS'e geçmez, yalnız REST yedeği.
   Kancayı enterprise bağlar (`fwd/wire.py`, kip `require`).
+- 27 Kas öğle (iki tarafta): red, reddeden relay'in kendi `grpc_url`ine yazılır; kayıttan `grpc_url` kaldırılırsa
+  durum akışı ve term relay kademeyi hemen `ws`e indirip WS'ten kurulur.
 - Bilinen fark (belgeli): `orphan_watch` sayıları `i64`e sığmayan sonlu bir sayıysa (`1e300`) Rust `i64::MAX`a kırpar,
   Python büyük tam sayı üretir. Anlamlı bir sayaç değeri değil; `serde_json` keyfi büyüklükte tam sayı taşımaz.
 - Bu izin dışında bir kez düşen test: `cops-proxy` `mounts::dead_app_upstream_is_502` (yük altında; tekrarında geçti).
