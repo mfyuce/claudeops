@@ -3,14 +3,14 @@
 Durum (27 Kas 2026): **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı, eşleme tablolarında EKSİK satır yok; açık: test tablosunda 19
 TAŞINDI-TESTSİZ satır, ders listesinin izin tamamı için madde madde karşılanması; G9'un gerçek tmux uygulayıcısı `cops-tmux`
 birleşimini, süreç taraması rs/proc'u bekliyor, "G9" bölümü). `cargo clippy -p cops-providers --all-targets -- -D warnings` temiz,
-`cargo test -p cops-providers` 190/190 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 20, TUI
-sözleşmesi 18, G9 14; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16,
+`cargo test -p cops-providers` 191/191 (birim 18, transkript sözleşmesi 7, model kaynakları 14, devam sözleşmesi 12, parite 20, TUI
+sözleşmesi 18, G9 15; gerçek uygulayıcı: dosya 27, süreç 10, HTTP 12, `agy_sids` deposu 5, tanıtıcı sızıntısı 1, maliyet defteri 16,
 SearXNG 8, tek atımlık çağrı ve onay 8).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 7242 vaka: spawn yürütme 161 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
+- 7245 vaka: spawn yürütme 164 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
   (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1177 (G2), bg_work 73 ve live 653 (G6), model/effort 105, settings/pyfmt 89, build 354, ucli 329 + tırnaklama 5, spawn 402, misc 437, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
@@ -777,13 +777,13 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
   tek defter/arama yöneticisi/`--help` önbelleği; `launcher(tmux, env)`).
 
 ### Testler (ölçülen, 27 Kas)
-- `parity_g9` 161 vaka, kayıtlı ayrışma 0: spawn 119 (7 CLI x 13 kip + ekran, ortam süpürme, bekçi 8, ilk başlatma 3,
-  kanca 5, eklenti 6, tarama düştü, tırnak), pencere 5, ayna 4, hayalet 10, eşitleme 22, `REPO_DIR` 1. tmux, `Popen`,
+- `parity_g9` 164 vaka, kayıtlı ayrışma 0: spawn 119 (7 CLI x 13 kip + ekran, ortam süpürme, bekçi 8, ilk başlatma 3,
+  kanca 5, eklenti 6, tarama düştü, tırnak), pencere 5, ayna 4, hayalet 10, eşitleme 25, `REPO_DIR` 1. tmux, `Popen`,
   saat, süreç taraması ve devam çözümü iki tarafta aynı olgularla sahte; çağrı günlüğü (`calls`) sırasıyla, diag, dosya
   ağacı, `mcp add` argv'si karşılaştırılır. Kanca ve eklenti MCP'si iki tarafta GERÇEK kod. `release` her vakada ayrıca
   denetlenir (kuru ya da hatalı başlatmada tam bir kez).
 - `parity_misc` `sync*` artık gerçek `sync_one` ile (önceden test koşucusunda yazılmış kopya).
-- `tests/g9.rs` 14: `ReclaimTest` x4 karşılığı, bekçi sahte saatle (4), `SystemClock`, `GnomeTerminal` sahte betikle (yalnız
+- `tests/g9.rs` 15 (+ hedefsiz ve döngülü `.bak-routing` bağlantısı): `ReclaimTest` x4 karşılığı, bekçi sahte saatle (4), `SystemClock`, `GnomeTerminal` sahte betikle (yalnız
   verilen ortam, argv, zombi kalmaz; `OSError`/`ValueError` yolları), `copy2` (içerik, izin, ns zaman, hedef bağlantı),
   `repo_dir_of` (bağlantılar), varsayılan yönerge yolları.
 - Testin bulduğu Rust hatası: yok (ilk koşuda 161/161 ve 14/14).
@@ -801,13 +801,17 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 - `sync_one` 16 MiB üstü dosyayı `skipped:OSError` sayar (Python sınırsız okur); yollar UTF-8 olmalı.
 - Toplayıcı iş parçacığı başlatılamazsa Rust çocuğu eşzamanlı toplar, sonra `RuntimeError` döner.
 
-### Python hatası adayları (UYGULANMADI; Rust Python gibi; davranış değiştirir: sahibe/cops'a)
+### Python hataları (27 Kas iki tarafta DÜZELDİ; her biri ayrı `fix:` + `py/tests/test_rsprov_g9_fixes.py`)
+| # | Hata (düzeltmeden önce ölçülen) | Şimdi (Python ve Rust) | Sınayan |
+|---|---|---|---|
+| 1 | Hedefsiz bağlantı `.bak-routing`: `copy2` bağlantıyı izleyip dizin dışında dosya oluşturuyordu | yedek gerekirken bağlantı hedefsizse (döngü dahil) ne yedek ne yönerge dosyası yazılır: `skipped:broken backup link` + `routing_guidance_backup_broken_link`. Hedefi olan bağlantı eskisi gibi "yedek var". Yalnız bizim bloktan ibaret agy dosyasının silinmesi yedek istemez, değişmedi | `BrokenBackupLinkTest`; `esitle-kirik-yedek` `esitle-kirik-yedek-agy` `esitle-dongu-yedek` `esitle-bagli-yedek`; `tests/g9.rs::dangling_backup_link_writes_neither_backup_nor_target` |
+| 2 | Hayaletin son ekranı (son 1500 karakter) `spawn_ghost_reclaimed` ile `diag.log`a düz yazılıyordu | `tail` alanı kalktı; yalnız `screen_lines` (boş olmayan satır) ve `screen_chars`. Alanı okuyan başka kod yoktu (panel günlüğü ham satır gösterir) | `GhostScreenNotLoggedTest`, `ReclaimTest`; `hayalet-`; `tests/g9.rs` ReclaimTest karşılıkları |
+| 3 | Gizli başlatma, gnome-terminal var, tmux yok: hiçbir şey açılmıyor, iz yok | `spawn_hidden_no_tmux` olayı; başka davranış aynı | `HiddenWithoutTmuxTest`; `{cli}-gizli-tmuxsuz` |
+| 4 | Bekçideki `Popen` `ValueError`ı iş parçacığını iz bırakmadan bitiriyordu (üretimde ulaşılamaz görünüyor, OKUNDU) | `spawn_retry_launch_error` (yalnız sınıf adı, metin yok); bekçi yine biter, yedek açılmaz | `WatchdogValueErrorTest`; `bekci-valueerror`; `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it` |
+
+### Python hatası adayları (UYGULANMADI; Rust Python gibi; davranış değiştirir: sahibe sorulacak)
 | # | Aday | Üretim adımı | Kanıt |
 |---|---|---|---|
-| 1 | Kırık bağlantı `.bak-routing`: `os.path.exists` false, `copy2` bağlantıyı izler ve HEDEFİ oluşturur (dizin dışına yazım) | `~/.codex/AGENTS.md.bak-routing` hedefi olmayan bir bağlantıyken yönerge eşitlemesi | ÖLÇÜLDÜ: `esitle-kirik-yedek`, iki tarafta `home/baska-yer.md` 0600 oluştu |
-| 2 | Hayaletin son ekranı (40 satır, son 1500 karakter) `spawn_ghost_reclaimed` ile `diag.log`a düz yazılır; ekranda sır olabilir | CLI'si çıkmış oturum aynı adla yeniden açılırken | ÖLÇÜLDÜ: `hayalet-*` ekran aynen günlükte; sır içerdiği OKUNDU/çıkarım |
-| 3 | Gizli başlatma tmux yokken hiçbir şey açmaz ve günlüğe de yazmaz (`kind` döner) | `hidden=True` + tmux kurulu değil | ÖLÇÜLDÜ: `{cli}-gizli-tmuxsuz` (çağrı yok, diag yok) |
-| 4 | Bekçideki `Popen` `ValueError`ı iş parçacığını sessizce öldürür; penceresiz yedek açılmaz, diag yok | ilk deneme aynı argv/ortamla geçtiği için üretimde ulaşılamaz görünüyor (OKUNDU) | ÖLÇÜLDÜ: `bekci-valueerror` (yalnız `spawn_retry`) |
 | 5 | Hayalet temizliği başlatmadan ÖNCE: ilk `Popen` `ValueError` ile reddedilse de eski oturum kapatılmış olur | argv/ortamda NUL | ÖLÇÜLDÜ: `ilk-valueerror` (`kill` sonra ret) |
 | 6 | Kanca kuru çalıştırmada da çağrılır (TODO "spawn kancası kuru koşuda da yazıyor") | `dry_run=True` + çok kullanıcı kancası | ÖLÇÜLDÜ: `{cli}-kuru`, `kanca-red-kuru` |
 
@@ -817,12 +821,12 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | H1 süreç yaşam döngüsü (zombi) | `gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; öldürme yok, hayalet yalnız tam adla `kill-session` |
 | H8 sınırlı bekleme | bekçi en çok (RETRY+1) x WAIT; `watchdog_retries_then_falls_back_to_headless_tmux`; tmux zaman aşımları `cops-tmux`ta |
 | H9, 2.5/2.10 başarısız ya da kuru spawn'da pay iadesi | `release` denetimi her `parity_g9` vakasında |
-| H12, 2.5 sır argv'de değil, env beyaz liste | `ortam-supurme`, `{cli}-kanca` (filtre); kanca ortamı hâlâ komut satırına gömülü ("Sır / argv notları"); aday 2 |
+| H12, 2.5 sır argv'de değil, env beyaz liste | `ortam-supurme`, `{cli}-kanca` (filtre); kanca ortamı hâlâ komut satırına gömülü ("Sır / argv notları"); hayalet ekranı ve bekçi hata metni günlüğe girmez (`hayalet-`, `bekci-valueerror`) |
 | H13 kapalı yön | kanca hatası = `hook_error` reddi (`kanca-hata`, `kanca-hata-uzun`) |
-| H14, 3.12 diferansiyel test | `parity_g9` 161 vaka |
+| H14, 3.12 diferansiyel test | `parity_g9` 164 vaka |
 | H16 test yalıtımı | sahte tmux/`Popen`/saat; betikler alt süreçle yazılır (`write_exe`); gerçek gnome-terminal/tmux YOK |
-| H17 symlink | `esitle-*-5` (bağlantı hedefine yazım), `copy2` hedef bağlantı; aday 1 |
-| H20 gözlemlenebilirlik | olaylar Python adlarıyla (`spawn_retry*`, `spawn_fallback_used`, `spawn_no_gnome_terminal`, `spawn_launch_failed`); aday 3 |
+| H17 symlink | `esitle-*-5` (bağlantı hedefine yazım), `copy2` hedef bağlantı; hedefsiz yedek bağlantısı reddi `esitle-kirik-yedek*` `esitle-dongu-yedek` |
+| H20 gözlemlenebilirlik | olaylar Python adlarıyla (`spawn_retry*`, `spawn_fallback_used`, `spawn_no_gnome_terminal`, `spawn_launch_failed`, `spawn_hidden_no_tmux`, `spawn_retry_launch_error`) |
 | Uygulanmaz | H2-H7, H10, H11, H15, H18, H19, H21 |
 
 ## Sır / argv notları (Python'a dokunulmadı)
@@ -1513,7 +1517,7 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 
 ## TEST EŞLEME TABLOSU
 
-1381 satır: TAŞINDI 600, TAŞINDI-TESTSİZ 19, KAPSAM DIŞI 762, EKSİK 0 (G9 satırları 27 Kas).
+1391 satır: TAŞINDI 610, TAŞINDI-TESTSİZ 19, KAPSAM DIŞI 762, EKSİK 0 (G9 satırları ve düzeltme testleri 27 Kas).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -2883,6 +2887,16 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | `Index.test_unreadable_index_is_not_overwritten` (py/tests/test_rsprov_g10_approval.py:71) | `parity.rs::parity_oneshot` `kayit-okunamaz` | TAŞINDI |
 | `Index.test_fifo_index_does_not_block` (py/tests/test_rsprov_g10_approval.py:80) | `tests/real_oneshot.rs::a_fifo_key_file_or_index_is_refused_without_blocking` | TAŞINDI |
 | `Index.test_live_run_key_is_not_replaced` (py/tests/test_rsprov_g10_approval.py:101) | `parity.rs::parity_oneshot` `kayit-akis` `onay-defter-canli` | TAŞINDI |
+| `BrokenBackupLinkTest.test_dangling_link_writes_neither_backup_nor_target` (py/tests/test_rsprov_g9_fixes.py:51) | `tests/g9.rs::dangling_backup_link_writes_neither_backup_nor_target`; `parity.rs::parity_g9` `esitle-kirik-yedek` | TAŞINDI |
+| `BrokenBackupLinkTest.test_link_loop_is_refused_too` (py/tests/test_rsprov_g9_fixes.py:55) | `tests/g9.rs::dangling_backup_link_writes_neither_backup_nor_target`; `parity.rs::parity_g9` `esitle-dongu-yedek` | TAŞINDI |
+| `BrokenBackupLinkTest.test_existing_agy_file_with_dangling_backup_link_is_untouched` (py/tests/test_rsprov_g9_fixes.py:58) | `parity.rs::parity_g9` `esitle-kirik-yedek-agy` | TAŞINDI |
+| `BrokenBackupLinkTest.test_link_to_an_existing_file_still_counts_as_a_backup` (py/tests/test_rsprov_g9_fixes.py:66) | `parity.rs::parity_g9` `esitle-bagli-yedek` | TAŞINDI |
+| `GhostScreenNotLoggedTest.test_only_counts_reach_the_log` (py/tests/test_rsprov_g9_fixes.py:90) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen`; `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
+| `GhostScreenNotLoggedTest.test_unreadable_screen_counts_zero` (py/tests/test_rsprov_g9_fixes.py:96) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen`; `parity.rs::parity_g9` `hayalet-0` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_is_logged_and_nothing_is_opened` (py/tests/test_rsprov_g9_fixes.py:124) | `parity.rs::parity_g9` `{cli}-gizli-tmuxsuz` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_hidden_with_tmux_is_unchanged` (py/tests/test_rsprov_g9_fixes.py:129) | `parity.rs::parity_g9` `{cli}-gizli` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_missing_terminal_keeps_its_single_event` (py/tests/test_rsprov_g9_fixes.py:134) | `parity.rs::parity_g9` `{cli}-gtsiz-tmuxsuz` | TAŞINDI |
+| `WatchdogValueErrorTest.test_is_logged_without_the_message_and_ends_the_watchdog` (py/tests/test_rsprov_g9_fixes.py:144) | `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it`; `parity.rs::parity_g9` `bekci-valueerror` | TAŞINDI |
 | `Index.test_unrecognised_record_is_not_replaced` (py/tests/test_rsprov_g10_approval.py:113) | `parity.rs::parity_oneshot` `onay-defter-taninmayan` `durumsuz` | TAŞINDI |
 | `Index.test_chat_once_refuses_live_key_before_spawn` (py/tests/test_rsprov_g10_approval.py:119) | `tests/real_oneshot.rs::a_live_run_key_is_refused_before_the_binary_starts` | TAŞINDI |
 | `Dirs.test_symlinked_run_dir_or_sub_dir_refused` (py/tests/test_rsprov_g10_approval.py:134) | `parity.rs::parity_oneshot` `kayit-baglanti` `onay-kosu-baglanti` | TAŞINDI |
