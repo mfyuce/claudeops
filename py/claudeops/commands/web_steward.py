@@ -7240,7 +7240,7 @@ def _queue_directive(data: Dict[str, Any], sid: str) -> Dict[str, Any]:
     """Oturum kapalıyken başlatma yolu: HEMEN `queued` + arka planda teslim (zaman aşımı yok). Sonuç `directive/status?id=`."""
     import uuid
     cdid = str(data.get("_did") or "")
-    if cdid and not _DID_RE.match(cdid):
+    if cdid and not _DID_RE.fullmatch(cdid):
         return {"ok": False, "error": "bad _did (12 hex)"}
     with _ctx(sid).lock:
         if cdid and (sid, cdid) in _DID_DONE:     # kuyruklu yol da istemci kimliğiyle yinelenmeyi ayıklar (review R-1)
@@ -7364,7 +7364,7 @@ def http_directive(data: Dict[str, Any], sid: str = "default") -> Dict[str, Any]
             and not _name_host(name) and not _live_sessions(name, sid)):
         return _queue_directive(data, sid)       # insan/CLI başlatma yolu: zaman aşımı yok, durum izlenir
     cdid = str(data.get("_did") or "")
-    if cdid and not _DID_RE.match(cdid):
+    if cdid and not _DID_RE.fullmatch(cdid):
         return {"ok": False, "error": "bad _did (12 hex)"}      # TODO satırına yazılır: serbest metin enjekte edilemez
     with _ctx(sid).lock:
         if cdid and (sid, cdid) in _DID_DONE:     # aynı istemci kimliği zaten iletildi (zaman aşımı sonrası yeniden deneme / hayalet yürütme)
