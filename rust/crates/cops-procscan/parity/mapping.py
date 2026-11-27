@@ -478,7 +478,8 @@ DEFS["providers/ucli_provider.py"] = [
         "_live_models reasoning_effort_for _API_KEY_FILE _API_KEY_MANAGED_MARKER _sync_api_key_file _web_args "
         "_script_args _stream_args _reasoning_display_args _metrics_file_args _interactive_args _state_dir_args "
         "_timeout_args _history_args _effort_args _set_flag_value _service_key_file _INSTRUCTIONS_MAX_BYTES "
-        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _default_session_cap "
+        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _claudeops_price _argv_model "
+        "_has_price _default_session_cap "
         "_max_cost_args _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
         "_apply_cli_opts _agent_setup "
         + " ".join(U_ + n for n in "accepts_cli_opts mcp_needs_cwd validate_cli_opts mcp_launch_args "
@@ -531,6 +532,7 @@ DEFS["paths.py"] = [
     oos("_test_code_loaded _under_test_runner ensure_private_state_dir ROSTER_TSV MODELS_TSV CLAUDE_MODELS_JSON",
         "durum dizini çözümü, test yalıtımı ve durum dosyaları", W0A),
     oos("ucli_key_file", "ucli anahtar dosyası yolu", SAG),
+    oos("shared_write_allowed", "ikinci örnekte ortak anahtar/kullanım yazma yasağı (TBD#412)", f"{SAG}; {W0A}"),
     oos("REPO_DIR CONFIG_JSON GUARD_LOCK", "açılış/koruma yolu sabitleri", T4),
 ]
 
@@ -917,6 +919,7 @@ FILES = {
     "provider_wants_split": ("devir/kurtarma bayrakları", T4),
     "review_self_verify": ("reviewer doğrulaması", T8),
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
+    "shared_state_readonly": ("ikinci örnekte ortak dosya yazma yasağı (TBD#412)", f"{SAG}; {W0A}"),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
     "state_backend_last_good": (_PATHS, W0A),
@@ -948,6 +951,7 @@ FILES = {
     "tmux_list_utf8": ("tmux liste sorgularında UTF-8 (TBD#366 P5)", W0B),
     "ucli_agents": ("ucli alt ajan bayrak/env", SAG),
     "ucli_ask_dir": ("ucli `--ask-dir`", SAG),
+    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı", SAG),
     "ucli_brain_mcp": ("ucli MCP kaydı ve beyin argv'si", f"{SAG}; {T10}"),
     "ucli_broad_glob_and_instr_check": (_BUILD, SAG),
     "ucli_capability_flags": (_BUILD, SAG),
@@ -1414,8 +1418,8 @@ statedocs_writers:7:817e74b52a
 steward_api_recovery:17:f79402b74c
 steward_audit_p9:24:36a9eb8914
 steward_brain:34:b4c732deb9
-steward_core_a:120:8b1d8ca808
-steward_core_b:76:cc2c4fc06c
+steward_core_a:122:f4f49eaa0c
+steward_core_b:77:5bbaded29d
 steward_ctx:21:12df78f872
 steward_generic:25:f4969150e9
 steward_ho_on_open:9:d3f0301c62
@@ -1463,9 +1467,11 @@ ucli_resolve_binary:9:02512466b3
 ucli_script:12:8e5e524edb
 ucli_search_token_env:7:fe35ffaa52
 ucli_show_reasoning:3:88a88fc6d4
+shared_state_readonly:7:a71ec45fbf
 ucli_start_opts:32:4f29133f96
 ucli_state_dir:9:83e53ca259
 ucli_stream:12:0b0c264c8d
+ucli_unpriced_model_cap:7:11fa4f0ea5
 ucli_usage:13:adc8be28ee
 ucli_web:53:808f4112d7
 usage_category:3:b1ec7bddf6

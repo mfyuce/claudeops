@@ -25,6 +25,7 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::client::legacy::{connect::HttpConnector, Client};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub type Body = BoxBody<Bytes, hyper::Error>;
@@ -85,7 +86,35 @@ fn mark_served(mut r: Response<Body>, asked: bool, who: &'static str) -> Respons
     r
 }
 
+/// Token dosyalı ucun açılışı: kullanılabilir token (ve gerekiyorsa DB) İLK görülene dek uç KAPALI (istek Python'a);
+/// açıldıktan sonra kapanmaz, her istek token'ı yine dosyadan okur (silinen token = 401).
+#[derive(Default)]
+struct Latch {
+    open: AtomicBool,
+    was_closed: AtomicBool,
+}
+
+impl Latch {
+    fn check(&self, what: &str, ready: impl FnOnce() -> bool) -> bool {
+        if self.open.load(Ordering::Relaxed) {
+            return true;
+        }
+        if !ready() {
+            self.was_closed.store(true, Ordering::Relaxed);
+            return false;
+        }
+        if !self.open.swap(true, Ordering::Relaxed) && self.was_closed.load(Ordering::Relaxed) {
+            eprintln!("copsd: {what} açıldı (web.token sonradan hazır oldu)");
+        }
+        true
+    }
+}
+
 pub struct Proxy {
+    table_latch: Latch,
+    mounts_latch: Latch,
+    metrics_latch: Latch,
+    local_latch: Latch,
     table: Option<(routes::RouteTable, cops_auth::Token)>,
     force: Option<Arc<force::ForceProxy>>,
     stats: stats::Stats,
@@ -632,6 +661,10 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            table_latch: Latch::default(),
+            mounts_latch: Latch::default(),
+            metrics_latch: Latch::default(),
+            local_latch: Latch::default(),
             table: None,
             force: None,
             stats: stats::Stats::default(),
@@ -742,7 +775,7 @@ impl Proxy {
         req: Request<Incoming>,
         peer: SocketAddr,
     ) -> Result<(Response<Body>, &'static str), Request<Incoming>> {
-        let Some((table, token)) = &self.table else {
+        let Some((table, token)) = self.open_table() else {
             return Err(req);
         };
         let view = request_view(&req, peer);
@@ -845,7 +878,11 @@ impl Proxy {
                 serde_json::json!({"ok": false, "error": "unauthorized"}),
             ));
         }
-        let routes = self.table.iter().flat_map(|(t, _)| t.routes()).collect();
+        let routes = self
+            .open_table()
+            .into_iter()
+            .flat_map(|(t, _)| t.routes())
+            .collect();
         let force = self.force.as_ref().map(|f| f.list()).unwrap_or_default();
         let mut v = self.stats.snapshot(routes, force);
         v["version"] = self.version.as_deref().unwrap_or("unknown").into();
@@ -968,6 +1005,32 @@ impl Proxy {
         }
     }
 
+    fn open_table(&self) -> Option<&(routes::RouteTable, cops_auth::Token)> {
+        self.table
+            .as_ref()
+            .filter(|(_, t)| self.table_latch.check("rota tablosu", || !t.is_empty()))
+    }
+
+    fn open_mounts(&self) -> Option<&MountCfg> {
+        self.mounts
+            .as_ref()
+            .filter(|m| self.mounts_latch.check("mount", || !m.token.is_empty()))
+    }
+
+    fn open_metrics(&self) -> Option<&MetricsCfg> {
+        self.metrics.as_ref().filter(|m| {
+            self.metrics_latch
+                .check("metrik uçları", || !m.token.is_empty())
+        })
+    }
+
+    fn open_local(&self) -> Option<&LocalCfg> {
+        self.local.as_ref().filter(|l| {
+            self.local_latch
+                .check("yerel uç", || !l.token.is_empty() && l.db.exists())
+        })
+    }
+
     /// `/api/metrics/{points,series,names}` uçlarını aç (depo + kimlik).
     pub fn with_metrics(self: Arc<Self>, m: MetricsCfg) -> Arc<Self> {
         let me = Arc::try_unwrap(self).ok().expect("tek sahip");
@@ -999,7 +1062,7 @@ impl Proxy {
         req: Request<Incoming>,
         peer: SocketAddr,
     ) -> Result<Response<Body>, Request<Incoming>> {
-        let Some(m) = self.metrics.as_ref() else {
+        let Some(m) = self.open_metrics() else {
             return Err(req);
         };
         let path = req.uri().path().to_string();
@@ -1077,10 +1140,10 @@ impl Proxy {
         req: &Request<Incoming>,
         peer: SocketAddr,
     ) -> Option<Response<Body>> {
-        let local = self.local.as_ref()?;
         if req.method() != hyper::Method::GET || req.uri().path() != "/api/steward/questions" {
             return None;
         }
+        let local = self.open_local()?;
         let query = req.uri().query().unwrap_or("").to_string();
         if !cops_local::handles(&query) {
             return None;
@@ -1123,6 +1186,10 @@ impl Proxy {
             .pool_max_idle_per_host(0)
             .build_http();
         Arc::new(Proxy {
+            table_latch: Latch::default(),
+            mounts_latch: Latch::default(),
+            metrics_latch: Latch::default(),
+            local_latch: Latch::default(),
             table: None,
             force: None,
             stats: stats::Stats::default(),
@@ -1205,7 +1272,7 @@ impl Proxy {
             harden(r.headers_mut());
             return Ok(r);
         }
-        if let Some(cfg) = &self.mounts {
+        if let Some(cfg) = self.open_mounts() {
             if let Some(hit) = cfg.mounts.lookup(req.uri().path()) {
                 return Ok(self.handle_mount(cfg, hit, req, peer, false, false).await);
             }
@@ -1236,7 +1303,7 @@ impl Proxy {
                 }
             }
         }
-        if let Some(cfg) = &self.mounts {
+        if let Some(cfg) = self.open_mounts() {
             // (b2) Referer yolunun ilk parçası bir rootrel mount'a ÖĞRENİLMİŞSE (HTML belge yanıtından, bkz. `handle_mount`) istek o
             // uygulamanındır, panel yolu olsa da (`/v1`, `/api`: sayfa uygulamanın). (b3) İstek yolunun ilk parçası öğrenilmişse
             // (Referer'sız F5/yeni sekme) de öyle. Panel kökleri hiç öğrenilmez (`mount::learnable`), çerezden ÖNCE gelir.
@@ -1269,7 +1336,7 @@ impl Proxy {
                 }
             }
         }
-        if let Some(cfg) = &self.mounts {
+        if let Some(cfg) = self.open_mounts() {
             // (d) Referer'sız köke göre istek (F5, yeni sekme, pushState adresi): `cops_app` çerezi var olan bir rootrel mount'u
             // gösteriyorsa o uygulamanın isteğidir. Panelin kendi yolları hariç. Çerez yalnız yolu seçer, yetki `handle_mount`ta.
             // Çakışma (Rancher `/v1/`, `/api/`): çerez + aynı kökenli Referer VAR ve Referer'ın yolu panel SAYFASI DEĞİLSE (`/dashboard/..` gibi

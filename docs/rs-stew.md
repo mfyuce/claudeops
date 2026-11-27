@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1935 satır)
+### Python testleri (1937 satır)
 
-Test satırı özeti: 1935 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1937 satır; doğrudan açık (aşağıda `AÇIK`) 192; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2295,6 +2295,8 @@ Test satırı özeti: 1935 satır; doğrudan açık (aşağıda `AÇIK`) 190; pa
 | `test_steward_nowork.Reopen.test_no_trigger_no_reopen` | AÇIK (taşınmadı ya da kısmen): `plan_no_work_reopen` tetikleyicileri; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10 |
 | `test_steward_nowork.Apply.test_directive_reopens_only_no_work_paused` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+15); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_projects, steward.load_state, steward.save_state, steward.tail_log, web_steward._consume_fresh_start (+1) |
 | `test_steward_nowork.Apply.test_manual_pause_is_not_reopened_by_directive` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::from_dict_drops_unknown_and_requires, identity::name_rules_edges (+13); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_projects, web_steward._no_work_directive_reopen |
+| `test_steward_nowork.LessonContext.test_undelivered_lesson_blocks_close_and_reopens` | AÇIK (taşınmadı ya da kısmen): `web_steward._close_ctx` ders kümesi (yalnız `pending`); G/Ç katmanı taşınmadı, iz T10 |
+| `test_steward_nowork.LessonContext.test_sent_or_failed_lesson_neither_blocks_nor_reopens` | AÇIK (taşınmadı ya da kısmen): `web_steward._close_ctx` ders kümesi (yalnız `pending`); G/Ç katmanı taşınmadı, iz T10 |
 | `test_steward_nowork.ChainStopIsExact.test_pause_payload_stop_passes_exact` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._apply |
 | `test_steward_one_start_per_project.OneStartPerProject.test_two_answers_one_start_and_slot_left_for_other_project` | gereksiz (bu crate'te sınanacak saf çağrı yok): aynı senaryo (planned, paused, done) elle vektörde: `parity/hand_cases.py` "aynı projeye iki cevap" -> `plan_tick_vectors` |
 | `test_steward_outcomes.OutcomeTest.test_start_opened_under_dated_name` | identity::derived_of_vectors, recovery::check_outcomes_vectors, recovery::outcome_baseline_vectors, recovery::p_outcome_project (+2) |

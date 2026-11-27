@@ -5,8 +5,9 @@
 //! bozuksa gizli YOK sayılır (kapalı yön), açılışta uyarı yazılır, süreç sürer; bkz. [`cops_proxy::front`].
 //! `--dist <py/webui/dist>`: /assets/* ve /favicon.svg diskten sunulur (yoksa Python'a aktarılır).
 //! `--mounts-file` (varsayılan [`state_dir`]`/derbent/mounts.json`): uygulama mount'ları (`/<id>/` -> yerel derbent loopback portu,
-//! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token yoksa mount hiç açılmaz.
-//! `web.token` açılışta yalnız uçları açmak için denetlenir; değeri her istekte dosyadan okunur (silme/döndürme anında geçerli).
+//! kimlik copsd'de). Dosya yoksa ya da 0600 değilse mount kapalı; 2 sn'de bir değişiklik yoklanır. web.token hazır olana dek mount kapalıdır.
+//! Yerel/metrik/mount/rota uçları `web.token` (0600, dolu) ilk hazır olunca açılır (sonradan yazılsa da); değeri her istekte
+//! dosyadan okunur (silme/döndürme anında geçerli).
 //! `--token-file` verilmezse `web.token` durum dizininden okunur ([`state_dir`]: `--state-dir`, `CLAUDEOPS_DIR`, `~/.claude/claudeops`).
 //! Ortam: `COPSD_LISTEN`, `COPSD_UPSTREAM` bayrakların yedeğidir.
 //! `--force-proxy-file` (varsayılan [`state_dir`]`/front_force_proxy`): listedeki yol önekleri Rust'ta karşılığı olsa bile
@@ -21,7 +22,6 @@ pub mod routes;
 
 use std::future::Future;
 use std::net::SocketAddr;
-use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 /// Kanca kurucusuna verilen, copsd'nin çözdüğü ayarlar.
@@ -216,24 +216,20 @@ where
             token: cops_auth::Token::from_file(&token_file()),
             front_secret: cops_auth::Token::new(&front_secret),
         });
-    // Yerel uçlar (Aşama 1): token dosyası ve DB yoksa uç AÇILMAZ (istek Python'a gider). Token dosyası 0600 olmalı (ön kapı gizlisiyle aynı kural).
+    // Yerel uçlar (Aşama 1): token dosyası (0600, dolu) ve DB hazır olana dek uç KAPALI (istek Python'a gider; vekil ilk
+    // hazır oluşta açar, yeniden başlatma gerekmez).
     let tok_path = token_file();
     let db_path = state_path("--db", "claudeops.db");
-    let proxy = match std::fs::metadata(&tok_path) {
-        Ok(m) if m.permissions().mode() & 0o077 == 0 && db_path.exists() => {
-            let t = cops_auth::Token::from_file(&tok_path);
-            if t.is_empty() {
-                proxy
-            } else {
-                eprintln!("copsd: yerel uç açık: GET /api/steward/questions");
-                proxy.with_local(cops_proxy::LocalCfg {
-                    token: t,
-                    db: db_path.clone(),
-                })
-            }
-        }
-        _ => proxy,
-    };
+    let tok_ready = !cops_auth::Token::from_file(&tok_path).is_empty();
+    if tok_ready && db_path.exists() {
+        eprintln!("copsd: yerel uç açık: GET /api/steward/questions");
+    } else {
+        eprintln!("copsd: yerel uç kapalı: web.token (0600) ya da DB henüz yok");
+    }
+    let proxy = proxy.with_local(cops_proxy::LocalCfg {
+        token: cops_auth::Token::from_file(&tok_path),
+        db: db_path.clone(),
+    });
     // Metrik deposu (cops-metrics): `--metrics-db` (varsayılan [`state_dir`]`/metrics.db`). Uçlar: POST /api/metrics/points
     // (web.token ya da loopback + ön kapı gizlisi), GET /api/metrics/series|names (web.token). Token yoksa uçlar AÇILMAZ (Python'a gider).
     let mdb = state_path("--metrics-db", "metrics.db");
@@ -283,51 +279,42 @@ where
             }
         });
     }
-    let proxy = match (store, std::fs::metadata(&tok_path)) {
-        (Some(store), Ok(m)) if m.permissions().mode() & 0o077 == 0 => {
-            let t = cops_auth::Token::from_file(&tok_path);
-            if t.is_empty() {
-                proxy
-            } else {
+    let proxy = match store {
+        Some(store) => {
+            if tok_ready {
                 eprintln!("copsd: metrik uçları açık: /api/metrics/points|series|names");
-                proxy.with_metrics(cops_proxy::MetricsCfg {
-                    store,
-                    token: t,
-                    front_secret: cops_auth::Token::new(&front_secret),
-                })
+            } else {
+                eprintln!("copsd: metrik uçları kapalı: web.token yok ya da 0600 değil");
             }
-        }
-        _ => proxy,
-    };
-    // Uygulama mount'ları: kimlik web.token (0600) + `cops_ext` çerezi; token yoksa mount AÇILMAZ (istek Python'a gider).
-    let mounts_file = state_path("--mounts-file", "derbent/mounts.json");
-    let proxy = match std::fs::metadata(&tok_path) {
-        Ok(m)
-            if m.permissions().mode() & 0o077 == 0
-                && !cops_auth::Token::from_file(&tok_path).is_empty() =>
-        {
-            let mounts = cops_proxy::mount::Mounts::with_db(
-                mounts_file.clone(),
-                db_path.exists().then(|| db_path.clone()),
-            );
-            match mounts.refresh() {
-                Some(line) => eprintln!("copsd: {line}"),
-                None => eprintln!(
-                    "copsd: mount kapalı: {} yok (2 sn'de bir yoklanır)",
-                    mounts_file.display()
-                ),
-            }
-            mounts.spawn_watch(std::time::Duration::from_secs(2));
-            proxy.with_mounts(cops_proxy::MountCfg {
-                mounts,
+            proxy.with_metrics(cops_proxy::MetricsCfg {
+                store,
                 token: cops_auth::Token::from_file(&tok_path),
+                front_secret: cops_auth::Token::new(&front_secret),
             })
         }
-        _ => {
-            eprintln!("copsd: mount kapalı: web.token yok ya da 0600 değil");
-            proxy
-        }
+        None => proxy,
     };
+    // Uygulama mount'ları: kimlik web.token (0600) + `cops_ext` çerezi; token hazır olana dek mount KAPALI (istek Python'a).
+    let mounts_file = state_path("--mounts-file", "derbent/mounts.json");
+    let mounts = cops_proxy::mount::Mounts::with_db(
+        mounts_file.clone(),
+        db_path.exists().then(|| db_path.clone()),
+    );
+    match mounts.refresh() {
+        Some(line) => eprintln!("copsd: {line}"),
+        None => eprintln!(
+            "copsd: mount kapalı: {} yok (2 sn'de bir yoklanır)",
+            mounts_file.display()
+        ),
+    }
+    if !tok_ready {
+        eprintln!("copsd: mount kapalı: web.token yok ya da 0600 değil");
+    }
+    mounts.spawn_watch(std::time::Duration::from_secs(2));
+    let proxy = proxy.with_mounts(cops_proxy::MountCfg {
+        mounts,
+        token: cops_auth::Token::from_file(&tok_path),
+    });
     // Çoklu rota tablosu: panel kimlikli kayıtlar web.token ister; yoksa tablo AÇILMAZ (istek Python'a gider).
     let mut table = cops_proxy::routes::RouteTable::new();
     routes::register(
@@ -338,21 +325,18 @@ where
             instances: instances.clone(),
         },
     );
-    let proxy = match std::fs::metadata(&tok_path) {
-        _ if table.is_empty() => proxy,
-        Ok(m)
-            if m.permissions().mode() & 0o077 == 0
-                && !cops_auth::Token::from_file(&tok_path).is_empty() =>
-        {
-            for (method, pattern) in table.routes() {
-                eprintln!("copsd: yerel uç açık: {method} {pattern}");
-            }
-            proxy.with_route_table(table, cops_auth::Token::from_file(&tok_path))
+    let proxy = if table.is_empty() {
+        proxy
+    } else {
+        for (method, pattern) in table.routes() {
+            let state = if tok_ready {
+                "açık"
+            } else {
+                "kapalı (web.token yok)"
+            };
+            eprintln!("copsd: yerel uç {state}: {method} {pattern}");
         }
-        _ => {
-            eprintln!("copsd: rota tablosu kapalı: web.token yok ya da 0600 değil");
-            proxy
-        }
+        proxy.with_route_table(table, cops_auth::Token::from_file(&tok_path))
     };
     let h = hooks(Ctx {
         upstream: up,

@@ -1,7 +1,9 @@
 """`iş yok` kapatma (sahip 13 Kas): kural denetimleri, dry/act planı, muaflar, yeniden açılış tetikleyicileri. Canlı servis/tmux YOK."""
 import os
 import sys
+import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from steward_testlib import _Tmp  # noqa: E402
@@ -224,6 +226,38 @@ class Apply(_Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LessonContext(_Tmp):
+    """Direktif 7a73a23dc6a7: yalnız HENÜZ İLETİLECEK ders kapanışı engeller ve durdurulmuş projeyi açar."""
+
+    LINE = "- ucli: model bitiremedi"
+
+    def ctx_for(self, **state):
+        c = cfg(mode="act", lessons_project="p")
+        paths = sw.paths_for(c.sid)
+        sw.save_state(dict(sw.load_state(paths), **state), paths)
+        lesson = (ws.sl.line_hash(self.LINE), self.LINE)
+        with mock.patch.object(ws, "_lessons", lambda _c: [lesson]):
+            out = ws._close_ctx(c, paths)
+        self.assertEqual(out["errors"], [])
+        return out
+
+    def test_undelivered_lesson_blocks_close_and_reopens(self):
+        ctx = self.ctx_for()
+        self.assertEqual(plan([view()], ctx=ctx)[1]["no_work_report"]["p"]["why"], "no_review_item:ders:bekliyor")
+        paused = {"p": sw.Project(name="p", phase="paused", cadence_minutes=0)}
+        acts = snw.plan_no_work_reopen(paused, {"no_work_paused": {"p": {"at": NOW, "sha": ""}}}, NOW, ctx)
+        self.assertEqual([a.payload["trigger"] for a in acts], ["review:ders:bekliyor"])
+
+    def test_sent_or_failed_lesson_neither_blocks_nor_reopens(self):
+        h = ws.sl.line_hash(self.LINE)
+        for state in ({"lessons_sent": [h], "lessons_sent_at": {h: time.time() - 20 * 3600}},
+                      {"lessons_sent": [h]}, {"lessons_fail": {h: ws.sl.FAIL_MAX}}):
+            with self.subTest(state=sorted(state)):
+                ctx = self.ctx_for(**dict({"lessons_sent": [], "lessons_sent_at": {}, "lessons_fail": {}}, **state))
+                self.assertNotIn("p", ctx["review"])
+                self.assertEqual(plan([view()], ctx=ctx)[1]["no_work_report"]["p"]["why"], "")
 
 
 class ChainStopIsExact(unittest.TestCase):
