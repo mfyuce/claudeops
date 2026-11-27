@@ -337,7 +337,7 @@ def path_executables(path_env: Any = None) -> List[str]:
                         continue
         except OSError:
             continue
-    return sorted(n for n in names if _CMD_RE.fullmatch(n))
+    return sorted(n for n in names if _CMD_RE.fullmatch(n))     # `$` sondaki satır sonunu kabul ederdi
 
 
 def expand_exec_cmds(items: List[str], available: List[str]) -> Tuple[List[str], str]:
