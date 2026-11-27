@@ -34,7 +34,7 @@ class BootTest(unittest.TestCase):
     def test_agy_fetches_right_after_boot(self):
         out = types.SimpleNamespace(stdout="Fetching...\nm1\tM1\n")
         with mock.patch.object(ap.time, "monotonic", lambda: 5.0), \
-                mock.patch.object(ap.subprocess, "run", lambda *a, **k: out), \
+                mock.patch.object(ap, "_run_grouped", lambda *a, **k: out), \
                 mock.patch.object(ap, "resolved_binary", lambda n: n):
             self.assertEqual(ap.AgyProvider().model_choices(), ["m1"])
 
@@ -142,7 +142,7 @@ class AgyColdTest(unittest.TestCase):
             return types.SimpleNamespace(stdout="m1\tM1\n")
         prov = ap.AgyProvider()
         got = {}
-        with mock.patch.object(ap.subprocess, "run", slow_run), mock.patch.object(ap, "resolved_binary", lambda n: n):
+        with mock.patch.object(ap, "_run_grouped", slow_run), mock.patch.object(ap, "resolved_binary", lambda n: n):
             t1 = threading.Thread(target=lambda: got.setdefault("a", prov.model_choices()))
             t1.start()
             self.assertTrue(started.wait(5))
@@ -159,7 +159,7 @@ class AgyColdTest(unittest.TestCase):
         def boom(*a, **k):
             raise FileNotFoundError("agy")
         diags = []
-        with mock.patch.object(ap.subprocess, "run", boom), mock.patch.object(ap, "resolved_binary", lambda n: n), \
+        with mock.patch.object(ap, "_run_grouped", boom), mock.patch.object(ap, "resolved_binary", lambda n: n), \
                 mock.patch.object(ap, "diag_log", lambda ev, **kw: diags.append((ev, kw))):
             self.assertEqual(ap.AgyProvider().model_choices(), [])
         self.assertEqual(diags, [("models_fetch_failed", {"source": "agy"})])

@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import preview
+from .childgroup import _run_grouped
 from .diaglog import diag_log
 from .settings import load_settings
 
@@ -168,7 +169,7 @@ def chat_help_text(binary: str) -> str:
         return hit
     try:
         # stdin verilmezse girdi bekleyen ikili 10 sn asılır ve çağıranın girdisini (CLI terminali) tüketir
-        res = subprocess.run([binary, "chat", "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+        res = _run_grouped([binary, "chat", "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
                              timeout=_HELP_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -554,7 +555,7 @@ def ucli_chat_once(
     env = _subprocess_env(api_key_env, api_key)
     secret = _effective_key(api_key_env, api_key)
     try:
-        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, env=env)
+        result = _run_grouped(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as e:
         raise UcliError(f"ucli {timeout}s içinde cevap vermedi") from e
     except UnicodeDecodeError:
@@ -745,8 +746,8 @@ def _run_resume(run_key: str, approval_id: str, argv: List[str], timeout: float,
     from . import ucli_approval
     try:
         api_key_env = argv[argv.index("--api-key-env") + 1] if "--api-key-env" in argv else "UCLI_API_KEY"
-        result = subprocess.run(argv + ["--resume-approval", approval_id], capture_output=True, text=True, timeout=timeout,
-                                env=_subprocess_env(api_key_env, api_key))
+        result = _run_grouped(argv + ["--resume-approval", approval_id], capture_output=True, text=True, timeout=timeout,
+                              env=_subprocess_env(api_key_env, api_key))
     except Exception as e:      # noqa: BLE001  (zaman aşımı dahil)
         ucli_approval.set_result(run_key, "done", {"error": f"{type(e).__name__}: {e}"[:300]})
         return {"ok": False, "error": "resume failed"}

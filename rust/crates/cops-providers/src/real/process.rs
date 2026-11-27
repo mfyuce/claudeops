@@ -1,8 +1,8 @@
 //! Alt süreç koşucusu: kabuk YOK, stdin boş, TOPLAM süre sınırı (`Instant` = `CLOCK_MONOTONIC`), sınırlı boru okuma,
 //! ayrı süreç grubu, her çıkış yolunda öldür + bekle. İş parçacığı açılmaz: borular `poll` ile tek yerden boşaltılır.
 //!
-//! Python `subprocess.run(timeout=..)` farkı: zaman aşımında Python yalnız doğrudan çocuğu öldürür; burada çocuğun
-//! süreç grubu (torunlar dahil) öldürülür.
+//! Python eşi `childgroup._run_grouped` (TBD#397): zaman aşımında iki tarafta da çocuğun süreç grubu (torunlar dahil)
+//! sonlandırılır; sinyal yalnız bu koşucunun yeni grupta açtığı, henüz beklenmemiş çocuğa gider.
 
 use crate::real::Env;
 use std::io::{self, Read};

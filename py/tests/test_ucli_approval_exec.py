@@ -27,7 +27,7 @@ class ApprovalExecTest(unittest.TestCase):
 
     def run_once(self, rc, out, **kw):
         res = NS(returncode=rc, stdout=out, stderr="")
-        with mock.patch.object(uc.subprocess, "run", return_value=res) as r:
+        with mock.patch.object(uc, "_run_grouped", return_value=res) as r:
             ret = uc.ucli_chat_once("/w", "do", approval_run_key="r1", extra_args=["--allow-edit", "--ask-edit"], **kw)
         return ret, r.call_args[0][0]
 
@@ -64,14 +64,14 @@ class ApprovalExecTest(unittest.TestCase):
 class ResumeTest(ApprovalExecTest):
     def suspend(self, owner="ali"):
         res = NS(returncode=75, stdout='{"suspended":{"id":"%s"}}' % ID, stderr="")
-        with mock.patch.object(uc.subprocess, "run", return_value=res):
+        with mock.patch.object(uc, "_run_grouped", return_value=res):
             uc.ucli_chat_once("/w", "do", session="s1", approval_run_key="r1", approval_owner=owner,
                               extra_args=["--allow-edit", "--ask-edit"])
 
     def test_resume_done_and_argv_from_record(self):
         self.suspend()
         res = NS(returncode=0, stdout='{"answer":"ok"}', stderr="")
-        with mock.patch.object(uc.subprocess, "run", return_value=res) as r:
+        with mock.patch.object(uc, "_run_grouped", return_value=res) as r:
             out = uc.ucli_resume_approval("r1", ID)
         argv = r.call_args[0][0]
         self.assertEqual(argv[-2:], ["--resume-approval", ID])
@@ -83,7 +83,7 @@ class ResumeTest(ApprovalExecTest):
     def test_resume_chain_and_double_resume(self):
         self.suspend()
         res = NS(returncode=75, stdout='{"suspended":{"id":"%s"}}' % ("b" * 32), stderr="")
-        with mock.patch.object(uc.subprocess, "run", return_value=res):
+        with mock.patch.object(uc, "_run_grouped", return_value=res):
             out = uc.ucli_resume_approval("r1", ID)
         self.assertEqual(out["approval_id"], "b" * 32)
         self.assertEqual(ap.get("r1")["state"], "suspended")
@@ -93,7 +93,7 @@ class ResumeTest(ApprovalExecTest):
     def test_resume_error_recorded(self):
         self.suspend()
         res = NS(returncode=2, stdout="", stderr="boom")
-        with mock.patch.object(uc.subprocess, "run", return_value=res):
+        with mock.patch.object(uc, "_run_grouped", return_value=res):
             self.assertFalse(uc.ucli_resume_approval("r1", ID)["ok"])
         self.assertEqual(ap.get("r1")["result"]["error"], "boom")
 

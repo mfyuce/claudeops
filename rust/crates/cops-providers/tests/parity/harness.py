@@ -114,6 +114,12 @@ from claudeops.providers.base import McpServerSpec, OneshotError  # noqa: E402
 assert "claudeops_enterprise" not in sys.modules, "eklenti yüklendi"
 
 DIAGS = []
+# Yardımcı alt süreç geçidi (`childgroup._run_grouped`) da aynı sahteden / `_RealProcesses`te gerçek `subprocess.run`dan
+# geçer; grup davranışı parite konusu değil (`py/tests/test_rsprov_child_group.py`, Rust `tests/real_process.rs`).
+for _m in (searxng, ucli_client, claude_p, ucli_p, agy_p, sys.modules["claudeops.providers.base"]):
+    assert hasattr(_m, "_run_grouped"), _m.__name__
+    _m._run_grouped = lambda argv, **kw: subprocess.run(argv, **kw)
+
 _ORIG_DIAG = diaglog.diag_log
 
 
@@ -716,11 +722,11 @@ def op_sources(a):
             pending.append(self.target)
 
     fake_time = types.SimpleNamespace(monotonic=lambda: clock["mono"], time=lambda: clock["wall"])
-    saved = (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
+    saved = (agy_p.time, agy_p.threading, agy_p._run_grouped, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
              uso._open_no_redirect)
     agy_p.time = codex_p.time = ucli_p.time = fake_time
     agy_p.threading = types.SimpleNamespace(Thread=_Thread, Lock=threading.Lock)
-    agy_p.subprocess = types.SimpleNamespace(run=_run)
+    agy_p._run_grouped = _run
     ucli_p._open_no_redirect = uso._open_no_redirect = _open
     agy, codex = agy_p.AgyProvider(), codex_p.CodexProvider()
     ucli_p._LIVE_MODEL_CACHE, ucli_p._LIVE_MODEL_CACHE_TS, ucli_p._LIVE_CAPS = None, 0.0, {}
@@ -765,7 +771,7 @@ def op_sources(a):
             row["calls"] = list(calls)
             out.append(row)
     finally:
-        (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
+        (agy_p.time, agy_p.threading, agy_p._run_grouped, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
          uso._open_no_redirect) = saved
     return out
 

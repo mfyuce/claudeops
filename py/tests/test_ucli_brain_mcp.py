@@ -2,7 +2,7 @@
 `--with-mcp` yalnız ikili tanıyorsa ve kayıt başarılıysa), spawn'ın `cwd`yi yalnız `mcp_needs_cwd` provider'a geçmesi, `brain_start`
 (`brain_cli=ucli` -> `cli_opts`; varsayılan claude yolu birebir aynı) ve `brain_service`/`brain_max_cost_usd` ayarları.
 
-GERÇEK spawn/tmux/ağ/API/anahtar YOK: ucli ikilisi yardım metni basan sahte betik, `subprocess.run` sahte, `_Brain` gerçek
+GERÇEK spawn/tmux/ağ/API/anahtar YOK: ucli ikilisi yardım metni basan sahte betik, alt süreç geçidi sahte, `_Brain` gerçek
 `spawn_session`ı sahteler, ayarlar geçici dosyada (gerçek settings.json'un hash'i koşu öncesi/sonrası karşılaştırılır)."""
 import hashlib
 import os
@@ -77,7 +77,7 @@ class _Bin(unittest.TestCase):
         ucli_client._HELP_CACHE.clear()
         self.addCleanup(ucli_client._HELP_CACHE.clear)
         self.binary = fake_ucli(self.tmp, self.HELP)
-        ucli_client.chat_help_text(self.binary)     # önbelleğe al: testler `subprocess.run`ı (paylaşılan modül) sahteler
+        ucli_client.chat_help_text(self.binary)     # önbelleğe al: testler alt süreç geçidini sahteler
         self.logs = []
         for p in (mock.patch.object(up, "resolve_binary", lambda: self.binary),
                   mock.patch.object(up, "diag_log", lambda ev, **k: self.logs.append((ev, k)))):
@@ -131,7 +131,7 @@ class McpRegisterTests(_Bin):
             calls.append((argv, kw))
             self.assertFalse(os.path.exists(stale))          # eski kayıt add'den ÖNCE silindi (onayı biz vermeyiz)
             return subprocess.CompletedProcess(argv, 0, "{}", "")
-        with mock.patch.object(up.subprocess, "run", run):
+        with mock.patch.object(up, "_run_grouped", run):
             out = up.UcliProvider().mcp_launch_args(self.spec(), cwd=self.tmp)
         self.assertEqual(out, ["--with-mcp"])
         self.assertEqual(len(calls), 1)
@@ -142,18 +142,18 @@ class McpRegisterTests(_Bin):
         self.assertIn("timeout", kw)
 
     def test_failed_add_means_no_with_mcp(self):
-        with mock.patch.object(up.subprocess, "run",
+        with mock.patch.object(up, "_run_grouped",
                                lambda argv, **kw: subprocess.CompletedProcess(argv, 1, "", "Server already exists")):
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(), cwd=self.tmp), [])
         self.assertIn("ucli_mcp_register_failed", [e for e, _ in self.logs])
-        with mock.patch.object(up.subprocess, "run", mock.Mock(side_effect=subprocess.TimeoutExpired("x", 1))):
+        with mock.patch.object(up, "_run_grouped", mock.Mock(side_effect=subprocess.TimeoutExpired("x", 1))):
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(), cwd=self.tmp), [])
 
     def test_nothing_runs_without_tools_workspace_or_flag(self):
         old = fake_ucli(self.tmp, HELP_EXEC, name="old")
         ucli_client.chat_help_text(old)
         run = mock.Mock()
-        with mock.patch.object(up.subprocess, "run", run):
+        with mock.patch.object(up, "_run_grouped", run):
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(tools=()), cwd=self.tmp), [])
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(tools=("bad name;",)), cwd=self.tmp), [])
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(), cwd=""), [])
@@ -169,7 +169,7 @@ class McpRegisterTests(_Bin):
         os.makedirs(ws_dir)
         os.symlink(target, os.path.join(ws_dir, ".ucli"))
         run = mock.Mock()
-        with mock.patch.object(up.subprocess, "run", run):
+        with mock.patch.object(up, "_run_grouped", run):
             self.assertEqual(up.UcliProvider().mcp_launch_args(self.spec(), cwd=ws_dir), [])
         run.assert_not_called()
 

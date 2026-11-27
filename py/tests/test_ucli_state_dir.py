@@ -59,7 +59,7 @@ class TestChatOnce(_Base):
             seen["argv"] = argv
             return mock.Mock(returncode=0, stdout='{"answer": "x"}', stderr="")
         with limits(cfg), mock.patch.object(ucli_client, "binary_supports_flag", lambda b, f: supports), \
-                mock.patch.object(ucli_client.subprocess, "run", fake_run), \
+                mock.patch.object(ucli_client, "_run_grouped", fake_run), \
                 mock.patch.object(ucli_client, "resolve_binary", lambda b=None: "/f/ucli"):
             ucli_client.ucli_chat_once(self.cwd, "hi", session=session, model="m", endpoint="http://e")
         return seen["argv"]

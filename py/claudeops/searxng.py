@@ -51,6 +51,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .atomic_json import atomic_write_json, file_lock
 from . import preview
+from .childgroup import _run_grouped
 from .diaglog import diag_log
 from .paths import CLAUDE_DIR, CLAUDEOPS_DIR
 
@@ -149,15 +150,15 @@ _down_reason = ""
 
 
 def _docker(*args: str, timeout: float = 10.0) -> "subprocess.CompletedProcess[str]":
-    """docker CLI'yı çalıştırır. Bu modüldeki TEK `subprocess` çağrısı noktası (testler burayı yamalar).
+    """docker CLI'yı çalıştırır. Bu modüldeki TEK docker çağrısı noktası (testler burayı yamalar).
     CLI yok / daemon'a erişilemiyor / zaman aşımı → `DockerUnavailable`; komutun kendi hatası (rc != 0)
     istisna DEĞİL, çağıran `returncode`a bakar."""
     exe = shutil.which("docker")
     if not exe:
         raise DockerUnavailable("docker PATH'te yok")
     try:
-        return subprocess.run([exe, *args], capture_output=True, text=True, errors="replace",
-                              timeout=timeout, stdin=subprocess.DEVNULL)
+        return _run_grouped([exe, *args], capture_output=True, text=True, errors="replace",
+                            timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         raise DockerUnavailable(f"docker {args[0] if args else ''} {timeout:g} sn içinde bitmedi")
     except OSError as e:

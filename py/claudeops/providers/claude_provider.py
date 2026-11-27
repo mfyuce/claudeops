@@ -13,6 +13,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from .. import preview
+from ..childgroup import _run_grouped
 from ..diaglog import diag_log
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
@@ -508,7 +509,7 @@ def claude_help_text(binary: Optional[str] = None) -> str:
     if hit is not None:
         return hit
     try:
-        res = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=_HELP_TIMEOUT_SECONDS,
+        res = _run_grouped([binary, "--help"], capture_output=True, text=True, timeout=_HELP_TIMEOUT_SECONDS,
                              stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return ""

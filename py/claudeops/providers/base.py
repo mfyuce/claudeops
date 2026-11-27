@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 import psutil
 
+from ..childgroup import _run_grouped
 from ..effort import nearest_effort
 
 
@@ -474,7 +475,7 @@ class CliProvider(ABC):
             return None
         try:
             os.makedirs(cwd, exist_ok=True)
-            res = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+            res = _run_grouped(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as e:
             raise OneshotError(f"{self.name}: {timeout:.0f}s içinde yanıt vermedi") from e
         except OSError as e:

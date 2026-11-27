@@ -99,6 +99,7 @@ from .. import ucli_agents
 from ..diaglog import diag_log
 from ..paths import ucli_key_file
 from .. import ucli_cost
+from ..childgroup import _run_grouped
 from ..settings import ucli_cost_config
 from ..ucli_session_opts import _open_no_redirect
 from ..ucli_session_opts import BROAD_GLOBS, services as _services, effort_levels_for, exec_flags, expand_exec_cmds, path_executables, validate_opts as validate_start_opts
@@ -671,8 +672,8 @@ def register_mcp(binary: str, cwd: str, spec: McpServerSpec, session_name: str =
         diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=repr(e))
         return False
     try:
-        r = subprocess.run(mcp_add_argv(binary, cwd, spec), stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           errors="replace", timeout=_MCP_ADD_TIMEOUT, cwd=cwd)
+        r = _run_grouped(mcp_add_argv(binary, cwd, spec), stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                         errors="replace", timeout=_MCP_ADD_TIMEOUT, cwd=cwd)
     except (OSError, subprocess.SubprocessError) as e:
         diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=repr(e))
         return False

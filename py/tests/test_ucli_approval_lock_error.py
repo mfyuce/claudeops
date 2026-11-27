@@ -35,7 +35,7 @@ class Register(_Base):
         self.patch(ucli_approval, "dir_for", return_value="/yok")
         self.patch(ucli_approval, "parse_suspended", return_value={"id": "onay-7"})
         self.patch(ucli_approval, "register", side_effect=BUSY)
-        self.patch(ucli_client.subprocess, "run", return_value=subprocess.CompletedProcess([], 75, "{}", ""))
+        self.patch(ucli_client, "_run_grouped", return_value=subprocess.CompletedProcess([], 75, "{}", ""))
         with self.assertRaises(ucli_client.UcliError) as c:
             ucli_client.ucli_chat_once("/c", "p", approval_run_key="k1")
         self.assertIn("onay-7", str(c.exception))
@@ -52,7 +52,7 @@ class Resume(_Base):
         self.patch(ucli_approval, "begin_resume", return_value=["/bin/ucli"])
         self.patch(ucli_approval, "set_result", side_effect=BUSY)
         for code, out in ((0, json.dumps({"answer": "a"})), (1, ""), (0, "bozuk")):
-            with mock.patch.object(ucli_client.subprocess, "run",
+            with mock.patch.object(ucli_client, "_run_grouped",
                                    return_value=subprocess.CompletedProcess([], code, out, "")):
                 r = ucli_client.ucli_resume_approval("k1", "onay-7")
             self.assertFalse(r["ok"], (code, out))

@@ -27,7 +27,7 @@ class AgyModelsSwr(unittest.TestCase):
                 gate.wait(5)                     # arka plan yenilemesi yavaş
                 return _Out("Fetching...\nm-new\tYeni\n")
             return _Out("Fetching...\nm-old\tEski\n")
-        with mock.patch.object(ap.subprocess, "run", fake_run), mock.patch.object(ap, "resolved_binary", lambda n: n):
+        with mock.patch.object(ap, "_run_grouped", fake_run), mock.patch.object(ap, "resolved_binary", lambda n: n):
             self.assertEqual(p.model_choices(), ["m-old"])          # soğuk: bloklayarak çekti
             p._cache_ts = time.monotonic() - ap._MODELS_TTL - 1      # TTL doldu
             t = time.monotonic()

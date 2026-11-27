@@ -77,6 +77,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok, _ro_sqlite_uri
 from ..atomic_json import LockError, atomic_write_json, file_lock
+from ..childgroup import _run_grouped
 from ..diaglog import diag_log
 from .. import preview
 from ..effort import sort_levels, split_tier
@@ -417,8 +418,8 @@ class AgyProvider(CliProvider):
 
     def _fetch_models(self) -> None:
         try:
-            out = subprocess.run([resolved_binary("agy"), "models"], capture_output=True, text=True,
-                                  timeout=5).stdout
+            out = _run_grouped([resolved_binary("agy"), "models"], capture_output=True, text=True,
+                               timeout=5).stdout
             # "agy models" gerçek satırlardan ÖNCE bir durum satırı basıyor
             # ("Fetching available models..." — tab YOK) — sadece gerçek
             # `id\tLabel` satırlarını al, yoksa bu satır ilk "model" gibi görünüp

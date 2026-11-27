@@ -24,7 +24,7 @@ class ConsumedApproval(unittest.TestCase):
         ucli_approval.set_state("k1", "suspended")
 
     def resume(self, code, out):
-        with mock.patch.object(ucli_client.subprocess, "run",
+        with mock.patch.object(ucli_client, "_run_grouped",
                                return_value=subprocess.CompletedProcess([], code, out, "")) as run, \
              mock.patch.object(ucli_approval, "set_result", side_effect=LockError("x.lock alınamadı")):
             r = ucli_client.ucli_resume_approval("k1", "onay-7")

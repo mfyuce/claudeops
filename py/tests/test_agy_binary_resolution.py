@@ -25,7 +25,7 @@ class AgyBinaryTest(unittest.TestCase):
         p = AgyProvider()
         p._cache_ts = 0.0
         with mock.patch.object(agy_provider, "resolved_binary", lambda n: "/opt/agy"), \
-             mock.patch.object(agy_provider.subprocess, "run", run):
+             mock.patch.object(agy_provider, "_run_grouped", run):
             self.assertIn("m1", p.model_choices())
         self.assertEqual(seen, [["/opt/agy", "models"]])
 
