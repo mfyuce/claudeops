@@ -828,7 +828,7 @@ def normalize_ucli_services(raw: Any) -> list:
         ep = str(r.get("endpoint") or "").strip().rstrip("/")
         if not _SVC_ID_RE.match(sid) or sid in seen or not _SVC_ENV_RE.match(env) or wire not in ("", "anthropic-messages"):
             continue
-        if ep and not re.match(r"^https?://[^\s]+$", ep):
+        if ep and not re.fullmatch(r"https?://[^\s]+", ep):
             continue
         if not ep and sid != "evren":        # yalnız Evren'in uç noktası `ucli_endpoint` ayarından gelir
             continue
