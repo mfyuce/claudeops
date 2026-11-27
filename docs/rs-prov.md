@@ -5,7 +5,7 @@ Durum (27 Kas 2026, `rs/prov` `54ed8a8e`; sonrasında yalnız belge ve eşleme d
 1587 satır (TAŞINDI 774, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
 4 + 20 satır). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
 uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) ve S6 = (b) onaylandı,
-uygulandı; TBD#419 = (a) uygulandı; sahipte S4 ve TBD#422. §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
+uygulandı; TBD#419 = (a) ve TBD#422 = (a) uygulandı; S4 = (a) cevaplandı, henüz uygulanmadı. §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
 Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 1295 geçti, 0 kaldı, 1 atlandı;
 `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check` temiz; Python tam paket 6497 OK
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
@@ -15,6 +15,12 @@ denetlenmedi (`tmux_backend.py` değişmedi).
 Python 6529 OK (23 atlanan, 332 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 27 Kas `main` `8239e0d5` birleşimi (`13340f26`): cargo 1303 geçti / 0 kaldı / 1 atlandı, clippy ve fmt temiz,
 Python 6522 OK (23 atlanan, 333 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
+27 Kas TBD#422 (kapı ağacı = `fix:` commit'i; birleşim yok): `cargo test --workspace --no-fail-fast` 1305 geçti /
+0 kaldı / 1 atlandı, `cargo fmt --check` temiz, Python tam paket 6550 OK (23 atlanan, 466 sn), hosts/rs-proc/steward/rev
+eşleme denetimleri çıkış 0 (rs-rev bloğu yeniden üretildi). Clippy ilk koşuda yeni testte tek hatayla düştü
+(`from_mode(0)`); `0o000` yapıldıktan sonra yalnız clippy (temiz), fmt ve `usage_two_copies` (8 geçti) yeniden koşuldu.
+Bu turda eşleme tablosuna `_anthropic_spend` satırı ve "TBD#422" bölümüne 3 test satırı eklendi; yukarıdaki satır
+toplamları yeniden sayılmadı.
 Oynak görülenler: `parity_real`, iki `flock` testi ve
 `test_review_io_history::test_real_pipes_stream_and_heartbeat` giderildi ("Oynak testler" bölümü).
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
@@ -93,7 +99,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), soru S4, kalan AÇIK satırlar.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), S4 uygulaması (cevap (a)), kalan AÇIK satırlar.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -111,7 +117,7 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 | §3.1 (a), §2.5.8 | model/effort okuması (S1) ve claude takılma kararı (TBD#419) kapandı; sid'siz `jsonl_path_for` (sohbet) ve codex rollout okuması (sohbet, son mesaj rolü, takılma kararı) hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
-| §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | sahip (S4), sonra iz |
+| §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | iz (S4 = (a) cevaplandı, 27 Kas) |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
 | §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
 
@@ -213,7 +219,7 @@ Python 31 MB.
   çağrı kalsın, enterprise kancası kuru koşuyu (`preview.active()`) görünce yazmasın: ön denetim korunur, çekirdek
   değişmez. (b) kuru koşuda kanca hiç çağrılmasın: yan etki biter, ama kota/yetki reddi ancak eski oturum kapandıktan sonra
   görünür. (c) aynen. Öneri: (a).
-- **S4 (ortam değişkenleri komut satırında).** Oturum açılırken sağlayıcı ve kanca ortamı `AD=DEĞER` olarak komut satırına
+- **S4 (ortam değişkenleri komut satırında): cevaplandı ((a), 27 Kas), UYGULANMADI.** Oturum açılırken sağlayıcı ve kanca ortamı `AD=DEĞER` olarak komut satırına
   gömülüyor; kanca sır döndürürse makinedeki başka kullanıcılar süreç listesinden görebilir. Bugünkü sağlayıcı değerleri
   sır içermiyor; enterprise kancasının döndürdükleri bu turda incelenmedi. (a) adı `_KEY`/`_TOKEN`/`_SECRET` ile biten
   değerler 0600 dosyaya yazılıp oradan yüklensin (copilot anahtarındaki yöntem): açılış komutu değişir. (b) kanca böyle
@@ -222,8 +228,11 @@ Python 31 MB.
 - **S6 (ikinci örnekte hizmet anahtar dosyası): onaylandı, uygulandı** (27 Kas, sahip, (b); "TBD#419, S6, uzun harcama
   satırı" bölümü).
 - **TBD#419 (sid'siz oturumda takılma kararı): onaylandı, uygulandı** (27 Kas, sahip, (a); aynı bölüm).
-- **TBD#422 (inceleme API bütçe kapısı, okunamayan günlük / geçersiz sayaç): CEVAPSIZ.** O iki durumda kapı hâlâ yalnız
-  toplamı görür; davranış değiştirilmedi. Seçenekler TOBEDECIDED'da.
+- **TBD#422 (inceleme API bütçe kapısı): onaylandı, uygulandı** (27 Kas, sahip, (a); "TBD#422" bölümü).
+- **Soru adayı (TBD#422 sırasında kod okumasıyla görüldü, TOBEDECIDED'a yazılmadı): bütçe kapısı yalnız yuva kipinde
+  koşuyor.** `anthropic_filter`ın tek çağıranı `_tick_slots`; `review_slots` boşken (tek yuva turu) ve elle koşuda
+  (`manual_run`) anthropic hedefi bütçeye de sayılamayan harcama kuralına da bakılmadan başlar (tek yuva turunda proje
+  izin listesi `anthropic_excluded` de uygulanmaz). Davranış değiştirilmedi.
 - Not (soru değil, açık kalan): TBD#401 `endpoint` alanını sınırlamadı; `/api/io/ask` izinli bir anahtar adını (ör.
   `ANTHROPIC_API_KEY`) çağıranın verdiği adrese hâlâ gönderebilir.
 
@@ -814,8 +823,34 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   Python tarafında derinlik denetiminin payı (20 MB tarama, CPU, 5 koşu ortancası): 1,77 -> 1,86 sn (aralıklar örtüşüyor).
 - AÇIK kalan fark (16 MiB üstü satır farkı sonradan kapandı, aşağıdaki bölüm): BOZUK bir satırda 4300 basamağı Rust metinden, Python
   ayrıştırma hatasından gördüğü için Rust daha sık reddedebilir (hiçbir yönde sayılmayan satır).
-  Ayrıca review bütçe kapısı başka güvenilmezlikleri
-  (geçersiz sayaç, okunamayan günlük) hâlâ yalnız toplamdan görür (iki dilde; değiştirilmedi).
+  Bütçe kapısının geçersiz sayaç ve okunamayan günlüğü yalnız
+  toplamdan görmesi TBD#422 ile kapandı (aşağıdaki "TBD#422" bölümü).
+
+## TBD#422: inceleme bütçe kapısı günlük tavanın ret kuralını uygular (27 Kas; iki tarafta)
+- **Kural (sahip, (a)).** `review._anthropic_spend` / `report::anthropic_spend` (toplam, sorun) döndürür. Sorun
+  (`<köke göre yol>: <neden>`, ilk görülen): `okunamadı` (açılamayan, okuma ortasında hata veren, bakılamayan),
+  `normal dosya değil`, `çok uzun satır`, `çok derin satır`, `çok uzun sayı`, `geçersiz zaman damgası`, `geçersiz
+  sayaç`, `dizin okunamadı` (kök, `anthropic/` ve altı; `anthropic` dizin değilse de) ve kapıya özgü `bağlantı dizini
+  sayılamıyor` (ağaç gezildiği için içine girilmeyen dizin bağlantısı; günlük tavan tek dizine bakar). Olmayan
+  kök/dizin/dosya (kopuk bağlantı dahil), ayrıştırılamayan ya da UTF-8 olmayan satır ve sayaç dışı sonlu olmayan değer
+  sorun değil.
+- `anthropic_spent_usd` sorun varken `1e18` döner. `anthropic_filter` bütçe açıkken (`> 0`) sınırın büyüklüğünden
+  bağımsız reddeder ve `review_anthropic_budget_reached spent=1e18` yerine `review_anthropic_budget_unverifiable`
+  (`cap`, `reason`, `message`) yazar. Bütçe `<= 0` iken davranış aynı.
+- **Görünür değişiklik:** tek bozuk kayıt ya da okunamayan dosya düzeltilene dek anthropic inceleme koşuları
+  planlanmaz. `usage_cost_usd`, `usage_summary`, günlük tavan değişmedi. Yarıda okunamayan dosyada `usage_cost_usd` farkı
+  duruyor (Python kısmi toplam, Rust 0); kapı iki dilde de reddeder.
+- Rust'ta ek düzeltme: kapı UTF-8 olmayan adlı günlüğü kayıplı yolla açamayıp sessizce 0 sayıyordu (kod okuması);
+  gezinti artık ham baytlarla.
+- Bilinen sınırlar: `anthropic/` altında doğrudan duran (model dizinsiz) günlük eskisi gibi hiç sayılmaz; nokta ile
+  başlayan proje adı atlanır; birden çok sorunda bildirilen yol dizin okuma sırasına bağlıdır. Rust'ta kapının
+  koşucudaki kararı (`anthropic_filter`) taşınmadı (T8).
+
+| Python testi (py/tests/test_rsprov_budget_gate.py) | Rust karşılığı | durum |
+|---|---|---|
+| `Untrusted.*` (satır nedenleri) | `usage_two_copies::the_review_budget_distrusts_exactly_what_the_daily_cap_distrusts`; rev `parity` (`anthropic_spent_usd`) | TAŞINDI |
+| `Untrusted.*` (dosya ve dizin nedenleri), `Trusted.*` | `usage_two_copies::the_review_budget_refuses_unreadable_files_and_directories`; rev `parity` | TAŞINDI |
+| `GateOffAndDisplay.*` | `anthropic_filter` koşucuda (T8) | KAPSAM DIŞI |
 
 ## Oynak testler (27 Kas)
 - `parity_real` (`ucli_mcp_register_failed` farkı): test hatası. Sahte ikilileri test süreci `fs::write` ile yazıyordu;
@@ -1860,7 +1895,8 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `HAIKU_LONG_PROMPT` (py/claudeops/review.py:112) | `cops-review-core` `targets.rs::HAIKU_LONG_PROMPT` | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
 | `_scan_usage` (py/claudeops/review.py:1894) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına); toplam yarısı `cops-review-core` `report.rs::usage_cost_usd`, satır kuralları `usage.rs` | `parity.rs::parity_ledger` `dilim` `satir`; iki kopya birbirine karşı `tests/usage_two_copies.rs` | TAŞINDI |
 | `_MAX_LINE_DEPTH`, `_DEPTH_TOKEN_RE`, `_too_deep` (py/claudeops/review.py:1861) | `cops-review-core` `usage.rs::{MAX_LINE_DEPTH, too_deep}` | `usage_two_copies::both_copies_draw_the_depth_limit_at_the_same_line`; rev `parity` | TAŞINDI |
-| `_UNCOUNTABLE_SPENT_USD`, `_UNCOUNTABLE_KINDS` (py/claudeops/review.py:1863) | `report.rs::{UNCOUNTABLE_SPENT_USD, scan_report}`, `usage.rs::{Line::Uncountable, long_integer}` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`; rev `parity` | TAŞINDI |
+| `_UNCOUNTABLE_SPENT_USD` (py/claudeops/review.py:1863) | `report.rs::{UNCOUNTABLE_SPENT_USD, scan_report}`, `usage.rs::{Line::Uncountable, long_integer}` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`; rev `parity` | TAŞINDI |
+| `_anthropic_spend` (py/claudeops/review.py) | `cops-review-core` `report.rs::anthropic_spend` | `usage_two_copies::{the_review_budget_distrusts_exactly_what_the_daily_cap_distrusts, the_review_budget_refuses_unreadable_files_and_directories}`; rev `parity` | TAŞINDI |
 | `_with_ucli_error` (py/claudeops/commands/web.py:2116) | bağlayan uç (copsd/panel `_start`); pane okuması için `cops-tmux` `query.rs::Tmux::capture_joined` hazır | rs/tmux `reads_match_python` (`-J`) | KAPSAM DIŞI |
 
 ### 27 Kas ikinci turunun satırları (`726888f1` eşitlemesi, G3 3/5, TBD#401)
