@@ -173,7 +173,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 |---|---|---|
 | `fsutil.rs` `fsync_dir` | `let _ = d.sync_all()` | dizin fsync en iyi çaba (Python `_fsync_dir` `OSError` yutar) |
 | `fsutil.rs` `write_replace` | `let _ = f.set_permissions(..)` | umask'ı aşan chmod; Python `contextlib.suppress(OSError)` |
-| `fsutil.rs` `write_replace`, `atomic_write_*` (4) | `let _ = fs::remove_file(tmp)` | önceki çöküşten kalan geçici dosyayı / hata sonrası geçiciyi silme; asıl hata dönülür (Python aynı) |
+| `fsutil.rs` `write_replace`, `atomic_write_*`, `write_corrupt_copy` (5) | `let _ = fs::remove_file(tmp)` | önceki çöküşten kalan geçici dosyayı / hata sonrası geçiciyi silme; asıl hata dönülür (Python aynı) |
 | `fsutil.rs` `atomic_write_json/text` (2) | `.ok()` | var olan dosyanın izni: yoksa `None` = umask (Python `_existing_mode`) |
 | `fsutil.rs` `FileLock::drop` | `let _ = HELD.try_with(..)` | iş parçacığı sonlanırken yerel depo yok olabilir; kayıt zaten düşüyor |
 | `json.rs` `as_f64` | `.ok()` | büyük tam sayının kayan noktası; ayrıştırılamazsa sayı değil |
@@ -360,7 +360,7 @@ satırıyla yazıldı.
 | `load_settings` (settings.py:242) | settings.rs::SettingsReader::load, load | parity.rs::settings_match_python | tamam |
 | `_load_settings_uncached` (settings.py:268) | settings.rs::read, Settings::from_text | parity_settings.rs::every_key_with_wrong_type_matches_python; parity.rs::settings_match_python | tamam |
 | `save_settings` (settings.py:304) | yok | yok | kapsam dışı: ayar yazımı Python'da kalır; iz T7 |
-| `_backup_if_corrupt` (settings.py:316) | settings.rs::backup_if_corrupt, fsutil.rs::write_corrupt_copy | parity_settings.rs::missing_or_empty_settings_not_backed_up; parity_store.rs::sha256_and_corrupt_backup_match_python | tamam |
+| `_backup_if_corrupt` (settings.py:316) | settings.rs::backup_if_corrupt, fsutil.rs::write_corrupt_copy | parity_settings.rs::missing_or_empty_settings_not_backed_up; parity_store.rs::sha256_and_corrupt_backup_match_python; corrupt_copy.rs::partial_or_linked_backup_is_replaced | tamam |
 | `_DICT_ONLY_KEYS` (settings.py:349) | yok | yok | kapsam dışı: yalnız yama yazımında kullanılır; iz T7 |
 | `_save_settings_locked` (settings.py:352) | yok | yok | kapsam dışı: ayar yazımı Python'da kalır; iz T7 |
 | `resolved_binary` (settings.py:442) | settings_read.rs::Settings::resolved_binary, which | parity_settings.rs::settings_readers_match_python | tamam |
@@ -463,6 +463,7 @@ satırıyla yazıldı.
 | `_LOCKS_GUARD` (atomic_json.py:125) | yok | yok | kapsam dışı: Python'un süreç içi kilit tablosunun koruyucusu; Rust'ta ortak tablo yok (iş parçacığı yerel kayıt ve ayrı fd flock); iz W0-a |
 | `_THREAD_LOCKS` (atomic_json.py:126) | fsutil.rs::HELD ve fd başına flock | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
 | `_HELD` (atomic_json.py:127) | fsutil.rs::HELD | fsutil.rs::reentrant_same_thread_exclusive_across_threads | tamam |
+| `_write_corrupt_copy` (atomic_json.py), `test_state_corrupt_copy_partial.py` (4) | fsutil.rs::{write_corrupt_copy, has_content} | corrupt_copy.rs::partial_or_linked_backup_is_replaced; parity_store.rs::sha256_and_corrupt_backup_match_python (hosts/snapshot yedek yazarları bu izde taşınmadı) | tamam |
 | `LockError`, `flock_bounded` (atomic_json.py) | fsutil.rs::FileLock (`TimedOut`/`PermissionDenied`), flock_within | fsutil.rs::lock_symlink_refused, exclusive_lock_is_bounded; lock_e2e.rs::python_lock_blocks_rust_and_back | tamam |
 | `file_lock` (atomic_json.py:132) | fsutil.rs::FileLock::acquire, acquire_within | fsutil.rs::reentrant_same_thread_exclusive_across_threads, lock_symlink_refused; lock_e2e.rs::python_lock_blocks_rust_and_back | tamam |
 | `roster_lock` (atomic_json.py:169) | fsutil.rs::FileLock::roster | lock_e2e.rs::roster_and_instances_locks_shared | tamam |
@@ -989,7 +990,7 @@ Bu dosyalarda kalan metotlar kapsam modüllerini yardımcı olarak (yol yaması,
 | `test_state_settings_unreadable.py` (2) | | | kapsam dışı: ayar yazımı (T7) |
 | `test_ucli_approval_lock_error.py` (3), `test_cli_lock_error.py` (1) | | | kapsam dışı: ucli istemcisi / CLI (T6) |
 | `db_truth` (statedocs.py), `_valid`, `_keep_corrupt_mirror` (instances.py), `test_state_instances_corrupt_mirror.py` (10) | statedocs.rs::db_truth, instances.rs::recover_mirror | parity.rs::instances_match_python (yedek adı/izni iki dilde); parity_instances.rs::load_db_cache_follows_row_stamp (ret dalları); statedocs.rs::db_stamp_refused_when_dirty_or_not_db; fd_leak.rs | tamam |
-| `_copy`, `_shared` (instances.py), `test_state_instances_cache_copy.py` (2) | instances.rs::Instances::{load, get} sahipli (derin) kopya döner | parity_instances.rs::load_db_cache_follows_row_stamp (dönen sözlük kopyadır) | tamam |
+| `_copy`, `_shared`, `view_instances` (instances.py; Rust okuyucu hep sahipli kopya döner), `test_state_instances_cache_copy.py` (2) | instances.rs::Instances::{load, get} sahipli (derin) kopya döner | parity_instances.rs::load_db_cache_follows_row_stamp (dönen sözlük kopyadır) | tamam |
 | `_Handler._lock_busy`, GET `LockError` -> 503 (web.py), `test_web_get_lock_error.py` (1) | | | kapsam dışı: HTTP katmanı bu izde değil; HTTP izi taşırken kilit hatasını 503 yapar |
 | `_db_stamp`, `_FALLBACKS` (statedocs.py), `Store._doc_stamp`, `_db_cache` (instances.py) | statedocs.rs::{db_stamp, DbStamp, State.fallbacks}, store.rs::doc_stamp, instances.rs::load_db | parity_instances.rs::load_db_cache_follows_row_stamp; statedocs.rs::db_stamp_refused_when_dirty_or_not_db | tamam |
 | `_consumed_path`, `_consumed`, `_mark_consumed` (ucli_approval.py), `_run_resume` (ucli_client.py), `test_ucli_approval_consumed.py` (3) | | | kapsam dışı: ucli onay kaydı bu izin modülü değil |

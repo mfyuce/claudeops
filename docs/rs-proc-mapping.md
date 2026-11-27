@@ -1405,8 +1405,8 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_state_instances_cache_copy.py::CacheCopy.test_db` | 42 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
-| `test_state_instances_cache_copy.py::CacheCopy.test_files` | 45 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_cache_copy.py::CacheCopy.test_db` | 52 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_state_instances_cache_copy.py::CacheCopy.test_files` | 55 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_state_instances_corrupt_mirror.py`
 

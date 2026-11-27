@@ -355,13 +355,11 @@ def _backup_if_corrupt() -> None:
         pass
     import hashlib
     dest = f"{SETTINGS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"
-    if not os.path.exists(dest):
-        try:
-            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "wb") as out:
-                out.write(raw)
-        except OSError:
-            dest = ""
+    try:
+        from .atomic_json import _write_corrupt_copy
+        _write_corrupt_copy(dest, raw)
+    except OSError:
+        dest = ""
     try:
         from .diaglog import diag_log
         diag_log("settings_corrupt_backup", path=dest or "(yedeklenemedi)", size=len(raw))

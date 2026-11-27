@@ -91,7 +91,7 @@ class StatusUsageTotalTests(Base):
             mock.patch.object(web, "_cache_info_cached", lambda s: None),
             mock.patch.object(web, "_context_info_cached", lambda s: None),
             mock.patch.object(web, "jsonl_path_for", lambda cwd, sid: self.paths.get(sid)),
-            mock.patch.object(web.inst_mod, "load_instances", lambda: {}),
+            mock.patch.object(web.inst_mod, "view_instances", lambda: {}),
             mock.patch.object(web_hosts.hosts_mod, "load_hosts", lambda: []),
         )
         for p in patches:

@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-hosts/src/` altındadır; `tests/...` crate'in e
 | Küme | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|
 | tanım | 361 | 245 | 116 | 0 |
-| test durumu (64 dosya) | 922 | 165 | 757 | 0 |
+| test durumu (65 dosya) | 926 | 165 | 761 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | AÇIK |
 |---|---|---|---|---|---|
@@ -210,18 +210,18 @@ Yok.
 | `hosts.py::_read_checked` | işlev:203 | karşılandı | `record.rs::parse_document`<br>`record.rs::Parsed.corrupt` | `record.rs::corrupt_and_irregular_documents`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | dosya/DB seçimi W0-a |
 | `hosts.py::_db_mode` | işlev:230 | kapsam dışı | yok | yok | durum deposu kipi (`statedocs`). İz: W0-a durum (rs/state) |
 | `hosts.py::_backup_corrupt` | işlev:235 | kapsam dışı | yok | yok | bozuk dosya yedeği; Rust yalnız işaret verir (`Parsed.corrupt`/`irregular`). İz: W0-a durum (rs/state) |
-| `hosts.py::_has_irregular_entries` | işlev:254 | karşılandı | `record.rs::Parsed.irregular` | `record.rs::corrupt_and_irregular_documents` | yok |
-| `hosts.py::_load_for_write` | işlev:267 | kapsam dışı | yok | yok | kilit altında okuma. İz: W0-a durum (rs/state) |
-| `hosts.py::get_host` | işlev:275 | karşılandı | `record.rs::find` | `tests/fake_proxy.rs::unknown_host_sends_nothing_and_does_not_sign` | yok |
-| `hosts.py::_write_hosts` | işlev:282 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
-| `hosts.py::_write_txn` | işlev:293 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
-| `hosts.py::_txn` | işlev:300 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
-| `hosts.py::_txn.wrapper` | işlev:302 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
-| `hosts.py::save_host` | işlev:308 | karşılandı | `record.rs::Draft::new`<br>`record.rs::Draft::apply` | `record.rs::validation_order`<br>`record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark |
-| `hosts.py::save_host::re1` | regex:332 | karşılandı | `record.rs::Draft::new` | `tests/parity.rs::save_host_validation_and_upsert_match_python` | `[,\n]+` bölme |
-| `hosts.py::promote_base_url` | işlev:376 | karşılandı | `record.rs::promote_base_url` | `record.rs::promote_and_remove`<br>`tests/fake_poller.rs::extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure` | yok |
-| `hosts.py::remove_host` | işlev:409 | karşılandı | `record.rs::remove` | `record.rs::promote_and_remove` | yok |
-| `hosts.py::list_hosts_public` | işlev:420 | karşılandı | `record.rs::HostRecord::public` | `record.rs::unknown_fields_survive_and_token_never_public`<br>`tests/fake_poller.rs::public_rows_never_carry_the_token` | yok |
+| `hosts.py::_has_irregular_entries` | işlev:252 | karşılandı | `record.rs::Parsed.irregular` | `record.rs::corrupt_and_irregular_documents` | yok |
+| `hosts.py::_load_for_write` | işlev:265 | kapsam dışı | yok | yok | kilit altında okuma. İz: W0-a durum (rs/state) |
+| `hosts.py::get_host` | işlev:273 | karşılandı | `record.rs::find` | `tests/fake_proxy.rs::unknown_host_sends_nothing_and_does_not_sign` | yok |
+| `hosts.py::_write_hosts` | işlev:280 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
+| `hosts.py::_write_txn` | işlev:291 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
+| `hosts.py::_txn` | işlev:298 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
+| `hosts.py::_txn.wrapper` | işlev:300 | kapsam dışı | yok | yok | atomik yazım ve kilit. İz: W0-a durum (rs/state) |
+| `hosts.py::save_host` | işlev:306 | karşılandı | `record.rs::Draft::new`<br>`record.rs::Draft::apply` | `record.rs::validation_order`<br>`record.rs::upsert_keeps_token_and_unknown_fields_clears_optionals`<br>`tests/parity.rs::save_host_validation_and_upsert_match_python` | yazım W0-a; denetim karakterli token Rust'ta red (daha sıkı); eksik `base_url`li kayıt yazımı parity bilinen fark |
+| `hosts.py::save_host::re1` | regex:330 | karşılandı | `record.rs::Draft::new` | `tests/parity.rs::save_host_validation_and_upsert_match_python` | `[,\n]+` bölme |
+| `hosts.py::promote_base_url` | işlev:374 | karşılandı | `record.rs::promote_base_url` | `record.rs::promote_and_remove`<br>`tests/fake_poller.rs::extra_urls_fallback_runs_on_threshold_and_every_twentieth_failure` | yok |
+| `hosts.py::remove_host` | işlev:407 | karşılandı | `record.rs::remove` | `record.rs::promote_and_remove` | yok |
+| `hosts.py::list_hosts_public` | işlev:418 | karşılandı | `record.rs::HostRecord::public` | `record.rs::unknown_fields_survive_and_token_never_public`<br>`tests/fake_poller.rs::public_rows_never_carry_the_token` | yok |
 
 ### `py/claudeops/commands/web_grpc.py`
 
@@ -361,44 +361,44 @@ Yok.
 | `commands/web_steward.py::_ensure_running_remote` | işlev:1930 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::_remote_oversized_resume` | işlev:1983 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
 | `commands/web_steward.py::remote_resume_warning` | işlev:1999 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_START_BACKOFF_STEPS` | sabit:2145 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_start_backoff_remaining` | işlev:2148 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_start_backoff_note` | işlev:2157 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_born` | işlev:2305 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_name_host_in` | işlev:2751 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_refresh_remote_cards` | işlev:2815 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_nudge` | işlev:3337 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_handover` | işlev:3373 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_stop` | işlev:3390 | karşılandı | `health.rs::exact_target`<br>`health.rs::remote_stop` | `tests/fake_health.rs::ambiguous_or_inexact_target_sends_nothing`<br>`tests/fake_health.rs::remote_stop_sends_one_exact_stop_per_host_per_tick` | projeye göre satır seçimi, `not_own`, `manual`, olay yazımı T10; kodlar Python ile aynı (`no_exact_row`, `ambiguous_sessions`, `caps_unknown`, `remote_too_old`, `destructive_budget`, `host_down`) |
-| `commands/web_steward.py::_remote_wait_closed` | işlev:3441 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_stop_and_wait` | işlev:3455 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_respawn` | işlev:3482 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_respawn.failed` | işlev:3493 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_advance_candidates.remote_todo_of` | işlev:4389 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_read_full` | işlev:5831 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_append_idea` | işlev:5843 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_in_remote_roster` | işlev:6037 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_register_remote` | işlev:6172 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_REMOTE_CREATABLE` | sabit:6721 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_before` | işlev:6724 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::_remote_edit_doc` | işlev:6738 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
-| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8605 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8612 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8614 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8619 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8623 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8626 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8635 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8641 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8653 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8660 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8663 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8702 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8713 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8728 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8739 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8786 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
-| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8798 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::_START_BACKOFF_STEPS` | sabit:2147 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_start_backoff_remaining` | işlev:2150 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_start_backoff_note` | işlev:2159 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_born` | işlev:2307 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_name_host_in` | işlev:2753 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_refresh_remote_cards` | işlev:2817 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_nudge` | işlev:3339 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_handover` | işlev:3375 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_stop` | işlev:3392 | karşılandı | `health.rs::exact_target`<br>`health.rs::remote_stop` | `tests/fake_health.rs::ambiguous_or_inexact_target_sends_nothing`<br>`tests/fake_health.rs::remote_stop_sends_one_exact_stop_per_host_per_tick` | projeye göre satır seçimi, `not_own`, `manual`, olay yazımı T10; kodlar Python ile aynı (`no_exact_row`, `ambiguous_sessions`, `caps_unknown`, `remote_too_old`, `destructive_budget`, `host_down`) |
+| `commands/web_steward.py::_remote_wait_closed` | işlev:3443 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_stop_and_wait` | işlev:3457 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_respawn` | işlev:3484 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_respawn.failed` | işlev:3495 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_advance_candidates.remote_todo_of` | işlev:4391 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_read_full` | işlev:5833 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_append_idea` | işlev:5845 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_in_remote_roster` | işlev:6039 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_register_remote` | işlev:6174 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_REMOTE_CREATABLE` | sabit:6723 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_before` | işlev:6726 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::_remote_edit_doc` | işlev:6740 | kapsam dışı | yok | yok | uzak değnekçi politikası (dünya/sahiplik/görünüm/kart/oturum yönetimi); crate yalnız yapı taşlarını verir. İz: T10 (değnekçi) |
+| `commands/web_steward.py::RemoteReviewDriver` | sınıf:8607 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.POLL_STALE_NONE` | sabit:8614 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.__init__` | işlev:8616 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._owner` | işlev:8621 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._rows` | işlev:8625 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._project_cwd_remote` | işlev:8628 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._ambiguous` | işlev:8637 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.ready` | işlev:8643 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.cwd` | işlev:8655 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver._wait_closed` | işlev:8662 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.start` | işlev:8665 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.send` | işlev:8704 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.poll` | işlev:8715 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.read_rel` | işlev:8730 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.export_file` | işlev:8741 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.sweep` | işlev:8788 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
+| `commands/web_steward.py::RemoteReviewDriver.stop` | işlev:8800 | kapsam dışı | yok | yok | uzak review oturumu sürücüsü (belirsiz ad kuralı `health::running_row` ile aynı). İz: T8 (reviewer) |
 
 ### `py/claudeops/authz.py`
 
@@ -1036,6 +1036,15 @@ Yok.
 | `test_snapshot_mirrors.py::SnapshotResumeTests.test_latest_snapshot_is_used_when_no_saved_at` | 358 | kapsam dışı | yok | anlık görüntü ve yansılar. İz: T3 (dosya) |
 | `test_snapshot_mirrors.py::SnapshotResumeTests.test_session_results_keep_their_shape` | 362 | kapsam dışı | yok | anlık görüntü ve yansılar. İz: T3 (dosya) |
 | `test_snapshot_mirrors.py::ResumeRouteHttpTests.test_the_handler_passes_the_servers_port` | 370 | kapsam dışı | yok | anlık görüntü ve yansılar. İz: T3 (dosya) |
+
+### `py/tests/test_state_corrupt_copy_partial.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_state_corrupt_copy_partial.py::PartialBackup.test_instances` | 43 | kapsam dışı | yok | bozuk dosya yedeğinin yazımı (Rust `cops-state` `fsutil::write_corrupt_copy`). İz: W0-a durum (rs/state) |
+| `test_state_corrupt_copy_partial.py::PartialBackup.test_settings` | 46 | kapsam dışı | yok | bozuk dosya yedeğinin yazımı (Rust `cops-state` `fsutil::write_corrupt_copy`). İz: W0-a durum (rs/state) |
+| `test_state_corrupt_copy_partial.py::PartialBackup.test_hosts` | 49 | kapsam dışı | yok | bozuk dosya yedeğinin yazımı (Rust `cops-state` `fsutil::write_corrupt_copy`). İz: W0-a durum (rs/state) |
+| `test_state_corrupt_copy_partial.py::PartialBackup.test_snapshots` | 52 | kapsam dışı | yok | bozuk dosya yedeğinin yazımı (Rust `cops-state` `fsutil::write_corrupt_copy`). İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_statedocs_hosts_diag.py`
 

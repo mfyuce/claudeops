@@ -120,21 +120,24 @@ pub fn create_unique(dir: &Path, prefix: &str, suffix: &str) -> io::Result<PathB
     ))
 }
 
-/// Bozuk belgenin kanıt kopyası: `<path>.corrupt-<sha256 ilk 8>` (0600, `O_EXCL`; aynı içerik bir kez). Python
-/// `settings._backup_if_corrupt` ad ve izin kuralı. Kopya zaten varsa aynı yol döner.
+/// `path` normal dosya (sembolik bağ değil) ve içeriği tam olarak `raw` mı.
+pub(crate) fn has_content(path: &Path, raw: &[u8]) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) && fs::read(path).is_ok_and(|c| c == raw)
+}
+
+/// Bozuk belgenin kanıt kopyası: `<path>.corrupt-<sha256 ilk 8>` (0600; aynı içerik bir kez). Python
+/// `atomic_json._write_corrupt_copy` gibi geçici ad + `rename`: yarım yedek kalmaz, eksik olan değiştirilir.
 pub fn write_corrupt_copy(path: &Path, raw: &[u8]) -> io::Result<PathBuf> {
     let sha = crate::sha256::sha256_hex(raw);
     let dest = with_suffix(path, &format!(".corrupt-{}", &sha[..8]));
     crate::paths::guard_write(&dest);
-    if dest.exists() {
+    if has_content(&dest, raw) {
         return Ok(dest);
     }
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&dest)?;
-    f.write_all(raw)?;
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = with_suffix(&dest, &format!(".{}-rs{n}.tmp", std::process::id()));
+    let _ = fs::remove_file(&tmp);
+    write_replace(&tmp, &dest, raw, Some(0o600))?;
     Ok(dest)
 }
 
