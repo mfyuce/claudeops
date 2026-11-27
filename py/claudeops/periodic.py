@@ -455,8 +455,33 @@ def _local_sources() -> List[Tuple[str, ...]]:
             out.append((pr, os.path.join("local", f"claude-{rh}-projects"), "text"))
         out.append((os.path.join(hdir, ".claude", "history.jsonl"), os.path.join("local", f"claude-{rh}-history"), "text"))
         out.append((os.path.join(hdir, ".codex", "sessions"), os.path.join("local", f"codex-{rh}-sessions"), "text"))
+    out.extend(_instance_sources(home, mir))
     out.extend(_memory_sources(home, mir))
     out.extend(_brain_sources(home, mir))
+    return out
+
+
+def _instance_sources(home: str, mir: str) -> List[Tuple[str, ...]]:
+    """ucli durum dizini sohbetleri (ortak + ayna; kök altındaki her proje dizini) ve ikinci örnekte (TBD#412 b)
+    `<CLAUDEOPS_DIR>` altına yazılan kullanım günlüğü ile durum dizini. İkinci örneğin hedefleri `<örnek özeti>` ekiyle ayrı:
+    aynı oturum adı ortak dosyayı ezmesin. Sembolik bağlı proje dizini izlenmez. Başka örneğin dizini bilinemez: her örnek
+    yalnız kendi yazdığını ekler."""
+    shared = os.path.join(home, ".claude", "claudeops")
+    roots = [(os.path.join(mir, "ucli-state"), ""), (os.path.join(shared, "ucli-state"), "")]
+    out: List[Tuple[str, ...]] = []
+    if os.path.realpath(CLAUDEOPS_DIR) != os.path.realpath(shared):
+        tag = hashlib.sha1(os.fsencode(os.path.realpath(CLAUDEOPS_DIR))).hexdigest()[:8]
+        out.append((os.path.join(CLAUDEOPS_DIR, "ucli_usage"), os.path.join("local", f"claude-ucli-usage-{tag}"), "text"))
+        roots.append((os.path.join(CLAUDEOPS_DIR, "ucli-state"), "@" + tag))
+    for root, suffix in roots:
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for n in names:
+            d = os.path.join(root, n)
+            if os.path.isdir(d) and not os.path.islink(d):
+                out.append((d, os.path.join("local", "claude-ucli", n + suffix), "text"))
     return out
 
 

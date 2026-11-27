@@ -609,6 +609,39 @@ class TestProviderErrorNoLesson(Base):
         self._fail(err="incelenen yorum: before any request reached the server\n" * 40 + "panic: beklenmeyen durum")
         self.assertEqual(self._lesson_count(), 1)
 
+    # Uzun stderr modelin canlı akışıdır; içindeki "503/429" ALINTISI kapasite sayılmaz (27 Kas gerçek günlükleri: 330 koşuda kod
+    # yalnız stderr'deydi, yapılı hata başkaydı).
+    QUOTE = "UnifiedCLI reasoning: a transient error (429, 503 Service Unavailable) puts the job back\n" * 40 + "panic: x"
+    NOTICE = "UnifiedCLI: model endpoint rate-limited (HTTP 429), waiting 8s (1/10)...\n"
+
+    def _scale_errors(self):
+        return wr.evren_scale._ST["errors"]
+
+    def test_quote_in_long_stderr_is_not_capacity(self):
+        for error in ("", self.OURS[0]):
+            with self.subTest(error=error):
+                wr.evren_scale.reset_for_tests()
+                self.addCleanup(wr.evren_scale.reset_for_tests)
+                self._fail(error, err=self.QUOTE)
+                rec = self.pair(EV)
+                self.assertFalse(rec["error"].startswith(wr.rv.CAPACITY_ERROR_PREFIX), rec["error"])
+                self.assertFalse(rec.get("retry_at"))
+                self.assertEqual(self._scale_errors(), 0)
+
+    def test_structured_error_with_long_stderr_is_capacity(self):
+        wr.evren_scale.reset_for_tests()
+        self.addCleanup(wr.evren_scale.reset_for_tests)
+        self._fail("Model endpoint rate-limited this task 10 times in a row (HTTP 429): {}", err=self.QUOTE)
+        self.assertTrue(self.pair(EV)["error"].startswith(wr.rv.CAPACITY_ERROR_PREFIX))
+        self.assertEqual(self._scale_errors(), 1)
+
+    def test_ucli_own_retry_notice_still_backs_off_scaler(self):
+        wr.evren_scale.reset_for_tests()
+        self.addCleanup(wr.evren_scale.reset_for_tests)
+        self._fail(self.OURS[0], err=self.QUOTE + "\n" + self.NOTICE)
+        self.assertEqual(self._scale_errors(), 1)
+        self.assertFalse(self.pair(EV)["error"].startswith(wr.rv.CAPACITY_ERROR_PREFIX))
+
 
 class TestRecover(Base):
     def test_recover_on_start(self):

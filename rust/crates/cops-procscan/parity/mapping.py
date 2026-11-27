@@ -495,8 +495,9 @@ DEFS["providers/ucli_provider.py"] = [
         "_live_models reasoning_effort_for _API_KEY_FILE _API_KEY_MANAGED_MARKER _sync_api_key_file _web_args "
         "_script_args _stream_args _reasoning_display_args _metrics_file_args _interactive_args _state_dir_args "
         "_timeout_args _history_args _effort_args _set_flag_value _service_key_file _INSTRUCTIONS_MAX_BYTES "
-        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _default_session_cap "
-        "_max_cost_args _claudeops_price _argv_model _has_price _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
+        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _claudeops_price _argv_model "
+        "_has_price _default_session_cap _with_price _effective_session_cap _unpriced_cap_reason session_cap_refusal "
+        "_max_cost_args _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
         "_apply_cli_opts _agent_setup "
         + " ".join(U_ + n for n in "accepts_cli_opts mcp_needs_cwd validate_cli_opts mcp_launch_args "
                    "build_inner_command env_overrides model_choices default_permission_mode permission_modes "
@@ -908,6 +909,7 @@ FILES = {
     "bg_work": ("arka plan işi tespiti (ekran + transkript)", f"{T2}; {T1}"),
     "brain_permission_ucli": ("değnekçi beyninin ucli izinleri", f"{T10}; {SAG}"),
     "cache_info": ("`cache` satır alanı", T1),
+    "chat_backup_instance_dirs": ("ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412)", T7),
     "chat_compaction_view": (_HIST, CHAT),
     "check_cmd": ("`cops check` komutu", T6),
     "claude_models_store": ("model listesi belgesi", f"{W0A}; {SAG}"),
@@ -944,7 +946,6 @@ FILES = {
     "rsprov_g10_oneshot": ("tek atımlık model çağrısı", f"{SAG}; {T10}"),
     "tbd399_control_chars": ("pane'e giden metinde denetim karakterleri ve yalın Enter", f"{SAG}; {W0B}"),
     "tbd399_live_switch": ("canlı model/effort geçişinde tuş ve metin güvenliği", f"{SAG}; {T2}; {T4}"),
-    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı (açılış bayrakları)", SAG),
     "rsprov_g4_dismiss": ("başıboş diyalog kapatma tuşları", f"{SAG}; {T2}"),
     "rsprov_g8_spawn_helpers": ("açılış yardımcıları (yardım yoklaması, araç zinciri, PATH)", SAG),
     "rsprov_live_readers": ("durum dosyası/transkriptten canlı satır alanları", f"{SAG}; {T1}"),
@@ -1423,6 +1424,7 @@ agy_models_swr:1:9166783f75
 bg_work:17:7b2ea2092b
 brain_permission_ucli:2:d5d3096328
 cache_info:12:9f2b8b4e3c
+chat_backup_instance_dirs:5:ba2c994403
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
@@ -1450,7 +1452,6 @@ provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a
 tbd399_control_chars:5:bfcb26369c
 tbd399_live_switch:25:2807ab8040
-ucli_unpriced_model_cap:7:11fa4f0ea5
 rsprov_cap_settings:10:ec39da701f
 rsprov_cost_one_pass:12:5220e6a9d5
 rsprov_child_group:13:1224408fb8
@@ -1540,13 +1541,14 @@ ucli_show_reasoning:3:88a88fc6d4
 ucli_start_opts:32:4f29133f96
 ucli_state_dir:9:83e53ca259
 ucli_stream:12:0b0c264c8d
+ucli_unpriced_model_cap:13:5b791b5481
 ucli_usage:13:adc8be28ee
 ucli_web:53:808f4112d7
 usage_category:3:b1ec7bddf6
 usage_fresh:16:fce08fa8ed
 usage_fresh_tui:11:2314d470a9
 usage_state:7:3bd573887b
-web_review_runner:52:d8bedb173f
+web_review_runner:55:f8e1922a1d
 """
 
 
