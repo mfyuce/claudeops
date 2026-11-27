@@ -4,7 +4,7 @@
   - boşta (busy False), alt ajan yok/bilinmiyor değil, en az `no_work_close_minutes` (30) dk
   - iş yok: no_next_work ya da next_none (gerçek STEWARD-NEXT yok, TODO'da sahipsiz açık madde ve notta `sıradaki:` yok / oturum "yok" diyor)
   - BEKLEMİYOR: oturumun/projenin cevapsız sorusu (sahibe ya da beyne, ROUTINE dahil), iletilmemiş cevap, son yanıtta ASK/BLOCKED/ROUTINE/JOB işareti,
-    kapıda bekleme, sahipte bekleme; onaylı/doğrulanmış ama iletilmemiş review bulgusu, gönderilmemiş/onaysız ders, koşan review, açık varaka işi
+    kapıda bekleme, sahipte bekleme; onaylı/doğrulanmış ama iletilmemiş review bulgusu, gönderilmemiş ders, koşan review, açık varaka işi
 Kapanış mevcut yolla (`idle_close`: devir -> kapat -> phase=paused, gerekçe "iş yok"). Yeniden açılış: sahip cevabı, TODO sha değişimi, review
 bulgusu/ders iletimi ya da direktif -> paused -> planned + `start` (--new, devir notuyla). Saf planlayıcı; uygulama `web_steward`."""
 from __future__ import annotations

@@ -223,6 +223,7 @@
  "test_steward_lessons.PruneTest.test_keeps_last_auto_lines_and_manual_notes": "AÇIK: `prune_lessons` saf; `steward_lessons.py`, iz T10",
  "test_steward_lessons.PruneTest.test_write_lesson_prunes_file": "`web_review._write_lesson` ders dosyasını yazıp budar; dosya G/Ç'si, iz T8",
  "test_steward_lessons.ReadTest": "AÇIK: `read_lessons`: ders dosyasından yalnız otomatik etiketli, tekrarsız satırlar (dosya okur); `steward_lessons.py`, iz T10",
+ "test_steward_nowork.LessonContext": "AÇIK: `web_steward._close_ctx` ders kümesi (yalnız `pending`); G/Ç katmanı taşınmadı, iz T10",
  "test_steward_nowork.Plan": "AÇIK: `plan_no_work_close`: kapalı/drain, muaf adlar, manual sınıf; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
  "test_steward_nowork.Reopen": "AÇIK: `plan_no_work_reopen` tetikleyicileri; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
  "test_steward_nowork.StaleVerified": "AÇIK: `verified_is_stale/verified_stuck_reason`; `steward_nowork.py`; saf planlayıcı, bu crate yalnız steward.py, iz T10",
