@@ -35,7 +35,10 @@ class BadLineTest(unittest.TestCase):
                '{"message":{"content":[{"type":"tool_use","id":"z","input":"background"}]}}',
                '{"message":{"content":[{"type":"tool_use","id":["z"],"input":{"run_in_background":true}}]}}',
                '{"message":{"content":[{"type":"tool_use","id":{"a":1},"input":{"run_in_background":true}}]}}',
-               '{"message":{"content":[{"type":"tool_result","tool_use_id":["z"],"x":"background"}]}}', DEEP)
+               '{"message":{"content":[{"type":"tool_result","tool_use_id":["z"],"x":"background"}]}}',
+               '{"message":{"content":[{"type":"tool_use","id":"z","name":["TaskStop"],"x":"background"}]}}',
+               '{"message":{"content":[{"type":"tool_use","id":"z","name":"TaskStop","input":"b1"}]}}',
+               '{"message":{"content":[{"type":"tool_use","id":["z"],"name":"TaskStop","input":{}}]}}', DEEP)
         for line in bad:
             for rows in ([line, USE], [USE, line]):
                 with self.subTest(line=line[:60]):

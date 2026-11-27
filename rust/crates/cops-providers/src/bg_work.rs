@@ -63,6 +63,17 @@ const DONE_STATUSES: [&str; 6] = [
     "canceled",
     "stopped",
 ];
+/// Elle durdurulan iş için `<task-notification>` GELMEZ.
+const STOP_TOOLS: [&str; 2] = ["TaskStop", "KillShell"];
+const LINE_MARKS: [&str; 7] = [
+    "run_in_background",
+    "task-notification",
+    "ackground",
+    "\"is_error\"",
+    "TaskStop",
+    "KillShell",
+    "Successfully",
+];
 
 /// `(text).rstrip("\n").split("\n")[-SCREEN_TAIL_LINES:]`.
 fn screen_tail(text: &str) -> impl Iterator<Item = &str> {
@@ -175,79 +186,114 @@ fn result_text(content: &Py) -> String {
     }
 }
 
+/// Kayıttaki iş bildirimi metni. Boşta gelen bildirim `user` metni; tur ortasında gelen `queue-operation` ya da
+/// `attachment` (`commandMode=task-notification`) kaydıdır. Kuyruktaki kullanıcı yazısı bildirimi alıntılarsa sayılmaz.
+fn notification_text<'a>(o: &'a Py, message: &'a Py) -> Option<&'a str> {
+    if o.get("type").and_then(Py::as_str) == Some("queue-operation") {
+        return o
+            .get("content")
+            .and_then(Py::as_str)
+            .filter(|c| c.starts_with("<task-notification>"));
+    }
+    if let Some(a) = o.get("attachment").filter(|a| a.is_object()) {
+        return a
+            .get("prompt")
+            .and_then(Py::as_str)
+            .filter(|_| a.get("commandMode").and_then(Py::as_str) == Some("task-notification"));
+    }
+    message
+        .get("content")
+        .and_then(Py::as_str)
+        .filter(|c| c.contains("<task-notification>"))
+}
+
 /// Transkript satırlarında bildirimi gelmemiş `run_in_background` işi var mı.
 pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: Clock) -> bool {
     // tool_use_id -> (epoch, task_id)
     let mut pending: HashMap<Key, (f64, Option<String>)> = HashMap::new();
     let mut done_use: HashSet<Key> = HashSet::new();
     let mut done_task: HashSet<String> = HashSet::new();
+    // durdurma çağrısı tool_use_id -> hedef task_id
+    let mut stops: HashMap<Key, String> = HashMap::new();
     for line in lines {
-        if !line.contains("run_in_background")
-            && !line.contains("task-notification")
-            && !line.contains("ackground")
-            && !line.contains("\"is_error\"")
-        {
+        if !LINE_MARKS.iter().any(|m| line.contains(m)) {
             continue;
         }
         let Some(o) = Py::parse(line).filter(Py::is_object) else {
             continue;
         };
-        let ts = o
-            .get("timestamp")
-            .and_then(|v| iso_epoch(v, clock.utc_offset_secs));
         let Some(message) = dict_or_empty(o.get("message")) else {
             continue;
         };
-        match message.get("content") {
-            Some(Py::Str(c)) => {
-                if !c.contains("<task-notification>") {
-                    continue;
-                }
-                let Some(status) = groups(&STATUS, c).next() else {
-                    continue;
-                };
-                if DONE_STATUSES.contains(&strip(status).to_lowercase().as_str()) {
-                    done_use.extend(groups(&NOTIF_ID, c).map(|s| Key::Str(s.to_string())));
-                    done_task.extend(groups(&TASK_ID, c).map(str::to_string));
-                }
+        let ts = o
+            .get("timestamp")
+            .and_then(|v| iso_epoch(v, clock.utc_offset_secs));
+        if let Some(note) = notification_text(&o, message) {
+            let done = groups(&STATUS, note)
+                .next()
+                .is_some_and(|s| DONE_STATUSES.contains(&strip(s).to_lowercase().as_str()));
+            if done {
+                done_use.extend(groups(&NOTIF_ID, note).map(|s| Key::Str(s.to_string())));
+                done_task.extend(groups(&TASK_ID, note).map(str::to_string));
             }
-            Some(Py::Array(blocks)) => {
-                for b in blocks.iter().filter(|b| b.is_object()) {
-                    let kind = b.get("type").and_then(Py::as_str);
-                    let background = || {
-                        dict_or_empty(b.get("input"))
-                            .is_some_and(|i| i.get("run_in_background") == Some(&Py::Bool(true)))
+            continue;
+        }
+        let Some(Py::Array(blocks)) = message.get("content") else {
+            continue;
+        };
+        for b in blocks.iter().filter(|b| b.is_object()) {
+            match b.get("type").and_then(Py::as_str) {
+                Some("tool_use") => {
+                    let Some(k) = b.get("id").filter(|v| v.truthy()).and_then(key) else {
+                        continue;
                     };
-                    let id = b.get("id").filter(|v| v.truthy());
-                    if kind == Some("tool_use") && background() && id.is_some() {
-                        if let Some(k) = id.and_then(key) {
-                            let at = ts.filter(|t| *t != 0.0).unwrap_or(clock.now);
-                            pending.insert(k, (at, None));
-                        }
-                    } else if kind == Some("tool_result") {
-                        let Some(k) = b.get("tool_use_id").and_then(key) else {
-                            continue;
-                        };
-                        if !pending.contains_key(&k) {
-                            continue;
-                        }
-                        if b.get("is_error") == Some(&Py::Bool(true)) {
-                            // çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
-                            pending.remove(&k);
-                            continue;
-                        }
-                        let text: String = result_text(b.get("content").unwrap_or(&Py::Null))
-                            .chars()
-                            .take(400)
-                            .collect();
-                        let task = groups(&RUNNING_ID, &text).next().map(str::to_string);
-                        if let (Some(task), Some(slot)) = (task, pending.get_mut(&k)) {
-                            slot.1 = Some(task);
-                        }
+                    let input = b.get("input").filter(|i| i.is_object());
+                    let field = |name| input.and_then(|i| i.get(name));
+                    let stop = b
+                        .get("name")
+                        .and_then(Py::as_str)
+                        .is_some_and(|n| STOP_TOOLS.contains(&n));
+                    if stop {
+                        let target = field("task_id")
+                            .filter(|v| v.truthy())
+                            .or_else(|| field("shell_id").filter(|v| v.truthy()))
+                            .map(Py::py_str);
+                        stops.insert(k, target.unwrap_or_default());
+                    } else if field("run_in_background") == Some(&Py::Bool(true)) {
+                        let at = ts.filter(|t| *t != 0.0).unwrap_or(clock.now);
+                        pending.insert(k, (at, None));
                     }
                 }
+                Some("tool_result") => {
+                    let Some(k) = b.get("tool_use_id").and_then(key) else {
+                        continue;
+                    };
+                    let failed = b.get("is_error") == Some(&Py::Bool(true));
+                    if let Some(target) = stops.remove(&k) {
+                        if !target.is_empty() && !failed {
+                            done_task.insert(target);
+                        }
+                        continue;
+                    }
+                    if !pending.contains_key(&k) {
+                        continue;
+                    }
+                    if failed {
+                        // çağrı reddedildi/düştü: iş hiç başlamadı, bildirim de gelmeyecek
+                        pending.remove(&k);
+                        continue;
+                    }
+                    let text: String = result_text(b.get("content").unwrap_or(&Py::Null))
+                        .chars()
+                        .take(400)
+                        .collect();
+                    let task = groups(&RUNNING_ID, &text).next().map(str::to_string);
+                    if let (Some(task), Some(slot)) = (task, pending.get_mut(&k)) {
+                        slot.1 = Some(task);
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
     pending.iter().any(|(id, (at, task))| {

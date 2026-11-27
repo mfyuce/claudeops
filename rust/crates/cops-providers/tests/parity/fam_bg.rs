@@ -243,6 +243,89 @@ fn transcripts() -> Vec<Vec<String>> {
         vec![u("t1"), notif("completed", Some("t1"), None).replacen('{', "{\"s\":\"\\ud83d\\u0041\",", 1)],
         vec![u("t1").replacen('{', "{\"message\":1,", 1)],
     ];
+    // TaskStop/KillShell ile durdurma ve tur ortasında gelen bildirim (test_bg_work.py + kenarlar)
+    let stop = |tool: &str, input: Value, is_error: Value| {
+        vec![
+            json!({"message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "s1", "name": tool, "input": input}]}})
+            .to_string(),
+            res("s1", json!("Successfully stopped task: b1 (x)"), is_error),
+        ]
+    };
+    let started = || vec![u("t1"), running("t1", "b1")];
+    for (tool, input, is_error) in [
+        ("TaskStop", json!({"task_id": "b1"}), json!(null)),
+        ("TaskStop", json!({"shell_id": "b1"}), json!(false)),
+        ("KillShell", json!({"shell_id": "b1"}), json!(null)),
+        (
+            "TaskStop",
+            json!({"task_id": "", "shell_id": "b1"}),
+            json!(null),
+        ),
+        (
+            "TaskStop",
+            json!({"task_id": 0, "shell_id": "b1"}),
+            json!(null),
+        ),
+        (
+            "TaskStop",
+            json!({"task_id": "b2", "shell_id": "b1"}),
+            json!(null),
+        ),
+        ("TaskStop", json!({"task_id": "b1"}), json!(true)),
+        ("TaskStop", json!({"task_id": "b1"}), json!(1)),
+        ("TaskStop", json!({"task_id": "b2"}), json!(null)),
+        ("TaskStop", json!({}), json!(null)),
+        ("TaskStop", json!({"task_id": ["b1"]}), json!(null)),
+        (
+            "TaskStop",
+            json!({"task_id": "b1", "run_in_background": true}),
+            json!(null),
+        ),
+        ("taskstop", json!({"task_id": "b1"}), json!(null)),
+        ("Bash", json!({"task_id": "b1"}), json!(null)),
+    ] {
+        let mut lines = started();
+        lines.extend(stop(tool, input, is_error));
+        v.push(lines);
+    }
+    // sonuç henüz yok; sonuç çağrıdan önce; ikinci sonuç; sayı hedef
+    let by_id = stop("TaskStop", json!({"task_id": "b1"}), json!(null));
+    v.push([started(), vec![by_id[0].clone()]].concat());
+    v.push([started(), vec![by_id[1].clone(), by_id[0].clone()]].concat());
+    v.push([by_id.clone(), started()].concat());
+    v.push([started(), by_id.clone(), vec![by_id[1].clone()]].concat());
+    v.push(
+        [
+            vec![u("t1"), running("t1", "7")],
+            stop("TaskStop", json!({"task_id": 7}), json!(null)),
+        ]
+        .concat(),
+    );
+    v.push(
+        [
+            vec![u("t1"), running("t1", "True")],
+            stop("TaskStop", json!({"task_id": true}), json!(null)),
+        ]
+        .concat(),
+    );
+    let body = "<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>t1</tool-use-id>\n<status>completed</status>\n</task-notification>";
+    let quoted = format!("şu bildirimi gördün mü: {body}");
+    for record in [
+        json!({"type": "queue-operation", "operation": "enqueue", "content": body}),
+        json!({"type": "queue-operation", "operation": "enqueue", "content": quoted}),
+        json!({"type": "queue-operation", "content": [body]}),
+        json!({"type": "queue-operation", "content": "x", "message": {"content": body}}),
+        json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "task-notification", "prompt": body}}),
+        json!({"type": "attachment", "attachment": {"commandMode": "task-notification", "prompt": quoted}}),
+        json!({"type": "attachment", "attachment": {"commandMode": "prompt", "prompt": body}}),
+        json!({"type": "attachment", "attachment": {"commandMode": "task-notification", "prompt": [body]}}),
+        json!({"attachment": {"commandMode": "prompt"}, "message": {"content": body}}),
+        json!({"attachment": "x", "message": {"content": body}}),
+        json!({"type": "queue-operation", "message": "x", "content": body}),
+    ] {
+        v.push([started(), vec![record.to_string()]].concat());
+    }
     // zaman damgası biçimleri (yaş sınırı 6 saat)
     for stamp in [
         "2026-11-23T10:00:00.123Z",
@@ -335,6 +418,24 @@ fn odd_lines() -> Vec<(&'static str, Vec<String>)> {
             "sonuc-kimlik-liste",
             c(
                 r#"{"message":{"content":[{"type":"tool_result","tool_use_id":["z"],"x":"background"}]}}"#,
+            ),
+        ),
+        (
+            "ad-liste",
+            c(
+                r#"{"message":{"content":[{"type":"tool_use","id":"z","name":["TaskStop"],"x":"background"}]}}"#,
+            ),
+        ),
+        (
+            "durdurma-girdi-metin",
+            c(
+                r#"{"message":{"content":[{"type":"tool_use","id":"z","name":"TaskStop","input":"b1"}]}}"#,
+            ),
+        ),
+        (
+            "durdurma-kimlik-liste",
+            c(
+                r#"{"message":{"content":[{"type":"tool_use","id":["z"],"name":"TaskStop","input":{}}]}}"#,
             ),
         ),
         ("rollout-belge", x("\"SubAgentActivity\"")),
