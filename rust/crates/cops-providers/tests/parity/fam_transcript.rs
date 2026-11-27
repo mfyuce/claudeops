@@ -322,18 +322,17 @@ fn rows(b: &mut Build<'_>) {
             r#"{{"type":"assistant","timestamp":"{}","message":{{"model":{model},"usage":{{"input_tokens":1}}}}}}"#,
             stamp(-5)
         );
-        // metin olmayan model okuyucuda hâlâ ayrışır
         let path = b.abs("work/t.jsonl");
         let data = lines(&[real(-30, m), line]);
         if id == "sayi" {
-            b.diverge(
+            // metin olmayan model: okuyucu atlar (27 Kas iki tarafta), istek zamanı sayılmaya devam eder
+            b.agree(
                 &format!("istek-model-{id}"),
                 data,
                 json!([
                     both(Some(m), None, Some(at(-5))),
                     both(None, None, Some(at(-5)))
                 ]),
-                "metin olmayan model: Python model diye döndürür, Rust gerçek modeli arar",
             );
         } else {
             let c = b
@@ -420,14 +419,29 @@ fn divergences(b: &mut Build<'_>) {
         ("model-nesne", r#"{"a":1}"#),
         ("model-true", "true"),
     ] {
-        b.diverge(
+        b.agree(
             id,
             lines(&[
                 base.clone(),
                 format!(r#"{{"type":"assistant","message":{{"model":{model}}}}}"#),
             ]),
             expect.clone(),
-            "metin olmayan model: Python değeri olduğu gibi döndürür, Rust satırı atlar",
+        );
+    }
+    // Alt ajan satırı oturumun modeli/effort'u sayılmaz (27 Kas iki tarafta).
+    for (id, flag) in [("alt-ajan-model", "true"), ("alt-ajan-metin", r#""false""#)] {
+        let side = turn(7, "claude-haiku-5-5", Some("max")).replacen(
+            '{',
+            &format!(r#"{{"isSidechain":{flag},"#),
+            1,
+        );
+        b.agree(
+            id,
+            lines(&[base.clone(), side]),
+            json!([
+                both(Some(m), Some("low"), Some(at(-30))),
+                both(None, None, Some(at(-30)))
+            ]),
         );
     }
     b.agree(

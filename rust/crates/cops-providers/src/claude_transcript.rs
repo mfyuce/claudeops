@@ -51,14 +51,25 @@ impl Cli {
     }
 }
 
+/// Alt ajan satırı (`isSidechain`, Python doğruluk değeri): ayrı bir bağlam, oturumun modeli/effort'u/isteği değil.
+fn sidechain(row: &Py) -> bool {
+    row.get("isSidechain").is_some_and(Py::truthy)
+}
+
 /// `message.model`: boş olmayan metin ve gerçek bir model.
 fn assistant_model(row: &Py) -> Option<String> {
+    if sidechain(row) {
+        return None;
+    }
     let model = row.get("message")?.get("model")?.as_str()?;
     (!model.is_empty() && model != SYNTHETIC_MODEL).then(|| model.to_string())
 }
 
 /// Satırın üst düzey `effort`u; yalnız boş olmayan metin (sayısal/özel değer "bilinmiyor").
 fn assistant_effort(row: &Py) -> Option<String> {
+    if sidechain(row) {
+        return None;
+    }
     row.get("effort")?
         .as_str()
         .filter(|e| !e.is_empty())
@@ -68,7 +79,7 @@ fn assistant_effort(row: &Py) -> Option<String> {
 /// Satır gerçek bir API isteğinin yanıtıysa damgası: alt ajan satırı, yer tutucu ve token saymayan satır değil.
 /// Damga tam 0 ise Python gibi yok sayılır.
 fn real_request_epoch(row: &Py, utc_offset_secs: i64) -> Option<f64> {
-    if row.get("isSidechain").is_some_and(Py::truthy) {
+    if sidechain(row) {
         return None;
     }
     let message = row.get("message").filter(|m| m.is_object())?;
