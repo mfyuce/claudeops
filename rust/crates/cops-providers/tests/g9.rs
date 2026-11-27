@@ -3,13 +3,13 @@
 //! alt süreçle yazılır (`write_exe`: paralel `fork` yazım tanıtıcısını taşırsa `ETXTBSY`); her bekleme zaman aşımlı.
 
 use cops_providers::real::launch::{repo_dir_of, GnomeTerminal, SystemClock};
-use cops_providers::real::routing_sync::copy2;
+use cops_providers::real::routing_sync::{copy2, sync_global_files};
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
     fallback_watchdog, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux, Terminal,
     FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
 };
-use cops_providers::Diag;
+use cops_providers::{Diag, Paths, Settings};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::fs::{self, FileTimes};
@@ -20,6 +20,9 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tempfile::TempDir;
+
+#[path = "g8/support.rs"]
+mod support;
 
 // ------------------------------------------------------------------------------------------------------- sahteler
 
@@ -429,4 +432,23 @@ fn repo_dir_resolves_links_and_two_parents() {
     let here = fs::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../../..")).unwrap();
     let paths_py = here.join("py/claudeops/paths.py");
     assert_eq!(repo_dir_of(&paths_py).as_deref(), here.to_str());
+}
+
+/// `routing.CODEX_AGENTS` / `AGY_GEMINI` (`~` = HOME) ve varsayılan yollu `sync_global_files`: codex dosyası yoksa
+/// oluşturulmaz, agy dosyası (dizini dahil) oluşturulur.
+#[test]
+fn default_sync_paths_are_under_home() {
+    let p = Paths { claudeops_dir: "/s".into(), home: "/h ev".into(), repo_dir: "/r".into() };
+    assert_eq!(p.codex_agents_md(), "/h ev/.codex/AGENTS.md");
+    assert_eq!(p.agy_gemini_md(), "/h ev/.gemini/GEMINI.md");
+    let t = support::Tmp::new();
+    let probe = t.probe();
+    let settings = Settings::from_json(r#"{"routing_guidance_text": "yönerge"}"#);
+    let log = Arc::new(Log::default());
+    let out = sync_global_files(&probe, &settings, &t.paths(), &Sink(log.clone()));
+    assert_eq!(out, [("codex", "skipped:no file".to_string()), ("agy", "written".to_string())]);
+    assert!(!Path::new(&t.path("home/.codex/AGENTS.md")).exists());
+    let agy = fs::read_to_string(t.path("home/.gemini/GEMINI.md")).unwrap();
+    assert!(agy.starts_with("<!-- claudeops-routing:begin -->\nyönerge\n"), "{agy}");
+    assert!(log.diags.lock().unwrap().is_empty());
 }
