@@ -36,6 +36,7 @@ from typing import Optional
 from .atomic_json import atomic_write_json
 from .diaglog import diag_log
 from .paths import CLAUDE_MODELS_JSON, REPO_DIR
+from .settings import resolved_binary
 
 _WAKE_INTERVAL_SECONDS = 3600
 MIN_HOURS_BETWEEN_CHECKS = 24
@@ -81,7 +82,7 @@ def _fetch_live_models() -> Optional[dict]:
     """Ucuz/tek-seferlik `claude -p` çağrısı — fleet'e hiç görünmez."""
     try:
         out = subprocess.run(
-            ["claude", "-p", _CHECK_PROMPT, "--model", "claude-haiku-4-5-20251001"],
+            [resolved_binary("claude"), "-p", _CHECK_PROMPT, "--model", "claude-haiku-4-5-20251001"],
             capture_output=True, text=True, timeout=90, cwd=REPO_DIR,
         )
     except Exception:
