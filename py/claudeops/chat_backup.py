@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 HOME = os.path.expanduser("~")
 SCRIPT = os.path.join(HOME, ".claude", "claudeops", "backups", "chat_mirror.sh")
@@ -78,8 +78,20 @@ def status() -> Dict[str, Any]:
     return out
 
 
+def _second_instance_refusal() -> Optional[Dict[str, Any]]:
+    """Ortak betiğin içeriği örneğin dizinine bağlı: `CLAUDEOPS_DIR` farklıysa betik ve birim yazılmaz, çalıştırılmaz."""
+    from . import paths
+    if paths.shared_write_allowed(SCRIPT):
+        return None
+    return {"ok": False, "manual_command": "",
+            "error": "CLAUDEOPS_DIR farklı dizin (ikinci örnek): ortak yedek betiği ve zamanlayıcı yalnız canlı panelden kurulur/çalıştırılır"}
+
+
 def install() -> Dict[str, Any]:
     """Birimleri yazar, timer'ı etkinleştirir. Başarısızlıkta hata + `manual_command` (sahip elle çalıştırır)."""
+    refused = _second_instance_refusal()
+    if refused:
+        return refused
     from . import chat_sources
     chat_sources.write_mirror_script(SCRIPT)      # D1: betik kayıt yerleri listesinden üretilir (yoksa oluşur, değiştiyse yenilenir)
     os.makedirs(UNIT_DIR, exist_ok=True)
@@ -97,6 +109,9 @@ def install() -> Dict[str, Any]:
 
 def run_now() -> Dict[str, Any]:
     """Betiği şimdi başlatır (arka planda, bekleme yok)."""
+    refused = _second_instance_refusal()
+    if refused:
+        return refused
     from . import chat_sources
     chat_sources.write_mirror_script(SCRIPT)
     subprocess.Popen(["/bin/bash", SCRIPT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)

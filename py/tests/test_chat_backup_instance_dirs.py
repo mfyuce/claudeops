@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import chat_index, chat_sources, paths, periodic, ucli_client, ucli_cost  # noqa: E402
+from claudeops import chat_backup, chat_index, chat_sources, paths, periodic, ucli_client, ucli_cost  # noqa: E402
 
 
 def _put(path, text="{}\n"):
@@ -98,6 +98,26 @@ class InstanceDirsTest(unittest.TestCase):
         self.assertIsNotNone(src)
         self.assertEqual((src.dest, src.path), ("ucli-state", f"{chat_sources.HOME}/.claude/claudeops/ucli-state"))
         self.assertIn('rsync -a', chat_sources.mirror_script([src]))
+
+    def test_second_instance_does_not_write_shared_mirror_script_or_unit(self):
+        script = _put(os.path.join(self.shared, "backups", "chat_mirror.sh"), "canli\n")
+        units = os.path.join(self.home, ".config", "systemd", "user")
+        live_unit = _put(os.path.join(units, chat_backup.UNIT + ".service"), "canli\n")
+        self.instance(self.own)
+        ok = mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch.object(chat_backup, "SCRIPT", script), mock.patch.object(chat_backup, "UNIT_DIR", units), \
+                mock.patch.object(chat_backup, "_sysctl", return_value=ok) as sysctl, \
+                mock.patch.object(chat_backup.subprocess, "Popen") as popen:
+            for res in (chat_backup.install(), chat_backup.run_now()):
+                self.assertFalse(res["ok"], res)
+                self.assertIn("CLAUDEOPS_DIR", res["error"])
+                self.assertEqual(res["manual_command"], "")
+        sysctl.assert_not_called()
+        popen.assert_not_called()
+        self.assertEqual(os.listdir(units), [chat_backup.UNIT + ".service"])
+        for p in (script, live_unit):
+            with open(p) as f:
+                self.assertEqual(f.read(), "canli\n")
 
 
 if __name__ == "__main__":

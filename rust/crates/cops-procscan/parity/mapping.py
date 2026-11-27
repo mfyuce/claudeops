@@ -1383,7 +1383,7 @@ agy_models_swr:1:9166783f75
 bg_work:17:7b2ea2092b
 brain_permission_ucli:2:d5d3096328
 cache_info:12:9f2b8b4e3c
-chat_backup_instance_dirs:5:ba2c994403
+chat_backup_instance_dirs:6:da9a8c9292
 chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a

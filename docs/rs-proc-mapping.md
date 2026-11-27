@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 557 | 153 | 404 | 0 |
-| test durumu (126 dosya) | 1658 | 115 | 1543 | 0 |
+| test durumu (126 dosya) | 1659 | 115 | 1544 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -794,6 +794,7 @@ Yok.
 | `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_deleted_state_chat_comes_from_the_mirror` | 84 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
 | `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_linked_state_child_is_not_followed` | 89 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
 | `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_mirror_script_copies_shared_state_dir` | 96 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
+| `test_chat_backup_instance_dirs.py::InstanceDirsTest.test_second_instance_does_not_write_shared_mirror_script_or_unit` | 102 | kapsam dışı | yok | ikinci örnek günlük ve durum dizinleri sohbet yedeğinde (TBD#412). İz: T7 (periyodik+kullanım) |
 
 ### `py/tests/test_chat_compaction_view.py`
 
