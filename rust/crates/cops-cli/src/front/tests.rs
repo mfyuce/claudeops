@@ -7,6 +7,7 @@ use net::PortOwner;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use systemctl::UnitPaths;
 
 const LIVE: &str = "[Service]\nExecStart=/bin/bash -ic '/usr/bin/python3 -m claudeops web'\n";
 const NEW: &str = "[Service]\nExecStart=/bin/bash -ic 'exec /usr/bin/python3 -m claudeops web'\n";
@@ -30,6 +31,8 @@ struct World {
     /// bu adres ilk sorgudan itibaren verilen süre boyunca dinlemiyor görünsün (yavaş web açılışı)
     slow: Option<(SocketAddr, Duration)>,
     slow_since: std::cell::Cell<Option<std::time::Instant>>,
+    units: UnitPaths,
+    units_err: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -57,6 +60,13 @@ impl Net for Fake {
 }
 
 impl Systemctl for Fake {
+    fn unit_paths(&mut self) -> Result<UnitPaths, String> {
+        let w = self.0.borrow();
+        match &w.units_err {
+            Some(e) => Err(e.clone()),
+            None => Ok(w.units.clone()),
+        }
+    }
     fn run(&mut self, args: &[&str]) -> Result<i32, String> {
         let cmd = args.join(" ");
         let mut w = self.0.borrow_mut();
@@ -1252,6 +1262,141 @@ fn on_sees_spaced_and_indented_execstart() {
     }
     let over = format!("{LIVE}[Service]\n ExecStart =\n\tExecStart = /x web --port 9003\n");
     assert_eq!(web_addr(&over).map(|a| a.port()), Some(9003));
+}
+
+fn ext(e: &Env, rel: &str, body: &str) -> String {
+    let p = e.root.join("etc").join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, body).unwrap();
+    p.to_str().unwrap().into()
+}
+
+fn units(e: &Env, fragment: &str, dropins: &[String]) {
+    e.w.0.borrow_mut().units = UnitPaths {
+        fragment: fragment.into(),
+        dropins: dropins.to_vec(),
+    };
+}
+
+fn es(extra: &str) -> String {
+    format!("[Service]\nExecStart=\nExecStart=/z -m claudeops web{extra}\n")
+}
+
+fn assert_blocked(e: &mut Env, want: &str) {
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 1, "{out}");
+    assert!(out.contains(want), "{out}");
+    assert!(e.calls().is_empty());
+    assert!(!Path::new(&e.paths.front_unit).exists());
+    assert!(!Path::new(&e.paths.dropin).exists());
+}
+
+fn applied_dropin(e: &mut Env) -> String {
+    e.web_outside();
+    let (rc, out) = e.run(Action::On, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+    std::fs::read_to_string(&e.paths.dropin).unwrap()
+}
+
+#[test]
+fn on_blocks_later_outside_dropin() {
+    let mut e = env();
+    let d = ext(&e, "service.d/zz.conf", &es(""));
+    units(&e, &e.paths.web_unit, &[d]);
+    assert_blocked(&mut e, "zz.conf");
+}
+
+#[test]
+fn on_uses_earlier_outside_dropin_as_base() {
+    let mut e = env();
+    let d = ext(&e, "service.d/aa.conf", &es(""));
+    units(&e, &e.paths.web_unit, &[d]);
+    assert!(applied_dropin(&mut e)
+        .contains("ExecStart=/z -m claudeops web --host 127.0.0.1 --port 28765\n"));
+}
+
+#[test]
+fn user_dropin_shadows_same_name_outside_but_not_control_dir() {
+    for (rel, blocked) in [
+        ("d/aa.conf", false),
+        ("user.control/claudeops-web.service.d/aa.conf", true),
+    ] {
+        let mut e = env();
+        let d = ext(&e, rel, "[Service]\nExecStart=\n");
+        units(&e, &e.paths.web_unit, &[d]);
+        other_dropin(&e, "aa.conf", es("").as_bytes());
+        if blocked {
+            assert_blocked(&mut e, "tanınmadı");
+        } else {
+            assert!(applied_dropin(&mut e).contains("ExecStart=/z "));
+        }
+    }
+}
+
+#[test]
+fn front_conf_elsewhere_blocks_only_when_it_wins() {
+    let mut e = env();
+    let d = ext(
+        &e,
+        "user.control/claudeops-web.service.d/front.conf",
+        &es(""),
+    );
+    units(&e, &e.paths.web_unit, &[d]);
+    assert_blocked(&mut e, "front.conf sonrasındaki drop-in ExecStart= atıyor");
+    let d = ext(&e, "d/front.conf", &es(""));
+    units(&e, &e.paths.web_unit, &[d]);
+    assert!(!applied_dropin(&mut e).contains("/z "));
+}
+
+#[test]
+fn on_reads_main_unit_outside_user_dir_and_skips_deleted_dropin() {
+    let mut e = env();
+    std::fs::remove_file(&e.paths.web_unit).unwrap();
+    let f = ext(
+        &e,
+        "claudeops-web.service",
+        "[Service]\nExecStart=/e -m claudeops web\n",
+    );
+    let gone = e.root.join("etc/yok.conf").to_str().unwrap().to_string();
+    units(&e, &f, &[gone]);
+    assert!(applied_dropin(&mut e).contains("ExecStart=/e -m claudeops web --host"));
+}
+
+#[test]
+fn unit_query_error_blocks_on_but_not_off() {
+    let mut e = env();
+    e.w.0.borrow_mut().units_err = Some("çıkış 1".into());
+    assert_blocked(
+        &mut e,
+        "claudeops-web.service birim yolları okunamadı: çıkış 1",
+    );
+    e.front_on();
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+}
+
+#[test]
+fn off_reads_outside_dropin_address() {
+    let e = env();
+    e.front_on();
+    let d = ext(&e, "d/aa.conf", &es(" --port 9004"));
+    units(&e, &e.paths.web_unit, &[d]);
+    e.w.0.borrow_mut().effects[2].1 = "127.0.0.1:9004".parse().unwrap();
+    let (rc, out) = e.run(Action::Off, true, L, I);
+    assert_eq!(rc, 0, "{out}");
+}
+
+#[test]
+fn show_output_is_parsed() {
+    assert_eq!(
+        crate::front::systemctl::parse_unit_paths(
+            "FragmentPath=/a/w.service\nDropInPaths=/a/x.conf /b/y.conf\n"
+        ),
+        UnitPaths {
+            fragment: "/a/w.service".into(),
+            dropins: vec!["/a/x.conf".into(), "/b/y.conf".into()],
+        }
+    );
 }
 
 #[test]

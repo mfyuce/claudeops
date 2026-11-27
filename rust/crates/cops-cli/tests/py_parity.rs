@@ -113,7 +113,7 @@ fn parity_front_on_plans() {
     // off planı
     let (p, r) = both(&sb, &["front", "off"]);
     same(&p, &r, "off planı");
-    assert!(!sb.sc_log().exists(), "plan systemctl çağırmaz");
+    assert_eq!(sb.sc_changes(), "", "plan systemctl ile değişiklik yapmaz");
     assert!(
         !sb.state().join("front.secret").exists(),
         "plan gizli üretmez"
@@ -163,7 +163,7 @@ fn parity_bad_addresses_are_blockers_on_both_sides() {
         );
         same(&p, &r, &format!("{listen} / {internal}"));
     }
-    assert!(!sb.sc_log().exists(), "engel systemctl çağırmaz");
+    assert_eq!(sb.sc_changes(), "", "engel systemctl ile değişiklik yapmaz");
     assert!(!sb.state().join("front.secret").exists());
     // IPv6 dış adres geçerli (plan)
     let (p, r) = both(
@@ -217,7 +217,7 @@ fn parity_foreign_internal_port_blocks_on_both_sides() {
         out.contains(&format!("pid {}", std::process::id())),
         "{out}"
     );
-    assert!(!sb.sc_log().exists(), "engel systemctl çağırmaz");
+    assert_eq!(sb.sc_changes(), "", "engel systemctl ile değişiklik yapmaz");
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn parity_relative_or_non_executable_bin_is_a_blocker() {
         same(&p, &r, b);
         assert_eq!(r.status.code(), Some(1), "{b}");
     }
-    assert!(!sb.sc_log().exists());
+    assert_eq!(sb.sc_changes(), "");
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn parity_control_characters_in_bin_block() {
     same(&p, &r, "denetim karakteri");
     assert_eq!(r.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&r.stdout).contains("denetim karakteri"));
-    assert!(!sb.sc_log().exists());
+    assert_eq!(sb.sc_changes(), "");
 }
 
 #[test]
@@ -301,7 +301,7 @@ fn parity_relative_state_dir_is_refused() {
     }
     assert!(!sb.t.path().join("goreli-durum").exists());
     assert!(!repo().join("py/goreli-durum").exists());
-    assert!(!sb.sc_log().exists());
+    assert_eq!(sb.sc_changes(), "");
 }
 
 #[test]
@@ -412,7 +412,8 @@ fn parity_on_restarts_running_front_then_rolls_back_unverified() {
     assert_eq!(plog, rlog);
     assert_eq!(
         rlog,
-        "--user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
+        "--user show claudeops-web.service -p FragmentPath -p DropInPaths\n\
+         --user is-active --quiet claudeops-front.service\n--user is-enabled --quiet claudeops-front.service\n\
          --user daemon-reload\n--user restart claudeops-web.service\n--user enable --now claudeops-front.service\n\
          --user restart claudeops-front.service\n--user daemon-reload\n--user restart claudeops-web.service\n\
          --user restart claudeops-front.service\n"
