@@ -4232,7 +4232,7 @@ def _has_question_of(paths: Any) -> Callable[[str], bool]:
 def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
     """`iş yok` kapatma/yeniden açma kararının bekleyen-şey kümeleri (hata = o küme boş, kapatma KISILIR değil GENİŞLEMEZ: hata varsa
     `ctx["errors"]` dolar ve kapatma planlayıcısı bu tick'te hiçbir şey kapatmaz). Alanlar: open_q {proje} (sahip/beyin/ROUTINE dahil HER açık soru),
-    answer_pending {proje: soru kimliği}, review {proje: neden} (onaylı/doğrulanmış iletilmemiş bulgu, bekleyen ders, koşan review, ilerletme
+    answer_pending {proje: soru kimliği}, review {proje: neden} (onaylı/doğrulanmış iletilmemiş bulgu, iletilmemiş ders, koşan review, ilerletme
     adayı), jobs {proje} (açık ya da sonucu iletilmemiş varaka işi)."""
     ctx: Dict[str, Any] = {"open_q": set(), "open_q_since": {}, "answer_pending": {}, "review": {}, "jobs": set(), "errors": []}
     try:
@@ -4272,7 +4272,9 @@ def _close_ctx(cfg: sw.Config, paths: Any) -> Dict[str, Any]:
         tgt = sl.target_project(cfg.lessons_project)
         if tgt:
             rows = sl.lesson_rows(_lessons(cfg), [sw.load_state(sw.paths_for(i)) for i in steward_ids()], time.time())
-            if any(r.get("status") in ("pending", "sent", "failed") for r in rows):
+            # yalnız İLETİLECEK ders: iletilen (onay bekleyen) ve iletimi tükenen derste motorun yapacağı iş yok (21 Kas:
+            # onaysız ders `cli` oturumunu 24 sa açık tuttu; durdurulmuş projeyi de boşuna açardı)
+            if any(r.get("status") == "pending" for r in rows):
                 ctx["review"].setdefault(tgt, "ders:bekliyor")
     except Exception as e:
         ctx["errors"].append("review:" + repr(e)[:80])
