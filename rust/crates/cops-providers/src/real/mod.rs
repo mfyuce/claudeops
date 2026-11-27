@@ -31,8 +31,10 @@ pub mod process;
 pub mod proxy;
 pub mod routing_sync;
 pub mod runtime;
+pub mod scan;
 pub mod searxng;
 pub mod sqlite;
+pub mod tmux;
 
 pub use env::Env;
 pub use probe::{RealDeps, RealProbe};

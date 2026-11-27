@@ -321,6 +321,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bytes",
+ "cops-procscan",
  "cops-tmux",
  "fancy-regex",
  "http-body-util",
