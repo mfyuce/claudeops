@@ -13,10 +13,15 @@ pub enum Prev {
     Absent,
     /// İçerik ve izin bitleri.
     Content(Vec<u8>, u32),
+    /// Sembolik bağ (hedefi).
+    Link(PathBuf),
 }
 
 /// Eski durumu okur (okunamıyorsa hata: geri alınamayacak bir dosyaya yazılmaz).
 pub fn snapshot(p: &Path) -> std::io::Result<Prev> {
+    if std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()) {
+        return std::fs::read_link(p).map(Prev::Link);
+    }
     match std::fs::read(p) {
         Ok(b) => {
             let mode = std::fs::metadata(p)?.permissions().mode() & 0o7777;
@@ -73,6 +78,11 @@ pub fn restore(p: &Path, prev: &Prev) -> std::io::Result<()> {
             _ => Ok(()),
         },
         Prev::Content(b, m) => atomic_write(p, b, Some(*m)),
+        // Yalnız `off` bir bağı siler (`on` bağlı birimi reddeder).
+        Prev::Link(target) => {
+            restore(p, &Prev::Absent)?;
+            std::os::unix::fs::symlink(target, p)
+        }
     }
 }
 

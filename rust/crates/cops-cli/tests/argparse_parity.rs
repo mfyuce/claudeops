@@ -39,25 +39,10 @@ const POOL: &[&str] = &[
     "--version",
 ];
 
-#[test]
-fn rust_parse_agrees_with_python_argparse() {
-    let mut cases: Vec<Vec<String>> = Vec::new();
-    let n = POOL.len();
-    for len in 1..=3usize {
-        let total = n.pow(len as u32);
-        for k in 0..total {
-            let mut v = vec!["front".to_string()];
-            let mut x = k;
-            for _ in 0..len {
-                v.push(POOL[x % n].to_string());
-                x /= n;
-            }
-            cases.push(v);
-        }
-    }
-    let sb = Sandbox::new();
+/// Python ayrıştırıcısının her argv için sonucu.
+fn oracle(sb: &Sandbox, cases: &[Vec<String>]) -> Vec<serde_json::Value> {
     let f = sb.t.path().join("cases.json");
-    std::fs::write(&f, serde_json::to_string(&cases).unwrap()).unwrap();
+    std::fs::write(&f, serde_json::to_string(cases).unwrap()).unwrap();
     let out = sb
         .cmd(std::path::Path::new("/usr/bin/python3"))
         .arg(repo().join("rust/crates/cops-cli/tests/py_argparse_oracle.py"))
@@ -76,6 +61,27 @@ fn rust_parse_agrees_with_python_argparse() {
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
     assert_eq!(lines.len(), cases.len());
+    lines
+}
+
+#[test]
+fn rust_parse_agrees_with_python_argparse() {
+    let mut cases: Vec<Vec<String>> = Vec::new();
+    let n = POOL.len();
+    for len in 1..=3usize {
+        let total = n.pow(len as u32);
+        for k in 0..total {
+            let mut v = vec!["front".to_string()];
+            let mut x = k;
+            for _ in 0..len {
+                v.push(POOL[x % n].to_string());
+                x /= n;
+            }
+            cases.push(v);
+        }
+    }
+    let sb = Sandbox::new();
+    let lines = oracle(&sb, &cases);
     let default_bin = format!("{}/bin/copsd", sb.state().display());
     let (mut handled, mut delegated) = (0, 0);
     for (c, py) in cases.iter().zip(&lines) {
@@ -105,9 +111,75 @@ fn rust_parse_agrees_with_python_argparse() {
                     "{c:?}: Python kabul etti ama Rust devretti ({why}): {py}"
                 );
             }
-            Route::SelfCmd => unreachable!(),
+            Route::SelfCmd | Route::List(_) => unreachable!(),
         }
     }
     eprintln!("{} durum: {handled} Rust, {delegated} devir", cases.len());
     assert!(handled > 500 && delegated > 500);
+}
+
+const LIST_POOL: &[&str] = &[
+    "--no-cpu",
+    "--no",
+    "--base",
+    "--base=",
+    "--base=-x",
+    "--b",
+    "--ba=hc",
+    "--json",
+    "--j",
+    "--json=1",
+    "--no-cpu=",
+    "-h",
+    "--help",
+    "--h",
+    "-",
+    "-5",
+    "-x",
+    "--",
+    "--=a",
+    "--zz",
+    "--version",
+    "--v",
+    "-b",
+    "hc",
+    "",
+    "a b",
+];
+
+/// `list` için tek yönlü kural: Rust işliyorsa Python AYNI değerlerle kabul etmeli (devir her zaman güvenli: Python koşar).
+#[test]
+fn rust_list_parse_never_accepts_more_than_python() {
+    let mut cases: Vec<Vec<String>> = Vec::new();
+    let n = LIST_POOL.len();
+    for len in 0..=3u32 {
+        for k in 0..n.pow(len) {
+            let mut v = vec![if k % 2 == 0 { "list" } else { "ls" }.to_string()];
+            let mut x = k;
+            for _ in 0..len {
+                v.push(LIST_POOL[x % n].to_string());
+                x /= n;
+            }
+            cases.push(v);
+        }
+    }
+    let sb = Sandbox::new();
+    let lines = oracle(&sb, &cases);
+    let mut handled = 0;
+    for (c, py) in cases.iter().zip(&lines) {
+        let args: Vec<OsString> = c.iter().map(OsString::from).collect();
+        match route(&args) {
+            Route::List(a) => {
+                handled += 1;
+                assert_eq!(py["ok"], true, "{c:?}: Rust işledi, Python reddetti: {py}");
+                assert_eq!(py["no_cpu"], a.no_cpu, "{c:?}");
+                assert_eq!(py["json"], a.json, "{c:?}");
+                assert_eq!(py["base"], serde_json::json!(a.base), "{c:?}");
+            }
+            Route::Delegate(_) => {}
+            other => panic!("{c:?}: {other:?}"),
+        }
+    }
+    eprintln!("{} durum: {handled} Rust", cases.len());
+    assert!(handled > 200);
 }

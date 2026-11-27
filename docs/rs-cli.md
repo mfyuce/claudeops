@@ -1,7 +1,7 @@
 # rs/cli (İz T6: Rust `cops` CLI)
 
 **Durum (26 Kas 2026 gece): BİRLEŞTİRMEYE HAZIR** (kod + eşlik tablosu + ders listesi). **py/ değişti** ("Python hatası?"
-1-8 Python'da düzeltildi): birleşince web restart + uzak deploy (yuhem, ulak_31) gerekir. Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list` `cops-procscan` birleşince bağlanır.
+1-8 Python'da düzeltildi): birleşince web restart + uzak deploy (yuhem, ulak_31) gerekir. Canlıda `cops-rs` kullanılmadan ÖNCE `bin/cops-py` kurulumu gerekir (bkz. Bilinen açıklar); `list`/`ls` `cops-procscan`e bağlandı (27 Kas, aşağıda "`list`").
 
 ## Doğrulama (26 Kas gece, "Python hatası?" 1-8 sonrası)
 
@@ -16,12 +16,12 @@ Testler yalıtık HOME/CLAUDEOPS_DIR ve sahte systemctl ile; canlı birimlere ve
 
 | dosya | içerik |
 |---|---|
-| `src/lib.rs` | yönlendirme: `front`, `self` Rust; gerisi Python'a |
+| `src/lib.rs` | yönlendirme: `front`, `list`/`ls`, `self` Rust; gerisi Python'a |
 | `src/delegate.rs` | Python CLI'ı bulma (`COPS_PY`, ikilinin ataları, `<durum dizini>/bin/cops-py`), özyineleme koruması, `exec`, çıkış 125 |
 | `src/argp.rs`, `src/pyenv.rs` | argparse biçimleri (taklit edilmeyen devredilir), Python yol kuralları |
 | `src/front/` | `front status|on|off [--apply]`, TBD#371/4 (a) adres ayrıştırma, (b) yabancı porta vekillik, (c) geri alma; gizli üretimi |
 | `src/selfcmd.rs` | `self` |
-| `src/list.rs` | `list` yalnız arayüz; komut Python'a devredilir |
+| `src/list.rs` | `list`/`ls`: tarama ve çıktı `cops-procscan`den; şüpheli taramada devir (`delegate_reason`) |
 
 ## İşlevce eşlik tablosu
 
@@ -85,32 +85,32 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | `_describe` (297) | `PortOwner::describe` | `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `parity_foreign_internal_port_blocks_on_both_sides` | karşılandı |
 | `plan_on` (307) | `src/front/mod.rs` `plan_on` (`Plan.steps`, `Plan.blockers`) | `plan_blockers`, `parity_front_on_plans` | karşılandı |
 | `_plan_on` (313) | `src/front/mod.rs` `plan_on`, `Plan` (aynı engel sırası ve metni) | `plan_blockers`, `internal_busy_without_dropin_keeps_python_blocker`, `fix_a_bad_listen_is_a_blocker_and_ipv6_listen_is_fine`, `fix_b_foreign_process_on_internal_port_blocks_even_with_dropin`, `relative_bin_is_a_blocker`, `non_executable_bin_is_a_blocker`, `control_characters_in_paths_block`, `unreadable_web_unit_is_a_blocker`, `parity_relative_or_non_executable_bin_is_a_blocker` | karşılandı |
-| `_TIMING` (364) | `src/front/mod.rs` `Timing` (`lock` yok: Python kilidi süresiz, sapma) | `fix_c_front_not_listening_is_rolled_back` (testte `fast()`) | karşılandı |
-| `_ScError` (367) | `Systemctl::run` `Err` | `unknown_front_state_changes_nothing` | karşılandı |
-| `_sc` (371) | `src/front/systemctl.rs` `Systemctl`, `RealSystemctl` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
-| `_show` (380) | `src/front/systemctl.rs` `show` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
-| `_run_sc` (384) | `src/front/mod.rs` `run_sc` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
-| `_read_web_unit` (393) | `src/front/mod.rs` `read_web_unit` | `unreadable_web_unit_is_a_blocker` | karşılandı |
-| `_snapshot` (407) | `src/front/fsx.rs` `snapshot`, `Prev` | `write_snapshot_restore_roundtrip` | karşılandı |
-| `_atomic_write` (418) | `src/front/fsx.rs` `atomic_write` | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
-| `_restore` (453) | `src/front/fsx.rs` `restore` | `write_snapshot_restore_roundtrip` | karşılandı |
-| `_Undo` (463) | `src/front/mod.rs` `Undo` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
-| `_Undo.__init__` (466) | `Undo::new` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
-| `_Undo.file` (470) | `Undo::file` | `fix_c_write_failure_restores_files_without_systemctl` | karşılandı |
-| `_Undo.sc` (479) | `Undo::sc` | `fix_c_reapply_failure_restores_previous_unit_and_restarts_old_front` | karşılandı |
-| `_Undo.front_stop` (492) | `Undo::front_stop` | `fix_c_on_rollback_keeps_previous_enablement` | karşılandı |
-| `_Undo.front_back` (499) | `Undo::front_back` | `fix_c_off_disable_failure_changes_nothing`, `fix_c_off_disable_failure_keeps_stopped_front_stopped` | karşılandı |
-| `_Undo.report` (509) | `Undo::report` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
-| `_wait_for` (519) | `src/front/mod.rs` `wait_for` | `fix_c_front_not_listening_is_rolled_back` | karşılandı |
-| `_front_state` (529) | `src/front/mod.rs` `front_state`, `UnitState` | `unknown_front_state_changes_nothing` | karşılandı |
-| `_front_listen` (536) | `src/front/mod.rs` `front_listen` | `off_falls_back_to_front_listen_when_web_unit_is_missing` | karşılandı |
-| `_web_addr` (553) | `src/front/mod.rs` `web_addr` | `web_addr_follows_web_unit_flags`, `off_verifies_web_on_its_own_port_when_front_listen_differs` | karşılandı |
-| `run` (590) | `src/front/mod.rs` `run`, `status`; `src/main.rs` `run_front` | `parity_front_status_variants`, `fix_a_status_reports_bad_address_without_crashing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
-| `_on` (611) | `src/front/mod.rs` `on` | `plan_only_changes_nothing`, `applied_unit_passes_the_secret_state_dir`, `fix_b_our_web_on_internal_port_is_a_reapply`, `fix_c_on_rolls_back_at_every_systemctl_step`, `on_restarts_an_already_running_front_so_the_new_unit_applies`, `parity_apply_rollback_on_systemctl_failure`, `parity_on_restarts_running_front_then_rolls_back_unverified` | karşılandı |
-| `_on.ok` (676) | `on` içindeki `ok` kapanışı | `fix_c_front_not_listening_is_rolled_back`, `fix_c_on_web_not_on_internal_is_rolled_back` | karşılandı |
-| `_off` (711) | `src/front/mod.rs` `off` | `off_success_sequence_matches_python_and_verifies_web`, `off_without_front_unit_ignores_disable_error_like_python`, `fix_c_off_web_restart_failure_returns_to_front`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
-| `_off.freed` (751) | `off` içindeki `wait_for` kapanışı | `fix_c_off_port_not_released_stops_before_touching_web` | karşılandı |
-| `_off.full_undo` (761) | `off` içindeki `full_undo` kapanışı | `fix_c_off_web_restart_failure_returns_to_front`, `fix_c_off_web_not_back_outside_is_rolled_back` | karşılandı |
+| `_TIMING` (367) | `src/front/mod.rs` `Timing` (`lock` yok: Python kilidi süresiz, sapma) | `fix_c_front_not_listening_is_rolled_back` (testte `fast()`) | karşılandı |
+| `_ScError` (370) | `Systemctl::run` `Err` | `unknown_front_state_changes_nothing` | karşılandı |
+| `_sc` (374) | `src/front/systemctl.rs` `Systemctl`, `RealSystemctl` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_show` (383) | `src/front/systemctl.rs` `show` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_run_sc` (387) | `src/front/mod.rs` `run_sc` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_read_web_unit` (396) | `src/front/mod.rs` `read_web_unit` | `unreadable_web_unit_is_a_blocker` | karşılandı |
+| `_snapshot` (410) | `src/front/fsx.rs` `snapshot`, `Prev` | `write_snapshot_restore_roundtrip` | karşılandı |
+| `_atomic_write` (424) | `src/front/fsx.rs` `atomic_write` | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
+| `_restore` (459) | `src/front/fsx.rs` `restore` | `write_snapshot_restore_roundtrip` | karşılandı |
+| `_Undo` (475) | `src/front/mod.rs` `Undo` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_Undo.__init__` (478) | `Undo::new` | `fix_c_on_rolls_back_at_every_systemctl_step` | karşılandı |
+| `_Undo.file` (482) | `Undo::file` | `fix_c_write_failure_restores_files_without_systemctl` | karşılandı |
+| `_Undo.sc` (494) | `Undo::sc` | `fix_c_reapply_failure_restores_previous_unit_and_restarts_old_front` | karşılandı |
+| `_Undo.front_stop` (507) | `Undo::front_stop` | `fix_c_on_rollback_keeps_previous_enablement` | karşılandı |
+| `_Undo.front_back` (514) | `Undo::front_back` | `fix_c_off_disable_failure_changes_nothing`, `fix_c_off_disable_failure_keeps_stopped_front_stopped` | karşılandı |
+| `_Undo.report` (524) | `Undo::report` | `on_apply_with_failing_systemctl_rolls_back_files`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_wait_for` (534) | `src/front/mod.rs` `wait_for` | `fix_c_front_not_listening_is_rolled_back` | karşılandı |
+| `_front_state` (544) | `src/front/mod.rs` `front_state`, `UnitState` | `unknown_front_state_changes_nothing` | karşılandı |
+| `_front_listen` (551) | `src/front/mod.rs` `front_listen` | `off_falls_back_to_front_listen_when_web_unit_is_missing` | karşılandı |
+| `_web_addr` (568) | `src/front/mod.rs` `web_addr` | `web_addr_follows_web_unit_flags`, `off_verifies_web_on_its_own_port_when_front_listen_differs` | karşılandı |
+| `run` (605) | `src/front/mod.rs` `run`, `status`; `src/main.rs` `run_front` | `parity_front_status_variants`, `fix_a_status_reports_bad_address_without_crashing`, `parity_bad_addresses_are_blockers_on_both_sides` | karşılandı |
+| `_on` (626) | `src/front/mod.rs` `on` | `plan_only_changes_nothing`, `applied_unit_passes_the_secret_state_dir`, `fix_b_our_web_on_internal_port_is_a_reapply`, `fix_c_on_rolls_back_at_every_systemctl_step`, `on_restarts_an_already_running_front_so_the_new_unit_applies`, `parity_apply_rollback_on_systemctl_failure`, `parity_on_restarts_running_front_then_rolls_back_unverified` | karşılandı |
+| `_on.ok` (691) | `on` içindeki `ok` kapanışı | `fix_c_front_not_listening_is_rolled_back`, `fix_c_on_web_not_on_internal_is_rolled_back` | karşılandı |
+| `_off` (728) | `src/front/mod.rs` `off` | `off_success_sequence_matches_python_and_verifies_web`, `off_without_front_unit_ignores_disable_error_like_python`, `fix_c_off_web_restart_failure_returns_to_front`, `parity_apply_rollback_on_systemctl_failure` | karşılandı |
+| `_off.freed` (768) | `off` içindeki `wait_for` kapanışı | `fix_c_off_port_not_released_stops_before_touching_web` | karşılandı |
+| `_off.full_undo` (778) | `off` içindeki `full_undo` kapanışı | `fix_c_off_web_restart_failure_returns_to_front`, `fix_c_off_web_not_back_outside_is_rolled_back` | karşılandı |
 
 İçe aktarılan sabitler (bu modüllerin adı değil, sayıma girmez): `DIST_DIR` -> `dist_dir` (`dist_dir_resolves_from_python_repo`,
 `parity_front_on_plans`); `HOME`, `CLAUDEOPS_DIR` -> `src/pyenv.rs` `Roots` (`roots_follow_paths_py`).
@@ -136,11 +136,38 @@ Koddan okunan, "Bilinçli sapmalar"da yazmayan ve testi olmayan farklar (koşulm
 almaz, `json_files` alır; sıralama bash'te yerel ayara, Rust'ta bayt sırasına göre; `pid`i metin olan kaydı bash kabul eder,
 Rust atlar; UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET`i Python dolu sayar, `cops-rs` yok sayıp dosyaya bakar.
 
-### `list` (yalnız arayüz)
+### `list` / `ls`
 
 | Python adı (satır) | Rust karşılığı | Rust testi | durum |
 |---|---|---|---|
-| `py/claudeops/commands/ls.py` `register` (11), `run` (19) | `src/list.rs` yalnız tipler; komut Python'a devredilir | `list_is_delegated_until_procscan_lands`, `routing` | kapsam dışı: cops-procscan birleşince (`rs/proc`) |
+| `register` (`commands/ls.py` 11) | `src/argp.rs` `parse_list`, `ListArgs` (taklit edilmeyen biçim devredilir) | `rust_list_parse_never_accepts_more_than_python`, `unusual_list_arguments_are_delegated` | karşılandı |
+| `run` (`commands/ls.py` 19) | `src/list.rs` `run` + `cops_procscan::list::render` | `list_is_answered_without_python_and_matches_python_bytes` | karşılandı |
+| `_s` (`tests/test_ls_json.py` 13) | `cops-procscan` `list.rs` test yardımcısı `sessions` | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson` (17) | `cops-procscan` `list.rs` testleri | `json_is_sorted_valid_and_has_no_table`, `table_matches_python_layout` | karşılandı |
+| `LsJson.run_ls` (18) | `render` doğrudan çağrılır | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson.test_json_is_sorted_valid_and_has_no_table` (27) | aynı | `json_is_sorted_valid_and_has_no_table` | karşılandı |
+| `LsJson.test_table_unchanged_without_flag` (34) | aynı | `table_matches_python_layout` | karşılandı |
+
+Devir koşulları (hiçbir çıktı yazılmadan aynı argv Python'a; `list` Rust'ta hiçbir şey yazmaz):
+
+| koşul | neden | test |
+|---|---|---|
+| `Scan.agy_learned` boş değil (`--base` süzgecinden bağımsız) | Python keşifte `agy_sids`e yazar | `learned_agy_mapping_is_delegated_so_python_records_it` |
+| `diag.agy_files_unreadable > 0` | Python `db` kipinde DB'den okur; eşleme belirsiz | `unreadable_agy_mirror_is_delegated` |
+| `diag.proc_root_error` | "oturum yok" değil "bilinmiyor" | `unreadable_proc_root_is_delegated_not_reported_empty`, `every_doubt_delegates_and_clean_scan_does_not` |
+| `diag.session_files_invalid > 0` | serde `NaN`/`Infinity` okumaz | `invalid_session_file_is_delegated` |
+| `db` kipinde `agy_sids`: DB okunamıyor ya da dosya aynası belgeyle aynı değil (`list::agy_mirror_reason`) | doğruluk kaynağı DB; Python okur, gerekirse içe aktarır | `db_backend_answers_only_when_agy_mirror_matches_db` |
+| satırın adında, cwd'sinde ya da modelinde U+FFFD | UTF-8 olmayan argv/yol kayıpla okunmuş | `replacement_char_in_row_is_delegated` |
+| `Roots::from_env` hatası, göreli `HOME`/`CLAUDEOPS_DIR`, `Config::from_env` `None` | Python kök kuralı farklı | `bad_roots_are_delegated` |
+
+27 Kas doğrulaması: yerel cevap testi uygulamadan önce kırmızıydı (çıkış 125); `delegate_reason`in her koşulu ve
+`check_absolute` tek tek geri alınınca ilgili test kırıldı. Canlı filoda (`list --no-cpu`, `--json`; Rust/Python/Rust)
+çıktı bayt bayt aynı; CPU ölçümlü `--json` `cpu` satırları dışında aynı. `cargo test -p cops-cli` 101 geçti, clippy temiz.
+`tests/list_bin.rs` gerçek `/proc`u tarar (sahte süreçler canlı filoda kısa süre görünür), testleri kendi içinde sıralıdır.
+
+27 Kas (db kipi devri): yeni test uygulamadan önce kırmızıydı ("DB yok" durumunda yerelde cevaplandı). Canlı filoda
+(`db` kipi) `list --no-cpu --json` yerelde cevaplandı, Python/Rust/Python çıktısı aynı. `cargo test -p cops-cli` geçti,
+clippy temiz. Karşılaştırma sırasında ayna yazılırsa en kötü sonuç gereksiz devirdir.
 
 ### Python testleri: `py/tests/test_front_cmd.py`
 
@@ -275,24 +302,40 @@ Rust atlar; UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET`i Python dolu sayar, `cops-rs`
 | `P3Rollback.test_off_falls_back_to_front_listen_when_web_unit_is_missing` (534) | aynı | `off_falls_back_to_front_listen_when_web_unit_is_missing` | karşılandı |
 | `P3Rollback.test_web_addr_follows_web_unit_flags` (547) | aynı vektörler | `web_addr_follows_web_unit_flags` | karşılandı |
 | `P3Rollback.test_atomic_write_snapshot_restore_roundtrip` (555) | `fsx` testleri | `write_snapshot_restore_roundtrip`, `failed_write_leaves_no_temp_and_keeps_target` | karşılandı |
-| `P4RestartRunningFront` (574) | çalışan ön kapı | alttaki satırlar | karşılandı |
-| `P4RestartRunningFront.test_on_restarts_an_already_running_front_so_the_new_unit_applies` (577) | aynı | `on_restarts_an_already_running_front_so_the_new_unit_applies` | karşılandı |
-| `P4RestartRunningFront.test_restart_failure_is_rolled_back_with_old_unit` (585) | geri almada eski birimle `restart` | `parity_on_restarts_running_front_then_rolls_back_unverified`, `fix_c_on_listen_change_failure_restarts_old_front_instead_of_stopping_it` | karşılandı |
+| `P9SlowWebAndSymlinkUnits` (574) | yavaş web açılışı + sembolik bağlı birim | alttaki satırlar | karşılandı |
+| `P9SlowWebAndSymlinkUnits.test_slow_web_restart_is_waited_with_web_up` (577) | aynı (`World.slow`, `Env::run_timed`) | `slow_web_restart_is_waited_with_web_up` | karşılandı |
+| `P9SlowWebAndSymlinkUnits.test_slow_web_restart_is_waited_with_web_up.slow` (581) | `impl Net for Fake` `owner` (`slow` alanı) | `slow_web_restart_is_waited_with_web_up` | karşılandı |
+| `P9SlowWebAndSymlinkUnits._link` (591) | `src/front/tests.rs` `link` | `on_refuses_symlinked_unit_files` | karşılandı |
+| `P9SlowWebAndSymlinkUnits.test_on_refuses_symlinked_unit_files` (600) | aynı | `on_refuses_symlinked_unit_files` | karşılandı |
+| `P9SlowWebAndSymlinkUnits.test_off_rollback_restores_symlink` (611) | aynı | `off_rollback_restores_symlink` | karşılandı |
+| `P4RestartRunningFront` (623) | çalışan ön kapı | alttaki satırlar | karşılandı |
+| `P4RestartRunningFront.test_on_restarts_an_already_running_front_so_the_new_unit_applies` (626) | aynı | `on_restarts_an_already_running_front_so_the_new_unit_applies` | karşılandı |
+| `P4RestartRunningFront.test_restart_failure_is_rolled_back_with_old_unit` (634) | geri almada eski birimle `restart` | `parity_on_restarts_running_front_then_rolls_back_unverified`, `fix_c_on_listen_change_failure_restarts_old_front_instead_of_stopping_it` | karşılandı |
 
 ### Sayım ve denetim
 
 | satır kümesi | toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| `ast` öğeleri (`front.py` 10, `front_cmd.py` 61, `test_front_cmd.py` 8, `test_front_internal.py` 29, `test_front_xff.py` 13, `test_front_pyfix.py` 65) | 186 | 149 | 37 | 0 |
+| `ast` öğeleri (`front.py` 10, `front_cmd.py` 61, `test_front_cmd.py` 8, `test_front_internal.py` 29, `test_front_xff.py` 13, `test_front_pyfix.py` 71) | 192 | 155 | 37 | 0 |
 | `paths.py` (yalnız değişen satır) | 1 | 1 | 0 | 0 |
 | `self` (bash) | 6 | 5 | 1 | 0 |
-| `list` (tek satır) | 1 | 0 | 1 | 0 |
-| **toplam** | **194** | **155** | **39** | **0** |
+| `list` (`ls.py` 2, `test_ls_json.py` 5) | 7 | 7 | 0 | 0 |
+| **toplam** | **206** | **168** | **38** | **0** |
+
+27 Kas kapı notu düzeltmesinden sonra `front_cmd.py` ve `test_front_pyfix.py` satır numaraları `ast` ile yenilendi, yeni
+`P9` satırları eklendi (186 -> 192).
 
 `ast` öğesi = işlev, sınıf, metot, iç içe tanım, modül/sınıf düzeyi atama ve sabit metinli `re.*` çağrısı. Denetim betiği
 (oturum scratchpad'inde, repoya girmedi): 186 öğenin her biri ad ve satır numarasıyla kendi dosyasının tablosunda bulundu
 (eksik 0, fazla 0); `ls.py` adları ve bash adları tabloda; "Rust testi" sütunundaki her ad `rust/crates` altında `#[test]` /
 `#[tokio::test]` olarak bulundu.
+
+## Kapı notu düzeltmeleri (27 Kas, iki tarafta; TBD#396)
+
+| # | hata | Python testi | Rust testi |
+|---|---|---|---|
+| 9 | `on`: web yeniden başlatılırken de yalnız `front_up` (15 sn) bekleniyordu; yavaş açılış gereksiz geri alma yapardı. Artık `max(front_up, web_up)` | `P9SlowWebAndSymlinkUnits.test_slow_web_restart_is_waited_with_web_up` | `slow_web_restart_is_waited_with_web_up` |
+| 10 | sembolik bağlı birim dosyası atomik yazımda düz dosyaya dönüyordu. `on` ENGEL; `off` geri alması bağı bağ olarak kurar | `test_on_refuses_symlinked_unit_files`, `test_off_rollback_restores_symlink` | `on_refuses_symlinked_unit_files`, `off_rollback_restores_symlink` |
 
 ## Gözden geçirme düzeltmeleri
 
@@ -315,7 +358,6 @@ TBD#371/4: (a) `listen_and_internal_parsing`, `fix_a_*`, `bad_internal_is_blocke
 - `bin/cops-py` ve `cops-rs`yi hiçbir kurulum yazmıyor: `COPS_PY` ya da elle `ln -s <depo>/py/cops <durum>/bin/cops-py` yoksa
   devir 125 ile düşer. Kurulum betiği (`scripts/`) bu izin yolları dışında; CANLIYA ALMADAN ÖNCE gerekli.
 - `web_addr` argparse kısaltmalarını (`--po`) ve ExecStart'ı ezen başka drop-in'leri görmez (ön kapı listen'ine düşer).
-- `list` yalnız arayüz (`cops-procscan` birleşince bağlanacak).
 - `cops-rs --version` Python'a devrediliyor, GIT_SHA yok (ders H11).
 - py/ değişti (`front_cmd.py`, `front.py`, `paths.py`): birleşince `systemctl --user restart claudeops-web.service` + uzak deploy
   (yuhem, ulak_31; CLAUDE.md "Federasyon"). `paths.py` her süreçte yüklenir: göreli `CLAUDEOPS_DIR` artık açılışta hata.
