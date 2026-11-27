@@ -143,18 +143,16 @@ fn rs_pane(_e: &Env, c: &Case) -> RsOut {
     let name = a["name"].as_str().unwrap();
     let target = a["target"].as_str().unwrap();
     let pane = FakePane::new(script_of(a));
-    match a["which"].as_str().unwrap() {
-        "model" => {
-            let _ = cli.apply_live_model_switch(&pane, name, target);
-        }
-        "effort" => {
-            let _ = cli.apply_live_effort_switch(&pane, name, target);
-        }
-        _ => cli.dismiss_stray_dialog(&pane, name),
-    }
+    let outcome = match a["which"].as_str().unwrap() {
+        "model" => cli.apply_live_model_switch(&pane, name, target).as_str(),
+        "effort" => cli.apply_live_effort_switch(&pane, name, target).as_str(),
+        _ => cli.dismiss_stray_dialog(&pane, name).as_str(),
+    };
     let end = pane.now.get().to_bits() as i64;
     let log = pane.log.take();
-    RsOut::ret(json!({"log": log, "end": end}))
+    let mut out = RsOut::ret(json!({"log": log, "end": end, "outcome": outcome}));
+    out.extra_diags = pane.diags.take();
+    out
 }
 
 fn static_cases() -> Vec<Case> {
@@ -525,6 +523,7 @@ fn pane_cases() -> Vec<Case> {
             ));
         }
     }
+    cases.extend(screen_cases());
     let mut r = Rng(43);
     for i in 0..900 {
         let which = ["model", "effort", "dismiss"][r.below(3)];
@@ -554,6 +553,170 @@ fn pane_cases() -> Vec<Case> {
                 extra,
             },
         ));
+    }
+    cases
+}
+
+/// Gerçekçi ekranlar (`py/tests/tui_screens.py` ile aynı kurgu).
+fn rule() -> String {
+    format!("\x1b[38;5;244m{}", "─".repeat(40))
+}
+
+fn boxed(inner: &str, history: &str, footer: &str) -> String {
+    let top = if history.is_empty() {
+        String::new()
+    } else {
+        format!("{history}\n\n")
+    };
+    let r = rule();
+    format!("{top}{r}\n\x1b[39m❯\u{a0}{inner}\n{r}\n\x1b[39m  {footer}")
+}
+
+fn result(text: &str) -> String {
+    format!("  ⎿  {text}")
+}
+
+fn dialog(title: &str, label: &str, on_no: bool, guide: &str) -> String {
+    let (yes, no) = if on_no { (" ", "❯") } else { ("❯", " ") };
+    let head = title.split(' ').collect::<Vec<_>>().join("\x1b[0m \x1b[1m");
+    format!(
+        "{}\n \x1b[1m{head}\x1b[0m\n Your next response will be slower\n\n This conversation is cached.\n\n \
+         {yes} 1. Yes, switch to {label}\n {no} 2. No, go back\n\n{guide}\n",
+        rule()
+    )
+}
+
+/// Geçerli ekranlardan kurulan diziler ve rastgele bozulmuş biçimleri: hedef, iki taraf aynı tuşları basar.
+fn screen_cases() -> Vec<Case> {
+    const FOOT: &str = "⏵⏵ auto mode on";
+    const GUIDE: &str = " Enter to confirm · Esc to cancel";
+    let idle = boxed("", "", FOOT);
+    let mut pool: Vec<String> = vec![
+        idle.clone(),
+        boxed("\x1b[2mcommit this\x1b[22m", "", FOOT),
+        boxed("\x1b[38;5;246mdevam\x1b[39m", "", FOOT),
+        boxed("yarım yazı", "", FOOT),
+        boxed("iki\n  satır", "", FOOT),
+        boxed("", "", "⏵⏵ auto mode on · esc to interrupt"),
+        boxed("", &result("esc to interrupt"), FOOT),
+        boxed("", &result("Switch model?"), FOOT),
+        boxed("", &result("Set model to Sonnet 5.5"), FOOT),
+        boxed(
+            "",
+            &format!("{0}\n{0}", result("Set model to Sonnet 5.5")),
+            FOOT,
+        ),
+        boxed("", &result("Kept model as Opus 5.5"), FOOT),
+        boxed("", &result("Set effort level to high: x"), FOOT),
+        boxed("", &result("Not applied: x"), FOOT),
+        boxed(
+            "",
+            &result("Set effort level to high"),
+            "⏵⏵ auto mode on · esc to interrupt",
+        ),
+        boxed("yazı", &result("Set effort level to high"), FOOT),
+        boxed(
+            "",
+            &dialog("Switch model?", "Sonnet 5.5", false, GUIDE),
+            FOOT,
+        ),
+        format!("{idle}\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel"),
+        format!("{idle}\n  3. numbered"),
+        format!("{idle}\n{}", "  satır\n".repeat(12)),
+        " Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n\n Esc to cancel"
+            .into(),
+        format!("{}\n ❯ 1. Yes\n   2. No", result("Switch model?")),
+    ];
+    for (title, label) in [
+        ("Switch model?", "Sonnet 5.5"),
+        ("Switch model?", "Claude Sonnet 5.5"),
+        ("Switch model?", "Opus 5.5"),
+        ("Change effort level?", "high"),
+        ("Change effort level?", "xhigh"),
+        ("Switch models?", "Sonnet 5.5"),
+    ] {
+        for on_no in [false, true] {
+            pool.push(dialog(title, label, on_no, GUIDE));
+        }
+    }
+    let base = dialog("Switch model?", "Sonnet 5.5", false, GUIDE);
+    pool.extend([
+        dialog("Switch model?", "Sonnet 5.5", false, ""),
+        dialog("Switch model?", "Sonnet 5.5", false, "a\n b"),
+        dialog(
+            "Switch model?",
+            "Sonnet 5.5",
+            false,
+            " Esc to cancel\n Enter to confirm\n esc to cancel",
+        ),
+        format!("{base}  3. Other"),
+        format!("{base}{idle}"),
+        base.replace("❯", " "),
+        base.replace("   2.", " ❯ 2."),
+        base.replace(" ❯ 1.", " ❯\u{1f}1.\u{1c}"),
+        base.replace(" Your next", "❯ Your next"),
+        base.replace(" Your next", &format!("{} Your next", "x\n".repeat(14))),
+        base.lines()
+            .map(|l| format!("│ {l} │"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    ]);
+    let mut cases = Vec::new();
+    let mut push = |id: String, which: &'static str, screens: Vec<Option<String>>, extra: Value| {
+        cases.push(pane_case(
+            id,
+            Pane {
+                which,
+                cli: "claude",
+                screens,
+                extra,
+            },
+        ));
+    };
+    // her ekran: komuttan önce, komuttan sonra, onaydan sonra
+    for which in ["model", "effort", "dismiss"] {
+        for (i, s) in pool.iter().enumerate() {
+            let s = Some(s.clone());
+            push(
+                format!("g4-ekran-{which}-once-{i}"),
+                which,
+                vec![s.clone()],
+                json!({}),
+            );
+            push(
+                format!("g4-ekran-{which}-sonra-{i}"),
+                which,
+                vec![Some(idle.clone()), s],
+                json!({}),
+            );
+        }
+    }
+    let mut r = Rng(44);
+    for i in 0..1500 {
+        let which = ["model", "effort", "dismiss"][r.below(3)];
+        let n = 1 + r.below(6);
+        let mut screens: Vec<Option<String>> = (0..n)
+            .map(|_| {
+                (r.below(10) != 0).then(|| {
+                    let mut s = pool[r.below(pool.len())].clone();
+                    if r.below(5) == 0 {
+                        let mut at = r.below(s.len() + 1);
+                        while !s.is_char_boundary(at) {
+                            at -= 1;
+                        }
+                        s.insert_str(at, &r.soup(FRAGMENTS, 3));
+                    }
+                    s
+                })
+            })
+            .collect();
+        if r.below(2) == 0 {
+            screens.insert(0, Some(idle.clone()));
+        }
+        let keys: Vec<bool> = (0..r.below(3)).map(|_| r.below(4) != 0).collect();
+        let cost = [0.0, 0.0, 0.7, 9.0][r.below(4)];
+        let extra = json!({"capture_cost": cost, "keys": keys, "send_ok": r.below(12) != 0});
+        push(format!("g4-ekran-rastgele-{i}"), which, screens, extra);
     }
     cases
 }

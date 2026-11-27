@@ -15,15 +15,28 @@
 //! [`crate::Cli::input_settle_delay`] sabitlerini verir).
 
 use crate::real::launch::SystemClock;
-use crate::spawn_exec::Clock;
+use crate::spawn_exec::{Clock, DiagSink};
 use crate::tui::{Key, Pane};
+use crate::Diag;
 use cops_tmux::{MaskGuard, Tmux};
+use std::sync::Arc;
 use std::time::Duration;
 
-/// Canlı ya da (testte) yalıtılmış tmux sunucusuna bağlı [`Pane`].
-#[derive(Debug, Clone)]
+/// Canlı ya da (testte) yalıtılmış tmux sunucusuna bağlı [`Pane`]. Günlük için [`TmuxPane::with_diag`] verilmeli
+/// (verilmezse geçiş/diyalog olayları düşer; sonuç yine tipli döner).
+#[derive(Clone)]
 pub struct TmuxPane {
     tmux: Tmux,
+    diag: Option<Arc<dyn DiagSink>>,
+}
+
+impl std::fmt::Debug for TmuxPane {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TmuxPane")
+            .field("tmux", &self.tmux)
+            .field("diag", &self.diag.is_some())
+            .finish()
+    }
 }
 
 impl TmuxPane {
@@ -34,7 +47,12 @@ impl TmuxPane {
 
     /// Verilen istemciyle (testte `Tmux::with_socket(..).tmpdir(..)`).
     pub fn new(tmux: Tmux) -> TmuxPane {
-        TmuxPane { tmux }
+        TmuxPane { tmux, diag: None }
+    }
+
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> TmuxPane {
+        self.diag = Some(diag);
+        self
     }
 
     pub fn tmux(&self) -> &Tmux {
@@ -80,6 +98,12 @@ impl Pane for TmuxPane {
 
     fn sleep(&self, secs: f64) {
         SystemClock.sleep(secs);
+    }
+
+    fn diag(&self, diag: &Diag) {
+        if let Some(sink) = &self.diag {
+            sink.log(diag);
+        }
     }
 }
 

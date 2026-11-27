@@ -11,6 +11,7 @@ import stat
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 from urllib.parse import quote
 
@@ -19,6 +20,18 @@ import psutil
 from ..childgroup import _run_grouped
 from ..effort import nearest_effort
 
+
+
+class _Switch(str, Enum):
+    """Canlı model/effort geçişinin ve başıboş diyalog kapatmanın sonucu (TBD#399). `DRAFT`, `DIALOG`, `UNREADABLE`,
+    `SEND_FAILED`, `UNCONFIRMED` sonrasında pane'e BAŞKA metin yazılmaz (`handover._SWITCH_SAFE`)."""
+    DONE = "done"                  # claude sonucu yazdı (uyguladı ya da reddetti) ve ekran hazır; diyalog kapandı
+    BUSY = "busy"                  # tur sürüyor: komut GÖNDERİLMEDİ (kuyruktaki komutun sonucu doğrulanamaz)
+    DRAFT = "draft"                # giriş kutusunda yazılı metin: komut gönderilmedi
+    DIALOG = "dialog"              # geçiş diyaloğu zaten açık: komut gönderilmedi
+    UNREADABLE = "unreadable"      # ekran okunamadı ya da boş giriş kutusu görülmedi (başka diyalog): gönderilmedi
+    SEND_FAILED = "send_failed"    # komut gönderilemedi (metin kutuda kalmış olabilir)
+    UNCONFIRMED = "unconfirmed"    # gönderildi ama sonuç doğrulanamadı ya da diyalog açık kaldı
 
 
 def cmd_arg(cmd: List[str], flag: str) -> Optional[str]:
@@ -211,7 +224,7 @@ class CliProvider(ABC):
         eder (2026-09-04, sadece claude)."""
         return None
 
-    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> None:
+    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> Optional[_Switch]:
         """`tmux_name` CANLI session'ına model'i `target_model`'e değiştiren
         komutu (varsa) güvenli şekilde uygular — bir onay diyaloğu açılırsa
         onu da halleder. Varsayılan no-op (bu CLI canlı model değişimini
@@ -226,7 +239,7 @@ class CliProvider(ABC):
         canlı effort değiştirmeyi destekleyen provider override eder."""
         return None
 
-    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> None:
+    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> Optional[_Switch]:
         """`tmux_name` CANLI session'ının effort'unu `target_effort`'a değiştirir.
         Varsayılan no-op (`handover_effort_downgrade()` None döndüğü için
         pratikte hiç çağrılmaz)."""
@@ -259,7 +272,7 @@ class CliProvider(ABC):
         takılmaz, yani eski davranış."""
         return True
 
-    def dismiss_stray_dialog(self, tmux_name: str) -> None:
+    def dismiss_stray_dialog(self, tmux_name: str) -> Optional[_Switch]:
         """2026-09-14 canlı bulgu: `apply_live_model_switch()`'in kendi
         docstring'i "dialog bu fonksiyon döndükten SONRA açılabilir, bu
         ZARARSIZ bir kalıntı" diyordu — canlı ekran görüntüsü bunun pratikte

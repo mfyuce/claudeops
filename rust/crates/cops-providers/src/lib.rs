@@ -49,4 +49,4 @@ pub use probe::{BuildOutput, Diag, Effect, McpRegisterError, Paths, Probe, Spawn
 pub use provider::{BuildArgs, Cli, McpSpec, ModelCatalog, Providers};
 pub use resume::{ids_held_by_others, LiveSession};
 pub use settings::Settings;
-pub use tui::{strip_ansi, Key, Pane, SwitchOutcome};
+pub use tui::{strip_ansi, DismissOutcome, Key, Pane, SwitchOutcome};

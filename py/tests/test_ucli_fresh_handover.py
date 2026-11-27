@@ -85,7 +85,8 @@ class HandoverGateTest(unittest.TestCase):
         with mock.patch.object(web, "_find_running_for_action", lambda n: ("exact", [s])), \
                 mock.patch.object(web, "is_tmux_backed", lambda pid: True), \
                 mock.patch.object(web, "diag_log", lambda *a, **k: None), \
-                mock.patch.object(web, "apply_handover_downgrades", lambda *a, **k: None), \
+                mock.patch.object(web, "apply_handover_downgrades",
+                                  lambda *a, **k: web.HandoverDowngrade()), \
                 mock.patch.object(UcliProvider, "dismiss_stray_dialog", lambda self, n: None, create=True), \
                 mock.patch.object(web, "tmux_send_keys", lambda n, t, settle_delay=0.0: sent.append(t) or True):
             res = web._handover("cops")

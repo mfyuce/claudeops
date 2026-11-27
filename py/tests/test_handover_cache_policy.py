@@ -526,7 +526,8 @@ class CallSiteWiringTests(PolicyCase):
              mock.patch.object(handover, "is_tmux_backed", lambda pid: True), \
              mock.patch.object(handover, "get_provider", lambda cli: prov), \
              mock.patch.object(handover, "tmux_send_keys", lambda *a, **k: True), \
-             mock.patch.object(handover, "apply_handover_downgrades") as policy:
+             mock.patch.object(handover, "apply_handover_downgrades",
+                               return_value=handover.HandoverDowngrade()) as policy:
             summary = handover.handover_faz1(names=["vc"])
         policy.assert_called_once_with(prov, "vc", "claude", "/w/p", "sid-1", "claude-opus-5-5", "max", pid=4242)
         self.assertEqual([r.status for r in summary.results], ["sent"])
@@ -539,7 +540,8 @@ class CallSiteWiringTests(PolicyCase):
              mock.patch.object(web, "get_provider", lambda cli: prov), \
              mock.patch.object(web, "diag_log", lambda *a, **k: None), \
              mock.patch.object(web, "tmux_send_keys", lambda *a, **k: True), \
-             mock.patch.object(web, "apply_handover_downgrades") as policy:
+             mock.patch.object(web, "apply_handover_downgrades",
+                               return_value=handover.HandoverDowngrade()) as policy:
             result = web._handover("vc")
         self.assertEqual(result, {"ok": True})
         policy.assert_called_once_with(prov, "vc", "claude", "/w/p", "sid-1", "claude-opus-5-5", "max", pid=4242)
@@ -555,7 +557,8 @@ class CallSiteWiringTests(PolicyCase):
              mock.patch.object(web, "get_provider", lambda cli: prov), \
              mock.patch.object(web, "diag_log", lambda *a, **k: None), \
              mock.patch.object(web, "tmux_send_keys", lambda n, *a, **k: sent.append(n) or True), \
-             mock.patch.object(web, "apply_handover_downgrades") as policy:
+             mock.patch.object(web, "apply_handover_downgrades",
+                               return_value=handover.HandoverDowngrade()) as policy:
             result = web._handover("vc")
         self.assertEqual(result, {"ok": True})
         self.assertEqual(sent, ["vc20261023"])

@@ -9,7 +9,7 @@
 //! oturumlarda koşar; TUI'nin aldığı baytlar karşılaştırılır.
 
 use cops_providers::real::pane::TmuxPane;
-use cops_providers::tui::{strip_ansi, Key, Pane, SwitchOutcome};
+use cops_providers::tui::{strip_ansi, DismissOutcome, Key, Pane, SwitchOutcome};
 use cops_providers::Cli;
 use cops_tmux::Tmux;
 use std::fs;
@@ -207,7 +207,8 @@ elif op == "capture":
 "#;
 
 /// Sahte claude: ham kip (maskesiz), satırı Enter (`\r`) bitirir, `Down` (`ESC [B` / `ESC OB`) seçimi değiştirir.
-/// Diyalog başlığı kelime kelime renkli (gerçek claude gibi: ham metinde "Switch model?" geçmez).
+/// Her durumda ekranı baştan çizer: geçmiş + (açık diyalog YA DA boş giriş kutusu). Diyalog başlığı kelime kelime
+/// renkli (gerçek claude gibi: ham metinde "Switch model?" geçmez).
 const FAKE_CLAUDE: &str = r#"#!/usr/bin/env python3
 import os, sys, tty
 log = open(sys.argv[1], "ab", buffering=0)
@@ -219,17 +220,27 @@ if mode == "masked":
     termios.tcsetattr(0, termios.TCSANOW, a)
 else:
     tty.setraw(0)
-def out(s):
-    os.write(1, s.encode())
-def dialog(title):
-    words = ["\x1b[1;38;5;220m" + w + "\x1b[0m\x1b[39m" for w in title.split(" ")]
-    out(" ".join(words) + "\r\n \x1b[36m> 1. Yes, switch\x1b[0m\r\n   2. No, go back\r\n")
-if mode in ("stray", "masked"):
-    dialog("Switch model?")
-out("READY\r\n")
-buf = b""
+history = []
 pending = None
 choice = 1
+def draw():
+    s = "\x1b[2J\x1b[H" + "".join("  ⎿  " + h + "\r\n" for h in history) + "READY\r\n"
+    rule = "\x1b[38;5;244m" + "─" * 40 + "\x1b[0m\r\n"
+    if pending is None:
+        s += rule + "❯ " + ("yarim" if mode == "draft" else "") + "\r\n" + rule + "  auto mode on"
+    else:
+        kind, val = pending
+        title = "Switch model?" if kind == "model" else "Change effort level?"
+        label = "Sonnet 5.5" if val == "sonnet" else val
+        words = ["\x1b[1;38;5;220m" + w + "\x1b[0m\x1b[39m" for w in title.split(" ")]
+        yes, no = ("❯", " ") if choice == 1 else (" ", "❯")
+        s += (rule + " " + " ".join(words) + "\r\n\r\n \x1b[36m" + yes + " 1. Yes, switch to " + label +
+              "\x1b[0m\r\n " + no + " 2. No, go back\r\n\r\n Enter to confirm · Esc to cancel")
+    os.write(1, s.encode())
+if mode in ("stray", "masked"):
+    pending = ("model", "sonnet")
+draw()
+buf = b""
 while True:
     b = os.read(0, 1024)
     if not b:
@@ -240,6 +251,7 @@ while True:
         if seq in buf:
             buf = buf.replace(seq, b"")
             choice = 2
+            draw()
     while b"\r" in buf or b"\n" in buf:
         i = min(x for x in (buf.find(b"\r"), buf.find(b"\n")) if x >= 0)
         line, buf = buf[:i].decode("utf-8", "replace"), buf[i + 1:]
@@ -249,25 +261,16 @@ while True:
             kind, val = pending
             pending = None
             if kind == "model":
-                out(("Set model to " if choice == 1 else "Kept model as ") + val + "\r\n")
+                history.append("Set model to " + val if choice == 1 else "Kept model as opus")
             else:
-                out("Set effort level to " + val + "\r\n")
-        elif mode in ("stray", "masked") and line == "":
-            out(("Set model to haiku" if choice == 1 else "Kept model as opus") + "\r\n")
-        elif line.startswith("/model "):
-            val = line[7:]
+                history.append("Set effort level to " + val)
+        elif line.startswith("/model ") or line.startswith("/effort "):
+            kind, val = line[1:].split(" ", 1)
             if mode == "dialog":
-                pending = ("model", val)
-                dialog("Switch model?")
+                pending, choice = (kind, val), 1
             else:
-                out("Set model to " + val + "\r\n")
-        elif line.startswith("/effort "):
-            val = line[8:]
-            if mode == "dialog":
-                pending = ("effort", val)
-                dialog("Change effort level?")
-            else:
-                out("Set effort level to " + val + "\r\n")
+                history.append(("Set model to " if kind == "model" else "Set effort level to ") + val)
+        draw()
 "#;
 
 /// Dosya `want` uzunluğuna ulaşana dek (en çok 15 sn) bekler, sonra kısa süre daha (fazlalık da görülsün).
@@ -301,20 +304,20 @@ fn both(mode: &str, op: &str, arg: &str, want: &[u8]) -> (Server, SwitchOutcome)
 #[test]
 fn model_switch_confirms_the_dialog_like_python() {
     let (s, out) = both("dialog", "model", "sonnet", b"/model sonnet\r\r");
-    assert_eq!(out, SwitchOutcome::MarkerSeen { confirmed: true });
+    assert_eq!(out, SwitchOutcome::Done { confirmed: true });
     assert!(s.screen("rs").contains("Set model to sonnet"));
 }
 
 #[test]
 fn model_switch_without_dialog_sends_no_extra_enter_like_python() {
     let (_s, out) = both("direct", "model", "sonnet", b"/model sonnet\r");
-    assert_eq!(out, SwitchOutcome::MarkerSeen { confirmed: false });
+    assert_eq!(out, SwitchOutcome::Done { confirmed: false });
 }
 
 #[test]
 fn effort_switch_confirms_the_dialog_like_python() {
     let (s, out) = both("dialog", "effort", "high", b"/effort high\r\r");
-    assert_eq!(out, SwitchOutcome::MarkerSeen { confirmed: true });
+    assert_eq!(out, SwitchOutcome::Done { confirmed: true });
     assert!(s.screen("rs").contains("Set effort level to high"));
 }
 
@@ -324,7 +327,10 @@ fn stray_dialog_is_declined_with_down_enter_like_python() {
     let py_log = s.tui("py", "stray");
     let rs_log = s.tui("rs", "stray");
     s.python("dismiss", "py", "-");
-    Cli::Claude.dismiss_stray_dialog(&s.pane(), "rs");
+    assert_eq!(
+        Cli::Claude.dismiss_stray_dialog(&s.pane(), "rs"),
+        DismissOutcome::Closed
+    );
     let py = read_log(&py_log, 4);
     assert_eq!(read_log(&rs_log, py.len()), py);
     assert!(py == b"\x1b[B\r" || py == b"\x1bOB\r", "{py:?}");
@@ -341,7 +347,10 @@ fn no_dialog_means_no_keys_on_either_side() {
     let t0 = Instant::now();
     std::thread::scope(|sc| {
         sc.spawn(|| s.python("dismiss", "py", "-"));
-        Cli::Claude.dismiss_stray_dialog(&s.pane(), "rs");
+        assert_eq!(
+            Cli::Claude.dismiss_stray_dialog(&s.pane(), "rs"),
+            DismissOutcome::NotSeen
+        );
     });
     let took = t0.elapsed();
     assert!(
@@ -352,10 +361,11 @@ fn no_dialog_means_no_keys_on_either_side() {
     assert_eq!(fs::read(rs_log).unwrap(), b"");
 }
 
-/// Gizli girdi bekleyen pane: metin İKİ tarafta da gitmez. Tuşta Rust daha sıkı (Python `tmux_send_special_key`
-/// maske denetlemez): Python diyaloğu `Down`+Enter ile kapatır, Rust hiçbir şey göndermez (bilinçli fark).
+/// Gizli girdi bekleyen pane: iki tarafta da hiçbir şey ulaşmaz. Açık diyalog varken komut hiç gönderilmez; Rust tuşu
+/// maske yüzünden reddeder (Python `tmux_send_special_key` maske denetlemez: `Down` kanonik satır arabelleğinde kalır,
+/// ekran değişmediği için Enter basmaz).
 #[test]
-fn masked_pane_gets_no_text_and_rust_sends_no_keys() {
+fn masked_pane_gets_no_command_and_no_enter() {
     let s = Server::new();
     let py_log = s.tui("py", "masked");
     let rs_log = s.tui("rs", "masked");
@@ -364,19 +374,33 @@ fn masked_pane_gets_no_text_and_rust_sends_no_keys() {
     s.python("model", "py", "sonnet");
     assert_eq!(
         Cli::Claude.apply_live_model_switch(&p, "rs", "sonnet"),
-        SwitchOutcome::SendFailed
+        SwitchOutcome::DialogOpen
     );
     assert!(!p.send_text("rs", "gizli", 0.0));
     assert!(!p.send_key("rs", Key::Enter));
-    Cli::Claude.dismiss_stray_dialog(&p, "rs");
+    assert_eq!(
+        Cli::Claude.dismiss_stray_dialog(&p, "rs"),
+        DismissOutcome::LeftOpen
+    );
     s.python("dismiss", "py", "-");
-    // Kanonik kip: `Down`+Enter satırı Enter ile tamamlanınca okunur.
-    let py = read_log(&py_log, 4);
-    assert!(
-        py == b"\x1b[B\r" || py == b"\x1bOB\r" || py == b"\x1b[B\n" || py == b"\x1bOB\n",
-        "{py:?}"
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(fs::read(py_log).unwrap(), b"");
+    assert_eq!(fs::read(rs_log).unwrap(), b"");
+}
+
+/// Kutuda yazılı taslak: iki taraf da komut göndermez.
+#[test]
+fn a_typed_draft_gets_no_command_on_either_side() {
+    let s = Server::new();
+    let py_log = s.tui("py", "draft");
+    let rs_log = s.tui("rs", "draft");
+    s.python("model", "py", "sonnet");
+    assert_eq!(
+        Cli::Claude.apply_live_model_switch(&s.pane(), "rs", "sonnet"),
+        SwitchOutcome::Draft
     );
     std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(fs::read(py_log).unwrap(), b"");
     assert_eq!(fs::read(rs_log).unwrap(), b"");
 }
 

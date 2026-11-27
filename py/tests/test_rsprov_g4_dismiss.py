@@ -13,6 +13,10 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from claudeops import tmux_backend as tb  # noqa: E402
 from claudeops.providers.claude_provider import ClaudeProvider  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tui_screens import DIALOG, IDLE, dialog  # noqa: E402
+
+ON_NO = dialog("Switch model?", "Sonnet 5.5", on_no=True)
 
 
 class DismissStrayDialogTest(unittest.TestCase):
@@ -21,8 +25,12 @@ class DismissStrayDialogTest(unittest.TestCase):
 
         def send(name, key):
             keys.append(key)
-            return results.get(key, True)
-        with mock.patch.object(tb, "tmux_capture", lambda *a, **k: "Switch model?\n 1. Yes\n 2. No, go back"), \
+            ok = results.get(key, True)
+            if ok:
+                screen[0] = {"Down": ON_NO, "Enter": IDLE}[key]
+            return ok
+        screen = [DIALOG]
+        with mock.patch.object(tb, "tmux_capture", lambda *a, **k: screen[0]), \
                 mock.patch.object(tb, "tmux_send_special_key", send), \
                 mock.patch.object(ClaudeProvider, "_STRAY_DIALOG_TIMEOUT_SECONDS", 0.05), \
                 mock.patch.object(ClaudeProvider, "_STRAY_DIALOG_POLL_SECONDS", 0.01):

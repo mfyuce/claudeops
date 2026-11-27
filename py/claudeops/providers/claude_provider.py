@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
+from .base import CliProvider, McpServerSpec, _Switch, cmd_arg as _arg, _path_part_ok
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from .. import preview
 from ..childgroup import _run_grouped
@@ -81,6 +81,136 @@ CYCLABLE_MODES = ["manual", "acceptEdits", "plan", "auto"]
 # idle'a dönünce kayboluyor). `web.py`'nin `_is_busy_cached`'i bunu `strip_ansi`
 # uygulanmış tail'de arar (mod tespitiyle AYNI 2026-09-08 ANSI dersi).
 BUSY_STATUS_PATTERN = r"esc to interrupt"
+
+
+# ── canlı model/effort geçişi: ekran tanıma (TBD#399). Kural: EMİN OLUNAMAYAN EKRANDA TUŞ GÖNDERİLMEZ. ──────────────
+# Diyalog metinleri 2.1.332 ikilisindeki bileşenden: başlık "Switch model?" / "Change effort level?", seçenekler
+# "Yes, switch to <ad>" ve "No, go back" (kutuda taslak varken açılırsa numarasız: tanınmaz, tuş gitmez).
+_SWITCH_CAPTURE_LINES = 200        # geçmiş dahil: komuttan ÖNCEKİ sonuç satırları sayılıp yeni sayılmasın
+_SWITCH_TITLES = ("Switch model?", "Change effort level?")
+_SWITCH_YES_RE = re.compile(r"^(?P<ptr>\u276f\s*)?1\.\s*Yes, switch to (?P<label>\S.*)$")
+_SWITCH_NO_RE = re.compile(r"^(?P<ptr>\u276f\s*)?2\.\s*No, go back$")
+_SWITCH_GUIDE_RE = re.compile(r"enter to confirm|esc to cancel", re.IGNORECASE)
+_SWITCH_GUIDE_MAX = 2              # seçeneklerin altında en çok bu kadar yardım satırı
+_SWITCH_TITLE_WINDOW = 15          # başlık seçeneklerin en çok bu kadar dolu satır üstünde
+_SCREEN_FRAME = "\u2502\u256d\u256e\u2570\u256f\u2500"       # │╭╮╰╯─
+_BOX_FOOTER_MAX = 12               # giriş kutusunun altındaki en çok dolu satır
+_FOOTER_MENU_RE = re.compile(r"^(?:\u276f|[>\u203a]?\s*\d\.\s)")
+_BUSY_TAIL_LINES = 12
+
+
+def _screen_rows(text: str) -> List[str]:
+    """ANSI'siz ekranın dolu satırları: kenar çizgisi atılmış; yalnız çerçeveden oluşan satır sayılmaz."""
+    rows = (line.strip().strip("\u2502").strip() for line in text.split("\n"))
+    return [r for r in rows if r.strip(_SCREEN_FRAME + " ")]
+
+
+def _open_switch_dialog(text: str) -> Optional[Tuple[str, str, bool]]:
+    """ANSI'siz ekranın SONUNDA açık duran geçiş diyaloğu: `(başlık, hedef adı, imleç "No"da mı)`, yoksa None. İki
+    seçenek ardışık, tam olarak birinde imleç, altlarında yalnız yardım satırı; konuşmada geçen aynı yazı diyalog değil."""
+    rows = _screen_rows(text)
+    guides = 0
+    while rows and guides < _SWITCH_GUIDE_MAX and _SWITCH_GUIDE_RE.search(rows[-1]) \
+            and not _FOOTER_MENU_RE.match(rows[-1]):
+        rows.pop()
+        guides += 1
+    if len(rows) < 3:
+        return None
+    yes, no = _SWITCH_YES_RE.match(rows[-2]), _SWITCH_NO_RE.match(rows[-1])
+    if not yes or not no or bool(yes.group("ptr")) == bool(no.group("ptr")):
+        return None
+    for row in reversed(rows[:-2][-_SWITCH_TITLE_WINDOW:]):
+        if row in _SWITCH_TITLES:
+            return row, yes.group("label"), bool(no.group("ptr"))
+        if row.startswith("\u276f"):
+            break
+    return None
+
+
+def _switch_label_matches(label: str, target: str) -> bool:
+    """Diyaloğun adı istenen hedef mi ("Sonnet 5.5" ~ `sonnet`, "high" ~ `high`; "xhigh" `high` DEĞİL)."""
+    a, b = (re.sub(r"[^a-z0-9]", "", x.lower()) for x in (label, target))
+    a, b = (x[len("claude"):] if x.startswith("claude") else x for x in (a, b))
+    return bool(a and b) and (a.startswith(b) or b.endswith(a))
+
+
+def _switch_pane_state(raw: Optional[str]) -> str:
+    """`capture-pane -e` ekranı: "ready" (boş giriş kutusu en altta), "busy", "draft", "dialog" ya da "unreadable".
+    Soluk/gri öneri yazılı metin sayılmaz (`input_box`)."""
+    from ..tmux_backend import input_box, strip_ansi
+    if not raw:
+        return "unreadable"
+    text = strip_ansi(raw)
+    if _open_switch_dialog(text):
+        return "dialog"
+    box = input_box(raw)
+    if box is None:
+        return "unreadable"
+    lines = text.split("\n")
+    last_rule = max((i for i, line in enumerate(lines) if "\u2500" * 4 in line), default=None)
+    if last_rule is None:
+        return "unreadable"
+    footer = _screen_rows("\n".join(lines[last_rule + 1:]))
+    if len(footer) > _BOX_FOOTER_MAX or any(_FOOTER_MENU_RE.match(r) or _SWITCH_GUIDE_RE.search(r) for r in footer):
+        return "unreadable"        # kutu eski bir kare: altında başka bir menü/diyalog var
+    if box[1].replace("\u276f", "").replace("\u2502", "").strip():
+        return "draft"
+    if re.search(BUSY_STATUS_PATTERN, "\n".join(_screen_rows(text)[-_BUSY_TAIL_LINES:])):
+        return "busy"
+    return "ready"
+
+
+def _live_switch(tmux_name: str, command: str, title: str, target: str, markers: Tuple[str, ...],
+                 timeout: float, poll: float) -> _Switch:
+    """`command`i yalnız boş ve boşta bir giriş kutusuna yazar; yalnız BEKLENEN diyalog (başlık + hedef + imleç "Yes"te)
+    görülünce BİR kez Enter basar. `DONE`: komuttan SONRA yeni bir sonuç satırı ve hazır giriş kutusu."""
+    from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key, strip_ansi
+
+    def _count(raw: str) -> int:
+        text = strip_ansi(raw)
+        return sum(text.count(m) for m in markers)
+
+    def _give_up(result: _Switch, stage: str) -> _Switch:
+        diag_log("live_switch_not_done", name=tmux_name, command=command, result=result.value, stage=stage)
+        return result
+
+    before = tmux_capture(tmux_name, lines=_SWITCH_CAPTURE_LINES)
+    state = _switch_pane_state(before)
+    if state != "ready":
+        return _give_up(_Switch(state), "precheck")
+    seen = _count(before or "")
+    if not tmux_send_keys(tmux_name, command):
+        return _give_up(_Switch.SEND_FAILED, "command")
+    confirmed = False
+
+    def _look() -> Optional[_Switch]:
+        nonlocal confirmed
+        raw = tmux_capture(tmux_name, lines=_SWITCH_CAPTURE_LINES)
+        if raw is None:
+            return None
+        dialog = _open_switch_dialog(strip_ansi(raw))
+        if dialog:
+            if not confirmed and dialog[0] == title and not dialog[2] and _switch_label_matches(dialog[1], target):
+                confirmed = True
+                if not tmux_send_special_key(tmux_name, "Enter"):
+                    return _give_up(_Switch.UNCONFIRMED, "confirm_key")
+            return None
+        if _count(raw) > seen and _switch_pane_state(raw) in ("ready", "busy"):
+            return _Switch.DONE
+        return None
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        time.sleep(poll)
+        result = _look()
+        if result:
+            return result
+    was_confirmed = confirmed
+    result = _look()      # son bakış: diyalog tam şimdi açıldıysa onayla ve sonucunu bir kez daha oku
+    if result is None and confirmed and not was_confirmed:
+        time.sleep(poll)
+        result = _look()
+    return result or _give_up(_Switch.UNCONFIRMED, "timeout")
 
 
 def _encode_cwd(cwd: str) -> str:
@@ -802,65 +932,18 @@ class ClaudeProvider(CliProvider):
     _MODEL_SWITCH_TIMEOUT_SECONDS = 20.0
     _MODEL_SWITCH_POLL_SECONDS = 0.3
 
-    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> None:
-        """`/model <target_model>` CANLI session'a gönderilir; bazen (ne zaman
-        olduğu ÖNCEDEN KESTİRİLEMEZ, canlı test edildi — aynı 'meşgul' durumda
-        bile TUTARSIZ) bir "Switch model?" onay diyaloğu açılıyor (konuşma
-        cache'i kaybolacağı için). NAİF yaklaşım (gönder + SABİT bir süre
-        bekle + kayıtsız-şartsız Enter) canlı testte GERÇEK bir mesaj kaybına
-        yol açtı: dialog TAM o sabit bekleme penceresinin dışında açılınca,
-        hemen ardından gönderilen bir SONRAKİ mesaj (bu durumda wrap-up mesajı)
-        dialog'un kendisine yazılıp SESSİZCE kayboldu. Bunun yerine pane'i
-        POLL'layıp dialog'un GERÇEKTEN açıldığını (veya hiç açılmadan direkt
-        uygulandığını) DOĞRULUYOR — sadece dialog GÖRÜLÜNCE Enter gönderiyor.
+    def apply_live_model_switch(self, tmux_name: str, target_model: str) -> _Switch:
+        """`/model <target_model>` CANLI session'a gönderilir; bazen (önceden kestirilemez) bir "Switch model?" onay
+        diyaloğu açılır (konuşma önbelleği kaybolacağı için). Sabit bekleme + kör Enter canlı testte mesaj kaybettirdi:
+        diyalog pencerenin dışında açılınca sonraki mesaj diyaloğa yazıldı. Bu yüzden ekran yoklanır (`_live_switch`;
+        yakalama ANSI'li olduğundan eşleştirmeden önce temizlenir: claude başlığı kelime kelime renklendirir).
 
-        Bilinen KALAN sınır (canlı doğrulandı, kabul edilebilir bulundu):
-        dialog'un açılması, session'ın O ANKİ turu bitirmesine bağlı — bir
-        wrap-up turu bu timeout'tan (20s) UZUN sürerse (canlı testte 1m42s'e
-        kadar görüldü), dialog bu fonksiyon döndükten SONRA açılabilir ve
-        ONAYSIZ kalır. Bu ZARARSIZ bir kalıntı: dialog SONSUZA kadar geçerli
-        kalıyor (canlı doğrulandı — dakikalar sonra gönderilen tek bir Enter
-        bile temiz şekilde onaylıyor), session'ı BOZMUYOR, sadece o session
-        bir sonraki etkileşime kadar model-değişikliği bekleyen bir dialog
-        gösteriyor olabilir. Ana wrap-up mesajının kendisi bu riski TAŞIMAZ
-        (`handover.py`/`web.py`'nin çağıran kodu ayrı bir yerleşme süresiyle
-        bunu bilerek ayırıyor).
-
-        **2026-09-09'da canlı bulundu+düzeltildi:** yukarıdaki "POLL'layıp
-        GERÇEKTEN doğruluyor" iddiası YANLIŞTI — `tmux_capture(..., "-e")` ANSI
-        kodlarını KORUYOR ve claude "Switch model?" metnini "Switch" ile
-        "model?"yi AYRI renk span'ları olarak basıyor, yani ham metinde
-        `"Switch model?" in text` HİÇBİR ZAMAN eşleşmiyordu (mode-cycling'in
-        2026-09-08'de bulunan AYNI sınıf bug'ı, bkz. `tmux_backend.strip_ansi`).
-        Sonuç: dialog her açıldığında bu döngü onu asla YAKALAMIYOR, sessizce
-        `_MODEL_SWITCH_TIMEOUT_SECONDS` (20s) boyunca bekleyip en sondaki kör
-        Enter'a güveniyordu — session busy'yse (dialog bu fonksiyon `saseimplppr`
-        canlı vakasında olduğu gibi 20s'den SONRA açılırsa) bu kör Enter'ın da
-        hedefi olmuyor, switch tamamen ONAYSIZ kalıyordu. `strip_ansi` eklenince
-        dialog artık ~`_MODEL_SWITCH_POLL_SECONDS` (0.3s) içinde doğru
-        yakalanıyor — izole scratch session'da (gerçek konuşma cache'i
-        oluşturulup) canlı doğrulandı."""
-        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key, strip_ansi
-
-        if not tmux_send_keys(tmux_name, f"/model {target_model}"):
-            return
-        deadline = time.monotonic() + self._MODEL_SWITCH_TIMEOUT_SECONDS
-        dialog_confirmed = False
-        while time.monotonic() < deadline:
-            time.sleep(self._MODEL_SWITCH_POLL_SECONDS)
-            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
-            if not dialog_confirmed and "Switch model?" in text:
-                tmux_send_special_key(tmux_name, "Enter")
-                dialog_confirmed = True
-                continue
-            if "Set model to" in text or "Kept model as" in text:
-                return
-        if not dialog_confirmed:
-            # Son bir şans: dialog belki tam bu son anda açıldı. PROC-08: Enter YALNIZ diyalog ekrandaysa; eskiden kör
-            # Enter gidiyordu ve pane başka bir diyalogda (izin sorusu: ilk seçenek "Yes") bekliyorsa onu ONAYLARDI.
-            # Onaysız kalan model diyaloğu zararsız (yukarıda: sonraki tek Enter temiz onaylar).
-            if "Switch model?" in strip_ansi(tmux_capture(tmux_name, lines=20) or ""):
-                tmux_send_special_key(tmux_name, "Enter")
+        TBD#399 (27 Kas): kutuda taslak, açık diyalog, süren tur ya da okunamayan ekranda komut HİÇ gönderilmez;
+        yalnız komuttan sonra beliren sonuç satırı "bitti" sayılır; 20 sn'de doğrulanamayan geçiş `UNCONFIRMED`
+        döner ve çağıran pane'e başka metin yazmaz."""
+        return _live_switch(tmux_name, f"/model {target_model}", "Switch model?", target_model,
+                            ("Set model to", "Kept model as"),
+                            self._MODEL_SWITCH_TIMEOUT_SECONDS, self._MODEL_SWITCH_POLL_SECONDS)
 
     def handover_effort_downgrade(self, current_effort: str, target_effort: str) -> Optional[str]:
         """Handover wrap-up turu için `current_effort`, `target_effort`'un
@@ -911,109 +994,57 @@ class ClaudeProvider(CliProvider):
     _EFFORT_SWITCH_DONE_MARKERS = ("Set effort level to", "Not applied:", "exceeds the cap",
                                    "Failed to set effort level")
 
-    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> None:
-        """`/effort <target_effort>` CANLI session'a gönderilir.
+    def apply_live_effort_switch(self, tmux_name: str, target_effort: str) -> _Switch:
+        """`/effort <target_effort>` CANLI session'a gönderilir. `/effort` de `/model` gibi onay diyaloğu açabilir
+        ("Change effort level?", 2026-10-08: `claude` ikilisinin string tablosu; kullanıcı canlıda soru gördü).
+        Akış ve güvenlik kuralları `/model` ile aynı (`_live_switch`, TBD#399). Bu switch bilerek istendiği için
+        diyalog onaylanır; reddetmek `dismiss_stray_dialog()`ın işi.
 
-        **2026-10-08 düzeltme (TODO.md, kullanıcının canlı gözlemi: "model ve
-        effort degisimlerinde bazan yes no sorulari gelebiliyor. onu gorup
-        gerekirse enter yapmak gerekbiliyor"):** bu docstring ESKİDEN "`/model`'in
-        aksine immediate bir komut, onay diyaloğu açmıyor" diyordu — bu iddia
-        YANLIŞ çıktı. Doğrulama yöntemi: `strings <claude-binary> | grep` (bu
-        codebase'de `effortLevel`'in settings.json'a yazıldığını kanıtlamak için
-        de kullanılan AYNI teknik, 2.1.294 binary'sinde tekrarlandı) —
-        `apply_live_model_switch()`'in "Switch model?" metniyle AYNI string
-        bloğunda bir "Change effort level?" dialog başlığı + aynı "Yes, switch
-        to " / "No, go back" düğme metinleri bulundu. Yani `/effort` de
-        `/model` gibi gerçek bir onay diyaloğu açabiliyor; eski done-marker
-        listesi (`_EFFORT_SWITCH_DONE_MARKERS`) bu dialog'u hiç TANIMIYORDU —
-        dialog açıldığında ekranda bu 4 metinden hiçbiri yok, döngü sessizce
-        `_EFFORT_SWITCH_TIMEOUT_SECONDS` (8s) boyunca bekleyip dialog'u ONAYSIZ
-        bırakıyordu (tam kullanıcının gözlemi). Fix, `apply_live_model_switch()`'in
-        kanıtlanmış poll+confirm desenini BİREBİR tekrarlıyor: bu switch de
-        BİLEREK istenen bir değişiklik olduğu için (çağıran zaten
-        `handover_effort_downgrade()`'in kararını uyguluyor), varsayılan seçili
-        düğme "Yes, switch to ..." kabul edilerek Enter gönderiliyor — tersi
-        (reddet), kaynağı belirsiz bir dialog'u KAPATMAK isteyen
-        `dismiss_stray_dialog()`'un işi, burada değil.
-
-        ⚠ Hangi effort geçişinin (herhangi bir yükseliş? sadece `max`?) bu
-        dialog'u tetiklediği canlı doğrulanmadı — kanıt sadece binary'nin string
-        tablosu, gerçek bir tetikleme bu oturumda gözlenmedi (`/model`'in
-        `PreModelSwitch` hook'u gibi adlandırılmış bir `PreEffortSwitch` hook'u
-        binary'de YOK, yani hook-bağımlı değil — muhtemelen `/model`'in diğer
-        iki tetikleyicisinden biriyle, "yavaş+pahalı" veya cache-invalidation
-        uyarısıyla, aynı aile). Bu yüzden KOŞULSUZ her çağrıda poll ediliyor,
-        tıpkı eskisi gibi — ek maliyet yok, sadece artık bu beşinci deseni de
-        tanıyor. Son blind-Enter fallback'i `apply_live_model_switch()`'ten
-        ödünç alındı ama BU fonksiyon için canlı doğrulanmadı (mantık aynı:
-        boş input kutusuna Enter no-op olmalı, ama bu varsayım burada henüz
-        test edilmedi)."""
-        from ..tmux_backend import tmux_capture, tmux_send_keys, tmux_send_special_key, strip_ansi
-
-        if not tmux_send_keys(tmux_name, f"/effort {target_effort}"):
-            return
-        deadline = time.monotonic() + self._EFFORT_SWITCH_TIMEOUT_SECONDS
-        dialog_confirmed = False
-        while time.monotonic() < deadline:
-            time.sleep(self._EFFORT_SWITCH_POLL_SECONDS)
-            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
-            if not dialog_confirmed and "Change effort level?" in text:
-                tmux_send_special_key(tmux_name, "Enter")
-                dialog_confirmed = True
-                continue
-            if any(m in text for m in self._EFFORT_SWITCH_DONE_MARKERS):
-                return
-        if not dialog_confirmed:
-            # Son şans: dialog belki tam bu son anda açıldı. Körlemesine Enter YOK (review R-2): kullanıcı o sırada
-            # bir şey yazıyorsa Enter onu gönderirdi; yalnız dialog ekranda GÖRÜNÜYORSA onayla.
-            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
-            if "Change effort level?" in text:
-                tmux_send_special_key(tmux_name, "Enter")
+        ⚠ Hangi effort geçişinin diyaloğu açtığı canlı doğrulanmadı."""
+        return _live_switch(tmux_name, f"/effort {target_effort}", "Change effort level?", target_effort,
+                            self._EFFORT_SWITCH_DONE_MARKERS,
+                            self._EFFORT_SWITCH_TIMEOUT_SECONDS, self._EFFORT_SWITCH_POLL_SECONDS)
 
     _STRAY_DIALOG_TIMEOUT_SECONDS = 6.0
     _STRAY_DIALOG_POLL_SECONDS = 0.5
 
-    def dismiss_stray_dialog(self, tmux_name: str) -> None:
-        """`base.py`'nin dismiss_stray_dialog docstring'ine bkz. — canlı
-        bulgunun tam bağlamı orada. `apply_live_model_switch()`'le AYNI
-        strip_ansi disiplinini kullanır (o metodun 2026-09-09'da bulduğu
-        AYNI ders — ANSI renk kodları "Switch model?" metnini "Switch"/
-        "model?" diye ayrı span'lara bölüyor, ham substring arama HİÇBİR
-        ZAMAN eşleşmiyor).
+    def dismiss_stray_dialog(self, tmux_name: str) -> Optional[_Switch]:
+        """`base.py`nin docstring'ine bkz. Açık duran geçiş diyaloğunu ("Switch model?" ya da geç açılan "Change effort
+        level?") REDDEDER: imleç `Down` ile "No, go back"e indirilir, ekran YENİDEN okunur ve imleç orada ise Enter
+        basılır; sonra diyaloğun kapandığı doğrulanır. Herhangi bir adım doğrulanamazsa başka tuş yok.
 
-        `apply_live_model_switch()`'ten (Enter = ONAYLA, "Yes, switch")
-        KASITLI TERSİ: burada cursor'ı `Down`'la 2. seçeneğe ("No, go
-        back") indirip Enter — bu fonksiyonun GÖREVİ deliberate bir
-        switch'i tamamlamak değil, İSTENMEYEN/kaynağı belirsiz bir
-        dialog'u zararsızca kapatmak. Sabit `Down` (her zaman TEK bir
-        adım) ekran görüntüsünde doğrulanan 2-seçenekli düzene dayanıyor
-        ("1. Yes, switch..." / "2. No, go back") — canlı bir üçüncü
-        seçenekle karşılaşılırsa bu varsayım YANLIŞ olur, henüz o durum
-        gözlenmedi.
+        Dönen: None (diyalog görülmedi), `DONE` (kapandı), `UNCONFIRMED` (açık kalmış olabilir; günlüğe yazılır).
+        6 sn'lik kısa bekleme bilerek: toplu devirde her oturuma eklenir.
 
-        6sn'lik kısa/sınırlı bekleme BİLEREK `apply_live_model_switch()`'in
-        20sn'sinden KISA — bu, handover_faz1()'in TÜM bir batch'i işlerken
-        her session için ek bir gecikme, çok sayıda session'da toplamda
-        anlamlı bir yavaşlama olur; dialog'un GEÇ (20s+) açılması zaten
-        `apply_live_model_switch()`'in kendi "kabul edilebilir kalıntı"
-        sınırı, burası SADECE hızlı/yakın-zamanlı bir dialog'u yakalamayı
-        hedefliyor. ⚠ Canlı UÇTAN UCA doğrulanmadı (bu oturumda gerçek bir
-        stuck dialog'u yeniden üretecek bir izole test yapılmadı) — sadece
-        `apply_live_model_switch()`'ten ödünç alınan strip_ansi+poll
-        deseni kanıtlanmış, "Down+Enter'ın 2. seçeneği doğru seçtiği"
-        varsayımı ekran görüntüsünden çıkarıldı, ayrıca test edilmedi."""
+        ⚠ Gerçek claude diyaloğuyla uçtan uca doğrulanmadı."""
         from ..tmux_backend import tmux_capture, tmux_send_special_key, strip_ansi
+
+        def _read() -> Tuple[bool, Optional[Tuple[str, str, bool]]]:
+            raw = tmux_capture(tmux_name, lines=20)
+            return raw is not None, _open_switch_dialog(strip_ansi(raw or ""))
+
+        def _stuck(stage: str) -> _Switch:
+            diag_log("stray_dialog_left_open", name=tmux_name, stage=stage)
+            return _Switch.UNCONFIRMED
 
         deadline = time.monotonic() + self._STRAY_DIALOG_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            text = strip_ansi(tmux_capture(tmux_name, lines=20) or "")
-            if "Switch model?" in text:
-                # `Down` ulaşmadıysa seçili düğme hâlâ "Yes, switch": Enter reddetmek istediğimiz değişikliği onaylardı.
-                if tmux_send_special_key(tmux_name, "Down"):
+            _, dialog = _read()
+            if dialog:
+                if not dialog[2]:
+                    if not tmux_send_special_key(tmux_name, "Down"):
+                        return _stuck("down_key")
                     time.sleep(0.2)
-                    tmux_send_special_key(tmux_name, "Enter")
-                return
+                    _, moved = _read()
+                    if not moved or moved[0] != dialog[0] or not moved[2]:
+                        return _stuck("cursor")
+                if not tmux_send_special_key(tmux_name, "Enter"):
+                    return _stuck("enter_key")
+                time.sleep(self._STRAY_DIALOG_POLL_SECONDS)
+                readable, left = _read()
+                return _Switch.DONE if readable and not left else _stuck("still_open")
             time.sleep(self._STRAY_DIALOG_POLL_SECONDS)
+        return None
 
     def matches_proc(self, cmd: List[str]) -> bool:
         """Bash `^claude` anchor'ının karşılığı: argv[0]'ın basename'i 'claude'.

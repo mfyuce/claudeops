@@ -2,7 +2,7 @@
 
 #![allow(dead_code)] // iki test ikilisi farklı yardımcıları kullanır
 
-use cops_providers::{Key, Pane};
+use cops_providers::{Diag, Key, Pane};
 use serde_json::{json, Value};
 use std::cell::{Cell, RefCell};
 
@@ -34,6 +34,7 @@ impl Default for Script {
 pub struct FakePane {
     pub script: Script,
     pub log: RefCell<Vec<Value>>,
+    pub diags: RefCell<Vec<Diag>>,
     pub now: Cell<f64>,
     captures: Cell<usize>,
     key_calls: Cell<usize>,
@@ -46,6 +47,7 @@ impl FakePane {
             script,
             now,
             log: RefCell::new(Vec::new()),
+            diags: RefCell::new(Vec::new()),
             captures: Cell::new(0),
             key_calls: Cell::new(0),
         }
@@ -130,5 +132,9 @@ impl Pane for FakePane {
     fn sleep(&self, secs: f64) {
         self.push(json!(["sleep", bits(secs)]));
         self.advance(secs);
+    }
+
+    fn diag(&self, diag: &Diag) {
+        self.diags.borrow_mut().push(diag.clone());
     }
 }

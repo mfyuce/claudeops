@@ -2,13 +2,17 @@
 //! geçişi, başıboş diyalog). Python `providers/{base,claude_provider,codex_provider,copilot_provider,shell_provider,
 //! ucli_provider}.py` karşılığı.
 //!
-//! Çekirdek SAF: tmux, saat ve uyku [`Pane`] arkasındadır; gerçek uygulayıcı G9'dadır. Sözleşme `docs/rs-prov.md` G4
-//! bölümünde. Kurallar: yakalanan metin eşleştirilmeden önce [`strip_ansi`] uygulanır; onay tuşu yalnız ilgili diyalog
-//! metni yakalamada görülünce gider (kör Enter yok).
+//! Çekirdek SAF: tmux, saat, uyku ve günlük [`Pane`] arkasındadır; gerçek uygulayıcı `real/pane.rs`. Sözleşme
+//! `docs/rs-prov.md` G4 bölümünde. Kural (TBD#399): EMİN OLUNAMAYAN EKRANDA TUŞ GÖNDERİLMEZ. Komut yalnız boş ve
+//! boşta giriş kutusuna yazılır; tuş yalnız ekranın SONUNDA açık duran beklenen diyaloğa gider (kör Enter yok);
+//! sonuç tipli döner.
 
 use crate::pyfmt::py_isspace;
-use crate::{claude, copilot, Cli};
+use crate::{claude, copilot, Cli, Diag};
+use regex::Regex;
+use serde_json::json;
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 /// Literal olmayan yoldan gönderilen tuşlar (bu grubun bastıkları; serbest metin tuş adı olamaz).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,12 +46,17 @@ pub trait Pane {
     fn monotonic(&self) -> f64;
     /// `time.sleep(secs)`: [`Pane::monotonic`] en az `secs` ilerler (bekleme döngüleri buna dayanır).
     fn sleep(&self, secs: f64);
+    /// `diag_log` (en iyi çaba).
+    fn diag(&self, diag: &Diag);
 }
 
+use cops_tmux::input_box;
 /// Python `tmux_backend.strip_ansi` (SGR + BEL ya da ST ile biten OSC): tek kaynak `cops-tmux`.
 pub use cops_tmux::strip_ansi;
 
-/// Canlı geçişte yakalanan geçmiş satırı sayısı.
+/// Canlı geçişte yakalanan geçmiş satırı: komuttan ÖNCEKİ sonuç satırları sayılıp yeni sayılmasın.
+pub const SWITCH_CAPTURE_LINES: u32 = 200;
+/// Başıboş diyalog taramasında yakalanan geçmiş satırı.
 pub const DIALOG_CAPTURE_LINES: u32 = 20;
 pub const MODEL_SWITCH_TIMEOUT_SECONDS: f64 = 20.0;
 pub const MODEL_SWITCH_POLL_SECONDS: f64 = 0.3;
@@ -55,7 +64,7 @@ pub const EFFORT_SWITCH_TIMEOUT_SECONDS: f64 = 8.0;
 pub const EFFORT_SWITCH_POLL_SECONDS: f64 = 0.3;
 pub const STRAY_DIALOG_TIMEOUT_SECONDS: f64 = 6.0;
 pub const STRAY_DIALOG_POLL_SECONDS: f64 = 0.5;
-/// `Down` ile `Enter` arasındaki bekleme.
+/// `Down` ile ekranın yeniden okunması arasındaki bekleme.
 pub const STRAY_DIALOG_KEY_GAP_SECONDS: f64 = 0.2;
 
 pub const MODEL_SWITCH_DIALOG: &str = "Switch model?";
@@ -68,22 +77,224 @@ pub const EFFORT_SWITCH_DONE_MARKERS: [&str; 4] = [
     "Failed to set effort level",
 ];
 
-/// Canlı geçişin nasıl bittiği (Python None döner; çağıran günlük ve karar için kullanır). `MarkerSeen` sonucu
-/// DOĞRULAMAZ: sonuç metni yakalamadaki eski bir satır da olabilir.
+const SWITCH_GUIDE_MAX: usize = 2;
+const SWITCH_TITLE_WINDOW: usize = 15;
+const BOX_FOOTER_MAX: usize = 12;
+const BUSY_TAIL_LINES: usize = 12;
+const BOX_RULE: &str = "────";
+
+/// Sabit desen. `\s` yerine `[\s\x1c-\x1f]`: Python `\s` U+001C..U+001F'i de boşluk sayar.
+fn pattern(p: &str) -> Regex {
+    Regex::new(p).expect("sabit desen")
+}
+
+static SWITCH_YES_RE: LazyLock<Regex> = LazyLock::new(|| {
+    pattern(
+        r"^(?P<ptr>❯[\s\x1c-\x1f]*)?1\.[\s\x1c-\x1f]*Yes, switch to (?P<label>[^\s\x1c-\x1f].*)$",
+    )
+});
+static SWITCH_NO_RE: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"^(?P<ptr>❯[\s\x1c-\x1f]*)?2\.[\s\x1c-\x1f]*No, go back$"));
+static SWITCH_GUIDE_RE: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"(?i)enter to confirm|esc to cancel"));
+static FOOTER_MENU_RE: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"^(?:❯|[>›]?[\s\x1c-\x1f]*\d\.[\s\x1c-\x1f])"));
+
+/// Canlı geçişin nasıl bittiği (Python `_Switch`; `Unsupported` = Python None).
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchOutcome {
     /// Bu CLI canlı geçiş yapmaz: hiçbir şey gönderilmedi.
     Unsupported,
-    /// Komut gönderilemedi: bekleme yok, başka tuş yok.
+    /// claude sonucu yazdı (uyguladı ya da reddetti) ve giriş kutusu hazır. `confirmed`: diyaloğa Enter basıldı.
+    Done { confirmed: bool },
+    /// Tur sürüyor: komut GÖNDERİLMEDİ.
+    Busy,
+    /// Giriş kutusunda yazılı metin: gönderilmedi.
+    Draft,
+    /// Geçiş diyaloğu zaten açık: gönderilmedi.
+    DialogOpen,
+    /// Ekran okunamadı ya da boş giriş kutusu görülmedi: gönderilmedi.
+    Unreadable,
+    /// Komut gönderilemedi (metin kutuda kalmış olabilir): bekleme yok, tuş yok.
     SendFailed,
-    /// Sonuç metni görüldü. `confirmed`: onay diyaloğuna Enter basıldı.
-    MarkerSeen { confirmed: bool },
-    /// Süre doldu. `confirmed`: onay diyaloğuna (döngüde ya da son bakışta) Enter basıldı.
-    TimedOut { confirmed: bool },
+    /// Gönderildi ama sonuç doğrulanamadı ya da diyalog açık kaldı.
+    Unconfirmed { confirmed: bool },
 }
 
-struct Switch {
+impl SwitchOutcome {
+    /// Bundan sonra pane'e başka metin yazılabilir mi (Python `handover._SWITCH_SAFE`).
+    pub fn safe_to_type(self) -> bool {
+        matches!(
+            self,
+            SwitchOutcome::Unsupported | SwitchOutcome::Done { .. } | SwitchOutcome::Busy
+        )
+    }
+
+    /// Python değeri (`Unsupported` = None).
+    pub fn as_str(self) -> Option<&'static str> {
+        Some(match self {
+            SwitchOutcome::Unsupported => return None,
+            SwitchOutcome::Done { .. } => "done",
+            SwitchOutcome::Busy => "busy",
+            SwitchOutcome::Draft => "draft",
+            SwitchOutcome::DialogOpen => "dialog",
+            SwitchOutcome::Unreadable => "unreadable",
+            SwitchOutcome::SendFailed => "send_failed",
+            SwitchOutcome::Unconfirmed { .. } => "unconfirmed",
+        })
+    }
+}
+
+/// [`Cli::dismiss_stray_dialog`] sonucu (Python None / `DONE` / `UNCONFIRMED`).
+#[must_use]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DismissOutcome {
+    /// Geçiş diyaloğu görülmedi (ya da bu CLI'da yok).
+    NotSeen,
+    /// Reddedildi ve kapandığı doğrulandı.
+    Closed,
+    /// Açık kalmış olabilir (günlüğe yazılır).
+    LeftOpen,
+}
+
+impl DismissOutcome {
+    pub fn as_str(self) -> Option<&'static str> {
+        match self {
+            DismissOutcome::NotSeen => None,
+            DismissOutcome::Closed => Some("done"),
+            DismissOutcome::LeftOpen => Some("unconfirmed"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct SwitchDialog {
+    title: &'static str,
+    label: String,
+    on_no: bool,
+}
+
+fn trim(s: &str) -> &str {
+    s.trim_matches(py_isspace)
+}
+
+/// ANSI'siz ekranın dolu satırları: kenar çizgisi atılmış; yalnız çerçeveden oluşan satır sayılmaz.
+fn screen_rows(text: &str) -> Vec<&str> {
+    text.split('\n')
+        .map(|l| trim(trim(l).trim_matches('│')))
+        .filter(|r| {
+            !r.trim_matches(['│', '╭', '╮', '╰', '╯', '─', ' '])
+                .is_empty()
+        })
+        .collect()
+}
+
+/// ANSI'siz ekranın SONUNDA açık duran geçiş diyaloğu: iki seçenek ardışık, tam olarak birinde imleç, altlarında
+/// yalnız yardım satırı; konuşmada geçen aynı yazı diyalog değildir.
+fn open_switch_dialog(text: &str) -> Option<SwitchDialog> {
+    let mut rows = screen_rows(text);
+    for _ in 0..SWITCH_GUIDE_MAX {
+        match rows.last() {
+            Some(r) if SWITCH_GUIDE_RE.is_match(r) && !FOOTER_MENU_RE.is_match(r) => rows.pop(),
+            _ => break,
+        };
+    }
+    let [.., yes, no] = rows.as_slice() else {
+        return None;
+    };
+    if rows.len() < 3 {
+        return None;
+    }
+    let (yes, no) = (SWITCH_YES_RE.captures(yes)?, SWITCH_NO_RE.captures(no)?);
+    let on_no = no.name("ptr").is_some();
+    if yes.name("ptr").is_some() == on_no {
+        return None;
+    }
+    for row in rows[..rows.len() - 2]
+        .iter()
+        .rev()
+        .take(SWITCH_TITLE_WINDOW)
+    {
+        if let Some(title) = [MODEL_SWITCH_DIALOG, EFFORT_SWITCH_DIALOG]
+            .into_iter()
+            .find(|t| t == row)
+        {
+            return Some(SwitchDialog {
+                title,
+                label: yes["label"].to_string(),
+                on_no,
+            });
+        }
+        if row.starts_with('❯') {
+            break;
+        }
+    }
+    None
+}
+
+/// Diyaloğun adı istenen hedef mi ("Sonnet 5.5" ~ `sonnet`, "high" ~ `high`; "xhigh" `high` DEĞİL).
+fn label_matches(label: &str, target: &str) -> bool {
+    let norm = |x: &str| {
+        let s: String = x
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            .collect();
+        s.strip_prefix("claude").map(String::from).unwrap_or(s)
+    };
+    let (a, b) = (norm(label), norm(target));
+    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.ends_with(&a))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaneState {
+    Ready,
+    Busy,
+    Draft,
+    Dialog,
+    Unreadable,
+}
+
+/// `capture-pane -e` ekranının durumu. Soluk/gri öneri yazılı metin sayılmaz (`cops_tmux::input_box`).
+fn pane_state(raw: Option<&str>) -> PaneState {
+    let Some(raw) = raw.filter(|r| !r.is_empty()) else {
+        return PaneState::Unreadable;
+    };
+    let text = strip_ansi(raw);
+    if open_switch_dialog(&text).is_some() {
+        return PaneState::Dialog;
+    }
+    let Some(input) = input_box(raw) else {
+        return PaneState::Unreadable;
+    };
+    let lines: Vec<&str> = text.split('\n').collect();
+    let Some(last_rule) = lines.iter().rposition(|l| l.contains(BOX_RULE)) else {
+        return PaneState::Unreadable;
+    };
+    let below = lines[last_rule + 1..].join("\n");
+    let footer = screen_rows(&below);
+    if footer.len() > BOX_FOOTER_MAX
+        || footer
+            .iter()
+            .any(|r| FOOTER_MENU_RE.is_match(r) || SWITCH_GUIDE_RE.is_match(r))
+    {
+        // kutu eski bir kare: altında başka bir menü/diyalog var
+        return PaneState::Unreadable;
+    }
+    if !trim(&input.typed.replace(['❯', '│'], "")).is_empty() {
+        return PaneState::Draft;
+    }
+    let rows = screen_rows(&text);
+    let tail = &rows[rows.len().saturating_sub(BUSY_TAIL_LINES)..];
+    if tail.iter().any(|r| r.contains(claude::BUSY_STATUS_PATTERN)) {
+        return PaneState::Busy;
+    }
+    PaneState::Ready
+}
+
+struct Switch<'a> {
+    target: &'a str,
     command: String,
     dialog: &'static str,
     done: &'static [&'static str],
@@ -91,35 +302,114 @@ struct Switch {
     poll: f64,
 }
 
-fn screen(pane: &dyn Pane, name: &str) -> String {
-    strip_ansi(&pane.capture(name, DIALOG_CAPTURE_LINES).unwrap_or_default())
+struct Run<'a> {
+    pane: &'a dyn Pane,
+    name: &'a str,
+    switch: Switch<'a>,
+    /// Komuttan önceki ekrandaki sonuç satırı sayısı.
+    seen: usize,
+    confirmed: bool,
 }
 
-fn run_switch(pane: &dyn Pane, name: &str, s: &Switch) -> SwitchOutcome {
-    if !pane.send_text(name, &s.command, 0.0) {
-        return SwitchOutcome::SendFailed;
+impl Run<'_> {
+    fn count(&self, raw: &str) -> usize {
+        let text = strip_ansi(raw);
+        self.switch
+            .done
+            .iter()
+            .map(|m| text.matches(m).count())
+            .sum()
     }
-    let deadline = pane.monotonic() + s.timeout;
-    let mut confirmed = false;
+
+    fn give_up(&self, result: SwitchOutcome, stage: &str) -> SwitchOutcome {
+        self.pane.diag(&Diag {
+            event: "live_switch_not_done",
+            fields: vec![
+                ("name", json!(self.name)),
+                ("command", json!(&self.switch.command)),
+                ("result", json!(result.as_str())),
+                ("stage", json!(stage)),
+            ],
+        });
+        result
+    }
+
+    /// Bir yoklama: beklenen diyaloğu BİR kez onaylar ya da yeni sonuç satırı + hazır kutu görür.
+    fn look(&mut self) -> Option<SwitchOutcome> {
+        let raw = self.pane.capture(self.name, SWITCH_CAPTURE_LINES)?;
+        if let Some(d) = open_switch_dialog(&strip_ansi(&raw)) {
+            if !self.confirmed
+                && d.title == self.switch.dialog
+                && !d.on_no
+                && label_matches(&d.label, self.switch.target)
+            {
+                self.confirmed = true;
+                if !self.pane.send_key(self.name, Key::Enter) {
+                    let out = SwitchOutcome::Unconfirmed { confirmed: true };
+                    return Some(self.give_up(out, "confirm_key"));
+                }
+            }
+            return None;
+        }
+        (self.count(&raw) > self.seen
+            && matches!(pane_state(Some(&raw)), PaneState::Ready | PaneState::Busy))
+        .then_some(SwitchOutcome::Done {
+            confirmed: self.confirmed,
+        })
+    }
+}
+
+fn run_switch(pane: &dyn Pane, name: &str, switch: Switch<'_>) -> SwitchOutcome {
+    let mut run = Run {
+        pane,
+        name,
+        switch,
+        seen: 0,
+        confirmed: false,
+    };
+    let before = pane.capture(name, SWITCH_CAPTURE_LINES);
+    let refused = match pane_state(before.as_deref()) {
+        PaneState::Ready => None,
+        PaneState::Busy => Some(SwitchOutcome::Busy),
+        PaneState::Draft => Some(SwitchOutcome::Draft),
+        PaneState::Dialog => Some(SwitchOutcome::DialogOpen),
+        PaneState::Unreadable => Some(SwitchOutcome::Unreadable),
+    };
+    if let Some(out) = refused {
+        return run.give_up(out, "precheck");
+    }
+    run.seen = before.as_deref().map_or(0, |raw| run.count(raw));
+    if !pane.send_text(name, &run.switch.command, 0.0) {
+        return run.give_up(SwitchOutcome::SendFailed, "command");
+    }
+    let deadline = pane.monotonic() + run.switch.timeout;
     while pane.monotonic() < deadline {
-        pane.sleep(s.poll);
-        let text = screen(pane, name);
-        if !confirmed && text.contains(s.dialog) {
-            // Python gibi: Enter sonucu bakılmaz, ikinci kez basılmaz.
-            pane.send_key(name, Key::Enter);
-            confirmed = true;
-            continue;
-        }
-        if s.done.iter().any(|m| text.contains(m)) {
-            return SwitchOutcome::MarkerSeen { confirmed };
+        pane.sleep(run.switch.poll);
+        if let Some(out) = run.look() {
+            return out;
         }
     }
-    // Son bakış: diyalog tam şimdi açıldıysa onayla; görünmüyorsa Enter YOK.
-    if !confirmed && screen(pane, name).contains(s.dialog) {
-        pane.send_key(name, Key::Enter);
-        confirmed = true;
+    // Son bakış: diyalog tam şimdi açıldıysa onayla ve sonucunu bir kez daha oku.
+    let was_confirmed = run.confirmed;
+    let mut out = run.look();
+    if out.is_none() && run.confirmed && !was_confirmed {
+        pane.sleep(run.switch.poll);
+        out = run.look();
     }
-    SwitchOutcome::TimedOut { confirmed }
+    out.unwrap_or_else(|| {
+        let failed = SwitchOutcome::Unconfirmed {
+            confirmed: run.confirmed,
+        };
+        run.give_up(failed, "timeout")
+    })
+}
+
+fn read_dialog(pane: &dyn Pane, name: &str) -> (bool, Option<SwitchDialog>) {
+    let raw = pane.capture(name, DIALOG_CAPTURE_LINES);
+    let dialog = raw
+        .as_deref()
+        .and_then(|r| open_switch_dialog(&strip_ansi(r)));
+    (raw.is_some(), dialog)
 }
 
 impl Cli {
@@ -159,8 +449,9 @@ impl Cli {
         (at(current)? > at(target)?).then_some(target)
     }
 
-    /// `/model <target>` gönderir; "Switch model?" görülürse onaylar. Çağıran `target`ı
-    /// [`Cli::handover_model_downgrade`]den alır (serbest metin verme: komut satırına aynen girer).
+    /// `/model <target>` gönderir; beklenen "Switch model?" diyaloğu görülürse onaylar. Çağıran `target`ı
+    /// [`Cli::handover_model_downgrade`]den alır (serbest metin verme: komut satırına aynen girer). Sonuç
+    /// [`SwitchOutcome::safe_to_type`] değilse pane'e başka metin yazma.
     pub fn apply_live_model_switch(
         self,
         pane: &dyn Pane,
@@ -171,17 +462,18 @@ impl Cli {
             return SwitchOutcome::Unsupported;
         }
         let s = Switch {
+            target,
             command: format!("/model {target}"),
             dialog: MODEL_SWITCH_DIALOG,
             done: &MODEL_SWITCH_DONE_MARKERS,
             timeout: MODEL_SWITCH_TIMEOUT_SECONDS,
             poll: MODEL_SWITCH_POLL_SECONDS,
         };
-        run_switch(pane, name, &s)
+        run_switch(pane, name, s)
     }
 
-    /// `/effort <target>` gönderir; "Change effort level?" görülürse onaylar. `target` için
-    /// [`Cli::apply_live_model_switch`] notu geçerli.
+    /// `/effort <target>` gönderir; beklenen "Change effort level?" diyaloğu görülürse onaylar. `target` ve sonuç
+    /// için [`Cli::apply_live_model_switch`] notu geçerli.
     pub fn apply_live_effort_switch(
         self,
         pane: &dyn Pane,
@@ -192,32 +484,55 @@ impl Cli {
             return SwitchOutcome::Unsupported;
         }
         let s = Switch {
+            target,
             command: format!("/effort {target}"),
             dialog: EFFORT_SWITCH_DIALOG,
             done: &EFFORT_SWITCH_DONE_MARKERS,
             timeout: EFFORT_SWITCH_TIMEOUT_SECONDS,
             poll: EFFORT_SWITCH_POLL_SECONDS,
         };
-        run_switch(pane, name, &s)
+        run_switch(pane, name, s)
     }
 
-    /// Devir mesajından sonra kısa süre bekler; "Switch model?" görülürse REDDEDER (`Down`, `Enter`). `Down`
-    /// gönderilemezse Enter yok (seçili düğme "Yes").
-    pub fn dismiss_stray_dialog(self, pane: &dyn Pane, name: &str) {
+    /// Devir mesajından sonra (ya da geçiş güvenli bitmediğinde) kısa süre bekler; açık duran geçiş diyaloğunu
+    /// (model ya da effort) REDDEDER: `Down`, ekranı yeniden oku, imleç "No"daysa `Enter`, kapandığını doğrula.
+    /// Herhangi bir adım doğrulanamazsa başka tuş yok.
+    pub fn dismiss_stray_dialog(self, pane: &dyn Pane, name: &str) -> DismissOutcome {
         if self != Cli::Claude {
-            return;
+            return DismissOutcome::NotSeen;
         }
+        let stuck = |stage: &str| {
+            pane.diag(&Diag {
+                event: "stray_dialog_left_open",
+                fields: vec![("name", json!(name)), ("stage", json!(stage))],
+            });
+            DismissOutcome::LeftOpen
+        };
         let deadline = pane.monotonic() + STRAY_DIALOG_TIMEOUT_SECONDS;
         while pane.monotonic() < deadline {
-            if screen(pane, name).contains(MODEL_SWITCH_DIALOG) {
-                if pane.send_key(name, Key::Down) {
+            if let (_, Some(dialog)) = read_dialog(pane, name) {
+                if !dialog.on_no {
+                    if !pane.send_key(name, Key::Down) {
+                        return stuck("down_key");
+                    }
                     pane.sleep(STRAY_DIALOG_KEY_GAP_SECONDS);
-                    pane.send_key(name, Key::Enter);
+                    match read_dialog(pane, name).1 {
+                        Some(m) if m.title == dialog.title && m.on_no => {}
+                        _ => return stuck("cursor"),
+                    }
                 }
-                return;
+                if !pane.send_key(name, Key::Enter) {
+                    return stuck("enter_key");
+                }
+                pane.sleep(STRAY_DIALOG_POLL_SECONDS);
+                return match read_dialog(pane, name) {
+                    (true, None) => DismissOutcome::Closed,
+                    _ => stuck("still_open"),
+                };
             }
             pane.sleep(STRAY_DIALOG_POLL_SECONDS);
         }
+        DismissOutcome::NotSeen
     }
 
     /// Metin yazımı ile Enter arasındaki bekleme (saniye).

@@ -59,7 +59,7 @@ from .. import dist_check as _dist_check
 from .. import extensions, read_ticket, term_dedup, tunnel_proto, usage_poll, ws_ticket
 from ..discovery import find_sessions, duplicates
 from ..guard import guard_lock
-from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, apply_handover_downgrades
+from ..handover import HANDOVER_MSG_DEFAULT, HANDOVER_MSG_DEFAULT_EN, HandoverDowngrade, apply_handover_downgrades
 from ..hosts import LOCAL_HOST_NAME, get_host, save_host, remove_host, list_hosts_public
 from .. import build_info
 from .. import authz
@@ -268,6 +268,11 @@ ERR = {
                              "en": "{name}: failed to send the compact command (tmux session may be gone)"},
     "handover_send_failed": {"tr": "{name}: wrap-up mesajı gönderilemedi (tmux session gitmiş olabilir)",
                               "en": "{name}: failed to send the wrap-up message (tmux session may be gone)"},
+    "handover_switch_blocked": {"tr": "{name}: model/effort geçişi güvenli bitmedi ({reason}); ekranda diyalog ya da "
+                                      "yazılı taslak olabilir, wrap-up mesajı GÖNDERİLMEDİ (terminalden kontrol edin)",
+                                 "en": "{name}: the model/effort switch did not finish safely ({reason}); a dialog or "
+                                       "a typed draft may be on screen, the wrap-up message was NOT sent (check the "
+                                       "terminal)"},
     "compact_timeout": {"tr": "{name}: compact {timeout:.0f}s içinde tamamlanmadı — session meşgul/kuyrukta "
                                "kalmış olabilir, birazdan kendiliğinden bitebilir, terminalden kontrol edin",
                          "en": "{name}: compact didn't finish within {timeout:.0f}s — the session may still be "
@@ -3378,8 +3383,11 @@ def _handover(name: str, lang: str = "tr", exact: bool = False, extra: str = "")
     # ÖNBELLEK durumuna göre karar (TBD#87, 2026-10-16: sıcaksa model bırakılır,
     # soğuksa Sonnet'e düşülür, effort hep high), model'den SONRA effort (`/model`
     # effort'u yeni modele göre yeniden ayarlayabilir).
-    apply_handover_downgrades(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid,
-                              procs[0].model, procs[0].effort, pid=procs[0].pid)
+    downgrade = apply_handover_downgrades(provider, name, procs[0].cli, procs[0].cwd, procs[0].sid,
+                                          procs[0].model, procs[0].effort, pid=procs[0].pid)
+    if downgrade.blocked:      # TBD#399: diyalog/taslak varken mesaj YAZILMAZ; açık geçiş diyaloğu reddedilir
+        provider.dismiss_stray_dialog(name)
+        return _err(lang, "handover_switch_blocked", name=name, reason=downgrade.blocked)
 
     sent = tmux_send_keys(name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
 

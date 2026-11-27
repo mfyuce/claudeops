@@ -916,11 +916,10 @@ def op_g4_pane(a):
             ret = p.apply_live_effort_switch(a["name"], a["target"])
         else:
             ret = p.dismiss_stray_dialog(a["name"])
-        assert ret is None
     finally:
         (tmux_backend.tmux_send_keys, tmux_backend.tmux_send_special_key, tmux_backend.tmux_capture,
          claude_p.time) = saved
-    return {"log": log, "end": _bits(now[0])}
+    return {"log": log, "end": _bits(now[0]), "outcome": getattr(ret, "value", ret)}
 
 
 OPS = {k[3:]: v for k, v in globals().items() if k.startswith("op_")}

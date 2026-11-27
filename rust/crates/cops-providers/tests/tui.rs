@@ -4,77 +4,167 @@
 #[path = "parity/fake_pane.rs"]
 mod fake_pane;
 
-use cops_providers::{Cli, SwitchOutcome};
+use cops_providers::{Cli, DismissOutcome, SwitchOutcome};
 use fake_pane::{FakePane, Script};
 
-const PERMISSION: &str = "Do you want to proceed?\n❯ 1. Yes\n  2. No";
+const PERMISSION: &str = " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
+
+fn rule() -> String {
+    "─".repeat(40)
+}
+
+fn boxed(inner: &str, history: &str) -> String {
+    let r = rule();
+    format!("{history}\n\n{r}\n❯\u{a0}{inner}\n{r}\n  ⏵⏵ auto mode on")
+}
+
+fn idle() -> String {
+    boxed("", "")
+}
+
+fn result(text: &str) -> String {
+    boxed("", &format!("  ⎿  {text}"))
+}
+
+fn dialog(title: &str, label: &str, on_no: bool) -> String {
+    let (yes, no) = if on_no { (" ", "❯") } else { ("❯", " ") };
+    format!(
+        "{}\n {title}\n\n {yes} 1. Yes, switch to {label}\n {no} 2. No, go back\n\n Enter to confirm · Esc to cancel\n",
+        rule()
+    )
+}
+
+fn model_dialog() -> String {
+    dialog(MODEL, "Sonnet 5.5", false)
+}
+
+const MODEL: &str = "Switch model?";
+const EFFORT: &str = "Change effort level?";
+
+fn pane(screens: &[&str]) -> FakePane {
+    FakePane::screens(screens)
+}
 
 fn model(pane: &FakePane) -> SwitchOutcome {
-    Cli::Claude.apply_live_model_switch(pane, "s", "claude-sonnet-5-5")
+    Cli::Claude.apply_live_model_switch(pane, "s", "sonnet")
 }
 
 fn effort(pane: &FakePane) -> SwitchOutcome {
     Cli::Claude.apply_live_effort_switch(pane, "s", "high")
 }
 
-// test_proc08_model_switch_no_blind_enter.py
+const UNCONFIRMED: SwitchOutcome = SwitchOutcome::Unconfirmed { confirmed: false };
+
+// test_proc08_model_switch_no_blind_enter.py, test_tbd399_live_switch.py
 
 #[test]
-fn permission_dialog_is_not_confirmed() {
-    let p = FakePane::screens(&[PERMISSION]);
-    assert_eq!(model(&p), SwitchOutcome::TimedOut { confirmed: false });
+fn permission_dialog_is_never_confirmed_even_with_switch_text_above_it() {
+    let screen = format!("  ⎿  {MODEL}\n  ⎿  {EFFORT}\n{PERMISSION}");
+    for run in [model, effort] {
+        let p = pane(&[&idle(), &screen]);
+        assert_eq!(run(&p), UNCONFIRMED);
+        assert!(p.keys().is_empty());
+    }
+    let p = pane(&[&screen]);
+    assert_eq!(
+        Cli::Claude.dismiss_stray_dialog(&p, "s"),
+        DismissOutcome::NotSeen
+    );
     assert!(p.keys().is_empty());
-    assert_eq!(p.texts(), ["/model claude-sonnet-5-5"]);
 }
 
 #[test]
-fn switch_dialog_is_confirmed_once() {
-    let p = FakePane::screens(&["Switch model?\n❯ Yes", "Set model to sonnet"]);
-    assert_eq!(model(&p), SwitchOutcome::MarkerSeen { confirmed: true });
+fn switch_dialog_is_confirmed_once_and_waits_for_a_new_result() {
+    let applied = result("Set model to Sonnet 5.5");
+    let p = pane(&[&idle(), &model_dialog(), &applied]);
+    assert_eq!(model(&p), SwitchOutcome::Done { confirmed: true });
     assert_eq!(p.keys(), ["Enter"]);
+    assert_eq!(p.texts(), ["/model sonnet"]);
+}
+
+#[test]
+fn an_old_result_line_does_not_count() {
+    let old = result("Set effort level to high");
+    let p = pane(&[&old]);
+    assert_eq!(effort(&p), UNCONFIRMED);
+    assert!(p.keys().is_empty());
+    assert_eq!(p.diags.borrow()[0].event, "live_switch_not_done");
 }
 
 #[test]
 fn applied_without_dialog_sends_no_key() {
-    let p = FakePane::screens(&["Set model to sonnet"]);
-    assert_eq!(model(&p), SwitchOutcome::MarkerSeen { confirmed: false });
-    assert!(p.keys().is_empty());
-    assert_eq!(p.calls("capture"), 1);
-}
-
-// test_live_model_effort.py::EffortSwitchNoBlindEnter
-
-#[test]
-fn effort_without_dialog_sends_no_enter() {
-    let p = FakePane::screens(&["kullanıcı yazıyor..."]);
-    assert_eq!(effort(&p), SwitchOutcome::TimedOut { confirmed: false });
-    assert!(p.keys().is_empty());
-    assert_eq!(p.texts(), ["/effort high"]);
+    let p = pane(&[&idle(), &result("Set model to Sonnet 5.5")]);
+    assert_eq!(model(&p), SwitchOutcome::Done { confirmed: false });
+    assert!(p.keys().is_empty() && p.diags.borrow().is_empty());
 }
 
 #[test]
-fn effort_dialog_is_confirmed_once_and_waits_for_a_done_marker() {
-    let p = FakePane::screens(&[
-        "Change effort level?",
-        "Change effort level?",
-        "Set effort level to high",
+fn only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed() {
+    for screen in [
+        dialog(EFFORT, "high", false),
+        dialog(MODEL, "Opus 5.5", false),
+        dialog(MODEL, "Sonnet 5.5", true),
+        format!("{}  3. Other", model_dialog()),
+        format!("{}\n{}", model_dialog(), idle()),
+    ] {
+        let p = pane(&[&idle(), &screen]);
+        assert_eq!(model(&p), UNCONFIRMED, "{screen}");
+        assert!(p.keys().is_empty(), "{screen}");
+    }
+    let p = pane(&[&idle(), &dialog(EFFORT, "xhigh", false)]);
+    assert_eq!(effort(&p), UNCONFIRMED);
+    assert!(p.keys().is_empty());
+}
+
+#[test]
+fn draft_dialog_busy_and_unknown_screens_get_no_command() {
+    let busy = format!("{} · esc to interrupt", idle());
+    for (screen, want) in [
+        (boxed("yarım", ""), SwitchOutcome::Draft),
+        (model_dialog(), SwitchOutcome::DialogOpen),
+        (PERMISSION.to_string(), SwitchOutcome::Unreadable),
+        (
+            format!("{}\n{PERMISSION}", idle()),
+            SwitchOutcome::Unreadable,
+        ),
+        (String::new(), SwitchOutcome::Unreadable),
+        (busy, SwitchOutcome::Busy),
+    ] {
+        for run in [model, effort] {
+            let p = pane(&[&screen]);
+            assert_eq!(run(&p), want, "{screen}");
+            assert!(p.texts().is_empty() && p.keys().is_empty(), "{screen}");
+            assert_eq!(want.safe_to_type(), want == SwitchOutcome::Busy);
+        }
+    }
+}
+
+#[test]
+fn a_dim_suggestion_is_not_a_draft() {
+    let p = pane(&[
+        &boxed("\x1b[2mcommit this\x1b[22m", ""),
+        &result("Set model to Sonnet 5.5"),
     ]);
-    assert_eq!(effort(&p), SwitchOutcome::MarkerSeen { confirmed: true });
+    assert_eq!(model(&p), SwitchOutcome::Done { confirmed: false });
+}
+
+#[test]
+fn a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated() {
+    let p = FakePane::new(Script {
+        screens: vec![Some(idle()), Some(model_dialog())],
+        keys: vec![false],
+        ..Script::default()
+    });
+    assert_eq!(model(&p), SwitchOutcome::Unconfirmed { confirmed: true });
+    assert!(p.elapsed() < 1.0);
+    assert_eq!(p.keys(), ["Enter"]);
+    let p = pane(&[&idle(), &model_dialog()]);
+    assert_eq!(model(&p), SwitchOutcome::Unconfirmed { confirmed: true });
     assert_eq!(p.keys(), ["Enter"]);
 }
 
 #[test]
-fn each_switch_ignores_the_other_dialog() {
-    let p = FakePane::screens(&["Change effort level?"]);
-    assert_eq!(model(&p), SwitchOutcome::TimedOut { confirmed: false });
-    assert!(p.keys().is_empty());
-    let p = FakePane::screens(&["Switch model?"]);
-    assert_eq!(effort(&p), SwitchOutcome::TimedOut { confirmed: false });
-    assert!(p.keys().is_empty());
-}
-
-#[test]
-fn every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read() {
+fn every_wait_ends_on_its_budget_even_when_the_pane_stops_being_readable() {
     for (budget, step, run) in [
         (
             20.0,
@@ -86,9 +176,19 @@ fn every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read() {
         (8.0, 0.3, |p| {
             let _ = effort(p);
         }),
-        (6.0, 0.5, |p| Cli::Claude.dismiss_stray_dialog(p, "s")),
+        (6.0, 0.5, |p| {
+            let _ = Cli::Claude.dismiss_stray_dialog(p, "s");
+        }),
     ] {
-        let p = FakePane::new(Script::default());
+        let screens = if budget == 6.0 {
+            vec![None]
+        } else {
+            vec![Some(idle()), None]
+        };
+        let p = FakePane::new(Script {
+            screens,
+            ..Script::default()
+        });
         run(&p);
         assert!(
             p.elapsed() >= budget && p.elapsed() < budget + 2.0 * step,
@@ -101,36 +201,74 @@ fn every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read() {
 
 #[test]
 fn a_failed_send_returns_without_waiting() {
-    let p = FakePane::new(Script {
-        send_ok: false,
-        ..Script::default()
-    });
-    assert_eq!(model(&p), SwitchOutcome::SendFailed);
-    assert_eq!(effort(&p), SwitchOutcome::SendFailed);
-    assert_eq!(
-        (p.calls("capture"), p.calls("sleep"), p.calls("key")),
-        (0, 0, 0)
-    );
+    for run in [model, effort] {
+        let p = FakePane::new(Script {
+            screens: vec![Some(idle())],
+            send_ok: false,
+            ..Script::default()
+        });
+        assert_eq!(run(&p), SwitchOutcome::SendFailed);
+        assert_eq!((p.calls("sleep"), p.calls("key")), (0, 0));
+    }
+}
+
+// test_rsprov_g4_dismiss.py, test_tbd399_live_switch.py
+
+#[test]
+fn late_model_and_effort_dialogs_are_refused_after_rereading_the_screen() {
+    for (title, label) in [(MODEL, "Sonnet 5.5"), (EFFORT, "high")] {
+        let p = pane(&[
+            &dialog(title, label, false),
+            &dialog(title, label, true),
+            &idle(),
+        ]);
+        assert_eq!(
+            Cli::Claude.dismiss_stray_dialog(&p, "s"),
+            DismissOutcome::Closed
+        );
+        assert_eq!(p.keys(), ["Down", "Enter"]);
+    }
 }
 
 #[test]
-fn stray_dialog_is_refused_and_a_failed_down_sends_no_enter() {
-    let p = FakePane::screens(&["Switch model?"]);
-    Cli::Claude.dismiss_stray_dialog(&p, "s");
-    assert_eq!(p.keys(), ["Down", "Enter"]);
+fn no_enter_unless_the_cursor_is_seen_on_no() {
+    for after_down in [
+        model_dialog(),
+        PERMISSION.to_string(),
+        dialog(EFFORT, "high", true),
+        idle(),
+    ] {
+        let p = pane(&[&model_dialog(), &after_down]);
+        assert_eq!(
+            Cli::Claude.dismiss_stray_dialog(&p, "s"),
+            DismissOutcome::LeftOpen
+        );
+        assert_eq!(p.keys(), ["Down"], "{after_down}");
+        assert_eq!(p.diags.borrow()[0].event, "stray_dialog_left_open");
+    }
     let p = FakePane::new(Script {
-        screens: vec![Some("Switch model?".into())],
+        screens: vec![Some(model_dialog())],
         keys: vec![false],
         ..Script::default()
     });
-    Cli::Claude.dismiss_stray_dialog(&p, "s");
+    assert_eq!(
+        Cli::Claude.dismiss_stray_dialog(&p, "s"),
+        DismissOutcome::LeftOpen
+    );
     assert_eq!(p.keys(), ["Down"]);
+    // reddetme Enter'ından sonra hâlâ açık
+    let p = pane(&[&dialog(MODEL, "Sonnet 5.5", true)]);
+    assert_eq!(
+        Cli::Claude.dismiss_stray_dialog(&p, "s"),
+        DismissOutcome::LeftOpen
+    );
+    assert_eq!(p.keys(), ["Enter"]);
 }
 
 #[test]
 fn only_claude_touches_the_pane() {
     for cli in Cli::ALL.into_iter().filter(|c| *c != Cli::Claude) {
-        let p = FakePane::screens(&["Switch model?\nChange effort level?"]);
+        let p = pane(&[&model_dialog()]);
         assert_eq!(
             cli.apply_live_model_switch(&p, "s", "sonnet"),
             SwitchOutcome::Unsupported
@@ -139,7 +277,7 @@ fn only_claude_touches_the_pane() {
             cli.apply_live_effort_switch(&p, "s", "high"),
             SwitchOutcome::Unsupported
         );
-        cli.dismiss_stray_dialog(&p, "s");
+        assert_eq!(cli.dismiss_stray_dialog(&p, "s"), DismissOutcome::NotSeen);
         assert!(p.log.borrow().is_empty(), "{}", cli.name());
     }
 }
@@ -199,7 +337,7 @@ fn ucli_handover_message_is_one_line_and_the_dialog_scan_is_a_noop() {
     assert!(u.has_conversation());
     assert!(!u.prepare_input("ÖNCE: notu yaz\n- madde").contains('\n'));
     let p = FakePane::screens(&["Switch model?"]);
-    u.dismiss_stray_dialog(&p, "cops");
+    assert_eq!(u.dismiss_stray_dialog(&p, "cops"), DismissOutcome::NotSeen);
     assert!(p.log.borrow().is_empty());
 }
 

@@ -37,6 +37,7 @@ from .discovery import find_sessions
 from .needs_ho import needs_ho
 from .paths import proc_ppid
 from .providers import CliProvider, get_provider
+from .providers.base import _Switch
 from .providers.claude_provider import jsonl_path_for, live_or_spawn_effort, live_or_spawn_model
 from .settings import load_settings
 from .tmux_backend import is_tmux_backed, tmux_send_keys
@@ -126,25 +127,36 @@ def prompt_cache_is_warm(provider: CliProvider, cwd: str, sid: Optional[str],
     return age < ttl - CACHE_WARM_MARGIN_SECONDS
 
 
+# TBD#399: canlı geçişin bu sonuçlarından sonra pane'e metin yazılabilir (None = sağlayıcı sonuç bildirmiyor).
+_SWITCH_SAFE = (None, _Switch.DONE, _Switch.BUSY)
+
+
 def _effort_step(provider: CliProvider, tmux_name: str, cli: str, cwd: str, sid: Optional[str],
-                 spawn_effort: Optional[str], warm: Optional[bool], model: str) -> Tuple[Optional[str], bool]:
+                 spawn_effort: Optional[str], warm: Optional[bool], model: str) -> Tuple[Optional[str], bool, str]:
     """Effort düşürmesini uygular: (uygulanan hedef ya da None, önbelleği bozacağı
-    için VAZGEÇİLDİ mi). Asla fırlatmaz (bir maliyet optimizasyonu, wrap-up
-    mesajını engellememeli)."""
+    için VAZGEÇİLDİ mi, wrap-up mesajını ENGELLEYEN neden ya da ""). Asla fırlatmaz. Komut gönderilmeden önceki bir
+    hata mesajı engellemez (maliyet optimizasyonu); geçiş sırasında güvenli bitmeyen her sonuç engeller (TBD#399)."""
+    sending = False
     try:
         effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "")
         target = provider.handover_effort_downgrade(effective, default_handover_effort(provider))
         if target and warm and not provider.effort_switch_keeps_cache(model):
             diag_log("handover_effort_downgrade_skipped", name=tmux_name, reason="cache_would_be_rewritten",
                      model=model, frm=effective, would_be=target)
-            return None, True
+            return None, True, ""
         if target:
-            provider.apply_live_effort_switch(tmux_name, target)
+            sending = True
+            outcome = provider.apply_live_effort_switch(tmux_name, target)
+            if outcome not in _SWITCH_SAFE:
+                return None, False, f"effort:{outcome.value}"
+            if outcome == _Switch.BUSY:
+                diag_log("handover_effort_downgrade_skipped", name=tmux_name, reason="busy", would_be=target)
+                return None, False, ""
             diag_log("handover_effort_downgrade", name=tmux_name, frm=effective, to=target)
-        return target, False
+        return target, False, ""
     except Exception as e:
         diag_log("handover_effort_downgrade_failed", name=tmux_name, error=str(e))
-        return None, False
+        return None, False, "effort:error" if sending else ""
 
 
 def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: str, cwd: str,
@@ -175,6 +187,7 @@ class HandoverDowngrade:
     model_kept_warm: bool = False    # düşürülecekti, önbellek sıcak olduğu için bırakıldı
     effort_to: Optional[str] = None  # gönderilen `/effort` hedefi
     effort_kept_cache: bool = False  # düşürülecekti, önbelleği bozacağı için bırakıldı
+    blocked: str = ""                # "model:<sonuç>" / "effort:<sonuç>": pane'e wrap-up mesajı YAZILMAZ (TBD#399)
 
 
 def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: str, sid: Optional[str],
@@ -184,7 +197,9 @@ def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: s
     web'in tek-session `_handover`ı ikisi de bunu çağırır; ESKİDEN iki kopyaydı).
     Sıra: model, sonra effort (`/model` effort'u yeniden ayarlayabilir). Ayarlar'daki
     `handover_cache_aware` False ise (kaçış kapağı) önbellek denetimi YOK, eski
-    davranış. TBD#87 yukarıdaki blok."""
+    davranış. TBD#87 yukarıdaki blok.
+
+    TBD#399: geçiş güvenli bitmezse `blocked` dolar (model adımında effort HİÇ denenmez); çağıran mesaj göndermez."""
     res = HandoverDowngrade()
     res.model = live_or_spawn_model(cli, cwd, sid, spawn_model or "")
     if load_settings().get("handover_cache_aware") is not False:
@@ -197,12 +212,21 @@ def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: s
         res.model_kept_warm = True
         diag_log("handover_model_downgrade_skipped", name=name, reason="cache_warm", model=res.model, would_be=target)
     elif target:
-        provider.apply_live_model_switch(name, target)
-        res.model_to = target
-        diag_log("handover_model_downgrade", name=name, frm=res.model, to=target,
-                 cache="cold" if res.warm is False else "unknown")
-    res.effort_to, res.effort_kept_cache = _effort_step(
+        outcome = provider.apply_live_model_switch(name, target)
+        if outcome not in _SWITCH_SAFE:
+            res.blocked = f"model:{outcome.value}"
+            diag_log("handover_switch_blocked", name=name, reason=res.blocked)
+            return res
+        if outcome == _Switch.BUSY:
+            diag_log("handover_model_downgrade_skipped", name=name, reason="busy", model=res.model, would_be=target)
+        else:
+            res.model_to = target
+            diag_log("handover_model_downgrade", name=name, frm=res.model, to=target,
+                     cache="cold" if res.warm is False else "unknown")
+    res.effort_to, res.effort_kept_cache, res.blocked = _effort_step(
         provider, name, cli, cwd, sid, spawn_effort, res.warm, res.model)
+    if res.blocked:
+        diag_log("handover_switch_blocked", name=name, reason=res.blocked)
     return res
 
 
@@ -266,7 +290,7 @@ HANDOVER_MSG_DEFAULT_EN = (
 @dataclass
 class Faz1Result:
     name: str
-    status: str        # "sent" | "skipped-*" | "failed-send" | "failed-noproc" | "dry-run"
+    status: str        # "sent" | "skipped-*" | "failed-send" | "failed-switch" | "failed-noproc" | "dry-run"
     detail: str = ""
 
 
@@ -446,8 +470,13 @@ def handover_faz1(
         # kopya): önbellek sıcaksa model bırakılır (sıcakken `/model` bağlamın
         # tamamını yeniden yazdırır), soğuksa Sonnet'e düşülür; effort hep high.
         provider = get_provider(session.cli)
-        apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
-                                  session.model, session.effort, pid=session.pid)
+        downgrade = apply_handover_downgrades(provider, session.name, session.cli, session.cwd, session.sid,
+                                              session.model, session.effort, pid=session.pid)
+        if downgrade.blocked:      # TBD#399: diyalog/taslak varken mesaj YAZILMAZ; açık geçiş diyaloğu reddedilir
+            provider.dismiss_stray_dialog(session.name)
+            print(f" WARN: model/effort geçişi güvenli bitmedi ({downgrade.blocked}), mesaj gönderilmedi")
+            summary.results.append(Faz1Result(session.name, "failed-switch", downgrade.blocked))
+            continue
 
         # ucli tek satır katlaması `provider.prepare_input`te (UcliProvider): burada ayrıca katlanmaz
         sent = tmux_send_keys(session.name, provider.prepare_input(message), settle_delay=provider.input_settle_delay())
