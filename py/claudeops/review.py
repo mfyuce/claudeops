@@ -103,10 +103,12 @@ def max_attempts(mode: str) -> int:
 MODES = ("agy", "evren", "claude", "codex", "copilot", "anthropic")
 UCLI_MODES = ("evren", "anthropic")      # ucli ile koşan modlar (anthropic = ucli --provider anthropic-messages, gerçek API)
 ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
-# $ / 1M token: (girdi, çıktı, önbellek okuma, önbellek yazma). Haiku 5.5: >100K istemde 0,50/2,50 (ucli tek istek boyutunu ayırmaz: alt sınır)
+# $ / 1M token: (girdi, çıktı, önbellek okuma, önbellek yazma). Haiku 5.5 dilimli: tablo <=100K istem; üstü `HAIKU_LONG_PRICE`.
 ANTHROPIC_PRICES = {"haiku-5-5": (0.10, 0.50, 0.01, 0.125), "sonnet-5-5": (2.0, 10.0, 0.10, 2.5), "opus-5-5": (4.0, 20.0, 0.20, 5.0),
                     # fable-5-1: 10/50 $/M; önbellek okuma 0,025x (resmî prompt-caching belgesi: Fable 5.1 0,025x, Opus/Sonnet 5.5 0,05x, Haiku 5.5 0,1x), yazma 5 dk 1,25x
                     "fable-5-1": (10.0, 50.0, 0.25, 12.5)}
+HAIKU_LONG_PRICE = (0.50, 2.50, 0.05, 0.625)
+HAIKU_LONG_PROMPT = 100_000      # istemin tamamı (yeni girdi + önbellek okuma + yazma) bunu AŞARSA istek pahalı dilimden
 
 
 def parse_slots(spec: Any) -> Dict[str, int]:
@@ -1878,7 +1880,7 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                 if since_ms and t_rec < since_ms:
                     continue
                 u = rec.get("usage")
-                if not isinstance(u, dict):
+                if not isinstance(u, dict) or rec.get("event") == "task_end":     # task_end: görevin TOPLAMI, istekler zaten sayıldı
                     continue
                 if not all(_finite(v) for v in u.values() if isinstance(v, (int, float))):
                     _log_bad("usage.record", path)
@@ -1901,7 +1903,12 @@ def usage_cost_usd(path: str, model: str, since_ms: float = 0.0, write_mult: flo
                     inp_price = pw      # ucli normalleştirilmiş sayaç: yazma ayrı raporlanmaz, önbellek istendiğinden yeni girdi yazma fiyatından sayılır (güvenli üst sınır)
                 else:
                     inp_price = pi
-                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * po + cr * pr + cw * pw * write_mult) / 1e6
+                out_price, read_price, write_price = po, pr, pw
+                if (pi, po, pr, pw) == ANTHROPIC_PRICES["haiku-5-5"] and inp + cr + cw > HAIKU_LONG_PROMPT:
+                    long_in, out_price, read_price, write_price = HAIKU_LONG_PRICE
+                    inp_price = long_in if inp_price == pi else write_price
+                tot += (inp * inp_price + g("output_tokens", "completion_tokens") * out_price + cr * read_price
+                        + cw * write_price * write_mult) / 1e6
     except OSError:
         pass
     return tot
