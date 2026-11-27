@@ -116,7 +116,7 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 | test_ucli_web (ayrıştırma yönü) | `providers::tests::ucli_effort_presets`, `ucli_effort_unknown_when_any_limit_changed_or_missing`, `ucli_every_preset_without_context_flag`, altın `detect_info`; argv üretimi kapsam dışı |
 
 ## Açık işler
-- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. 549 tanım (153 karşılandı, 396 kapsam dışı, 0 EKSİK); 116 test dosyasında 1578 test durumu (115 karşılandı, 1463 kapsam dışı, 0 EKSİK).
+- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. Güncel sayılar tablonun başındaki özette (burada elle tekrarlanmaz).
   - Koşum (repo kökünden): `python3 -I rust/crates/cops-procscan/parity/mapping.py` yazar; `--check` tabloyu `ast` ve Rust kaynağıyla karşılaştırır (eksik/fazla/boş satır, uydurma Rust adı, bayat tablo ya da veri = çıkış 1); `--check --strict` EKSİK varken de 1 döner. `py/` modülleri içe aktarılmaz.
   - Sınır: betik adların varlığını sınar, testin davranışı kapsadığını sınamaz ve testleri koşturmaz. Crate davranışını sınamayan test dosyaları dosya başına gerekçe/izle girildi (adet + ad özeti; dosya değişince betik durur, `--pins` yeni özeti basar).
 - [x] Eşleme tablosundaki 13 EKSİK kapandı: Rust testleri yazıldı; iki davranış Python'a eşitlendi (önbellek tahliye sırası; `ucli_flags` `cmdline`ı okunamayan süreçte artık "bütün bayraklar kapalı" yerine `None`).

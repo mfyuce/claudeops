@@ -478,7 +478,8 @@ DEFS["providers/ucli_provider.py"] = [
         "_live_models reasoning_effort_for _API_KEY_FILE _API_KEY_MANAGED_MARKER _sync_api_key_file _web_args "
         "_script_args _stream_args _reasoning_display_args _metrics_file_args _interactive_args _state_dir_args "
         "_timeout_args _history_args _effort_args _set_flag_value _service_key_file _INSTRUCTIONS_MAX_BYTES "
-        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _default_session_cap "
+        "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _TOP_TIER_PRICES "
+        "_claudeops_price _argv_model _has_price _default_session_cap "
         "_max_cost_args _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
         "_apply_cli_opts _agent_setup "
         + " ".join(U_ + n for n in "accepts_cli_opts mcp_needs_cwd validate_cli_opts mcp_launch_args "
@@ -981,6 +982,7 @@ FILES = {
     "ucli_start_opts": ("başlatma seçenekleri", f"{SAG}; {T4}"),
     "ucli_state_dir": ("ucli durum dizini bayrağı ve okuyucuları", f"{SAG}; {T1}"),
     "ucli_stream": (_BUILD, SAG),
+    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı: `--price` ya da spawn reddi", SAG),
     "ucli_usage": ("`usage` satır alanı", T1),
     "ucli_web": ("ucli web bayrakları ve ayarları", SAG),
     "usage_category": ("`cops usage` gün/kategori dökümü", f"{T6}; {T7}"),
@@ -1466,6 +1468,7 @@ ucli_show_reasoning:3:88a88fc6d4
 ucli_start_opts:32:4f29133f96
 ucli_state_dir:9:83e53ca259
 ucli_stream:12:0b0c264c8d
+ucli_unpriced_model_cap:7:11fa4f0ea5
 ucli_usage:13:adc8be28ee
 ucli_web:53:808f4112d7
 usage_category:3:b1ec7bddf6
