@@ -540,8 +540,8 @@ static ISO_SECONDS_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
 
 /// `time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%S"))` (yerel saat, `TZ`ye uyar). Python'un `ValueError` fırlattığı
 /// her durumda (desen uymaz, artık veri, geçersiz gün, yıl 0) `None`. Saniye 60/61 `mktime` gibi sonraki dakikaya taşar.
-/// Yaz saati belirsizliğinde en erken an, boşlukta (var olmayan yerel saat) `None` (Python bir değer üretir; yalnız UTC
-/// ile sınandı).
+/// Yaz saati: tekrar eden yerel saatte erken olan an; var olmayan (atlanan) yerel saat geçişten önceki ofsetle okunur
+/// (glibc `mktime` gibi). Dilimli eşlik: `tests/tz_parity.rs`.
 pub fn mktime_iso_seconds(s: &str) -> Option<f64> {
     use chrono::{NaiveDate, TimeDelta};
     let caps = ISO_SECONDS_RE.as_ref()?.captures(s)?;
@@ -558,8 +558,26 @@ pub fn mktime_iso_seconds(s: &str) -> Option<f64> {
     let date = NaiveDate::from_ymd_opt(year, month, day)?;
     let secs = num("H")? * 3600 + num("M")? * 60 + num("S")?;
     let naive = date.and_hms_opt(0, 0, 0)?.checked_add_signed(TimeDelta::try_seconds(secs)?)?;
-    let local = Local.from_local_datetime(&naive).earliest()?;
-    Some(local.timestamp() as f64)
+    local_epoch(naive).map(|t| t as f64)
+}
+
+/// Yerel duvar saatinin epoch karşılığı (`mktime`, `isdst=-1`). `from_local_datetime`e güvenilmez (aday sırası ve
+/// tekrar aralığının bitiş saniyesi yanlış): bir gün öncesinin ve sonrasının ofsetleri denenip geri çevrilerek
+/// doğrulanır. Bir günden sık ofset değiştiren dilim varsayılmaz.
+fn local_epoch(naive: chrono::NaiveDateTime) -> Option<i64> {
+    use chrono::{Offset, TimeDelta};
+    let offset = |at: &chrono::NaiveDateTime| i64::from(Local.offset_from_utc_datetime(at).fix().local_minus_utc());
+    let day = TimeDelta::try_days(1)?;
+    let before = offset(&naive.checked_sub_signed(day)?);
+    let after = offset(&naive.checked_add_signed(day)?);
+    let wall = naive.and_utc().timestamp();
+    let valid = [before, after]
+        .into_iter()
+        .map(|o| wall - o)
+        .filter(|&t| chrono::DateTime::from_timestamp(t, 0).is_some_and(|u| t + offset(&u.naive_utc()) == wall))
+        .min();
+    // hiçbiri tutmuyorsa boşluk: geçiş öncesi ofset
+    Some(valid.unwrap_or(wall - before))
 }
 
 #[cfg(test)]
