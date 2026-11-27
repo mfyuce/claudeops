@@ -8339,6 +8339,7 @@
 "normalize_options",
 "paths_for"
 ],
+"test_steward_core_a.ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner": [],
 "test_steward_core_a.ReviewFindings20261029Test.test_owner_only_false_positives": [],
 "test_steward_core_a.RosterGateTest.test_active_phase_needs_roster_but_idea_does_not": [
 "_from_dict",
@@ -8359,6 +8360,19 @@
 "valid_steward_id"
 ],
 "test_steward_core_a.RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running": [
+"_is_project_session",
+"_pp",
+"_project_key",
+"derived_of",
+"notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_core_a.RulesTest.test_adhoc_session_answer_waits_for_running_subagent": [
 "_is_project_session",
 "_pp",
 "_project_key",
@@ -9671,6 +9685,15 @@
 "test_steward_core_b.SmartTickTest.test_tbd_only_project_not_started_owner_asked_once": [
 "_pp",
 "notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
+"test_steward_core_b.SmartTickTest.test_tbd_only_question_counts_once": [
+"_pp",
 "paths_for",
 "plan_api_recovery",
 "plan_tick",
@@ -32695,6 +32718,7 @@
 "normalize_options",
 "paths_for"
 ],
+"test_steward_multi.DefaultWorld_ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner": [],
 "test_steward_multi.DefaultWorld_ReviewFindings20261029Test.test_owner_only_false_positives": [],
 "test_steward_multi.DefaultWorld_RosterGateTest.test_active_phase_needs_roster_but_idea_does_not": [
 "_from_dict",
@@ -32814,6 +32838,32 @@
 "world_for"
 ],
 "test_steward_multi.DefaultWorld_RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running": [
+"World._class",
+"World.name_class",
+"World.own_projects",
+"World.owner_of",
+"World.owns",
+"World.project_key",
+"World.resolve",
+"World.session_class",
+"_is_project_session",
+"_pp",
+"_project_key",
+"brain_name_for",
+"build_ownership_index",
+"derived_of",
+"holds_total_slot",
+"normalize_host",
+"notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers",
+"world_for"
+],
+"test_steward_multi.DefaultWorld_RulesTest.test_adhoc_session_answer_waits_for_running_subagent": [
 "World._class",
 "World.name_class",
 "World.own_projects",
@@ -34537,6 +34587,22 @@
 "build_ownership_index",
 "normalize_host",
 "notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers",
+"world_for"
+],
+"test_steward_multi.DefaultWorld_SmartTickTest.test_tbd_only_question_counts_once": [
+"World.own_projects",
+"World.owner_of",
+"World.owns",
+"_pp",
+"brain_name_for",
+"build_ownership_index",
+"normalize_host",
 "paths_for",
 "plan_api_recovery",
 "plan_tick",
