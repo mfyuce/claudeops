@@ -91,14 +91,14 @@ MAP = {
     **_same("badrec", "_BAD_SEEN _BAD_SEEN_MAX _field"),
     "_log_bad": _m("badrec", "log_bad"),
     "_finite": _m("report", "usage_cost_usd"),
-    "_MAX_USAGE_TOKENS": _m("report", "MAX_USAGE_TOKENS"),
-    "_MAX_LINE_DEPTH": _m("report", "MAX_LINE_DEPTH"),
-    "_DEPTH_TOKEN_RE": _m("report", "too_deep"),
+    "_MAX_USAGE_TOKENS": _m("usage", "MAX_USAGE_TOKENS"),
+    "_MAX_LINE_DEPTH": _m("usage", "MAX_LINE_DEPTH"),
+    "_DEPTH_TOKEN_RE": _m("usage", "too_deep"),
     "_UNCOUNTABLE_SPENT_USD": _m("report", "UNCOUNTABLE_SPENT_USD"),
-    "_too_deep": _m("report", "too_deep"),
+    "_too_deep": _m("usage", "too_deep"),
     "_UNCOUNTABLE_KINDS": _m("report", "scan_report"),
-    "_USAGE_COUNT_KEYS": _m("report", "usage_cost_usd"),
-    "_usage_number": _m("report", "usage_cost_usd"),
+    "_USAGE_COUNT_KEYS": _m("usage", "Record::charge"),
+    "_usage_number": _m("usage", "Record::charge"),
     "_scan_usage": _m("report", "usage_cost_usd"),
     "_scan_usage_windows": _m("report", "usage_cost_usd"),
     "StoreCorrupt": _m("error", "Error"),
@@ -119,14 +119,14 @@ NOTES = {
     "_log_bad": "günlük hedefi: koşucu `badrec::set_sink` ile bağlar (yoksa stderr); Python `diag.log`",
     "_finite": "Rust'ta ayrı yardımcı yok: `f64::is_finite` satır içinde",
     "_USAGE_COUNT_KEYS": "yalnız `_scan_usage` sorun bayrağı (geçersiz sayaç) için; Rust `usage_cost_usd` sorun döndürmez, "
-                         "sorun bayrağı ve tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
+                         "sorun bayrağını `usage.rs::Record::charge` üretir, tavan kapısı `cops-providers` `cost.rs::UsageScan`de (rs/prov)",
     "_UNCOUNTABLE_KINDS": "Rust'ta liste yok: `scan_report` iki türde de `uncountable` bayrağını kurar; "
                           "`long_integer` Python'da yorumlayıcının `ValueError`ıdır",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
                  "`tests/usage_two_copies.rs`",
-    "_usage_number": "Rust'ta ayrı yardımcı yok: `usage_cost_usd` içindeki `numeric` kapanışı (bool değil, 0..=1e15)",
-    "_scan_usage": "maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) bu crate'te yok: `cops-providers` "
+    "_usage_number": "`usage.rs` içindeki özel `usage_number` (bool değil, 0..=1e15); `charge` çağırır",
+    "_scan_usage": "satır kuralları `usage.rs::read_line` (iki crate'in tek kaynağı); maliyet payı `usage_cost_usd`; `sorun` dönüşü (tavan kapısını kapatır) bu crate'te yok: `cops-providers` "
                    "`cost.rs::UsageScan` (rs/prov, `parity_ledger`). FIFO/normal olmayan dosya Rust'ta da bloklamadan 0",
     "_scan_usage_windows": "tek geçişte çok pencereli tarama: maliyet payı `usage_cost_usd`; çok pencereli karşılığı "
                            "`cops-providers` `cost.rs::UsageScan::feed_all` + `real/ledger.rs::read_windows` (rs/prov)",

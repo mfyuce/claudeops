@@ -1,5 +1,6 @@
-//! Maliyet toplayıcısının iki Rust kopyası (`cops_review_core::report::usage_cost_usd` ve `real::ledger::scan_usage`)
-//! aynı günlükten AYNI toplamı vermeli: elle yazılmış sınır satırları ve rastgele dosyalar.
+//! Maliyet toplayıcısının iki tüketicisi (`cops_review_core::report::usage_cost_usd` ve `real::ledger::scan_usage`;
+//! satır kuralları ortak `cops_review_core::usage`, dosya okuma ayrı) aynı günlükten AYNI toplamı vermeli: elle yazılmış
+//! sınır satırları ve rastgele dosyalar.
 
 use cops_providers::real::ledger::scan_usage;
 use cops_review_core::report::{anthropic_spent_usd, usage_cost_usd, UNCOUNTABLE_SPENT_USD};

@@ -1,11 +1,9 @@
 //! `ucli_cost.py` + `review.usage_cost_usd`in SAF yarısı: fiyat tablosu, kullanım günlüğü satırlarının toplanması, kredi
 //! dönemi özeti, tavan reddi. Dosya, saat ve rezervasyon [`crate::real::ledger`]de.
 //!
-//! Fiyat sabitleri `cops-review-core`dadır. Oradaki `usage_cost_usd` yalnız toplamı verir; buradaki [`UsageScan`] aynı
-//! kuralları satır satır besleyip toplamın güvenilirliğini (`problem`) de bildirir. Kural değişirse İKİSİ de güncellenir.
+//! Fiyat tablosu ve satır kuralları tek kaynaktan: `cops-review-core` (`usage.rs`). Oradaki `usage_cost_usd` yalnız
+//! toplamı verir; buradaki [`UsageScan`] aynı satır değerlendirmesinden toplamın güvenilirliğini (`problem`) de bildirir.
 
-use crate::pyfmt::parse_float;
-use crate::pyjson::Py;
 use crate::settings::UcliCostConfig;
 use serde_json::{json, Map, Value};
 use std::fmt;
@@ -22,13 +20,12 @@ pub const BY_SESSION_TOP: usize = 10;
 pub const RESERVE_USD: f64 = 1.0;
 /// Payın ömrü (sn).
 pub const RESERVE_TTL: f64 = 120.0;
-/// Tek istek sayacının üst sınırı (üstü bozuk kayıt).
-pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
 /// Fiyat tablosu ve `review.anthropic_price` tek kaynaktan (`cops-review-core`); burada ikinci kopya YOK.
 pub use cops_review_core::report::anthropic_price;
-use cops_review_core::report::{long_integer, too_deep};
-use cops_review_core::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
+/// Tek istek sayacının üst sınırı (üstü bozuk kayıt).
+pub use cops_review_core::usage::MAX_USAGE_TOKENS;
+use cops_review_core::usage::{self, Line};
 
 /// `ucli_cost.write_mult`.
 pub fn write_mult(cfg: &UcliCostConfig) -> f64 {
@@ -102,54 +99,6 @@ pub fn refusal(error: &str, cost: Option<&CostRefusal>) -> Value {
     Value::Object(out)
 }
 
-/// `review._usage_number`: negatif olmayan, sınır içinde sayı (bool, NaN, metin değil).
-fn usage_number(v: Option<&Py>) -> Option<f64> {
-    let n = match v? {
-        Py::Int(i) => *i as f64,
-        Py::Float(f) => *f,
-        _ => return None,
-    };
-    (0.0..=MAX_USAGE_TOKENS).contains(&n).then_some(n)
-}
-
-const COUNT_KEYS: [&str; 9] = [
-    "cache_read_input_tokens",
-    "cached_tokens",
-    "cache_read_tokens",
-    "cache_creation_input_tokens",
-    "cache_write_tokens",
-    "input_tokens",
-    "prompt_tokens",
-    "output_tokens",
-    "completion_tokens",
-];
-
-/// `review._finite`: sayısal değer sonlu mu (float'a sığmayan tam sayı sonlu değil).
-fn finite(v: &Py) -> bool {
-    match v {
-        Py::BigInt(s) => s.parse::<f64>().is_ok_and(f64::is_finite),
-        Py::Float(f) => f.is_finite(),
-        _ => true,
-    }
-}
-
-/// `float(rec.get("t") or 0)` + geçerli mi. Sayıya çevrilemeyen = (0, geçersiz); sonlu olmayan değer aynen döner.
-fn timestamp(v: Option<&Py>) -> (f64, bool) {
-    let Some(v) = v.filter(|v| v.truthy()) else {
-        return (0.0, true);
-    };
-    let parsed = match v {
-        Py::Bool(_) => Some(1.0),
-        Py::Int(i) => Some(*i as f64),
-        // float'a sığmayan tam sayı (Python `OverflowError`) burada sonsuz olur
-        Py::BigInt(s) => s.parse::<f64>().ok(),
-        Py::Float(f) => Some(*f),
-        Py::Str(s) => parse_float(s),
-        _ => None,
-    };
-    parsed.map_or((0.0, false), |t| (t, t.is_finite()))
-}
-
 /// `review._scan_usage`: satır satır beslenen toplayıcı.
 #[derive(Debug, Clone)]
 pub struct UsageScan {
@@ -199,43 +148,32 @@ impl UsageScan {
         else {
             return;
         };
-        let uncountable = if too_deep(line) {
-            Some(("çok derin satır", "usage.depth"))
-        } else if long_integer(line) {
-            Some(("çok uzun sayı", "usage.number"))
-        } else {
-            None
-        };
-        if let Some((why, what)) = uncountable {
+        match usage::read_line(line, !fixed_model) {
+            Line::Ignored => {}
             // sayılamayan kayıt sessizce 0 olmasın: pencere bilinmediği için hepsi güvenilmez
-            for scan in scans {
-                scan.problem = Some(why);
-                scan.skipped.push(what);
+            Line::Uncountable { problem, kind } => {
+                for scan in scans {
+                    scan.problem = Some(problem);
+                    scan.skipped.push(kind);
+                }
             }
-            return;
-        }
-        let Some(rec) = Py::parse(line) else {
-            return;
-        };
-        if !rec.is_object() {
-            return;
-        }
-        if !fixed_model && rec.get("event").and_then(Py::as_str) == Some("task_start") {
-            if let Some(model) = rec.get("model").filter(|m| m.truthy()) {
-                let price = anthropic_price(&model.py_str());
+            Line::Model(price) => {
                 for scan in scans {
                     scan.price = price;
                 }
-                return;
             }
+            Line::Record(record) => UsageScan::add(scans, &record, price, write_mult),
         }
-        let (t, t_ok) = timestamp(rec.get("t"));
-        let usage = rec.get("usage").filter(|u| u.is_object());
-        if !t_ok && usage.is_some() {
+    }
+
+    /// Ayrıştırılmış kaydı onu sayan pencerelere işler.
+    fn add(scans: &mut [UsageScan], record: &usage::Record, price: [f64; 4], write_mult: f64) {
+        if record.bad_time {
             for scan in scans.iter_mut() {
                 scan.problem = Some("geçersiz zaman damgası");
             }
         }
+        let t = record.time;
         if !t.is_finite() {
             // sonlu olmayan damgalı kayıt toplama girmez (TBD#375)
             for scan in scans {
@@ -248,75 +186,18 @@ impl UsageScan {
         if !scans.iter().any(counts) {
             return;
         }
-        let Some(u) = usage else { return };
-        if rec.get("event").and_then(Py::as_str) == Some("task_end") {
-            return; // görevin toplamı: istek satırları zaten sayıldı
-        }
-        if COUNT_KEYS.iter().any(|k| {
-            u.get(k)
-                .is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())
-        }) {
-            for scan in scans.iter_mut().filter(|s| counts(s)) {
+        let Some(charge) = record.charge(price, write_mult) else {
+            return;
+        };
+        for scan in scans.iter_mut().filter(|s| counts(s)) {
+            if charge.bad_count {
                 scan.problem = Some("geçersiz sayaç");
             }
-        }
-        if let Py::Object(fields) = u {
-            if !fields.iter().all(|(_, v)| finite(v)) {
+            match charge.usd {
+                Some(usd) => scan.total += usd,
                 // sonlu olmayan sayaçlı istek bütünüyle atlanır
-                for scan in scans.iter_mut().filter(|s| counts(s)) {
-                    scan.skipped.push("usage.record");
-                }
-                return;
+                None => scan.skipped.push("usage.record"),
             }
-        }
-        let g = |names: &[&str]| {
-            names
-                .iter()
-                .find_map(|n| usage_number(u.get(n)))
-                .unwrap_or(0.0)
-        };
-        let cr = g(&[
-            "cache_read_input_tokens",
-            "cached_tokens",
-            "cache_read_tokens",
-        ]);
-        let cw = g(&["cache_creation_input_tokens", "cache_write_tokens"]);
-        let [pi, po, pr, pw] = price;
-        let inp = match usage_number(u.get("input_tokens")) {
-            Some(i) => {
-                let read = if u.get("cache_read_input_tokens").is_some() {
-                    0.0
-                } else {
-                    cr
-                };
-                let written = if u.get("cache_creation_input_tokens").is_some() {
-                    0.0
-                } else {
-                    cw
-                };
-                (i - read - written).max(0.0)
-            }
-            None => (g(&["prompt_tokens"]) - cr - cw).max(0.0),
-        };
-        let normalized =
-            u.get("cached_tokens").is_some() && u.get("cache_creation_input_tokens").is_none();
-        let mut inp_price = if normalized { pw } else { pi };
-        let (mut out_price, mut read_price, mut write_price) = (po, pr, pw);
-        if price == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
-            let long_in;
-            [long_in, out_price, read_price, write_price] = HAIKU_LONG_PRICE;
-            inp_price = if inp_price == pi {
-                long_in
-            } else {
-                write_price
-            };
-        }
-        let out = g(&["output_tokens", "completion_tokens"]);
-        let usd =
-            (inp * inp_price + out * out_price + cr * read_price + cw * write_price * write_mult)
-                / 1e6;
-        for scan in scans.iter_mut().filter(|s| counts(s)) {
-            scan.total += usd;
         }
     }
 }

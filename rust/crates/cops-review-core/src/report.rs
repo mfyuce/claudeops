@@ -3,7 +3,8 @@ use crate::badrec;
 use crate::error::Result;
 use crate::py::{self, S};
 use crate::store::round_to;
-use crate::targets::{ci, ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
+use crate::targets::{ci, ANTHROPIC_PRICES};
+use crate::usage::{self, Line};
 use cops_state::json::{Json, Map};
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -403,10 +404,6 @@ pub fn anthropic_price(model: &str) -> [f64; 4] {
         .map_or_else(|| ANTHROPIC_PRICES[2].1, |(_, v)| *v)
 }
 
-/// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası.
-/// Python `_MAX_USAGE_TOKENS`: tek istek sayacı için akla yatkın üst sınır (üstü bozuk kayıt).
-pub const MAX_USAGE_TOKENS: f64 = 1e15;
-
 /// Python `_scan_usage` açılışı: `O_NONBLOCK` (FIFO açılışta bloklamaz), açılan tanıtıcı normal dosya değilse ya da
 /// okunamazsa None (maliyet 0).
 fn read_regular_nonblocking(path: &str) -> Option<Vec<u8>> {
@@ -425,90 +422,17 @@ fn read_regular_nonblocking(path: &str) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Python `_MAX_LINE_DEPTH`: bir kullanım satırında iç içe dizi/nesne sınırı (gerçek kayıt 2-3 katlı).
-pub const MAX_LINE_DEPTH: usize = 512;
-
 /// Sayılamayan satır varken bütçe kapısının gördüğü harcama (Python `_UNCOUNTABLE_SPENT_USD`).
 pub const UNCOUNTABLE_SPENT_USD: f64 = 1e18;
 
-/// Python `_too_deep`: satır [`MAX_LINE_DEPTH`]ten derin mi. Dize (yarım da olsa) içindeki ayraç sayılmaz; ayrıştırmadan
-/// önce bakılır, sonuç ayrıştırıcıya bağlı değildir.
-pub fn too_deep(line: &str) -> bool {
-    let opens = line.bytes().filter(|b| matches!(b, b'[' | b'{')).count();
-    if opens <= MAX_LINE_DEPTH {
-        return false;
-    }
-    let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
-    for b in line.bytes() {
-        if in_string {
-            match b {
-                _ if escaped => escaped = false,
-                b'\\' => escaped = true,
-                b'"' => in_string = false,
-                _ => {}
-            }
-            continue;
-        }
-        match b {
-            b'"' => in_string = true,
-            b'[' | b'{' => {
-                depth += 1;
-                if depth > MAX_LINE_DEPTH {
-                    return true;
-                }
-            }
-            b']' | b'}' => depth = depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-    false
-}
-
-/// Python'un tam sayı basamak sınırı: daha uzununu `json.loads` ayrıştırmaz.
-const MAX_INT_DIGITS: usize = 4300;
-
-/// Satırda [`MAX_INT_DIGITS`]ten uzun bir tam sayı değişmezi var mı (ondalıklı/üslü sayı ve dize içi sayılmaz). Python
-/// bunu ayrıştırma hatasından anlar; burada ayrıştırıcıdan önce bakılır.
-pub fn long_integer(line: &str) -> bool {
-    let bytes = line.as_bytes();
-    if bytes.len() <= MAX_INT_DIGITS {
-        return false;
-    }
-    let (mut i, mut in_string) = (0usize, false);
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\\' if in_string => i += 1,
-            b'"' => in_string = !in_string,
-            b'0'..=b'9' if !in_string => {
-                let start = i;
-                while bytes.get(i).is_some_and(u8::is_ascii_digit) {
-                    i += 1;
-                }
-                let before = &bytes[..start];
-                let tail_of_float = matches!(before.last(), Some(b'.' | b'e' | b'E' | b'+'))
-                    || before.ends_with(b"e-")
-                    || before.ends_with(b"E-");
-                let head_of_float = matches!(bytes.get(i), Some(b'.' | b'e' | b'E'));
-                if i - start > MAX_INT_DIGITS && !tail_of_float && !head_of_float {
-                    return true;
-                }
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    false
-}
-
+/// Bir `.usage.jsonl` dosyasının $ maliyeti. `model` boşsa kayıttan izlenir; `since_ms > 0` yalnız sonrası.
 pub fn usage_cost_usd(path: &str, model: &str, since_ms: f64, write_mult: f64) -> Result<f64> {
     Ok(scan_report(path, model, since_ms, write_mult).0)
 }
 
 /// (toplam, harcaması sayılamayan satır var mı).
 fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64, bool) {
-    let [mut pi, mut po, mut pr, mut pw] =
-        anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
+    let mut price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
     let mut total = 0.0;
     let mut uncountable = false;
     let Some(bytes) = read_regular_nonblocking(path) else {
@@ -519,106 +443,31 @@ fn scan_report(path: &str, model: &str, since_ms: f64, write_mult: f64) -> (f64,
             badrec::log_bad("usage.line", path); // yalnız bozuk satır atlanır; kalan istekler maliyete girer
             continue;
         };
-        let line = line.trim_end_matches('\r');
-        if too_deep(line) {
-            uncountable = true;
-            badrec::log_bad("usage.depth", path);
-            continue;
-        }
-        if long_integer(line) {
-            uncountable = true;
-            badrec::log_bad("usage.number", path);
-            continue;
-        }
-        // Python `json.loads` eşlenmemiş vekili kabul eder: satır sayımdan düşmez.
-        let Ok((Json::Object(rec), _)) = Json::parse_lossy(line) else {
-            continue;
+        let record = match usage::read_line(line, model.is_empty()) {
+            Line::Ignored => continue,
+            Line::Uncountable { kind, .. } => {
+                uncountable = true;
+                badrec::log_bad(kind, path);
+                continue;
+            }
+            Line::Model(found) => {
+                price = found;
+                continue;
+            }
+            Line::Record(record) => record,
         };
-        if model.is_empty()
-            && py::is_str(rec.get("event"), "task_start")
-            && py::truthy(rec.get("model"))
-        {
-            [pi, po, pr, pw] = anthropic_price(&py::str_or_empty(rec.get("model")));
-            continue;
-        }
-        // `float(t or 0)`: sayı olmayan 0; sonlu olmayan ya da sığmayan satır bozuktur.
-        let t = match rec.get("t").filter(|v| v.truthy()) {
-            Some(v @ Json::BigInt(_)) => py::float(v).unwrap_or(f64::INFINITY),
-            Some(v) => py::float(v).unwrap_or(0.0),
-            None => 0.0,
-        };
-        if !t.is_finite() {
+        if !record.time.is_finite() {
             badrec::log_bad("usage.record", path);
             continue;
         }
-        if since_ms != 0.0 && t < since_ms {
+        if since_ms != 0.0 && record.time < since_ms {
             continue;
         }
-        let Some(u) = rec.get("usage").and_then(Json::as_object) else {
-            continue;
-        };
-        if py::is_str(rec.get("event"), "task_end") {
-            continue; // görevin toplamı: istek satırları zaten sayıldı
+        match record.charge(price, write_mult).map(|c| c.usd) {
+            Some(Some(usd)) => total += usd,
+            Some(None) => badrec::log_bad("usage.record", path),
+            None => {}
         }
-        let broken = |v: &Json| {
-            matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_))
-                && !py::float(v).is_some_and(f64::is_finite)
-        };
-        if u.values().any(broken) {
-            badrec::log_bad("usage.record", path);
-            continue;
-        }
-        // Python `_usage_number`: int/float (bool DEĞİL), 0 <= x <= `MAX_USAGE_TOKENS`; geçersiz sayaç 0 sayılır.
-        let numeric = |k: &str| {
-            u.get(k)
-                .filter(|v| matches!(v, Json::Int(_) | Json::Float(_) | Json::BigInt(_)))
-                .and_then(py::float)
-                .filter(|x| (0.0..=MAX_USAGE_TOKENS).contains(x))
-        };
-        let g = |names: &[&str]| names.iter().find_map(|n| numeric(n)).unwrap_or(0.0);
-        let cr = g(&[
-            "cache_read_input_tokens",
-            "cached_tokens",
-            "cache_read_tokens",
-        ]);
-        let cw = g(&["cache_creation_input_tokens", "cache_write_tokens"]);
-        let inp = match numeric("input_tokens") {
-            Some(i) => f64::max(
-                0.0,
-                i - (if u.contains_key("cache_read_input_tokens") {
-                    0.0
-                } else {
-                    cr
-                }) - (if u.contains_key("cache_creation_input_tokens") {
-                    0.0
-                } else {
-                    cw
-                }),
-            ),
-            None => f64::max(0.0, g(&["prompt_tokens"]) - cr - cw),
-        };
-        let inp_price =
-            if u.contains_key("cached_tokens") && !u.contains_key("cache_creation_input_tokens") {
-                pw
-            } else {
-                pi
-            };
-        let (mut out_price, mut read_price, mut write_price, mut in_price) =
-            (po, pr, pw, inp_price);
-        if [pi, po, pr, pw] == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
-            let long_in;
-            [long_in, out_price, read_price, write_price] = HAIKU_LONG_PRICE;
-            in_price = if inp_price == pi {
-                long_in
-            } else {
-                write_price
-            };
-        }
-        total += (inp * in_price
-            + g(&["output_tokens", "completion_tokens"]) * out_price
-            + cr * read_price
-            + cw * write_price * write_mult)
-            / 1e6;
     }
     (total, uncountable)
 }

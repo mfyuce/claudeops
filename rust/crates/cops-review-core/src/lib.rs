@@ -18,6 +18,7 @@ pub mod report;
 pub mod store;
 pub mod targets;
 mod unicode13;
+pub mod usage;
 
 pub use error::{Error, Result};
 pub use parse::{Finding, Verdict};
