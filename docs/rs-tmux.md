@@ -202,8 +202,8 @@ Bölüm 1'deki ilgili sınıflar: H1 (madde 9), H4 (2.2, madde 8), H5 (madde 10)
 
 Kapsam:
 - Tanımlar: `py/claudeops/tmux_backend.py`nin TÜM üst düzey tanımları: 69 (47 işlev, 17 sabit, 5 regex; sınıf/yöntem yok; 27 Kas rs/prov birleşimi turu).
-- Test metotları (565): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 61 dosya.
-- Sonuç: 565 test metodundan 116'sı bu crate'te karşılandı (92 parite, 22 yalnız Rust testi, biri kısmi, 2 tür denetimi), 449'u kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
+- Test metotları (567): (a) metninde `tmux_backend` geçen test dosyalarının TÜM test metotları; (b) diğer test dosyalarında gövdesi `tmux_backend` adı anan (doğrudan, sınıf gövdesi ya da aynı dosyadaki yardımcı üzerinden; çoğu `mock.patch` ile başka modüldeki kopyayı sahteler) test metotları; (c) birleştirme kapısının eklediği test dosyaları. Toplam 61 dosya.
+- Sonuç: 567 test metodundan 116'sı bu crate'te karşılandı (92 parite, 22 yalnız Rust testi, biri kısmi, 2 tür denetimi), 451'i kapsam dışı (başka izin modülünü sınar; iz tabloda yazılı). TBD 366/367/369 ve birleştirme kapısı düzeltmelerinin Python testleri tabloda.
 
 Parite testleri (`rust/crates/cops-tmux/tests/parity.rs`, köprü `tests/parity.py`):
 - PR `reads_match_python`: gerçek tmux'ta okuma işlevleri (has_session, capture, capture_range, pane_size, snapshot, maske, client_count).
@@ -824,6 +824,8 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_rsprov_g9_fixes.py::BrokenBackupLinkTest::test_link_loop_is_refused_too` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
 | `test_rsprov_g9_fixes.py::BrokenBackupLinkTest::test_existing_agy_file_with_dangling_backup_link_is_untouched` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
 | `test_rsprov_g9_fixes.py::BrokenBackupLinkTest::test_link_to_an_existing_file_still_counts_as_a_backup` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
+| `test_rsprov_g9_fixes.py::GhostKeptWhenLaunchCannotStartTest::test_nul_anywhere_in_the_launch_leaves_the_old_session` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
+| `test_rsprov_g9_fixes.py::GhostKeptWhenLaunchCannotStartTest::test_normal_launch_still_reclaims` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
 | `test_rsprov_g9_fixes.py::GhostScreenNotLoggedTest::test_only_counts_reach_the_log` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
 | `test_rsprov_g9_fixes.py::GhostScreenNotLoggedTest::test_unreadable_screen_counts_zero` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
 | `test_rsprov_g9_fixes.py::HiddenWithoutTmuxTest::test_is_logged_and_nothing_is_opened` | yok: sağlayıcı girdisi, canlı geçiş, spawn ve yönerge (rs/prov `cops-providers`, `docs/rs-prov.md`); `tmux_backend` adları sahte | kapsam dışı |
