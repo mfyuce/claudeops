@@ -164,16 +164,19 @@ impl Rig {
 
 // ------------------------------------------------------------------------------------------- ReclaimTest karşılıkları
 
-/// `ReclaimTest.test_ghost_killed_and_tail_logged`
+/// `ReclaimTest.test_ghost_killed_and_tail_logged`: ekran metni günlükte YOK, yalnız sayılar.
 #[test]
-fn ghost_is_killed_and_its_tail_logged() {
+fn ghost_is_killed_and_only_screen_counts_are_logged() {
     let r = rig(|_| {}, vec![]);
     reclaim_ghost_session(&r.launcher, "p", "claude");
     assert_eq!(r.calls(), ["ghost p", "capture p 40", "kill p"]);
     let ev = r.events();
     assert_eq!(ev.len(), 1);
     assert_eq!(ev[0].0, "spawn_ghost_reclaimed");
-    assert_eq!(ev[0].1, vec![("name", json!("p")), ("cli", json!("claude")), ("tail", json!("Out of credits\n$ "))]);
+    assert_eq!(
+        ev[0].1,
+        vec![("name", json!("p")), ("cli", json!("claude")), ("screen_lines", json!(2)), ("screen_chars", json!(17))]
+    );
 }
 
 /// `ReclaimTest.test_shell_provider_untouched`
@@ -200,16 +203,17 @@ fn non_ghost_and_missing_tmux_are_untouched() {
 /// `ReclaimTest.test_error_never_raises`: Rust'ta tmux sınırı hata YÜKSELTEMEZ (trait dönüşleri `bool`/`Option`); Python'un
 /// `spawn_ghost_reclaim_error` dalının karşılığı yok. Burada okunamayan ekran (None) ve ANSI'li, uzun ekranla panik yok.
 #[test]
-fn reclaim_never_panics_and_trims_the_tail() {
+fn reclaim_never_panics_and_never_logs_the_screen() {
     let r = rig(|t| t.capture = None, vec![]);
     reclaim_ghost_session(&r.launcher, "p", "agy");
-    assert_eq!(r.events()[0].1[2], ("tail", json!("")));
+    assert_eq!(r.events()[0].1[2..], [("screen_lines", json!(0)), ("screen_chars", json!(0))]);
     let screen = format!("\u{1b}[31m{}\u{1b}[0m\n\n   \nson\n", "ğ".repeat(2000));
     let r = rig(|t| t.capture = Some(screen), vec![]);
     reclaim_ghost_session(&r.launcher, "p", "agy");
-    let tail = r.events()[0].1[2].1.as_str().unwrap().to_string();
-    assert_eq!(tail.chars().count(), 1500);
-    assert!(tail.ends_with("ğ\nson") && !tail.contains('\u{1b}'));
+    // renk kodları ve boş satırlar sayılmaz
+    assert_eq!(r.events()[0].1[2..], [("screen_lines", json!(2)), ("screen_chars", json!(2004))]);
+    let logged = format!("{:?}", r.events());
+    assert!(!logged.contains('ğ') && !logged.contains("son"), "{logged}");
 }
 
 // ------------------------------------------------------------------------------------------------- bekçi (sahte saat)

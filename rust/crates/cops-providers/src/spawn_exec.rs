@@ -34,8 +34,6 @@ pub const FALLBACK_RETRY_COUNT: u32 = 2;
 pub const FALLBACK_POLL_SECONDS: f64 = 0.5;
 /// Hayaletin son ekranından yakalanan geçmiş satırı.
 pub const GHOST_CAPTURE_LINES: u32 = 40;
-/// Günlüğe yazılan son ekran sınırı (karakter).
-pub const GHOST_TAIL_CHARS: usize = 1500;
 
 /// tmux sınırı. Gerçek uygulayıcı `cops-tmux` (`Tmux::cops()`); sözleşme `docs/rs-prov.md` G9. Hiçbir yöntem panik atmaz;
 /// hedef her zaman TAM ad (`=ad:`), ön ek eşleşmesi yok.
@@ -378,19 +376,25 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
 }
 
 /// `_reclaim_ghost_session` (PROC-03): CLI'si çıkmış, `exec bash`le canlı kalan TAM adlı tmux oturumu spawn'dan önce
-/// kapatılır; son ekran `spawn_ghost_reclaimed` günlüğüne. `shell` sağlayıcısı (ham ad) hariç. Hayalet kararı
-/// belirsizse dokunulmaz. Python'daki `spawn_ghost_reclaim_error` dalı yok: trait yöntemleri hata yükseltmez.
+/// kapatılır. Ekran metni sır taşıyabilir: `spawn_ghost_reclaimed` günlüğüne HİÇ girmez, yalnız boş olmayan satır ve
+/// karakter sayısı yazılır. `shell` sağlayıcısı (ham ad) hariç. Hayalet kararı belirsizse dokunulmaz. Python'daki `spawn_ghost_reclaim_error` dalı yok: trait yöntemleri hata yükseltmez.
 pub fn reclaim_ghost_session(launcher: &Launcher, name: &str, cli: &str) {
     if cli == "shell" || !launcher.tmux.available() || !launcher.tmux.ghost_session(name) {
         return;
     }
     let screen = strip_ansi(&launcher.tmux.capture(name, GHOST_CAPTURE_LINES).unwrap_or_default());
     let kept: Vec<&str> = splitlines(&screen).into_iter().filter(|l| !strip(l).is_empty()).collect();
-    let joined = kept.join("\n");
-    let total = joined.chars().count();
-    let tail: String = joined.chars().skip(total.saturating_sub(GHOST_TAIL_CHARS)).collect();
+    let chars = kept.join("\n").chars().count();
     launcher.tmux.kill_session(name);
-    launcher.log("spawn_ghost_reclaimed", vec![("name", json!(name)), ("cli", json!(cli)), ("tail", json!(tail))]);
+    launcher.log(
+        "spawn_ghost_reclaimed",
+        vec![
+            ("name", json!(name)),
+            ("cli", json!(cli)),
+            ("screen_lines", json!(kept.len())),
+            ("screen_chars", json!(chars)),
+        ],
+    );
 }
 
 /// `_fallback_watchdog`: ilk gnome-terminal denemesi tmux oturumunu getirmezse [`FALLBACK_RETRY_COUNT`] kez yeniden

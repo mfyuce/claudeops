@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import routing  # noqa: E402
+from claudeops import routing, spawn, tmux_backend as tb  # noqa: E402
 
 
 class BrokenBackupLinkTest(unittest.TestCase):
@@ -71,6 +71,29 @@ class BrokenBackupLinkTest(unittest.TestCase):
         self.assertEqual(self._read(old), "eski\n")
         self.assertIn("yonerge", self._read(codex))
         self.assertEqual(self.logs, [])
+
+
+class GhostScreenNotLoggedTest(unittest.TestCase):
+    """Hayaletin son ekranı (sır taşıyabilir) diag.log'a düz yazılıyordu."""
+
+    def _reclaim(self, screen):
+        logs = []
+        with mock.patch.object(spawn, "tmux_available", lambda: True), \
+                mock.patch.object(tb, "tmux_ghost_session", lambda n: True), \
+                mock.patch.object(tb, "tmux_capture", lambda n, lines=2000: screen), \
+                mock.patch.object(tb, "tmux_kill_session", lambda n: None), \
+                mock.patch.object(spawn, "diag_log", lambda ev, **k: logs.append((ev, k))):
+            spawn._reclaim_ghost_session("p", "claude")
+        return logs
+
+    def test_only_counts_reach_the_log(self):
+        screen = "\x1b[31mexport API_KEY=sk-cok-gizli\x1b[0m\n\n   \n" + "ğ" * 2000 + "\n"
+        logs = self._reclaim(screen)
+        self.assertEqual(logs, [("spawn_ghost_reclaimed",
+                                 {"name": "p", "cli": "claude", "screen_lines": 2, "screen_chars": len("export API_KEY=sk-cok-gizli") + 1 + 2000})])
+
+    def test_unreadable_screen_counts_zero(self):
+        self.assertEqual(self._reclaim(None)[0][1], {"name": "p", "cli": "claude", "screen_lines": 0, "screen_chars": 0})
 
 
 if __name__ == "__main__":

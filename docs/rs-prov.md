@@ -1845,10 +1845,10 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 | `GhostDetectTest.test_bash_with_child_is_not_ghost` (py/tests/test_spawn_ghost_reclaim.py:34) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `GhostDetectTest.test_no_session_or_garbage` (py/tests/test_spawn_ghost_reclaim.py:37) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `GhostDetectTest.test_mixed_panes` (py/tests/test_spawn_ghost_reclaim.py:42) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
-| `ReclaimTest.test_ghost_killed_and_tail_logged` (py/tests/test_spawn_ghost_reclaim.py:57) | `tests/g9.rs::ghost_is_killed_and_its_tail_logged`; `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
+| `ReclaimTest.test_ghost_killed_and_tail_logged` (py/tests/test_spawn_ghost_reclaim.py:57) | `tests/g9.rs::ghost_is_killed_and_only_screen_counts_are_logged` (ekran metni günlükte yok, yalnız sayılar); `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
 | `ReclaimTest.test_shell_provider_untouched` (py/tests/test_spawn_ghost_reclaim.py:63) | `tests/g9.rs::shell_provider_is_untouched`; `parity.rs::parity_g9` `hayalet-shell` | TAŞINDI |
 | `ReclaimTest.test_not_ghost_untouched` (py/tests/test_spawn_ghost_reclaim.py:66) | `tests/g9.rs::non_ghost_and_missing_tmux_are_untouched`; `parity.rs::parity_g9` `hayalet-degil` `hayalet-tmuxsuz` | TAŞINDI |
-| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:69) | `tests/g9.rs::reclaim_never_panics_and_trims_the_tail` (Rust'ta tmux sınırı hata yükseltemez; `spawn_ghost_reclaim_error` dalı gereksiz) | TAŞINDI |
+| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:69) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen` (Rust'ta tmux sınırı hata yükseltemez; `spawn_ghost_reclaim_error` dalı gereksiz) | TAŞINDI |
 | `SpawnPriority.test_default_and_exempt_and_off` (py/tests/test_spawn_priority.py:17) | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
 | `SpawnPriority.test_child_inherits_nice` (py/tests/test_spawn_priority.py:27) | `spawn.rs::priority_prefix`; sınanmayan senaryo: önekin gerçek kabukta çocuk sürece nice aktarması | TAŞINDI-TESTSİZ |
 | `TestDefaultClaudeMdGolden.test_default_output_is_byte_identical_to_pre_p5` (py/tests/test_steward_brain.py:62) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
