@@ -13,6 +13,7 @@ from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from .. import preview
+from ..diaglog import diag_log
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
 
@@ -492,6 +493,7 @@ def _is_real_user_text(content) -> bool:
 # yoklaması her çağrıda alt süreç açmasın, ama güncellenen ikili (mtime/boyut değişir) yoklamayı kendiliğinden
 # tazelesin. Çalıştırılamayan/çıktısız ikili ÖNBELLEĞE ALINMAZ ("" döner, bayrak yok sayılır: güvenli taraf).
 _HELP_CACHE: Dict[Tuple[str, int, int], str] = {}
+_HELP_UNREADABLE: set = set()       # UTF-8 olmayan çıktısı günlüğe girmiş (yol, mtime_ns, boyut): yoklama başına tekrar yazılmaz
 _HELP_TIMEOUT_SECONDS = 10.0
 
 
@@ -509,6 +511,11 @@ def claude_help_text(binary: Optional[str] = None) -> str:
         res = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=_HELP_TIMEOUT_SECONDS,
                              stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
+        return ""
+    except UnicodeDecodeError:      # okunamayan yardım = hiçbir bayrak tanınmaz (güvenli yön)
+        if key not in _HELP_UNREADABLE and not preview.active():      # kuru kipte günlük yok: işaret de tüketilmez
+            _HELP_UNREADABLE.add(key)
+            diag_log("help_output_not_utf8", binary=binary)
         return ""
     text = (res.stdout or "") + (res.stderr or "")
     if not text.strip():

@@ -171,7 +171,7 @@ impl Probe for RealProbe {
         cwd: &str,
         config_path: &str,
         argv: &[String],
-    ) -> Result<(), McpRegisterError> {
+    ) -> Result<bool, McpRegisterError> {
         // symlink ise hedefi değil bağlantının kendisi silinir
         if fs::symlink_metadata(config_path).is_ok() {
             fs::remove_file(config_path).map_err(|e| McpRegisterError::Unlink(oserr::repr(&e)))?;
@@ -186,20 +186,21 @@ impl Probe for RealProbe {
         };
         let out = process::run(&spec)
             .map_err(|e| McpRegisterError::Spawn(run_error_repr(&e, argv, self.mcp_timeout)))?;
+        // Python metin kipi, `errors="replace"`
+        let text = |b: &[u8]| {
+            String::from_utf8_lossy(b)
+                .replace("\r\n", "\n")
+                .replace('\r', "\n")
+        };
+        let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
         if out.code != 0 {
-            // Python metin kipi (UTF-8 olmayan çıktı orada istisnadır; burada U+FFFD)
-            let text = |b: &[u8]| {
-                String::from_utf8_lossy(b)
-                    .replace("\r\n", "\n")
-                    .replace('\r', "\n")
-            };
             return Err(McpRegisterError::Exit {
                 rc: out.code,
-                stdout: text(&out.stdout),
-                stderr: text(&out.stderr),
+                stdout,
+                stderr,
             });
         }
-        Ok(())
+        Ok(stdout.contains('\u{fffd}') || stderr.contains('\u{fffd}'))
     }
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError> {
         effects::apply(effect)

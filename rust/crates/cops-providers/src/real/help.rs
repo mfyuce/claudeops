@@ -1,13 +1,17 @@
 //! `<ikili> --help` yoklaması ve önbelleği (`claude_help_text`, `ucli_client.chat_help_text`).
 //!
 //! Anahtar (yol, `mtime_ns`, boyut): güncellenen ikili yeniden yoklanır. Çalıştırılamayan, zaman aşımına uğrayan, sınırı
-//! aşan, UTF-8 olmayan ya da boş çıktı ÖNBELLEĞE ALINMAZ ve "" sayılır (bayrak yok: güvenli taraf).
+//! aşan, UTF-8 olmayan ya da boş çıktı ÖNBELLEĞE ALINMAZ ve "" sayılır (bayrak yok: güvenli taraf). UTF-8 olmayan çıktı
+//! ikili sürümü başına bir kez günlüğe girer (`help_output_not_utf8`).
 
+use crate::probe::Diag;
 use crate::pyfmt::strip;
 use crate::real::process::{self, Capture, Spec};
 use crate::real::{fsio, Env};
-use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use crate::spawn_exec::DiagSink;
+use serde_json::json;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 /// `_HELP_TIMEOUT_SECONDS`.
@@ -20,10 +24,21 @@ const CACHE_MAX_ENTRIES: usize = 64;
 type Key = (String, Vec<String>, i64, u64);
 
 /// `_HELP_CACHE`; süreç başına tek örnek paylaşılır. Kilit alt süreç sırasında tutulmaz.
-#[derive(Debug)]
 pub struct HelpCache {
     timeout: Duration,
     entries: Mutex<HashMap<Key, String>>,
+    /// Günlüğe girmiş okunamayan sürümler.
+    unreadable: Mutex<HashSet<Key>>,
+    diag: Option<Arc<dyn DiagSink>>,
+}
+
+impl std::fmt::Debug for HelpCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HelpCache")
+            .field("timeout", &self.timeout)
+            .field("entries", &self.len())
+            .finish()
+    }
 }
 
 impl Default for HelpCache {
@@ -37,6 +52,35 @@ impl HelpCache {
         HelpCache {
             timeout,
             entries: Mutex::new(HashMap::new()),
+            unreadable: Mutex::default(),
+            diag: None,
+        }
+    }
+
+    /// `help_output_not_utf8` olayının yazılacağı günlük (gerçek: `diag_log`).
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> HelpCache {
+        self.diag = Some(diag);
+        self
+    }
+
+    fn log_unreadable(&self, key: Key) {
+        let binary = key.0.clone();
+        let mut seen = self
+            .unreadable
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if seen.len() >= CACHE_MAX_ENTRIES {
+            seen.clear();
+        }
+        if !seen.insert(key) {
+            return;
+        }
+        drop(seen);
+        if let Some(sink) = &self.diag {
+            sink.log(&Diag {
+                event: "help_output_not_utf8",
+                fields: vec![("binary", json!(binary))],
+            });
         }
     }
 
@@ -86,6 +130,7 @@ impl HelpCache {
             return String::new();
         };
         let (Ok(a), Ok(b)) = (String::from_utf8(out.stdout), String::from_utf8(out.stderr)) else {
+            self.log_unreadable(key);
             return String::new();
         };
         // Python metin kipi: evrensel satır sonu

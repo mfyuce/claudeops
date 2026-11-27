@@ -47,7 +47,7 @@ impl SpawnRuntime {
                 diag.clone(),
                 provision,
             )),
-            help: Arc::new(HelpCache::default()),
+            help: Arc::new(HelpCache::default().with_diag(Arc::new(diag.clone()))),
             diag,
         }
     }

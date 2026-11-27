@@ -452,13 +452,22 @@ pub fn real_probe(e: &Env, case: &Case) -> RealProbe {
 
 /// [`real_probe`], başka yollarla (ör. `repo_dir` ağaca çevrilmiş).
 pub fn real_probe_at(e: &Env, case: &Case, paths: Paths) -> RealProbe {
+    probe_over(e, case, paths, HelpCache::default())
+}
+
+/// [`real_probe`], verilen `--help` önbelleğiyle.
+pub fn real_probe_with_help(e: &Env, case: &Case, help: HelpCache) -> RealProbe {
+    probe_over(e, case, e.paths(), help)
+}
+
+fn probe_over(e: &Env, case: &Case, paths: Paths, help: HelpCache) -> RealProbe {
     let env = case_env(e, case);
     let deps = RealDeps {
         docs: Arc::new(FileDocs::new(&paths, env.clone())),
         projects: Arc::new(TestProjects(e.home.clone())),
         cost: Arc::new(OpenGate),
         search: Arc::new(NoSearch),
-        help: Arc::new(HelpCache::default()),
+        help: Arc::new(help),
         panel_port: None,
     };
     RealProbe::new(paths, env, deps).with_cwd(e.root.clone())
@@ -608,7 +617,7 @@ impl Probe for FsProbe<'_> {
         _cwd: &str,
         config_path: &str,
         argv: &[String],
-    ) -> Result<(), McpRegisterError> {
+    ) -> Result<bool, McpRegisterError> {
         if fs::symlink_metadata(config_path).is_ok() {
             fs::remove_file(config_path).map_err(|e| McpRegisterError::Unlink(format!("{e:?}")))?;
         }
@@ -634,7 +643,7 @@ impl Probe for FsProbe<'_> {
                 stderr: s("stderr"),
             });
         }
-        Ok(())
+        Ok(false)
     }
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError> {
         effects::apply(effect)

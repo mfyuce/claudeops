@@ -672,10 +672,12 @@ def register_mcp(binary: str, cwd: str, spec: McpServerSpec, session_name: str =
         return False
     try:
         r = subprocess.run(mcp_add_argv(binary, cwd, spec), stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           timeout=_MCP_ADD_TIMEOUT, cwd=cwd)
+                           errors="replace", timeout=_MCP_ADD_TIMEOUT, cwd=cwd)
     except (OSError, subprocess.SubprocessError) as e:
         diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, error=repr(e))
         return False
+    if "\ufffd" in (r.stdout or "") + (r.stderr or ""):     # sonucu çıkış kodu belirler; bozuk çıktı yalnız bildirilir
+        diag_log("ucli_mcp_output_not_utf8", name=session_name, cwd=cwd)
     if r.returncode != 0:
         diag_log("ucli_mcp_register_failed", name=session_name, cwd=cwd, rc=r.returncode,
                  error=(r.stderr or r.stdout or "")[-300:])

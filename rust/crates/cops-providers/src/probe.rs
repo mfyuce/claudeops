@@ -161,13 +161,14 @@ pub trait Probe {
     /// Panelin loopback portu (bilinmiyorsa None).
     fn panel_port(&self) -> Option<u16>;
     /// ucli MCP kaydı: `config_path` (`os.path.lexists` ise) silinir, `argv` `cwd`de çalıştırılır (20 sn). Günlük olaylarını
-    /// crate yazar (Python `register_mcp` ile aynı alanlar).
+    /// crate yazar (Python `register_mcp` ile aynı alanlar). `Ok(true)`: kayıt başarılı ama çıktıda UTF-8 olmayan bayt
+    /// vardı (U+FFFD); sonucu yalnız çıkış kodu belirler.
     fn register_mcp(
         &self,
         cwd: &str,
         config_path: &str,
         argv: &[String],
-    ) -> Result<(), McpRegisterError>;
+    ) -> Result<bool, McpRegisterError>;
     /// Başarısızlığı KOMUTU değiştiren yazımlar için yan etkiyi HEMEN uygula (Python'da bayrak yazım başarılıysa
     /// eklenir). Kuru çalıştırmada çağrılmaz; bekleyen yan etkiler bu yolla önceden uygulanıp listeden düşer. Gerçek uygulama: [`crate::real::effects::apply`].
     fn apply_now(&self, effect: &Effect) -> Result<(), EffectError>;

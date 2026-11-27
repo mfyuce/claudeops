@@ -1245,12 +1245,27 @@ pub(crate) fn mcp_launch_args(
         allowed_tools: tools,
         ..spec.clone()
     };
-    match p.probe.register_mcp(
+    let result = p.probe.register_mcp(
         cwd,
         &join_path(&dir, "mcp.json"),
         &mcp_add_argv(&binary, cwd, &clean),
-    ) {
-        Ok(()) => {
+    );
+    // sonucu çıkış kodu belirler; bozuk çıktı yalnız bildirilir
+    let garbled = match &result {
+        Ok(garbled) => *garbled,
+        Err(McpRegisterError::Exit { stdout, stderr, .. }) => {
+            stdout.contains('\u{fffd}') || stderr.contains('\u{fffd}')
+        }
+        Err(_) => false,
+    };
+    if garbled {
+        out.diag(
+            "ucli_mcp_output_not_utf8",
+            vec![("name", json!("")), ("cwd", json!(cwd))],
+        );
+    }
+    match result {
+        Ok(_) => {
             out.diag(
                 "ucli_mcp_registered",
                 vec![

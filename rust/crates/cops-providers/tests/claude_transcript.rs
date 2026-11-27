@@ -86,7 +86,7 @@ impl Probe for Mem {
     ) -> Result<(), cops_providers::real::effects::EffectError> {
         unimplemented!()
     }
-    fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<(), McpRegisterError> {
+    fn register_mcp(&self, _: &str, _: &str, _: &[String]) -> Result<bool, McpRegisterError> {
         unreachable!()
     }
 }

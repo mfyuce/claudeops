@@ -997,6 +997,8 @@ def op_g8_agy(a):
 
 
 def op_g8_help(a):
+    claude_p._HELP_UNREADABLE.clear()          # her vaka yeni süreç gibi
+    ucli_client._HELP_UNREADABLE.clear()
     out = []
     with _RealProcesses():
         for kind, binary in a["calls"]:

@@ -9,15 +9,26 @@ use cops_providers::pyjson::Py;
 use cops_providers::real::agents::{AgentRegistry, Sources};
 use cops_providers::real::diaglog::DiagLog;
 use cops_providers::real::docs::{DocAgySidStore, FileDocs};
+use cops_providers::real::help::HelpCache;
 use cops_providers::real::proxy::{self, Route};
 use cops_providers::real::{checks, pathexec, RealProbe};
-use cops_providers::{AgySidStore, BuildOutput, Cli, McpSpec, Probe, Providers};
+use cops_providers::spawn_exec::DiagSink;
+use cops_providers::{AgySidStore, BuildOutput, Cli, Diag, McpSpec, Probe, Providers};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 const NOW: f64 = 1_790_000_000.25;
+
+#[derive(Default)]
+struct Collect(std::sync::Mutex<Vec<Diag>>);
+
+impl DiagSink for Collect {
+    fn log(&self, diag: &Diag) {
+        self.0.lock().unwrap().push(diag.clone());
+    }
+}
 
 fn script(rel: &str, body: &str) -> Fx {
     file(rel, &format!("#!/bin/sh\n{body}\n"), 0o755)
@@ -514,11 +525,14 @@ fn help_cases(e: &Env) -> Vec<Case> {
         .collect();
     let mut calls = calls;
     calls.push(json!(["ucli", "tam"]));
+    let bad = format!("{}/bin/utf8", e.root);
+    calls.extend(["claude", "ucli", "claude", "ucli"].map(|k| json!([k, bad])));
     vec![Case::new("yardim", "g8_help", json!({"calls": calls}))
         .file(script("bin/tam", HELP_SCRIPT))
         .file(script("bin/bos", "true"))
         .file(script("bin/bosluk", "printf '  \\n\\t'"))
         .file(script("bin/hata", "echo '--flag'; exit 7"))
+        .file(script("bin/utf8", "printf '\\377 --flag\\n'"))
         .file(file("bin/izinsiz", "#!/bin/sh\necho x\n", 0o644))
         .file(Fx::Dir("bin/dizin".into(), 0o755))]
 }
@@ -563,6 +577,8 @@ fn mcp_cases(e: &Env) -> Vec<Case> {
         c("ucli-bag", record)
             .file(Fx::Dir("home/baska".into(), 0o755))
             .file(Fx::Link("work/p1/.ucli".into(), "../../home/baska".into())),
+        c("bozuk-cikti", &format!("printf '\\377\\n'; {record}")),
+        c("bozuk-cikti-hata", "printf 'hata \\377' >&2; exit 3"),
         c("cikis", "echo cikti; echo hata >&2; exit 3"),
         c("cikis-yalniz-stdout", "echo 'yalnız çıktı'; exit 4"),
         c(
@@ -819,8 +835,10 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
                 .map(rs_proxy)
                 .collect(),
         ),
-        "g8_help" => RsOut::ret(Value::from(
-            pairs(&a["calls"])
+        "g8_help" => {
+            let sink = Arc::new(Collect::default());
+            let probe = real_probe_with_help(e, c, HelpCache::default().with_diag(sink.clone()));
+            let texts: Vec<String> = pairs(&a["calls"])
                 .into_iter()
                 .map(|(kind, bin)| {
                     if kind == "claude" {
@@ -829,8 +847,13 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
                         probe.ucli_chat_help(bin)
                     }
                 })
-                .collect::<Vec<_>>(),
-        )),
+                .collect();
+            let extra_diags = std::mem::take(&mut *sink.0.lock().unwrap());
+            RsOut {
+                extra_diags,
+                ..RsOut::ret(Value::from(texts))
+            }
+        }
         "g8_mcp" => {
             let probe = probe.with_mcp_timeout(Duration::from_secs(a["timeout"].as_u64().unwrap()));
             let list = |k: &str| {

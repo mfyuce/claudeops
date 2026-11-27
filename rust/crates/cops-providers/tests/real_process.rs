@@ -234,7 +234,7 @@ fn empty_failed_slow_huge_or_non_utf8_help_is_not_cached() {
     assert!(help.is_empty());
 }
 
-fn mcp(t: &Tmp, body: &str) -> (Result<(), McpRegisterError>, String) {
+fn mcp(t: &Tmp, body: &str) -> (Result<bool, McpRegisterError>, String) {
     let bin = t.script("bin/ucli", body);
     let cfg = t.path("work/.ucli/mcp.json");
     let argv = vec![bin, "--root".into(), t.path("work")];
@@ -253,7 +253,7 @@ fn register_mcp_deletes_the_old_record_and_runs_in_the_workspace() {
         &t,
         "pwd > cwd.txt; printf '%s\\n' \"$@\" > args.txt; test ! -e .ucli/mcp.json",
     );
-    assert_eq!(r, Ok(()));
+    assert_eq!(r, Ok(false));
     assert!(fs::symlink_metadata(&cfg).is_err());
     assert_eq!(fs::read_to_string(victim).unwrap(), "dokunma");
     assert_eq!(
@@ -263,6 +263,47 @@ fn register_mcp_deletes_the_old_record_and_runs_in_the_workspace() {
     assert_eq!(
         fs::read_to_string(t.path("work/args.txt")).unwrap(),
         format!("--root\n{}\n", t.path("work"))
+    );
+}
+
+#[derive(Default)]
+struct Sink(std::sync::Mutex<Vec<cops_providers::Diag>>);
+
+impl cops_providers::spawn_exec::DiagSink for Sink {
+    fn log(&self, diag: &cops_providers::Diag) {
+        self.0.lock().unwrap().push(diag.clone());
+    }
+}
+
+#[test]
+fn non_utf8_help_gives_no_flags_and_is_logged_once_per_binary_version() {
+    let _g = spawn_guard();
+    let t = Tmp::new();
+    let sink = Arc::new(Sink::default());
+    let help = Arc::new(HelpCache::with_timeout(Duration::from_secs(5)).with_diag(sink.clone()));
+    let p = t.probe_with(t.env(&[]), help);
+    let bin = t.script("bin/ucli", "printf '\\377 --provider'");
+    for _ in 0..3 {
+        assert_eq!(p.ucli_chat_help(&bin), "");
+    }
+    let logged = sink.0.lock().unwrap().clone();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].event, "help_output_not_utf8");
+    assert_eq!(logged[0].fields, vec![("binary", serde_json::json!(bin))]);
+}
+
+#[test]
+fn register_mcp_with_non_utf8_output_follows_the_exit_code() {
+    let _g = spawn_guard();
+    let t = Tmp::new();
+    assert_eq!(mcp(&t, "printf '\\377'").0, Ok(true));
+    assert_eq!(
+        mcp(&t, "printf '\\377' >&2; exit 3").0,
+        Err(McpRegisterError::Exit {
+            rc: 3,
+            stdout: String::new(),
+            stderr: "\u{fffd}".into()
+        })
     );
 }
 

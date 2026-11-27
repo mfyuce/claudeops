@@ -47,6 +47,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import preview
+from .diaglog import diag_log
 from .settings import load_settings
 
 # claudeops'un KENDİ ucli kopyası: `<repo>/bin/ucli` (kullanıcı kararı, 2026-10-09:
@@ -148,12 +150,13 @@ def resolve_binary(binary: Optional[str] = None) -> str:
 # alt süreç açmasın, ama teslim edilen yeni bir ikili (`install-ucli.sh`) mtime/boyutu değiştirip
 # yoklamayı kendiliğinden tazelesin.
 _HELP_CACHE: Dict[Tuple[str, int, int], str] = {}
+_HELP_UNREADABLE: set = set()       # UTF-8 olmayan çıktısı günlüğe girmiş (yol, mtime_ns, boyut): yoklama başına tekrar yazılmaz
 _HELP_TIMEOUT_SECONDS = 10.0
 
 
 def chat_help_text(binary: str) -> str:
-    """`<binary> chat --help` çıktısı (stdout + stderr); çalıştırılamazsa "" (ve
-    ÖNBELLEĞE ALINMAZ: geçici bir hata kalıcı 'bayrak yok' kararına dönüşmesin)."""
+    """`<binary> chat --help` çıktısı (stdout + stderr); çalıştırılamazsa ya da çıktı UTF-8 değilse "" (hiçbir bayrak
+    tanınmaz; ÖNBELLEĞE ALINMAZ: geçici bir hata kalıcı 'bayrak yok' kararına dönüşmesin)."""
     binary = shutil.which(binary) or binary       # çıplak komut adı (`ucli`) PATH'ten çözülür; os.stat onu bulamazdı
     try:
         st = os.stat(binary)
@@ -168,6 +171,11 @@ def chat_help_text(binary: str) -> str:
         res = subprocess.run([binary, "chat", "--help"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
                              timeout=_HELP_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError):
+        return ""
+    except UnicodeDecodeError:
+        if key not in _HELP_UNREADABLE and not preview.active():      # kuru kipte günlük yok: işaret de tüketilmez
+            _HELP_UNREADABLE.add(key)
+            diag_log("help_output_not_utf8", binary=binary)
         return ""
     text = (res.stdout or "") + (res.stderr or "")
     if not text.strip():
