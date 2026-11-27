@@ -108,7 +108,9 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
 
 def binary_supports_checks(binary: str) -> bool:
     try:
-        r = subprocess.run([binary, "checks", "validate", "--help"], capture_output=True, text=True, timeout=10)
+        # yalnız çıkış kodu: çıktı çözülmez (UTF-8 olmayan yardım metni "alt komut yok" sayılırsa doğrulama atlanırdı)
+        r = subprocess.run([binary, "checks", "validate", "--help"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=10)
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -132,7 +134,7 @@ def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
             return True, ""
         errs = doc.get("errors") or []
         return False, "; ".join(f"{e.get('check') or '-'}.{e.get('field') or '-'}: {e.get('message')}" for e in errs)[:500] or "kayıt geçersiz"
-    except (OSError, subprocess.SubprocessError) as e:
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as e:
         return False, f"ucli çalıştırılamadı: {e.__class__.__name__}"
     finally:
         try:
