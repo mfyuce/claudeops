@@ -273,6 +273,8 @@ DEFS["providers/__init__.py"] = [
 
 DEFS["providers/base.py"] = [
     ok("cmd_arg", "providers.rs::arg", f"{G_INFO} U:providers.rs::claude_info"),
+    oos("_ro_sqlite_uri", "sağlayıcı SQLite deposunu salt okunur açma (agy/copilot sohbet ve model okuma)", f"{SAG}; {CHAT}"),
+    oos("_open_private_target", "sır/damga dosyasını 0600 ve bloklamadan yazma (açılış ortamı)", SAG),
     ok("CliProvider", "providers.rs::Cli", DISC, "yalnız tanıma/ayrıştırma yüzeyi; kalan metotlar kendi satırında"),
     ok("CliProvider.name", "providers.rs::Cli::as_str", G_INFO),
     ok("CliProvider.matches_proc", "providers.rs::Cli::detect", DISC),
@@ -341,12 +343,13 @@ DEFS["providers/claude_provider.py"] = [
                    "_EFFORT_SWITCH_DONE_MARKERS apply_live_effort_switch".split()),
         "devam kimliği, devir ve canlı model/effort değiştirme", T4),
     oos("session_file_sid " + C + "resolve_resume_id", "oturum kimliği ve devam kimliği", RESUME),
-    oos("_LAST_MODEL_CHUNK_BYTES _LAST_MODEL_MAX_BYTES _row_epoch _last_assistant_value last_assistant_model "
+    oos("_LAST_MODEL_CHUNK_BYTES _LAST_MODEL_MAX_BYTES _row_epoch _row_model _last_assistant_value last_assistant_model "
         "last_assistant_effort PROMPT_CACHE_TTL_SECONDS _real_request_epoch last_real_request_epoch "
         "live_or_spawn_model live_or_spawn_effort " + C + "prompt_cache_ttl_seconds " + C + "last_request_epoch",
         "transkriptten canlı model/effort ve önbellek yaşı", LIVE),
-    oos("_extract_text _is_real_user_text "
-        + " ".join(C + n for n in "_transcript_lines last_exchange full_history sid_for_stopped_session".split()),
+    oos("_extract_text _is_real_user_text _row_content "
+        + " ".join(C + n for n in "_transcript_lines last_exchange full_history sid_for_stopped_session "
+                   "last_message_role".split()),
         "sohbet geçmişi okuma", CHAT),
     oos("MODE_STATUS_PATTERNS CYCLABLE_MODES BUSY_STATUS_PATTERN "
         + " ".join(C + n for n in
@@ -379,8 +382,9 @@ DEFS["providers/codex_provider.py"] = [
                    "permission_modes effort_levels model_effort_levels".split()),
         "açılış argv/env, model/effort/izin kuralları", SAG),
     oos(X + "resolve_resume_id _session_meta", "devam kimliği", T4),
-    oos("SESSIONS_DIR _ROLLOUT_UUID_RE _MAX_ROLLOUT_SCAN _safe_mtime _codex_text _is_real_codex_user_text "
-        + " ".join(X + n for n in "_rollout_path _transcript_lines last_exchange full_history".split()),
+    oos("SESSIONS_DIR _ROLLOUT_UUID_RE _MAX_ROLLOUT_SCAN _safe_mtime _codex_text _is_real_codex_user_text _codex_item "
+        + " ".join(X + n for n in "_rollout_path _transcript_lines last_exchange full_history "
+                   "last_message_role".split()),
         "rollout dosyası ve sohbet geçmişi", CHAT),
     oos("BUSY_STATUS_PATTERN " + X + "busy_status_pattern " + X + "input_settle_delay " + X + "background_work",
         "tmux ekranı okuma ve tuş gönderme", f"{T2}; {W0B}"),
@@ -399,9 +403,9 @@ DEFS["providers/copilot_provider.py"] = [
         "_PERMISSION_FLAGS "
         + " ".join(P_ + n for n in "build_inner_command env_overrides model_choices permission_modes "
                    "effort_levels".split()), "açılış argv/env, model/effort/izin kuralları", SAG),
-    oos("_RESUME_SCAN_LIMIT trust_folder trust_folder::re1 " + P_ + "resolve_resume_id",
+    oos("_RESUME_SCAN_LIMIT _TRUST_TOKEN_RE trust_folder trust_folder::re1 " + P_ + "resolve_resume_id",
         "devam kimliği ve klasöre güven kaydı", T4),
-    oos("SESSION_STORE_DB _connect_ro " + " ".join(P_ + n for n in "_turns last_exchange full_history".split()),
+    oos("SESSION_STORE_DB _connect_ro _cell_value " + " ".join(P_ + n for n in "_turns last_exchange full_history".split()),
         "oturum deposu ve sohbet geçmişi", CHAT),
     oos("MODE_STATUS_PATTERNS BUSY_STATUS_PATTERN " + P_ + "mode_status_patterns " + P_ + "busy_status_pattern",
         "tmux ekranı okuma", f"{T2}; {W0B}"),
@@ -490,7 +494,7 @@ DEFS["providers/ucli_provider.py"] = [
     oos("_USAGE_FIELDS _PHASE_INT_FIELDS "
         + " ".join(U_ + n for n in "live_busy live_tools live_context live_usage live_failed_turns live_phase".split()),
         "durum dosyasından `/api/status` alanları", T1),
-    oos(" ".join(U_ + n for n in "full_history sid_for_stopped_session last_exchange".split()),
+    oos(" ".join(U_ + n for n in "full_history sid_for_stopped_session last_exchange last_message_role".split()),
         "sohbet geçmişi okuma", CHAT),
 ]
 
@@ -882,6 +886,7 @@ FILES = {
     "agy_binary_resolution": ("agy ikili yolu ve alıntılama", SAG),
     "agy_compaction_view": (_HIST, CHAT),
     "agy_last_exchange": (_HIST, CHAT),
+    "guidance_bad_utf8": ("model yönergesi dosyasında bozuk UTF-8", SAG),
     "agy_models_swr": ("agy model listesi önbelleği", SAG),
     "bg_work": ("arka plan işi tespiti (ekran + transkript)", f"{T2}; {T1}"),
     "brain_permission_ucli": ("değnekçi beyninin ucli izinleri", f"{T10}; {SAG}"),
@@ -914,6 +919,14 @@ FILES = {
     "provider_wants_split": ("devir/kurtarma bayrakları", T4),
     "review_self_verify": ("reviewer doğrulaması", T8),
     "routing_guidance": ("model yönergesi ve varsayılanlar", SAG),
+    "rsprov_chat_readers": (_HIST + " (bozuk bayt/biçim, ucli yarım satır)", CHAT),
+    "rsprov_g10_oneshot": ("tek atımlık model çağrısı", f"{SAG}; {T10}"),
+    "rsprov_g4_dismiss": ("başıboş diyalog kapatma tuşları", f"{SAG}; {T2}"),
+    "rsprov_g8_spawn_helpers": ("açılış yardımcıları (yardım yoklaması, araç zinciri, PATH)", SAG),
+    "rsprov_live_readers": ("durum dosyası/transkriptten canlı satır alanları", f"{SAG}; {T1}"),
+    "rsprov_model_reader": ("transkriptten canlı model", LIVE),
+    "rsprov_models_redirect": ("model listesi isteğinde yönlendirme izlenmez", SAG),
+    "rsprov_sqlite_readers": ("agy/copilot SQLite deposu okuma", f"{SAG}; {CHAT}"),
     "snapshot_db": (_PATHS, W0A),
     "split_names": ("CLI ad listesi ayrıştırma", T6),
     "state_backend_last_good": (_PATHS, W0A),
@@ -965,8 +978,10 @@ FILES = {
     "ucli_last_exchange_pairing": (_HIST, CHAT),
     "ucli_limit_flags": (_BUILD, SAG),
     "ucli_live_context": ("`live_context` satır alanı", T1),
+    "ucli_mcp_tool_name": ("ucli MCP araç adı süzgeci", SAG),
     "ucli_max_session_usd": (_BUILD, SAG),
     "ucli_metrics_file_arg": (_BUILD, SAG),
+    "ucli_models_payload": ("ucli model listesi yanıtı ayrıştırma", SAG),
     "ucli_multiline_flatten": ("ucli giriş metni düzleştirme", T2),
     "ucli_phase": ("`phase` satır alanı", T1),
     "ucli_quota_warn": ("token rozeti eşikleri", T1),
@@ -1377,7 +1392,7 @@ chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
 context_mask_unknown:3:9d143dbe0c
-copilot_trust:4:005b70de22
+copilot_trust:9:d6b4d8ba56
 cpu_hogs:3:887f0c1e4a
 diag_log_isolation:2:5ecbb7a6c7
 directive_delivery:19:57e6111f92
@@ -1385,6 +1400,7 @@ effort_by_model:36:73ae9d3c95
 extensions_mcp:6:26026f92d2
 files_resolve_exact_first:5:c3607abfa1
 guard_lock_safety:4:60456de9ae
+guidance_bad_utf8:3:c29b28cce3
 handover_cache_policy:50:05c65be290
 input_box_typed:13:ae087dd291
 kill_access_denied:1:916993d907
@@ -1399,6 +1415,14 @@ provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a
 review_self_verify:18:4b125a8002
 routing_guidance:13:964131411b
+rsprov_chat_readers:15:6e732c13dd
+rsprov_g10_oneshot:6:18f99b20b8
+rsprov_g4_dismiss:2:71df770dc0
+rsprov_g8_spawn_helpers:6:4aee24f4a0
+rsprov_live_readers:12:70167decbb
+rsprov_model_reader:6:fbceb023ec
+rsprov_models_redirect:2:e49e832742
+rsprov_sqlite_readers:5:bebafe8f70
 snapshot_db:5:b46cde3ad1
 split_names:3:3580026783
 state_backend_last_good:3:5531228f00
@@ -1451,7 +1475,9 @@ ucli_last_exchange_pairing:3:32c4fc6ff3
 ucli_limit_flags:11:412a670c9a
 ucli_live_context:4:cf3fb8ae39
 ucli_max_session_usd:6:72691a7043
+ucli_mcp_tool_name:2:6e640b5f2c
 ucli_metrics_file_arg:3:67ebeb61ff
+ucli_models_payload:2:4862f9891e
 ucli_multiline_flatten:7:1d88beea22
 ucli_phase:30:6588d1ea97
 ucli_quota_warn:21:5d3f74a1d5
