@@ -983,9 +983,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1926 satır)
+### Python testleri (1927 satır)
 
-Test satırı özeti: 1926 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1927 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1272,6 +1272,7 @@ Test satırı özeti: 1926 satır; doğrudan açık (aşağıda `AÇIK`) 190; pa
 | `test_review_bad_records.BadRecordTest.test_usage_summary_skips_bad_seconds` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/rev `cops-review-core` karşılıyor: `report.rs::usage_summary` (docs/rs-rev.md) |
 | `test_review_bad_records.BadRecordTest.test_usage_cost_skips_non_utf8_line` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/rev `cops-review-core` karşılıyor: `report.rs::usage_cost_usd` (docs/rs-rev.md) |
 | `test_review_bad_records.CorruptStoreTest.test_write_refused_and_file_untouched` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.save_findings, review.save_history, review.save_pool |
+| `test_review_bad_records.CorruptStoreTest.test_decide_on_corrupt_findings_names_the_store_not_the_finding` | gereksiz (bu crate'te sınanacak saf çağrı yok): rs/rev `cops-review-core` karşılıyor: `store.rs::ReviewStore::decide_finding` (docs/rs-rev.md) |
 | `test_review_bad_records.CorruptStoreTest.test_update_pair_refused_on_corrupt_history` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.update_pair |
 | `test_review_bad_records.CorruptStoreTest.test_missing_and_healthy_stores_are_written` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.load_findings, review.save_findings, review.save_history, review.save_pool |
 | `test_review_bad_records.CorruptStoreTest.test_corrupt_backup_not_repeated` | gereksiz (bu crate'te sınanacak saf çağrı yok): G/Ç: `steward._corrupt_backup` (bozuk dosyanın kanıt kopyası); review payı rs/rev `cops-review-core` `store.rs::backed_up` (docs/rs-rev.md), değnekçi deposu tarafı iz T10 |
