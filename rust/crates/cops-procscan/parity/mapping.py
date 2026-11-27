@@ -940,6 +940,7 @@ FILES = {
     "steward_ho_on_open": (_STEW, f"{T10}; {T4}"),
     "steward_http": (_STEW, T10),
     "steward_job_gate_and_qcap": (_STEW, T10),
+    "steward_open_dialog": (_STEW, f"{T10}; {T1}"),
     "steward_owned": (_STEW, T10),
     "steward_remote_facts": (_STEW + " ve uzak olgu ucu", f"{T10}; {T5}"),
     "steward_ucli_idle": (_STEW, T10),
@@ -1427,6 +1428,7 @@ steward_ctx:21:12df78f872
 steward_generic:25:f4969150e9
 steward_ho_on_open:9:d3f0301c62
 steward_http:55:d144bd3c53
+steward_open_dialog:13:5d3f7bb467
 steward_job_gate_and_qcap:17:3a0173c206
 steward_owned:17:c39a25372d
 steward_remote_facts:19:8999b83aa6

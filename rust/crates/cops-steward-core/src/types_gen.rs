@@ -158,6 +158,8 @@ pub struct SessionView {
     pub live_effort: String,
     pub idle_since: f64,
     pub cache_ttl: String,
+    pub question_open: bool,
+    pub owner_input_at: f64,
 }
 
 impl Default for SessionView {
@@ -185,6 +187,8 @@ impl Default for SessionView {
             live_effort: String::new(),
             idle_since: 0.0,
             cache_ttl: String::new(),
+            question_open: false,
+            owner_input_at: 0.0,
         }
     }
 }
