@@ -1,11 +1,11 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
 Durum (27 Kas 2026, `rs/prov` `54ed8a8e`; sonrasında yalnız belge ve eşleme dosyaları değişti):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 729 satır (TAŞINDI 653, KAPSAM DIŞI 76) ve test tablosu
-1587 satır (TAŞINDI 774, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
-4 + 20 satır). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** G1-G11 taşındı; eşleme tablosu 735 satır (TAŞINDI 659, KAPSAM DIŞI 76) ve test tablosu
+1602 satır (TAŞINDI 789, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
+4 + 20 satır; S4 uygulamasıyla 6 + 15 satır daha). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
 uygulandı ("S1/S2" bölümü); S3 onaylandı, enterprise deposunda değişiklik bekliyor; S5 = (b) ve S6 = (b) onaylandı,
-uygulandı; TBD#419 = (a) ve TBD#422 = (a) uygulandı; S4 = (a) cevaplandı, henüz uygulanmadı. §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
+uygulandı; TBD#419 = (a) ve TBD#422 = (a) uygulandı; S4 = (a) uygulandı (27 Kas, iki tarafta; "S4" maddesi). §3.5 ve §2.5.2 27 Kas'ta cops kabulüyle kapandı.
 Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 1295 geçti, 0 kaldı, 1 atlandı;
 `clippy --workspace --all-targets -- -D warnings` temiz; `cargo fmt --check` temiz; Python tam paket 6497 OK
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
@@ -103,7 +103,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 - `plan_spawn` `resume_id`yi girdi alır; çözümü `Live::resolve_resume_id` + `ids_held_by_others` (G1). İkisini bağlayan akış G9.
 
 ## Sıradaki
-1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), S4 uygulaması (cevap (a)), kalan AÇIK satırlar.
+1. Birleştirme engelleri ("Birleştirme engelleri" bölümü): S3 (enterprise), kalan AÇIK satırlar.
 2. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 3. Ortaklaştırma yapıldı (27 Kas, üçüncü tur; "Üçüncü tur" bölümü). Kalan ikinci kopya: `pyjson::Py` ayrıştırıcısı ile
@@ -121,7 +121,6 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 | §3.1 (a), §2.5.8 | model/effort okuması (S1) ve claude takılma kararı (TBD#419) kapandı; sid'siz `jsonl_path_for` (sohbet) ve codex rollout okuması (sohbet, son mesaj rolü, takılma kararı) hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
-| §3.13, §2.5.7 | kanca ve `env_overrides` ortamı tmux komut satırında | iz (S4 = (a) cevaplandı, 27 Kas) |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
 | §3.20, §2.5.6 | spawn kancası kuru koşuda da çağrılır | S3 onaylandı; enterprise deposunda değişiklik bekliyor |
 
@@ -223,11 +222,31 @@ Python 31 MB.
   çağrı kalsın, enterprise kancası kuru koşuyu (`preview.active()`) görünce yazmasın: ön denetim korunur, çekirdek
   değişmez. (b) kuru koşuda kanca hiç çağrılmasın: yan etki biter, ama kota/yetki reddi ancak eski oturum kapandıktan sonra
   görünür. (c) aynen. Öneri: (a).
-- **S4 (ortam değişkenleri komut satırında): cevaplandı ((a), 27 Kas), UYGULANMADI.** Oturum açılırken sağlayıcı ve kanca ortamı `AD=DEĞER` olarak komut satırına
-  gömülüyor; kanca sır döndürürse makinedeki başka kullanıcılar süreç listesinden görebilir. Bugünkü sağlayıcı değerleri
-  sır içermiyor; enterprise kancasının döndürdükleri bu turda incelenmedi. (a) adı `_KEY`/`_TOKEN`/`_SECRET` ile biten
-  değerler 0600 dosyaya yazılıp oradan yüklensin (copilot anahtarındaki yöntem): açılış komutu değişir. (b) kanca böyle
-  bir ad döndürürse oturum açılmasın. (c) aynen kalsın, kural olarak "kanca sır döndürmez" yazılsın. Öneri: (a).
+- **S4 (ortam değişkenleri komut satırında): onaylandı ((a), 27 Kas), UYGULANDI (27 Kas, iki tarafta).** Oturum
+  açılırken sağlayıcı ve kanca ortamı `AD=DEĞER` olarak komut satırına gömülüyordu; kanca sır döndürürse makinedeki başka
+  kullanıcılar süreç listesinden görebilirdi. Şimdi adı `_KEY`, `_TOKEN` ya da `_SECRET` ile biten değerler (filtreden
+  geçen adlar büyük harf ASCII; `KEY_DIR`, `TOKENS`, `PASSWORD` gibi adlar eskisi gibi komutta) komut satırına girmez:
+  `CLAUDEOPS_DIR/spawn-env/<16 onaltılık>.env` dosyasına `export AD='değer'` satırları olarak yazılır (dizin 0700,
+  dosya 0600; dizin bağlantı, dizin olmayan ya da başka kullanıcıya ait ise RET, grup/diğer izni varsa 0700'e daraltılır;
+  dosya geçici adla `O_EXCL|O_NOFOLLOW` yazılıp `link` ile var olanı EZMEDEN yerine konur; ad rastgele, eşzamanlı
+  açılışlar çakışmaz). Açılış komutu `cd CWD && [nice] ( . DOSYA && rm -f DOSYA && [düz ortam] <cli> )`: dosya ALT
+  KABUKTA yüklenir ve hemen silinir, değer kalan `exec bash` kabuğuna sızmaz; sır adı yoksa komut eskisiyle birebir
+  aynı. Pencere, penceresiz tmux, bekçinin yeniden denemesi ve yedek yol aynı `inner`i kullanır: hiçbirinde değer yok.
+  Bekçi dosya yüklendikten SONRA yeniden açarsa (oturum düşmüş, nadir) dosya yoktur, `.` başarısız olur ve CLI
+  başlamaz (kapalı yön). Yüklenmeden kalan dosyalar (pencere hiç açılmadı) sonraki sır yazımında, bir saatten eskiyse
+  silinir. Durum dizini örneğin kendi `CLAUDEOPS_DIR`i: ikinci örnek ortak köke yazmaz.
+  Kapalı yön: dosya yazılamazsa sır komut satırına DÜŞMEZ, oturum açılmaz: Python `SpawnRefused("secret_env_file",
+  <sınıf>)` (web temiz ret), Rust `SpawnFailure::Refused` aynı metin; günlükte `spawn_env_file_refused` yalnız ad, cli
+  ve hata sınıfı. Kuru koşu dosya yazmaz (dry-run satırı eskisi gibi maskeli). Rust: `spawn.rs` (`is_secret_env_name`,
+  `SECRET_ENV_SUFFIXES`, `SPAWN_ENV_DIRNAME`), `Effect::WriteSpawnEnv` (`Debug`ta `<redacted>`), gerçek
+  `real/effects.rs::{write_spawn_env, spawn_env_token}`, `Probe::spawn_env_token`, ret eşlemesi `spawn_exec.rs`.
+  Testler: `py/tests/test_rsprov_s4_secret_env.py` (15), `tests/secrets_argv.rs::{spawn_secret_env_goes_to_a_private_file_not_argv,
+  spawn_env_file_fails_closed_and_never_overwrites, spawn_env_tokens_are_random_hex}`, parite `parity_spawn`
+  `{cli}-sir-{dry,hidden,gt,gt_tmux}`, `parity_g9` `sir-` (dosya içeriği ve izni iki tarafın görüntüsünde aynı; koşucu
+  token'ı iki tarafta aynı sabite bağlar).
+  **Sınır (sahip notu):** dosya yalnız makinedeki BAŞKA Unix hesaplarına karşı korur. Çok kullanıcılı kipte oturumlar
+  aynı Unix kullanıcısında koştuğu için panel kullanıcıları arasında koruma SAĞLAMAZ (enterprise `docs/MULTI-USER.md`
+  S1 sınırı, TBD#177).
 - **S5 (maliyet günlüğü taramasının süresi): onaylandı, uygulandı** (27 Kas, (b); "S5" bölümü).
 - **S6 (ikinci örnekte hizmet anahtar dosyası): onaylandı, uygulandı** (27 Kas, sahip, (b); "TBD#419, S6, uzun harcama
   satırı" bölümü).
@@ -284,7 +303,7 @@ sır-argv birim testleri.
 | §3.10 girdi sınırları: boş, negatif, NaN/inf, bozuk UTF-8, tip (H5) | NaN/inf: `real::pane::tests::settle_maps_python_values_and_never_panics`, `g9::system_clock_is_monotonic_and_ignores_bad_sleeps`, `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap` (NaN, negatif, metin), `ucli_opts::tests::validate_opts_matches_python` (`nan`, `inf`, `-1`), `parity_panel` `metrics-nan`; UTF-8: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached`, `real_ledger::a_log_with_a_non_utf8_name_still_counts`, `real_pane::capture_matches_python_and_keeps_ansi`; başlık olamayan anahtar: `model_sources::a_key_that_cannot_be_a_header_value_sends_nothing`; FIFO: `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo`, `real_oneshot::a_fifo_key_file_or_index_is_refused_without_blocking`; bozuk/kesik girdi: §3.5 rastgele testleri | TAMAM (27 Kas, G1 7: bozuk `agy_sids` belgesi üzerine YAZILMAZ, `parity_resume` `agy-yaz-bozuk`; bozuk `ucli_agents` kopyalanır, `real_fs::a_corrupt_agent_registry_is_copied_aside_and_an_unreadable_one_is_not_overwritten`) |
 | §3.11 işaret / ad ayrıştırma tek modül, corpus, Python vektörü (H6, H14) | crate STEWARD/RFH işareti ayrıştırmaz (UYGULANMAZ, değnekçi izi). Crate'in ayrıştırıcıları Python'a karşı: kota/bağlam `parity_usage`, transkript `parity_transcript`, protobuf/SQLite sohbet `parity_chat`, `exec_cmds` regex çevirmeni `parity_ucli` + `py_re::tests::random_patterns_never_panic`, oturum adı `ucli::is_child_name` `parity_ucli` | TAMAM |
 | §3.12 Python ile paylaşılan kural / yol diferansiyel testle eşit; `$HOME` doğrudan yok (H14) | `tests/parity.rs` 20 aile (sayılar "Parite") + `tests/parity_docs.rs`; gerçek tmux/pane Python'a karşı: `real_tmux::fragments_match_python`, `real_pane::*_like_python`, `capture_matches_python_and_keeps_ansi`; durum yolları yalnız `Paths`ten (çağıran verir; `src/`de `HOME` okuması yok); `strip_ansi` tek kaynak `cops-tmux` ; ortak tek kaynak: `is_safe_env_name`, `valid_http_url`, ayar belgesi ve okuyucuları, `strip`/`isspace`/`repr`/`int`/`float`/ondalık rakam rs/state, `splitlines` rs/proc, `main_session_model_effort` rs/stew (kopya silindi) | TAMAM (27 Kas üçüncü tur). Not: `pyjson::Py` ayrıştırıcısı `cops-state::json`dan ayrı kalır (eşlenmemiş vekil ve 4300 basamak kuralı farklı); davranışı Python'a karşı parite aileleriyle sınanır |
-| §3.13 sır tipte; log / argv / URL'de yok (H12, H13) | `Effect::WriteSecret` `Debug`ta `<redacted>`; `model_sources::SecretValue` + `the_key_stays_out_of_urls_argv_and_debug_output`; BYOK anahtarı yalnız 0600 dosyada: `secrets_argv::copilot_byok_key_goes_to_a_private_file_not_argv`, `ucli_evren_key_goes_to_a_private_file_not_argv`, `ucli_service_key_goes_to_a_private_file_not_argv`; çocuk ortamı: `real_oneshot::the_key_reaches_only_the_child_environment`; hata metni: `oneshot::tests::secrets_are_removed_from_every_error_text`; token yalnız özetiyle kayıtlı: `real_fs::agent_token_is_0600_and_only_its_hash_is_registered`; pane metni argv'de değil: `real_pane::text_never_appears_in_tmux_argv`; hayalet ekranı günlüğe girmez (`parity_g9` `hayalet-`) | TAMAM. AÇIK: kanca ve `env_overrides` ortamı tmux komut satırına `KEY=VAL` gömülür (Python gibi; kanca sır döndürürse `/proc/*/cmdline`da görünür; tmux 3.0a'da `new-session -e` yok, taşımak oturum açmayı değiştirir: "Bekleyen sorular" S4). Kimlik matrisi UYGULANMAZ (crate yetki vermez) |
+| §3.13 sır tipte; log / argv / URL'de yok (H12, H13) | `Effect::WriteSecret` `Debug`ta `<redacted>`; `model_sources::SecretValue` + `the_key_stays_out_of_urls_argv_and_debug_output`; BYOK anahtarı yalnız 0600 dosyada: `secrets_argv::copilot_byok_key_goes_to_a_private_file_not_argv`, `ucli_evren_key_goes_to_a_private_file_not_argv`, `ucli_service_key_goes_to_a_private_file_not_argv`; çocuk ortamı: `real_oneshot::the_key_reaches_only_the_child_environment`; hata metni: `oneshot::tests::secrets_are_removed_from_every_error_text`; token yalnız özetiyle kayıtlı: `real_fs::agent_token_is_0600_and_only_its_hash_is_registered`; pane metni argv'de değil: `real_pane::text_never_appears_in_tmux_argv`; hayalet ekranı günlüğe girmez (`parity_g9` `hayalet-`) | TAMAM. 27 Kas (S4, iki tarafta): kanca ve `env_overrides` ortamında `_KEY`/`_TOKEN`/`_SECRET` adlı değerler komut satırında değil, 0600 dosyada (`secrets_argv::spawn_secret_env_goes_to_a_private_file_not_argv`, `spawn_env_file_fails_closed_and_never_overwrites`; parite `{cli}-sir-`, `sir-`); bu adlara uymayan sırlar (ör. `PASSWORD`) hâlâ komutta (karar metni yalnız üç son eki kapsar). Kimlik matrisi UYGULANMAZ (crate yetki vermez) |
 | §3.14 yol / adres girdisi, symlink (H17) | `real_fs::secret_files_are_private_from_creation_and_links_are_not_followed`, `atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `realpath_handles_links_loops_and_missing_parts`; `real_agy_store::a_symlinked_lock_file_is_refused_and_nothing_is_written`; `g9::dangling_backup_link_writes_neither_backup_nor_target`; env beyaz liste: `parity_spawn` `filter`, `kanca` (`LD_PRELOAD`), `parity_g9` `ortam-supurme`; HTTP: `real_http::unusable_addresses_send_nothing`, `redirects_are_never_followed_and_the_key_does_not_leave` | TAMAM (27 Kas, iki tarafta): `/` ya da NUL taşıyan oturum adı / kimlik dosya yoluna eklenmez (`pyfmt::is_path_part`, Python `base._path_part_ok`; ek alan adlarda `.`/`..` kaçamaz): agy konuşma veritabanı, claude istek adayı, codex rollout, ucli durum/sohbet dosyası ve `--state-dir` denetimi; harf, rakam, `.`, `-`, `_`, ASCII dışı harf taşıyan adların hiçbiri reddedilmez (`test_rsprov_paths_keyfile.py::PathPartTest`, `UcliFilesTest`, `ClaudeRequestTest`; parite `chat-agy-mutlak-kimlik`, `transkript-istek-mutlak`, `chat-ucli-yol-disi`, `live-durum-yol-disi`). AÇIK (bilerek): okuma yolları bağlantı izler (agy/claude/codex dizinleri CLI'ların kendi bağlantılı kurulumlarında da çalışmalı); ayardaki uç noktaya iç ağ engeli yok (yerel/iç ağ servisleri meşru uç nokta) |
 | §3.15 vekil / WS kullanıcı yolundan e2e (H15, H18, H21) | crate sunucu, vekil, WS değil: UYGULANMAZ. İstemci tarafı: `real_http::a_2xx_body_is_returned_for_every_framing`, `error_statuses_broken_and_truncated_answers_are_errors_without_details`, `https_is_tunnelled_with_connect_and_proxy_auth_stays_outside_the_tunnel`, `tls_verification_is_on_for_untrusted_roots_and_wrong_names` | UYGULANMAZ (bağlayan uç copsd'nin e2e'si) |
 | §3.16 yeni uç / route tablo eşitliği (H10, H14) | crate uç eklemez | UYGULANMAZ |
@@ -298,7 +317,7 @@ sır-argv birim testleri.
 | §2.5.4 gerçek model kanıtı sağlayıcının kendi logundan (agy `Propagating ... label=`) (H4, H21) | crate agy günlüğü okumaz; Python'da bu okuma yalnız `review.py`de (review izi) | UYGULANMAZ (rs/rev) |
 | §2.5.5 canlı model / effort jsonl'den (H3) | G3 `claude_transcript.rs`; `parity_transcript`; `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM (sid'siz model/effort düşüşü 27 Kas kapandı, S1; effort yalnız son yanıtın modelinden, S2: `claude_transcript::effort_never_outlives_its_model`, `parity_transcript` `esit-effort-`; öbür sid'siz okumalar §3.1 AÇIK) |
 | §2.5.6 kuru çalıştırma yan etkisiz, pay iadesi (H9, H21) | §3.20 testleri; `release` kuru ve hatalı başlatmada tam bir kez (`parity_g9` her vaka) | TAMAM (§3.20 AÇIK aday 6) |
-| §2.5.7 spawn env beyaz liste, sırlar argv'de değil (H12, H17) | `spawn::filter_env_overrides` (`parity_spawn` `filter`, `kanca`), çocuk ortamı CLI kimlik değişkeni süpürme (`parity_g9` `ortam-supurme`, `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`); sır testleri §3.13 | TAMAM (27 Kas, TBD#401: tek atımlık çağrıda `api_key_env` beyaz listesi, `real_oneshot::only_known_key_env_names_start_a_child`, `parity_oneshot` `tbd401-`; çocuk ortamı Python gibi miras). AÇIK: kanca ortamı argv'de (§3.13). `endpoint` serbestliği TBD#401 kararının dışında kaldı ("Bekleyen sorular" altında not) |
+| §2.5.7 spawn env beyaz liste, sırlar argv'de değil (H12, H17) | `spawn::filter_env_overrides` (`parity_spawn` `filter`, `kanca`), çocuk ortamı CLI kimlik değişkeni süpürme (`parity_g9` `ortam-supurme`, `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`); sır testleri §3.13 | TAMAM (27 Kas, TBD#401: tek atımlık çağrıda `api_key_env` beyaz listesi, `real_oneshot::only_known_key_env_names_start_a_child`, `parity_oneshot` `tbd401-`; çocuk ortamı Python gibi miras). Kanca ortamındaki `_KEY`/`_TOKEN`/`_SECRET` adları S4 ile dosyada (§3.13). `endpoint` serbestliği TBD#401 kararının dışında kaldı ("Bekleyen sorular" altında not) |
 | §2.5.8 cwd başına tek konuşma kimliği; kardeş oturumlar (H4, H7) | `parity_resume` `tutulan`, `agy-sahipli-*`, `devam-claude-kardes`, `devam-agy-onbellek-tutulan`; `parity_transcript` `istek-` (`sibling`, `onek`), `canli-kimlik` (model/effort kardeşten okunmaz) | TAMAM. AÇIK: §3.1 (a), (c) |
 | §2.5.9 trust / izin diyaloğu sürüm fixture'ları (H4) | diyalog işleyicisi (`trust_dialog.py`) bu crate'te değil; crate yalnız copilot `trustedFolders` düzenlemesini yazar (`parity_build` copilot vakaları) | UYGULANMAZ (T4/T10) |
 | §2.5.10 başarısız spawn'da kayıt temizliği (H9, H2) | pay iadesi `parity_g9` `release`; tavan reddi `real_ledger::a_claude_service_build_is_refused_over_the_cap`; instance kaydı çağıranın | TAMAM (crate payı) |
@@ -1093,8 +1112,8 @@ eklenti KAYITLARI (kim, ne zaman kaydeder) çağıranın: crate yalnız `Hooks` 
 Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
 ## Sır / argv notları (Python'a dokunulmadı)
-- `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv). Kanca bir API anahtarı döndürürse argv'ye girer;
-  yalnız dry-run satırı maskeliyor. Bugünkü sağlayıcı override'ları sır içermiyor. Soru: "Bekleyen sorular" S4.
+- `spawn.py`: `env_overrides` + kanca ortamı `KEY=VAL` olarak komut satırına gömülür (tmux argv); 27 Kas S4 ile adı
+  `_KEY`/`_TOKEN`/`_SECRET` ile bitenler hariç: onlar 0600 dosyada, alt kabukta yüklenip silinir ("Bekleyen sorular" S4).
 - ucli anahtarı argv'de değil (`$(cat dosya)`); dosya yolu iki tarafta tırnaklı (TBD#373/7).
 - copilot BYOK: dosya source edilir, argv temiz.
 
@@ -1929,6 +1948,12 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 |---|---|---|---|
 | `_own_conversation` (py/claudeops/stuck.py) | yok: `find_stuck`/`recover_stuck` akışı T4 (okuyucusu `claude_transcript.rs::Live::live_transcript`) | yok | KAPSAM DIŞI |
 | `spawn_session(resume_id=)` (py/claudeops/spawn.py) | `spawn_exec.rs::StartRequest.resume_id` | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+| `_SECRET_ENV_SUFFIXES` (py/claudeops/spawn.py:80) | `spawn.rs::{SECRET_ENV_SUFFIXES, is_secret_env_name}` | `parity.rs::parity_spawn` `-sir-` | TAŞINDI |
+| `_SPAWN_ENV_DIRNAME` (py/claudeops/spawn.py:81) | `spawn.rs::SPAWN_ENV_DIRNAME` | `parity.rs::parity_spawn` `-sir-`; `parity_g9` `sir-` | TAŞINDI |
+| `_SPAWN_ENV_STALE_SECONDS` (py/claudeops/spawn.py:82) | `real/effects.rs::SPAWN_ENV_STALE_SECONDS` | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (artık temizliği iki tarafta birim testli; parite fixture'ı mtime taşımaz) | TAŞINDI |
+| `_spawn_env_token` (py/claudeops/spawn.py:85) | `Probe::spawn_env_token`; gerçek `real/effects.rs::spawn_env_token` | `tests/secrets_argv.rs::spawn_env_tokens_are_random_hex`; parite koşucusu iki tarafı aynı sabite bağlar (`SPAWN_ENV_TOKEN`) | TAŞINDI |
+| `_prune_spawn_env` (py/claudeops/spawn.py:90) | `real/effects.rs::prune_spawn_env` (özel) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `_write_spawn_env_file` (py/claudeops/spawn.py:107) | `Effect::WriteSpawnEnv` + `real/effects.rs::{write_spawn_env, write_spawn_env_as}`; ret `spawn_exec.rs` (`SPAWN_ENV_REFUSAL`, `spawn_env_file_refused`) | `parity.rs::parity_g9` `sir-gizli` `sir-pencere` `sir-kuru` `sir-dizin-genis` `sir-dizin-bag` `sir-dizin-dosya` `sir-dizin-yazilamaz`; `parity_spawn` `-sir-`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
 | `_MAX_LINE_BYTES` (py/claudeops/review.py) | `cops-review-core` `usage.rs::MAX_LINE_BYTES` | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte` | TAŞINDI |
 | `_usage_lines` (py/claudeops/review.py) | `cops-review-core` `usage.rs::{next_line, too_long}` | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer`; rev `parity` | TAŞINDI |
 
@@ -3561,3 +3586,18 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `SharedStateTest.test_preview_writes_no_service_key_but_names_the_own_path` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
 | `SharedStateTest.test_own_key_link_into_the_shared_dir_is_not_followed` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
 | `SharedStateTest.test_default_instance_writes_the_shared_service_key` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_secret_names_leave_the_command_line_and_reach_the_child` (py/tests/test_rsprov_s4_secret_env.py:90) | `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv`; `parity.rs::parity_spawn` `-sir-hidden` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_provider_env_is_split_the_same_way` (py/tests/test_rsprov_s4_secret_env.py:113) | `parity.rs::parity_spawn` `-sir-` (sağlayıcı ve kanca ortamı aynı birleşik listeden ayrılır: `spawn.rs::plan_inner`) | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_only_the_three_suffixes_count` (py/tests/test_rsprov_s4_secret_env.py:121) | `parity.rs::parity_spawn` `-sir-` (`TOKENS`, `KEY_DIR`, `PASSWORD` komutta); `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_without_secret_names_the_command_is_unchanged_and_nothing_is_written` (py/tests/test_rsprov_s4_secret_env.py:129) | `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv`; `parity.rs::parity_spawn` mevcut vakalar | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_dry_run_writes_nothing_and_masks` (py/tests/test_rsprov_s4_secret_env.py:135) | `parity.rs::parity_spawn` `-sir-dry`; `parity_g9` `sir-kuru` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_concurrent_spawns_get_separate_files` (py/tests/test_rsprov_s4_secret_env.py:144) | `tests/secrets_argv.rs::{spawn_env_tokens_are_random_hex, spawn_env_file_fails_closed_and_never_overwrites}` (ezmeme) | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_window_and_watchdog_paths_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:151) | `parity.rs::parity_spawn` `-sir-gt` `-sir-gt_tmux`; `parity_g9` `sir-pencere` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_logs_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:164) | `parity.rs::parity_g9` `sir-` (günlükler eşit); `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_stale_files_are_pruned_fresh_ones_kept` (py/tests/test_rsprov_s4_secret_env.py:169) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_a_wide_own_directory_is_narrowed` (py/tests/test_rsprov_s4_secret_env.py:185) | `parity.rs::parity_g9` `sir-dizin-genis`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `FailClosedTest.test_symlinked_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:206) | `parity.rs::parity_g9` `sir-dizin-bag`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `FailClosedTest.test_directory_owned_by_someone_else_is_refused` (py/tests/test_rsprov_s4_secret_env.py:213) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (`write_spawn_env_as`) | TAŞINDI |
+| `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
+| `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
+| `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
