@@ -469,9 +469,10 @@ impl Live<'_> {
     pub fn last_message_role(&self, cli: Cli, cwd: &str, sid: Option<&str>) -> Option<Py> {
         let history = match cli {
             Cli::Claude | Cli::Codex => {
+                // codex'te yalnız TAM eşleşen rollout: cwd'nin en yenisi kardeş oturumunki olabilir.
                 let path = match cli {
                     Cli::Claude => self.jsonl_path_for(cwd, sid),
-                    _ => self.codex_rollout_path(cwd, sid),
+                    _ => self.codex_exact_rollout(sid),
                 };
                 let data = self.transcript_bytes(path);
                 if unreadable_tail(&data) {

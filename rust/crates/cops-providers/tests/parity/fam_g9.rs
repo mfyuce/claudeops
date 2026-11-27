@@ -407,6 +407,23 @@ fn rs_g9(e: &Env, c: &Case) -> RsOut {
             };
             assert_eq!(released, want, "[{}] release", c.id);
             let mut rs = finish(&fake, &sink, r);
+            // Verilen konuşma dört sağlayıcıda da komuta girer (takılan oturumu yeniden açma buna dayanır).
+            let flag = match req.cli.as_str() {
+                "claude" => Some("--resume"),
+                "codex" => Some("resume"),
+                "agy" => Some("--conversation"),
+                "copilot" => Some("--resume"),
+                _ => None,
+            };
+            if let Some(flag) = flag.filter(|_| c.id.ends_with("-devam-verilen")) {
+                assert_eq!(rs.ret["ret"], json!("resume:karar000"), "[{}]", c.id);
+                let ran = rs.ret["calls"].to_string();
+                assert!(
+                    ran.contains(&format!("{flag} karar000-1234")),
+                    "[{}] komut: {ran}",
+                    c.id
+                );
+            }
             rs.mcp_calls = probe.mcp_calls.borrow().clone();
             rs
         }),

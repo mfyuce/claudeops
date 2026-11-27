@@ -90,21 +90,22 @@ impl Live<'_> {
     /// ya da `-{sid}.jsonl` ile biten); `sid` yoksa ya da eşleşmezse cwd'nin en yeni dosyası. Kısmi kimlik, joker ya
     /// da `/` taşıyan `sid` başka konuşmanın dosyasını vermez.
     pub fn codex_rollout_path(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
-        if let Some(sid) = sid.filter(|s| !s.is_empty() && !s.contains(['/', '\0'])) {
-            let exact = |p: &String| {
-                let name = basename(p);
-                match ROLLOUT_UUID.captures(name).and_then(|c| c.get(1)) {
-                    Some(m) => m.as_str() == sid,
-                    None => name
-                        .strip_suffix(".jsonl")
-                        .and_then(|stem| stem.strip_suffix(sid))
-                        .is_some_and(|rest| rest.is_empty() || rest.ends_with('-')),
-                }
-            };
-            if let Some(path) = self.rollout_files(".jsonl").into_iter().find(exact) {
-                return Some(path);
+        self.codex_exact_rollout(sid)
+            .or_else(|| self.rollouts_for(cwd).next().map(|(path, _)| path))
+    }
+
+    /// Konuşma kimliği TAM `sid` olan rollout; yoksa None (cwd'ye ve mtime'a bakmaz).
+    pub(crate) fn codex_exact_rollout(&self, sid: Option<&str>) -> Option<String> {
+        let sid = sid.filter(|s| !s.is_empty() && !s.contains(['/', '\0']))?;
+        self.rollout_files(".jsonl").into_iter().find(|p| {
+            let name = basename(p);
+            match ROLLOUT_UUID.captures(name).and_then(|c| c.get(1)) {
+                Some(m) => m.as_str() == sid,
+                None => name
+                    .strip_suffix(".jsonl")
+                    .and_then(|stem| stem.strip_suffix(sid))
+                    .is_some_and(|rest| rest.is_empty() || rest.ends_with('-')),
             }
-        }
-        self.rollouts_for(cwd).next().map(|(path, _)| path)
+        })
     }
 }

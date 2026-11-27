@@ -35,7 +35,7 @@ class RecoverStuckTest(unittest.TestCase):
             with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
                     mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                     mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp:
-                stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
+                stuck.recover_stuck(SimpleNamespace(session=s, sid="abc"), display=":0")
             self.assertEqual(sp.call_args.kwargs["permission_mode"], get_provider(cli).permission_modes()[0], cli)
         self.assertNotEqual(get_provider("ucli").permission_modes()[0], "auto")
 

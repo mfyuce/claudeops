@@ -98,12 +98,12 @@ class FindStuckTest(_Home):
         self.record()
         self.assertEqual([i.sid for i in stuck.find_stuck([self.session(sid="bilinen")])], ["bilinen"])
 
-    def test_other_providers_are_asked_as_before(self):
+    def test_ucli_is_asked_as_before(self):
         asked = []
         prov = SimpleNamespace(wants_stuck_recovery=lambda: True, live_busy=lambda cwd, sid: False,
                                last_message_role=lambda cwd, sid: asked.append((cwd, sid)) or "user")
         with mock.patch.object(stuck, "get_provider", return_value=prov):
-            found = stuck.find_stuck([self.session(cli="codex")])
+            found = stuck.find_stuck([self.session(cli="ucli")])
         self.assertEqual(asked, [(self.cwd, None)])
         self.assertEqual([i.sid for i in found], [None])
 
@@ -141,8 +141,8 @@ class RecoverStuckTest(_Home):
         kp.assert_not_called()
         sp.assert_not_called()
 
-    def test_other_providers_keep_their_own_resume_lookup(self):
-        _, _, sp = self.recover(SimpleNamespace(session=self.session(sid="abc", cli="codex"), sid="abc"))
+    def test_ucli_keeps_its_own_resume_lookup(self):
+        _, _, sp = self.recover(SimpleNamespace(session=self.session(sid="abc", cli="ucli"), sid="abc"))
         self.assertIsNone(sp.call_args.kwargs.get("resume_id"))
 
 

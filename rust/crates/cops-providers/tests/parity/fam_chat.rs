@@ -519,7 +519,8 @@ fn codex_cases(b: &mut Build<'_>) {
             lines(&all).into_bytes(),
             0o600,
         ));
-        b.push(c);
+        // takılma kararı (TBD#425): tam eşleşen rollout yoksa son rol bilinmiyor (sohbet cwd'nin en yenisini okur)
+        b.agrees(c, json!({"last_message_role": null}));
     }
     let q = user("soru");
     let r = ai("cevap");

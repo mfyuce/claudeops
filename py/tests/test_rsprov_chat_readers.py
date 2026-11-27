@@ -46,9 +46,10 @@ class Base(unittest.TestCase):
 
     def codex(self, *rows):
         path = self._write("codex.jsonl", rows)
-        patch = mock.patch.object(xp.CodexProvider, "_rollout_path", return_value=str(path))
-        patch.start()
-        self.addCleanup(patch.stop)
+        for name in ("_rollout_path", "_exact_rollout"):        # son rol yalnız tam eşleşen rollout'tan okunur
+            patch = mock.patch.object(xp.CodexProvider, name, return_value=str(path))
+            patch.start()
+            self.addCleanup(patch.stop)
         return xp.CodexProvider()
 
     def ucli(self, data: bytes):

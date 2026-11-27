@@ -10,13 +10,17 @@ Tespit provider.last_message_role() üzerinden gider (CliProvider arayüzü) —
 DOĞRUDAN claude'un jsonl'ına bakmaz, böylece agy/codex/copilot/ucli
 session'ları için de çalışır (claude-özel bir dosya formatına hardcode değil).
 
-claude'da hangi konuşmaya bakılacağı KESİN bilinmeli (TBD#419): `Session.sid`, yoksa sürecin kendi
-`sessions/<pid>.json` kaydı. İkisi de yoksa oturum takılmış sayılmaz (dizindeki en yeni dosya kardeşinki olabilir);
-yeniden açma da kararın verildiği konuşmayı sürdürür.
+claude, codex, agy ve copilot'ta hangi konuşmaya bakılacağı KESİN bilinmeli (TBD#419, TBD#425): claude'da
+`Session.sid`, yoksa sürecin kendi `sessions/<pid>.json` kaydı; codex ve copilot'ta `Session.sid` (keşif onu yalnız
+komut satırından alır); agy'de yalnız sürecin komut satırındaki `--conversation` (keşfin `Session.sid`i cwd
+önbelleğinden tahmin olabilir). Kimlik yoksa ya da tam eşleşen kayıt yoksa oturum takılmış sayılmaz (dizindeki en yeni
+konuşma kardeşinki olabilir); yeniden açma da kararın verildiği konuşmayı sürdürür.
 """
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
+
+import psutil
 
 from .discovery import find_sessions
 from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
@@ -32,12 +36,15 @@ from .turns import is_busy_now
 # CPU eşiği: bunun altındaysa ve son mesaj user'sa → stuck
 STUCK_CPU_THRESHOLD = 2.0
 
+# Kararı yalnız kesin bilinen konuşmadan verilen sağlayıcılar (ucli'de kimlik oturum adının kendisi).
+_OWN_ID_CLIS = ("claude", "codex", "agy", "copilot")
+
 
 @dataclass
 class StuckInfo:
     session: Session
     last_role: str
-    sid: Optional[str] = None   # kararın verildiği konuşma (claude'da hep dolu)
+    sid: Optional[str] = None   # kararın verildiği konuşma (`_OWN_ID_CLIS`te hep dolu)
 
 
 def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
@@ -55,7 +62,7 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
         if _is_busy(provider, s):
             continue  # API yanıtı bekliyor (network-bound, CPU düşük) — SAĞLIKLI, stuck değil
         sid = s.sid
-        if s.cli == "claude":
+        if s.cli in _OWN_ID_CLIS:
             sid = _own_conversation(s)
             if sid is None:
                 continue  # hangi konuşma olduğu bilinmiyor → stuck sayma
@@ -68,12 +75,29 @@ def find_stuck(sessions: Optional[List[Session]] = None) -> List[StuckInfo]:
 
 
 def _own_conversation(s: Session) -> Optional[str]:
-    """claude oturumunun konuşma kimliği: `s.sid`, yoksa sürecin kendi kaydı (`_live_transcript` doğrulaması: pid,
-    procStart, cwd). Çözülemezse None."""
+    """`_OWN_ID_CLIS` oturumunun kesin konuşma kimliği (modül açıklaması); çözülemezse None. claude kaydı
+    `_live_transcript` doğrulamasından geçer (pid, procStart, cwd)."""
+    if s.cli == "agy":
+        return _argv_conversation(s)
     if s.sid:
         return s.sid
+    if s.cli != "claude":
+        return None
     path = _live_transcript(s.cwd, None, s.pid)
     return path.stem if path else None
+
+
+def _argv_conversation(s: Session) -> Optional[str]:
+    """Sürecin komut satırındaki devam kimliği. `extract_info` cwd ve ad verilmeden çağrılır: yalnız argv okunur,
+    öğrenilen eşleşmeye yazılmaz. Süreç okunamıyorsa ya da artık o CLI değilse None."""
+    try:
+        cmd = psutil.Process(s.pid).cmdline()
+    except (psutil.Error, OSError):
+        return None
+    provider = get_provider(s.cli)
+    if not provider.matches_proc(cmd):
+        return None
+    return provider.extract_info(cmd).get("sid") or None
 
 
 def _is_busy(provider, s: Session) -> bool:
@@ -106,7 +130,7 @@ def recover_stuck(
 
     Resume'da prompt YOK — jsonl'deki son user mesajı zaten var,
     claude kaldığı yerden devam eder.
-    claude'da kararın verildiği konuşma (`info.sid`) sürdürülür; bilinmiyorsa ya da başka bir canlı oturum onu
+    `_OWN_ID_CLIS`te kararın verildiği konuşma (`info.sid`) sürdürülür; bilinmiyorsa ya da başka bir canlı oturum onu
     tutuyorsa süreç ÖLDÜRÜLMEZ ve "skipped: ..." döner.
     Returns: "recovered (<spawn kind>)" | "dry-run" | "skipped: <neden>". Öldürmenin sonucu (`already_dead` vb.) BİLEREK yok sayılır ve
     resume her zaman denenir; "kill-failed" diye bir dönüş YOK (eski belge yanlıştı).
@@ -120,8 +144,8 @@ def recover_stuck(
         return "dry-run"
 
     sid = s.sid
-    resume_id = None            # claude dışı: sağlayıcının kendi resume araması (davranış aynı)
-    if s.cli == "claude":
+    resume_id = None            # ötekiler (ucli): sağlayıcının kendi resume araması
+    if s.cli in _OWN_ID_CLIS:
         sid = resume_id = getattr(info, "sid", None) or _own_conversation(s)
         if sid is None:
             return "skipped: konuşma kimliği bilinmiyor"

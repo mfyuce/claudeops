@@ -337,15 +337,22 @@ class CodexProvider(CliProvider):
             pass
         return n
 
+    def _exact_rollout(self, sid: Optional[str]) -> Optional[str]:
+        """Konuşma kimliği TAM `sid` olan rollout dosyası; yoksa None (cwd'ye ve mtime'a bakmaz)."""
+        if _path_part_ok(sid):
+            for path in glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl")):
+                if _rollout_sid_matches(path, sid):
+                    return path
+        return None
+
     def _rollout_path(self, cwd: str, sid: Optional[str]) -> Optional[str]:
         """`resolve_resume_id`'nin bulduğu sid'e karşılık gelen TAM dosyayı (ya da
         sid yoksa/hiç eşleşmezse aynı cwd-taramalı mtime-fallback'i) döndürür — o
         metod id'yi (dosya adının SONUNDAKİ uuid) döndürüyordu, bu ise dosyanın
         KENDİSİNİ (chat parse için gerçek yol gerekiyor)."""
-        if _path_part_ok(sid):
-            for path in glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl")):
-                if _rollout_sid_matches(path, sid):
-                    return path
+        exact = self._exact_rollout(sid)
+        if exact is not None:
+            return exact
         target = os.path.normpath(os.path.abspath(cwd))
         files = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl"))
         files.sort(key=_safe_mtime, reverse=True)
@@ -415,6 +422,9 @@ class CodexProvider(CliProvider):
         return None
 
     def last_message_role(self, cwd: str, sid: Optional[str]) -> Optional[str]:
+        # Takılma kararı (TBD#425): yalnız TAM eşleşen rollout; cwd'nin en yenisi kardeş oturumunki olabilir.
+        if self._exact_rollout(sid) is None:
+            return None
         # Son satır okunamıyorsa rol BİLİNMİYOR (claude_provider ile aynı kural).
         rows = self._transcript_lines(cwd, sid)
         if rows and rows[-1] == {}:
