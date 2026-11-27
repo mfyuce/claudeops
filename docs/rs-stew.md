@@ -14,6 +14,10 @@ tabloda satır satır). `web_steward.py` bu izde yok. İşlev haritası (saf / G
   (`plan_tick` 600, `scan_markers` 500) tekil çağrı, özet sırasıyla seçilir (her test çağrısı değil).
 - `parity/map.py`: aşağıdaki tabloyu `ast` ile üretir; EKSİK satır varsa `--check` kırmızı.
 - Altın tick: `py/tests/steward_golden_tick.json`.
+- Yerel saat dilimi: `parity/tz_cases.py` (`--check` var) Python `time.localtime`/`mktime` çıktısını altı dilimde yaz
+  saati geçişleri çevresinde `fixtures/tz.json`a yazar; `tests/tz_parity.rs` her dilimi ayrı süreçte koşar. Diğer
+  parite vektörleri yine UTC iledir. Tekrar eden saatte Python (glibc) sonucu önceki çağrılara bağlı olabilir;
+  vektör üreticinin gördüğü (erken) an esas alındı.
 
 ## Durum ve devir (27 Kas 2026): BİRLEŞTİRMEYE HAZIR (kapsam: `steward.py` saf kararları); AÇIK maddeler aşağıda
 
