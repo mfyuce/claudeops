@@ -513,6 +513,10 @@ fn shared_constants_and_error_texts_equal_python() {
             secs(consts::TERM_RELAY_SILENCE),
         ),
         (
+            "_GRPC_TERM_REFUSED_TTL_SECONDS",
+            secs(consts::GRPC_TERM_REFUSED_TTL),
+        ),
+        (
             "_CONSUMER_DEATH_LOG_MIN_INTERVAL_SECONDS",
             secs(consts::CONSUMER_DEATH_LOG_MIN_INTERVAL),
         ),

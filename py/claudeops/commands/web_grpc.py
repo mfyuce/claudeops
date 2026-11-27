@@ -47,6 +47,7 @@ from typing import Any, Callable, Dict, Iterator, Optional
 
 import grpc
 
+from .. import authz
 from . import web_ws
 from ..proto import host_bridge_pb2 as pb2
 from ..proto import host_bridge_pb2_grpc as pb2_grpc
@@ -299,6 +300,8 @@ class _HostBridgeServicer(pb2_grpc.HostBridgeServicer):
         last_key: Any = None
         last_sent = 0.0
         while context.is_active():
+            if not authz.grpc_term_allowed():      # her turda: kip açıkken değişirse açık akış da kesilir
+                context.abort(grpc.StatusCode.PERMISSION_DENIED, "signature_required")
             try:
                 payload = self._term_output_fn(request.name, request.lang or "tr")
             except Exception:
@@ -414,6 +417,12 @@ def open_term_stream(grpc_url: str, token: str, name: str, lang: str):
     call nesnesi gerekçesi."""
     req = pb2.StreamTermOutputRequest(name=name, lang=lang)
     return _stub_for(grpc_url).StreamTermOutput(req, metadata=_auth_metadata(token))
+
+
+def is_term_refused(error: Any) -> bool:
+    """Uzak host terminal akışını bu taşıma yolunda reddetti mi (`PERMISSION_DENIED`); bağlantı hatası DEĞİL."""
+    code = getattr(error, "code", None)
+    return isinstance(error, grpc.RpcError) and callable(code) and code() == grpc.StatusCode.PERMISSION_DENIED
 
 
 def stream_status(grpc_url: str, token: str) -> Iterator[dict]:

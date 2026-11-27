@@ -139,7 +139,10 @@ DEFS["hosts.py"] = [
 _GRPC_PRB = f"{FG}grpc_probe_needs_transport_token_and_service_and_tier_moves_like_python"
 _GRPC_ST = f"{FG}grpc_status_stream_feeds_the_poller_and_a_dead_stream_falls_back_to_rest"
 _GRPC_TERM = f"{FG}grpc_term_relay_serves_frames_and_error_updates"
+_GRPC_REF = f"{FG}grpc_term_refusal_falls_back_to_websocket_and_retries_grpc_later"
+_GRPC_MID = f"{FG}grpc_term_mid_stream_refusal_falls_back_but_other_errors_do_not"
 DEFS["commands/web_grpc.py"] = [
+    ok("is_term_refused", "grpc.rs::stream_error grpc.rs::REFUSED_BY_HOST", f"{_GRPC_REF} {_GRPC_MID}"),
     oos("_GRPC_MAX_WORKERS _STATUS_TICK_SECONDS _STATUS_DICT_KEYS _reduce_status _dict_to_session_row "
         "_cli_options_to_proto _extras_to_proto _status_dict_to_proto _term_dict_to_proto",
         "sunucu tarafı (dict -> proto, yayın kadansı)", SRV),
@@ -344,6 +347,9 @@ DEFS["commands/web_hosts.py"] = [
     ok("_TERM_RELAY_IDLE_TTL_SECONDS _TERM_RELAY_RESTART_MIN_INTERVAL_SECONDS _TERM_RELAY_SILENCE_SECONDS",
        "consts.rs::TERM_RELAY_IDLE_TTL consts.rs::TERM_RELAY_RESTART_MIN_INTERVAL consts.rs::TERM_RELAY_SILENCE",
        f"{P_CONST} {_REAP} {_DEAD} {_SILR}"),
+    ok("_GRPC_TERM_REFUSED_TTL_SECONDS", "consts.rs::GRPC_TERM_REFUSED_TTL", f"{P_CONST} {_GRPC_REF}"),
+    ok("_grpc_term_refused _TermRelay.grpc_refused", "relay.rs::Relays.refused relay.rs::Relay::grpc_refused",
+       f"{_GRPC_REF} {_GRPC_MID}"),
     ok("_TermRelay _TermRelay.__init__ _TermRelay.__init__.on_item _TermRelay.read _TermRelay.idle_seconds",
        "relay.rs::Relay relay.rs::Federation::term_output", f"{_RELAY} {_REAP}"),
     ok("_TermRelay.is_alive _TermRelay.silent_seconds _TermRelay.stop", "relay.rs::Federation::term_output",
@@ -544,6 +550,16 @@ CASES["test_ws_grpc_peer_guard.py"] = [
     t_ok("GrpcGuardTest.test_blocked_resolution_refused", f"{FG}grpc_dns_name_resolving_to_loopback_is_refused_before_connecting"),
     t_ok("GrpcGuardTest.test_unresolvable_is_fail_closed", f"{FG}grpc_unresolvable_name_is_fail_closed"),
     t_ok("GrpcGuardTest.test_public_and_literal_pass", _GRPC_PRB),
+]
+CASES["test_grpc_term_gate.py"] = [
+    t_oos(cls("ServerGateTest", "test_without_hook_stream_serves_as_before "
+              "test_closed_gate_refuses_before_reading_the_terminal test_raising_or_non_true_gate_is_refused "
+              "test_open_stream_is_cut_when_gate_closes test_ping_and_status_stream_are_not_gated "
+              "test_extension_api_registers_the_gate_and_reset_clears_it"),
+          "sunucu tarafı kapı ve eklenti kancası", SRV),
+    t_ok("ClientFallbackTest.test_refused_grpc_term_stream_falls_back_to_websocket", _GRPC_REF),
+    t_ok("ClientFallbackTest.test_other_session_goes_straight_to_websocket_then_grpc_is_retried_after_ttl", _GRPC_REF),
+    t_ok("ClientFallbackTest.test_other_grpc_failure_does_not_move_to_websocket", _GRPC_MID),
 ]
 CASES["test_web_hosts_keepalive_idle_close.py"] = [
     t_ok("KeepAliveIdleCloseTests.test_peer_closed_idle_connection_is_replaced_silently", _IDLE_CLOSE),
