@@ -347,6 +347,9 @@ fn run(deps: &SpawnDeps<'_>, launcher: &Launcher, req: &StartRequest) -> Result<
             let ok = launcher.tmux.spawn_direct(&req.name, &req.cwd, &plan.inner, &env);
             let event = if req.hidden && !no_gt { "spawn_hidden" } else { "spawn_direct_headless" };
             launcher.log(event, vec![("name", json!(req.name)), ("cwd", json!(req.cwd)), ("ok", json!(ok))]);
+        } else if !no_gt {
+            // gizli başlatma + tmux yok: hiçbir şey açılmadı (gtsiz dalda iz zaten yukarıda)
+            launcher.log("spawn_hidden_no_tmux", vec![("name", json!(req.name)), ("cwd", json!(req.cwd))]);
         }
         return Ok(Started { kind: plan.kind, watchdog: None });
     }

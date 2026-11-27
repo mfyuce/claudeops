@@ -4,10 +4,11 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import routing, spawn, tmux_backend as tb  # noqa: E402
+from claudeops import authz, routing, spawn, tmux_backend as tb  # noqa: E402
 
 
 class BrokenBackupLinkTest(unittest.TestCase):
@@ -94,6 +95,47 @@ class GhostScreenNotLoggedTest(unittest.TestCase):
 
     def test_unreadable_screen_counts_zero(self):
         self.assertEqual(self._reclaim(None)[0][1], {"name": "p", "cli": "claude", "screen_lines": 0, "screen_chars": 0})
+
+
+def _spawn(gnome_terminal=True, tmux=True, **kw):
+    """`spawn_session`, her dış sınır sahte: (dönüş, günlük, açılan şeyler)."""
+    logs, opened = [], []
+    provider = mock.Mock(accepts_cli_opts=False, mcp_needs_cwd=False)
+    provider.resolve_effort.return_value = "high"
+    provider.env_overrides.return_value = {}
+    provider.build_inner_command.return_value = "sahte-cli"
+    which = SimpleNamespace(which=lambda n: "/usr/bin/gnome-terminal" if gnome_terminal else None)
+    with mock.patch.object(spawn, "get_provider", lambda cli: provider), \
+            mock.patch.object(authz, "spawn_env", lambda *a: {}), \
+            mock.patch.object(spawn, "spawn_priority_prefix", lambda n: ""), \
+            mock.patch.object(spawn, "_reclaim_ghost_session", lambda n, c: None), \
+            mock.patch.object(spawn, "tmux_available", lambda: tmux), \
+            mock.patch.object(spawn, "tmux_spawn_direct", lambda *a: opened.append("tmux") or True), \
+            mock.patch.object(spawn, "_launch_gnome_terminal", lambda *a: opened.append("pencere") or True), \
+            mock.patch.object(spawn, "shutil", which), \
+            mock.patch.object(spawn, "diag_log", lambda ev, **k: logs.append((ev, k))):
+        ret = spawn.spawn_session("p", "/w", "m", display=":9", effort="high", force_new=True, cli="x", **kw)
+    return ret, logs, opened
+
+
+class HiddenWithoutTmuxTest(unittest.TestCase):
+    """Gizli başlatmada tmux yoksa hiçbir şey açılmıyor ve iz kalmıyordu."""
+
+    def test_is_logged_and_nothing_is_opened(self):
+        ret, logs, opened = _spawn(tmux=False, hidden=True)
+        self.assertEqual((ret, opened), ("new", []))
+        self.assertEqual(logs, [("spawn_hidden_no_tmux", {"name": "p", "cwd": "/w"})])
+
+    def test_hidden_with_tmux_is_unchanged(self):
+        _, logs, opened = _spawn(hidden=True)
+        self.assertEqual(opened, ["tmux"])
+        self.assertEqual([e for e, _ in logs], ["spawn_hidden"])
+
+    def test_missing_terminal_keeps_its_single_event(self):
+        for hidden in (False, True):
+            _, logs, opened = _spawn(gnome_terminal=False, tmux=False, hidden=hidden)
+            self.assertEqual(opened, [])
+            self.assertEqual([e for e, _ in logs], ["spawn_no_gnome_terminal"])
 
 
 if __name__ == "__main__":

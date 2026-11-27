@@ -297,6 +297,8 @@ def spawn_session(
             ok = tmux_spawn_direct(name, cwd, inner, env)
             diag_log("spawn_hidden" if hidden and not no_gt else "spawn_direct_headless",
                       name=name, cwd=cwd, ok=ok)
+        elif not no_gt:     # gizli başlatma + tmux yok: hiçbir şey açılmadı (gtsiz dalda iz zaten yukarıda)
+            diag_log("spawn_hidden_no_tmux", name=name, cwd=cwd)
         return kind
 
     # tmux-backed going forward (spawn is the ONLY launch path, so the tmux server —
