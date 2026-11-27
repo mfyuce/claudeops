@@ -17,6 +17,8 @@ struct Mem {
     stale_size: Option<u64>,
     /// Bu sıradaki (0 tabanlı) okumadan itibaren hata.
     fail_from_read: Option<usize>,
+    /// `sessions/42.json`ın yerine geçen gövde.
+    record: Option<String>,
     /// (başlangıç, uzunluk)
     reads: RefCell<Vec<(u64, u64)>>,
 }
@@ -111,7 +113,7 @@ impl LiveProbe for Mem {
         None
     }
     fn current_dir(&self) -> String {
-        unreachable!()
+        "/".into()
     }
     fn agy_sids_doc(&self) -> Option<cops_providers::pyjson::Py> {
         unreachable!()
@@ -121,8 +123,14 @@ impl LiveProbe for Mem {
     }
     fn read_bytes(&self, path: &str, _: u64) -> Option<Vec<u8>> {
         // `sessions/42.json`: pid'den kimlik
-        (path == "/h/.claude/sessions/42.json")
-            .then(|| br#"{"pid":42,"sessionId":"from-pid","procStart":"777"}"#.to_vec())
+        (path == "/h/.claude/sessions/42.json").then(|| {
+            let default = r#"{"pid":42,"sessionId":"from-pid","procStart":"777"}"#;
+            self.record
+                .as_deref()
+                .unwrap_or(default)
+                .as_bytes()
+                .to_vec()
+        })
     }
     fn read_tail(&self, _: &str, _: u64) -> Option<Vec<u8>> {
         unreachable!()
@@ -330,7 +338,8 @@ fn synthetic_and_unexpected_rows_do_not_hide_the_real_model() {
             "claude",
             "/w",
             Some("s"),
-            "spawn"
+            "spawn",
+            None
         )),
         "gercek"
     );
@@ -339,7 +348,8 @@ fn synthetic_and_unexpected_rows_do_not_hide_the_real_model() {
             "claude",
             "/w",
             Some("s"),
-            "spawn"
+            "spawn",
+            None
         )),
         "high"
     );
@@ -348,13 +358,70 @@ fn synthetic_and_unexpected_rows_do_not_hide_the_real_model() {
             "bogus",
             "/w",
             Some("s"),
-            "spawn"
+            "spawn",
+            None
         )),
         "spawn"
     );
     assert_eq!(
         with(&mem, |l| l
-            .live_or_spawn_model("claude", "/w", None, "spawn")),
+            .live_or_spawn_model("claude", "/w", None, "spawn", None)),
         "spawn"
+    );
+}
+
+/// sid bilinmiyorsa kimlik YALNIZ sürecin kendi kaydından; doğrulanamayan kayıt açılış değeri demektir.
+#[test]
+fn sidless_live_values_come_only_from_the_processes_own_record() {
+    let own = |cwd: &str| {
+        format!(
+            "{{\"type\":\"user\",\"cwd\":\"{cwd}\"}}\n{}\n",
+            row(1, "kendi")
+        )
+    };
+    let mem = |record: Option<&str>, file_cwd: &str| Mem {
+        files: HashMap::from([
+            ("/p/from-pid.jsonl".to_string(), own(file_cwd).into_bytes()),
+            ("/p/other.jsonl".to_string(), row(9, "baska").into_bytes()),
+        ]),
+        record: record.map(String::from),
+        ..Default::default()
+    };
+    let read = |m: &Mem, sid, pid| {
+        with(m, |l| {
+            (
+                l.live_or_spawn_model("claude", "/w", sid, "spawn", pid),
+                l.live_or_spawn_effort("claude", "/w", sid, "spawn", pid),
+            )
+        })
+    };
+    let pair = |m: &str, e: &str| (m.to_string(), e.to_string());
+    let spawn = pair("spawn", "spawn");
+    let good = mem(None, "/w");
+    assert_eq!(read(&good, None, Some(42)), pair("kendi", "high"));
+    assert_eq!(read(&good, Some(""), Some(42)), pair("kendi", "high"));
+    assert_eq!(read(&good, Some("other"), Some(42)), pair("baska", "high"));
+    assert_eq!(read(&good, Some("missing"), Some(42)), spawn);
+    assert_eq!(read(&good, None, None), spawn);
+    assert_eq!(read(&good, None, Some(7)), spawn);
+    assert_eq!(read(&mem(None, "/baska"), None, Some(42)), spawn);
+    for record in [
+        r#"{"pid":43,"sessionId":"from-pid","procStart":"777"}"#,
+        r#"{"pid":42,"sessionId":"from-pid","procStart":"1"}"#,
+        r#"{"pid":42,"sessionId":"from-pid"}"#,
+        r#"{"pid":42,"sessionId":"from-pid","procStart":"777","cwd":"/baska"}"#,
+        r#"{"pid":42,"sessionId":"missing","procStart":"777"}"#,
+        r#"{"pid":42,"sessionId":"../p/from-pid","procStart":"777"}"#,
+    ] {
+        assert_eq!(
+            read(&mem(Some(record), "/w"), None, Some(42)),
+            spawn,
+            "{record}"
+        );
+    }
+    let same = r#"{"pid":42,"sessionId":"from-pid","procStart":"777","cwd":"/w/"}"#;
+    assert_eq!(
+        read(&mem(Some(same), "/w"), None, Some(42)),
+        pair("kendi", "high")
     );
 }

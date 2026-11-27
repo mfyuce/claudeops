@@ -137,6 +137,11 @@ impl Live<'_> {
     /// `sessions/<pid>.json`ın kırpılmış `sessionId`si. Yalnız dosyadaki `pid` eşleşiyor VE `procStart` canlı sürecin
     /// başlangıç tikine eşitse (pid yeniden kullanımı koruması); doğrulanamayan kayıt kullanılmaz.
     pub fn session_file_sid(&self, pid: i64) -> Option<String> {
+        self.session_record(pid).map(|(sid, _)| sid)
+    }
+
+    /// [`Live::session_file_sid`]in doğruladığı kayıt: (sid, kaydın bildirdiği cwd).
+    pub(crate) fn session_record(&self, pid: i64) -> Option<(String, Option<String>)> {
         if pid == 0 {
             return None;
         }
@@ -168,7 +173,9 @@ impl Live<'_> {
             .split(crate::pyfmt::py_isspace)
             .filter(|f| !f.is_empty())
             .nth(19)?;
-        (start == want).then(|| sid.to_string())
+        let cwd = data.get("cwd").and_then(Py::as_str);
+        let cwd = cwd.filter(|c| !c.is_empty()).map(String::from);
+        (start == want).then(|| (sid.to_string(), cwd))
     }
 
     /// İlk [`META_HEAD_LINES`] satırdan başlık ve cwd; okunamayan dosya ya da bozuk satır sessizce atlanır.
@@ -192,7 +199,7 @@ impl Live<'_> {
     }
 
     /// Dosya KENDİ `cwd`sini yazmışsa ve hedefle uyuşmuyorsa true (proje dizini kodlaması farklı yolları birleştirir).
-    fn other_cwd(&self, meta: &Meta, cwd: &str) -> bool {
+    pub(crate) fn other_cwd(&self, meta: &Meta, cwd: &str) -> bool {
         meta.cwd
             .as_deref()
             .is_some_and(|c| !c.is_empty() && !self.same_path(c, cwd))

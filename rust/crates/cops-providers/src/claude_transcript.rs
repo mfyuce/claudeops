@@ -170,16 +170,18 @@ impl Live<'_> {
         self.last_assistant_value(path, None, |row| real_request_epoch(row, offset))
     }
 
-    /// Transkriptteki canlı model; belirlenemezse (claude değil, transkript ya da assistant turu yok) `fallback`.
-    /// `cli` ham addır: tanınmayan ad claude SAYILMAZ.
+    /// Transkriptteki canlı model; belirlenemezse (claude değil, konuşma kimliği çözülemiyor, transkript ya da assistant
+    /// turu yok) `fallback`. `cli` ham addır: tanınmayan ad claude SAYILMAZ. `pid` yalnız `sid` bilinmiyorken
+    /// kullanılır (sürecin kendi kayıt dosyası); süreci öldüren çağıran değeri öldürmeden ÖNCE okumalı.
     pub fn live_or_spawn_model(
         &self,
         cli: &str,
         cwd: &str,
         sid: Option<&str>,
         fallback: &str,
+        pid: Option<i64>,
     ) -> String {
-        self.live_transcript(cli, cwd, sid)
+        self.live_transcript(cli, cwd, sid, pid)
             .and_then(|path| self.last_assistant_model(&path, None))
             .unwrap_or_else(|| fallback.to_string())
     }
@@ -191,17 +193,35 @@ impl Live<'_> {
         cwd: &str,
         sid: Option<&str>,
         fallback: &str,
+        pid: Option<i64>,
     ) -> String {
-        self.live_transcript(cli, cwd, sid)
+        self.live_transcript(cli, cwd, sid, pid)
             .and_then(|path| self.last_assistant_effort(&path, None))
             .unwrap_or_else(|| fallback.to_string())
     }
 
-    fn live_transcript(&self, cli: &str, cwd: &str, sid: Option<&str>) -> Option<String> {
+    /// `live_or_spawn_*`ın okuyacağı transkript. `sid` biliniyorsa tam `<sid>.jsonl`. Bilinmiyorsa YALNIZ sürecin kendi
+    /// `sessions/<pid>.json` kaydındaki kimlik ([`Live::session_file_sid`] doğrulaması); kaydın ya da transkriptin
+    /// bildirdiği cwd hedeften farklıysa kabul edilmez. cwd'deki en yeni dosya hiç okunmaz (kardeş oturumunkidir).
+    fn live_transcript(
+        &self,
+        cli: &str,
+        cwd: &str,
+        sid: Option<&str>,
+        pid: Option<i64>,
+    ) -> Option<String> {
         if cli != Cli::Claude.name() {
             return None;
         }
-        self.jsonl_path_for(cwd, sid)
+        if sid.is_some_and(|s| !s.is_empty()) {
+            return self.jsonl_path_for(cwd, sid);
+        }
+        let (own, record_cwd) = self.session_record(pid?)?;
+        if record_cwd.is_some_and(|c| !self.same_path(&c, cwd)) {
+            return None;
+        }
+        let path = self.jsonl_path_for(cwd, Some(&own))?;
+        (!self.other_cwd(&self.jsonl_meta(&path), cwd)).then_some(path)
     }
 
     /// Önbellek sıcaklığı için son gerçek isteğin zamanı. Yalnız TAM eşleşen `<sid>.jsonl` dosyaları okunur ("cwd'deki

@@ -132,13 +132,14 @@ _SWITCH_SAFE = (None, _Switch.DONE, _Switch.BUSY)
 
 
 def _effort_step(provider: CliProvider, tmux_name: str, cli: str, cwd: str, sid: Optional[str],
-                 spawn_effort: Optional[str], warm: Optional[bool], model: str) -> Tuple[Optional[str], bool, str]:
+                 spawn_effort: Optional[str], warm: Optional[bool], model: str,
+                 pid: Optional[int]) -> Tuple[Optional[str], bool, str]:
     """Effort düşürmesini uygular: (uygulanan hedef ya da None, önbelleği bozacağı
     için VAZGEÇİLDİ mi, wrap-up mesajını ENGELLEYEN neden ya da ""). Asla fırlatmaz. Komut gönderilmeden önceki bir
     hata mesajı engellemez (maliyet optimizasyonu); geçiş sırasında güvenli bitmeyen her sonuç engeller (TBD#399)."""
     sending = False
     try:
-        effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "")
+        effective = live_or_spawn_effort(cli, cwd, sid, spawn_effort or "", pid=pid)
         target = provider.handover_effort_downgrade(effective, default_handover_effort(provider))
         if target and warm and not provider.effort_switch_keeps_cache(model):
             diag_log("handover_effort_downgrade_skipped", name=tmux_name, reason="cache_would_be_rewritten",
@@ -161,7 +162,8 @@ def _effort_step(provider: CliProvider, tmux_name: str, cli: str, cwd: str, sid:
 
 def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: str, cwd: str,
                                   sid: Optional[str], spawn_effort: Optional[str],
-                                  *, warm: Optional[bool] = None, model: str = "") -> Optional[str]:
+                                  *, warm: Optional[bool] = None, model: str = "",
+                                  pid: Optional[int] = None) -> Optional[str]:
     """Handover'ın model-downgrade'inin effort karşılığı (2026-10-07, kullanıcı:
     "/model koştuğun gibi /effort high de koşamaz mısın? high değilse, daha
     düşükse karışma"). Canlı effort (jsonl) `default_handover_effort()`'ın ÜSTÜNDE
@@ -175,7 +177,7 @@ def downgrade_effort_for_handover(provider: CliProvider, tmux_name: str, cli: st
     TBD#87: `warm` True ve `model` effort değişiminde önbelleği yeniden yazdıran
     bir model ise (claude-sonnet-5) düşürme ATLANIR (yeniden yazma bedeli kazancı
     aşar). `warm` None/False ise eski davranış."""
-    return _effort_step(provider, tmux_name, cli, cwd, sid, spawn_effort, warm, model)[0]
+    return _effort_step(provider, tmux_name, cli, cwd, sid, spawn_effort, warm, model, pid)[0]
 
 
 @dataclass
@@ -201,7 +203,7 @@ def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: s
 
     TBD#399: geçiş güvenli bitmezse `blocked` dolar (model adımında effort HİÇ denenmez); çağıran mesaj göndermez."""
     res = HandoverDowngrade()
-    res.model = live_or_spawn_model(cli, cwd, sid, spawn_model or "")
+    res.model = live_or_spawn_model(cli, cwd, sid, spawn_model or "", pid=pid)
     if load_settings().get("handover_cache_aware") is not False:
         try:
             res.warm = prompt_cache_is_warm(provider, cwd, sid, pid=pid, now=now)
@@ -224,7 +226,7 @@ def apply_handover_downgrades(provider: CliProvider, name: str, cli: str, cwd: s
             diag_log("handover_model_downgrade", name=name, frm=res.model, to=target,
                      cache="cold" if res.warm is False else "unknown")
     res.effort_to, res.effort_kept_cache, res.blocked = _effort_step(
-        provider, name, cli, cwd, sid, spawn_effort, res.warm, res.model)
+        provider, name, cli, cwd, sid, spawn_effort, res.warm, res.model, pid)
     if res.blocked:
         diag_log("handover_switch_blocked", name=name, reason=res.blocked)
     return res

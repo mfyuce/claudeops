@@ -659,8 +659,10 @@ def op_transcript(a):
     out["keeps"] = [[providers.get_provider(c).effort_switch_keeps_cache(m) for c in a.get("clis") or []]
                     for m in a.get("models") or []]
     out["ttl"] = [providers.get_provider(c).prompt_cache_ttl_seconds() for c in a.get("clis") or []]
-    out["live"] = [[_safe(lambda: claude_p.live_or_spawn_model(q["cli"], q["cwd"], q.get("sid"), q["fallback"])),
-                    _safe(lambda: claude_p.live_or_spawn_effort(q["cli"], q["cwd"], q.get("sid"), q["fallback"]))]
+    out["live"] = [[_safe(lambda: claude_p.live_or_spawn_model(q["cli"], q["cwd"], q.get("sid"), q["fallback"],
+                                                               pid=q.get("pid"))),
+                    _safe(lambda: claude_p.live_or_spawn_effort(q["cli"], q["cwd"], q.get("sid"), q["fallback"],
+                                                                pid=q.get("pid")))]
                    for q in a.get("live") or []]
     out["requests"] = [_safe(lambda: providers.get_provider(q["cli"]).last_request_epoch(
         q["cwd"], q.get("sid"), q.get("pid"))) for q in a.get("requests") or []]

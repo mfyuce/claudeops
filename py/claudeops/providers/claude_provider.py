@@ -422,6 +422,12 @@ def session_file_sid(pid: Optional[int]) -> Optional[str]:
     dosyadaki `pid` alanı eşleşmeli ve `procStart` /proc/<pid>/stat'ın starttime alanıyla
     (rest[19]) tutmalı. `discovery`den FARKLI olarak doğrulanamayan (okunamayan) kayıt
     kullanılmaz: yanlış oturumun sid'ini sıcaklık kararına sokmaktansa None."""
+    record = _session_record(pid)
+    return record[0] if record else None
+
+
+def _session_record(pid: Optional[int]) -> Optional[Tuple[str, Optional[str]]]:
+    """`session_file_sid`in doğruladığı kayıt: (sid, kaydın bildirdiği cwd ya da None)."""
     if not pid:
         return None
     try:
@@ -438,7 +444,8 @@ def session_file_sid(pid: Optional[int]) -> Optional[str]:
             return None
         if proc_stat_fields(pid)[19] != want:
             return None
-        return sid.strip()
+        cwd = data.get("cwd")
+        return sid.strip(), cwd if isinstance(cwd, str) and cwd else None
     except (OSError, ValueError, TypeError, IndexError, OverflowError):     # OverflowError: `pid: Infinity`
         return None
 
@@ -452,7 +459,30 @@ def session_file_sid(pid: Optional[int]) -> Optional[str]:
 _EFFORT_BUSTS_CACHE_RE = re.compile(r"claude-(?:(?:sonnet|fable|mythos)-5(?!-\d(?!\d))|(?:opus|sonnet|haiku)-4|3)")
 
 
-def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
+def _live_transcript(cwd: str, sid: Optional[str], pid: Optional[int]) -> Optional[Path]:
+    """`live_or_spawn_*`ın okuyacağı transkript. `sid` biliniyorsa tam `<sid>.jsonl`. Bilinmiyorsa YALNIZ sürecin kendi
+    `sessions/<pid>.json` kaydındaki kimlik (`session_file_sid` doğrulaması); kaydın ya da transkriptin bildirdiği cwd
+    hedeften farklıysa kabul edilmez (`resolve_resume_id`'nin kuralı). cwd'deki en yeni dosya HİÇ okunmaz: ortak
+    dizinde kardeş oturumunkidir (rs/prov S1, sahip onayı 27 Kas)."""
+    if sid:
+        return jsonl_path_for(cwd, sid)
+    record = _session_record(pid)
+    if record is None:
+        return None
+    own, record_cwd = record
+    if record_cwd and not _same_path(record_cwd, cwd):
+        return None
+    path = jsonl_path_for(cwd, own)
+    if path is None:
+        return None
+    file_cwd = _jsonl_meta(path)["cwd"]
+    if file_cwd and not _same_path(file_cwd, cwd):
+        return None
+    return path
+
+
+def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str,
+                        pid: Optional[int] = None) -> str:
     """TODO.md 2026-09-17/2026-10-06: handover's model-downgrade decision
     (`handover_model_downgrade`) used `session.model` — the spawn-time
     `--model` cmdline argument — which goes stale the moment someone types
@@ -462,23 +492,27 @@ def live_or_spawn_model(cli: str, cwd: str, sid: Optional[str], fallback: str) -
     Prefers the jsonl-verified live model (`last_assistant_model`, same
     source `_live_model()`/the Terminal view's "Bilgi" tab already trust);
     falls back to the spawn-time value whenever live can't be determined
-    (non-claude provider, no jsonl yet, no assistant turn written)."""
+    (non-claude provider, no jsonl yet, no assistant turn written, or neither
+    `sid` nor `pid`'s own session record identifies the conversation:
+    `_live_transcript`)."""
     if cli != "claude":
         return fallback
-    jsonl = jsonl_path_for(cwd, sid)
+    jsonl = _live_transcript(cwd, sid, pid)
     if jsonl is None:
         return fallback
     return last_assistant_model(jsonl) or fallback
 
 
-def live_or_spawn_effort(cli: str, cwd: str, sid: Optional[str], fallback: str) -> str:
+def live_or_spawn_effort(cli: str, cwd: str, sid: Optional[str], fallback: str,
+                         pid: Optional[int] = None) -> str:
     """`live_or_spawn_model`'in effort karşılığı: cmdline'daki `--effort` spawn
     anında donuyor, terminale yazılan bir `/effort` onu hiç yansıtmıyor — jsonl'ın
     son assistant satırındaki `effort` canlı kaynak. Canlı değer belirlenemezse
-    (claude değil, jsonl yok, assistant turu yok) spawn-time değere düşer."""
+    (claude değil, jsonl yok, assistant turu yok, konuşma kimliği çözülemiyor:
+    `_live_transcript`) spawn-time değere düşer."""
     if cli != "claude":
         return fallback
-    jsonl = jsonl_path_for(cwd, sid)
+    jsonl = _live_transcript(cwd, sid, pid)
     if jsonl is None:
         return fallback
     return last_assistant_effort(jsonl) or fallback

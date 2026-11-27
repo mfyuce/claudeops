@@ -98,6 +98,12 @@ def recover_stuck(
     if dry_run:
         return "dry-run"
 
+    # canlı model/effort (jsonl): terminalde `/model` yapılmış session spawn-anı argv değerine DÖNMESİN (handover ile
+    # aynı kural). Öldürmeden ÖNCE okunur: sid'siz oturumun kimliği sürecin kendi `sessions/<pid>.json` kaydından
+    # çözülür, kayıt süreçle birlikte geçersizleşir.
+    model = live_or_spawn_model(s.cli, s.cwd, s.sid, s.model or default_model_for(get_provider(s.cli)), pid=s.pid)
+    effort = live_or_spawn_effort(s.cli, s.cwd, s.sid, s.effort or "max", pid=s.pid)
+
     # PROC-02: tmux/gnome ebeveynini de temizler (yalnız pid öldürmek tmux oturumunu/pencereyi artık bırakıyordu)
     kill_session_and_parent(s.pid, grace=grace, name=s.name)
     # already_dead olsa bile respawn et — proc ölmüş ama resume yine gerekli
@@ -106,13 +112,12 @@ def recover_stuck(
     kind = spawn_session(
         name=s.name,
         cwd=s.cwd,
-        # canlı model/effort (jsonl): terminalde `/model` yapılmış session spawn-anı argv değerine DÖNMESİN (handover ile aynı kural)
-        model=live_or_spawn_model(s.cli, s.cwd, s.sid, s.model or default_model_for(get_provider(s.cli))),
+        model=model,
         display=display,
         # PROC-04 artığı: kip okunamadıysa sağlayıcının KENDİ varsayılanı (`rc.py` ile aynı kural); sabit "auto" ucli'de
         # geçersiz kipti ve sağlayıcıdan bağımsız tam bypass varsayıyordu
         permission_mode=s.permission_mode or get_provider(s.cli).permission_modes()[0],
-        effort=live_or_spawn_effort(s.cli, s.cwd, s.sid, s.effort or "max"),
+        effort=effort,
         force_new=False,
         dry_run=False,
         cli=s.cli,

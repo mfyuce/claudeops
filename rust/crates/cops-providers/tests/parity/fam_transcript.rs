@@ -907,6 +907,81 @@ fn live(b: &mut Build<'_>) {
     b.cases.push(c);
 }
 
+/// sid bilinmeyen oturum: yalnız sürecin kendi kaydı (pid, `procStart`, cwd doğrulaması); kardeşin daha yeni
+/// transkripti hiç okunmaz.
+fn live_own_record(b: &mut Build<'_>) {
+    let cwd = b.abs(CWD);
+    let other = b.abs("work/baska");
+    let dir = project(&cwd);
+    // (pid, sid, pid alanı, procStart, kayıt cwd'si)
+    let records: Vec<(i64, &str, i64, &str, Option<&str>)> = vec![
+        (50, "kendi", 50, "777", Some(&cwd)),
+        (51, "kendi", 51, "777", None),
+        (52, "kendi", 52, "777", Some(&other)),
+        (53, "kendi", 53, "1", Some(&cwd)),
+        (54, "kendi", 99, "777", Some(&cwd)),
+        (55, "yok", 55, "777", Some(&cwd)),
+        (56, "../p1/kendi", 56, "777", Some(&cwd)),
+        (57, "yabanci", 57, "777", Some(&cwd)),
+        (58, "kendi", 58, "", Some(&cwd)),
+        (59, "", 59, "777", Some(&cwd)),
+    ];
+    let mut queries: Vec<Value> = records
+        .iter()
+        .map(|r| r.0)
+        .chain([0, 60])
+        .map(|pid| json!({"cli": "claude", "cwd": cwd, "sid": null, "fallback": "spawn", "pid": pid}))
+        .collect();
+    queries.extend([
+        json!({"cli": "claude", "cwd": cwd, "sid": "", "fallback": "spawn", "pid": 50}),
+        json!({"cli": "claude", "cwd": cwd, "sid": "kardes", "fallback": "spawn", "pid": 50}),
+        json!({"cli": "claude", "cwd": cwd, "sid": "yok", "fallback": "spawn", "pid": 50}),
+        json!({"cli": "claude", "cwd": cwd, "sid": null, "fallback": "spawn"}),
+        json!({"cli": "codex", "cwd": cwd, "sid": null, "fallback": "spawn", "pid": 50}),
+    ]);
+    let mut c = b.case("canli-kimlik", json!({"live": queries}));
+    let mut stats = serde_json::Map::new();
+    for (pid, sid, recorded, start, record_cwd) in &records {
+        let mut body = json!({"pid": recorded, "sessionId": sid, "procStart": start});
+        if let Some(record_cwd) = record_cwd {
+            body["cwd"] = (*record_cwd).into();
+        }
+        c = c.file(Fx::File(
+            format!("home/.claude/sessions/{pid}.json"),
+            body.to_string().into_bytes(),
+            0o644,
+        ));
+        stats.insert(pid.to_string(), proc_stat(*pid, "777").into());
+    }
+    c = c.facts(json!({"proc_stat": stats}));
+    let said = |file_cwd: &str, model: &str| {
+        lines(&[
+            json!({"type": "user", "cwd": file_cwd}).to_string(),
+            turn(1, model, Some("high")),
+        ])
+    };
+    for (name, data) in [
+        ("kendi", said(&cwd, "claude-sonnet-5-5")),
+        ("yabanci", said(&other, "claude-haiku-5-5")),
+        ("kardes", said(&cwd, "claude-opus-5-5")),
+    ] {
+        c = c.file(Fx::File(format!("{dir}/{name}.jsonl"), data, 0o644));
+    }
+    let own = json!(["claude-sonnet-5-5", "high"]);
+    let spawn = json!(["spawn", "spawn"]);
+    let mut expect = vec![own.clone(), own.clone()];
+    expect.extend(vec![spawn.clone(); 10]);
+    expect.extend([
+        own,
+        json!(["claude-opus-5-5", "high"]),
+        spawn.clone(),
+        spawn.clone(),
+        spawn,
+    ]);
+    c.args["expect_live"] = expect.into();
+    b.cases.push(c);
+}
+
 fn rs_transcript(e: &Env, c: &Case) -> RsOut {
     let offset = if c.args["tz"] == "XXX-3" { 3 * 3600 } else { 0 };
     let settings = e.settings();
@@ -966,9 +1041,10 @@ fn rs_transcript(e: &Env, c: &Case) -> RsOut {
                 text(q, "fallback").unwrap(),
             );
             let sid = text(q, "sid");
+            let pid = q.get("pid").and_then(Value::as_i64);
             json!([
-                live.live_or_spawn_model(&cli, &cwd, sid.as_deref(), &fallback),
-                live.live_or_spawn_effort(&cli, &cwd, sid.as_deref(), &fallback)
+                live.live_or_spawn_model(&cli, &cwd, sid.as_deref(), &fallback, pid),
+                live.live_or_spawn_effort(&cli, &cwd, sid.as_deref(), &fallback, pid)
             ])
         })
         .collect();
@@ -1024,6 +1100,7 @@ pub fn run() {
         stamps_and_models(&mut b);
         requests(&mut b);
         live(&mut b);
+        live_own_record(&mut b);
         b.cases
     };
     r.run(cases, &[], rs_transcript);
