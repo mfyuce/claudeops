@@ -45,7 +45,20 @@ class _Base(unittest.TestCase):
         self.argv = [self.cli]
         self.patch(stuck, "is_tmux_backed", return_value=False)
         self.patch(stuck, "_ids_held_by_others", side_effect=lambda name: self.held)
-        self.patch(psutil, "Process", side_effect=lambda pid: SimpleNamespace(cmdline=lambda: list(self.argv)))
+        # Süreç bütün kayıtlardan SONRA başlamış (`started`), copilot yalnız komut satırındaki konuşmayı tutuyor
+        # (`held`, `None` = komut satırındaki kimlik): kimliğin bayatlığı `test_rsprov_stuck_argv_stale.py`da.
+        self.started = 3_000_000_000
+        self.held_files = None
+        self.patch(psutil, "Process", side_effect=lambda pid: SimpleNamespace(
+            cmdline=lambda: list(self.argv), create_time=lambda: self.started, open_files=self.open_files))
+
+    def open_files(self):
+        """copilot'un `session-state/<kimlik>/inuse.<pid>.hold` dosyaları (ölçüm: 1.0.117 her açık konuşmada tutar)."""
+        held = self.held_files
+        if held is None:
+            held = [a for i, a in enumerate(self.argv) if i and self.argv[i - 1] == "--resume"]
+        return [SimpleNamespace(path=f"/h/.copilot/session-state/{sid}/inuse.{PID}.hold", fd=20 + i)
+                for i, sid in enumerate(held)]
 
     def patch(self, target, name, *new, **kw):
         p = mock.patch.object(target, name, *new, **kw)

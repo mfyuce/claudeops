@@ -13,7 +13,7 @@ class RecoverStuckTest(unittest.TestCase):
     def test_uses_parent_aware_kill(self):
         s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode="auto",
                             effort="high", cli="claude", sid="abc")
-        info = SimpleNamespace(session=s)
+        info = SimpleNamespace(session=s, sid="abc")     # claude'da kimlik kararın kendisinden (TBD#427)
         with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed") as kp, \
                 mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                 mock.patch.object(stuck, "kill_session") as ks, \
@@ -53,7 +53,7 @@ class RecoverStuckTest(unittest.TestCase):
                 mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp, \
                 mock.patch.object(stuck, "live_or_spawn_model", return_value="fable-live") as lm, \
                 mock.patch.object(stuck, "live_or_spawn_effort", return_value="high-live") as le:
-            stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
+            stuck.recover_stuck(SimpleNamespace(session=s, sid="abc"), display=":0")
         self.assertEqual(sp.call_args.kwargs["model"], "fable-live")
         self.assertEqual(sp.call_args.kwargs["effort"], "high-live")
         self.assertEqual(lm.call_args.args[:4], ("claude", "/tmp", "abc", "sonnet-spawn"))

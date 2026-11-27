@@ -92,11 +92,12 @@ class FindStuckTest(_Home):
         self.record(start="1")
         self.assertEqual(stuck.find_stuck([self.session()]), [])
 
-    def test_known_sid_is_kept(self):
-        self.transcript("bilinen", "user")
-        self.transcript("kendi", "assistant", mtime=2_000_000_000)
+    def test_own_record_wins_over_the_session_sid(self):
+        # `Session.sid` komut satırından gelmiş olabilir (`/clear`, `/resume` sonrası bayat; TBD#427): kayıt karar verir.
+        self.transcript("bilinen", "assistant")
+        self.transcript("kendi", "user", mtime=2_000_000_000)
         self.record()
-        self.assertEqual([i.sid for i in stuck.find_stuck([self.session(sid="bilinen")])], ["bilinen"])
+        self.assertEqual([i.sid for i in stuck.find_stuck([self.session(sid="bilinen")])], ["kendi"])
 
     def test_ucli_is_asked_as_before(self):
         asked = []

@@ -1166,7 +1166,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## TBD#419, S6, uzun harcama satırı (27 Kas; iki tarafta)
 - **Takılma kararı (TBD#419 (a), `015faf69`).** claude'da konuşma kimliği `Session.sid`, yoksa yalnız sürecin kendi
-  `sessions/<pid>.json` kaydı (S1'in `_live_transcript` doğrulaması); çözülemezse oturum takılmış sayılmaz.
+  `sessions/<pid>.json` kaydı (28 Kas, TBD#427: artık hep kayıt; `Session.sid` karar vermez) (S1'in `_live_transcript` doğrulaması); çözülemezse oturum takılmış sayılmaz.
   `StuckInfo.sid` kararın konuşmasını taşır; `recover_stuck` onu sürdürür (`spawn_session(resume_id=)`, Rust
   `StartRequest.resume_id`: verilince arama ve süreç taraması yok, `force_new` ezer). Eskiden devam kimliği
   `resolve_resume_id`den (ad eşleşmesi, yoksa en yeni) geliyordu: karardan farklı olabiliyordu. claude'da kimlik
@@ -1194,7 +1194,7 @@ Kesin kimlik (yalnız takılma kararı ve yeniden açma yolu; yeni kimlik bulma 
 
 | Sağlayıcı | Kesin kimlik | Tam eşleşen kayıt |
 |---|---|---|
-| claude | `Session.sid`, yoksa sürecin kendi `sessions/<pid>.json` kaydı (TBD#419) | `<sid>.jsonl` (zaten tahminsiz) |
+| claude | `Session.sid`, yoksa sürecin kendi `sessions/<pid>.json` kaydı (TBD#419; 28 Kas'tan beri yalnız kayıt, TBD#427) | `<sid>.jsonl` (zaten tahminsiz) |
 | codex | komut satırındaki `codex resume <id>` (`Session.sid`; keşif başka kaynak kullanmaz) | adındaki kimliği TAM `<id>` olan rollout; yoksa son rol bilinmiyor |
 | agy | yalnız sürecin komut satırındaki `--conversation <id>` (`Session.sid` cwd önbelleğinden tahmin olabilir, karar ona bakmaz) | `<id>.db` (zaten tahminsiz) |
 | copilot | komut satırındaki `--resume <id>` (`Session.sid`) | `turns.session_id = <id>` (zaten tahminsiz) |
@@ -1211,6 +1211,40 @@ Kesin kimlik (yalnız takılma kararı ve yeniden açma yolu; yeni kimlik bulma 
   eşleşme ister (`codex_resume.rs::Live::codex_exact_rollout`); `codex_rollout_path` öteki okuyucular için cwd'ye düşmeyi
   sürdürür. agy ve copilot okuyucuları verilen kimlikte zaten tahmin etmediği için değişmedi. `StartRequest.resume_id`
   dört sağlayıcıda da komuta girer (`parity_g9` `-devam-verilen` artık bayrağı ve kimliği de denetler).
+
+## TBD#427: komut satırı kimliği bayatlayınca takılma kararı yok (28 Kas)
+Yukarıdaki "ele alınmayan uç" kapandı: komut satırı kimliğinin CLI içinde (`/new`, `/resume`, `/clear`) bayatladığına
+dair yerel kanıt varsa ya da güncelliği okunamıyorsa oturum takılmış sayılmaz, öldürülmez (`stuck._argv_id_current`).
+Devir, panel, sohbet ve devam aramaları değişmedi (yalnız `stuck._own_conversation`).
+
+| Sağlayıcı | Kanıt (nasıl bilindi) | Kural |
+|---|---|---|
+| claude | 2.1.332 ikilisi (kod okuması): konuşma değişince (`onSessionSwitch`) `sessions/<pid>.json` `sessionId` yenilenir; 18 canlı süreçte kayıt var, `procStart` tutuyor (ölçüm) | yalnız kendi kaydı (`_live_transcript(cwd, None, pid)`); `Session.sid` (kayıt yoksa komut satırı) karar vermez |
+| copilot | 1.0.117 yalıtılmış deneme (ölçüm): süreç `session-state/<id>/inuse.<pid>.hold` dosyasını açık tutar; `/new` yenisini açar, eskisini bırakmaz | açık tuttuğu konuşmalar tam `{argv kimliği}` ise karar; başka/eksik/okunamaz = karar yok |
+| codex | 0.166 yalıtılmış deneme (ölçüm): rollout ve `thread-writer-locks` ortak `app-server` sürecinde, `/new` sonrası eskisi de açık kalır; TUI sürecinde iz yok | aynı cwd'de süreç başladıktan sonra yazılmış başka rollout (başı okunamayan dahil) varsa karar yok |
+| agy | yalıtılmış deneme yapılamadı (oturum açma gerekiyor); canlı agy süreci yoktu | agy'nin cwd önbelleği bu cwd için başka konuşmayı gösteriyor ve o `<id>.db` süreç başladıktan sonra yazılmışsa (ya da önbellek okunamıyorsa) karar yok |
+
+- **Kalan sınır (codex, agy):** yeni konuşmada henüz hiçbir şey yazılmadıysa (`/new` sonrası boş) ya da agy önbelleği
+  yazılmadıysa fark edilmez. Aynı cwd'de kardeş oturum varsa karar verilmeyebilir (kapalı yön).
+- **Rust:** `find_stuck`/`recover_stuck` karşılığı yok; okuyucu davranışı değişmedi, kod eklenmedi.
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `ClaudeArgvTest.test_argv_id_loses_to_the_live_record` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `ClaudeArgvTest.test_argv_id_without_a_record_never_decides` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CodexArgvTest.test_newer_conversation_in_the_same_cwd_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CodexArgvTest.test_newer_conversation_elsewhere_or_older_one_here_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CodexArgvTest.test_own_conversation_written_after_start_is_fine` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CodexArgvTest.test_unreadable_newer_conversation_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CodexArgvTest.test_unknown_start_time_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `AgyArgvTest.test_cwd_cache_moved_to_a_newer_conversation_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `AgyArgvTest.test_cache_pointing_at_an_older_conversation_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `AgyArgvTest.test_cache_on_the_own_conversation_or_another_cwd_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `AgyArgvTest.test_unreadable_cache_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CopilotArgvTest.test_only_the_argv_conversation_held_decides` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CopilotArgvTest.test_another_held_conversation_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CopilotArgvTest.test_hold_of_another_pid_is_not_ours` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `CopilotArgvTest.test_unreadable_open_files_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 
 ## Onay kartları ve açılış kurtarması (main `494fbd67`; 27 Kas)
 Onay deposu artık `pending` ve `recover_resuming`i de taşır: yalnız `status: "pending"` kart bekleyendir; kartı olup hiçbiri
@@ -3685,7 +3719,7 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `FindStuckTest.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `FindStuckTest.test_own_record_decides` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `FindStuckTest.test_untrusted_record_means_not_stuck` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
-| `FindStuckTest.test_known_sid_is_kept` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_own_record_wins_over_the_session_sid` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `FindStuckTest.test_ucli_is_asked_as_before` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_resumes_the_conversation_the_decision_was_made_on` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_hand_built_info_resolves_the_own_record_before_the_kill` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
