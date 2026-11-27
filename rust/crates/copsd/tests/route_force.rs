@@ -150,7 +150,11 @@ async fn check_forced(table: &RouteTable, force_line: fn(&str) -> String) -> Res
 fn ctx() -> (cops_state::TestEnv, copsd::routes::RouteCtx) {
     let env = cops_state::TestEnv::new().unwrap();
     let root = env.dir().root().to_path_buf();
-    let ctx = copsd::routes::RouteCtx::new(root, env.dir().db(), env.dir().instances_json());
+    let mut ctx = copsd::routes::RouteCtx::new(root, env.dir().db(), env.dir().instances_json());
+    // B1 `/api/instances` süreç taraması `$HOME/.claude/sessions` okur: gerçek ev dizini test girdisi olmasın
+    let home = env.root().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    ctx.env.home = Some(home.to_string_lossy().into_owned());
     (env, ctx)
 }
 

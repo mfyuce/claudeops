@@ -14,6 +14,9 @@ cops-progress = { path = "../cops-progress" }
 # (serde_json `preserve_order` copsd ikilisine yayılır: docs/rs-b0.md R1).
 cops-state = { path = "../cops-state" }
 cops-tmux = { path = "../cops-tmux" }
+# B1: salt okuma durum uçları (`/api/instances` yerel dalı, `/api/diag/log`); `cops-state` salt okuma kipiyle.
+cops-ep-state = { path = "../cops-ep-state" }
+cops-procscan = { path = "../cops-procscan" }
 
 [dev-dependencies]
 serde_json = "1"
