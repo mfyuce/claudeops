@@ -264,6 +264,8 @@
  "test_ucli_brain_mcp.McpRegisterTests.test_symlinked_state_dir_is_refused": "ucli MCP kaydı (`mcp_server_name/mcp_add_argv/mcp_launch_args`), rs/prov `ucli.rs` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",
  "test_ucli_brain_mcp.SpawnCwdWiringTests": "`spawn.spawn_session` cwd aktarımı ve kuru çalıştırma önizlemesi, rs/prov `parity_spawn` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",
  "test_ucli_brain_mcp.ValidateMaxCostTests": "`ucli_session_opts.validate_opts` maliyet tavanı, rs/prov `ucli_opts.rs::validate_opts` (dal rs/prov 7ce46ef9, docs/rs-prov.md)",
+ "test_steward_ucli_idle.ApplyTest.test_every_nudge_kind_carries_reply_language_line": "AÇIK: `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10",
+ "test_steward_ucli_idle.ApplyTest.test_long_nudge_keeps_reply_language_line": "AÇIK: `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10",
  "test_ucli_cost_watch.CostWatch": "AÇIK: `web_steward.ucli_cost_watch` %80/%90 uyarı, tavanda beyin durdurma, tavan yükselince yeniden kurulma (bildirim/durdurma sahte); web_steward'daki karar merdiveni, iz T10",
  "test_web_review_tick.TestModelsFailure": "`web_review.current_targets` model listesi istisnasını yutuyor mu (koşucu tick'i), iz T8 (`commands/web_review.py`)"
 }
