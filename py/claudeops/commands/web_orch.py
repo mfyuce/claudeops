@@ -283,7 +283,7 @@ def _send_prompt(host: str, name: str, cli: str, prompt: str) -> bool:
     if host == "local":
         _prov = get_provider(cli)
         return tmux_send_keys(name, _prov.prepare_input(prompt), settle_delay=_prov.input_settle_delay())
-    result, _status = web_hosts.proxy_action("/api/term/input", host, {"name": name, "text": prompt})
+    result, _status = web_hosts.proxy_action("/api/term/input", host, {"name": name, "text": prompt, "auto": True})
     return bool(result.get("ok"))
 
 

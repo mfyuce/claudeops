@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 549 | 153 | 396 | 0 |
-| test durumu (120 dosya) | 1598 | 115 | 1483 | 0 |
+| test durumu (122 dosya) | 1604 | 115 | 1489 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -676,21 +676,21 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `commands/web.py::_find_gnome_terminal_server` | işlev:1128 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
-| `commands/web.py::_diag_status` | işlev:1144 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1634 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1686 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1693 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1696 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1725 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_find_gnome_terminal_server` | işlev:1130 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
+| `commands/web.py::_diag_status` | işlev:1146 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1636 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1688 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1695 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1698 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1727 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `tmux_backend.py::TMUX_SOCKET` | sabit:22 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
-| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:24 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
-| `tmux_backend.py::is_tmux_backed` | işlev:768 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
+| `tmux_backend.py::TMUX_SOCKET` | sabit:23 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
+| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:25 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
+| `tmux_backend.py::is_tmux_backed` | işlev:900 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
 
 ## Python test durumları
 
@@ -807,6 +807,14 @@ Yok.
 | `test_close_base_name.py::BaseName.test_single_source` | 12 | kapsam dışı | yok | Python modülleri arası aynı regex nesnesi denetimi. İz: T4 (yaşam döngüsü) |
 | `test_close_base_name.py::BaseName.test_date_and_conflict_suffixes_reduce` | 16 | karşılandı | `session.rs::base_matches_python_regex`<br>`golden.rs::names_paths_and_token_format` | `close` komutunun kendisi T4 |
 | `test_close_base_name.py::TsvFinder.test_find_and_edit` | 28 | kapsam dışı | yok | roster/models dosyası düzenleme. İz: W0-a durum (rs/state); T4 (yaşam döngüsü) |
+
+### `py/tests/test_context_mask_unknown.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_unknown_mask_state_sends_nothing_and_says_why` | 32 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_masked_still_refused` | 37 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `test_context_mask_unknown.py::ContextMaskGuardTests.test_known_unmasked_pane_gets_the_command` | 42 | kapsam dışı | yok | `/context` maske denetimi (TBD#367). İz: T2 (terminal); W0-b tmux (rs/tmux) |
 
 ### `py/tests/test_copilot_trust.py`
 
@@ -2145,6 +2153,14 @@ Yok.
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_unknown_permission_uses_provider_default` | 28 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_dry_run_kills_nothing` | 40 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` | 46 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
+
+### `py/tests/test_tmux_list_utf8.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_tmux_list_utf8.py::Utf8FlagArgvTests.test_tab_separated_queries_force_utf8` | 25 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
+| `test_tmux_list_utf8.py::Utf8FlagArgvTests.test_other_queries_and_the_server_starting_spawn_do_not` | 30 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
+| `test_tmux_list_utf8.py::CLocaleRealTmuxTests.test_client_session_and_ghost_are_found_in_the_c_locale` | 38 | kapsam dışı | yok | tmux liste sorgularında UTF-8 (TBD#366 P5). İz: W0-b tmux (rs/tmux) |
 
 ### `py/tests/test_triage_fixes_20261107.py`
 

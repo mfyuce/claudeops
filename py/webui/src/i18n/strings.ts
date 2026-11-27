@@ -651,6 +651,7 @@ export interface Strings {
   contextNoTmux: string;
   contextBusy: string;
   contextMasked: string;
+  contextMaskUnknown: string;
   contextSendFailed: string;
   contextParseFailed: string;
   pagePrev: string;
@@ -1695,6 +1696,7 @@ export const STRINGS: Record<Lang, Strings> = {
     contextNoTmux: "bu session tmux üzerinde çalışmıyor",
     contextBusy: "session şu an meşgul, kontrol edilemedi",
     contextMasked: "session parola/gizli girdi bekliyor, kontrol edilemedi",
+    contextMaskUnknown: "session parola bekliyor olabilir (durum anlaşılamadı), komut gönderilmedi",
     contextSendFailed: "komut gönderilemedi",
     contextParseFailed: "yanıt okunamadı",
     pagePrev: "önceki",
@@ -2740,6 +2742,7 @@ export const STRINGS: Record<Lang, Strings> = {
     contextNoTmux: "this session isn't tmux-backed",
     contextBusy: "session is busy right now, could not check",
     contextMasked: "session is awaiting masked input (e.g. a password), could not check",
+    contextMaskUnknown: "session may be awaiting a password (state unknown), command not sent",
     contextSendFailed: "could not send command",
     contextParseFailed: "could not read the response",
     pagePrev: "prev",
