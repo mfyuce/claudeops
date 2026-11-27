@@ -17,12 +17,15 @@ from .. import related_tests as rt
 
 
 def changed_files(repo: Path, base: str = "") -> list:
-    def git(*a):
+    def git(*a, strict=False):
         r = subprocess.run(["git", *a], cwd=str(repo), capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 and strict:     # sessizce boş dönmek "ilgili test yok" (çıkış 0) demekti
+            raise ValueError(f"taban okunamadı: {base} (git diff çıkış {r.returncode})")
         return [x for x in r.stdout.splitlines() if x.strip()] if r.returncode == 0 else []
     files = git("diff", "--name-only", "HEAD") + git("ls-files", "--others", "--exclude-standard")
     if base:
-        files += git("diff", "--name-only", f"{base}...HEAD")
+        branch = git("diff", "--name-only", f"{base}...HEAD", strict=True)
+        files += branch
     return sorted({str(repo / f) for f in files})
 
 
@@ -43,7 +46,11 @@ def run(args) -> int:
         if p.is_absolute() or p.exists():
             return str(p.resolve())
         return str((repo / f).resolve())
-    files = [_res(f) for f in args.files] if args.files else changed_files(repo, args.base)
+    try:
+        files = [_res(f) for f in args.files] if args.files else changed_files(repo, args.base)
+    except ValueError as e:
+        print(f"HATA: {e}")
+        return 2
     sel = rt.related_tests(files, str(py_root), deep=args.deep)
     others = [f for f in files if not f.endswith(".py")]
     if not sel:
