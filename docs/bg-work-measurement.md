@@ -156,3 +156,48 @@ Error ID: 62a045f6-b29f-4b6c-a9de-37e0ed74506a-1
 2. copilot ve agy icin olcum hesap kotasi nedeniyle yapilamadi (copilot: aylik kota 402; agy: "Individual quota reached", reset ~112 sa). Kota acildiginda ayni iki istem tekrarlanmali; copilot icin gercek `mode:"async"` bash ve `task` (alt ajan) kayitlari, agy icin `steps.status`/`step_type` degisimi izlenmeli.
 3. Kesin olmayan: codex `· Main [default]` ibaresinin anlami (ajan acildiktan sonra belirdi, ajan bitince de kaldi).
 4. Olcum yan etkileri: `/tmp/claude-1000/bgm/*` gecici dizinler, `~/.codex/sessions/2026/11/23/` altinda 3 rollout, `~/.copilot/session-state/` altinda kota hatali 3-4 oturum, agy trust listesi. Tum tmux sunuculari (`bgm-codex`, `bgm-copilot`, `bgm-agy`) kapatildi.
+
+---
+
+## claude: "meşgul" algısı (2026-11-27/28, claude 2.1.332, 20 canlı oturum)
+
+Sütunlar: süreç kaydı `status`, claude'un altındaki kabuk süreci sayısı, ekran sayacı (eski / yeni), transkriptte bekleyen iş (eski / yeni). Oturum adları gizlendi.
+
+27 Kas 23:49 (düzeltmeden önceki kod "E", düzeltilmiş kod "Y"):
+
+| oturum | kayıt | kabuk | ekran E | ekran Y | transkript E | transkript Y | gerçekte |
+|---|---|---|---|---|---|---|---|
+| 12 boş oturum | idle | 0 | 0 | 0 | 0 | 0 | boş |
+| S1 | shell | 1 | 2 | 1 | 1 | 1 | tur bitti, 1 kabuk işi |
+| S2 | shell | 1 | 2 | 1 | 1 | 1 | tur bitti, 1 kabuk işi |
+| S3 | busy | 3 | 4 | 3 | 1 | 1 | tur ve 3 arka plan işi |
+| S4 | busy | 0 | 1 | 0 | 0 | 0 | tur bitti, yalnız alt ajan çalışıyor |
+| S5, S6, S7 | busy | 0-1 | 1 | 0 | 0 | 0 | tur sürüyor |
+| S8 (copsdev) | busy | 1 | 1 | 0 | **1** | 0 | tur sürüyor; transkriptte hayalet iş |
+
+Bulgular:
+
+- Boş oturumda `← 1 agent` satırı tek başına iş sayılmıyordu (kesme / yönetme ipucu yok: sayaç 0). İpucu olan satırda sayıya 1 fazla ekliyordu.
+- copsdev'e direktifin iletilemediği iki anın (27 Kas 23:13:41 ve 23:24:30) yeniden oynatılması: eski kod "bekliyor", `api-request-blob` satırları çıkarılınca eski kod da "boş", yeni kod "boş". O anlarda alt ajan dizini yoktu; ana tur boştaydı.
+- Kök neden: claude, reddedilen çağrıyı içeren isteğin kopyasını (`api-request-blob`) hata sonucundan sonra yazıyor. Kopya çağrıyı yeniden "bekleyen" yapıyordu; zaman damgası olmadığı için 6 saatlik üst sınır da işlemiyordu.
+
+### Süreç kaydı (`~/.claude/sessions/<pid>.json`, `status`)
+
+2.1.332 ikilisindeki hesap (küçültülmüş koddan okundu): diyalog açıksa `waiting`; ana tur ya da bitmemiş devredilen görev (`local_agent`, `remote_agent`, `in_process_teammate`, `local_workflow`) varsa `busy`; değilse `idle`; `idle` iken bitmemiş `local_bash` (kabuk, Monitor) varsa `shell`. `monitor_mcp`, `monitor_ws`, `mcp_task` ve uzun süren uzak ajan `idle` sayılır. İç biçimdir, sürümle değişebilir.
+
+### Önceki düzeltmeler neden yetmedi
+
+| commit | ne yaptı | neden yetmedi |
+|---|---|---|
+| `234ca049` | ekran sayacı + transkriptte bildirimi gelmemiş iş | sayaç `← N agent` gezinme ipucunu iş saydı (test fikstürü bunu doğru kabul etti); transkript yalnız tek bildirim biçimini biliyordu |
+| `37d4125c` | sağlayıcı yöntemine taşıma | davranış değişmedi |
+| `09e366ce` | codex için ayrı yol | claude'u etkilemedi |
+| `ed1c95da` | hatalı çağrı bekleyen sayılmasın | yalnız hata sonucunda sildi; aynı çağrının sonradan gelen kopyasını düşünmedi |
+| `43121760`, `39faad6e` | bozuk satır / liste biçimli sonuç dayanıklılığı | `rs/prov` dalında, `main`de değil |
+| `29e3299f` | `TaskStop` ve tur ortası bildirimi | iki kayıt biçimi daha eklendi; yeni biçim yine kaçtı |
+
+Ortak zayıflık: süreç durumu ekran metninden ve olay günlüğünden yeniden kuruluyor; claude'un her yeni satır ya da kayıt biçimi yeni bir hata.
+
+28 Kas 00:10 ölçümü: `shell` kaydı olan 4 oturumun hepsinde kabuk süreci var, `idle` kaydı olan 13 oturumun hiçbirinde yok; copsdev'de eski transkript kanıtı hâlâ 1, yeni 0.
+
+Kalıcı öneri: kayıt `idle` ise ekran ve transkript kanıtı yok sayılsın (şimdi yalnız `busy` / `shell` ekleyici kanıt). Koşul: kayıt okunamıyorsa, süreç eşleşmiyorsa ya da sürüm tanınmıyorsa bugünkü yedekler kalsın.
