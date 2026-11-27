@@ -164,6 +164,63 @@ fn version(c: &Connection) -> rusqlite::Result<i64> {
     Ok(user.max(tab))
 }
 
+/// Salt okunur açılışın biçimi ([`Store::open_read_only`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoOpen {
+    Plain,
+    Immutable,
+    Refuse,
+}
+
+/// DB başlığı (bayt 18/19 = 2: WAL) ve `-wal`/`-shm` varlığından salt okunur açılış biçimi. Başlık okunamazsa (kısa/boş
+/// dosya) `Plain`: SQLite kendisi karar verir (WAL değilse yan dosya yaratmaz).
+pub fn wal_open_mode(path: &Path) -> RoOpen {
+    use std::io::Read;
+    let mut head = [0u8; 20];
+    let wal = std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok()
+        && head.starts_with(b"SQLite format 3\0")
+        && (head[18] == 2 || head[19] == 2);
+    if !wal {
+        return RoOpen::Plain;
+    }
+    let side = |sfx: &str| {
+        let mut p = path.as_os_str().to_owned();
+        p.push(sfx);
+        std::fs::symlink_metadata(PathBuf::from(p)).is_ok()
+    };
+    match (side("-wal"), side("-shm")) {
+        (true, true) => RoOpen::Plain,
+        (false, false) => RoOpen::Immutable,
+        _ => RoOpen::Refuse,
+    }
+}
+
+/// `file:` URI (RFC 3986 yüzde kaçışı: SQLite yolda `%`yi çözer, `?`/`#` ayıraçtır).
+fn sqlite_uri(path: &Path, immutable: bool) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    // mutlak yol boş yetkiliyle (`file:///a`): `//x` biçimli yol yetkili (host) sanılmasın
+    let mut s = String::from(if path.is_absolute() {
+        "file://"
+    } else {
+        "file:"
+    });
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            s.push(char::from(b));
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s.push_str(if immutable {
+        "?mode=ro&immutable=1"
+    } else {
+        "?mode=ro"
+    });
+    s
+}
+
 fn check(c: &Connection) -> Result<()> {
     match version(c)? {
         SCHEMA_VERSION => Ok(()),
@@ -198,15 +255,34 @@ impl Store {
         })
     }
 
-    /// Salt okunur açılış: DB dosyasına yazmaz, pragma değiştirmez, kapanışta WAL'ı ana dosyaya aktarmaz. Yazma
-    /// yöntemleri hata verir.
+    /// Salt okunur açılış: DB dosyasına yazmaz, pragma değiştirmez, kapanışta WAL'ı ana dosyaya aktarmaz, YENİ DOSYA
+    /// YARATMAZ. Yazma yöntemleri hata verir.
+    ///
+    /// WAL kipindeki DB'de SQLite'ın salt okunur bağlantısı eksik `-shm`/`-wal` dosyalarını YARATIR (unix VFS `-shm`i
+    /// `O_CREAT` ile açar; ölçüldü, `wal_files_absent_creates_nothing`). Bu yüzden ([`wal_open_mode`]):
+    /// - WAL değil ya da `-wal` ile `-shm` ikisi de var (açık bir yazar var): olağan `mode=ro`;
+    /// - WAL ve ikisi de yok (DB'yi açık tutan yok, tüm veri ana dosyada): `immutable=1` (kilit ve yan dosya yok);
+    /// - yalnız biri var (çökme artığı; kurtarma yazım ister): [`StoreError::Io`], çağıran dosyaya düşer.
     pub fn open_read_only(path: &Path) -> Result<Store> {
         if !path.is_file() {
             return Err(StoreError::Missing(path.to_path_buf()));
         }
+        let immutable = match wal_open_mode(path) {
+            RoOpen::Plain => false,
+            RoOpen::Immutable => true,
+            RoOpen::Refuse => {
+                return Err(StoreError::Io(format!(
+                "{}: WAL yan dosyalarından yalnız biri var (salt okunur açılış dosya yaratırdı)",
+                path.display()
+            )))
+            }
+        };
+        let uri = sqlite_uri(path, immutable);
         let c = Connection::open_with_flags(
-            path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            &uri,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_URI
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         c.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS))?;
         check(&c)?;
@@ -725,5 +801,102 @@ mod tests {
             get("PRAGMA busy_timeout"),
             format!("Integer({BUSY_TIMEOUT_MS})")
         );
+    }
+
+    fn listing(dir: &Path) -> Vec<String> {
+        let mut v: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Kapalı (yan dosyasız) WAL DB: `docs` satırı olan, sürümü doğru.
+    fn closed_wal_db(dir: &Path) -> PathBuf {
+        let path = dir.join("claudeops.db");
+        let c = Connection::open(&path).unwrap();
+        c.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
+            .unwrap();
+        c.execute_batch(
+            "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);
+             INSERT INTO docs VALUES('a', '{\"x\": 1}', 1, 2.5);
+             PRAGMA user_version=2;",
+        )
+        .unwrap();
+        drop(c);
+        path
+    }
+
+    /// B1 salt okuma kipi: yan dosyası olmayan WAL DB'yi okumak DİZİNE dosya eklemez. Karşılaştırma: SQLite'ın olağan
+    /// `mode=ro` açılışı aynı durumda `-shm`/`-wal` YARATIR (bu kanıt kırmızıya dönerse SQLite davranışı değişmiştir ve
+    /// `immutable` dalı gereksizdir; test ikisini birlikte gösterir).
+    #[test]
+    fn wal_files_absent_creates_nothing() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let dir = env.root().join("ro");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = closed_wal_db(&dir);
+        assert_eq!(listing(&dir), vec!["claudeops.db"]);
+        assert_eq!(wal_open_mode(&path), RoOpen::Immutable);
+        let s = Store::open_read_only(&path).unwrap();
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("{\"x\": 1}"));
+        assert!(s.set_doc("a", &Json::Int(2)).is_err());
+        drop(s);
+        assert_eq!(listing(&dir), vec!["claudeops.db"]);
+
+        // ham salt okunur açılış (eski davranış) aynı DB'de yan dosya yaratır
+        let raw = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let _: i64 = raw
+            .query_row("SELECT count(*) FROM docs", [], |r| r.get(0))
+            .unwrap();
+        drop(raw);
+        assert_ne!(
+            listing(&dir),
+            vec!["claudeops.db"],
+            "olağan mode=ro artık yan dosya yaratmıyor: immutable dalını yeniden değerlendir"
+        );
+    }
+
+    /// Açık yazar varken (yan dosyalar mevcut) olağan salt okunur bağlantı; yazarın son işlemi görülür, dosya listesi
+    /// değişmez. Yan dosyalardan yalnız biri varsa açılış reddedilir (dosya yaratmamak için).
+    #[test]
+    fn wal_with_live_writer_reads_latest_and_half_state_refuses() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let dir = env.root().join("ro2");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = closed_wal_db(&dir);
+        let w = Connection::open(&path).unwrap();
+        w.execute("UPDATE docs SET body='2'", []).unwrap();
+        let before = listing(&dir);
+        assert_eq!(
+            before,
+            vec!["claudeops.db", "claudeops.db-shm", "claudeops.db-wal"]
+        );
+        assert_eq!(wal_open_mode(&path), RoOpen::Plain);
+        let s = Store::open_read_only(&path).unwrap();
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("2"));
+        drop(s);
+        assert_eq!(listing(&dir), before);
+        drop(w);
+        std::fs::write(dir.join("claudeops.db-wal"), b"").unwrap();
+        assert_eq!(wal_open_mode(&path), RoOpen::Refuse);
+        assert!(matches!(
+            Store::open_read_only(&path),
+            Err(StoreError::Io(_))
+        ));
+        assert_eq!(listing(&dir), vec!["claudeops.db", "claudeops.db-wal"]);
+    }
+
+    /// Yolda `%`, `?`, `#`, boşluk ve UTF-8: URI kaçışı doğru dosyayı açar.
+    #[test]
+    fn read_only_uri_escapes_path() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let dir = env.root().join("a %2F?b#ç");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = closed_wal_db(&dir);
+        let s = Store::open_read_only(&path).unwrap();
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("{\"x\": 1}"));
+        assert!(sqlite_uri(Path::new("//x/y"), false).starts_with("file:////x/y"));
     }
 }
