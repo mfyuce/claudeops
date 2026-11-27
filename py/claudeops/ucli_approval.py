@@ -211,7 +211,7 @@ def recover_resuming(now: Optional[float] = None, max_age: float = 7 * 86400) ->
         for key, rec in idx.items():
             if not isinstance(rec, dict):
                 continue
-            if rec.get("state") in ("resuming", "suspended") and _consumed(key):    # onaylı eylem ikinci kez sürmesin
+            if rec.get("state") in ("resuming", "suspended") and (_consumed(key) or _resume_started(key)):    # onaylı eylem ikinci kez sürmesin
                 rec.update(state="done", result={"error": "resume ran but its result was not recorded"}, finished_at=now)
                 n += 1
             if rec.get("state") == "resuming":
@@ -241,15 +241,13 @@ def parse_suspended(stdout: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def pending(run_key: str, now: Optional[float] = None) -> List[Dict[str, Any]]:
-    """Bekleyen onaylar (`pending/*.json`): yalnız arayüzde gösterilecek alanlar; `expired` süre dolduysa true.
-    `suspended/` (transkript) ASLA okunmaz. Bozuk dosya atlanır."""
-    now = time.time() if now is None else now
+def _pending_files(run_key: str) -> List[Dict[str, Any]]:
+    """`pending/*.json` kayıtları (ad sırasıyla). `suspended/` (transkript) ASLA okunmaz. Bozuk dosya atlanır."""
     out: List[Dict[str, Any]] = []
-    pdir = os.path.join(dir_for(run_key), "pending")
     try:
+        pdir = os.path.join(dir_for(run_key), "pending")
         names = sorted(os.listdir(pdir))
-    except OSError:
+    except (OSError, ValueError):
         return out
     for fn in names:
         if not fn.endswith(".json"):
@@ -259,7 +257,23 @@ def pending(run_key: str, now: Optional[float] = None) -> List[Dict[str, Any]]:
                 q = json.load(f)
         except (OSError, ValueError):
             continue
-        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not _ID.fullmatch(q["id"]):
+        if isinstance(q, dict) and isinstance(q.get("id"), str) and _ID.fullmatch(q["id"]):
+            out.append(q)
+    return out
+
+
+def _resume_started(run_key: str) -> bool:
+    """ucli sürdürmeye başlarken kartı `resumed` yapar; yerine yeni bekleyen kart yoksa onay kullanılmış, sonuç kayıp."""
+    states = [q.get("status") for q in _pending_files(run_key)]
+    return bool(states) and "pending" not in states
+
+
+def pending(run_key: str, now: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Bekleyen onaylar (yalnız `status: "pending"`): yalnız arayüzde gösterilecek alanlar; `expired` süre dolduysa true."""
+    now = time.time() if now is None else now
+    out: List[Dict[str, Any]] = []
+    for q in _pending_files(run_key):
+        if q.get("status") != "pending":
             continue
         exp = q.get("expires_at")
         out.append({"id": q["id"], "kind": str(q.get("kind") or ""), "tool": str(q.get("tool") or ""),

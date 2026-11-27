@@ -22,6 +22,8 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .sqlite_uri import ro_sqlite_uri
+
 DB_NAME = "ucli_metrics.db"
 DEFAULTS = {"enabled": True, "interval_s": 15.0, "retention_days": 30.0}
 DISK_EVERY_S = 300.0
@@ -113,7 +115,7 @@ def _read_conn(path: Optional[str] = None) -> sqlite3.Connection:
     p = path or db_path()
     if not os.path.exists(p):
         raise FileNotFoundError(p)
-    c = sqlite3.connect("file:" + p + "?mode=ro", uri=True, timeout=10.0)
+    c = sqlite3.connect(ro_sqlite_uri(p), uri=True, timeout=10.0)
     return c
 
 
