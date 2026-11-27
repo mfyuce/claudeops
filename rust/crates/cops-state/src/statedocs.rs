@@ -454,8 +454,22 @@ impl StateDocs {
     }
 
     /// Yalnız okuyan komutlar için ayrı, önbelleklenmeyen salt okunur bağlantı ([`Store::open_read_only`]).
+    ///
+    /// DB şeması bu koddan YENİYSE (Python yeni göç ekledi, ikili güncellenmedi) okuma sürer; süreç başına sürüm başına BİR
+    /// kez günlüğe yazılır (sessiz değil, ama her okumada da değil).
     pub fn read_only_store(&self) -> Result<Store, StoreError> {
-        Store::open_read_only(&sqlite_path_from_url(&self.db_url, &self.dir.db())?)
+        let st = Store::open_read_only(&sqlite_path_from_url(&self.db_url, &self.dir.db())?)?;
+        static LOGGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+        let v = st.schema();
+        if v > crate::store::SCHEMA_VERSION
+            && LOGGED.swap(v, std::sync::atomic::Ordering::SeqCst) != v
+        {
+            self.log(&format!(
+                "DB şema sürümü {v}, bu kod {} biliyor: salt okuma sürüyor (göçler yalnız sona eklenir; ikiliyi güncelleyin)",
+                crate::store::SCHEMA_VERSION
+            ));
+        }
+        Ok(st)
     }
 
     /// `read_json(name, path)` (`file_truth=True`).
