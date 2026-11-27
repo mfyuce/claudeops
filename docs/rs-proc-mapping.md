@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 604 | 153 | 451 | 0 |
-| test durumu (148 dosya) | 1814 | 115 | 1699 | 0 |
+| test durumu (148 dosya) | 1816 | 115 | 1701 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -2326,24 +2326,26 @@ Yok.
 | `test_steward_ucli_idle.py::PlanTest.test_dry_counts_do_not_block_act` | 249 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_ucli_idle.py::PlanTest.test_legacy_record_without_mode_counts_as_dry` | 259 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_ucli_idle.py::ApplyTest.test_nudge_is_sent_as_one_line` | 289 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_nudge_skipped_when_input_box_has_text` | 294 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_close_handover_pauses_project_when_no_work` | 300 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_close_handover_keeps_phase_when_work_remains` | 306 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_close_stop_and_respawn_use_existing_paths` | 310 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_turn_failed_close_stops_and_asks_owner_once` | 318 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ApplyTest.test_close_rejects_unknown_mode` | 327 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::DevamTextTest.test_clip_words_never_cuts_mid_word` | 337 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::DevamTextTest.test_next_hint_long_note_cut_on_word` | 346 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::DevamTextTest.test_same_devam_text_not_resent_after_answer` | 352 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ClaudeIdleTest.test_default_is_dry_and_ucli_untouched` | 380 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ClaudeIdleTest.test_nudges_after_threshold_with_next_work` | 386 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ClaudeIdleTest.test_off_and_zero_do_nothing` | 394 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ClaudeIdleTest.test_skips_busy_subagent_done_questions_no_work_paused` | 399 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ClaudeIdleTest.test_chain_cap` | 407 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::NotesWaitTest.test_notes_wait_detect` | 416 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::NotesWaitTest.test_due_project_with_bekleme_note_not_started_and_reason_recorded` | 421 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ChainPauseFlowTest.test_claude_idle_skips_owner_wait` | 440 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_ucli_idle.py::ChainPauseFlowTest.test_pause_written_only_after_handover_finishes` | 443 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_every_nudge_kind_carries_reply_language_line` | 294 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_long_nudge_keeps_reply_language_line` | 303 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_nudge_skipped_when_input_box_has_text` | 307 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_close_handover_pauses_project_when_no_work` | 313 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_close_handover_keeps_phase_when_work_remains` | 319 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_close_stop_and_respawn_use_existing_paths` | 323 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_turn_failed_close_stops_and_asks_owner_once` | 331 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ApplyTest.test_close_rejects_unknown_mode` | 340 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::DevamTextTest.test_clip_words_never_cuts_mid_word` | 350 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::DevamTextTest.test_next_hint_long_note_cut_on_word` | 359 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::DevamTextTest.test_same_devam_text_not_resent_after_answer` | 365 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ClaudeIdleTest.test_default_is_dry_and_ucli_untouched` | 393 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ClaudeIdleTest.test_nudges_after_threshold_with_next_work` | 399 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ClaudeIdleTest.test_off_and_zero_do_nothing` | 407 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ClaudeIdleTest.test_skips_busy_subagent_done_questions_no_work_paused` | 412 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ClaudeIdleTest.test_chain_cap` | 420 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::NotesWaitTest.test_notes_wait_detect` | 429 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::NotesWaitTest.test_due_project_with_bekleme_note_not_started_and_reason_recorded` | 434 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ChainPauseFlowTest.test_claude_idle_skips_owner_wait` | 453 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_ucli_idle.py::ChainPauseFlowTest.test_pause_written_only_after_handover_finishes` | 456 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_ucli_send.py`
 

@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1934 satır)
+### Python testleri (1936 satır)
 
-Test satırı özeti: 1934 satır; doğrudan açık (aşağıda `AÇIK`) 192; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1936 satır; doğrudan açık (aşağıda `AÇIK`) 194; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2738,6 +2738,8 @@ Test satırı özeti: 1934 satır; doğrudan açık (aşağıda `AÇIK`) 192; pa
 | `test_steward_ucli_idle.PlanTest.test_dry_counts_do_not_block_act` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
 | `test_steward_ucli_idle.PlanTest.test_legacy_record_without_mode_counts_as_dry` | idle::plan_ucli_idle_vectors, idletext::idle_finish_marker_vectors, idletext::is_fable_polish_vectors, idletext::next_line_vectors (+11) |
 | `test_steward_ucli_idle.ApplyTest.test_nudge_is_sent_as_one_line` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+22); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._apply |
+| `test_steward_ucli_idle.ApplyTest.test_every_nudge_kind_carries_reply_language_line` | AÇIK (taşınmadı ya da kısmen): `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10 |
+| `test_steward_ucli_idle.ApplyTest.test_long_nudge_keeps_reply_language_line` | AÇIK (taşınmadı ya da kısmen): `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10 |
 | `test_steward_ucli_idle.ApplyTest.test_nudge_skipped_when_input_box_has_text` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._apply |
 | `test_steward_ucli_idle.ApplyTest.test_close_handover_pauses_project_when_no_work` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_projects, web_steward._apply |
 | `test_steward_ucli_idle.ApplyTest.test_close_handover_keeps_phase_when_work_remains` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::derived_of_vectors, identity::from_dict_drops_unknown_and_requires (+21); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward.load_projects, web_steward._apply |

@@ -289,7 +289,20 @@ class ApplyTest(_Engine):
     def test_nudge_is_sent_as_one_line(self):
         res = self.act("idle_nudge", text="devam:\nüç\nsatır", project="cli")
         self.assertTrue(res["ok"])
-        self.assertEqual(self.sent, [("cli", "ucli", "devam: üç satır")])
+        self.assertEqual(self.sent, [("cli", "ucli", "devam: üç satır " + sw.REPLY_LANG_TR)])
+
+    def test_every_nudge_kind_carries_reply_language_line(self):          # sahip kuralı 21 Kas: dürtme de panel dilini söyler
+        for kind in ("idle_nudge", "owner_todo_move", "todo_triage"):
+            for lang, line in (("tr", sw.REPLY_LANG_TR), ("en", sw.REPLY_LANG_EN)):
+                with self.subTest(kind=kind, lang=lang):
+                    self.sent.clear()
+                    self.cfg.lang = lang
+                    self.assertTrue(self.act(kind, text="devam:\nx", project="cli")["ok"])
+                    self.assertEqual([t for _, _, t in self.sent], ["devam: x " + line])
+
+    def test_long_nudge_keeps_reply_language_line(self):          # one_line 400'de keser: dil satırı kesilen metne SONRA eklenir
+        self.act("idle_nudge", text="a" * 900, project="cli")
+        self.assertTrue(self.sent[0][2].endswith(sw.REPLY_LANG_TR), self.sent[0][2][-120:])
 
     def test_nudge_skipped_when_input_box_has_text(self):
         self.typed = True
