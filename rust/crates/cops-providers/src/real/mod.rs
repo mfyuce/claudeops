@@ -20,6 +20,7 @@ pub mod fsio;
 pub mod help;
 pub mod http;
 pub mod ledger;
+pub mod launch;
 pub mod lock;
 pub mod modelio;
 pub mod oneshot;
@@ -28,6 +29,8 @@ pub mod pathexec;
 pub mod probe;
 pub mod process;
 pub mod proxy;
+pub mod routing_sync;
+pub mod runtime;
 pub mod searxng;
 pub mod sqlite;
 

@@ -87,7 +87,8 @@ def _with_block(existing: str, block_body: Optional[str]) -> str:
 
 def _sync_one(path: str, create: bool) -> str:
     """Tek dosyada işaretli bloğu Ayarlar'a göre yaz/kaldır. `create`: dosya yoksa yalnız bu blokla oluştur (agy);
-    değilse dosya yokken dokunma (codex kurulu değilse yeni dosya açma). Sonuç: written|removed|unchanged|skipped:<neden>."""
+    değilse dosya yokken dokunma (codex kurulu değilse yeni dosya açma). Sonuç: written|removed|unchanged|skipped:<neden>.
+    Yedek gerekirken `.bak-routing` hedefsiz bir bağlantıysa hiçbir şey yazılmaz (`skipped:broken backup link`)."""
     exists = os.path.isfile(path)
     if not exists and not create:
         return "skipped:no file"
@@ -104,6 +105,10 @@ def _sync_one(path: str, create: bool) -> str:
             os.remove(path)   # biz oluşturduk ve içinde başka bir şey kalmadı
             return "removed"
         backup = path + ".bak-routing"
+        if exists and os.path.islink(backup) and not os.path.exists(backup):
+            # kırık bağlantı: copy2 onu izleyip dizin dışına yazardı. Yedek alınamıyorsa yönerge dosyasına da dokunulmaz.
+            diag_log("routing_guidance_backup_broken_link", path=path, backup=backup)
+            return "skipped:broken backup link"
         if exists and not os.path.exists(backup):
             shutil.copy2(path, backup)
         # symlink'i düz dosyayla DEĞİŞTİRME (dotfiles deposu): asıl hedefe yaz; izin korunur, fsync + benzersiz tmp yardımcıda

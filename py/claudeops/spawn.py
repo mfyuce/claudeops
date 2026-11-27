@@ -297,6 +297,8 @@ def spawn_session(
             ok = tmux_spawn_direct(name, cwd, inner, env)
             diag_log("spawn_hidden" if hidden and not no_gt else "spawn_direct_headless",
                       name=name, cwd=cwd, ok=ok)
+        elif not no_gt:     # gizli başlatma + tmux yok: hiçbir şey açılmadı (gtsiz dalda iz zaten yukarıda)
+            diag_log("spawn_hidden_no_tmux", name=name, cwd=cwd)
         return kind
 
     # tmux-backed going forward (spawn is the ONLY launch path, so the tmux server —
@@ -372,18 +374,20 @@ def _launch_gnome_terminal(name: str, cwd: str, window_cmd: str, env: dict) -> b
 
 def _reclaim_ghost_session(name: str, cli: str) -> None:
     """PROC-03: CLI'si çıkmış, `exec bash`le canlı kalan tmux oturumu (`tmux_ghost_session`) adı rehin tutar: `-A`
-    ona bağlanır, CLI başlamaz, panelden ne start ne stop çalışır. Spawn'dan ÖNCE kapatılır; son ekran (çıkış nedeni:
-    "Out of credits" vb.) diag.log'a yazılır. `shell` sağlayıcısı HARİÇ (orada CLI'nin kendisi bash). Fırlatmaz."""
+    ona bağlanır, CLI başlamaz, panelden ne start ne stop çalışır. Spawn'dan ÖNCE kapatılır. Ekran metni sır taşıyabilir:
+    diag.log'a HİÇ girmez, yalnız boş olmayan satır ve karakter sayısı yazılır. `shell` sağlayıcısı HARİÇ (orada CLI'nin
+    kendisi bash). Fırlatmaz."""
     if cli == "shell":
         return
     try:
         from .tmux_backend import strip_ansi, tmux_capture, tmux_ghost_session, tmux_kill_session
         if not tmux_available() or not tmux_ghost_session(name):
             return
-        tail = strip_ansi(tmux_capture(name, lines=40) or "")
-        tail = "\n".join(ln for ln in tail.splitlines() if ln.strip())[-1500:]
+        screen = strip_ansi(tmux_capture(name, lines=40) or "")
+        kept = [ln for ln in screen.splitlines() if ln.strip()]
         tmux_kill_session(name)
-        diag_log("spawn_ghost_reclaimed", name=name, cli=cli, tail=tail)
+        diag_log("spawn_ghost_reclaimed", name=name, cli=cli, screen_lines=len(kept),
+                 screen_chars=len("\n".join(kept)))
     except Exception as e:     # hayalet temizliği spawn'ı ASLA engellemesin
         diag_log("spawn_ghost_reclaim_error", name=name, error=str(e)[:200])
 
@@ -405,7 +409,12 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
             time.sleep(0.5)
         if attempt < FALLBACK_RETRY_COUNT:
             diag_log("spawn_retry", name=name, cwd=cwd, attempt=attempt + 1)
-            if not _launch_gnome_terminal(name, cwd, window_cmd, env):
+            try:
+                launched = _launch_gnome_terminal(name, cwd, window_cmd, env)
+            except ValueError as e:     # argv/ortam reddi: bekçi biter (yedek de aynı girdiyi taşır). Metin değer içerebilir: yalnız sınıf adı
+                diag_log("spawn_retry_launch_error", name=name, cwd=cwd, attempt=attempt + 1, error=type(e).__name__)
+                return
+            if not launched:
                 diag_log("spawn_retry_launch_failed", name=name, cwd=cwd, attempt=attempt + 1)
     if tmux_has_session(name):
         return

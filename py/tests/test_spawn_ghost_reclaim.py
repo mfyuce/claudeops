@@ -58,7 +58,8 @@ class ReclaimTest(unittest.TestCase):
         killed, logs = self._reclaim()
         self.assertEqual(killed, ["p"])
         self.assertEqual(logs[0][0], "spawn_ghost_reclaimed")
-        self.assertIn("Out of credits", logs[0][1]["tail"])
+        self.assertNotIn("Out of credits", repr(logs))
+        self.assertEqual(logs[0][1], {"name": "p", "cli": "claude", "screen_lines": 2, "screen_chars": 17})
 
     def test_shell_provider_untouched(self):
         self.assertEqual(self._reclaim(cli="shell"), ([], []))
