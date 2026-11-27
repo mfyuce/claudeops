@@ -10,6 +10,8 @@ description = "CLI saglayicilari: spawn komut satiri ve ortam (saf cekirdek) + g
 cops-tmux = { path = "../cops-tmux" }
 # G9 gerçek süreç taraması (`real/scan.rs`; Python `discovery.find_sessions`)
 cops-procscan = { path = "../cops-procscan" }
+# Claude fiyat tablosu tek kaynak (Python `review.ANTHROPIC_PRICES`, `HAIKU_LONG_PRICE`)
+cops-review-core = { path = "../cops-review-core" }
 serde = "1"
 serde_json = "1"
 regex = "1"

@@ -37,7 +37,7 @@ fn pick<'a>(rng: &mut Rng, from: &[&'a str]) -> &'a str {
 }
 
 fn random_line(rng: &mut Rng, now: f64) -> String {
-    const NUMBERS: [&str; 22] = [
+    const NUMBERS: [&str; 26] = [
         "0",
         "1",
         "7",
@@ -60,6 +60,11 @@ fn random_line(rng: &mut Rng, now: f64) -> String {
         "123456789012345678901234567890",
         "[]",
         "{}",
+        // Haiku 5.5 dilim eşiği (istem 100 000'i AŞINCA pahalı)
+        "99999",
+        "100000",
+        "100001",
+        "60000",
     ];
     const KEYS: [&str; 10] = [
         "cache_read_input_tokens",
@@ -149,7 +154,22 @@ fn random_line(rng: &mut Rng, now: f64) -> String {
                     format!("\"{key}\": {value}")
                 })
                 .collect();
-            format!("{{\"t\": {t}, \"usage\": {{{}}}}}", fields.join(", "))
+            let event = pick(
+                rng,
+                &[
+                    "",
+                    "",
+                    "",
+                    "\"event\": \"request\", ",
+                    "\"event\": \"task_end\", ",
+                    "\"event\": \"task_start\", ",
+                    "\"event\": [\"task_end\"], ",
+                ],
+            );
+            format!(
+                "{{{event}\"t\": {t}, \"usage\": {{{}}}}}",
+                fields.join(", ")
+            )
         }
     }
 }
@@ -268,6 +288,50 @@ fn cases() -> Vec<Case> {
         c.files = tree(vec![]);
         c.args["mtimes"] = json!([[format!("{DIR}/eski.jsonl"), now - 5.0 * 86400.0]]);
         v.push(c.settings_json(cap(cfg.clone())));
+    }
+    // Haiku 5.5 dilimi (istek başına, eşik dahil/üstü, önbellek sayaçları eşiğe girer) ve `task_end` toplam satırı
+    let haiku =
+        |usage: Value| format!("{}\n", json!({"event": "request", "t": ms, "usage": usage}));
+    let tiers = [
+        haiku(json!({"prompt_tokens": 100_000, "completion_tokens": 1000})),
+        haiku(json!({"prompt_tokens": 100_001, "completion_tokens": 1000})),
+        haiku(
+            json!({"cache_creation_input_tokens": 0, "cache_read_input_tokens": 100_000,
+                     "prompt_tokens": 100_001, "completion_tokens": 1000}),
+        ),
+        haiku(json!({"input_tokens": 1, "cache_read_input_tokens": 60_000,
+                     "cache_creation_input_tokens": 60_000, "output_tokens": 10})),
+        haiku(json!({"cached_tokens": 50_000, "prompt_tokens": 150_000, "completion_tokens": 10})),
+        haiku(json!({"prompt_tokens": 60_000})).repeat(2),
+        format!(
+            "{}{}\n",
+            haiku(json!({"prompt_tokens": 7993, "completion_tokens": 5})),
+            json!({"event": "task_end", "t": ms, "usage": {"prompt_tokens": 7993, "completion_tokens": 5}})
+        ),
+        // `task_end`: bozuk sayaç sorun sayılmaz, bozuk zaman damgası sayılır
+        format!(
+            "{}\n",
+            json!({"event": "task_end", "t": ms, "usage": {"prompt_tokens": -1}})
+        ),
+        format!(
+            "{}\n",
+            json!({"event": "task_end", "t": "abc", "usage": {"prompt_tokens": 1}})
+        ),
+    ];
+    for (i, body) in tiers.iter().enumerate() {
+        for model in ["claude-haiku-5-5", "claude-sonnet-5-5"] {
+            for mult in [1.0, 1.6] {
+                let mut c = case(
+                    format!("dilim{i}-{model}-{mult}"),
+                    vec![
+                        json!(["scan", "a.jsonl", model, 0.0, mult]),
+                        json!(["problem", now]),
+                    ],
+                );
+                c.files = vec![log("a.jsonl", body.as_bytes(), 0o600)];
+                v.push(c.settings_json(cap(json!({"daily_cap_usd": 5}))));
+            }
+        }
     }
     // çok oturum: en çok harcayan 10, eşitlikte ada göre
     let mut many = case("cok".into(), vec![json!(["state", now, false])]);

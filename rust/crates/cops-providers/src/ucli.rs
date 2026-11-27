@@ -1,7 +1,6 @@
 //! ucli sağlayıcısı. Her isteğe bağlı bayrak YALNIZ ikilinin `chat --help`i listeliyorsa eklenir.
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
-use crate::cost::PRICES as ANTHROPIC_PRICES;
 use crate::model_sources::{
     bounded, fetch_failed, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES,
     LIVE_MODELS_TIMEOUT,
@@ -15,6 +14,7 @@ use crate::pyfmt::{
 use crate::pyjson::Py;
 use crate::settings::Settings;
 use crate::ucli_opts::{exec_flags, expand_exec_cmds, str_list, BROAD_GLOBS};
+use cops_review_core::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE};
 use serde_json::{json, Map, Value};
 use sha1::{Digest, Sha1};
 use std::sync::Mutex;
@@ -31,8 +31,6 @@ const MAX_HISTORY_KIB: i64 = 128;
 const INSTRUCTIONS_MAX_BYTES: u64 = 40960;
 /// ucli'de YERLEŞİK fiyatı olan modeller; fiyatı olmayan modelde (`--price` de yoksa) ucli USD tavanı bayraklarını reddeder.
 const PRICED_MODELS: [&str; 2] = ["claude-opus-5-5", "claude-sonnet-5-5"];
-/// İstem boyutuna göre dilimli modelde EN PAHALI dilim: ucli tek fiyat alır, USD tavanı harcamayı eksik saymasın.
-const TOP_TIER_PRICES: [(&str, [f64; 4]); 1] = [("haiku-5-5", [0.50, 2.50, 0.05, 0.625])];
 const DERIVES_CONTEXT_MARK: &str = "advertises a large window";
 
 /// `--max-steps`, `--max-context-kib`, `--max-tool-calls`, `--max-output-tokens` ön ayarları (`_EFFORT_LIMITS`).
@@ -48,13 +46,13 @@ const LIMIT_KEYS: [&str; 4] = [
 ];
 
 /// `--price` değeri (`IN,OUT,CACHE_READ,CACHE_WRITE`); fiyat bilinmiyorsa `None`. Ad TAM eşleşir (`claude-` öneki şart).
+/// Dilimli modelde (Haiku 5.5) EN PAHALI dilim (`HAIKU_LONG_PRICE`): ucli tek fiyat alır, USD tavanı eksik saymasın.
 fn claudeops_price(model: &str) -> Option<String> {
     let key = model.strip_prefix("claude-")?;
-    let row = TOP_TIER_PRICES
-        .iter()
-        .chain(ANTHROPIC_PRICES.iter())
-        .find(|(k, _)| *k == key)?
-        .1;
+    let mut row = ANTHROPIC_PRICES.iter().find(|(k, _)| *k == key)?.1;
+    if key == "haiku-5-5" {
+        row = HAIKU_LONG_PRICE;
+    }
     Some(row.map(fmt_g).join(","))
 }
 

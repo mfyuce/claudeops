@@ -1,7 +1,8 @@
 //! `ucli_cost.py` + `review.usage_cost_usd`in SAF yarısı: fiyat tablosu, kullanım günlüğü satırlarının toplanması, kredi
 //! dönemi özeti, tavan reddi. Dosya, saat ve rezervasyon [`crate::real::ledger`]de.
 //!
-//! `rs/rev` (`cops-review-core`) fiyat tablosunu ve `usage_cost_usd`i de taşır; o dal birleşince tek kopya kalmalı.
+//! Fiyat sabitleri `cops-review-core`dadır. Oradaki `usage_cost_usd` yalnız toplamı verir; buradaki [`UsageScan`] aynı
+//! kuralları satır satır besleyip toplamın güvenilirliğini (`problem`) de bildirir. Kural değişirse İKİSİ de güncellenir.
 
 use crate::pyfmt::parse_float;
 use crate::pyjson::{Py, MAX_DEPTH};
@@ -24,21 +25,9 @@ pub const RESERVE_TTL: f64 = 120.0;
 /// Tek istek sayacının üst sınırı (üstü bozuk kayıt).
 pub const MAX_USAGE_TOKENS: f64 = 1e15;
 
-/// `review.ANTHROPIC_PRICES` (sıra anlamlı: ilk alt dize eşleşmesi): girdi, çıktı, önbellek okuma, yazma ($/M).
-pub(crate) const PRICES: [(&str, [f64; 4]); 4] = [
-    ("haiku-5-5", [0.10, 0.50, 0.01, 0.125]),
-    ("sonnet-5-5", [2.0, 10.0, 0.10, 2.5]),
-    ("opus-5-5", [4.0, 20.0, 0.20, 5.0]),
-    ("fable-5-1", [10.0, 50.0, 0.25, 12.5]),
-];
-
-/// `review.anthropic_price`: bilinmeyen model en pahalı varsayımla (opus).
-pub fn anthropic_price(model: &str) -> [f64; 4] {
-    PRICES
-        .iter()
-        .find(|(k, _)| model.contains(k))
-        .map_or(PRICES[2].1, |(_, v)| *v)
-}
+/// Fiyat tablosu ve `review.anthropic_price` tek kaynaktan (`cops-review-core`); burada ikinci kopya YOK.
+pub use cops_review_core::report::anthropic_price;
+use cops_review_core::targets::{ANTHROPIC_PRICES, HAIKU_LONG_PRICE, HAIKU_LONG_PROMPT};
 
 /// `ucli_cost.write_mult`.
 pub fn write_mult(cfg: &UcliCostConfig) -> f64 {
@@ -226,6 +215,9 @@ impl UsageScan {
             return;
         }
         let Some(u) = usage else { return };
+        if rec.get("event").and_then(Py::as_str) == Some("task_end") {
+            return; // görevin toplamı: istek satırları zaten sayıldı
+        }
         if COUNT_KEYS.iter().any(|k| {
             u.get(k)
                 .is_some_and(|v| *v != Py::Null && usage_number(Some(v)).is_none())
@@ -269,9 +261,23 @@ impl UsageScan {
         };
         let normalized =
             u.get("cached_tokens").is_some() && u.get("cache_creation_input_tokens").is_none();
-        let inp_price = if normalized { pw } else { pi };
+        let mut inp_price = if normalized { pw } else { pi };
+        let (mut out_price, mut read_price, mut write_price) = (po, pr, pw);
+        if self.price == ANTHROPIC_PRICES[0].1 && inp + cr + cw > HAIKU_LONG_PROMPT {
+            let long_in;
+            [long_in, out_price, read_price, write_price] = HAIKU_LONG_PRICE;
+            inp_price = if inp_price == pi {
+                long_in
+            } else {
+                write_price
+            };
+        }
         let out = g(&["output_tokens", "completion_tokens"]);
-        self.total += (inp * inp_price + out * po + cr * pr + cw * pw * self.write_mult) / 1e6;
+        self.total += (inp * inp_price
+            + out * out_price
+            + cr * read_price
+            + cw * write_price * self.write_mult)
+            / 1e6;
     }
 }
 
