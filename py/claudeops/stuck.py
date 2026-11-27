@@ -42,7 +42,7 @@ from .providers.base import _path_part_ok
 from .providers.claude_provider import _live_transcript, live_or_spawn_effort, live_or_spawn_model
 from .session import Session
 from .settings import default_model_for
-from .spawn import _ids_held_by_others, spawn_session, detect_display
+from .spawn import _HeldUnknown, _ids_held_by_others, spawn_session, detect_display
 from .tmux_backend import is_tmux_backed
 from .turns import is_busy_now
 
@@ -233,7 +233,10 @@ def recover_stuck(
         sid = resume_id = getattr(info, "sid", None) or _own_conversation(s)
         if sid is None:
             return "skipped: konuşma kimliği bilinmiyor"
-        if sid in _ids_held_by_others(s.name):
+        held = _ids_held_by_others(s.name)
+        if isinstance(held, _HeldUnknown):     # keşif patladı: "başkası tutuyor mu" bilinmiyor, öldürme (kapalı yön)
+            return "skipped: canlı oturum taraması başarısız"
+        if sid in held:
             return "skipped: konuşmayı başka bir canlı oturum tutuyor"
 
     # canlı model/effort (jsonl): terminalde `/model` yapılmış session spawn-anı argv değerine DÖNMESİN (handover ile

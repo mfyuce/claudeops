@@ -1245,6 +1245,8 @@ Devir, panel, sohbet ve devam aramaları değişmedi (yalnız `stuck._own_conver
 | `CopilotArgvTest.test_another_held_conversation_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `CopilotArgvTest.test_hold_of_another_pid_is_not_ours` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `CopilotArgvTest.test_unreadable_open_files_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `HeldDiscoveryFailsTest.test_spawn_path_still_falls_back_to_empty` (py/tests/test_rsprov_stuck_held_discovery_fails.py) | `resume::ids_held_by_others(_, None)` boş küme (eşi `fam_resume`) | KAPSAM DIŞI |
+| `HeldDiscoveryFailsTest.test_stuck_recovery_does_not_kill_when_discovery_fails` (py/tests/test_rsprov_stuck_held_discovery_fails.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 
 ## Onay kartları ve açılış kurtarması (main `494fbd67`; 27 Kas)
 Onay deposu artık `pending` ve `recover_resuming`i de taşır: yalnız `status: "pending"` kart bekleyendir; kartı olup hiçbiri

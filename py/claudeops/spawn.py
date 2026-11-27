@@ -152,6 +152,12 @@ def detect_display() -> str:
     return ":1"
 
 
+class _HeldUnknown(frozenset):
+    """`_ids_held_by_others` keşif patlayınca döner: spawn yolu için boş küme gibi davranır (eski davranış), ama
+    "başkası tutuyor mu" sorusunun cevabı BİLİNMEZ; kapalı yöne düşmesi gereken çağıran (takılma kurtarma)
+    `isinstance` ile ayırt eder."""
+
+
 def _ids_held_by_others(name: str) -> frozenset:
     """ŞU AN çalışan BAŞKA session'ların `--resume` ettiği id'ler. Kendi adımız
     bilerek DIŞARIDA: bir handover/respawn sırasında eski process daha ölürken
@@ -164,11 +170,12 @@ def _ids_held_by_others(name: str) -> frozenset:
     konuşmasını almamaları gerekir — base'e indirgemek tam da bunu kaçırırdı.
 
     Discovery herhangi bir sebeple patlarsa boş küme: guard/spawn yolu bir
-    iyileştirme yüzünden ASLA çalışmaz hale gelmemeli (eski davranışa düşer)."""
+    iyileştirme yüzünden ASLA çalışmaz hale gelmemeli (eski davranışa düşer). Dönen küme `_HeldUnknown`
+    (boş) olur; takılma kurtarması bunu "bilinmiyor" sayıp öldürmez."""
     try:
         live = [s for s in find_sessions(measure_cpu=False) if s.name != name]
     except Exception:
-        return frozenset()
+        return _HeldUnknown()
     ids = {s.sid for s in live if s.sid}
     # Adlar da kümenin İÇİNDE: `--new` ile açılmış bir session'ın sid'i komut
     # satırında hiç yok, ama provider transcript'i (claude jsonl'ının
