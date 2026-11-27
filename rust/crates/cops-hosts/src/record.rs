@@ -239,7 +239,14 @@ impl Draft {
         extra_urls: &str,
         reach_ports: &BTreeSet<u16>,
     ) -> Result<Draft, RecordError> {
-        let clean = |u: &str| py_strip(u).trim_end_matches('/').to_string();
+        // Sondaki boşluk/`/` karışımının tamamı (Python `_clean_url`).
+        let clean = |u: &str| {
+            let mut u = py_strip(u);
+            while let Some(rest) = u.strip_suffix('/') {
+                u = py_strip(rest);
+            }
+            u.to_string()
+        };
         let d = Draft {
             name: py_strip(name).to_string(),
             base_url: clean(base_url),
@@ -494,6 +501,25 @@ mod tests {
             d.apply(&parse_document(b"{")).err(),
             Some(RecordError::Corrupt)
         );
+    }
+
+    #[tokio::test]
+    async fn trailing_slashes_and_whitespace_are_all_removed() {
+        let d = draft(
+            "a",
+            "http://10.0.0.1\n/",
+            "t",
+            "http://10.0.0.1:2/ /\t/",
+            "http://10.0.0.3 /",
+        )
+        .await
+        .unwrap();
+        let h = &d.apply(&parse_document(b"[]")).unwrap()[0];
+        assert_eq!(
+            (h.base_url.as_str(), h.grpc_url.as_str()),
+            ("http://10.0.0.1", "http://10.0.0.1:2")
+        );
+        assert_eq!(h.extra_urls, ["http://10.0.0.3"]);
     }
 
     #[test]

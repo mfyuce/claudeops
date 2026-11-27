@@ -289,7 +289,7 @@ classes("test_steward_review_api", out(CLI, "CLI argümanından API'ye eşleme v
 classes("test_usage_cost_prompt_tokens", CORE, "UsageCost")
 classes("test_usage_cost_robust", CORE, "UsageCostRobustTest")
 classes("test_usage_cost_task_end", CORE, "TaskEndNotCountedTest HaikuTierTest")
-classes("test_web_review_runner", _runner, "TestEvren TestCancel TestAgy TestBannerLimit TestBodyless TestRecover TestDetached")
+classes("test_web_review_runner", _runner, "TestEvren TestCancel TestAgy TestBannerLimit TestBodyless TestProviderErrorNoLesson TestRecover TestDetached")
 tests("test_web_review_runner.TestBannerLimit", CORE, "month_start_helper")
 tests("test_web_review_runner.TestBodyless", CORE, "report_bodyless_rule")
 classes("test_web_review_tick", _runner, "TestReviewerSmalls TestTick TestModelsFailure")

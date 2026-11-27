@@ -6,8 +6,11 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 use tokio::time::Instant;
 
-use crate::consts::{TERM_RELAY_IDLE_TTL, TERM_RELAY_RESTART_MIN_INTERVAL, TERM_RELAY_SILENCE};
+use crate::consts::{
+    GRPC_TERM_REFUSED_TTL, TERM_RELAY_IDLE_TTL, TERM_RELAY_RESTART_MIN_INTERVAL, TERM_RELAY_SILENCE,
+};
 use crate::federation::{Federation, StreamEndpoint};
+use crate::grpc::REFUSED_BY_HOST;
 use crate::push::PushConsumer;
 use crate::record;
 use crate::tier::Tier;
@@ -39,11 +42,25 @@ struct Relay {
     last_read: Instant,
     /// Adres/token değişince akış yeniden kurulur (kademe değişimi tek başına yenilemez).
     endpoint: StreamEndpoint,
+    /// Akış fiilen gRPC üzerinden mi (red sonrası kademe gRPC iken WS'ten kurulabilir).
+    over_grpc: bool,
+}
+
+impl Relay {
+    fn grpc_refused(&self) -> bool {
+        self.over_grpc
+            && self
+                .consumer
+                .end_reason()
+                .is_some_and(|r| r.starts_with(REFUSED_BY_HOST))
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct Relays {
     map: Mutex<HashMap<Key, Relay>>,
+    /// gRPC'de terminali reddeden (host, grpc_url) -> bu ana dek relay WS'ten kurulur. Kilit sırası: `map`, sonra bu.
+    refused: Mutex<HashMap<(String, String), Instant>>,
 }
 
 fn connecting(msg: &str) -> Value {
@@ -81,10 +98,23 @@ impl Federation {
             interval: interval.clone(),
             viewport: opts.viewport,
         };
-        let endpoint = StreamEndpoint::of(self.tiers.get(host_name), host);
+        let endpoint = StreamEndpoint::of(self.stream_tier(host), host);
         let mut map = self.relays.map.lock().unwrap_or_else(|e| e.into_inner());
+        let refused_key = (host_name.to_string(), host.grpc_url.clone());
+        let mut refused = self
+            .relays
+            .refused
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        refused.retain(|_, until| *until > Instant::now());
         if let Some(r) = map.get(&key) {
-            if !r.endpoint.same_address(&endpoint) {
+            if r.grpc_refused() {
+                // Taşıma değişiyor: yeniden kurma arası beklenmez.
+                // Reddeden, relay'in KENDİ adresi: kayıt o arada düzenlendiyse yeni adres engellenmez.
+                let by = (host_name.to_string(), r.endpoint.grpc_url().to_string());
+                refused.insert(by, Instant::now() + GRPC_TERM_REFUSED_TTL);
+                map.remove(&key);
+            } else if !r.endpoint.same_address(&endpoint) {
                 map.remove(&key);
             } else if r.consumer.is_alive() && r.consumer.silent() > TERM_RELAY_SILENCE {
                 self.client.events.log(
@@ -100,11 +130,12 @@ impl Federation {
                 map.remove(&key);
             }
         }
+        let use_grpc = endpoint.tier() == Tier::Grpc && !refused.contains_key(&refused_key);
+        drop(refused);
         let relay = map.entry(key).or_insert_with(|| {
             let latest: Arc<Mutex<Option<Value>>> = Arc::default();
             let sink = latest.clone();
-            let tier = endpoint.tier();
-            let open = if tier == Tier::Grpc {
+            let open = if use_grpc {
                 self.grpc
                     .term_stream(&host.grpc_url, host.token.expose(), name, lang)
             } else {
@@ -140,7 +171,7 @@ impl Federation {
                 if opts.viewport { "+viewport" } else { "" },
             );
             let consumer = PushConsumer::spawn(
-                if tier == Tier::Grpc { "grpc" } else { "ws" },
+                if use_grpc { "grpc" } else { "ws" },
                 label,
                 open,
                 move |item| *sink.lock().unwrap_or_else(|e| e.into_inner()) = Some(item),
@@ -153,6 +184,7 @@ impl Federation {
                 created: Instant::now(),
                 last_read: Instant::now(),
                 endpoint,
+                over_grpc: use_grpc,
             }
         });
         relay.last_read = Instant::now();

@@ -1,4 +1,6 @@
 """review R-3: sözlük alanlarında sayısal 0 silinmez ("boş" değil). review R-4: `cops test` alt sürece PYTHONPATH verir."""
+import contextlib
+import io
 import os
 import sys
 import unittest
@@ -34,6 +36,17 @@ class TestCmdEnvTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         py_root = os.path.abspath(os.path.join(os.path.dirname(test_cmd.__file__), "..", ".."))
         self.assertTrue(calls[0]["env"]["PYTHONPATH"].split(os.pathsep)[0] == py_root)
+
+
+class TestCmdBaseTest(unittest.TestCase):
+    def test_unknown_base_fails_instead_of_selecting_nothing(self):
+        out = io.StringIO()
+        with mock.patch.object(test_cmd.subprocess, "run",
+                               lambda cmd, **k: mock.Mock(returncode=128 if "yok...HEAD" in cmd else 0, stdout="")), \
+             contextlib.redirect_stdout(out):
+            rc = test_cmd.run(Namespace(files=[], base="yok", deep=False, list=True))
+        self.assertEqual(rc, 2, out.getvalue())
+        self.assertIn("taban okunamadı: yok", out.getvalue())
 
 
 if __name__ == "__main__":

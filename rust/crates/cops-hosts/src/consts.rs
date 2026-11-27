@@ -1,4 +1,4 @@
-//! Yönlendirme kümeleri ve zaman aşımları (Python `web_hosts.py` ile AYNI olmalı; eşitlik testi henüz YOK, docs/rs-hosts.md).
+//! Yönlendirme kümeleri ve zaman aşımları (Python `web_hosts.py` ile AYNI olmalı; `tests/parity.rs` denetler).
 
 use std::time::Duration;
 
@@ -131,4 +131,6 @@ pub const CAPABILITY_PROBE_INTERVAL: Duration = Duration::from_secs(60);
 pub const TERM_RELAY_IDLE_TTL: Duration = Duration::from_secs(10);
 pub const TERM_RELAY_RESTART_MIN_INTERVAL: Duration = Duration::from_secs(2);
 pub const TERM_RELAY_SILENCE: Duration = Duration::from_secs(45);
+/// gRPC terminalini reddeden host'ta term relay bu süre boyunca WS'ten kurulur, sonra gRPC yeniden denenir.
+pub const GRPC_TERM_REFUSED_TTL: Duration = Duration::from_secs(60);
 pub const CONSUMER_DEATH_LOG_MIN_INTERVAL: Duration = Duration::from_secs(60);

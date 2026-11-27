@@ -564,7 +564,14 @@ impl ReviewStore {
         let _g = self.lock()?;
         let mut data = self.load_findings()?;
         let Some(rec) = data.get_mut(fid).and_then(Json::as_object_mut) else {
-            return fail(format!("unknown finding: {fid}"), None);
+            // bozuk depo boş okunur: sorun bulguda değil depoda
+            return match self.refuse_corrupt(&self.paths.findings, &[]) {
+                Err(Error::StoreCorrupt(_)) => {
+                    fail("bozuk depo, yazım reddedildi: findings".into(), None)
+                }
+                Err(e) => Err(e),
+                Ok(()) => fail(format!("unknown finding: {fid}"), None),
+            };
         };
         let st = rec.get("state").cloned().unwrap_or(Json::Null);
         let target = if action == "undup" {

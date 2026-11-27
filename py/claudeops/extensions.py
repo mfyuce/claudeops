@@ -185,6 +185,11 @@ class ExtensionAPI:
         from . import authz
         authz.set_outbound_signer(fn)
 
+    def set_grpc_term_gate(self, fn: Callable[[], bool]) -> None:
+        """`fn() -> True` değilse gRPC köprüsü terminal akışını reddeder (istemci WebSocket/REST yoluna düşer)."""
+        from . import authz
+        authz.set_grpc_term_gate(fn)
+
     def set_status_extra(self, key: str, fn: Callable[[], Any]) -> None:
         """`/api/status` köküne `key: fn()` ekle (None dönerse eklenmez)."""
         from . import authz

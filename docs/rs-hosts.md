@@ -17,7 +17,14 @@ alınınca web restart + uzak deploy gerekir (TBD#372/#376/#380/#384/#390 düzel
 
 Kalan:
 - Gözden geçirme #15 kullanıcı yolu e2e ve ders 2.8 iki gerçek istemcili WS e2e: crate copsd'ye bağlanınca (cops).
-- Açık soru TBD#392 (gRPC köprüsü `require` kipine tabi değil; birleştirmeyi tutmaz, Python'da bugün de öyle).
+- TBD#392 (a) UYGULANDI (27 Kas, canlıda değil): çekirdek kancası `authz.set_grpc_term_gate`; kapalıysa (ya da kanca
+  hata verirse) gRPC `StreamTermOutput` `PERMISSION_DENIED` döner, açık akış da kesilir; `Ping`/`StreamStatus`
+  etkilenmez. İstemci (Python `web_hosts.term_output_relay`, Rust `relay.rs`) red görünce o host'ta 60 sn term
+  relay'ini WS'ten kurar, sonra gRPC'yi yeniden dener; başka gRPC hatası WS'e geçirmez. WS de olmazsa tarayıcının
+  3 sn'lik REST yedeği (imzalı vekil) kalır. Eski yerel panel + yeni uzak: relay WS'e geçmez, yalnız REST yedeği.
+  Kancayı enterprise bağlar (`fwd/wire.py`, kip `require`).
+- 27 Kas öğle (iki tarafta): red, reddeden relay'in kendi `grpc_url`ine yazılır; kayıttan `grpc_url` kaldırılırsa
+  durum akışı ve term relay kademeyi hemen `ws`e indirip WS'ten kurulur.
 - Bilinen fark (belgeli): `orphan_watch` sayıları `i64`e sığmayan sonlu bir sayıysa (`1e300`) Rust `i64::MAX`a kırpar,
   Python büyük tam sayı üretir. Anlamlı bir sayaç değeri değil; `serde_json` keyfi büyüklükte tam sayı taşımaz.
 - Bu izin dışında bir kez düşen test: `cops-proxy` `mounts::dead_app_upstream_is_502` (yük altında; tekrarında geçti).
@@ -290,7 +297,7 @@ TBD#390 (b) 1-5 DÜZELDİ (uzak oturum/satır seçimi belirsizse red; `py/tests/
 (`_remote_edit_doc`, `_remote_append_idea`, `export_file`). Bu kodun Rust karşılığı bu crate'te yok (T10/T8/T2): taşıyan
 iz aynı kuralı uygular. Madde 6 bilinçli fark olarak kalır: uzaktan sonsuz sayı gelirse Python yalnız `orphan_watch`ı
 atar, Rust o host'un tüm yanıtını reddeder.
-- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz (`require` kipine etkisi TBD#392).
+- Bilinen eşit davranışlar değişmedi: gRPC çağrıları imzalanmaz (`require` kipinde terminal akışı uzakta reddedilir, TBD#392).
 
 Hata yutma taraması (gözden geçirme #5): `src/` içindeki her `.ok()`, `let _`, `unwrap_or_default()`, `Err(_)`,
 `map_err(|_| ...)` okundu. Sonucu değiştiren yutma yok. Bilerek yutulanlar: `net.rs` `set_nodelay` (performans
@@ -343,7 +350,7 @@ Python ile aynı indirgeme). `map_err(|_| ...)` yalnız URL/token taşıyan iç 
 - `finalize`, kahin dışı girdide (JSON'da `NaN`/`Infinity`/`1e999`) Python'dan önce reddeder (serde): Rust o host'u
   hata sayar, Python yanıtı kabul eder (`orphan_watch`ta sonsuz sayı yalnız o alanı düşürür).
 - Python `str()` yalnız skalerlerde birebir; dizi/nesne değer JSON metni olarak kalır (`build.running`, `fwd.kids` öğesi).
-- Bilinen eşit davranış (düzeltilmedi, TBD#392): gRPC çağrıları imzalanmaz.
+- Bilinen eşit davranış: gRPC çağrıları imzalanmaz (terminal akışı `require` kipinde uzakta reddedilir, TBD#392).
 
 ## Ders listesi 2.11 (federasyon)
 

@@ -133,6 +133,20 @@ class CorruptStoreTest(_Logged):
                     self.assertEqual(fh.read(), raw)
         self.assertIn("store", self.whats())
 
+    def test_decide_on_corrupt_findings_names_the_store_not_the_finding(self):
+        paths = _tmp_paths(self.dir)
+        for raw in (b"{bozuk", b"[]"):
+            with open(paths.findings, "wb") as fh:
+                fh.write(raw)
+            res = review.decide_finding(paths, "f1", "approve", 1.0)
+            self.assertFalse(res["ok"])
+            self.assertIn("bozuk depo", res["error"])
+            with open(paths.findings, "rb") as fh:
+                self.assertEqual(fh.read(), raw)
+        with open(paths.findings, "wb") as fh:
+            fh.write(b"{}")
+        self.assertEqual(review.decide_finding(paths, "f1", "approve", 1.0)["error"], "unknown finding: f1")
+
     def test_update_pair_refused_on_corrupt_history(self):
         paths = _tmp_paths(self.dir)
         with open(paths.review_history, "w") as fh:

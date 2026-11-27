@@ -79,7 +79,7 @@ class HttpTest(unittest.TestCase):
         r = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method=method,
                                    data=json.dumps(body).encode() if body is not None else None, headers=headers or {})
         try:
-            with urllib.request.urlopen(r, timeout=45) as resp:
+            with urllib.request.urlopen(r, timeout=180) as resp:      # yüklü makinede 45 sn yetmedi
                 return resp.status, resp.read()
         except urllib.error.HTTPError as e:
             return e.code, e.read()

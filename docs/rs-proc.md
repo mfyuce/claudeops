@@ -54,6 +54,7 @@ Durum (26 Kas 2026 gece, birleştirme kapısı turu sonrası): kod, testler, alt
 11. Kullanım önbelleği taşması artık sapma DEĞİL (numara korunuyor): iki tablo da Python `dict` gibi ekleme sırasını tutar (`usage::Ordered`) ve en eski eklenenleri atar (dosya durumu 1, özet 200). Testler `usage::tests::file_cache_evicts_in_insertion_order`, `summary_cache_evicts_oldest_200`; aynı senaryolar 26 Kas'ta Python `session_usage` üzerinde elle koşuldu, sonuç aynı (bir kerelik denetim, parite koşucusunda adım değil). Küçülen dosya artık iki dilde de yer açtırmaz (Python düzeltildi: 6ae5da3; Python testi `test_procscan_tbd365.UsageRowsTest.test_shrinking_file_does_not_evict_another_when_full`).
 12. `HOME` tanımsızsa `Config::from_env` `None` döner; Python `expanduser` parola veritabanına düşer.
 13. `Scan.mirrors` her taramada doldurulur (Python'da yalnız `mirrors_out` verilirse).
+14. Eşsiz vekil kaçışı (`\ud800`): Python dizgide aynen tutar, Rust dizgisi tutamaz; `py::json` onu U+FFFD yapar (satır ya da dosya düşmesin diye, KASITLI). Sonuç: yalnız vekilleri farklı iki dizgi Rust'ta eşitlenir. Ölçüldü (27 Kas): `message.id`si `a\ud800` ve `a\ud801` olan iki kullanım satırını Python 2 tur (in 20), Rust 1 tur (in 10) sayar. Kimlik alanları gerçek transkriptlerde ASCII beklenir (gerçek dosyalarda taranmadı). Ad/cwd/model'de U+FFFD görülürse `cops list` Python'a devreder (`cops-cli` `list.rs`).
 
 ## Python hataları (TBD#365, sahip 26 Kas: ikisi de düzelsin)
 Her madde Python'da ayrı `fix:` commit'inde kırmızı-sonra-yeşil testle (`py/tests/test_procscan_tbd365.py`, 14 test, düzeltmeden önce 14'ü de kırmızı) ve Rust'ta aynı güvenli davranışla düzeltildi. Altın vektörler yeni Python davranışından yeniden üretildi (altında Python istisnası kalmadı).
@@ -115,7 +116,7 @@ Dosya düzeyi özet. Test durumu düzeyinde bağlayıcı olan [rs-proc-mapping.m
 | test_ucli_web (ayrıştırma yönü) | `providers::tests::ucli_effort_presets`, `ucli_effort_unknown_when_any_limit_changed_or_missing`, `ucli_every_preset_without_context_flag`, altın `detect_info`; argv üretimi kapsam dışı |
 
 ## Açık işler
-- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. 549 tanım (153 karşılandı, 396 kapsam dışı, 0 EKSİK); 116 test dosyasında 1578 test durumu (115 karşılandı, 1463 kapsam dışı, 0 EKSİK).
+- [x] Eşleme tablosu (sahip EK 2): [rs-proc-mapping.md](rs-proc-mapping.md), üreten ve denetleyen `rust/crates/cops-procscan/parity/mapping.py`. Güncel sayılar tablonun başındaki özette (burada elle tekrarlanmaz).
   - Koşum (repo kökünden): `python3 -I rust/crates/cops-procscan/parity/mapping.py` yazar; `--check` tabloyu `ast` ve Rust kaynağıyla karşılaştırır (eksik/fazla/boş satır, uydurma Rust adı, bayat tablo ya da veri = çıkış 1); `--check --strict` EKSİK varken de 1 döner. `py/` modülleri içe aktarılmaz.
   - Sınır: betik adların varlığını sınar, testin davranışı kapsadığını sınamaz ve testleri koşturmaz. Crate davranışını sınamayan test dosyaları dosya başına gerekçe/izle girildi (adet + ad özeti; dosya değişince betik durur, `--pins` yeni özeti basar).
 - [x] Eşleme tablosundaki 13 EKSİK kapandı: Rust testleri yazıldı; iki davranış Python'a eşitlendi (önbellek tahliye sırası; `ucli_flags` `cmdline`ı okunamayan süreçte artık "bütün bayraklar kapalı" yerine `None`).

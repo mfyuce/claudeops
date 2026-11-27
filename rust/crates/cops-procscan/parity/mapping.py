@@ -1027,6 +1027,7 @@ FILES = {
     "ucli_start_opts": ("başlatma seçenekleri", f"{SAG}; {T4}"),
     "ucli_state_dir": ("ucli durum dizini bayrağı ve okuyucuları", f"{SAG}; {T1}"),
     "ucli_stream": (_BUILD, SAG),
+    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı: `--price` ya da spawn reddi", SAG),
     "ucli_usage": ("`usage` satır alanı", T1),
     "ucli_web": ("ucli web bayrakları ve ayarları", SAG),
     "usage_category": ("`cops usage` gün/kategori dökümü", f"{T6}; {T7}"),
@@ -1419,7 +1420,7 @@ agy_binary_resolution:2:aa240fa19e
 agy_compaction_view:1:704b29a853
 agy_last_exchange:4:04faca6617
 agy_models_swr:1:9166783f75
-bg_work:13:cba86412b5
+bg_work:17:7b2ea2092b
 brain_permission_ucli:2:d5d3096328
 cache_info:12:9f2b8b4e3c
 chat_compaction_view:3:ada23aaf33
@@ -1485,8 +1486,8 @@ statedocs_writers:7:817e74b52a
 steward_api_recovery:17:f79402b74c
 steward_audit_p9:24:36a9eb8914
 steward_brain:34:b4c732deb9
-steward_core_a:120:8b1d8ca808
-steward_core_b:76:cc2c4fc06c
+steward_core_a:122:f4f49eaa0c
+steward_core_b:77:5bbaded29d
 steward_ctx:21:12df78f872
 steward_generic:25:f4969150e9
 steward_ho_on_open:9:d3f0301c62
@@ -1545,7 +1546,7 @@ usage_category:3:b1ec7bddf6
 usage_fresh:16:fce08fa8ed
 usage_fresh_tui:11:2314d470a9
 usage_state:7:3bd573887b
-web_review_runner:49:e83022aa08
+web_review_runner:52:d8bedb173f
 """
 
 

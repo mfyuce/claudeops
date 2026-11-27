@@ -21,6 +21,7 @@ use crate::argp::{Action, FrontArgs};
 use crate::pyenv::{normpath, pathlib_str, Roots};
 use fsx::Prev;
 use net::{Net, FRONT_UNIT_NAME, WEB_UNIT_NAME};
+use std::ffi::OsString;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -293,14 +294,41 @@ pub fn plan_on(
         Ok(t) => (t, None),
         Err(e) => (String::new(), Some(e)),
     };
-    let es = web_execstart(&text).filter(|s| !s.is_empty());
+    let files = web_dropin_files(Path::new(&p.dropin));
+    let mine = Path::new(&p.dropin).file_name();
+    let (mut es, mut late) = (None, Vec::new());
+    if let Some(files) = &files {
+        let mut base = text.clone();
+        for (n, t) in files {
+            if Some(n.as_os_str()) < mine {
+                base.push('\n');
+                base.push_str(t);
+            } else if web_execstart(t).is_some() {
+                late.push(n.to_string_lossy().into_owned());
+            }
+        }
+        es = effective_execstart(&base);
+    }
     let new = es.as_deref().and_then(|e| with_internal_port(e, internal));
     if let Some(e) = read_err {
         blockers.push(format!("claudeops-web.service okunamadı: {e}"));
+    } else if files.is_none() {
+        let dir = Path::new(&p.dropin).parent().unwrap_or(Path::new(""));
+        blockers.push(format!(
+            "claudeops-web.service drop-in'leri okunamadı: {}",
+            dir.display()
+        ));
     } else if new.is_none() {
         blockers.push(
             "claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir".into(),
         );
+    }
+    if !late.is_empty() {
+        let name = mine.unwrap_or_default().to_string_lossy();
+        blockers.push(format!(
+            "{name} sonrasındaki drop-in ExecStart= atıyor: {:?} (ön kapının iç port ayarı ezilir; adını öne alın ya da birleştirin)",
+            late.join(", ")
+        ));
     }
     let dist = p.dist.as_deref().unwrap_or("");
     for (what, v) in [
@@ -797,12 +825,12 @@ fn effective_execstart(text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Python `_web_dropins`: `front.conf` dışındaki drop-in'ler ad sırasıyla birleşik; biri okunamazsa `None`.
-fn web_dropins(dropin: &Path) -> Option<String> {
+/// Python `_web_dropin_files`: `front.conf` dışındaki drop-in'ler (ad, metin) ad sırasıyla; biri okunamazsa `None`.
+fn web_dropin_files(dropin: &Path) -> Option<Vec<(OsString, String)>> {
     let dir = dropin.parent()?;
     let rd = match std::fs::read_dir(dir) {
         Ok(r) => r,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(String::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),
         Err(_) => return None,
     };
     let mut names = rd
@@ -814,12 +842,23 @@ fn web_dropins(dropin: &Path) -> Option<String> {
         b.ends_with(b".conf") && !b.starts_with(b".") && Some(n.as_os_str()) != dropin.file_name()
     });
     names.sort();
-    let mut out = String::new();
-    for n in names {
-        out.push('\n');
-        out.push_str(&std::fs::read_to_string(dir.join(n)).ok()?);
-    }
-    Some(out)
+    names
+        .into_iter()
+        .map(|n| {
+            let t = std::fs::read_to_string(dir.join(&n)).ok()?;
+            Some((n, t))
+        })
+        .collect()
+}
+
+/// Python `_web_dropins`: drop-in metinleri birleşik; biri okunamazsa `None`.
+fn web_dropins(dropin: &Path) -> Option<String> {
+    Some(
+        web_dropin_files(dropin)?
+            .iter()
+            .map(|(_, t)| format!("\n{t}"))
+            .collect(),
+    )
 }
 
 /// `off` sonrası web'in döneceği adres: web biriminin ve drop-in'lerinin geçerli ExecStart'ındaki `--host`/`--port` (ya da `=`li biçim),

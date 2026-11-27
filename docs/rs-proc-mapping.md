@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 604 | 153 | 451 | 0 |
-| test durumu (149 dosya) | 1828 | 115 | 1713 | 0 |
+| test durumu (149 dosya) | 1838 | 115 | 1723 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -797,12 +797,16 @@ Yok.
 | `test_bg_work.py::TranscriptFixture.test_foreground_and_stale` | 77 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_errored_call_is_not_pending` | 81 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::TranscriptFixture.test_one_of_two_pending` | 87 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 92 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 98 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 113 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 126 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 157 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` | 105 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 110 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 115 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 121 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 129 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 135 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 163 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 187 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 194 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 
 ### `py/tests/test_brain_permission_ucli.py`
 
@@ -1941,95 +1945,97 @@ Yok.
 | `test_steward_core_a.py::RulesTest.test_slot_pressure_stops_idle_session` | 361 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_a.py::RulesTest.test_answer_delivery_running_busy_or_stopped` | 372 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_a.py::RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running` | 382 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::RulesTest.test_instance_sessions_map_to_blueprint_project` | 394 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::RulesTest.test_tour_only_when_brain_idle_and_due` | 400 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::RulesTest.test_phase_model_effort` | 416 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` | 424 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_raw_card_without_git_or_docs` | 440 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_parse_card_json_variants` | 452 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_make_card_falls_back_to_raw_fields` | 465 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` | 483 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_store_stale_and_listing` | 506 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::CardCoreTest.test_model_pick_prompt_and_tour_rendering` | 517 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OneshotProviderTest.test_claude_argv_shape_and_unsupported_default` | 534 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OneshotProviderTest.test_ucli_oneshot_uses_chat_once_without_key_in_argv` | 560 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OneshotProviderTest.test_oneshot_runs_argv_and_reports_failures` | 579 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::SimilarAnswersTest.test_ranks_by_similarity_and_excludes_self` | 604 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` | 613 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` | 622 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` | 636 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` | 663 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` | 673 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` | 685 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::BrainCannotPauseTest.test_brain_cannot_pause_or_done_but_owner_can` | 705 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ShutdownPlanTest.test_waits_for_quiet_then_handover_then_stop_then_brain` | 721 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ShutdownPlanTest.test_subagent_blocks_and_timeouts_leave_session_open` | 749 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ShutdownPlanTest.test_stale_ready_text_before_handover_does_not_count` | 762 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ReviewFindings20261029Test.test_job_requests_for_different_files_are_not_merged` | 773 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ReviewFindings20261029Test.test_done_and_plan_ready_in_prose_are_ignored` | 779 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::ReviewFindings20261029Test.test_owner_only_false_positives` | 787 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OpenQuestionMergeTest.test_paraphrased_open_question_is_merged` | 798 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OpenQuestionMergeTest.test_other_project_or_topic_not_merged` | 808 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OpenQuestionMergeTest.test_short_distinct_questions_not_merged` | 814 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OpenQuestionMergeTest.test_routine_question_promoted_when_asked_to_owner` | 819 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::OpenQuestionMergeTest.test_answered_question_not_merged_into_open_path` | 834 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_topic_tokens` | 851 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_generic_names_alone_do_not_match` | 856 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_open_question_rephrased_is_merged_and_keeps_old_text` | 861 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_hold_answer_suppresses_same_topic` | 873 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_non_hold_answer_lets_new_decision_open` | 880 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_old_open_question_outside_window_not_merged` | 887 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TopicMergeTest.test_other_project_not_merged` | 895 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::SalientReaskTest.test_paraphrased_same_topic_is_duplicate` | 905 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::SalientReaskTest.test_different_topic_not_duplicate` | 910 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneDeferralTest.test_done_deferred_while_subagent_then_applied` | 916 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` | 927 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneDeferralTest.test_done_immediate_without_subagent` | 938 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::AnswerStartPhaseTest.test_active_phase_starts` | 952 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::AnswerStartPhaseTest.test_owner_answer_reopens_paused_and_done_project` | 955 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::NegativeAnswerTest.test_is_negative_answer` | 963 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::NegativeAnswerTest.test_negative_answer_does_not_reopen` | 975 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::NegativeAnswerTest.test_hold_answers_real_texts_do_not_reopen` | 980 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::NegativeAnswerTest.test_sweep_question_has_options` | 991 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` | 1018 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` | 1027 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` | 1032 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` | 1039 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | 1063 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | 1074 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_grace_expiry_still_stops` | 1080 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_small_context_skips_handover` | 1087 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_switch_off_is_old_direct_stop` | 1095 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | 1101 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | 1115 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_unanswered_conflict_still_asks` | 1122 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | 1139 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | 1147 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | 1155 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | 1160 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | 1166 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | 1178 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` | 1184 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_subagent_active_defers_confirmed` | 1192 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_open_work_of_counts_local_todo` | 1197 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` | 1212 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | 1242 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | 1256 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | 1270 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | 1285 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | 1299 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | 1309 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | 1323 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | 1339 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | 1350 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | 1356 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | 1364 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | 1389 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | 1405 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_answer_waits_while_subagent_active` | 1413 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_subagent_active_for_reads_mtime` | 1421 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_compact_answer_directive_drops_preamble` | 1438 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_directive_contains_all_answers` | 1454 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::RulesTest.test_adhoc_session_answer_waits_for_running_subagent` | 394 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::RulesTest.test_instance_sessions_map_to_blueprint_project` | 401 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::RulesTest.test_tour_only_when_brain_idle_and_due` | 407 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::RulesTest.test_phase_model_effort` | 423 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` | 431 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_raw_card_without_git_or_docs` | 447 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_parse_card_json_variants` | 459 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_make_card_falls_back_to_raw_fields` | 472 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` | 490 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_store_stale_and_listing` | 513 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::CardCoreTest.test_model_pick_prompt_and_tour_rendering` | 524 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OneshotProviderTest.test_claude_argv_shape_and_unsupported_default` | 541 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OneshotProviderTest.test_ucli_oneshot_uses_chat_once_without_key_in_argv` | 567 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OneshotProviderTest.test_oneshot_runs_argv_and_reports_failures` | 586 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::SimilarAnswersTest.test_ranks_by_similarity_and_excludes_self` | 611 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` | 620 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` | 629 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` | 643 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` | 670 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` | 680 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` | 692 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::BrainCannotPauseTest.test_brain_cannot_pause_or_done_but_owner_can` | 712 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ShutdownPlanTest.test_waits_for_quiet_then_handover_then_stop_then_brain` | 728 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ShutdownPlanTest.test_subagent_blocks_and_timeouts_leave_session_open` | 756 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ShutdownPlanTest.test_stale_ready_text_before_handover_does_not_count` | 769 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ReviewFindings20261029Test.test_job_requests_for_different_files_are_not_merged` | 780 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ReviewFindings20261029Test.test_done_and_plan_ready_in_prose_are_ignored` | 786 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner` | 794 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::ReviewFindings20261029Test.test_owner_only_false_positives` | 802 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OpenQuestionMergeTest.test_paraphrased_open_question_is_merged` | 813 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OpenQuestionMergeTest.test_other_project_or_topic_not_merged` | 823 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OpenQuestionMergeTest.test_short_distinct_questions_not_merged` | 829 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OpenQuestionMergeTest.test_routine_question_promoted_when_asked_to_owner` | 834 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::OpenQuestionMergeTest.test_answered_question_not_merged_into_open_path` | 849 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_topic_tokens` | 866 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_generic_names_alone_do_not_match` | 871 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_open_question_rephrased_is_merged_and_keeps_old_text` | 876 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_hold_answer_suppresses_same_topic` | 888 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_non_hold_answer_lets_new_decision_open` | 895 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_old_open_question_outside_window_not_merged` | 902 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TopicMergeTest.test_other_project_not_merged` | 910 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::SalientReaskTest.test_paraphrased_same_topic_is_duplicate` | 920 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::SalientReaskTest.test_different_topic_not_duplicate` | 925 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneDeferralTest.test_done_deferred_while_subagent_then_applied` | 931 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` | 942 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneDeferralTest.test_done_immediate_without_subagent` | 953 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::AnswerStartPhaseTest.test_active_phase_starts` | 967 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::AnswerStartPhaseTest.test_owner_answer_reopens_paused_and_done_project` | 970 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_is_negative_answer` | 978 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_negative_answer_does_not_reopen` | 990 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_hold_answers_real_texts_do_not_reopen` | 995 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_sweep_question_has_options` | 1006 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` | 1033 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` | 1042 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` | 1047 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` | 1054 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | 1078 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | 1089 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_grace_expiry_still_stops` | 1095 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_small_context_skips_handover` | 1102 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_switch_off_is_old_direct_stop` | 1110 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | 1116 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | 1130 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_unanswered_conflict_still_asks` | 1137 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | 1154 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | 1162 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | 1170 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | 1175 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | 1181 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | 1193 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` | 1199 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_subagent_active_defers_confirmed` | 1207 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_open_work_of_counts_local_todo` | 1212 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` | 1227 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | 1257 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | 1271 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | 1285 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | 1300 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | 1314 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | 1324 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | 1338 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | 1354 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | 1365 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | 1371 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | 1379 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | 1404 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | 1420 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_answer_waits_while_subagent_active` | 1428 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_subagent_active_for_reads_mtime` | 1436 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_compact_answer_directive_drops_preamble` | 1453 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_directive_contains_all_answers` | 1469 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_core_b.py`
 
@@ -2096,21 +2102,22 @@ Yok.
 | `test_steward_core_b.py::SmartTickTest.test_count_open_tbd` | 893 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_b.py::SmartTickTest.test_routine_question_skips_tour_interval` | 898 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_b.py::SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` | 913 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` | 925 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` | 935 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::SmartTickTest.test_idle_session_without_open_todo_not_nudged` | 947 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::AskStatusLineTests.test_status_lines_do_not_open_records` | 960 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::AskBaseTests.test_dated_session_name_collapses_to_base` | 970 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::DeferAnswerTests.test_is_defer_answer` | 981 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::DeferAnswerTests.test_digest_hides_deferred_until_expiry` | 987 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::StartDecisionEventTests.test_event_shape` | 995 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_note_helper` | 1007 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` | 1021 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` | 1026 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::UcliStuckLadderTest.test_shorten_helper` | 1040 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::UcliStuckLadderTest.test_ladder` | 1047 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::RemoteRespawnNoteTest.test_note_reaches_directive` | 1074 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_b.py::RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` | 1079 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::SmartTickTest.test_tbd_only_question_counts_once` | 925 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` | 939 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` | 949 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::SmartTickTest.test_idle_session_without_open_todo_not_nudged` | 961 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::AskStatusLineTests.test_status_lines_do_not_open_records` | 974 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::AskBaseTests.test_dated_session_name_collapses_to_base` | 984 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::DeferAnswerTests.test_is_defer_answer` | 995 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::DeferAnswerTests.test_digest_hides_deferred_until_expiry` | 1001 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::StartDecisionEventTests.test_event_shape` | 1009 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_note_helper` | 1021 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` | 1035 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` | 1040 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::UcliStuckLadderTest.test_shorten_helper` | 1054 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::UcliStuckLadderTest.test_ladder` | 1061 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::RemoteRespawnNoteTest.test_note_reaches_directive` | 1088 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_b.py::RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` | 1093 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_ctx.py`
 
@@ -3101,13 +3108,13 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` | 34 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_fable_gets_table_price` | 40 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` | 44 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` | 49 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` | 54 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_binary_without_price_flag_is_refused` | 60 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_no_cap_no_refusal` | 64 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` | 34 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_fable_gets_table_price` | 40 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` | 44 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` | 49 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` | 54 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_binary_without_price_flag_is_refused` | 60 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_no_cap_no_refusal` | 64 | kapsam dışı | yok | fiyatsız modelde USD tavanı: `--price` ya da spawn reddi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_usage.py`
 
@@ -3297,18 +3304,21 @@ Yok.
 | `test_web_review_runner.py::TestBodyless.test_failed_run_with_junk_body_is_error` | 551 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestBodyless.test_successful_exit_with_junk_body_is_error` | 555 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestBodyless.test_report_bodyless_rule` | 559 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 570 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 578 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 590 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 608 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 647 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 664 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 689 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 704 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 712 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 717 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 728 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 739 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` | 593 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_other_failures_still_write_lesson` | 602 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` | 608 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 614 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 622 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 634 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 652 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 691 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 708 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 733 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 748 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 756 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 761 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 772 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 783 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 
 ### `py/tests/test_web_ucli_flags.py`
 

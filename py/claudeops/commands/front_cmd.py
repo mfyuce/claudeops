@@ -321,12 +321,23 @@ def _plan_on(listen: str, internal: str, binp: str, web_unit_text: str, read_err
         blockers.append(f"ikili çalıştırılabilir dosya değil: {binp}")
     if not binp.startswith("/"):        # systemd ExecStart= göreli yolu reddeder; py/cops `cd py/` da yolu kaydırır
         blockers.append(f"ikili yolu mutlak değil: {binp} (systemd ExecStart mutlak yol ister)")
-    es = web_execstart(web_unit_text)
+    files = _web_dropin_files()
+    es, late = None, []
+    if files is not None:
+        mine = os.fsencode(DROPIN.name)
+        early = "".join("\n" + t for n, t in files if os.fsencode(n) < mine)
+        es = _effective_execstart(web_unit_text + early)
+        late = [n for n, t in files if os.fsencode(n) > mine and re.search(r"^ExecStart=", t, re.M)]
     new = with_internal_port(es, internal) if es else None
     if read_err is not None:
         blockers.append(f"claudeops-web.service okunamadı: {read_err}")
+    elif files is None:
+        blockers.append(f"claudeops-web.service drop-in'leri okunamadı: {DROPIN.parent}")
     elif new is None:
         blockers.append("claudeops-web.service ExecStart biçimi tanınmadı (…claudeops web); elle drop-in gerekir")
+    if late:
+        blockers.append(f"{DROPIN.name} sonrasındaki drop-in ExecStart= atıyor: {_rdbg(', '.join(late))} (ön kapının iç "
+                        "port ayarı ezilir; adını öne alın ya da birleştirin)")
     for what, v in (("ikili", binp), ("dist", str(DIST_DIR)), ("durum dizini", front_mod.paths.CLAUDEOPS_DIR)):
         if any(unicodedata.category(c) == "Cc" for c in v):
             blockers.append(f"{what} yolu denetim karakteri içeriyor (birim dosyasını bozar): {_rdbg(v)}")
@@ -577,23 +588,29 @@ def _effective_execstart(text: str) -> Optional[str]:
     return cur
 
 
-def _web_dropins() -> Optional[str]:
-    """Web biriminin `front.conf` dışındaki drop-in'leri, ad sırasıyla birleşik; biri okunamazsa None."""
+def _web_dropin_files() -> Optional[List[Tuple[str, str]]]:
+    """Web biriminin `front.conf` dışındaki drop-in'leri (ad, metin), ad sırasıyla; biri okunamazsa None."""
     out = []
     try:
         names = sorted(os.listdir(DROPIN.parent), key=os.fsencode)
     except FileNotFoundError:
-        return ""
+        return []
     except OSError:
         return None
     for n in names:
         if not n.endswith(".conf") or n.startswith(".") or n == DROPIN.name:
             continue
         try:
-            out.append("\n" + (DROPIN.parent / n).read_bytes().decode("utf-8"))
+            out.append((n, (DROPIN.parent / n).read_bytes().decode("utf-8")))
         except (OSError, UnicodeDecodeError):
             return None
-    return "".join(out)
+    return out
+
+
+def _web_dropins() -> Optional[str]:
+    """`_web_dropin_files` metinleri birleşik; biri okunamazsa None."""
+    files = _web_dropin_files()
+    return None if files is None else "".join("\n" + t for _, t in files)
 
 
 def _web_addr(web_unit_text: str):

@@ -104,6 +104,7 @@
  "test_review_bad_records.BadRecordTest.test_usage_cost_skips_non_utf8_line": "rs/rev `cops-review-core` karşılıyor: `report.rs::usage_cost_usd` (docs/rs-rev.md)",
  "test_review_bad_records.BadRecordTest.test_usage_summary_skips_bad_seconds": "rs/rev `cops-review-core` karşılıyor: `report.rs::usage_summary` (docs/rs-rev.md)",
  "test_review_bad_records.CorruptStoreTest.test_corrupt_backup_not_repeated": "G/Ç: `steward._corrupt_backup` (bozuk dosyanın kanıt kopyası); review payı rs/rev `cops-review-core` `store.rs::backed_up` (docs/rs-rev.md), değnekçi deposu tarafı iz T10",
+ "test_review_bad_records.CorruptStoreTest.test_decide_on_corrupt_findings_names_the_store_not_the_finding": "rs/rev `cops-review-core` karşılıyor: `store.rs::ReviewStore::decide_finding` (docs/rs-rev.md)",
  "test_review_cleanup_fixes.FindingKeyTest.test_different_file_or_title_differs": "`review.py` saf çekirdeği, rs/rev izinde: store.rs::finding_key; dal rs/rev 40b29bf4, docs/rs-rev.md",
  "test_review_cleanup_fixes.FindingKeyTest.test_markdown_link_where_same_key_as_plain": "`review.py` saf çekirdeği, rs/rev izinde: store.rs::finding_key; dal rs/rev 40b29bf4, docs/rs-rev.md",
  "test_review_duration_summary.ClaudeJsonTest": "AÇIK: `web_review.claude_argv/_extract_text/claude_usage_event` claude JSON çıktısı ayrıştırma; saf, iz T8 (`commands/web_review.py`)",
@@ -267,5 +268,6 @@
  "test_steward_ucli_idle.ApplyTest.test_every_nudge_kind_carries_reply_language_line": "AÇIK: `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10",
  "test_steward_ucli_idle.ApplyTest.test_long_nudge_keeps_reply_language_line": "AÇIK: `web_steward._apply` boşta dürtme/ayıklama metnine yanıt dili satırını ekler (gönderim sahte); uygulama katmanı Rust'ta yok, iz T10",
  "test_ucli_cost_watch.CostWatch": "AÇIK: `web_steward.ucli_cost_watch` %80/%90 uyarı, tavanda beyin durdurma, tavan yükselince yeniden kurulma (bildirim/durdurma sahte); web_steward'daki karar merdiveni, iz T10",
+ "test_web_review_runner.TestProviderErrorNoLesson": "AÇIK: `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`)",
  "test_web_review_tick.TestModelsFailure": "`web_review.current_targets` model listesi istisnasını yutuyor mu (koşucu tick'i), iz T8 (`commands/web_review.py`)"
 }

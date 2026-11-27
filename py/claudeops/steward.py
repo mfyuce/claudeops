@@ -3686,7 +3686,8 @@ DIRECTIVE_MIN_GAP_SECONDS = 90.0     # aynı oturuma iki direktif arası: cevap 
 # Sahibin kararı olan konular (commit/push/merge/build/deploy 2026-10-27'de KALICI İZİNLE çıkarıldı; force-push, kurulum/apt/sudo, silme,
 # harcama, parola/token/yetki kalır): beyin bunlara `steward_answer` ile ASLA cevap vermez (soru rutin etiketli olsa bile).
 # Kelime sınırlı (workforce/enforce, silsile, "kuruldu mu" sahte pozitifti); "bağlam token'ı" bir bütçe ölçüsüdür, kimlik bilgisi değil.
-OWNER_ONLY_RE = re.compile(r"\bforce\b|\bforce[- ]push|\binstall|\bkurulum|\bkurul(?:sun|mal|ac|ur|mas)|\bapt\b|\bsudo\b|\bsil(?:ey|in|el|se|ec|me|mi|di|dı|ik|ip|er)\w*|\bsil\b|\bdelete|\bharca|\bspend|\bpassword|\bparola|(?<!bağlam )(?<!baglam )(?<!context )\btokens?\b(?!'?[ıiuü]?\s*(?:\d|[a-zçğıöşü]*\s*(?:bütçe|limit|eşik)))|\byetki|\bcredential", re.I)
+# "token"dan sonraki sayı yalnız ölçü biçimindeyse (`_CTX_NUM`) muaf: "token 2'yi paylaşayım mı?" sahibindir.
+OWNER_ONLY_RE = re.compile(r"\bforce\b|\bforce[- ]push|\binstall|\bkurulum|\bkurul(?:sun|mal|ac|ur|mas)|\bapt\b|\bsudo\b|\bsil(?:ey|in|el|se|ec|me|mi|di|dı|ik|ip|er)\w*|\bsil\b|\bdelete|\bharca|\bspend|\bpassword|\bparola|(?<!bağlam )(?<!baglam )(?<!context )\btokens?\b(?!'?[ıiuü]?\s*(?:" + _CTX_NUM + r"|[a-zçğıöşü]*\s*(?:bütçe|limit|eşik)))|\byetki|\bcredential", re.I)
 
 
 _JOB_RED_RE = re.compile(r"^\s*RED\b\s*[:\-–—]?\s*(.*)$", re.I | re.S)
@@ -4592,7 +4593,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             v = next((x for x in views if x.running and x.name in (q.source, q.project) and x.name != cfg.brain_name
                       and (world is None or world.session_class(x.name, x.blueprint) == "own"
                            or (world.is_adhoc_owner and world.session_class(x.name, x.blueprint) == "adhoc"))), None)
-            if v is not None and v.name not in busy_names and not v.busy:
+            if v is not None and v.name not in busy_names and not v.busy and not v.subagent_active:
                 actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
                 busy_names.add(v.name)
                 last_directive_at[v.name] = now
@@ -4696,11 +4697,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                for k, v in dict(st.get("brain_stopped") or {}).items()):
             continue     # beyin "kalan iş yok / sahip kararı bekliyor" diye durdurdu: cadence soğuk bağlamla hemen yeniden açmaz
         if visit_of(p) == 0 or p.name in todo_changed or (now - visit_of(p)) >= p.cadence_minutes * 60:
-            if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (open_tbd(p.name) or 0) > 0:
+            if open_work is not None and open_tbd is not None and open_work(p.name) == 0 and (tbd_n := open_tbd(p.name) or 0) > 0:
                 # yalnız TBD kaldı (yerel TODO'da açık iş yok): oturum açmak boşa tur; sahibe tek soru, cevap gelince `answer → start`
                 if now - tbd_asked.get(p.name, 0.0) >= 6 * 3600:      # günde en çok ~4 kez; aynı soru zaten açıksa birleşir
                     actions.append(Action("ask_user", p.name, "yalnız TBD kaldı",
-                                          {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {open_tbd(p.name)} "
+                                          {"project": p.name, "text": f"{p.name}: yerel TODO.md'de açık iş kalmadı, TOBEDECIDED.md'de {tbd_n} "
                                                                       f"açık karar var. Kararları verir misiniz? Cevap gelince oturumu açıp devam ederim."}))
                     tbd_asked[p.name] = now
                 continue

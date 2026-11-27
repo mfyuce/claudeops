@@ -67,6 +67,8 @@ impl SkipLog {
 struct Shared {
     last_msg: Mutex<Instant>,
     has_data: AtomicBool,
+    /// Akışı bitiren neden (görev bitmeden yazılır).
+    end: Mutex<Option<String>>,
 }
 
 pub struct PushConsumer {
@@ -86,6 +88,7 @@ impl PushConsumer {
         let shared = Arc::new(Shared {
             last_msg: Mutex::new(Instant::now()),
             has_data: AtomicBool::new(false),
+            end: Mutex::default(),
         });
         let s = shared.clone();
         let task = tokio::spawn(async move {
@@ -106,12 +109,22 @@ impl PushConsumer {
                 },
             };
             deaths.report(events.as_ref(), &label, tier, &reason);
+            *s.end.lock().unwrap_or_else(|e| e.into_inner()) = Some(reason);
         });
         PushConsumer { shared, task }
     }
 
     pub fn is_alive(&self) -> bool {
         !self.task.is_finished()
+    }
+
+    /// Ölen akışın nedeni; canlıyken `None`.
+    pub fn end_reason(&self) -> Option<String> {
+        self.shared
+            .end
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// En az bir öğe ulaştı mı (veri gelene kadar REST yoklaması sürer).

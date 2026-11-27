@@ -35,7 +35,6 @@ fn needs_ho_doc(state: &str, cwd: &str, jsonl: Option<&std::path::Path>) -> Valu
 }
 
 fn run(args: &[String], out: &mut impl Write) -> std::io::Result<bool> {
-    let Some(cfg) = Config::from_env() else { return Ok(false) };
     let Some((cmd, rest)) = args.split_first() else {
         return Ok(false);
     };
@@ -54,6 +53,8 @@ fn run(args: &[String], out: &mut impl Write) -> std::io::Result<bool> {
         writeln!(out, "{}", json!(u))?;
         return Ok(true);
     }
+    // `HOME` yalnız süreç taramasında gerekir (yukarıdaki iki komut yolu çağırandan alır).
+    let Some(cfg) = Config::from_env() else { return Ok(false) };
     let (mut no_cpu, mut as_json, mut base) = (false, false, None);
     let mut it = rest.iter();
     while let Some(a) = it.next() {

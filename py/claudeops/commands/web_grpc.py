@@ -47,6 +47,7 @@ from typing import Any, Callable, Dict, Iterator, Optional
 
 import grpc
 
+from .. import authz
 from . import web_ws
 from ..proto import host_bridge_pb2 as pb2
 from ..proto import host_bridge_pb2_grpc as pb2_grpc
@@ -299,6 +300,8 @@ class _HostBridgeServicer(pb2_grpc.HostBridgeServicer):
         last_key: Any = None
         last_sent = 0.0
         while context.is_active():
+            if not authz.grpc_term_allowed():      # her turda: kip açıkken değişirse açık akış da kesilir
+                context.abort(grpc.StatusCode.PERMISSION_DENIED, "signature_required")
             try:
                 payload = self._term_output_fn(request.name, request.lang or "tr")
             except Exception:
@@ -314,6 +317,17 @@ class _HostBridgeServicer(pb2_grpc.HostBridgeServicer):
             time.sleep(web_ws._TERM_POLL_SECONDS)
 
 
+def _server_options() -> list:
+    """Sunucu, istemcimizin keepalive ping'lerini kabul etmeli. gRPC varsayılanı verisiz ping'ler arasında 300 sn ister;
+    istemci 20 sn'de bir (çağrı yokken de) ping attığı için boştaki kanal ve verisiz akış `too_many_pings` GOAWAY'iyle
+    kopuyordu. Pay istemci sabitinden türer (yarısı: zamanlama sapmasına tolerans)."""
+    client = dict(_KEEPALIVE_OPTIONS)
+    return [
+        ("grpc.keepalive_permit_without_calls", client["grpc.keepalive_permit_without_calls"]),
+        ("grpc.http2.min_ping_interval_without_data_ms", client["grpc.keepalive_time_ms"] // 2),
+    ]
+
+
 def start_grpc_server(port: int, token: str, status_payload_fn: Callable[[], dict],
                        term_output_fn: Callable[[str, str], dict]) -> Optional[grpc.Server]:
     """`run()`'dan BİR KEZ çağrılır. Bind başarısız olursa (port çakışması vb.)
@@ -322,6 +336,7 @@ def start_grpc_server(port: int, token: str, status_payload_fn: Callable[[], dic
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_GRPC_MAX_WORKERS),
         interceptors=(_AuthInterceptor(token),),
+        options=_server_options(),
     )
     pb2_grpc.add_HostBridgeServicer_to_server(_HostBridgeServicer(status_payload_fn, term_output_fn), server)
     try:
@@ -414,6 +429,12 @@ def open_term_stream(grpc_url: str, token: str, name: str, lang: str):
     call nesnesi gerekçesi."""
     req = pb2.StreamTermOutputRequest(name=name, lang=lang)
     return _stub_for(grpc_url).StreamTermOutput(req, metadata=_auth_metadata(token))
+
+
+def is_term_refused(error: Any) -> bool:
+    """Uzak host terminal akışını bu taşıma yolunda reddetti mi (`PERMISSION_DENIED`); bağlantı hatası DEĞİL."""
+    code = getattr(error, "code", None)
+    return isinstance(error, grpc.RpcError) and callable(code) and code() == grpc.StatusCode.PERMISSION_DENIED
 
 
 def stream_status(grpc_url: str, token: str) -> Iterator[dict]:

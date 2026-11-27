@@ -391,6 +391,13 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("zk_x20261020", running=False)], self.projects, {}, cfg, self.now, [q], [])
         self.assertEqual([a.kind for a in acts if a.name == "zk_x20261020" and a.kind != "close_stale_answer"], [])   # kapalıysa açılmaz
 
+    def test_adhoc_session_answer_waits_for_running_subagent(self):
+        q = sw.Question(id="q", project="zk_x20261020", text="?", created_at=0, status="answered", answer="A",
+                        answered_at=1, source="zk_x20261020")
+        sess = _view("zk_x20261020", busy=False, subagent_active=True)
+        acts, _ = sw.plan_tick([sess], self.projects, {}, _cfg(max_active=4), self.now, [q], [])
+        self.assertEqual([a.kind for a in acts if a.kind == "deliver_answer"], [])      # alt ajan sürüyor: sonraki tick
+
     def test_instance_sessions_map_to_blueprint_project(self):
         cfg = _cfg(max_active=1)
         inst = _view("a20261019", blueprint="a", busy=True)
@@ -783,6 +790,14 @@ class ReviewFindings20261029Test(_Tmp):
         self.assertTrue(sw.scan_markers("bitti\nSTEWARD-DONE")["done"])
         self.assertTrue(sw.scan_markers("- STEWARD-DONE: kanıt")["done"])
         self.assertTrue(sw.scan_markers("`STEWARD-PLAN-READY`")["plan_ready"])
+
+    def test_owner_only_bare_number_after_token_stays_owner(self):
+        for t in ("token 2'yi paylaşayım mı?", "token 2 anahtarını sunucuya yazayım mı?", "API token'ı 3 kişiye vereyim mi?",
+                  "token 2026 yenilensin mi?", "token 2 mi kullanılsın?"):
+            self.assertIsNotNone(sw.OWNER_ONLY_RE.search(t), t)
+        for t in ("token 300K eşiği aşıldı, devir yapayım mı?", "token 150000 oldu", "token 250,000 civarında", "token 1.5 milyon",
+                  "token 300 bin", "token'ı 200K geçti"):
+            self.assertIsNone(sw.OWNER_ONLY_RE.search(t), t)
 
     def test_owner_only_false_positives(self):
         for t in ("Qdrant koleksiyonu kuruldu mu?", "bağlam token'ı 200K, alt ajan açayım mı?", "silsile tablosunu yeniden üretsem?",
