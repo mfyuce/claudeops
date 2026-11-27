@@ -446,7 +446,13 @@ fn run(
         });
     }
 
-    reclaim_ghost_session(launcher, &req.name, &req.cli);
+    // NUL taşıyan açılış başlayamaz (`Popen` reddi): eski oturuma dokunulmaz.
+    let launchable = [&req.name, &req.cwd, &plan.inner, &display]
+        .iter()
+        .all(|s| !s.contains('\0'));
+    if launchable {
+        reclaim_ghost_session(launcher, &req.name, &req.cli);
+    }
 
     let env = child_env(launcher.parent_env.iter().cloned(), &display);
     // gnome-terminal yoksa (masaüstüsüz sunucu) deneme/bekçi yok: doğrudan penceresiz tmux.

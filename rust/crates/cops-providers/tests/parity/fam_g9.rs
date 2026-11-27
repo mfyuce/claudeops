@@ -614,6 +614,17 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
         base("ilk-valueerror".into(), "claude", json!({}))
             .facts(json!({"popen": ["value"], "ghost": true})),
     );
+    // NUL taşıyan açılışta hayalet temizliği yapılmaz (görünür pencere ve gizli başlatma).
+    for (id, extra) in [
+        ("nul-istem", json!({"prompt": "a\u{0}b"})),
+        (
+            "nul-istem-gizli",
+            json!({"prompt": "a\u{0}b", "hidden": true}),
+        ),
+        ("nul-ekran", json!({"display": ":1\u{0}"})),
+    ] {
+        v.push(base(id.into(), "claude", extra).facts(json!({"popen": ["value"], "ghost": true})));
+    }
     // Kanca: hata (kapalı yön + günlük), ayrıntısız ret, kuru kipte ret, uzun hata metni.
     v.push(
         base("kanca-hata".into(), "claude", json!({})).facts(json!({"hook": {"raise": "patladı"}})),
