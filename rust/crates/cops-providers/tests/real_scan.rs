@@ -5,11 +5,11 @@
 use cops_procscan::Config;
 use cops_providers::agy_resume::AgySidStore;
 use cops_providers::pyjson::Py;
-use cops_providers::real::docs::{DocAgySidStore, FileDocs};
+use cops_providers::real::docs::{DocAgySidStore, StateDocStore};
 use cops_providers::real::scan::{scan_config, ProcScan};
-use cops_providers::real::Env;
 use cops_providers::spawn_exec::{DiagSink, SessionScan};
 use cops_providers::{ids_held_by_others, Diag, LiveSession, Paths};
+use cops_state::{Backend, StateDir, StateDocs};
 use serde_json::json;
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -273,11 +273,8 @@ fn learned_id_reaches_the_agy_sids_file() {
         home: f.root.join("home").to_str().unwrap().into(),
         repo_dir: f.root.join("repo").to_str().unwrap().into(),
     };
-    let env = Env::fixed([
-        ("HOME", paths.home.as_str()),
-        ("CLAUDEOPS_DIR", paths.claudeops_dir.as_str()),
-    ]);
-    let store = DocAgySidStore::new(&paths, Arc::new(FileDocs::new(&paths, env)));
+    let docs = StateDocs::isolated(StateDir::at(&paths.claudeops_dir), Some(Backend::Files), "");
+    let store = DocAgySidStore::new(&paths, Arc::new(StateDocStore::new(Arc::new(docs))));
     fs::write(state.join("agy_sids.json"), r#"{"eski": "e1"}"#).unwrap();
     let sink = Sink::default();
     let got = ProcScan::new(f.cfg.clone(), &store, &sink).live_sessions(false);

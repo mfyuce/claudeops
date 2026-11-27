@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use cops_providers::cost::CostRefusal;
-use cops_providers::real::docs::FileDocs;
+use cops_providers::real::docs::StateDocStore;
 use cops_providers::real::effects::{self, EffectError};
 use cops_providers::real::help::HelpCache;
 use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
@@ -18,6 +18,7 @@ use cops_providers::ucli_opts::Toolchain;
 use cops_providers::{
     BuildOutput, Diag, Effect, McpRegisterError, ModelCatalog, Paths, Probe, Settings,
 };
+use cops_state::{Backend, StateDir, StateDocs};
 use serde_json::{json, Map, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -445,6 +446,13 @@ pub fn case_env(e: &Env, case: &Case) -> OsEnv {
     OsEnv::fixed(vars)
 }
 
+/// Dosya kipinde gerçek belge deposu (geçici durum dizini; süreç ortamı okunmaz).
+pub fn file_docs(paths: &Paths) -> Arc<StateDocStore> {
+    let dir = StateDir::at(&paths.claudeops_dir);
+    let docs = StateDocs::isolated(dir, Some(Backend::Files), "");
+    Arc::new(StateDocStore::new(Arc::new(docs)))
+}
+
 /// Geçici ağaç üzerinde GERÇEK uygulayıcı.
 pub fn real_probe(e: &Env, case: &Case) -> RealProbe {
     real_probe_at(e, case, e.paths())
@@ -463,7 +471,7 @@ pub fn real_probe_with_help(e: &Env, case: &Case, help: HelpCache) -> RealProbe 
 fn probe_over(e: &Env, case: &Case, paths: Paths, help: HelpCache) -> RealProbe {
     let env = case_env(e, case);
     let deps = RealDeps {
-        docs: Arc::new(FileDocs::new(&paths, env.clone())),
+        docs: file_docs(&paths),
         projects: Arc::new(TestProjects(e.home.clone())),
         cost: Arc::new(OpenGate),
         search: Arc::new(NoSearch),

@@ -320,10 +320,7 @@ fn a_build_asks_for_the_managed_address_only_when_it_should_use_it() {
         let search = Arc::new(Recording(Mutex::new(Vec::new())));
         let env = t.env(&[]);
         let deps = RealDeps {
-            docs: Arc::new(cops_providers::real::docs::FileDocs::new(
-                &t.paths(),
-                env.clone(),
-            )),
+            docs: support::file_docs(&t.paths()),
             projects: Arc::new(support::Projects(t.path("home"))),
             cost: Arc::new(support::OpenGate),
             search: search.clone(),

@@ -7,20 +7,20 @@ mod support;
 use cops_providers::agy_resume::remember_agy_sid;
 use cops_providers::pyjson::Py;
 use cops_providers::real::diaglog::DiagLog;
-use cops_providers::real::docs::{DocAgySidStore, DocStore, FileDocs};
+use cops_providers::real::docs::DocAgySidStore;
 use cops_providers::real::lock::FileLock;
 use cops_providers::{AgySidStore, Paths};
 use std::fs;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use support::{mode, Tmp};
+use support::{file_docs, mode, Tmp};
 
 const WORKERS: usize = 4;
 const WRITES: usize = 40;
 
-fn store(paths: &Paths, env: cops_providers::real::Env) -> DocAgySidStore {
-    DocAgySidStore::new(paths, Arc::new(FileDocs::new(paths, env)))
+fn store(paths: &Paths) -> DocAgySidStore {
+    DocAgySidStore::new(paths, file_docs(paths))
 }
 
 /// Alt süreç kipi: `COPS_G8_WORKER=<kök>|<ad>` verilmediyse hiçbir şey yapmaz.
@@ -35,10 +35,7 @@ fn worker_process() {
         home: format!("{root}/home"),
         repo_dir: root.into(),
     };
-    let store = store(
-        &paths,
-        cops_providers::real::Env::fixed([("CLAUDEOPS_STORE_BACKEND", "files")]),
-    );
+    let store = store(&paths);
     for i in 0..WRITES {
         // kilit süresi dolarsa yeniden dener; üst sınır `wait_all`ın süresi
         while remember_agy_sid(
@@ -144,7 +141,7 @@ fn the_lock_is_the_one_python_takes_and_waiting_is_bounded() {
     )
     .unwrap();
     assert_eq!(line.trim(), "tutuldu");
-    let s = store(&paths, t.env(&[])).with_lock_timeout(Duration::from_millis(200));
+    let s = store(&paths).with_lock_timeout(Duration::from_millis(200));
     let start = Instant::now();
     let r = remember_agy_sid(&s, "a", "1", false);
     assert!(r.unwrap_err().contains("kilidi alınamadı"));
@@ -165,7 +162,7 @@ fn a_symlinked_lock_file_is_refused_and_nothing_is_written() {
     let victim = t.write("work/kurban", "x", 0o600);
     std::os::unix::fs::symlink(&victim, format!("{}.lock", paths.agy_sids_json())).unwrap();
     let log = t.path("state/diag.log");
-    let logged = store(&paths, t.env(&[])).with_diag(Arc::new(DiagLog::new(log.clone())));
+    let logged = store(&paths).with_diag(Arc::new(DiagLog::new(log.clone())));
     assert!(remember_agy_sid(&logged, "a", "1", false).is_err());
     let text = fs::read_to_string(log).unwrap();
     assert_eq!(text.lines().count(), 1, "{text}");
@@ -174,43 +171,4 @@ fn a_symlinked_lock_file_is_refused_and_nothing_is_written() {
     assert!(!std::path::Path::new(&paths.agy_sids_json()).exists());
     assert_eq!(fs::read_to_string(victim).unwrap(), "x");
     assert!(FileLock::acquire(&t.path("work/kurban2"), "/", Duration::from_millis(10)).is_ok());
-}
-
-#[test]
-fn db_backend_documents_are_neither_read_from_nor_written_to_the_mirror() {
-    let t = Tmp::new();
-    let paths = t.paths();
-    t.write("state/agy_sids.json", r#"{"a": "bayat"}"#, 0o600);
-    for (settings, env, db) in [
-        (r#"{"store_backend": " DB "}"#, vec![], true),
-        (
-            r#"{"store_backend": "db"}"#,
-            vec![("CLAUDEOPS_STORE_BACKEND", "files")],
-            false,
-        ),
-        (
-            r#"{"store_backend": "files"}"#,
-            vec![("CLAUDEOPS_STORE_BACKEND", "db")],
-            true,
-        ),
-        (r#"{"store_backend": "dual"}"#, vec![], false),
-        ("bozuk", vec![("CLAUDEOPS_STORE_BACKEND", "sacma")], false),
-    ] {
-        t.write("state/settings.json", settings, 0o600);
-        let docs = FileDocs::new(&paths, t.env(&env));
-        let read = docs.read("agy_sids", &paths.agy_sids_json());
-        assert_eq!(read.is_none(), db, "{settings} {env:?}");
-        // db hazır olmayan belge her kipte dosyadan okunur
-        assert!(docs.read("baska", &paths.agy_sids_json()).is_some());
-        if db {
-            let s = store(&paths, t.env(&env));
-            assert!(remember_agy_sid(&s, "b", "2", false)
-                .unwrap_err()
-                .contains("db"));
-            assert_eq!(
-                fs::read_to_string(paths.agy_sids_json()).unwrap(),
-                r#"{"a": "bayat"}"#
-            );
-        }
-    }
 }

@@ -7,8 +7,9 @@
 //! pane ([`crate::tui::Pane`]): [`pane::TmuxPane`] (G4).
 //!
 //! [`probe::CostGate`] (gerçek: [`ledger::CostLedger`]) ve [`probe::SearchUrl`] (gerçek:
-//! [`searxng::ManagedSearch`]) kurucuya dışarıdan verilir (süreç başına tek örnek). Başka ize ait bağımlılıklar:
-//! [`probe::ProjectDirs`] (rs/proc `encode_cwd`), [`docs::DocStore`]un `db` kipi (rs/state `statedocs`).
+//! [`searxng::ManagedSearch`]) kurucuya dışarıdan verilir (süreç başına tek örnek). [`docs::DocStore`]un gerçeği
+//! [`docs::StateDocStore`]dur (rs/state `statedocs`, `db` kipi dahil). Başka ize ait bağımlılık:
+//! [`probe::ProjectDirs`] (rs/proc `encode_cwd`).
 
 pub mod agents;
 pub mod approval;

@@ -554,10 +554,7 @@ fn a_claude_service_build_is_refused_over_the_cap() {
     let ledger = Arc::new(book(&t, 10.0));
     let env = t.env(&[]);
     let deps = RealDeps {
-        docs: Arc::new(cops_providers::real::docs::FileDocs::new(
-            &t.paths(),
-            env.clone(),
-        )),
+        docs: support::file_docs(&t.paths()),
         projects: Arc::new(support::Projects(t.path("home"))),
         cost: ledger.clone(),
         search: Arc::new(support::NoSearch),

@@ -8,7 +8,7 @@ use cops_providers::agy_resume::remember_agy_sid;
 use cops_providers::pyjson::Py;
 use cops_providers::real::agents::{AgentRegistry, Sources};
 use cops_providers::real::diaglog::DiagLog;
-use cops_providers::real::docs::{DocAgySidStore, FileDocs};
+use cops_providers::real::docs::DocAgySidStore;
 use cops_providers::real::help::HelpCache;
 use cops_providers::real::proxy::{self, Route};
 use cops_providers::real::{checks, pathexec, RealProbe};
@@ -806,8 +806,7 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
             RsOut::ret(Value::Null)
         }
         "g8_agy" => {
-            let docs = Arc::new(FileDocs::new(&paths, case_env(e, c)));
-            let store = DocAgySidStore::new(&paths, docs);
+            let store = DocAgySidStore::new(&paths, file_docs(&paths));
             // Okunamayan ya da nesne olmayan belge yazılmaz: çağıran (`ProcScan`, Python `_remember_agy_sid`) günlüğe yazar.
             let mut diags = Vec::new();
             for (name, sid) in pairs(&a["writes"]) {

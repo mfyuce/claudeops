@@ -3,7 +3,6 @@
 #[path = "g8/support.rs"]
 mod support;
 
-use cops_providers::real::docs::FileDocs;
 use cops_providers::real::http::{HttpClient, HttpError};
 use cops_providers::real::modelio::RealModelIo;
 use cops_providers::real::Env;
@@ -15,7 +14,7 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use support::{spawn_guard, Tmp};
+use support::{file_docs, spawn_guard, Tmp};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::rustls::pki_types::PrivateKeyDer;
 use tokio_rustls::rustls::{self, RootCertStore, ServerConfig};
@@ -499,11 +498,7 @@ fn https_is_tunnelled_with_connect_and_proxy_auth_stays_outside_the_tunnel() {
 fn the_real_model_io_runs_reads_and_fetches() {
     let _g = spawn_guard();
     let t = Tmp::new();
-    let io = RealModelIo::new(
-        &t.paths(),
-        t.env(&[]),
-        Arc::new(FileDocs::new(&t.paths(), t.env(&[]))),
-    );
+    let io = RealModelIo::new(&t.paths(), t.env(&[]), file_docs(&t.paths()));
     let a = io.monotonic_secs();
     std::thread::sleep(Duration::from_millis(20));
     assert!(a > 0.0 && io.monotonic_secs() - a >= 0.015);

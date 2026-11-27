@@ -330,6 +330,7 @@ dependencies = [
  "bytes",
  "cops-procscan",
  "cops-review-core",
+ "cops-state",
  "cops-tmux",
  "fancy-regex",
  "http-body-util",

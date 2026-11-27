@@ -1,26 +1,27 @@
 //! Durum belgeleri sınırı ([`DocStore`]) ve gerçek [`AgySidStore`].
 //!
-//! Belge deposu (claudeops.db + ayna, `store_backend` kipi) `rs/state` `statedocs`undur ve bu dalda YOKTUR. Buradaki
-//! [`FileDocs`] yalnız dosyanın doğruluk kaynağı olduğu durumları karşılar (`files` ve `dual`; Python `dual` okurken
-//! dosya imzası değişince DB'yi dosyaya uydurur). Belge `db` kipinde DB doğruluk kaynağıysa [`FileDocs`] okumaz ve
-//! yazmaz (bayat aynadan karar verilmez, yalnız aynaya yazıp başarı sayılmaz): birleştirmede [`DocStore`] `statedocs`
-//! ile uygulanmalı.
+//! Gerçek belge deposu [`StateDocStore`]: rs/state `StateDocs` (claudeops.db + ayna, `store_backend` = files | dual | db)
+//! üstünde ince sarmal. Kip, DB okuma/yazma, ayna ve `statedocs ..` günlükleri tamamen oradadır; burada yalnız bu crate'in
+//! sınır kuralları var: FIFO / aygıt / soket ya da [`DOC_MAX_BYTES`]i aşan dosya hiç açılmaz, okunamayan
+//! belge yazılmaz. rs/state'ten miras bilinen fark: `db` kipinde DB kalıcı olarak yazılamıyorsa (DB yok, şema farklı)
+//! Rust hiçbir yere yazmaz ve hata döner (Python DB'yi yaratır ya da dosyaya düşer).
 
 use crate::agy_resume::{AgySidStore, AGY_SIDS_UNREADABLE};
 use crate::probe::Paths;
-use crate::pyfmt::strip;
 use crate::pyjson::Py;
+use crate::real::diaglog::Mirror;
 use crate::real::lock::{FileLock, LOCK_TIMEOUT};
-use crate::real::{effects, fsio, Env};
 use crate::spawn_exec::DiagSink;
+use cops_state::json::{Json, Map};
+use cops_state::statedocs::Read;
+use cops_state::StateDocs;
+use std::cell::Cell;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Belge okuma sınırı (Python sınırsız).
+/// Belge dosyası boyut sınırı (Python sınırsız).
 pub const DOC_MAX_BYTES: u64 = 16 << 20;
-
-/// `statedocs.DB_READY` içinden bu crate'in kullandığı belgeler.
-const DB_READY: [&str; 2] = ["agy_sids", "claude_models"];
 
 pub trait DocStore: Send + Sync {
     /// `statedocs.read_json(name, path, ..)`: yok, bozuk ya da okunamıyorsa None.
@@ -34,68 +35,103 @@ pub trait DocStore: Send + Sync {
     fn write(&self, name: &str, path: &str, doc: &Py) -> Result<(), String>;
 }
 
-/// Dosya doğruluk kaynağıyken belge deposu.
-#[derive(Debug, Clone)]
-pub struct FileDocs {
-    settings_json: String,
-    env: Env,
-}
-
-impl FileDocs {
-    pub fn new(paths: &Paths, env: Env) -> FileDocs {
-        FileDocs {
-            settings_json: format!("{}/settings.json", paths.claudeops_dir),
-            env,
+fn to_json(v: &Py) -> Json {
+    match v {
+        Py::Null => Json::Null,
+        Py::Bool(b) => Json::Bool(*b),
+        Py::Int(i) => Json::Int(*i),
+        Py::BigInt(s) => Json::BigInt(s.clone()),
+        Py::Float(f) => Json::Float(*f),
+        Py::Str(s) => Json::Str(s.clone()),
+        Py::Array(a) => Json::Array(a.iter().map(to_json).collect()),
+        Py::Object(o) => {
+            let mut m = Map::new();
+            for (k, v) in o {
+                m.insert(k.clone(), to_json(v));
+            }
+            Json::Object(m)
         }
-    }
-
-    /// `statedocs.backend()`: ortam, yoksa `settings.json` `store_backend`, yoksa `files`. Her çağrıda yeniden okunur.
-    fn backend_is_db(&self) -> bool {
-        let word = |s: &str| strip(s).to_lowercase();
-        let env = word(&self.env.get("CLAUDEOPS_STORE_BACKEND").unwrap_or_default());
-        if matches!(env.as_str(), "files" | "dual" | "db") {
-            return env == "db";
-        }
-        fsio::read_bytes(&self.settings_json, DOC_MAX_BYTES)
-            .and_then(|b| Py::parse(std::str::from_utf8(&b).ok()?))
-            .and_then(|d| d.get("store_backend").and_then(Py::as_str).map(word))
-            .is_some_and(|m| m == "db")
-    }
-
-    fn db_only(&self, name: &str) -> bool {
-        DB_READY.contains(&name) && self.backend_is_db()
     }
 }
 
-impl DocStore for FileDocs {
+fn to_py(v: &Json) -> Py {
+    match v {
+        Json::Null => Py::Null,
+        Json::Bool(b) => Py::Bool(*b),
+        Json::Int(i) => Py::Int(*i),
+        Json::BigInt(s) => Py::BigInt(s.clone()),
+        Json::Float(f) => Py::Float(*f),
+        Json::Str(s) => Py::Str(s.clone()),
+        Json::Array(a) => Py::Array(a.iter().map(to_py).collect()),
+        Json::Object(m) => Py::Object(m.iter().map(|(k, v)| (k.clone(), to_py(v))).collect()),
+    }
+}
+
+/// Dosya yoksa, dizinse (okuma hemen düşer: Python gibi DB'ye bakılır) ya da sınır içinde normal dosyaysa true.
+/// `StateDocs` dosyayı sınırsız ve bloke ederek okuduğundan FIFO, aygıt ve soket hiç açılmaz.
+fn openable(path: &str) -> bool {
+    std::fs::metadata(path).map_or(true, |m| {
+        m.is_dir() || (m.is_file() && m.len() <= DOC_MAX_BYTES)
+    })
+}
+
+/// rs/state belge deposu. Süreç başına TEK `StateDocs` paylaşılır (kirli/eşitlendi kayıtları ondadır).
+#[derive(Clone)]
+pub struct StateDocStore {
+    docs: Arc<StateDocs>,
+}
+
+impl StateDocStore {
+    pub fn new(docs: Arc<StateDocs>) -> StateDocStore {
+        StateDocStore { docs }
+    }
+
+    /// `diag_log`un DB `log` aynası (`statedocs.mirror_log`): [`crate::real::diaglog::DiagLog::with_mirror`]e verilir.
+    /// `log_path` günlük dosyasının yoludur (durum dizini dışındaysa DB'ye eklenmez).
+    pub fn diag_mirror(&self, log_path: impl Into<String>) -> Mirror {
+        let docs = self.docs.clone();
+        let path = log_path.into();
+        Arc::new(move |stream: &str, entry: &Py| {
+            docs.mirror_log(stream, Path::new(&path), &to_json(entry));
+        })
+    }
+}
+
+impl DocStore for StateDocStore {
     fn read(&self, name: &str, path: &str) -> Option<Py> {
-        if self.db_only(name) {
+        if !openable(path) {
             return None;
         }
-        let data = fsio::read_bytes(path, DOC_MAX_BYTES)?;
-        Py::parse(std::str::from_utf8(&data).ok()?)
+        let read = self.docs.read(name, Path::new(path));
+        read.into_option().map(|v| to_py(&v))
     }
 
     fn read_checked(&self, name: &str, path: &str) -> Result<Option<Py>, String> {
-        if self.db_only(name) {
-            return Ok(None); // yazım zaten reddedilir (`write`)
+        let refused = || Err(AGY_SIDS_UNREADABLE.to_string());
+        if !openable(path) {
+            return refused();
         }
-        if std::fs::symlink_metadata(path).is_err() {
-            return Ok(None);
+        // `dual` kipte bozuk dosyanın yerine DB değeri döner: bozukluk yine de yazımı durdurur (Python `on_corrupt`)
+        let corrupt = Cell::new(false);
+        let mark = |_: &Path| corrupt.set(true);
+        let read = self
+            .docs
+            .read_with(name, Path::new(path), true, Some(&mark));
+        if corrupt.get() {
+            return refused();
         }
-        fsio::read_bytes(path, DOC_MAX_BYTES)
-            .and_then(|b| Py::parse(std::str::from_utf8(&b).ok()?))
-            .map(Some)
-            .ok_or_else(|| AGY_SIDS_UNREADABLE.to_string())
+        match read {
+            Read::Value(v) => Ok(Some(to_py(&v))),
+            Read::Missing if std::fs::symlink_metadata(path).is_err() => Ok(None),
+            // eşlenmemiş vekil geri yazılamaz; var ama açılamayan dosya "yok" değildir
+            Read::Lossy(_) | Read::Missing | Read::Corrupt => refused(),
+        }
     }
 
     fn write(&self, name: &str, path: &str, doc: &Py) -> Result<(), String> {
-        if self.db_only(name) {
-            return Err(format!(
-                "{name}: store_backend=db, belge deposu (rs/state) gerekli; yazılmadı"
-            ));
-        }
-        effects::atomic_write_text(path, &doc.dumps_pretty(), None)
+        self.docs
+            .write(name, Path::new(path), &to_json(doc), None)
+            .map(|_| ())
             .map_err(|e| format!("{name}: {e}"))
     }
 }

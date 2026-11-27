@@ -3,11 +3,12 @@
 #![allow(dead_code)]
 
 use cops_providers::cost::CostRefusal;
-use cops_providers::real::docs::FileDocs;
+use cops_providers::real::docs::StateDocStore;
 use cops_providers::real::help::HelpCache;
 use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
 use cops_providers::real::{Env, RealDeps, RealProbe};
 use cops_providers::Paths;
+use cops_state::{Backend, StateDir, StateDocs};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -84,7 +85,7 @@ impl Tmp {
     pub fn probe_with(&self, env: Env, help: Arc<HelpCache>) -> RealProbe {
         let paths = self.paths();
         let deps = RealDeps {
-            docs: Arc::new(FileDocs::new(&paths, env.clone())),
+            docs: file_docs(&paths),
             projects: Arc::new(Projects(paths.home.clone())),
             cost: Arc::new(OpenGate),
             search: Arc::new(NoSearch),
@@ -100,6 +101,19 @@ impl Tmp {
             Arc::new(HelpCache::with_timeout(Duration::from_secs(5))),
         )
     }
+}
+
+/// Dosya kipinde gerçek belge deposu (geçici durum dizini; süreç ortamı okunmaz).
+pub fn file_docs(paths: &Paths) -> Arc<StateDocStore> {
+    docs_in(paths, Some(Backend::Files))
+}
+
+/// `backend` None ise kip geçici dizindeki `settings.json`dan okunur.
+pub fn docs_in(paths: &Paths, backend: Option<Backend>) -> Arc<StateDocStore> {
+    let dir = StateDir::at(&paths.claudeops_dir);
+    Arc::new(StateDocStore::new(Arc::new(StateDocs::isolated(
+        dir, backend, "",
+    ))))
 }
 
 /// Maliyet kapısı ve arama yöneticisi kendi testlerinde (`real_ledger`, `real_searxng`) sınanır.
