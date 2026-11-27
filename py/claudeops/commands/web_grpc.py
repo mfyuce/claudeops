@@ -317,6 +317,17 @@ class _HostBridgeServicer(pb2_grpc.HostBridgeServicer):
             time.sleep(web_ws._TERM_POLL_SECONDS)
 
 
+def _server_options() -> list:
+    """Sunucu, istemcimizin keepalive ping'lerini kabul etmeli. gRPC varsayılanı verisiz ping'ler arasında 300 sn ister;
+    istemci 20 sn'de bir (çağrı yokken de) ping attığı için boştaki kanal ve verisiz akış `too_many_pings` GOAWAY'iyle
+    kopuyordu. Pay istemci sabitinden türer (yarısı: zamanlama sapmasına tolerans)."""
+    client = dict(_KEEPALIVE_OPTIONS)
+    return [
+        ("grpc.keepalive_permit_without_calls", client["grpc.keepalive_permit_without_calls"]),
+        ("grpc.http2.min_ping_interval_without_data_ms", client["grpc.keepalive_time_ms"] // 2),
+    ]
+
+
 def start_grpc_server(port: int, token: str, status_payload_fn: Callable[[], dict],
                        term_output_fn: Callable[[str, str], dict]) -> Optional[grpc.Server]:
     """`run()`'dan BİR KEZ çağrılır. Bind başarısız olursa (port çakışması vb.)
@@ -325,6 +336,7 @@ def start_grpc_server(port: int, token: str, status_payload_fn: Callable[[], dic
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_GRPC_MAX_WORKERS),
         interceptors=(_AuthInterceptor(token),),
+        options=_server_options(),
     )
     pb2_grpc.add_HostBridgeServicer_to_server(_HostBridgeServicer(status_payload_fn, term_output_fn), server)
     try:
