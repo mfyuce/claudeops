@@ -10,22 +10,29 @@ use crate::real::launch::{GnomeTerminal, SystemClock};
 use crate::real::ledger::{file_cost_settings, CostLedger, CostSettings};
 use crate::real::probe::{ProjectDirs, RealDeps};
 use crate::real::searxng::{ManagedSearch, Provision};
+use crate::real::startup_desktop::X11Desktop;
 use crate::real::Env;
 use crate::spawn_exec::{Launcher, SpawnTmux};
 use std::sync::Arc;
+
+fn settings_json_path(paths: &Paths) -> String {
+    format!("{}/settings.json", paths.claudeops_dir)
+}
 
 pub struct SpawnRuntime {
     pub ledger: Arc<CostLedger>,
     pub search: Arc<ManagedSearch>,
     pub help: Arc<HelpCache>,
     pub diag: DiagLog,
+    /// Masaüstü yönlendirmesinin okuduğu ayar dosyası (`spawn_desktop`).
+    settings_json: String,
 }
 
 impl SpawnRuntime {
     /// `python`: SearXNG ayrık kurulumunu (`-m claudeops searxng provision`) çalıştıracak, PANEL SERVİSİNİN KENDİ
     /// Python'u (Python'da `sys.executable`; ör. yuhem `py/.venv/bin/python3`, ulak_31 `/usr/bin/python3`).
     pub fn new(paths: &Paths, env: &Env, python: &str) -> SpawnRuntime {
-        let settings = file_cost_settings(format!("{}/settings.json", paths.claudeops_dir));
+        let settings = file_cost_settings(settings_json_path(paths));
         SpawnRuntime::with_cost_settings(paths, env, python, settings)
     }
 
@@ -49,6 +56,7 @@ impl SpawnRuntime {
             )),
             help: Arc::new(HelpCache::default().with_diag(Arc::new(diag.clone()))),
             diag,
+            settings_json: settings_json_path(paths),
         }
     }
 
@@ -78,7 +86,10 @@ impl SpawnRuntime {
     pub fn launcher(&self, tmux: Arc<dyn SpawnTmux>, env: &Env) -> Launcher {
         Launcher {
             tmux,
-            terminal: Arc::new(GnomeTerminal::new(env.clone())),
+            terminal: Arc::new(GnomeTerminal::new(env.clone()).with_desktop(
+                self.settings_json.clone(),
+                Arc::new(X11Desktop::new(env.clone())),
+            )),
             clock: Arc::new(SystemClock),
             diag: Arc::new(self.diag.clone()),
             parent_env: env.vars(),

@@ -36,6 +36,7 @@ pub mod runtime;
 pub mod scan;
 pub mod searxng;
 pub mod sqlite;
+pub mod startup_desktop;
 pub mod tmux;
 
 pub use env::Env;

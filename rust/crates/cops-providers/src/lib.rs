@@ -34,6 +34,7 @@ pub mod settings;
 pub mod shell;
 pub mod spawn;
 pub mod spawn_exec;
+pub mod startup_desktop;
 pub mod tui;
 pub mod ucli;
 pub mod ucli_opts;

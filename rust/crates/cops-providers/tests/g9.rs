@@ -4,10 +4,14 @@
 
 use cops_providers::real::launch::{repo_dir_of, GnomeTerminal, SystemClock};
 use cops_providers::real::routing_sync::{copy2, sync_global_files};
+use cops_providers::real::startup_desktop::X11Desktop;
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
     fallback_watchdog, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux,
     Terminal, FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
+};
+use cops_providers::startup_desktop::{
+    build_message, chunks, resolve_desktop, startup_id, DesktopIo,
 };
 use cops_providers::{Diag, Paths, Settings};
 use serde_json::{json, Value};
@@ -506,6 +510,82 @@ fn gnome_terminal_popen_failures() {
         gt.launch(&argv("x"), &env(&format!("{root}/bin"))),
         Ok(true)
     );
+}
+
+// ------------------------------------------------------------------------------------ masaüstü yönlendirmesi (TBD#409)
+
+#[test]
+fn desktop_resolution_message_and_chunks() {
+    assert_eq!(resolve_desktop(Some(1), Some(30)), Some(1));
+    assert_eq!(resolve_desktop(Some(5), Some(6)), Some(5));
+    assert_eq!(resolve_desktop(Some(0), Some(1)), Some(0));
+    assert_eq!(resolve_desktop(Some(7), Some(3)), Some(1));
+    assert_eq!(resolve_desktop(Some(3), Some(1)), Some(0));
+    assert_eq!(resolve_desktop(Some(1), Some(1)), Some(0));
+    for (want, count) in [
+        (None, Some(4)),
+        (Some(-1), Some(4)),
+        (Some(1), None),
+        (Some(1), Some(0)),
+    ] {
+        assert_eq!(resolve_desktop(want, count), None, "{want:?} {count:?}");
+    }
+    let msg = build_message("id\"1", "rs\\x", 2);
+    assert_eq!(
+        msg,
+        b"new: ID=\"id\\\"1\" NAME=\"rs\\\\x\" SCREEN=0 DESKTOP=2\0"
+    );
+    let parts = chunks(&msg);
+    let joined: Vec<u8> = parts.concat();
+    assert_eq!(&joined[..msg.len()], &msg[..]);
+    assert!(joined[msg.len()..].iter().all(|b| *b == 0));
+    assert_eq!(startup_id(7, 0x1_0000_0002), "claudeops-7-4294967298_TIME2");
+}
+
+#[test]
+fn desktop_count_reads_wmctrl_and_unopenable_display_sends_nothing() {
+    let (_d, root) = tmpdir();
+    write_exe(
+        &format!("{root}/bin/wmctrl"),
+        "#!/bin/sh\n[ \"$1\" = -d ] || exit 9\n[ \"$DISPLAY\" = :7 ] || exit 8\nprintf '0 * DG\\n1 - DG\\n\\n'\n",
+    );
+    let io = X11Desktop::new(Env::fixed([("PATH", format!("{root}/bin"))]));
+    assert_eq!(io.desktop_count(":7"), Ok(Some(2)));
+    assert_eq!(io.desktop_count(":8"), Ok(None));
+    let none = X11Desktop::new(Env::fixed([("PATH", format!("{root}/yok"))]));
+    assert_eq!(none.desktop_count(":7"), Ok(None));
+    // `:` içermeyen ad hiçbir sunucuya bağlanmadan reddedilir (gerçek X'e DOKUNULMAZ).
+    assert_eq!(io.send("gecersiz-ekran", b"new: x\0"), Ok(false));
+    assert!(io.send("a\0b", b"x").is_err());
+}
+
+struct FixedDesktop;
+
+impl DesktopIo for FixedDesktop {
+    fn desktop_count(&self, _display: &str) -> Result<Option<usize>, String> {
+        Ok(Some(4))
+    }
+    fn new_startup_id(&self) -> String {
+        "SID".into()
+    }
+    fn send(&self, _display: &str, _msg: &[u8]) -> Result<bool, String> {
+        Ok(true)
+    }
+}
+
+#[test]
+fn gnome_terminal_desktop_is_off_by_default_and_reads_settings_each_time() {
+    let (_d, root) = tmpdir();
+    let env = vec![("DISPLAY".to_string(), ":7".to_string())];
+    let plain = GnomeTerminal::new(Env::fixed([("PATH", root.clone())]));
+    assert_eq!(plain.startup_env("a", &env).env, env);
+    let settings = format!("{root}/settings.json");
+    let gt = plain.with_desktop(settings.clone(), Arc::new(FixedDesktop));
+    let id = ("DESKTOP_STARTUP_ID".to_string(), "SID".to_string());
+    // dosya yok = varsayılan (2. masaüstü)
+    assert_eq!(gt.startup_env("a", &env).env, [env[0].clone(), id]);
+    fs::write(&settings, r#"{"spawn_desktop": -1}"#).unwrap();
+    assert_eq!(gt.startup_env("a", &env).env, env);
 }
 
 // ---------------------------------------------------------------------------------------------------- copy2, REPO_DIR

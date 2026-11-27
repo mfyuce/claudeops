@@ -4,7 +4,9 @@
 use crate::probe::Diag;
 use crate::real::diaglog::DiagLog;
 use crate::real::{pathexec, Env};
+use crate::settings::Settings;
 use crate::spawn_exec::{Clock, DiagSink, LaunchError, Terminal};
+use crate::startup_desktop::{startup_env, DesktopIo, StartupEnv};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -19,11 +21,34 @@ use std::time::{Duration, Instant};
 pub struct GnomeTerminal {
     /// [`Terminal::available`] için çağıran sürecin ortamı (`shutil.which` `os.environ["PATH"]`).
     env: Env,
+    desktop: Option<Desktop>,
+}
+
+/// Masaüstü yönlendirmesinin girdileri.
+#[derive(Clone)]
+struct Desktop {
+    settings_json: String,
+    io: Arc<dyn DesktopIo>,
+}
+
+impl std::fmt::Debug for Desktop {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Desktop")
+            .field("settings_json", &self.settings_json)
+            .finish_non_exhaustive()
+    }
 }
 
 impl GnomeTerminal {
+    /// Masaüstü yönlendirmesi KAPALI (X'e ve `wmctrl`e dokunulmaz); açmak için [`GnomeTerminal::with_desktop`].
     pub fn new(env: Env) -> GnomeTerminal {
-        GnomeTerminal { env }
+        GnomeTerminal { env, desktop: None }
+    }
+
+    /// `settings_json` her açılışta yeniden okunur (okunamaz/bozuk = varsayılanlar, Python `load_settings`).
+    pub fn with_desktop(mut self, settings_json: String, io: Arc<dyn DesktopIo>) -> GnomeTerminal {
+        self.desktop = Some(Desktop { settings_json, io });
+        self
     }
 }
 
@@ -56,6 +81,14 @@ impl Terminal for GnomeTerminal {
 
     fn path_exists(&self, path: &str) -> bool {
         Path::new(path).exists()
+    }
+
+    fn startup_env(&self, name: &str, env: &[(String, String)]) -> StartupEnv {
+        let Some(desktop) = &self.desktop else {
+            return StartupEnv::unchanged(env);
+        };
+        let text = std::fs::read_to_string(&desktop.settings_json).unwrap_or_default();
+        startup_env(&Settings::from_json(&text), env, name, desktop.io.as_ref())
     }
 
     fn launch(&self, argv: &[String], env: &[(String, String)]) -> Result<bool, LaunchError> {

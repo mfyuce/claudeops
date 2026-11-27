@@ -6,6 +6,8 @@
 //! aynı biçimde bir günlüğe yazılır (`calls`) ve sırasıyla karşılaştırılır. Kanca ve eklenti MCP'si iki tarafta GERÇEK kod
 //! (`authz.spawn_env` + `extensions.session_mcp_spec` / [`cops_providers::hooks::Hooks`]); kayıtları vakadan. Bekçi
 //! Python'da eşzamanlı (sahte `Thread.start`), Rust'ta gerçek iş parçacığı: karşılaştırmadan önce join edilir.
+//! Masaüstü yönlendirmesi (`startup_desktop.startup_env`) iki tarafta GERÇEK koddur; `wmctrl` sayımı ve X gönderimi
+//! sahtedir (X sunucusuna dokunulmaz).
 //! Başlatma payı geri verme (`release`) yalnız Rust'ta: her vakada ayrıca denetlenir (kuru ya da hatalı başlatmada bir kez).
 
 use crate::common::*;
@@ -16,11 +18,13 @@ use crate::fam_ucli::full_help;
 use cops_providers::hooks::{HookFailure, Hooks, SessionMcpEntry, SpawnRefused};
 use cops_providers::real::launch::repo_dir_of;
 use cops_providers::real::routing_sync::sync_global_files_at;
+use cops_providers::settings::Settings;
 use cops_providers::spawn_exec::{
     open_mirror_window, open_window, reclaim_ghost_session, spawn_session, Clock, CostRelease,
     LaunchError, Launcher, ResumeResolver, SessionScan, SpawnDeps, SpawnFailure, SpawnTmux,
     StartRequest, Terminal,
 };
+use cops_providers::startup_desktop::{startup_env, DesktopIo, StartupEnv};
 use cops_providers::Cli;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, VecDeque};
@@ -41,11 +45,12 @@ struct St {
 /// Python `_G9` sahtelerinin karşılığı (tek nesne, tüm sınırlar).
 struct Fake {
     facts: Value,
+    settings: Settings,
     st: Mutex<St>,
 }
 
 impl Fake {
-    fn new(c: &Case) -> Arc<Fake> {
+    fn new(c: &Case, settings: Settings) -> Arc<Fake> {
         let has = c
             .facts
             .get("has_session")
@@ -58,6 +63,7 @@ impl Fake {
             .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect());
         Arc::new(Fake {
             facts: c.facts.clone(),
+            settings,
             st: Mutex::new(St {
                 calls: Vec::new(),
                 has: has.unwrap_or_default(),
@@ -148,6 +154,30 @@ impl Terminal for Fake {
             "oserror" => Ok(false),
             "value" => Err(LaunchError::Value("embedded null byte".into())),
             _ => Ok(true),
+        }
+    }
+    fn startup_env(&self, name: &str, env: &[(String, String)]) -> StartupEnv {
+        startup_env(&self.settings, env, name, self)
+    }
+}
+
+impl DesktopIo for Fake {
+    fn desktop_count(&self, display: &str) -> Result<Option<usize>, String> {
+        self.call(json!(["desktop_count", display]));
+        match self.facts.get("desktop_count") {
+            Some(Value::String(s)) if s == "raise" => Err("wmctrl okunamadı".into()),
+            v => Ok(v.and_then(Value::as_u64).map(|n| n as usize)),
+        }
+    }
+    fn new_startup_id(&self) -> String {
+        "SID".into()
+    }
+    fn send(&self, display: &str, msg: &[u8]) -> Result<bool, String> {
+        let text = String::from_utf8(msg.to_vec()).unwrap();
+        self.call(json!(["desktop_send", display, text]));
+        match self.facts.get("desktop_send") {
+            Some(Value::String(s)) if s == "raise" => Err("x".repeat(300)),
+            v => Ok(v.is_none_or(truthy)),
         }
     }
 }
@@ -306,7 +336,7 @@ fn finish(fake: &Fake, sink: &VecSink, r: Result<Value, SpawnFailure>) -> RsOut 
 fn rs_g9(e: &Env, c: &Case) -> RsOut {
     let a = &c.args;
     let s = |k: &str| a.get(k).and_then(Value::as_str).map(String::from);
-    let fake = Fake::new(c);
+    let fake = Fake::new(c, e.settings());
     let sink = Arc::new(VecSink::default());
     let l = launcher(&fake, &sink, e, c);
     match c.op {
@@ -630,6 +660,73 @@ fn window_cases(e: &Env) -> Vec<Case> {
     v
 }
 
+/// Masaüstü yönlendirmesi (TBD#409): ayar değerleri, ekran sayısı, gönderim sonucu; üç pencere yolunda ve bekçide.
+fn desktop_cases(e: &Env) -> Vec<Case> {
+    let w = format!("{}/p1", e.work);
+    let spawn = |id: &str| {
+        Case::new(
+            format!("masaustu-{id}"),
+            "g9_spawn",
+            json!({"cli": "claude", "name": "s\"1\\ğ", "cwd": w, "display": ":5"}),
+        )
+    };
+    let mut v = Vec::new();
+    let settings = [
+        ("yok", None),
+        ("sifir", Some(json!(0))),
+        ("iki", Some(json!(2))),
+        ("kapali", Some(json!(-1))),
+        ("dogru", Some(json!(true))),
+        ("yanlis", Some(json!(false))),
+        ("metin", Some(json!("2"))),
+        ("metin-bosluk", Some(json!(" 3 "))),
+        ("metin-bozuk", Some(json!("bozuk"))),
+        ("metin-kesirli", Some(json!("2.5"))),
+        ("kesirli", Some(json!(2.7))),
+        ("eksi-kesirli", Some(json!(-0.5))),
+        ("bos", Some(json!(null))),
+        ("liste", Some(json!([1]))),
+        ("buyuk", Some(json!(1e300))),
+        ("tasan", Some(json!(9))),
+    ];
+    for (id, value) in &settings {
+        for count in [json!(null), json!(1), json!(2), json!(4)] {
+            let mut c = spawn(&format!("{id}-{count}")).facts(json!({"desktop_count": count}));
+            if let Some(value) = value {
+                c = c.settings_json(json!({"spawn_desktop": value}));
+            }
+            v.push(c);
+        }
+    }
+    v.push(spawn("gonderilemedi").facts(json!({"desktop_count": 4, "desktop_send": false})));
+    v.push(spawn("gonderim-hata").facts(json!({"desktop_count": 4, "desktop_send": "raise"})));
+    v.push(spawn("sayim-hata").facts(json!({"desktop_count": "raise"})));
+    v.push(
+        spawn("devralinan-kimlik")
+            .facts(json!({"desktop_count": 4}))
+            .env("DESKTOP_STARTUP_ID", "eski"),
+    );
+    // Bekçi her denemede yeniden gönderir; penceresiz tmux'a düşüş ham ortamı alır.
+    v.push(spawn("bekci").facts(json!({"desktop_count": 4, "has_default": false})));
+    v.push(
+        Case::new(
+            "masaustu-pencere",
+            "g9_window",
+            json!({"name": "s1", "cwd": w, "display": ":4"}),
+        )
+        .facts(json!({"desktop_count": 4})),
+    );
+    v.push(
+        Case::new(
+            "masaustu-ayna",
+            "g9_mirror",
+            json!({"host": "ulak31", "name": "proje 1", "port": 8765, "display": ":0"}),
+        )
+        .facts(json!({"desktop_count": 4})),
+    );
+    v
+}
+
 fn reclaim_cases() -> Vec<Case> {
     let mut v = Vec::new();
     let long: String = (0..200).map(|i| format!("satır {i} ğüşiöç\n")).collect();
@@ -781,6 +878,8 @@ pub fn run() {
     let cases = window_cases(&r.e);
     r.run(cases, &[], rs_g9);
     r.run(reclaim_cases(), &[], rs_g9);
+    let cases = desktop_cases(&r.e);
+    r.run(cases, &[], rs_g9);
     let cases = sync_cases(&r.e);
     r.run(cases, &[], rs_g9);
     r.run(

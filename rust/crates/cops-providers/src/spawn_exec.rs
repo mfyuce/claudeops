@@ -19,6 +19,7 @@ use crate::spawn::{
     child_env, detect_display, gnome_terminal_argv, mirror_child_env, mirror_window_command,
     plan_spawn_with, window_command, SpawnRequest,
 };
+use crate::startup_desktop::StartupEnv;
 use crate::tui::strip_ansi;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -76,6 +77,11 @@ pub trait Terminal: Send + Sync {
     /// Ateşle-unut: `argv` ortamı `env` (miras YOK), stdout/stderr boş; çocuk arka planda toplanır (zombi kalmaz).
     /// `Ok(true)` başladı, `Ok(false)` `OSError` (yok, izin).
     fn launch(&self, argv: &[String], env: &[(String, String)]) -> Result<bool, LaunchError>;
+    /// `startup_desktop.startup_env(env, name)`: pencerenin hedef masaüstünde açılması için ortam (TBD#409). Varsayılan:
+    /// özellik yok, ortam aynen.
+    fn startup_env(&self, _name: &str, env: &[(String, String)]) -> StartupEnv {
+        StartupEnv::unchanged(env)
+    }
 }
 
 /// Bekçinin saati.
@@ -146,6 +152,24 @@ pub struct Launcher {
 impl Launcher {
     fn log(&self, event: &'static str, fields: Vec<(&'static str, Value)>) {
         self.diag.log(&Diag { event, fields });
+    }
+
+    /// `_launch_gnome_terminal`: masaüstü yönlendirmesi ([`Terminal::startup_env`], her denemede yeniden) + pencere.
+    /// Çağıranın `env`i değişmez (penceresiz tmux'a düşüş onu kullanır).
+    fn launch_window(
+        &self,
+        name: &str,
+        argv: &[String],
+        env: &[(String, String)],
+    ) -> Result<bool, LaunchError> {
+        let startup = self.terminal.startup_env(name, env);
+        if let Some(error) = startup.error {
+            self.log(
+                "startup_desktop_error",
+                vec![("name", json!(name)), ("error", json!(error))],
+            );
+        }
+        self.terminal.launch(argv, &startup.env)
     }
 
     /// `detect_display()`: ortam -> var olan X soketi/kilidi -> `:1`.
@@ -461,8 +485,7 @@ fn run(
     let window_cmd = window_command(&plan.inner, fragment.as_deref());
     let argv = gnome_terminal_argv(&req.name, &req.cwd, &window_cmd);
     if !launcher
-        .terminal
-        .launch(&argv, &env)
+        .launch_window(&req.name, &argv, &env)
         .map_err(launch_failure)?
     {
         launcher.log(
@@ -560,10 +583,7 @@ pub fn fallback_watchdog(
                     ("attempt", json!(next)),
                 ],
             );
-            match launcher
-                .terminal
-                .launch(&gnome_terminal_argv(name, cwd, window_cmd), env)
-            {
+            match launcher.launch_window(name, &gnome_terminal_argv(name, cwd, window_cmd), env) {
                 Ok(true) => {}
                 Ok(false) => launcher.log(
                     "spawn_retry_launch_failed",
@@ -619,8 +639,7 @@ pub fn open_window(
     let fragment = launcher.tmux.attach_fragment(name).map_err(refused)?;
     let argv = gnome_terminal_argv(name, cwd, &window_command("", Some(&fragment)));
     launcher
-        .terminal
-        .launch(&argv, &env)
+        .launch_window(name, &argv, &env)
         .map_err(launch_failure)
 }
 
@@ -641,9 +660,9 @@ pub fn open_mirror_window(
         &paths.claudeops_dir,
     );
     let window_cmd = mirror_window_command(&paths.repo_dir, host, name, port);
-    let argv = gnome_terminal_argv(&format!("{host}:{name}"), &paths.home, &window_cmd);
+    let spec = format!("{host}:{name}");
+    let argv = gnome_terminal_argv(&spec, &paths.home, &window_cmd);
     launcher
-        .terminal
-        .launch(&argv, &env)
+        .launch_window(&spec, &argv, &env)
         .map_err(launch_failure)
 }

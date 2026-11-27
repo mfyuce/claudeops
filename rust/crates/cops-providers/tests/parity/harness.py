@@ -89,6 +89,7 @@ import claudeops.settings as settings  # noqa: E402
 import claudeops.effort as effort  # noqa: E402
 import claudeops.routing as routing  # noqa: E402
 import claudeops.spawn as spawn  # noqa: E402
+import claudeops.startup_desktop as startup_desktop  # noqa: E402
 import claudeops.steward as steward  # noqa: E402
 import claudeops.review as review  # noqa: E402
 import claudeops.tmux_backend as tmux_backend  # noqa: E402
@@ -201,6 +202,10 @@ authz.spawn_env = _fake_spawn_env
 extensions.session_mcp_spec = _fake_ext_mcp
 _ORIG_IDS_HELD = spawn._ids_held_by_others
 spawn._ids_held_by_others = lambda name: frozenset()      # spawn ailesi; gerçeği `resume` ailesinde
+# Parite koşucusu X sunucusuna ve `wmctrl`e DOKUNMAZ: masaüstü yönlendirmesi varsayılan kapalı; `g9_*` işlemleri gerçeğini
+# yalnız sahte `count_fn`/`send_fn` ile çağırır.
+_ORIG_STARTUP_ENV = startup_desktop.startup_env
+startup_desktop.startup_env = lambda env, name: env
 
 
 def _fake_proc_stat(pid):
@@ -1385,6 +1390,24 @@ class _G9:
         for name, v in (("tmux_ghost_session", ghost), ("tmux_capture", capture), ("tmux_kill_session", kill)):
             self._set(tb, name, v)
         self._set(spawn, "subprocess", types.SimpleNamespace(Popen=Popen, DEVNULL=subprocess.DEVNULL))
+
+        def count_fn(display):
+            c.append(["desktop_count", display])
+            v = f.get("desktop_count")
+            if v == "raise":
+                raise RuntimeError("wmctrl okunamadı")
+            return v
+
+        def send_fn(display, msg):
+            c.append(["desktop_send", display, msg.decode("utf-8")])
+            v = f.get("desktop_send", True)
+            if v == "raise":
+                raise RuntimeError("x" * 300)
+            return v
+
+        self._set(startup_desktop, "startup_env", lambda env, name: _ORIG_STARTUP_ENV(
+            env, name, count_fn=count_fn, send_fn=send_fn))
+        self._set(startup_desktop, "new_startup_id", lambda now=None: "SID")
         self._set(spawn, "threading", types.SimpleNamespace(Thread=Thread))
         self._set(spawn, "shutil", types.SimpleNamespace(which=which))
         self._set(spawn, "time", types.SimpleNamespace(monotonic=lambda: self.t, sleep=sleep))
