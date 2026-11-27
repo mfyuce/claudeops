@@ -62,6 +62,50 @@ fn has_price(argv: &[String]) -> bool {
         || value_after(argv, "--model").is_some_and(|m| PRICED_MODELS.contains(&m))
 }
 
+/// Oturum tavanı: açık seçenek, yoksa ayardaki varsayılan (Evren ve hizmetsiz açılışta varsayılan eklenmez).
+fn effective_session_cap(settings: &Settings, service: &str, explicit: Option<f64>) -> f64 {
+    explicit.filter(|v| *v != 0.0).unwrap_or_else(|| {
+        if service.is_empty() || service == "evren" {
+            0.0
+        } else {
+            settings.default_max_session_usd()
+        }
+    })
+}
+
+/// `--max-session-usd` verilecek açılışın ret nedeni (ikilinin bayrağı tanıdığını çağıran denetler). ucli fiyatsız
+/// modelde hemen çıkar; tavan sessizce düşürülmez, nedeniyle reddedilir.
+fn unpriced_cap_reason(argv: &[String]) -> Option<String> {
+    let model = value_after(argv, "--model").unwrap_or("");
+    (!model.is_empty() && !has_price(argv)).then(|| {
+        format!(
+            "{model}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. Başlatma \
+             seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın."
+        )
+    })
+}
+
+/// `session_cap_refusal`: seçeneğinde yalnız hizmet taşıyan açılış (alt ajan) oturum tavanı yüzünden reddedilir mi.
+/// Salt okunur (anahtar dosyası, günlük pay ayırma yok; yalnız `out`a tanı olayı); çok kullanıcı kancasının eklediği
+/// tavan hesaba katılmaz. İkili bulunamazsa hata.
+pub fn session_cap_refusal(
+    p: &Providers<'_>,
+    service: &str,
+    model: &str,
+    out: &mut BuildOutput,
+) -> Result<Option<String>, SpawnError> {
+    if effective_session_cap(p.settings, service, None) == 0.0 {
+        return Ok(None);
+    }
+    let binary = resolve_binary(p)?;
+    let mut cx = Ctx::new(p, out, binary.clone(), "");
+    let mut argv: Vec<String> = [binary.as_str(), "chat", "--model", model]
+        .map(String::from)
+        .to_vec();
+    cx.apply_price(&mut argv, String::new(), service);
+    Ok(unpriced_cap_reason(&argv).filter(|_| cx.has("--max-session-usd")))
+}
+
 /// Uç noktanın `/models` sonucu.
 #[derive(Debug, Clone, Default)]
 pub struct LiveModels {
@@ -380,7 +424,40 @@ struct Ctx<'a, 'b> {
     session: &'a str,
 }
 
-impl Ctx<'_, '_> {
+impl<'a, 'b> Ctx<'a, 'b> {
+    /// İkilinin `chat --help`i bir kez okunur; çıplak ad PATH'ten çözülür (`chat_help_text`).
+    fn new(
+        p: &'a Providers<'b>,
+        out: &'a mut BuildOutput,
+        binary: String,
+        session: &'a str,
+    ) -> Ctx<'a, 'b> {
+        let help = p
+            .probe
+            .ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
+        Ctx {
+            p,
+            out,
+            binary,
+            help,
+            session,
+        }
+    }
+
+    /// Fiyat: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu; ikili `--price` tanımıyorsa
+    /// eklenmez.
+    fn apply_price(&mut self, argv: &mut Vec<String>, mut price: String, service: &str) {
+        if price.is_empty() && service == "claude" {
+            let model = value_after(argv, "--model").unwrap_or("");
+            if !PRICED_MODELS.contains(&model) {
+                price = claudeops_price(model).unwrap_or_default();
+            }
+        }
+        if !price.is_empty() && self.known("--price") {
+            set_flag_value(argv, "--price", &price);
+        }
+    }
+
     fn has(&self, flag: &str) -> bool {
         find_flag(&self.help, flag).is_some()
     }
@@ -705,20 +782,12 @@ impl Ctx<'_, '_> {
             }
         };
         // Fiyat, tavanlardan ÖNCE: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu.
-        let mut price = opts
+        let price = opts
             .get("price")
             .filter(|v| truthy(v))
             .map(str_of)
             .unwrap_or_default();
-        if price.is_empty() && service == "claude" {
-            let model = value_after(argv, "--model").unwrap_or("");
-            if !PRICED_MODELS.contains(&model) {
-                price = claudeops_price(model).unwrap_or_default();
-            }
-        }
-        if !price.is_empty() && self.known("--price") {
-            set_flag_value(argv, "--price", &price);
-        }
+        self.apply_price(argv, price, &service);
         if let Some(usd) = as_usd("max_cost_usd")? {
             if self.known("--max-cost-usd") {
                 if has_price(argv) {
@@ -738,23 +807,11 @@ impl Ctx<'_, '_> {
             }
         }
         // Evren (ücretsiz) hizmette varsayılan oturum tavanı eklenmez; açıkça verilen tavan fiyat ister.
-        let session_cap = as_usd("max_session_usd")?
-            .filter(|v| *v != 0.0)
-            .unwrap_or_else(|| {
-                if service.is_empty() || service == "evren" {
-                    0.0
-                } else {
-                    self.p.settings.default_max_session_usd()
-                }
-            });
+        let session_cap =
+            effective_session_cap(self.p.settings, &service, as_usd("max_session_usd")?);
         if session_cap != 0.0 && self.known("--max-session-usd") {
-            let model = value_after(argv, "--model").unwrap_or("");
-            if !model.is_empty() && !has_price(argv) {
-                // ucli bu halde hemen çıkar; tavan sessizce düşürülmez, nedeniyle ret.
-                return Err(SpawnError(format!(
-                    "{model}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. Başlatma \
-                     seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın."
-                )));
+            if let Some(reason) = unpriced_cap_reason(argv) {
+                return Err(SpawnError(reason));
             }
             set_flag_value(argv, "--max-session-usd", &fmt_g(session_cap));
         }
@@ -1091,17 +1148,7 @@ pub(crate) fn build_inner_command(
             .map_or(base[i], |(_, v)| *v)
     };
     let binary = resolve_binary(p)?;
-    // Python `chat_help_text`: çıplak ad PATH'ten çözülür.
-    let help = p
-        .probe
-        .ucli_chat_help(&p.probe.which(&binary).unwrap_or_else(|| binary.clone()));
-    let mut cx = Ctx {
-        p,
-        out,
-        binary: binary.clone(),
-        help,
-        session: a.session_name,
-    };
+    let mut cx = Ctx::new(p, out, binary.clone(), a.session_name);
 
     let endpoint = Some(p.settings.ucli_endpoint())
         .filter(|e| !e.is_empty())

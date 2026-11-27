@@ -5,7 +5,7 @@
 use crate::common::*;
 use crate::fam_build::{rs_build, spec_of};
 use crate::fam_model::with;
-use cops_providers::ucli::state_dir_for;
+use cops_providers::ucli::{session_cap_refusal, state_dir_for};
 use cops_providers::{BuildOutput, Cli};
 use serde_json::{json, Value};
 
@@ -1166,8 +1166,79 @@ fn mcp_cases(e: &Env) -> Vec<Case> {
     ]
 }
 
+/// `session_cap_refusal`: yalnız hizmet taşıyan açılış oturum tavanı yüzünden reddedilir mi (salt okunur).
+fn rs_refusal(e: &Env, c: &Case) -> RsOut {
+    with(e, c, |p, _probe| {
+        let mut out = BuildOutput::default();
+        let reasons: Vec<String> = c.args["pairs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|pair| {
+                let s = |i: usize| pair[i].as_str().unwrap();
+                session_cap_refusal(p, s(0), s(1), &mut out)
+                    .expect("ikili bulunur")
+                    .unwrap_or_default()
+            })
+            .collect();
+        let mut rs = RsOut::ret(json!(reasons));
+        rs.out = out;
+        rs
+    })
+}
+
+fn refusal_cases() -> Vec<Case> {
+    let pairs = json!([
+        ["claude", "claude-sonnet-5-5"],
+        ["claude", "claude-haiku-5-5"],
+        ["claude", "claude-fable-5-1"],
+        ["claude", "claude-nobody-9"],
+        ["claude", "haiku-5-5"],
+        ["claude", ""],
+        ["claude", "--price"],
+        ["openai", "claude-haiku-5-5"],
+        ["openai", "claude-opus-5-5"],
+        ["openai", "nobody-knows-1"],
+        ["evren", "nobody-knows-1"],
+        ["", "nobody-knows-1"],
+        ["yok", "ğ model"]
+    ]);
+    let helps = [
+        ("tam", full_help()),
+        ("fiyatsiz-ikili", help(&["--price"], &[], false)),
+        ("tavansiz-ikili", help(&["--max-session-usd"], &[], false)),
+        ("bos", String::new()),
+    ];
+    let caps = [
+        ("yok", None),
+        ("sifir", Some(json!("0"))),
+        ("virgul", Some(json!("3,5"))),
+        ("bozuk", Some(json!("x"))),
+        ("bos", Some(json!(""))),
+        ("null", Some(Value::Null)),
+        ("sayi", Some(json!(0))),
+    ];
+    let mut v = Vec::new();
+    for (h, text) in &helps {
+        for (id, cap) in &caps {
+            let mut c = Case::new(
+                format!("fiyat-ret-{h}-{id}"),
+                "ucli_refusal",
+                json!({"pairs": pairs}),
+            )
+            .facts(json!({"ucli_help": text}));
+            if let Some(cap) = cap {
+                c = c.settings_json(json!({"ucli_max_session_usd": cap}));
+            }
+            v.push(c);
+        }
+    }
+    v
+}
+
 pub fn run() {
     let mut r = Runner::new();
+    r.run(refusal_cases(), &[], rs_refusal);
     let cases = build_cases(&r.e);
     r.run(cases, &[], rs_build);
     let cases = opts_cases(&r.e);

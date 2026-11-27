@@ -288,6 +288,10 @@ def op_build(a):
                                  a["name"], extra_args=list(a.get("extra") or []), **kw)
 
 
+def op_ucli_refusal(a):
+    return [ucli_p.session_cap_refusal(service, model) for service, model in a["pairs"]]
+
+
 def op_spawn(a):
     p = providers.get_provider(a["cli"])
     p.resolve_resume_id = lambda *x, **k: a.get("resume")

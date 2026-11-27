@@ -12,6 +12,11 @@ Python 6610 OK (23 atlanan); dört eşleme denetimi çıkış 0. Aşağıdaki es
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
 denetlenmedi (`tmux_backend.py` değişmedi).
+27 Kas `main` `34048c58` birleşimi (`8a242ad0`) sonrası (onay kartları ve açılış kurtarması, SQLite adresinin tek
+kopyası, `session_cap_refusal`): `cargo test -p cops-providers -p cops-review-core` 302 geçti / 0 kaldı / 0 atlandı,
+aynı iki pakette clippy ve fmt temiz; Python `test_ucli_*` 595 OK (3 atlanan), `test_rsprov_*` 323 OK; tam kapı bu
+turda koşulmadı. Satırlar yeniden sayıldı: eşleme 751 (TAŞINDI 675, KAPSAM DIŞI 76), test 1642 (TAŞINDI 813,
+KAPSAM DIŞI 829), EKSİK ve TAŞINDI-TESTSİZ 0 (aşağıdaki eski toplamların yerine).
 27 Kas `main` `e5171ba3` birleşimi (`41b91b7e`, TBD#422 commit'leri dahil): cargo 1305 geçti / 0 kaldı / 1 atlandı,
 clippy ve fmt temiz, Python 6552 OK (23 atlanan, 429 sn), hosts/rs-proc/steward/rev eşleme denetimleri çıkış 0.
 `e5171ba3`ün değiştirdiği `ucli_checks.binary_supports_checks` ve `ucli_validate`ın karşılığı `real/checks.rs`te
@@ -1223,6 +1228,34 @@ kurtarmayı düşürüyordu, FIFO kart panel açılışını bekletiyordu. Parit
 | `BadCards.test_deeply_nested_card_is_skipped` (py/tests/test_rsprov_approval_cards.py:27) | `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking`; `parity.rs::parity_oneshot` `kart-derin` | TAŞINDI |
 | `BadCards.test_fifo_card_does_not_block` (py/tests/test_rsprov_approval_cards.py:33) | `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
 
+## main `34048c58` eşitlemesi ve fiyatsız model denetimi (27 Kas)
+Fiyatsız model paritesi yeniden doğrulandı: `9e5bcf24` (`--price`, tavanlar, spawn reddi) ve `78b05780` (`task_end`, Haiku
+dilimi) önceden taşınmıştı; `6aee83bd`in sağlayıcı parçası yok (`web._start` yanıtı bağlayan uçta, `capture_joined`
+`cops-tmux`te hazır). Eksik olan tek sağlayıcı işlevi `79a15322`nin `session_cap_refusal`iydi: taşındı (açılış reddiyle aynı
+`effective_session_cap` + `Ctx::apply_price` + `unpriced_cap_reason`; parite `parity_ucli` `fiyat-ret-`). İkili
+bulunamazsa iki tarafta da hata (panel kataloğu bunu yutar; o davranış panelde). `/api/agents/models` `startable`/`reason`
+alanları KAPSAM DIŞI. `19ef08cf` yalnız `ucli_checks` yazım yolunu değiştirdi (T7); Rust'ın okuduğu kayıt biçimi aynı.
+Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçları bu crate'e dokunmaz.
+
+| Python (dosya:satır) | Rust karşılığı / neden gereksiz | parite testi | durum |
+|---|---|---|---|
+| `probe_checks` (py/claudeops/ucli_checks.py:109) | T7: kayıt yazımı (`save_registry`/`delete_check`) öncesi ikili yoklaması; bu crate yalnız kaydı okur (`real/checks.rs`) | - | KAPSAM DIŞI |
+| `binary_supports_checks` (py/claudeops/ucli_checks.py:123) | T7: aynı yazım yolu | - | KAPSAM DIŞI |
+| `models_catalog` (py/claudeops/commands/web_agents.py:58) | T4/T10: panel ucu `/api/agents/models`; ret kuralı `ucli.rs::session_cap_refusal`de hazır | - | KAPSAM DIŞI |
+| `_start_block` (py/claudeops/commands/web_agents.py:82) | T4/T10: panel kataloğunun `startable`/`reason` alanı ve hata yutması | - | KAPSAM DIŞI |
+
+| Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `ProbeFailure.test_missing_binary_rejects_and_writes_nothing` (py/tests/test_ucli_checks_probe_failure.py:39) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_non_executable_binary_rejects` (py/tests/test_ucli_checks_probe_failure.py:42) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_probe_timeout_rejects` (py/tests/test_ucli_checks_probe_failure.py:45) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_probe_killed_by_signal_rejects` (py/tests/test_ucli_checks_probe_failure.py:49) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_probe_unexpected_exit_code_rejects` (py/tests/test_ucli_checks_probe_failure.py:52) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_delete_still_works_when_binary_cannot_be_probed` (py/tests/test_ucli_checks_probe_failure.py:55) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ProbeFailure.test_old_binary_without_subcommand_still_saves` (py/tests/test_ucli_checks_probe_failure.py:61) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ValidateOutputShape.test_non_object_output_rejects` (py/tests/test_ucli_checks_probe_failure.py:66) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+| `ValidateOutputShape.test_ok_true_with_failing_exit_rejects` (py/tests/test_ucli_checks_probe_failure.py:71) | T7: kayıt yazımı ve ikili doğrulaması (`save_registry`, `delete_check`, `ucli_validate`) bu crate'te yok | KAPSAM DIŞI |
+
 ## EŞLEME TABLOSU
 
 26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 718 satır: TAŞINDI 644, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
@@ -1616,8 +1649,10 @@ kurtarmayı düşürüyordu, FIFO kart panel açılışını bekletiyordu. Parit
 | `_PRICED_MODELS` (py/claudeops/providers/ucli_provider.py:597) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
 | `_default_session_cap` (py/claudeops/providers/ucli_provider.py:600) | `ucli.rs::Ctx::apply_cli_opts` + `Settings::default_max_session_usd` | `parity.rs::parity_ucli` `hizmet-grok-tavan-ayar` `ham-service-evren` | TAŞINDI |
 | `_max_cost_args` (py/claudeops/providers/ucli_provider.py:609) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
-| `_with_price`, `_effective_session_cap`, `_unpriced_cap_reason` (py/claudeops/providers/ucli_provider.py:647; main `79a15322`, davranışsız ayırma) | `ucli.rs::Ctx::apply_cli_opts` içinde (fiyat, tavan, ret metni) | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
-| `session_cap_refusal` (py/claudeops/providers/ucli_provider.py:674; main `79a15322`) | panel model kataloğu (`commands/web_agents.py`); crate'te çağıran yok | T4/T10 | KAPSAM DIŞI |
+| `_with_price` (py/claudeops/providers/ucli_provider.py:653) | `ucli.rs::Ctx::apply_price` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
+| `_effective_session_cap` (py/claudeops/providers/ucli_provider.py:665) | `ucli.rs::effective_session_cap` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
+| `_unpriced_cap_reason` (py/claudeops/providers/ucli_provider.py:670) | `ucli.rs::unpriced_cap_reason` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `session_cap_refusal` (py/claudeops/providers/ucli_provider.py:680) | `ucli.rs::session_cap_refusal` (crate'te çağıran yok; panel kataloğu bağlar) | `parity.rs::parity_ucli` `fiyat-ret-` | TAŞINDI |
 | `_MCP_NAME_BAD` (py/claudeops/providers/ucli_provider.py:624) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `ucli-mcp-ad` | TAŞINDI |
 | `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:625) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-` (satır sonlu ad: `spec` içindeki `ok\n`) | TAŞINDI |
 | `_MCP_ADD_TIMEOUT` (py/claudeops/providers/ucli_provider.py:626) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
@@ -3408,12 +3443,12 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:55) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `UnpricedModelCapTest.test_binary_without_price_flag_is_refused` (py/tests/test_ucli_unpriced_model_cap.py:61) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `UnpricedModelCapTest.test_no_cap_no_refusal` (py/tests/test_ucli_unpriced_model_cap.py:65) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `CatalogMarksUnstartableTest.test_only_unpriced_paid_models_are_marked_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:90) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
-| `CatalogMarksUnstartableTest.test_reason_is_the_one_the_launch_refuses_with` (py/tests/test_ucli_unpriced_model_cap.py:97) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
-| `CatalogMarksUnstartableTest.test_cap_off_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:103) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
-| `CatalogMarksUnstartableTest.test_binary_without_session_cap_flag_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:106) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
-| `CatalogMarksUnstartableTest.test_binary_without_price_flag_marks_table_priced_model_too` (py/tests/test_ucli_unpriced_model_cap.py:109) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
-| `CatalogMarksUnstartableTest.test_check_failure_keeps_the_list` (py/tests/test_ucli_unpriced_model_cap.py:113) | T4/T10: panel model kataloğu (`commands/web_agents.py`, `session_cap_refusal`); ret kuralı `parity_ucli` `fiyat-` | KAPSAM DIŞI |
+| `CatalogMarksUnstartableTest.test_only_unpriced_paid_models_are_marked_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:90) | `parity.rs::parity_ucli` `fiyat-ret-` (ret kuralı; `startable`/`reason` alanları panel, T4/T10) | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_reason_is_the_one_the_launch_refuses_with` (py/tests/test_ucli_unpriced_model_cap.py:97) | `parity.rs::parity_ucli` `fiyat-ret-` ve `fiyat-` (ret metni ortak işlevden) | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_cap_off_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:103) | `parity.rs::parity_ucli` `fiyat-ret-` (`sifir`, `sayi`) | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_binary_without_session_cap_flag_marks_nothing` (py/tests/test_ucli_unpriced_model_cap.py:106) | `parity.rs::parity_ucli` `fiyat-ret-` (`tavansiz-ikili`) | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_binary_without_price_flag_marks_table_priced_model_too` (py/tests/test_ucli_unpriced_model_cap.py:109) | `parity.rs::parity_ucli` `fiyat-ret-` (`fiyatsiz-ikili`) | TAŞINDI |
+| `CatalogMarksUnstartableTest.test_check_failure_keeps_the_list` (py/tests/test_ucli_unpriced_model_cap.py:113) | T4/T10: panel kataloğunun hata yutması (`web_agents._start_block`) bu crate'te yok | KAPSAM DIŞI |
 | `Names.test_trailing_newline_run_key_refused` (py/tests/test_rsprov_g10_approval.py:37) | `approval::tests::names_are_full_matches`; `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
 | `Names.test_trailing_newline_approval_id_ignored` (py/tests/test_rsprov_g10_approval.py:41) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |
 | `Names.test_deep_line_is_skipped` (py/tests/test_rsprov_g10_approval.py:44) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |
