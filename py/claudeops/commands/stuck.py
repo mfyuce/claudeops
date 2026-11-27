@@ -64,6 +64,6 @@ def run(args) -> int:
         result = recover_stuck(info, display=display, grace=args.grace, dry_run=args.dry_run)
         print(f" {result}")
         if not (result == "dry-run" or result.startswith("recovered")):
-            errors += 1     # `recover_stuck` yalnız "recovered (...)" | "dry-run" döner; başka her değer hata sayılır (eski "kill-failed" kolu ölüydü)
+            errors += 1     # yalnız "recovered (...)" | "dry-run" başarı; "skipped: ..." (dokunulmadı) ve her başka değer hata
 
     return errors

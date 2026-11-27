@@ -175,12 +175,15 @@ def spawn_session(
     mcp_server: Optional[McpServerSpec] = None,
     hidden: bool = False,
     cli_opts: Optional[dict] = None,
+    resume_id: Optional[str] = None,
 ) -> str:
     """Session'ı gnome-terminal ile aç (hangi CLI: `cli` — provider registry'den çözülür).
 
     force_new=True → fresh/new (konuşma sıfırdan).
     force_new=False → provider'ın kendi resume-lookup'ı (claude: jsonl, agy:
     conversations-cache), yoksa fresh.
+    resume_id → verilirse arama YAPILMAZ, o konuşma sürdürülür (çağıran hangi konuşma olduğunu ve başkasının
+    tutmadığını kendisi doğrular; ör. takılan oturumu kurtarma). `force_new` bunu da ezer.
     prompt → fresh açılışta opsiyonel ilk mesaj (verilmezse boş/idle başlar).
     mcp_server (Phase 3, TOBEDECIDED#15) → verilirse `provider.mcp_launch_args()`
     üzerinden bu CLI'ya bağlanır (claude/codex: çağrı-başına; agy: hiçbir etkisi
@@ -200,14 +203,16 @@ def spawn_session(
     if dry_run and not preview.active():
         with preview.preview_only():
             return spawn_session(name, cwd, model, display, permission_mode, effort, force_new, prompt, dry_run,
-                                 cli, mcp_server, hidden, cli_opts)
+                                 cli, mcp_server, hidden, cli_opts, resume_id)
     provider = get_provider(cli)
 
     if display is None:
         display = detect_display()
 
-    resume_id = None if force_new else provider.resolve_resume_id(
-        cwd, in_use=_ids_held_by_others(name), session_name=name)
+    if force_new:
+        resume_id = None
+    elif not resume_id:
+        resume_id = provider.resolve_resume_id(cwd, in_use=_ids_held_by_others(name), session_name=name)
     kind = "new" if resume_id is None else f"resume:{resume_id[:8]}"
 
     # Tek geçit: TÜM spawn yolları (panel, rc, handover, snapshot, guard) buradan geçer.

@@ -12,9 +12,10 @@ from claudeops import stuck  # noqa: E402
 class RecoverStuckTest(unittest.TestCase):
     def test_uses_parent_aware_kill(self):
         s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode="auto",
-                            effort="high", cli="claude", sid=None)
+                            effort="high", cli="claude", sid="abc")
         info = SimpleNamespace(session=s)
         with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed") as kp, \
+                mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                 mock.patch.object(stuck, "kill_session") as ks, \
                 mock.patch.object(stuck, "spawn_session", return_value="tmux"), \
                 mock.patch.object(stuck, "get_provider", return_value=object()):
@@ -30,8 +31,9 @@ class RecoverStuckTest(unittest.TestCase):
         from claudeops.providers import get_provider
         for cli in ("claude", "ucli", "agy"):
             s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode=None,
-                                effort="high", cli=cli, sid=None)
+                                effort="high", cli=cli, sid="abc")
             with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
+                    mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                     mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp:
                 stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
             self.assertEqual(sp.call_args.kwargs["permission_mode"], get_provider(cli).permission_modes()[0], cli)
@@ -47,6 +49,7 @@ class RecoverStuckTest(unittest.TestCase):
         s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="sonnet-spawn", permission_mode="auto",
                             effort="low", cli="claude", sid="abc")
         with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
+                mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                 mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp, \
                 mock.patch.object(stuck, "live_or_spawn_model", return_value="fable-live") as lm, \
                 mock.patch.object(stuck, "live_or_spawn_effort", return_value="high-live") as le:

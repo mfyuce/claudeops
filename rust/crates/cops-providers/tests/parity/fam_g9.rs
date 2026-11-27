@@ -384,6 +384,7 @@ fn rs_g9(e: &Env, c: &Case) -> RsOut {
             req.mcp_server = a.get("mcp").filter(|v| truthy(v)).map(spec_of);
             req.hidden = a.get("hidden").is_some_and(truthy);
             req.cli_opts = a.get("cli_opts").and_then(Value::as_object).cloned();
+            req.resume_id = s("resume_id");
             let h = hooks(&fake, c, &e.repo);
             let deps = SpawnDeps {
                 providers: p,
@@ -495,6 +496,20 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
             base(format!("{cli}-yeni-zorla"), cli, json!({"force_new": true}))
                 .facts(json!({"resume": "abcdef1234567890"})),
         );
+        // Çağıranın verdiği konuşma: arama ve süreç taraması yok; boş metin = verilmedi; `force_new` ezer.
+        for (ek, extra) in [
+            ("verilen", json!({"resume_id": "karar000-1234"})),
+            ("verilen-bos", json!({"resume_id": ""})),
+            (
+                "verilen-zorla",
+                json!({"resume_id": "karar000-1234", "force_new": true}),
+            ),
+        ] {
+            v.push(
+                base(format!("{cli}-devam-{ek}"), cli, extra)
+                    .facts(json!({"resume": "abcdef1234567890", "live": [["s2", "baskasi"]]})),
+            );
+        }
         v.push(base(format!("{cli}-eklenti"), cli, json!({})).facts(json!({"ext": ext})));
         v.push(base(format!("{cli}-kanca"), cli, json!({"hidden": true}))
             .facts(json!({"hook": {"env": [["PROVIDER_DIR", "/p d"], ["COPS_NAME", "ezilir"], ["PROVIDER_DIR", "/son"], ["lower", "x"]]}})));

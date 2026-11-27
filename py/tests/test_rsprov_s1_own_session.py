@@ -155,9 +155,13 @@ class CallersTest(_Home):
             (self.sessions / f"{PID}.json").unlink(missing_ok=True)
             return "killed"
 
-        with mock.patch.object(stuck, "kill_session_and_parent", side_effect=kill), \
+        with mock.patch.object(stuck, "kill_session_and_parent", side_effect=kill) as kp, \
+                mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                 mock.patch.object(stuck, "spawn_session", return_value="tmux") as sp:
             stuck.recover_stuck(SimpleNamespace(session=s), display=":0")
+        if not sp.called:
+            kp.assert_not_called()
+            return None
         return sp.call_args.kwargs["model"], sp.call_args.kwargs["effort"]
 
     def test_recovery_reads_the_own_record_before_the_kill(self):
@@ -165,8 +169,8 @@ class CallersTest(_Home):
         self.record()
         self.assertEqual(self.recover(), ("claude-sonnet-5-5", "high"))
 
-    def test_recovery_without_a_record_keeps_spawn_values(self):
-        self.assertEqual(self.recover(), SPAWN)
+    def test_recovery_without_a_record_leaves_the_session_alone(self):   # TBD#419: konuşma bilinmiyorsa dokunulmaz
+        self.assertIsNone(self.recover())
 
 
 if __name__ == "__main__":

@@ -1488,7 +1488,7 @@ def op_g9_spawn(a):
         a["name"], a["cwd"], a.get("model", "m"), display=a.get("display"), permission_mode=a.get("perm", "auto"),
         effort=a.get("effort", "max"), force_new=bool(a.get("force_new")), prompt=a.get("prompt"),
         dry_run=bool(a.get("dry_run")), cli=a.get("cli", "claude"), mcp_server=mcp, hidden=bool(a.get("hidden")),
-        cli_opts=a.get("cli_opts")))
+        cli_opts=a.get("cli_opts"), resume_id=a.get("resume_id")))
 
 
 def op_g9_window(a):

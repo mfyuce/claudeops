@@ -236,6 +236,9 @@ pub struct StartRequest {
     pub mcp_server: Option<McpSpec>,
     pub hidden: bool,
     pub cli_opts: Option<Map<String, Value>>,
+    /// Verilirse (boş değilse) arama yapılmaz, o konuşma sürdürülür; çağıran konuşmayı ve başka oturumun tutmadığını
+    /// kendisi doğrular. `force_new` bunu da ezer.
+    pub resume_id: Option<String>,
 }
 
 impl StartRequest {
@@ -258,6 +261,7 @@ impl StartRequest {
             mcp_server: None,
             hidden: false,
             cli_opts: None,
+            resume_id: None,
         }
     }
 }
@@ -380,8 +384,11 @@ fn run(
     let p = deps.providers;
     let cli = Cli::parse(&req.cli);
     let display = launcher.display(req.display.as_deref());
+    let given = req.resume_id.clone().filter(|id| !id.is_empty());
     let resume_id = if req.force_new {
         None
+    } else if given.is_some() {
+        given
     } else {
         let live = deps.scan.live_sessions(req.dry_run);
         let rows: Option<Vec<LiveSession<'_>>> = live.as_ref().map(|v| {
