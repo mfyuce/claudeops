@@ -3,6 +3,7 @@
 
 use crate::probe::Diag;
 use crate::real::diaglog::DiagLog;
+use crate::real::process::{self, Capture, Spec};
 use crate::real::{pathexec, Env};
 use crate::settings::Settings;
 use crate::spawn_exec::{Clock, DiagSink, LaunchError, Terminal};
@@ -11,6 +12,10 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+const WMCTRL_TIMEOUT: Duration = Duration::from_secs(3);
+/// `wmctrl -l` çıktısının üst sınırı (aşılırsa "okunamadı").
+const WMCTRL_MAX_BYTES: u64 = 1 << 20;
 
 /// `subprocess.Popen(["gnome-terminal", ...], env=env, stdout=DEVNULL, stderr=DEVNULL)` + arka planda `proc.wait()`.
 ///
@@ -40,7 +45,8 @@ impl std::fmt::Debug for Desktop {
 }
 
 impl GnomeTerminal {
-    /// Masaüstü yönlendirmesi KAPALI (X'e ve `wmctrl`e dokunulmaz); açmak için [`GnomeTerminal::with_desktop`].
+    /// Masaüstü yönlendirmesi KAPALI (X'e dokunulmaz); açmak için [`GnomeTerminal::with_desktop`]. Bekçinin pencere
+    /// sorgusu ([`Terminal::window_list`]) bundan bağımsız `wmctrl` koşar.
     pub fn new(env: Env) -> GnomeTerminal {
         GnomeTerminal { env, desktop: None }
     }
@@ -81,6 +87,22 @@ impl Terminal for GnomeTerminal {
 
     fn path_exists(&self, path: &str) -> bool {
         Path::new(path).exists()
+    }
+
+    /// Çağıran sürecin ortamı + `DISPLAY` (Python `dict(os.environ, DISPLAY=display)`); program o `PATH`te aranır.
+    fn window_list(&self, display: &str) -> Option<Vec<u8>> {
+        let env = self.env.with_var("DISPLAY", display);
+        let argv = ["wmctrl".to_string(), "-l".to_string()];
+        let out = process::run(&Spec {
+            argv: &argv,
+            cwd: None,
+            env: &env,
+            timeout: WMCTRL_TIMEOUT,
+            stdout: Capture::Bounded(WMCTRL_MAX_BYTES),
+            stderr: Capture::Discard,
+        })
+        .ok()?;
+        (out.code == 0).then_some(out.stdout)
     }
 
     fn startup_env(&self, name: &str, env: &[(String, String)]) -> StartupEnv {

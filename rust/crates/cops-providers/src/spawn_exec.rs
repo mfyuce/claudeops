@@ -77,6 +77,10 @@ pub trait Terminal: Send + Sync {
     /// Ateşle-unut: `argv` ortamı `env` (miras YOK), stdout/stderr boş; çocuk arka planda toplanır (zombi kalmaz).
     /// `Ok(true)` başladı, `Ok(false)` `OSError` (yok, izin).
     fn launch(&self, argv: &[String], env: &[(String, String)]) -> Result<bool, LaunchError>;
+    /// `_window_titled`in okuması: `DISPLAY=display` ile `wmctrl -l` standart çıktısı (3 sn). Başlatılamaz, zaman aşımı ya
+    /// da sıfır olmayan çıkış = None (bekçi eski davranışla yeniden dener). Zorunlu yöntem: sessiz varsayılan ikinci
+    /// pencere açardı.
+    fn window_list(&self, display: &str) -> Option<Vec<u8>>;
     /// `startup_desktop.startup_env(env, name)`: pencerenin hedef masaüstünde açılması için ortam (TBD#409). Varsayılan:
     /// özellik yok, ortam aynen.
     fn startup_env(&self, _name: &str, env: &[(String, String)]) -> StartupEnv {
@@ -172,6 +176,19 @@ impl Launcher {
         self.terminal.launch(argv, &startup.env)
     }
 
+    /// `_window_titled`: `env`in ekranında başlığı TAM `name` olan pencere var mı. Ekran yoksa hiç sorulmaz.
+    fn window_titled(&self, name: &str, env: &[(String, String)]) -> bool {
+        let display = env
+            .iter()
+            .find(|(k, _)| k == "DISPLAY")
+            .map_or("", |(_, v)| v.as_str());
+        !display.is_empty()
+            && self
+                .terminal
+                .window_list(display)
+                .is_some_and(|out| window_listed(&String::from_utf8_lossy(&out), name))
+    }
+
     /// `detect_display()`: ortam -> var olan X soketi/kilidi -> `:1`.
     pub fn detect_display(&self) -> String {
         let env = self
@@ -185,6 +202,21 @@ impl Launcher {
     fn display(&self, display: Option<&str>) -> String {
         display.map_or_else(|| self.detect_display(), String::from)
     }
+}
+
+/// `wmctrl -l` satırı `<kimlik> <masaüstü> <makine> <başlık>`: başlık (Python `split(None, 3)[3]`: baştaki boşluk atılır,
+/// sondaki korunur) `name`e eşit mi.
+fn window_listed(output: &str, name: &str) -> bool {
+    crate::pyfmt::splitlines(output).into_iter().any(|line| {
+        let mut rest = line.trim_start_matches(crate::pyfmt::py_isspace);
+        for _ in 0..3 {
+            let Some(gap) = rest.find(crate::pyfmt::py_isspace) else {
+                return false;
+            };
+            rest = rest[gap..].trim_start_matches(crate::pyfmt::py_isspace);
+        }
+        !rest.is_empty() && rest == name
+    })
 }
 
 /// `spawn_session` girdileri (Python varsayılanları [`StartRequest::new`]de).
@@ -544,7 +576,7 @@ pub fn reclaim_ghost_session(launcher: &Launcher, name: &str, cli: &str) {
 }
 
 /// `_fallback_watchdog`: ilk gnome-terminal denemesi tmux oturumunu getirmezse [`FALLBACK_RETRY_COUNT`] kez yeniden
-/// dener; hepsi biterse ANCAK O ZAMAN penceresiz tmux. `Popen` istisnası bekçiyi bitirir; `ValueError`
+/// dener (bu başlıkta pencere zaten açıksa yenisini açmadan bekler, `spawn_retry_window_exists`); hepsi biterse ANCAK O ZAMAN penceresiz tmux. `Popen` istisnası bekçiyi bitirir; `ValueError`
 /// `spawn_retry_launch_error` günlüğüne yalnız sınıf adıyla yazılır (metin argv/ortam değeri taşıyabilir).
 pub fn fallback_watchdog(
     launcher: &Launcher,
@@ -575,6 +607,17 @@ pub fn fallback_watchdog(
         }
         if attempt < FALLBACK_RETRY_COUNT {
             let next = attempt + 1;
+            if launcher.window_titled(name, env) {
+                launcher.log(
+                    "spawn_retry_window_exists",
+                    vec![
+                        ("name", json!(name)),
+                        ("cwd", json!(cwd)),
+                        ("attempt", json!(next)),
+                    ],
+                );
+                continue;
+            }
             launcher.log(
                 "spawn_retry",
                 vec![

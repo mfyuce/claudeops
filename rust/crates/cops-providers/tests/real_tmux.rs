@@ -279,6 +279,9 @@ impl Terminal for NoWindow {
         self.0.launches.lock().unwrap().push(argv.to_vec());
         Ok(true)
     }
+    fn window_list(&self, _display: &str) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// Bekçi beklemesi gerçek zamanda kısa: her `sleep` saati 1 sn ilerletir, gerçek bekleme 10 ms.

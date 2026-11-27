@@ -1389,7 +1389,24 @@ class _G9:
             self._set(spawn, name, v)
         for name, v in (("tmux_ghost_session", ghost), ("tmux_capture", capture), ("tmux_kill_session", kill)):
             self._set(tb, name, v)
-        self._set(spawn, "subprocess", types.SimpleNamespace(Popen=Popen, DEVNULL=subprocess.DEVNULL))
+        windows = list(f.get("windows") or [])
+
+        def run(argv, env=None, timeout=None, encoding=None, errors=None, **kw):
+            # `_window_titled`in `wmctrl -l`i: bayt çıktı, gerçek kodun verdiği `encoding`/`errors` ile çözülür.
+            c.append(["window_list", list(argv), (env or {}).get("DISPLAY")])
+            a = windows.pop(0) if windows else {"error": "oserror"}
+            if a.get("error") == "oserror":
+                raise FileNotFoundError(2, "No such file or directory")
+            if a.get("error") == "timeout":
+                raise subprocess.TimeoutExpired(argv, timeout)
+            if a.get("error") == "value":
+                raise ValueError("embedded null byte")
+            out = bytes.fromhex(a.get("out") or "").decode(encoding or "ascii", errors or "strict")
+            return subprocess.CompletedProcess(argv, a.get("rc", 0), stdout=out, stderr="")
+
+        self._set(spawn, "subprocess", types.SimpleNamespace(
+            Popen=Popen, DEVNULL=subprocess.DEVNULL, run=run, SubprocessError=subprocess.SubprocessError,
+            TimeoutExpired=subprocess.TimeoutExpired))
 
         def count_fn(display):
             c.append(["desktop_count", display])

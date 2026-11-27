@@ -38,6 +38,8 @@ struct St {
     calls: Vec<Value>,
     has: VecDeque<bool>,
     popen: VecDeque<String>,
+    /// `wmctrl -l` yanıtları (`facts.windows`) sırayla; boşsa `OSError`.
+    windows: VecDeque<Value>,
     t: f64,
     released: Vec<String>,
 }
@@ -61,6 +63,11 @@ impl Fake {
             .get("popen")
             .and_then(Value::as_array)
             .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect());
+        let windows = c
+            .facts
+            .get("windows")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().cloned().collect::<VecDeque<_>>());
         Arc::new(Fake {
             facts: c.facts.clone(),
             settings,
@@ -68,6 +75,7 @@ impl Fake {
                 calls: Vec::new(),
                 has: has.unwrap_or_default(),
                 popen: popen.unwrap_or_default(),
+                windows: windows.unwrap_or_default(),
                 t: 100.0,
                 released: Vec::new(),
             }),
@@ -156,9 +164,29 @@ impl Terminal for Fake {
             _ => Ok(true),
         }
     }
+    fn window_list(&self, display: &str) -> Option<Vec<u8>> {
+        let mut st = self.st.lock().unwrap();
+        st.calls
+            .push(json!(["window_list", ["wmctrl", "-l"], display]));
+        let answer = st.windows.pop_front()?;
+        (answer.get("rc").and_then(Value::as_i64).unwrap_or(0) == 0
+            && answer.get("error").is_none())
+        .then(|| unhex(answer.get("out").and_then(Value::as_str).unwrap_or("")))
+    }
     fn startup_env(&self, name: &str, env: &[(String, String)]) -> StartupEnv {
         startup_env(&self.settings, env, name, self)
     }
+}
+
+fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+fn hex(s: &[u8]) -> String {
+    s.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl DesktopIo for Fake {
@@ -528,6 +556,54 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
     v.push(
         base("bekci-valueerror".into(), "claude", json!({}))
             .facts(json!({"has_default": false, "popen": ["ok", "value"]})),
+    );
+    // Pencere zaten açıksa (`wmctrl -l` tam başlık) yenisi açılmaz; okunamayan / eşleşmeyen liste eski davranış.
+    let name = base("x".into(), "claude", json!({})).args["name"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let listed = |lines: String| json!({"out": hex(lines.as_bytes())});
+    let row = |title: &str| format!("0x01  0 host {title}\n");
+    let lists: Vec<(&str, Value)> = vec![
+        ("var", listed(row("baska") + &row(&name))),
+        ("crlf", listed(format!("0x01 0 host {name}\r\n"))),
+        (
+            "bastaki-bosluk",
+            listed(format!("  0x01\t0\u{a0}host\u{2003}{name}\n")),
+        ),
+        ("sondaki-bosluk", listed(row(&format!("{name} ")))),
+        (
+            "onek",
+            listed(row(&format!("{name}_2")) + &row(&format!("x{name}"))),
+        ),
+        ("uc-alan", listed(format!("0x01 0 {name}\n"))),
+        ("dort-sozcuk", listed(row(&format!("a {name}")))),
+        ("bos", listed(String::new())),
+        (
+            "bozuk-bayt",
+            json!({"out": hex(&[b"0x01 0 host caf\xe9\n".as_slice(), row(&name).as_bytes()].concat())}),
+        ),
+        (
+            "cikis-1",
+            json!({"rc": 1, "out": hex(row(&name).as_bytes())}),
+        ),
+        ("oserror", json!({"error": "oserror"})),
+        ("zaman-asimi", json!({"error": "timeout"})),
+        ("valueerror", json!({"error": "value"})),
+    ];
+    for (id, answer) in &lists {
+        v.push(
+            base(format!("bekci-pencere-{id}"), "claude", json!({}))
+                .facts(json!({"has_default": false, "windows": [answer, answer]})),
+        );
+    }
+    v.push(
+        base("bekci-pencere-ikincide".into(), "claude", json!({}))
+            .facts(json!({"has_default": false, "windows": [lists[7].1, lists[0].1]})),
+    );
+    v.push(
+        base("bekci-pencere-sonra-oturum".into(), "claude", json!({}))
+            .facts(json!({"has_session": then_true(12), "windows": [lists[0].1]})),
     );
     v.push(base("ilk-oserror".into(), "claude", json!({})).facts(json!({"popen": ["oserror"]})));
     v.push(

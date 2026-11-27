@@ -107,6 +107,8 @@ impl SpawnTmux for FakeTmux {
 struct FakeTerm {
     log: Arc<Log>,
     results: Mutex<VecDeque<Result<bool, LaunchError>>>,
+    /// `wmctrl -l` yanıtları sırayla; boşsa "okunamadı".
+    windows: Mutex<VecDeque<Option<Vec<u8>>>>,
 }
 
 impl Terminal for FakeTerm {
@@ -123,6 +125,14 @@ impl Terminal for FakeTerm {
             .unwrap()
             .push(format!("launch {}", argv[2]));
         self.results.lock().unwrap().pop_front().unwrap_or(Ok(true))
+    }
+    fn window_list(&self, display: &str) -> Option<Vec<u8>> {
+        self.log
+            .calls
+            .lock()
+            .unwrap()
+            .push(format!("windows {display}"));
+        self.windows.lock().unwrap().pop_front().flatten()
     }
 }
 
@@ -157,6 +167,14 @@ struct Rig {
 }
 
 fn rig(tmux: impl FnOnce(&mut FakeTmux), launches: Vec<Result<bool, LaunchError>>) -> Rig {
+    rig_windows(tmux, launches, Vec::new())
+}
+
+fn rig_windows(
+    tmux: impl FnOnce(&mut FakeTmux),
+    launches: Vec<Result<bool, LaunchError>>,
+    windows: Vec<Option<Vec<u8>>>,
+) -> Rig {
     let log = Arc::new(Log::default());
     let mut t = FakeTmux::new(&log);
     tmux(&mut t);
@@ -169,6 +187,7 @@ fn rig(tmux: impl FnOnce(&mut FakeTmux), launches: Vec<Result<bool, LaunchError>
         terminal: Arc::new(FakeTerm {
             log: log.clone(),
             results: Mutex::new(launches.into()),
+            windows: Mutex::new(windows.into()),
         }),
         clock: clock.clone(),
         diag: Arc::new(Sink(log.clone())),
@@ -359,6 +378,85 @@ fn watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it() {
     );
     assert!(!format!("{ev:?}").contains("gizli"));
     assert!(!r.calls().iter().any(|c| c.starts_with("direct")));
+}
+
+/// Python `WindowTitledTest.test_exact_title_only`: yalnız TAM başlık; boşluklu ad ve bozuk baytlı başka satır.
+#[test]
+fn watchdog_waits_instead_of_opening_a_second_window() {
+    let list =
+        b"0x01  0 host done_2\n0x02  1 host caf\xe9\n0x03  0 host a b c\n0x04  1 host s\n".to_vec();
+    let r = rig_windows(|_| {}, vec![], vec![Some(list.clone()), Some(list)]);
+    watch(&r);
+    let calls = r.calls();
+    assert_eq!(
+        calls.iter().filter(|c| *c == "windows :1").count(),
+        FALLBACK_RETRY_COUNT as usize
+    );
+    assert!(!calls.iter().any(|c| c.starts_with("launch")), "{calls:?}");
+    // denemeler bitince (Python gibi) penceresiz yedek yine açılır
+    assert_eq!(calls.last().unwrap(), "direct s");
+    let ev = r.events();
+    assert_eq!(
+        ev.iter().map(|e| e.0).collect::<Vec<_>>(),
+        [
+            "spawn_retry_window_exists",
+            "spawn_retry_window_exists",
+            "spawn_fallback_used"
+        ]
+    );
+    assert_eq!(
+        ev[1].1,
+        [
+            ("name", json!("s")),
+            ("cwd", json!("/w")),
+            ("attempt", json!(2))
+        ]
+    );
+}
+
+/// Ön ek, alt dizi, üç alanlı satır ve sondaki boşluk eşleşmez; okunamayan liste eski davranış (yeniden aç).
+#[test]
+fn watchdog_relaunches_unless_the_exact_title_is_listed() {
+    for list in [
+        None,
+        Some(b"".to_vec()),
+        Some(
+            b"0x01  0 host s_2\n0x02  0 host xs\n0x03 0 s\n0x04 0 host s \n0x05 0 host a s\n"
+                .to_vec(),
+        ),
+    ] {
+        let r = rig_windows(|_| {}, vec![], vec![list.clone(), list.clone()]);
+        watch(&r);
+        assert_eq!(
+            r.calls().iter().filter(|c| c.starts_with("launch")).count(),
+            FALLBACK_RETRY_COUNT as usize,
+            "{list:?}"
+        );
+    }
+    // ekran yoksa hiç sorulmaz
+    let r = rig(|_| {}, vec![]);
+    fallback_watchdog(&r.launcher, "s", "/w", "inner", &[], "cmd");
+    assert!(!r.calls().iter().any(|c| c.starts_with("windows")));
+}
+
+/// Gerçek `window_list`: sahte `wmctrl` betiği; `-l`, verilen `DISPLAY`, sıfır olmayan çıkış ve eksik program = None.
+#[test]
+fn gnome_terminal_window_list_runs_wmctrl_on_the_given_display() {
+    let (_d, root) = tmpdir();
+    write_exe(
+        &format!("{root}/bin/wmctrl"),
+        "#!/bin/sh\n[ \"$1\" = -l ] || exit 3\n[ \"$DISPLAY\" = :7 ] || exit 4\necho \"0x01  0 $WHO s1\"\n",
+    );
+    let gt = GnomeTerminal::new(Env::fixed([
+        ("PATH", format!("{root}/bin")),
+        ("WHO", "makine".to_string()),
+        ("DISPLAY", ":0".to_string()),
+    ]));
+    assert_eq!(gt.window_list(":7"), Some(b"0x01  0 makine s1\n".to_vec()));
+    assert_eq!(gt.window_list(":8"), None);
+    assert_eq!(gt.window_list(":7\0"), None);
+    let none = GnomeTerminal::new(Env::fixed([("PATH", format!("{root}/yok"))]));
+    assert_eq!(none.window_list(":7"), None);
 }
 
 #[test]
