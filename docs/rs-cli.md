@@ -137,9 +137,10 @@ koddan okunarak yazıldı; testler bu tablo için yeniden koşulmadı (koşu kay
 | betik girişi (`set -u`, `mkdir -p /tmp/claudeops`, `PATH` eki) | yok | yok | kapsam dışı: `cmd_self`in parçası değil, silinecek bash aracının genel hazırlığı (TBD#12) |
 
 27 Kas: noktalı `*.json` atlanır ve metin `pid` kabul edilir (bash gibi; `parity_self_dot_files_string_pid_and_order`, aynı
-test iki dosyada aynı oturum kimliğinde seçilen kaydı da karşılaştırır). Sıralama bash'te yerel ayara, Rust'ta bayt sırasına
-göredir; oturum dosyaları `<pid>.json` (yalnız rakam) olduğundan sıra aynıdır. UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET` iki
-tarafta da dolu sayılır (`parity_front_status_non_utf8_env_secret_counts_as_set`).
+test iki dosyada aynı oturum kimliğinde seçilen kaydı da karşılaştırır). Sıralama bash'te yerel ayara, Rust'ta bayt
+sırasına göredir. BİLİNEN FARK: bir pid ötekinin ön ekiyse (`en_US`: `123.json` < `12.json`; bayt: tersi) ve iki dosya
+aynı oturum kimliğini taşıyorsa farklı kayıt seçilir; test bu pid ilişkisinde karşılaştırmayı atlar.
+UTF-8 olmayan `CLAUDEOPS_FRONT_SECRET` iki tarafta da dolu sayılır (`parity_front_status_non_utf8_env_secret_counts_as_set`).
 
 ### `list` / `ls`
 
