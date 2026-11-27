@@ -352,6 +352,14 @@ pub fn plan_on(
             }
         }
     }
+    // atomik yazım bağı düz dosyaya çevirirdi: kapalı yön, elle düzenlensin
+    for u in [&p.front_unit, &p.dropin] {
+        if std::fs::symlink_metadata(u).is_ok_and(|m| m.file_type().is_symlink()) {
+            blockers.push(format!(
+                "birim dosyası sembolik bağ: {u} (yazım bağı düz dosyaya çevirir; bağı kaldırın)"
+            ));
+        }
+    }
     let steps = vec![
         format!("gizli: {} (0600, yoksa üret)", p.secret_path),
         format!(
@@ -474,6 +482,7 @@ impl Undo {
         let what = match prev {
             Prev::Absent => format!("sil: {path} (önceden yoktu)"),
             Prev::Content(..) => format!("geri yaz: {path} (önceki içerik)"),
+            Prev::Link(_) => format!("geri yaz: {path} (önceki sembolik bağ)"),
         };
         match fsx::restore(Path::new(path), prev) {
             Ok(()) => self.lines.push(format!("  {what}: tamam")),
@@ -693,19 +702,25 @@ fn on(
             n.owner(la).is_unit(FRONT_UNIT_NAME)
                 && (!web_needed || n.owner(ia).is_unit(WEB_UNIT_NAME))
         };
-        if !wait_for(ctx.timing.front_up, ctx.timing.poll, || ok(net)) {
+        // web yeniden başlatıldıysa açılışı ön kapınınkinden uzun sürer: `off` ile aynı pay.
+        let limit = if web_needed {
+            ctx.timing.front_up.max(ctx.timing.web_up)
+        } else {
+            ctx.timing.front_up
+        };
+        if !wait_for(limit, ctx.timing.poll, || ok(net)) {
             if !net.owner(la).is_unit(FRONT_UNIT_NAME) {
                 writeln!(
                     ctx.out,
                     "HATA: ön kapı {listen} üzerinde dinlemiyor ({} sn içinde {FRONT_UNIT_NAME} görülmedi: {})",
-                    ctx.timing.front_up.as_secs(),
+                    limit.as_secs(),
                     net.owner(la).describe()
                 )?;
             } else {
                 writeln!(
                     ctx.out,
                     "HATA: web iç adreste {internal} doğrulanamadı ({} sn içinde {WEB_UNIT_NAME} görülmedi: {})",
-                    ctx.timing.front_up.as_secs(),
+                    limit.as_secs(),
                     net.owner(ia).describe()
                 )?;
             }

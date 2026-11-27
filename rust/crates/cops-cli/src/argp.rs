@@ -278,6 +278,52 @@ pub fn parse_front(args: &[OsString]) -> Parsed {
     })
 }
 
+/// `list`/`ls` argümanları (Python `commands/ls.py` `register`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListArgs {
+    /// `--no-cpu`
+    pub no_cpu: bool,
+    /// `--base`
+    pub base: Option<String>,
+    /// `--json`
+    pub json: bool,
+}
+
+/// `list` sonrası argümanlar. Yalnız açıkça kabul edilen biçimler (`--x`, `--base Y`, `--base=Y`, benzersiz önek
+/// kısaltması); gerisi (yardım, hata, konumsal, `--`, `-`li değer) `Err(neden)` = Python'a devir.
+pub fn parse_list(args: &[OsString]) -> Result<ListArgs, &'static str> {
+    let mut out = ListArgs::default();
+    let mut it = args.iter().map(|a| a.to_str());
+    while let Some(t) = it.next() {
+        let t = t.ok_or("UTF-8 olmayan argüman")?;
+        let (name, explicit) = match t.split_once('=') {
+            Some((n, v)) => (n, Some(v)),
+            None => (t, None),
+        };
+        if name.len() <= 2 || !name.starts_with("--") {
+            return Err("Rust'ın taklit etmediği list argümanı");
+        }
+        let hits: Vec<&str> = ["--help", "--no-cpu", "--base", "--json"]
+            .into_iter()
+            .filter(|o| o.starts_with(name))
+            .collect();
+        match (hits.as_slice(), explicit) {
+            (["--no-cpu"], None) => out.no_cpu = true,
+            (["--json"], None) => out.json = true,
+            (["--base"], Some(v)) => out.base = Some(v.to_string()),
+            (["--base"], None) => {
+                let v = it.next().flatten().ok_or("--base değeri yok")?;
+                if v.starts_with('-') && v.len() > 1 {
+                    return Err("'-' ile başlayan --base değeri");
+                }
+                out.base = Some(v.to_string());
+            }
+            _ => return Err("Rust'ın taklit etmediği list argümanı"),
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
