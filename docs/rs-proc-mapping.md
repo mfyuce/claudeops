@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 608 | 153 | 455 | 0 |
-| test durumu (153 dosya) | 1890 | 115 | 1775 | 0 |
+| tanım | 609 | 153 | 456 | 0 |
+| test durumu (154 dosya) | 1902 | 115 | 1787 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `providers/__init__.py` | KISMİ | 3 | 1 | 2 | 0 |
 | `providers/base.py` | KISMİ | 84 | 6 | 78 | 0 |
 | `providers/claude_provider.py` | KISMİ | 130 | 8 | 122 | 0 |
-| `providers/codex_provider.py` | KISMİ | 42 | 8 | 34 | 0 |
+| `providers/codex_provider.py` | KISMİ | 43 | 8 | 35 | 0 |
 | `providers/copilot_provider.py` | KISMİ | 39 | 5 | 34 | 0 |
 | `providers/agy_provider.py` | KISMİ | 53 | 10 | 43 | 0 |
 | `providers/shell_provider.py` | KISMİ | 14 | 6 | 8 | 0 |
@@ -427,12 +427,13 @@ Yok.
 | `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:315 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:318 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/codex_provider.py::CodexProvider.background_work` | işlev:329 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:340 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:359 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.live_context` | işlev:388 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:417 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:424 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.full_history` | işlev:449 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._exact_rollout` | işlev:340 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:348 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:366 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.live_context` | işlev:395 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
+| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:424 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:434 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.full_history` | işlev:459 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/copilot_provider.py`
 
@@ -1480,21 +1481,21 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_rsprov_chat_readers.py::BadByteTest.test_one_bad_line_does_not_drop_the_history` | 76 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadByteTest.test_unreadable_tail_leaves_the_last_role_unknown` | 86 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadByteTest.test_ucli_bad_byte_means_unreadable` | 96 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_half_written_last_line_is_skipped` | 105 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_complete_but_broken_line_is_still_unreadable` | 114 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_complete_unterminated_line_still_counts` | 120 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_unexpected_lines_are_skipped` | 134 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_non_object_tail_leaves_the_last_role_unknown` | 140 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_claude_non_object_message_is_skipped` | 146 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_non_text_block_is_skipped` | 156 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_claude_non_object_compact_metadata` | 165 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_codex_non_object_payload_is_skipped` | 170 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::BadShapeTest.test_ucli_deep_or_huge_line_means_unreadable` | 176 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::CompactSummaryTest.test_summary_is_not_the_users_message` | 182 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `test_rsprov_chat_readers.py::CompactSummaryTest.test_only_summary_before_the_answer_means_no_user_message` | 188 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadByteTest.test_one_bad_line_does_not_drop_the_history` | 77 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadByteTest.test_unreadable_tail_leaves_the_last_role_unknown` | 87 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadByteTest.test_ucli_bad_byte_means_unreadable` | 97 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_half_written_last_line_is_skipped` | 106 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_complete_but_broken_line_is_still_unreadable` | 115 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::UcliHalfLineTest.test_complete_unterminated_line_still_counts` | 121 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_unexpected_lines_are_skipped` | 135 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_non_object_tail_leaves_the_last_role_unknown` | 141 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_claude_non_object_message_is_skipped` | 147 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_non_text_block_is_skipped` | 157 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_claude_non_object_compact_metadata` | 166 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_codex_non_object_payload_is_skipped` | 171 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::BadShapeTest.test_ucli_deep_or_huge_line_means_unreadable` | 177 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::CompactSummaryTest.test_summary_is_not_the_users_message` | 183 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `test_rsprov_chat_readers.py::CompactSummaryTest.test_only_summary_before_the_answer_means_no_user_message` | 189 | kapsam dışı | yok | sohbet geçmişi (bozuk bayt/biçim, ucli yarım satır). İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/tests/test_rsprov_child_group.py`
 
@@ -1725,6 +1726,23 @@ Yok.
 | `test_rsprov_sqlite_readers.py::AgyBadCellTest.test_bad_text_cell_does_not_drop_good_rows` | 78 | kapsam dışı | yok | agy/copilot SQLite deposu okuma. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `test_rsprov_sqlite_readers.py::CopilotBlobTest.test_blob_cells_come_out_as_text_or_nothing` | 93 | kapsam dışı | yok | agy/copilot SQLite deposu okuma. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
+### `py/tests/test_rsprov_stuck_other_providers.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_id_is_never_stuck` | 70 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_missing_exact_record_is_never_stuck` | 75 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` | 81 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_decision_and_resume_use_the_same_conversation` | 86 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_hand_built_info_takes_the_id_of_the_process` | 96 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_conversation_is_left_alone` | 100 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_conversation_held_by_another_session_is_left_alone` | 106 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` | 136 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` | 179 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::AgyTest.test_unreadable_or_reused_process_means_unknown` | 187 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::UcliUnchangedTest.test_decision_and_recovery_are_as_before` | 225 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` | 241 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+
 ### `py/tests/test_rsprov_stuck_own_conversation.py`
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
@@ -1734,12 +1752,12 @@ Yok.
 | `test_rsprov_stuck_own_conversation.py::FindStuckTest.test_own_record_decides` | 82 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::FindStuckTest.test_untrusted_record_means_not_stuck` | 89 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::FindStuckTest.test_known_sid_is_kept` | 95 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_own_conversation.py::FindStuckTest.test_other_providers_are_asked_as_before` | 101 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_own_conversation.py::FindStuckTest.test_ucli_is_asked_as_before` | 101 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_resumes_the_conversation_the_decision_was_made_on` | 112 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_hand_built_info_resolves_the_own_record_before_the_kill` | 123 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_unknown_conversation_is_left_alone` | 129 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_conversation_held_by_another_session_is_left_alone` | 136 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_other_providers_keep_their_own_resume_lookup` | 144 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_own_conversation.py::RecoverStuckTest.test_ucli_keeps_its_own_resume_lookup` | 144 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::SpawnResumeIdTest.test_given_conversation_is_resumed_without_guessing` | 157 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 | `test_rsprov_stuck_own_conversation.py::SpawnResumeIdTest.test_force_new_wins` | 163 | kapsam dışı | yok | takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 

@@ -118,7 +118,7 @@ Eşleme ve test tablolarında EKSİK / TAŞINDI-TESTSİZ satır YOK. Engel, ders
 
 | Ders satırı | Açık | Kim kapatabilir |
 |---|---|---|
-| §3.1 (a), §2.5.8 | model/effort okuması (S1) ve claude takılma kararı (TBD#419) kapandı; sid'siz `jsonl_path_for` (sohbet) ve codex rollout okuması (sohbet, son mesaj rolü, takılma kararı) hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
+| §3.1 (a), §2.5.8 | model/effort okuması (S1) ve takılma kararı (TBD#419, TBD#425) kapandı; sid'siz sohbet okumaları (`jsonl_path_for`, codex rollout, agy/copilot devam araması) hâlâ cwd'deki en yeniye düşer | iz / sahip (S1 kapsamı dışında kaldı) |
 | §3.1 (c), §2.5.8 | `ids_held_by_others` taraması ile spawn arasındaki yarış (`guard.lock`) | başka iz (`guard.py` taşıması / T4) |
 | §3.8 | gerçek claude sürümünden yakalanmış ekran fixture'ı yok (TBD#399 için canlı deneme de yapılmadı) | cops/sahip (canlı claude) |
 | §3.14 | okuma yolları bağlantı izler, ayardaki uç noktaya iç ağ engeli yok (bilerek) | cops/sahip: kabul ya da değişiklik |
@@ -137,7 +137,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
   Bilgi sekmesi ve kapanış anlık görüntüsü de bu kuralı alır (effort bilinmiyorsa komut satırı değeri; Bilgi sekmesi
   `no_assistant_turn` der).
 - **Kapsam dışı kalan sid'siz okumalar:** `jsonl_path_for` (sohbet geçmişi, `last_exchange`, `last_message_role`) ve
-  codex rollout. claude takılma kararı ve devam kimliği sonradan kapandı (aşağıda TBD#419).
+  codex rollout (sohbet). Takılma kararı ve devam kimliği sonradan kapandı (aşağıda TBD#419 ve TBD#425).
   Sid'i keşfin kendisi verdiğinde keşif kuralı geçerli (`procStart`sız kayıt kabul edilir; değişmedi).
 
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
@@ -251,6 +251,7 @@ Python 31 MB.
 - **S6 (ikinci örnekte hizmet anahtar dosyası): onaylandı, uygulandı** (27 Kas, sahip, (b); "TBD#419, S6, uzun harcama
   satırı" bölümü).
 - **TBD#419 (sid'siz oturumda takılma kararı): onaylandı, uygulandı** (27 Kas, sahip, (a); aynı bölüm).
+- **TBD#425 (codex, agy, copilot takılma kararı): onaylandı, uygulandı** (27 Kas, sahip, (a); "TBD#425" bölümü).
 - **TBD#422 (inceleme API bütçe kapısı): onaylandı, uygulandı** (27 Kas, sahip, (a); "TBD#422" bölümü).
 - **Soru adayı (TBD#422 sırasında kod okumasıyla görüldü, TOBEDECIDED'a yazılmadı): bütçe kapısı yalnız yuva kipinde
   koşuyor.** `anthropic_filter`ın tek çağıranı `_tick_slots`; `review_slots` boşken (tek yuva turu) ve elle koşuda
@@ -1166,8 +1167,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   `resolve_resume_id`den (ad eşleşmesi, yoksa en yeni) geliyordu: karardan farklı olabiliyordu. claude'da kimlik
   bilinmiyorsa ya da konuşmayı başka canlı oturum tutuyorsa süreç öldürülmez, dönüş `skipped: <neden>` (CLI hata sayar).
   `find_stuck`/`recover_stuck`ın Rust karşılığı yok (T4 akışı); taşınan yalnız açılıştaki `resume_id`.
-- **Öteki sağlayıcılar değişmedi:** sid'siz codex'te son mesaj rolü cwd'deki en yeni rollout'tan okunur ve devam kimliği
-  `resolve_resume_id`den gelir (kod okuması, sınanmadı).
+- Öteki sağlayıcılar bu turda değişmemişti; codex, agy ve copilot sonradan aynı kurala bağlandı ("TBD#425").
 - **Hizmet anahtarı (S6 (b), `0dfe682a`).** İkinci örnekte `ucli_key_<hizmet>` `<CLAUDEOPS_DIR>` altına yazılır ve oradan
   okunur (`_service_key_file`, `Paths::service_key_file`); ortak dosyaya yazma ve silme yok. Ayarda anahtar yoksa ret
   aynı (ortak dosyaya düşülmez). Evren (`ucli_api_key`) ve copilot dosyası `d0054ada` kuralında kaldı (salt okunur).
@@ -1183,6 +1183,29 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 |---|---|---|
 | `LineLimit.*` (py/tests/test_rsprov_cost_line_length.py) | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte`; `real_ledger` uzun satır vakası | TAŞINDI |
 | `Streaming.test_a_huge_line_is_not_held_in_memory` (py/tests/test_rsprov_cost_line_length.py) | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer` | TAŞINDI |
+
+## TBD#425: takılma kararı codex, agy ve copilot'ta kesin kimlikle (27 Kas; `c113f820`)
+Kesin kimlik (yalnız takılma kararı ve yeniden açma yolu; yeni kimlik bulma yolu eklenmedi):
+
+| Sağlayıcı | Kesin kimlik | Tam eşleşen kayıt |
+|---|---|---|
+| claude | `Session.sid`, yoksa sürecin kendi `sessions/<pid>.json` kaydı (TBD#419) | `<sid>.jsonl` (zaten tahminsiz) |
+| codex | komut satırındaki `codex resume <id>` (`Session.sid`; keşif başka kaynak kullanmaz) | adındaki kimliği TAM `<id>` olan rollout; yoksa son rol bilinmiyor |
+| agy | yalnız sürecin komut satırındaki `--conversation <id>` (`Session.sid` cwd önbelleğinden tahmin olabilir, karar ona bakmaz) | `<id>.db` (zaten tahminsiz) |
+| copilot | komut satırındaki `--resume <id>` (`Session.sid`) | `turns.session_id = <id>` (zaten tahminsiz) |
+| ucli | oturum adı (değişmedi) | değişmedi |
+
+- Yeniden açma dördünde de `StuckInfo.sid`i `resume_id` olarak verir; kimlik bilinmiyorsa ya da başka canlı oturum
+  tutuyorsa süreç öldürülmez (`skipped: <neden>`).
+- **Kabul edilen sınır (sahip):** komut satırında kimlik taşımayan oturum (yeni açılmış codex, agy, copilot) artık
+  hiç kendiliğinden kurtarılmaz; `--conversation=<id>` gibi bitişik yazım ve agy'nin yalnız öğrenilmiş eşleşmesi de
+  bilinmiyor sayılır.
+- **Ele alınmayan uç (kod okuması, sınanmadı):** CLI içinde konuşma değiştirilirse (`/new` vb.) komut satırı eski
+  kimliği taşımayı sürdürür; bu üç sağlayıcıda claude'daki gibi canlı kayıt kaynağı kullanılmıyor.
+- **Rust:** `find_stuck`/`recover_stuck` karşılığı yok (T4), kod eklenmedi. Yalnız codex `last_message_role` tam
+  eşleşme ister (`codex_resume.rs::Live::codex_exact_rollout`); `codex_rollout_path` öteki okuyucular için cwd'ye düşmeyi
+  sürdürür. agy ve copilot okuyucuları verilen kimlikte zaten tahmin etmediği için değişmedi. `StartRequest.resume_id`
+  dört sağlayıcıda da komuta girer (`parity_g9` `-devam-verilen` artık bayrağı ve kimliği de denetler).
 
 ## EŞLEME TABLOSU
 
@@ -1957,9 +1980,16 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `_MAX_LINE_BYTES` (py/claudeops/review.py) | `cops-review-core` `usage.rs::MAX_LINE_BYTES` | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte` | TAŞINDI |
 | `_usage_lines` (py/claudeops/review.py) | `cops-review-core` `usage.rs::{next_line, too_long}` | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer`; rev `parity` | TAŞINDI |
 
+### TBD#425 satırları (27 Kas)
+
+| Python (dosya:satır) | Rust karşılığı | parite testi | durum |
+|---|---|---|---|
+| `CodexProvider._exact_rollout` (py/claudeops/providers/codex_provider.py:340) | `codex_resume.rs::Live::codex_exact_rollout` | `parity.rs::parity_chat` `codex-sid-yok` `codex-yanlis-sid` | TAŞINDI |
+| `_argv_conversation` (py/claudeops/stuck.py:90) | yok: `find_stuck`/`recover_stuck` akışı T4 | yok | KAPSAM DIŞI |
+
 ## TEST EŞLEME TABLOSU
 
-Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 791, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 801, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -3573,12 +3603,12 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `FindStuckTest.test_own_record_decides` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `FindStuckTest.test_untrusted_record_means_not_stuck` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `FindStuckTest.test_known_sid_is_kept` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
-| `FindStuckTest.test_other_providers_are_asked_as_before` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `FindStuckTest.test_ucli_is_asked_as_before` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_resumes_the_conversation_the_decision_was_made_on` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_hand_built_info_resolves_the_own_record_before_the_kill` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `RecoverStuckTest.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
-| `RecoverStuckTest.test_other_providers_keep_their_own_resume_lookup` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_ucli_keeps_its_own_resume_lookup` (py/tests/test_rsprov_stuck_own_conversation.py) | T4: `stuck.py` akışı; okuyucu taşındı (`parity_transcript` `canli-kimlik`) | KAPSAM DIŞI |
 | `SpawnResumeIdTest.test_given_conversation_is_resumed_without_guessing` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 | `SpawnResumeIdTest.test_force_new_wins` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 | `SharedStateTest.test_service_key_of_a_second_instance_lives_in_its_own_dir` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
@@ -3601,3 +3631,15 @@ Güncel sayım (27 Kas): 1542 satır: TAŞINDI 751, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
 | `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
 | `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
+| `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:70) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:75) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:81) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_decision_and_resume_use_the_same_conversation` (py/tests/test_rsprov_stuck_other_providers.py:86) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_hand_built_info_takes_the_id_of_the_process` (py/tests/test_rsprov_stuck_other_providers.py:96) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:100) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:106) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` (py/tests/test_rsprov_stuck_other_providers.py:136) | `parity.rs::parity_chat` `codex-sid-yok` `codex-bos-sid` `codex-yanlis-sid` | TAŞINDI |
+| `AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` (py/tests/test_rsprov_stuck_other_providers.py:179) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `AgyTest.test_unreadable_or_reused_process_means_unknown` (py/tests/test_rsprov_stuck_other_providers.py:187) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |

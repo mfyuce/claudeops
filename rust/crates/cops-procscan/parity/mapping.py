@@ -393,7 +393,7 @@ DEFS["providers/codex_provider.py"] = [
         "açılış argv/env, model/effort/izin kuralları", SAG),
     oos(X + "resolve_resume_id _session_meta _rollout_sid_matches", "devam kimliği ve rollout dosyası tam kimlik eşleşmesi", T4),
     oos("SESSIONS_DIR _ROLLOUT_UUID_RE _MAX_ROLLOUT_SCAN _safe_mtime _codex_text _is_real_codex_user_text _codex_item "
-        + " ".join(X + n for n in "_rollout_path _transcript_lines last_exchange full_history "
+        + " ".join(X + n for n in "_rollout_path _exact_rollout _transcript_lines last_exchange full_history "
                    "last_message_role".split()),
         "rollout dosyası ve sohbet geçmişi", CHAT),
     oos("BUSY_STATUS_PATTERN " + X + "busy_status_pattern " + X + "input_settle_delay " + X + "background_work",
@@ -958,6 +958,8 @@ FILES = {
     "rsprov_s2_effort_model": ("canlı effort yalnız son yanıtın modelinden", LIVE),
     "rsprov_stuck_own_conversation": ("takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından",
                                       f"{SAG}; {T4}"),
+    "rsprov_stuck_other_providers": ("codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan",
+                                     f"{SAG}; {T4}"),
     "rsprov_s1_own_session": ("sid'siz oturumda model/effort yalnız sürecin kendi kaydından (devir, yeniden açma)",
                               f"{LIVE}; {T4}"),
     "rsprov_g10_keyfile": ("tek atımlık çağrıda açılamayan anahtar dosyası", f"{SAG}; {T10}"),
@@ -1470,7 +1472,8 @@ rsprov_g1_fixes:20:ad2924daca
 rsprov_g4_dismiss:2:71df770dc0
 rsprov_g3_fixes:5:cd4ad4129c
 rsprov_s1_own_session:12:ceb2a32df2
-rsprov_stuck_own_conversation:13:fd4561a213
+rsprov_stuck_own_conversation:13:cfea68f5d8
+rsprov_stuck_other_providers:12:cff2b06012
 rsprov_s2_effort_model:7:a9e1100892
 rsprov_g5_fixes:9:5e8c310c26
 rsprov_g7_fixes:11:787c25c89f
