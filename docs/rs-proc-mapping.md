@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 608 | 153 | 455 | 0 |
-| test durumu (154 dosya) | 1912 | 115 | 1797 | 0 |
+| test durumu (154 dosya) | 1920 | 115 | 1805 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -377,14 +377,14 @@ Yok.
 | `providers/claude_provider.py::ClaudeProvider.effort_levels` | işlev:1173 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/claude_provider.py::ClaudeProvider.mode_status_patterns` | işlev:1176 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1179 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1189 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1192 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1195 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.last_message_role` | işlev:1228 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1235 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1266 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
-| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1271 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1302 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1191 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1194 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1197 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_message_role` | işlev:1230 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1237 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1268 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
+| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1273 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1304 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/codex_provider.py`
 
@@ -805,12 +805,20 @@ Yok.
 | `test_bg_work.py::StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` | 110 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` | 115 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 | `test_bg_work.py::StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` | 121 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 129 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 135 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 150 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 163 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 187 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
-| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 194 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` | 134 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` | 138 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` | 151 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` | 156 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` | 159 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_live_footers` | 199 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` | 205 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SessionRecordSignal.test_broken_record_and_missing_dir` | 214 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` | 225 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::SubagentActiveForUsesBoth.test_transcript_pending_makes_active` | 231 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::ProviderBackgroundWork.test_base_unknown_and_claude_counts` | 246 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::UcliBackgroundWork.test_reads_status_field_never_guesses` | 259 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_screen_and_rollout` | 283 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
+| `test_bg_work.py::CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` | 290 | kapsam dışı | yok | arka plan işi tespiti (ekran + transkript). İz: T2 (terminal); T1 (durum) |
 
 ### `py/tests/test_brain_permission_ucli.py`
 

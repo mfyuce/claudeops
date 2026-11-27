@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from claudeops import bg_work
+from claudeops import bg_work, paths
 from claudeops.commands import web_steward
 
 SCREEN_SHELL = """\
@@ -125,6 +125,102 @@ class StoppedAndMidTurnNotifications(unittest.TestCase):
             self.assertTrue(bg_work.transcript_pending([_use("t1"), _res("t1", "b1"), rec], now=T), rec)
 
 
+class NavigationHintAndRequestCopies(unittest.TestCase):
+    """27 Kas, copsdev: reddedilen arka plan çağrısının `api-request-blob` kopyası işi yeniden "bekliyor" yapıyordu (zaman damgası
+    olmadığı için hiç eskimiyordu; direktif iletilemedi). Alt satırdaki `← N agent` gezinme ipucudur, iş sayısı değil."""
+    IDLE = "❯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent                               /rc\n"
+    TURN = "❯\n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 1 agent            /rc\n"
+
+    def test_agent_view_hint_is_not_background_work(self):
+        for s in (self.IDLE, self.TURN, self.TURN.replace("← 1 agent", "← 3 agents"), "  ← 2 agents · ↓ to manage"):
+            self.assertEqual((bg_work.screen_bg_count(s), bg_work.screen_bg_work(s)), (0, False), s)
+
+    def test_real_counts_beside_the_hint_still_count(self):
+        self.assertEqual(bg_work.screen_bg_count("  ⏵⏵ auto mode on · 1 shell · ← 1 agent · ↓ to manage"), 1)
+        self.assertEqual(bg_work.screen_bg_count(SCREEN_BG_TASKS), 2)
+        self.assertEqual(bg_work.screen_bg_count("  2 agents · ↓ to manage"), 2)
+
+    @staticmethod
+    def _typed(rec, kind):
+        return json.dumps({"type": kind, **json.loads(rec)})
+
+    def _blob(self, i):
+        o = json.loads(_use(i))
+        return json.dumps({"type": "api-request-blob", "hash": "h", "sessionId": "s", "message": o["message"]})
+
+    def test_request_copy_does_not_revive_refused_call(self):
+        err = json.dumps({"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": "no verdict"}]}})
+        self.assertFalse(bg_work.transcript_pending([self._typed(_use("t1"), "assistant"), err, self._blob("t1")], now=T))
+
+    def test_request_copy_alone_is_not_a_job(self):
+        self.assertFalse(bg_work.transcript_pending([self._blob("t9")], now=T))
+
+    def test_typed_assistant_record_is_still_pending_and_expires(self):
+        lines = [self._typed(_use("t1"), "assistant"), self._blob("t1")]
+        self.assertTrue(bg_work.transcript_pending(lines, now=T))
+        self.assertFalse(bg_work.transcript_pending(lines, now=T + 7 * 3600))
+
+
+# Canlı claude 2.1.332 alt satırları (27 Kas 23:49, 20 oturum): (süreç kaydı `status`, alt satır, ekranda iş sayısı, çalışan iş var mı)
+LIVE_FOOTERS = (
+    ("idle", "⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent                               /rc", 0, False),
+    ("idle", "⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent", 0, False),
+    ("idle", "⏵⏵ auto mode on (shift+tab to cycle)        new task? /clear to save 177.9k tokens", 0, False),
+    ("shell", "⏵⏵ auto mode on · 1 shell · ← 1 agent · ↓ to manage                            /rc", 1, True),
+    ("busy", "⏵⏵ auto mode on · 3 background tasks · ← 1 agent · ↓ to manage                 /rc", 3, True),
+    ("busy", "⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent · ↓ to manage                 /rc", 0, True),   # yalnız alt ajan
+    ("busy", "⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 1 agent            /rc", 0, True),   # ana tur
+)
+
+
+class SessionRecordSignal(unittest.TestCase):
+    """claude süreç kaydı (`sessions/<pid>.json`): `busy` = tur ya da devredilen ajan, `shell` = tur bitti, kabuk/Monitor açık."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.dir = d.name
+        p = mock.patch.object(paths, "SESSIONS_DIR", d.name)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def record(self, status, sid="s1", pid=None, start=None):
+        pid = os.getpid() if pid is None else pid
+        with open(f"/proc/{os.getpid()}/stat") as f:
+            mine = f.read().rsplit(")", 1)[1].split()[19]
+        with open(os.path.join(self.dir, f"{pid}.json"), "w") as f:
+            json.dump({"pid": pid, "sessionId": sid, "status": status, "procStart": start or mine}, f)
+
+    def work(self, footer, sid="s1"):
+        from claudeops.providers import PROVIDERS
+        return PROVIDERS["claude"].background_work("❯\n  " + footer + "\n", "/nonexistent", sid)
+
+    def test_live_footers(self):
+        for status, footer, screen, active in LIVE_FOOTERS:
+            self.assertEqual(bg_work.screen_bg_count(footer), screen, footer)
+            self.record(status)
+            self.assertEqual(self.work(footer) > 0, active, (status, footer))
+
+    def test_record_of_dead_reused_or_other_session_is_ignored(self):
+        idle = LIVE_FOOTERS[0][1]
+        self.record("busy", sid="baska")
+        self.assertEqual(self.work(idle), 0)
+        self.record("shell", start="1")          # pid yeniden kullanılmış: başlangıç anı tutmuyor
+        self.assertEqual(self.work(idle), 0)
+        self.record("shell", pid=2 ** 22 + 7)    # süreç yok
+        self.assertEqual(self.work(idle), 0)
+
+    def test_broken_record_and_missing_dir(self):
+        with open(os.path.join(self.dir, "1.json"), "w") as f:
+            f.write("[1")
+        with open(os.path.join(self.dir, "2.json"), "w") as f:
+            f.write("[]")
+        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
+        self.assertFalse(bg_work.session_record_active(os.path.join(self.dir, "yok"), "s1"))
+        self.assertFalse(bg_work.session_record_active(self.dir, None))
+
+
 class SubagentActiveForUsesBoth(unittest.TestCase):
     def test_screen_makes_active_even_without_subagent_files(self):
         with mock.patch.object(web_steward, "tmux_capture", return_value=SCREEN_SHELL):
@@ -153,8 +249,8 @@ class ProviderBackgroundWork(unittest.TestCase):
             if n not in ("claude", "codex", "ucli"):
                 self.assertIsNone(p.background_work("1 shell · esc to interrupt", "/x", None), n)
         c = PROVIDERS["claude"]
-        self.assertEqual(c.background_work(SCREEN_BG_TASKS, "/nonexistent", None), 3)
-        self.assertEqual(c.background_work(SCREEN_SHELL, "/nonexistent", None), 2)
+        self.assertEqual(c.background_work(SCREEN_BG_TASKS, "/nonexistent", None), 2)      # "← 1 agent" sayılmaz
+        self.assertEqual(c.background_work(SCREEN_SHELL, "/nonexistent", None), 1)
         self.assertEqual(c.background_work(SCREEN_OWN_WORK, "/nonexistent", None), 1)
         self.assertEqual(c.background_work(SCREEN_IDLE, "/nonexistent", None), 0)
 

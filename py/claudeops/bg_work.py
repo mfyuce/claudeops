@@ -1,10 +1,11 @@
 """Arka plan işi tespiti (claude): oturum "boşta" görünse de bir kabuk işi / Monitor / alt ajan hâlâ çalışıyor olabilir.
 
-İki bağımsız kanıt (23 Kas, derbent kanıtı: alt ajan KENDİ arka plan işini beklerken transkript yazmıyor, 90 sn sonra "bitti" sayılıyordu):
-  1. EKRAN: alt durum satırı ("1 shell · esc to interrupt · ← 1 agent", "2 background tasks · ← 1 agent · ↓ to manage") ya da ajan satırı
+Bağımsız kanıtlar (23 Kas, derbent kanıtı: alt ajan KENDİ arka plan işini beklerken transkript yazmıyor, 90 sn sonra "bitti" sayılıyordu):
+  1. EKRAN: alt durum satırı ("1 shell · esc to interrupt", "2 background tasks · ↓ to manage"; "← N agent" sayılmaz) ya da ajan satırı
      ("general-purpose waiting on 1 shell · ... · since 18:08", "waiting on its own background work · 40m").
   2. TRANSKRİPT: `run_in_background` ile başlamış, `<task-notification>` (completed/failed/killed) kaydı gelmemiş iş.
-Saf işlevler: tmux/dosya erişimi yalnız `bg_active` sarmalayıcısında."""
+  3. SÜREÇ KAYDI: claude'un `sessions/<pid>.json` `status` alanı `busy` / `shell` (`session_record_active`).
+Ayrıştırma işlevleri saftır; dosya erişimi `*_path`, `tail_lines` ve `session_record_active`tedir."""
 from __future__ import annotations
 
 import json
@@ -17,6 +18,8 @@ from typing import Iterable, Optional, Set
 _COUNT_RE = re.compile(r"(?<![\w.])([1-9]\d*) (?:background tasks?|shells?|agents?|monitors?)\b", re.I)
 _HINT_RE = re.compile(r"to manage|esc to interrupt|to view|ctrl\+b", re.I)
 _WAIT_RE = re.compile(r"\bwaiting on (?:its own background work|[1-9]\d* (?:shells?|agents?|background tasks?|monitors?))", re.I)
+_NAV_RE = re.compile(r"←\s*\d+ agents?\b", re.I)       # alt satırdaki ajan görünümü ipucu: boş oturumlarda da var, iş sayısı değil
+_RECORD_TYPES = (None, "assistant", "user")      # araç çağrısı yalnız ileti kaydından; `api-request-blob` isteğin kopyasıdır
 
 SCREEN_TAIL_LINES = 14
 TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024
@@ -40,7 +43,7 @@ def screen_bg_count(text: str) -> int:
         if _WAIT_RE.search(ln):
             waiting = True
         if _HINT_RE.search(ln):
-            total += sum(int(m.group(1)) for m in _COUNT_RE.finditer(ln))
+            total += sum(int(m.group(1)) for m in _COUNT_RE.finditer(_NAV_RE.sub("", ln)))
     return max(total, 1) if (total or waiting) else 0
 
 
@@ -50,7 +53,7 @@ def screen_bg_work(text: str) -> bool:
     for ln in lines:
         if _WAIT_RE.search(ln):
             return True
-        if _COUNT_RE.search(ln) and _HINT_RE.search(ln):
+        if _COUNT_RE.search(_NAV_RE.sub("", ln)) and _HINT_RE.search(ln):
             return True
     return False
 
@@ -96,6 +99,8 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
                     done_use.add(m.group(1))
                 for m in _TASK_ID_RE.finditer(note):
                     done_task.add(m.group(1))
+            continue
+        if o.get("type") not in _RECORD_TYPES:
             continue
         c = msg.get("content")
         if not isinstance(c, list):
@@ -169,6 +174,32 @@ def transcript_pending_path(path: Optional[str], now: Optional[float] = None) ->
     except OSError:
         return False
     return transcript_pending(data.split("\n"), now)
+
+
+def session_record_active(sessions_dir: str, sid: Optional[str]) -> bool:
+    """claude'un süreç kaydı (`<pid>.json`) bu konuşma için çalışan iş bildiriyor mu: `busy` (tur ya da devredilen ajan) ya da
+    `shell` (tur bitti, kabuk/Monitor açık). Süreç yaşamıyorsa, pid yeniden kullanılmışsa ya da kayıt okunamıyorsa False."""
+    if not sid:
+        return False
+    try:
+        names = os.listdir(sessions_dir)
+    except OSError:
+        return False
+    for n in names:
+        if not n.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(sessions_dir, n), encoding="utf-8") as f:
+                d = json.load(f)
+            if d.get("sessionId") != sid or d.get("status") not in ("busy", "shell"):
+                continue
+            with open(f"/proc/{int(d['pid'])}/stat", encoding="utf-8", errors="replace") as f:
+                started = f.read().rsplit(")", 1)[1].split()[19]
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RecursionError):
+            continue
+        if str(d.get("procStart")) == started:
+            return True
+    return False
 
 
 _CODEX_BG_RE = re.compile(r"(?<![\w.])([1-9]\d*) background terminals? running", re.I)

@@ -1177,12 +1177,14 @@ class ClaudeProvider(CliProvider):
         return MODE_STATUS_PATTERNS
 
     def background_work(self, pane_text: str, cwd: str, sid: Optional[str]) -> Optional[int]:
-        """Alt durum satırı sayıları ('N shell(s)', 'N background task(s)', 'N agent(s)', ajan satırı 'waiting on'); ekran boşsa
-        transkriptte bildirimi gelmemiş `run_in_background` işi (>=1). Bkz. `bg_work`."""
-        from .. import bg_work
+        """Alt durum satırı sayıları ('N shell(s)', 'N background task(s)', ajan satırı 'waiting on'); ekran boşsa süreç kaydı
+        (`busy`/`shell`) ya da transkriptte bildirimi gelmemiş `run_in_background` işi (>=1). Bkz. `bg_work`."""
+        from .. import bg_work, paths
         n = bg_work.screen_bg_count(pane_text or "")
         if n:
             return n
+        if bg_work.session_record_active(paths.SESSIONS_DIR, sid):
+            return 1
         path = jsonl_path_for(cwd, sid)
         return 1 if bg_work.transcript_pending_path(path) else 0
 
