@@ -291,13 +291,23 @@ fn misc_cases(e: &Env) -> Vec<Case> {
 }
 
 fn rs_live(_e: &Env, c: &Case) -> RsOut {
-    let live = serde_json::from_str::<Value>(c.args["payload"].as_str().unwrap())
-        .map(|v| parse_live_models(&v))
-        .unwrap_or_default();
-    RsOut::ret(
-        json!({"ids": if live.ids.is_empty() { Value::Null } else { json!(live.ids) },
-                      "caps": if live.ids.is_empty() { json!({}) } else { Value::Object(live.caps) }}),
-    )
+    let parsed = serde_json::from_str::<Value>(c.args["payload"].as_str().unwrap());
+    // JSON olmayan gövde başarısız çekimdir: iki tarafta `models_fetch_failed` (`fetch_live_models`)
+    let diags = match parsed {
+        Ok(_) => Vec::new(),
+        Err(_) => vec![cops_providers::Diag {
+            event: "models_fetch_failed",
+            fields: vec![("source", json!("ucli"))],
+        }],
+    };
+    let live = parsed.map(|v| parse_live_models(&v)).unwrap_or_default();
+    RsOut {
+        extra_diags: diags,
+        ..RsOut::ret(
+            json!({"ids": if live.ids.is_empty() { Value::Null } else { json!(live.ids) },
+                          "caps": if live.ids.is_empty() { json!({}) } else { Value::Object(live.caps) }}),
+        )
+    }
 }
 
 fn live_cases() -> Vec<Case> {
@@ -350,8 +360,17 @@ fn live_cases() -> Vec<Case> {
             "live_models",
             json!({"payload": json!({"data": [{"id": 5, "task": "chat"}]}).to_string()}),
         )
-        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}}))
-        .known("dize olmayan model kimliği (5) Python'da int kalır, Rust `str()` ile \"5\""),
+        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})),
+    );
+    // 27 Kas: metin olmayan kimlik iki tarafta atlanır (liste kimlik Python'da `TypeError` veriyordu)
+    v.push(
+        Case::new(
+            "live-liste-id",
+            "live_models",
+            json!({"payload": json!({"data": [{"id": ["x"], "task": "chat", "capabilities": {"a": 1}},
+                                             {"id": "g", "task": "chat"}]}).to_string()}),
+        )
+        .settings_json(json!({"byok": {"ucli": {"UCLI_API_KEY": "k"}}})),
     );
     v
 }

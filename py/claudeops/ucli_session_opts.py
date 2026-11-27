@@ -445,6 +445,26 @@ import urllib.request as _urlreq
 
 _MODELS_CACHE: Dict[str, Tuple[float, List[str]]] = {}
 _MODELS_TTL = 86400.0   # sn (24 sa, TBD#146); başarısızlık 60 sn tutulur (tekrar denemeden önce)
+_MODELS_RETRY = 60.0
+
+
+def _models_cache_key(service: str, ep: str, key: str) -> str:
+    """Önbellek anahtarı hizmet + uç nokta + anahtar özeti: anahtar ya da uç nokta değişince eski liste kullanılmaz;
+    anahtarın kendisi saklanmaz. Rust `ucli_opts::models_cache_key`."""
+    import hashlib
+    return f"{service}\0{ep}\0{hashlib.sha256(key.encode('utf-8', 'surrogatepass')).hexdigest()}"
+
+
+def _parse_service_models(raw: bytes) -> List[str]:
+    """`{"data": [...]}` ya da doğrudan dizi -> sıralı, tekrarsız kimlikler. `data` yok/`null` boş liste; JSON olmayan
+    gövde ya da dizi olmayan `data` `ValueError` (başarısız çekim). Rust `ucli_opts::parse_service_models`."""
+    data = _json.loads(raw.decode("utf-8", "replace"))
+    rows = data.get("data") if isinstance(data, dict) else data
+    if rows is None:
+        return []
+    if not isinstance(rows, list):
+        raise ValueError("models: dizi değil")
+    return sorted({str(m.get("id")) for m in rows if isinstance(m, dict) and m.get("id")})
 
 
 class _NoRedirect(_urlreq.HTTPRedirectHandler):
@@ -459,23 +479,26 @@ def _open_no_redirect(req, timeout):
 
 def service_models(service: str, key: str, *, opener=None, now=None) -> List[str]:
     """`SERVICES[service]` uç noktasının `/models` listesi (model kimlikleri, sıralı). Anahtar yoksa/ağ hatasında [].
-    Anthropic `x-api-key` + `anthropic-version`, diğerleri `Authorization: Bearer`. Anahtar ASLA loglanmaz."""
+    Anthropic `x-api-key` + `anthropic-version`, diğerleri `Authorization: Bearer`. Anahtar ASLA loglanmaz.
+    Önbellek hizmet + uç nokta + anahtar özetine bağlı. Başarısız çekim eski DOLU listeyi ezmez (o döner, yeniden deneme
+    60 sn sonra); eski liste yoksa boş sonuç 60 sn tutulur."""
     if service not in services() or service == "evren" or not key:
         return []
     t = (now or _time.time)()
-    hit = _MODELS_CACHE.get(service)
-    if hit and t - hit[0] < (_MODELS_TTL if hit[1] else 60.0):
-        return list(hit[1])
     wire, ep, _env = services()[service]
+    ck = _models_cache_key(service, ep, key)
+    hit = _MODELS_CACHE.get(ck)
+    if hit and t - hit[0] < (_MODELS_TTL if hit[1] else _MODELS_RETRY):
+        return list(hit[1])
     hdr = {"x-api-key": key, "anthropic-version": "2023-06-01"} if wire == "anthropic-messages" else {"Authorization": f"Bearer {key}"}
-    ids: List[str] = []
     try:
         req = _urlreq.Request(ep.rstrip("/") + "/models?limit=200", headers=hdr)
         with (opener or _open_no_redirect)(req, timeout=8) as r:
-            data = _json.loads(r.read().decode("utf-8", "replace"))
-        rows = data.get("data") if isinstance(data, dict) else data
-        ids = sorted({str(m.get("id")) for m in (rows or []) if isinstance(m, dict) and m.get("id")})
+            ids = _parse_service_models(r.read())
+        entry = (t, ids)
     except Exception:
-        ids = []
-    _MODELS_CACHE[service] = (t, ids)
-    return list(ids)
+        from .diaglog import diag_log
+        diag_log("models_fetch_failed", source=service)     # yutulan hata günlüğe (anahtar/adres yok)
+        entry = (t - _MODELS_TTL + _MODELS_RETRY, hit[1]) if hit and hit[1] else (t, [])
+    _MODELS_CACHE[ck] = entry
+    return list(entry[1])

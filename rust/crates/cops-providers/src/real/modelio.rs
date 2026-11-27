@@ -1,11 +1,12 @@
 //! Gerçek [`ModelIo`]: saat, belge deposu, sınırlı dosya okuma, alt süreç ve HTTP.
 
 use crate::model_sources::{HttpRequest, ModelIo, RunRequest};
-use crate::probe::Paths;
+use crate::probe::{Diag, Paths};
 use crate::real::docs::DocStore;
 use crate::real::http::HttpClient;
 use crate::real::process::{self, Capture, Spec};
 use crate::real::{fsio, Env};
+use crate::spawn_exec::DiagSink;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +16,7 @@ pub struct RealModelIo {
     docs: Arc<dyn DocStore>,
     claude_models_json: String,
     http: HttpClient,
+    diag: Option<Arc<dyn DiagSink>>,
 }
 
 impl RealModelIo {
@@ -25,7 +27,14 @@ impl RealModelIo {
             docs,
             claude_models_json: paths.claude_models_json(),
             http,
+            diag: None,
         }
+    }
+
+    /// Yutulan çekim hatalarının (`models_fetch_failed`) yazılacağı günlük (gerçek: `diag_log`).
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> RealModelIo {
+        self.diag = Some(diag);
+        self
     }
 
     pub fn with_http(mut self, http: HttpClient) -> RealModelIo {
@@ -35,6 +44,11 @@ impl RealModelIo {
 }
 
 impl ModelIo for RealModelIo {
+    fn diag(&self, diag: &Diag) {
+        if let Some(sink) = &self.diag {
+            sink.log(diag);
+        }
+    }
     fn monotonic_secs(&self) -> f64 {
         let mut ts = libc::timespec {
             tv_sec: 0,

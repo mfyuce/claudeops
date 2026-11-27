@@ -2,7 +2,7 @@
 
 use crate::effort::{nearest_effort, sort_levels, split_tier};
 use crate::model_sources::{
-    bounded, lock, ModelIo, RunRequest, AGY_MODELS_MAX_BYTES, AGY_MODELS_TIMEOUT,
+    bounded, fetch_failed, lock, ModelIo, RunRequest, AGY_MODELS_MAX_BYTES, AGY_MODELS_TIMEOUT,
 };
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{join_quoted, quote};
@@ -36,15 +36,14 @@ pub const MODELS_TTL: f64 = 300.0;
 
 #[derive(Debug, Default)]
 struct Cached {
-    /// Son deneme anı (başarısız olsa da damgalanır). Başlangıç 0.0: Python gibi açılıştan sonraki ilk [`MODELS_TTL`]
-    /// saniyede soğuk önbellek hiç çekilmez.
-    ts: f64,
+    /// Son deneme anı (başarısız olsa da damgalanır); hiç denenmediyse None (açılıştan hemen sonra da çekilir).
+    ts: Option<f64>,
     models: Vec<String>,
 }
 
-/// `AgyProvider._cache_ts` / `_cache_models`.
+/// `AgyProvider._cache_ts` / `_cache_models` / `_fetch_lock`.
 #[derive(Debug, Default)]
-pub struct ModelsCache(Arc<Mutex<Cached>>);
+pub struct ModelsCache(Arc<Mutex<Cached>>, Arc<Mutex<()>>);
 
 impl ModelsCache {
     /// Soğukta bloklayarak çeker; bayat ama doluysa eskiyi döndürür, yenisini arka planda çeker.
@@ -54,19 +53,36 @@ impl ModelsCache {
         binary: impl FnOnce() -> String,
     ) -> Vec<String> {
         let now = io.monotonic_secs();
-        let stale = {
-            let mut c = lock(&self.0);
-            if now - c.ts <= MODELS_TTL {
+        let mut c = lock(&self.0);
+        if c.ts.is_some_and(|ts| now - ts <= MODELS_TTL) {
+            if !c.models.is_empty() {
                 return c.models.clone();
             }
-            c.ts = now;
-            c.models.clone()
-        };
-        let binary = binary();
-        if stale.is_empty() {
-            refresh(io.as_ref(), &self.0, binary);
+            drop(c);
+            // Soğuk çekim başka çağıranda sürüyor olabilir: bitmesini bekle (en çok çekimin süre sınırı kadar).
+            drop(lock(&self.1));
             return lock(&self.0).models.clone();
         }
+        c.ts = Some(now);
+        let stale = c.models.clone();
+        if stale.is_empty() {
+            // Çekim kilidi durum kilidi altında alınır: arada gelen çağıran boş listeyle dönmez, bekler.
+            let fetching = match self.1.try_lock() {
+                Ok(g) => g,
+                Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    drop(c);
+                    drop(lock(&self.1));
+                    return lock(&self.0).models.clone();
+                }
+            };
+            drop(c);
+            refresh(io.as_ref(), &self.0, binary());
+            drop(fetching);
+            return lock(&self.0).models.clone();
+        }
+        drop(c);
+        let binary = binary();
         let (io2, cache) = (Arc::clone(io), Arc::clone(&self.0));
         io.spawn_background(
             "agy-models-refresh",
@@ -84,6 +100,7 @@ fn refresh(io: &dyn ModelIo, cache: &Mutex<Cached>, binary: String) {
         max_stdout: AGY_MODELS_MAX_BYTES,
     };
     let Some(Ok(text)) = bounded(io.run_stdout(&req), req.max_stdout).map(String::from_utf8) else {
+        fetch_failed(io, "agy");
         return;
     };
     let models = parse_models(&text);

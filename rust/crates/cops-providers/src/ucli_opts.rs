@@ -2,7 +2,8 @@
 //! Güvenlik duruşu: geçersiz değer sessizce atılmaz, HATA döner; yasaklı komutlar desenle de açılmaz.
 
 use crate::model_sources::{
-    bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, SERVICE_MODELS_TIMEOUT,
+    bounded, fetch_failed, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES,
+    SERVICE_MODELS_TIMEOUT,
 };
 use crate::pyfmt::{
     basename, fmt_g, parse_float, parse_int, py_int, str_of, str_or_empty, strip, truthy,
@@ -576,13 +577,23 @@ pub const SERVICE_MODELS_TTL: f64 = 86400.0;
 /// Boş (başarısız) sonucun yeniden denemeden önce tutulma süresi (sn).
 pub const SERVICE_MODELS_RETRY: f64 = 60.0;
 
-/// `_MODELS_CACHE`: hizmet kimliği -> (çekim anı, kimlikler). Anahtar yalnız hizmet kimliğidir (Python gibi).
+/// `_MODELS_CACHE`: (hizmet kimliği, uç nokta, anahtar özeti) -> (çekim anı, kimlikler). Anahtar ya da uç nokta
+/// değişince eski liste kullanılmaz; anahtarın kendisi saklanmaz (SHA-256 özeti).
 #[derive(Debug, Default)]
 pub struct ServiceModelsCache(Mutex<HashMap<String, (f64, Vec<String>)>>);
 
+/// Önbellek anahtarı: `{hizmet}\0{uç nokta}\0{sha256(anahtar) hex}` (Python `_models_cache_key`).
+fn models_cache_key(service: &str, endpoint: &str, key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(key.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{service}\0{endpoint}\0{hex}")
+}
+
 impl ServiceModelsCache {
     /// `service_models`: hizmetin `/models` kimlikleri (sıralı, tekrarsız). Bilinmeyen hizmet, `evren` ya da boş anahtar:
-    /// boş liste ve istek YOK. Başarısızlık da önbelleğe yazılır (eski iyi listenin ÜSTÜNE, Python gibi).
+    /// boş liste ve istek YOK. Başarısız çekim eski dolu listeyi EZMEZ (o liste döner, yeniden deneme
+    /// [`SERVICE_MODELS_RETRY`] sonra); eski liste yoksa boş sonuç [`SERVICE_MODELS_RETRY`] süre tutulur.
     pub(crate) fn get(
         &self,
         io: &dyn ModelIo,
@@ -600,8 +611,10 @@ impl ServiceModelsCache {
         else {
             return Vec::new();
         };
+        let ck = models_cache_key(service, &svc.endpoint, key);
         let now = io.wall_secs();
-        if let Some((at, ids)) = lock(&self.0).get(service) {
+        let old = lock(&self.0).get(&ck).cloned();
+        if let Some((at, ids)) = &old {
             let ttl = if ids.is_empty() {
                 SERVICE_MODELS_RETRY
             } else {
@@ -611,8 +624,20 @@ impl ServiceModelsCache {
                 return ids.clone();
             }
         }
-        let ids = fetch_service_models(io, &svc.wire, &svc.endpoint, key).unwrap_or_default();
-        lock(&self.0).insert(service.to_string(), (now, ids.clone()));
+        let entry = match fetch_service_models(io, &svc.wire, &svc.endpoint, key) {
+            Some(ids) => (now, ids),
+            None => {
+                fetch_failed(io, service);
+                match old {
+                    Some((_, ids)) if !ids.is_empty() => {
+                        (now - SERVICE_MODELS_TTL + SERVICE_MODELS_RETRY, ids)
+                    }
+                    _ => (now, Vec::new()),
+                }
+            }
+        };
+        let ids = entry.1.clone();
+        lock(&self.0).insert(ck, entry);
         ids
     }
 }
@@ -638,21 +663,22 @@ fn fetch_service_models(
         max_body: HTTP_MAX_BYTES,
     };
     let body = bounded(io.http_get(&req), req.max_body)?;
-    Some(parse_service_models(&body))
+    parse_service_models(&body)
 }
 
-/// Yanıt `{"data": [...]}` ya da doğrudan dizi; her nesnenin dolu `id`si `str()` ile. Bozuk gövde boş liste.
-pub fn parse_service_models(body: &[u8]) -> Vec<String> {
-    let Some(data) = Py::parse(&String::from_utf8_lossy(body)) else {
-        return Vec::new();
-    };
+/// Yanıt `{"data": [...]}` ya da doğrudan dizi; her nesnenin dolu `id`si `str()` ile. `data` yok ya da `null` ise boş
+/// liste. JSON olmayan gövde ya da dizi olmayan `data`: None (başarısız çekim).
+pub fn parse_service_models(body: &[u8]) -> Option<Vec<String>> {
+    let data = Py::parse(&String::from_utf8_lossy(body))?;
     let rows = if data.is_object() {
         data.get("data")
     } else {
         Some(&data)
     };
-    let Some(Py::Array(rows)) = rows else {
-        return Vec::new();
+    let rows = match rows {
+        None | Some(Py::Null) => return Some(Vec::new()),
+        Some(Py::Array(rows)) => rows,
+        Some(_) => return None,
     };
     let ids: BTreeSet<String> = rows
         .iter()
@@ -660,7 +686,7 @@ pub fn parse_service_models(body: &[u8]) -> Vec<String> {
         .filter(|id| id.truthy())
         .map(Py::py_str)
         .collect();
-    ids.into_iter().collect()
+    Some(ids.into_iter().collect())
 }
 
 #[cfg(test)]

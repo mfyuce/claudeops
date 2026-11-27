@@ -528,3 +528,115 @@ fn broken_and_mutated_model_answers_never_panic() {
         }
     }
 }
+
+/// 27 Kas (G7 aday 1): açılıştan hemen sonra (tekdüze saat < TTL) da çekilir; eskiden ilk 300 sn hiç çekilmiyordu.
+#[test]
+fn models_are_fetched_right_after_boot() {
+    let (io, sources) = setup();
+    io.set(|s| {
+        s.t = 5.0;
+        s.run = Some(b"a\tA\n".to_vec());
+        s.file = Some(br#"{"models": [{"slug": "c", "visibility": "list"}]}"#.to_vec());
+    });
+    assert_eq!(sources.agy_models(|| "agy".into()), ["a"]);
+    assert_eq!(sources.codex_models(&paths()), ["c"]);
+}
+
+/// 27 Kas (G7 aday 4, 5): başarısız yenileme hizmetin iyi listesini ezmez (60 sn sonra yeniden dener); önbellek anahtar
+/// ve uç noktaya bağlı; her başarısızlık `models_fetch_failed` günlüğü.
+#[test]
+fn service_models_keep_the_good_list_and_follow_the_key() {
+    struct Logged(Arc<Fake>, Mutex<Vec<cops_providers::Diag>>);
+    fn logged_fake(l: &Logged) -> &Fake {
+        &l.0
+    }
+    impl ModelIo for Logged {
+        forward!(Logged, logged_fake);
+        fn diag(&self, d: &cops_providers::Diag) {
+            self.1.lock().unwrap().push(d.clone());
+        }
+    }
+    let fake = Arc::new(Fake::default());
+    let io = Arc::new(Logged(fake.clone(), Mutex::new(Vec::new())));
+    let sources = ModelSources::new(io.clone());
+    let settings = Settings::default();
+    let svc = "grok";
+    let body = |id: &str| Some(json!({"data": [{"id": id}]}).to_string().into_bytes());
+    fake.set(|s| (s.t, s.http) = (0.0, body("m1")));
+    assert_eq!(sources.service_models(&settings, svc, "K1"), ["m1"]);
+    fake.set(|s| (s.t, s.http) = (90000.0, None));
+    assert_eq!(sources.service_models(&settings, svc, "K1"), ["m1"]);
+    fake.set(|s| s.t = 90030.0);
+    assert_eq!(sources.service_models(&settings, svc, "K1"), ["m1"]);
+    assert_eq!(fake.counts().1, 2, "60 sn dolmadan yeniden denenmez");
+    for bad in [&b"{bozuk"[..], br#"{"data": 5}"#] {
+        fake.set(|s| (s.t, s.http) = (s.t + 61.0, Some(bad.to_vec())));
+        assert_eq!(sources.service_models(&settings, svc, "K1"), ["m1"]);
+    }
+    assert_eq!(io.1.lock().unwrap().len(), 3);
+    assert!(io
+        .1
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|d| d.event == "models_fetch_failed" && d.fields == vec![("source", json!(svc))]));
+    fake.set(|s| (s.t, s.http) = (s.t + 1.0, body("m2")));
+    assert_eq!(sources.service_models(&settings, svc, "K2"), ["m2"]);
+    assert_eq!(sources.service_models(&settings, svc, "K1"), ["m1"]);
+}
+
+/// 27 Kas (G7 aday 7): soğuk agy çekimi sürerken gelen ikinci çağıran boş liste almaz, çekimin bitmesini bekler.
+#[test]
+fn a_second_caller_waits_for_the_cold_agy_fetch() {
+    struct Slow(
+        Arc<Fake>,
+        Mutex<Option<Receiver<()>>>,
+        Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    );
+    impl ModelIo for Slow {
+        fn monotonic_secs(&self) -> f64 {
+            1000.0
+        }
+        fn wall_secs(&self) -> f64 {
+            1000.0
+        }
+        fn claude_models_doc(&self) -> Option<Value> {
+            None
+        }
+        fn read_file(&self, _: &str, _: u64) -> Option<Vec<u8>> {
+            None
+        }
+        fn run_stdout(&self, _: &RunRequest) -> Option<Vec<u8>> {
+            if let Some(tx) = self.2.lock().unwrap().take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.1.lock().unwrap().take() {
+                let _ = rx.recv_timeout(WAIT);
+            }
+            self.0.s.lock().unwrap().run.clone()
+        }
+        fn http_get(&self, _: &HttpRequest) -> Option<Vec<u8>> {
+            None
+        }
+    }
+    let fake = Arc::new(Fake::default());
+    fake.set(|s| s.run = Some(b"m1\tM1\n".to_vec()));
+    let (release, gate) = channel();
+    let (started_tx, started) = channel();
+    let io = Arc::new(Slow(
+        fake,
+        Mutex::new(Some(gate)),
+        Mutex::new(Some(started_tx)),
+    ));
+    let sources = Arc::new(ModelSources::new(io));
+    let s1 = Arc::clone(&sources);
+    let first = std::thread::spawn(move || s1.agy_models(|| "agy".into()));
+    started.recv_timeout(WAIT).unwrap();
+    let s2 = Arc::clone(&sources);
+    let second = std::thread::spawn(move || s2.agy_models(|| panic!("ikinci çağıran çekmez")));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(!second.is_finished(), "boş listeyle dönmemeli, beklemeli");
+    release.send(()).unwrap();
+    assert_eq!(first.join().unwrap(), ["m1"]);
+    assert_eq!(second.join().unwrap(), ["m1"]);
+}

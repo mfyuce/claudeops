@@ -16,6 +16,7 @@ import socket
 import struct
 import sys
 import time
+import threading
 import types
 
 _ROOT = os.environ.get("COPS_PARITY_ROOT", "")
@@ -718,7 +719,7 @@ def op_sources(a):
     saved = (agy_p.time, agy_p.threading, agy_p.subprocess, codex_p.time, ucli_p.time, ucli_p._open_no_redirect,
              uso._open_no_redirect)
     agy_p.time = codex_p.time = ucli_p.time = fake_time
-    agy_p.threading = types.SimpleNamespace(Thread=_Thread)
+    agy_p.threading = types.SimpleNamespace(Thread=_Thread, Lock=threading.Lock)
     agy_p.subprocess = types.SimpleNamespace(run=_run)
     ucli_p._open_no_redirect = uso._open_no_redirect = _open
     agy, codex = agy_p.AgyProvider(), codex_p.CodexProvider()

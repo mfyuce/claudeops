@@ -8,7 +8,7 @@
 //!
 //! Hata metni YOKTUR: her G/Ç hatası `None`dır (Python da hepsini yutar), böylece API anahtarı hata/log yoluna giremez.
 
-use crate::probe::{Paths, Probe};
+use crate::probe::{Diag, Paths, Probe};
 use crate::provider::{Cli, ModelCatalog, Providers};
 use crate::settings::Settings;
 use crate::{agy, codex, ucli, ucli_opts};
@@ -116,10 +116,21 @@ pub trait ModelIo: Send + Sync {
     /// `GET`; yalnız 2xx yanıtın gövdesi. Diğer durum, ağ hatası, zaman aşımı ya da `max_body` aşımı None. Yönlendirme
     /// kararı uygulayıcıdadır ve AÇIKTIR (Python izler ve anahtar başlığını yeni adrese de taşır).
     fn http_get(&self, req: &HttpRequest) -> Option<Vec<u8>>;
+    /// Yutulan çekim hatasının günlüğü (Python `diag_log`; sır ve adres taşımaz). Varsayılan hiçbir şey yazmaz.
+    fn diag(&self, _diag: &Diag) {}
     /// Arka plan işi (Python daemon iş parçacığı). Başlatılamazsa iş düşer, eski önbellek kalır.
     fn spawn_background(&self, name: &'static str, job: Box<dyn FnOnce() + Send + 'static>) {
         let _ = std::thread::Builder::new().name(name.into()).spawn(job);
     }
+}
+
+/// İstek yapıldı (ya da Python'da yapılırken patlardı) ama liste alınamadı: `models_fetch_failed` (`source`: `agy`, `ucli`
+/// ya da hizmet kimliği). Python aynı noktalarda aynı olayı yazar; eski liste yine korunur.
+pub(crate) fn fetch_failed(io: &dyn ModelIo, source: &str) {
+    io.diag(&Diag {
+        event: "models_fetch_failed",
+        fields: vec![("source", serde_json::json!(source))],
+    });
 }
 
 /// Uygulayıcı sınırı aşan veri döndürürse yok sayılır.

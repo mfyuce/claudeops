@@ -68,8 +68,8 @@ pub(crate) fn read_models_cache(io: &dyn ModelIo, paths: &Paths) -> Option<Value
 
 #[derive(Debug, Default)]
 struct Cached {
-    /// Son deneme anı; başlangıç 0.0 (agy ile aynı Python davranışı).
-    ts: f64,
+    /// Son deneme anı; hiç denenmediyse None (açılıştan hemen sonra da okunur).
+    ts: Option<f64>,
     models: Vec<String>,
 }
 
@@ -83,9 +83,9 @@ impl ModelsCache {
         let now = io.monotonic_secs();
         let due = {
             let mut c = lock(&self.0);
-            let due = now - c.ts > MODELS_TTL;
+            let due = c.ts.is_none_or(|ts| now - ts > MODELS_TTL);
             if due {
-                c.ts = now;
+                c.ts = Some(now);
             }
             due
         };

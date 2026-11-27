@@ -13,6 +13,7 @@ struct State {
     resp: Value,
     calls: Vec<Value>,
     pending: Vec<Box<dyn FnOnce() + Send>>,
+    diags: Vec<cops_providers::Diag>,
 }
 
 #[derive(Default)]
@@ -79,6 +80,9 @@ impl ModelIo for StepIo {
             req.timeout.as_secs_f64()
         ]));
         self.payload()
+    }
+    fn diag(&self, diag: &cops_providers::Diag) {
+        self.0.lock().unwrap().diags.push(diag.clone());
     }
     fn spawn_background(&self, name: &'static str, job: Box<dyn FnOnce() + Send + 'static>) {
         let mut s = self.0.lock().unwrap();
@@ -155,7 +159,11 @@ fn rs_sources(e: &Env, c: &Case) -> RsOut {
         let got: Vec<Value> = out.iter().map(|r| r["ret"].clone()).collect();
         assert_eq!(&Value::from(got), expect, "vaka {}", c.id);
     }
-    RsOut::ret(Value::from(out))
+    let diags = std::mem::take(&mut io.0.lock().unwrap().diags);
+    RsOut {
+        extra_diags: diags,
+        ..RsOut::ret(Value::from(out))
+    }
 }
 
 fn seq(id: impl Into<String>, source: &str, steps: Vec<Value>) -> Case {
@@ -169,6 +177,15 @@ fn diverges(id: &str, source: &str, steps: Vec<Value>, expect: Value, why: &'sta
         json!({"source": source, "steps": steps, "expect": expect}),
     )
     .known(why)
+}
+
+/// 27 Kas'ta iki tarafta düzelen eski ayrışma: Python ile eşit olmalı VE Rust adım dönüşleri `expect`.
+fn fixed(id: &str, source: &str, steps: Vec<Value>, expect: Value) -> Case {
+    Case::new(
+        id,
+        "sources",
+        json!({"source": source, "steps": steps, "expect": expect}),
+    )
 }
 
 fn ok(b: impl AsRef<[u8]>) -> Value {
@@ -300,11 +317,10 @@ fn codex_cases() -> Vec<Case> {
             s(400.0, doc(&[("a", 1)])),
             s(800.0, Some("{\"models\": [{\"slug\": \"b\", \"visibility\": \"list\", \"priority\": \"1\"}, {\"slug\": \"c\", \"visibility\": \"list\", \"priority\": 2}]}".into())),
         ]),
-        diverges(
+        fixed(
             "src-codex-sapma-utf8", "codex",
             vec![s(400.0, doc(&[("a", 1)])), json!({"t": 800.0, "file": hex(b"{\"models\": \xff}")})],
             json!([["a"], ["a"]]),
-            "codex models_cache UTF-8 değil: Python UnicodeDecodeError yükseltir, Rust eski listeyi tutar",
         ),
     ];
     let mut r = Rng(0x00c0_de00_0002);
@@ -390,23 +406,21 @@ fn ucli_cases() -> Vec<Case> {
             set(1200.0, json!({"byok": {"ucli": {"UCLI_API_KEY": 12345}}}).to_string(), good(&["a"])),
             set(1600.0, json!({"byok": {"ucli": "x"}}).to_string(), good(&["a"])),
         ]),
-        diverges(
+        // 27 Kas: metin olmayan kimlik iki tarafta atlanır, çok derin gövde iki tarafta başarısız çekim (yedek liste)
+        fixed(
             "src-ucli-sapma-sayi-id", "ucli",
             vec![set(1.0, k(), ok("{\"data\": [{\"id\": 5, \"task\": \"chat\"}]}"))],
-            json!([["5"]]),
-            "ucli /models sayı id: Python listeye int koyar, Rust metne çevirir",
+            json!([["deepseek-v4-flash"]]),
         ),
-        diverges(
+        fixed(
             "src-ucli-sapma-liste-id", "ucli",
             vec![set(1.0, k(), ok("{\"data\": [{\"id\": [1], \"task\": \"chat\", \"capabilities\": {}}]}"))],
-            json!([["[1]"]]),
-            "ucli /models liste id + capabilities: Python TypeError yükseltir, Rust metne çevirir",
+            json!([["deepseek-v4-flash"]]),
         ),
-        diverges(
+        fixed(
             "src-ucli-sapma-derin", "ucli",
             vec![set(1.0, k(), json!({"rep": [hex("["), 100000]}))],
             json!([["deepseek-v4-flash"]]),
-            "ucli /models çok derin gövde: Python RecursionError yükseltir, Rust yedeğe düşer",
         ),
         diverges(
             "src-ucli-sapma-utf16", "ucli",

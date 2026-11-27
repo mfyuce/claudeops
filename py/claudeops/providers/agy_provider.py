@@ -270,8 +270,10 @@ class AgyProvider(CliProvider):
     name = "agy"
 
     def __init__(self) -> None:
-        self._cache_ts = 0.0
+        self._cache_ts: Optional[float] = None      # hiç denenmedi (0.0 açılıştan sonraki ilk TTL'de çekimi engelliyordu)
         self._cache_models: List[str] = []
+        self._state_lock = threading.Lock()
+        self._fetch_lock = threading.Lock()         # soğuk çekim: ikinci çağıran boş liste almaz, bekler
 
     def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
                           session_name: str = "") -> Optional[str]:
@@ -425,23 +427,40 @@ class AgyProvider(CliProvider):
             if models:
                 self._cache_models = models
         except Exception:
-            pass  # eski (belki boş) cache kalır — status endpoint'i asla patlamasın
+            # eski (belki boş) cache kalır — status endpoint'i asla patlamasın; hata yutulmaz, günlüğe (sırsız) yazılır
+            diag_log("models_fetch_failed", source="agy")
 
     def model_choices(self) -> List[str]:
         now = time.monotonic()
-        if now - self._cache_ts > _MODELS_TTL:
-            # Denemeyi başarısız/boş olsa BİLE damgala — yoksa (agy sign-out/hata
-            # durumunda) `if models:` hiç tetiklenmez, _cache_ts sabit kalır ve TTL
-            # asla dolmadığı için panel her 4s status poll'unda yeniden subprocess
-            # çalıştırır (canlı yaşandı: agy sign-out olunca her poll'da ~1s'lik
-            # `agy models` çağrısı — TTL'nin var oluş amacını boşa çıkarıyordu).
-            self._cache_ts = now
-            if self._cache_models:
-                # bayat ama dolu önbellek: eskiyi HEMEN döndür, yenisini arka planda çek (/api/status her TTL'de ~1,4 sn
-                # takılmasın; 21 Kas ölçümü: soğuk/TTL sonrası çağrı `agy models` alt sürecini istek iş parçacığında bekliyordu)
-                threading.Thread(target=self._fetch_models, daemon=True, name="agy-models-refresh").start()
+        with self._state_lock:
+            due = self._cache_ts is None or now - self._cache_ts > _MODELS_TTL
+            if not due:
+                if self._cache_models:
+                    return self._cache_models
+                fetching = False
             else:
+                # Denemeyi başarısız/boş olsa BİLE damgala — yoksa (agy sign-out/hata
+                # durumunda) `if models:` hiç tetiklenmez, _cache_ts sabit kalır ve TTL
+                # asla dolmadığı için panel her 4s status poll'unda yeniden subprocess
+                # çalıştırır (canlı yaşandı: agy sign-out olunca her poll'da ~1s'lik
+                # `agy models` çağrısı — TTL'nin var oluş amacını boşa çıkarıyordu).
+                self._cache_ts = now
+                if self._cache_models:
+                    # bayat ama dolu önbellek: eskiyi HEMEN döndür, yenisini arka planda çek (/api/status her TTL'de ~1,4 sn
+                    # takılmasın; 21 Kas ölçümü: soğuk/TTL sonrası çağrı `agy models` alt sürecini istek iş parçacığında bekliyordu)
+                    stale = self._cache_models
+                    threading.Thread(target=self._fetch_models, daemon=True, name="agy-models-refresh").start()
+                    return stale
+                # soğuk: çekim kilidi durum kilidi altında alınır, arada gelen çağıran boş listeyle dönmez, bekler
+                fetching = self._fetch_lock.acquire(blocking=False)
+        if fetching:
+            try:
                 self._fetch_models()      # önbellek hiç yok (soğuk): bloklayarak çek
+            finally:
+                self._fetch_lock.release()
+        else:
+            with self._fetch_lock:        # soğuk çekim başka çağıranda sürüyor: bitmesini bekle (en çok çekim süre sınırı)
+                pass
         return self._cache_models
 
     def permission_modes(self) -> List[str]:

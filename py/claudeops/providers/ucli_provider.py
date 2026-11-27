@@ -246,7 +246,8 @@ def _fetch_live_models() -> Optional[List[str]]:
     try:
         with _open_no_redirect(req, timeout=5.0) as resp:
             payload = json.loads(resp.read())
-    except (urllib.error.URLError, OSError, ValueError):
+    except (urllib.error.URLError, OSError, ValueError, RecursionError):     # RecursionError: aşırı derin gövde
+        diag_log("models_fetch_failed", source="ucli")      # yutulan hata günlüğe (anahtar/adres yok)
         return None
     # `task` alanına göre filtrele — canlı yanıt (2026-09-24) chat DIŞI
     # modeller de içeriyordu (dots-ocr/qwen3-embedding-8b/qwen3-reranker-8b/
@@ -258,9 +259,11 @@ def _fetch_live_models() -> Optional[List[str]]:
     data = payload.get("data", []) if isinstance(payload, dict) else None
     if not isinstance(data, list):
         return None
+    # Kimlik dolu METİN olmalı: sayı listeye sayı olarak giriyordu, liste kimlik `capabilities` sözlüğünde `TypeError`
+    # (asla fırlatmaz sözüne aykırı) veriyordu; model kimliği komut satırına metin olarak gider.
     chat = [
         m for m in data
-        if isinstance(m, dict) and m.get("id") and m.get("task") == "chat"
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m.get("id") and m.get("task") == "chat"
     ]
     if chat:
         # AYNI çekimden model yetenekleri de saklanır (`--effort` kapısı, bkz. `reasoning_effort_for`): ikinci bir

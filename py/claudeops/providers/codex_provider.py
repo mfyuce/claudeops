@@ -170,7 +170,7 @@ class CodexProvider(CliProvider):
     name = "codex"
 
     def __init__(self) -> None:
-        self._cache_ts = 0.0
+        self._cache_ts: Optional[float] = None      # hiç okunmadı (0.0 açılıştan sonraki ilk TTL'de okumayı engelliyordu)
         self._cache_models: List[str] = []
 
     def resolve_resume_id(self, cwd: str, in_use: FrozenSet[str] = frozenset(),
@@ -266,7 +266,7 @@ class CodexProvider(CliProvider):
 
     def model_choices(self) -> List[str]:
         now = time.monotonic()
-        if now - self._cache_ts > _MODELS_TTL:
+        if self._cache_ts is None or now - self._cache_ts > _MODELS_TTL:
             # Denemeyi başarısız/boş olsa BİLE damgala — agy_provider'daki aynı gerekçe:
             # yoksa TTL asla dolmaz, panel her 4s status poll'unda yeniden dosya okur.
             self._cache_ts = now
@@ -279,7 +279,7 @@ class CodexProvider(CliProvider):
                 slugs = [m["slug"] for m in listed]
                 if slugs:
                     self._cache_models = slugs
-            except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+            except (OSError, ValueError, RecursionError, TypeError, AttributeError):    # ValueError: UTF-8 olmayan belge de
                 pass  # eski (belki boş) cache kalır — status endpoint'i asla patlamasın
         return self._cache_models or FALLBACK_MODELS
 
@@ -306,7 +306,7 @@ class CodexProvider(CliProvider):
                 raw = [x.get("effort") if isinstance(x, dict) else x
                        for x in (m.get("supported_reasoning_levels") or [])]
                 return sort_levels(lv for lv in raw if isinstance(lv, str)) or None
-        except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+        except (OSError, ValueError, RecursionError, TypeError, AttributeError):    # ValueError: UTF-8 olmayan belge de
             return None
         return None
 

@@ -2,7 +2,8 @@
 //! API anahtarı argv'ye GİRMEZ: 0600 dosyaya yazılır, `sh -c` içinde `$(cat ...)` ile ortama alınır.
 
 use crate::model_sources::{
-    bounded, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES, LIVE_MODELS_TIMEOUT,
+    bounded, fetch_failed, lock, HttpRequest, ModelIo, SecretValue, HTTP_MAX_BYTES,
+    LIVE_MODELS_TIMEOUT,
 };
 use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
@@ -61,7 +62,7 @@ impl LiveModels {
     }
 }
 
-/// `/models` yanıtı: yalnız `task == "chat"` modeller.
+/// `/models` yanıtı: yalnız `task == "chat"` ve kimliği dolu metin olan modeller.
 pub fn parse_live_models(payload: &Value) -> LiveModels {
     let mut out = LiveModels::default();
     for m in payload
@@ -70,7 +71,13 @@ pub fn parse_live_models(payload: &Value) -> LiveModels {
         .into_iter()
         .flatten()
     {
-        let Some(id) = m.get("id").filter(|v| truthy(v)).map(str_of) else {
+        // Metin olmayan kimlik (sayı, liste) atlanır: model kimliği komut satırına metin olarak gider.
+        let Some(id) = m
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+        else {
             continue;
         };
         if m.get("task").and_then(Value::as_str) != Some("chat") {
@@ -98,17 +105,29 @@ pub fn fetch_live_models(io: &dyn ModelIo, settings: &Settings) -> Option<LiveMo
     if endpoint.is_empty() {
         endpoint = DEFAULT_ENDPOINT.into();
     }
+    let fail = || {
+        fetch_failed(io, "ucli");
+        None
+    };
+    // Başlık olamayan anahtar: istek yapılmaz (Python'da istek açılırken patlar; ikisi de başarısız çekim).
+    let Some(secret) = SecretValue::new(&key) else {
+        return fail();
+    };
     let req = HttpRequest {
         url: format!("{}/models", endpoint.trim_end_matches('/')),
-        headers: vec![("X-API-Key", SecretValue::new(&key)?)],
+        headers: vec![("X-API-Key", secret)],
         timeout: LIVE_MODELS_TIMEOUT,
         max_body: HTTP_MAX_BYTES,
     };
-    let body = bounded(io.http_get(&req), req.max_body)?;
+    let Some(body) = bounded(io.http_get(&req), req.max_body) else {
+        return fail();
+    };
     // Python `json.loads(bytes)` UTF-8 BOM'u kabul eder (UTF-16/32'yi de; burada desteklenmez).
     let body = body.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&body);
-    let payload = Py::parse(std::str::from_utf8(body).ok()?)?.to_value();
-    Some(parse_live_models(&payload)).filter(|l| !l.ids.is_empty())
+    let Some(payload) = std::str::from_utf8(body).ok().and_then(Py::parse) else {
+        return fail();
+    };
+    Some(parse_live_models(&payload.to_value())).filter(|l| !l.ids.is_empty())
 }
 
 #[derive(Debug, Default)]
