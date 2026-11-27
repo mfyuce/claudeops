@@ -11,8 +11,8 @@ Son ağaçta ölçülen (`54ed8a8e`): `cargo test --workspace --no-fail-fast` 12
 (23 atlanan, 443 sn); eşleme denetimleri çıkış 0 (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`,
 rev `map_table.py <rapor> --check`; rs-proc ve rs-rev blokları yeniden üretildi). rs-tmux tablosu bu turda
 denetlenmedi (`tmux_backend.py` değişmedi).
-Oynak görülenler: `parity_real` ve iki `flock` testi bu turda giderildi ("Oynak testler" bölümü);
-`test_review_io_history::test_real_pipes_stream_and_heartbeat` incelenmedi.
+Oynak görülenler: `parity_real`, iki `flock` testi ve
+`test_review_io_history::test_real_pipes_stream_and_heartbeat` giderildi ("Oynak testler" bölümü).
 27 Kas üçüncü tur: §3.2, §3.12, `49def922` ve `d0054ada` eşitlemeleri (aşağıda ilgili bölümler).
 27 Kas ikinci tur: `726888f1` ve `ec82eac5` eşitlemesi, X gönderimi ve yabancı kilit testleri, G3 3 ve 5, G7 8 (`agy models`),
 G9 5, TBD#401, TBD#411 kaydı, maliyet toplayıcısı eşlik testi (aşağıda ilgili bölümler).
@@ -826,7 +826,12 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   Not: Python `file_lock` aynı süreçteki iş parçacıklarını süre sınırsız `RLock`ta bekletir, Rust `FileLock` onları da
   30 sn sınırına sokar (daha sıkı yön; değiştirilmedi).
 - `parity_live` `live-codex-ctx-dev` önceki turda düzeltildi.
-  `test_review_io_history::test_real_pipes_stream_and_heartbeat` bu turda incelenmedi.
+- `test_review_io_history::test_real_pipes_stream_and_heartbeat` (27 Kas, yalnız test değişti): sahte süreç 0,5 sn
+  uyuyordu; süreç açıldıktan sonraki kayıt yazımı (`update_pair`, `pid`) 0,8 sn geciktirilince kalp atışı satırı hiç
+  yazılmadan süreç bitiyor ve test aynı yerde düşüyor (0,3 sn gecikmede geçiyor). Süreç artık kalp atışını gördüğünü
+  bildiren dosyayı en çok 8 sn bekliyor. Düzeltmeden önce 400 koşuda (16 eşzamanlı) doğal düşüş yeniden üretilmedi;
+  gerçek düşüşün nedeninin bu olduğu bu yüzden çıkarımdır. Sonrasında 200 koşu (16 eşzamanlı) yeşil; kalp atışı
+  kapatılınca test düşüyor.
 
 | Python testi (py/tests/test_rsprov_cost_depth.py) | Rust karşılığı | durum |
 |---|---|---|

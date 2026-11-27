@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace as NS
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from test_web_review_runner import Base, FakeProc, EV  # noqa: E402
@@ -135,9 +136,25 @@ class TestRunWritesIo(Base):
 
     def test_real_pipes_stream_and_heartbeat(self):
         import subprocess
+        # Süreç sabit süre uyumaz: kalp atışı yazılana dek bekler. Sabit 0,5 sn'de, süreç açıldıktan sonraki disk
+        # yazımı yük altında gecikince süreç kalp atışı iş parçacığından önce bitiyordu.
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        beat = os.path.join(d.name, "beat")
+        real_system = wr.IoLog.system
+
+        def system(lg, msg):
+            real_system(lg, msg)
+            if msg.startswith("çalışıyor"):
+                open(beat, "w").close()
+        p = mock.patch.object(wr.IoLog, "system", system)
+        p.start()
+        self.addCleanup(p.stop)
         code = "\n".join([
-            "import sys, time, json",
-            "sys.stderr.write('UnifiedCLI tool: t(1)\\nhal '); sys.stderr.flush(); time.sleep(0.5)",
+            "import os, sys, time, json",
+            "sys.stderr.write('UnifiedCLI tool: t(1)\\nhal '); sys.stderr.flush()",
+            "end = time.monotonic() + 8",      # kalp atışı hiç gelmezse süreç yine biter, test aşağıda düşer
+            f"while not os.path.exists({beat!r}) and time.monotonic() < end: time.sleep(0.02)",
             "sys.stderr.write('devam\\n')",
             "sys.stdout.write(json.dumps({'answer': '## R-1 | P2 | t | a.py:1\\nb'}))"])
         old = wr.HEARTBEAT_SECONDS
