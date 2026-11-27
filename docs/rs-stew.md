@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1931 satır)
+### Python testleri (1932 satır)
 
-Test satırı özeti: 1931 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1932 satır; doğrudan açık (aşağıda `AÇIK`) 190; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1735,6 +1735,7 @@ Test satırı özeti: 1931 satır; doğrudan açık (aşağıda `AÇIK`) 190; pa
 | `test_steward_core_a.RulesTest.test_slot_pressure_stops_idle_session` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_answer_delivery_running_busy_or_stopped` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+12) |
+| `test_steward_core_a.RulesTest.test_adhoc_session_answer_waits_for_running_subagent` | identity::derived_of_vectors, identity::p_pp, identity::p_project_key, identity::paths_for_vectors (+12) |
 | `test_steward_core_a.RulesTest.test_instance_sessions_map_to_blueprint_project` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_tour_only_when_brain_idle_and_due` | closing::context_threshold_vectors, identity::derived_of_vectors, identity::p_pp, identity::p_project_key (+17) |
 | `test_steward_core_a.RulesTest.test_phase_model_effort` | prompts::phase_model_effort_vectors |

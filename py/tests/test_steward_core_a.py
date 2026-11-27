@@ -391,6 +391,13 @@ class RulesTest(unittest.TestCase):
         acts, _ = sw.plan_tick([_view("zk_x20261020", running=False)], self.projects, {}, cfg, self.now, [q], [])
         self.assertEqual([a.kind for a in acts if a.name == "zk_x20261020" and a.kind != "close_stale_answer"], [])   # kapalıysa açılmaz
 
+    def test_adhoc_session_answer_waits_for_running_subagent(self):
+        q = sw.Question(id="q", project="zk_x20261020", text="?", created_at=0, status="answered", answer="A",
+                        answered_at=1, source="zk_x20261020")
+        sess = _view("zk_x20261020", busy=False, subagent_active=True)
+        acts, _ = sw.plan_tick([sess], self.projects, {}, _cfg(max_active=4), self.now, [q], [])
+        self.assertEqual([a.kind for a in acts if a.kind == "deliver_answer"], [])      # alt ajan sürüyor: sonraki tick
+
     def test_instance_sessions_map_to_blueprint_project(self):
         cfg = _cfg(max_active=1)
         inst = _view("a20261019", blueprint="a", busy=True)

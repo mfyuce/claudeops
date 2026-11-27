@@ -4593,7 +4593,7 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
             v = next((x for x in views if x.running and x.name in (q.source, q.project) and x.name != cfg.brain_name
                       and (world is None or world.session_class(x.name, x.blueprint) == "own"
                            or (world.is_adhoc_owner and world.session_class(x.name, x.blueprint) == "adhoc"))), None)
-            if v is not None and v.name not in busy_names and not v.busy:
+            if v is not None and v.name not in busy_names and not v.busy and not v.subagent_active:
                 actions.append(Action("deliver_answer", v.name, "answer", {"question_id": q.id}))
                 busy_names.add(v.name)
                 last_directive_at[v.name] = now

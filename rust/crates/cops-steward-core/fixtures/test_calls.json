@@ -8372,6 +8372,19 @@
 "stale_answers",
 "undelivered_answers"
 ],
+"test_steward_core_a.RulesTest.test_adhoc_session_answer_waits_for_running_subagent": [
+"_is_project_session",
+"_pp",
+"_project_key",
+"derived_of",
+"notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers"
+],
 "test_steward_core_a.RulesTest.test_answer_delivery_running_busy_or_stopped": [
 "_is_project_session",
 "_pp",
@@ -32816,6 +32829,32 @@
 "world_for"
 ],
 "test_steward_multi.DefaultWorld_RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running": [
+"World._class",
+"World.name_class",
+"World.own_projects",
+"World.owner_of",
+"World.owns",
+"World.project_key",
+"World.resolve",
+"World.session_class",
+"_is_project_session",
+"_pp",
+"_project_key",
+"brain_name_for",
+"build_ownership_index",
+"derived_of",
+"holds_total_slot",
+"normalize_host",
+"notes_wait",
+"paths_for",
+"plan_api_recovery",
+"plan_tick",
+"review_items",
+"stale_answers",
+"undelivered_answers",
+"world_for"
+],
+"test_steward_multi.DefaultWorld_RulesTest.test_adhoc_session_answer_waits_for_running_subagent": [
 "World._class",
 "World.name_class",
 "World.own_projects",
