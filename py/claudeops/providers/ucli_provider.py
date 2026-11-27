@@ -628,6 +628,41 @@ def _has_price(argv: List[str]) -> bool:
     return "--price" in argv or _argv_model(argv) in _PRICED_MODELS
 
 
+def _with_price(argv: List[str], price: str, service: str, session_name: str = "") -> List[str]:
+    """Fiyat: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu; ikili `--price` tanımıyorsa eklenmez."""
+    if not price and service == "claude" and _argv_model(argv) not in _PRICED_MODELS:
+        price = _claudeops_price(_argv_model(argv))
+    if not price:
+        return argv
+    if not binary_supports_flag(argv[0], "--price"):
+        diag_log("ucli_flag_unsupported", name=session_name, flag="--price", binary=argv[0])
+        return argv
+    return _set_flag_value(argv, "--price", price)
+
+
+def _effective_session_cap(service: str, explicit: Any) -> float:
+    """Evren (ücretsiz, fiyatsız) hizmette varsayılan tavan eklenmez; açıkça verilen tavan fiyat ister."""
+    return float(explicit or 0) or (0.0 if service in ("", "evren") else _default_session_cap())
+
+
+def _unpriced_cap_reason(argv: List[str]) -> str:
+    """Oturum USD tavanı verilecek açılışın ret nedeni ("" = ret yok). ucli bu halde "needs a price for this model" ile hemen
+    çıkar (panel yalnız "proc görünmedi" görürdü); tavanı sessizce düşürmek yerine nedeniyle reddedilir."""
+    model = _argv_model(argv)
+    if not binary_supports_flag(argv[0], "--max-session-usd") or not model or _has_price(argv):
+        return ""
+    return (f"{model}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. "
+            "Başlatma seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın.")
+
+
+def session_cap_refusal(service: str, model: str) -> str:
+    """Seçeneğinde yalnız hizmet taşıyan açılış (alt ajan) oturum tavanı yüzünden reddedilir mi: neden, yoksa "". Salt okunur
+    (anahtar dosyası, günlük pay ayırma yok); çok kullanıcı kancasının eklediği tavan hesaba katılmaz."""
+    if not _effective_session_cap(service, None):
+        return ""
+    return _unpriced_cap_reason(_with_price([resolve_binary(), "chat", "--model", model], "", service))
+
+
 def _default_session_cap() -> float:
     """Kayıtta `max_session_usd` yoksa ayardaki varsayılan oturum tavanı (`ucli_max_session_usd`, boş = 8, 0 = yok)."""
     try:
@@ -746,26 +781,16 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--usage-log", binary=argv[0])
     # Fiyat, tavanlardan ÖNCE: açık `price` seçeneği, yoksa (yalnız claude hizmetinde) claudeops tablosu.
-    price = str(opts.get("price") or "")
-    if not price and service == "claude" and _argv_model(argv) not in _PRICED_MODELS:
-        price = _claudeops_price(_argv_model(argv))
-    if price:
-        if binary_supports_flag(argv[0], "--price"):
-            argv = _set_flag_value(argv, "--price", price)
-        else:
-            diag_log("ucli_flag_unsupported", name=session_name, flag="--price", binary=argv[0])
+    argv = _with_price(argv, str(opts.get("price") or ""), service, session_name)
     if opts.get("max_cost_usd"):
         argv = _max_cost_args(argv, float(opts["max_cost_usd"]), session_name)
-    # Evren (ücretsiz, fiyatsız) hizmette varsayılan tavan eklenmez; açıkça verilen tavan fiyat ister (aşağıda ret)
-    sess_cap = float(opts.get("max_session_usd") or 0) or (0.0 if service in ("", "evren") else _default_session_cap())
+    sess_cap = _effective_session_cap(service, opts.get("max_session_usd"))
     if sess_cap:
         binary = argv[0]
         if binary_supports_flag(binary, "--max-session-usd"):
-            if _argv_model(argv) and not _has_price(argv):
-                # ucli bu halde "needs a price for this model" ile hemen çıkar (panel yalnız "proc görünmedi" görürdü);
-                # tavanı sessizce düşürmek yerine nedeniyle reddet.
-                raise ValueError(f"{_argv_model(argv)}: ucli bu modelin fiyatını bilmiyor, oturum USD tavanı uygulanamaz. "
-                                 "Başlatma seçeneğinde price (IN,OUT) verin, fiyatı bilinen bir model seçin ya da tavanı 0 yapın.")
+            reason = _unpriced_cap_reason(argv)
+            if reason:
+                raise ValueError(reason)
             argv = _set_flag_value(argv, "--max-session-usd", f"{sess_cap:g}")
         else:
             diag_log("ucli_flag_unsupported", name=session_name, flag="--max-session-usd", binary=binary)

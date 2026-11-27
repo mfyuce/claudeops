@@ -1,7 +1,8 @@
 """`/api/agents/*` — ucli oturumlarının ALT AJAN açması (unified-cli `--allow-agents`, sahip isteği 2026-11-04).
 
 Sözleşme (ucli istemcisiyle BİREBİR; hata her zaman `{ok:false, error}`):
-  GET  /api/agents/models            -> {ok, models:[{id, service, efforts:[low|medium|high...]}]}
+  GET  /api/agents/models            -> {ok, models:[{id, service, efforts:[low|medium|high...][, startable: false, reason]}]}
+       (`startable: false`: oturum USD tavanı açıkken fiyatı bilinmeyen model; `start` aynı nedenle reddeder.)
   POST /api/agents/start {model, effort, task, mode: read|edit}   -> {ok, name}
        (modelin desteklemediği `effort` reddedilmez, verilmemiş sayılır; ucli TBD 159 (e). O zaman yanıta
         `effort_ignored` = istenen değer ve okunur `warning` eklenir.)
@@ -56,7 +57,8 @@ def _efforts_for(service: str, model: str) -> List[str]:
 
 def models_catalog() -> List[Dict[str, Any]]:
     """ucli_provider kataloğu: Evren'in canlı sohbet modelleri + anahtarı girili hizmetlerin modelleri. effort yalnız
-    low|medium|high. Anahtarsız hizmet listelenmez (başlatma zaten reddedilirdi)."""
+    low|medium|high. Anahtarsız hizmet listelenmez (başlatma zaten reddedilirdi). Oturum tavanı yüzünden açılamayacak model
+    listede kalır, `startable: false` + `reason` taşır."""
     from ..providers import ucli_provider as up
     out: List[Dict[str, Any]] = []
     seen = set()
@@ -73,8 +75,19 @@ def models_catalog() -> List[Dict[str, Any]]:
             if not m or m in seen:
                 continue
             seen.add(m)
-            out.append({"id": m, "service": sid, "efforts": _efforts_for(sid, m)})
+            out.append({"id": m, "service": sid, "efforts": _efforts_for(sid, m), **_start_block(sid, m)})
     return out
+
+
+def _start_block(service: str, model: str) -> Dict[str, Any]:
+    """Bilinen açılış engeli ({} = yok). Denetim koşamazsa model işaretlenmez (başlatma kendi hatasını yine verir)."""
+    from ..providers import ucli_provider as up
+    try:
+        reason = up.session_cap_refusal(service, model)
+    except Exception as e:      # noqa: BLE001
+        diag_log("ucli_agent_catalog_check_failed", model=model, error=e.__class__.__name__)
+        return {}
+    return {"startable": False, "reason": reason} if reason else {}
 
 
 # -- yardımcılar -----------------------------------------------------------------------------------------------------

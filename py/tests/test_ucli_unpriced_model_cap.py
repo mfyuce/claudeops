@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from claudeops.commands import web_agents as wa  # noqa: E402
 from claudeops.providers import ucli_provider as up  # noqa: E402
 
 
@@ -61,6 +62,57 @@ class UnpricedModelCapTest(unittest.TestCase):
     def test_no_cap_no_refusal(self):
         argv = apply({"service": "evren"}, "nobody-knows-1")
         self.assertNotIn("--max-session-usd", argv)
+
+
+class CatalogMarksUnstartableTest(unittest.TestCase):
+    """`/api/agents/models`: alt ajan açılışı oturum tavanı yüzünden reddedilecek model `startable: false` + nedenle listelenir."""
+    SERVICES = [{"id": "evren", "env": "EVREN_API_KEY"}, {"id": "claude", "env": "ANTHROPIC_API_KEY", "models": [
+        "claude-sonnet-5-5", "claude-haiku-5-5", "claude-nobody-9"]},
+        {"id": "openai", "env": "OPENAI_API_KEY", "models": ["nobody-knows-1"]}]
+
+    def catalog(self, cap=8.0, flags=None):
+        with mock.patch.object(wa, "ucli_services", return_value=self.SERVICES), \
+                mock.patch.object(wa, "byok_env_for", return_value={"ANTHROPIC_API_KEY": "k", "OPENAI_API_KEY": "k"}), \
+                mock.patch.object(wa, "_efforts_for", return_value=["medium"]), \
+                mock.patch.object(up, "_live_models", return_value=["evren-free-1"]), \
+                mock.patch.object(up, "resolve_binary", return_value="ucli"), \
+                mock.patch.object(up, "binary_supports_flag", lambda b, f: flags is None or f in flags), \
+                mock.patch.object(up, "_default_session_cap", return_value=cap), \
+                mock.patch.object(up, "diag_log", lambda *a, **k: None):
+            return {m["id"]: m for m in wa.models_catalog()}
+
+    def unstartable(self, **kw):
+        return sorted(i for i, m in self.catalog(**kw).items() if m.get("startable") is False)
+
+    def test_only_unpriced_paid_models_are_marked_with_reason(self):
+        got = self.catalog()
+        self.assertEqual(self.unstartable(), ["claude-nobody-9", "nobody-knows-1"])
+        self.assertIn("nobody-knows-1", got["nobody-knows-1"]["reason"])
+        for i in ("evren-free-1", "claude-sonnet-5-5", "claude-haiku-5-5"):
+            self.assertEqual(sorted(got[i]), ["efforts", "id", "service"], i)
+
+    def test_reason_is_the_one_the_launch_refuses_with(self):
+        for service, model in (("openai", "nobody-knows-1"), ("claude", "claude-nobody-9")):
+            with self.assertRaises(ValueError) as c:
+                apply({"service": service}, model)
+            self.assertEqual(self.catalog()[model]["reason"], str(c.exception))
+
+    def test_cap_off_marks_nothing(self):
+        self.assertEqual(self.unstartable(cap=0.0), [])
+
+    def test_binary_without_session_cap_flag_marks_nothing(self):
+        self.assertEqual(self.unstartable(flags={"--price"}), [])
+
+    def test_binary_without_price_flag_marks_table_priced_model_too(self):
+        self.assertEqual(self.unstartable(flags={"--max-session-usd"}),
+                         ["claude-haiku-5-5", "claude-nobody-9", "nobody-knows-1"])
+
+    def test_check_failure_keeps_the_list(self):
+        with mock.patch.object(up, "session_cap_refusal", side_effect=OSError("no binary"), create=True), \
+                mock.patch.object(wa, "diag_log", lambda *a, **k: None):
+            got = self.catalog()
+        self.assertEqual(len(got), 5)
+        self.assertFalse([m for m in got.values() if "startable" in m])
 
 
 if __name__ == "__main__":
