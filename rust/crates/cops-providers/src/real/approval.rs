@@ -7,15 +7,18 @@
 
 use crate::approval::{self, NewRun, StateChange};
 use crate::probe::Paths;
+use crate::pyfmt::abspath;
 use crate::pyjson::Py;
 use crate::real::effects::{atomic_write_text, makedirs};
-use crate::real::lock::{FileLock, LOCK_TIMEOUT};
+use crate::real::lock::{log_refused, FileLock, LOCK_TIMEOUT};
 use crate::real::oserr;
+use crate::spawn_exec::DiagSink;
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::{self, OpenOptions, Permissions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Defter okuma sınırı (Python sınırsız): aşan defter okunamaz sayılır.
@@ -64,11 +67,21 @@ fn unix_now() -> f64 {
         .map_or(0.0, |d| d.as_secs_f64())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ApprovalStore {
     root: String,
     now: fn() -> f64,
     lock_timeout: Duration,
+    diag: Option<Arc<dyn DiagSink>>,
+}
+
+impl std::fmt::Debug for ApprovalStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApprovalStore")
+            .field("root", &self.root)
+            .field("lock_timeout", &self.lock_timeout)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ApprovalStore {
@@ -77,7 +90,14 @@ impl ApprovalStore {
             root: paths.ucli_approval_root(),
             now: unix_now,
             lock_timeout: LOCK_TIMEOUT,
+            diag: None,
         }
+    }
+
+    /// Reddedilen defter kilidinin (`file_lock_refused`) yazılacağı günlük.
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> ApprovalStore {
+        self.diag = Some(diag);
+        self
     }
 
     pub fn with_clock(mut self, now: fn() -> f64) -> ApprovalStore {
@@ -195,8 +215,12 @@ impl ApprovalStore {
                 format!("{lock} alınamadı: {}", oserr::text(e, at)),
             )
         };
-        makedirs(&self.root, 0o777).map_err(|(p, e)| refused(&e, &p))?;
-        FileLock::acquire(&path, "/", self.lock_timeout).map_err(|e| refused(&e, &lock))
+        makedirs(&self.root, 0o777).map_err(|(p, e)| {
+            log_refused(&abspath(&path, "/"), self.diag.as_deref());
+            refused(&e, &p)
+        })?;
+        FileLock::acquire_logged(&path, "/", self.lock_timeout, self.diag.as_deref())
+            .map_err(|e| refused(&e, &lock))
     }
 
     fn write_index(&self, index: Vec<(String, Py)>) -> Result<(), ApprovalError> {

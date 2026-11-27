@@ -343,7 +343,12 @@ fn concurrent_registrations_lose_nothing_and_one_key_has_one_winner() {
 fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
     let _g = spawn_guard();
     let t = Tmp::new();
-    let store = ApprovalStore::new(&t.paths()).with_lock_timeout(Duration::from_millis(100));
+    let log = t.path("work/diag.log");
+    let store = ApprovalStore::new(&t.paths())
+        .with_lock_timeout(Duration::from_millis(100))
+        .with_diag(std::sync::Arc::new(
+            cops_providers::real::diaglog::DiagLog::new(log.clone()),
+        ));
     let argv = vec!["a".to_string()];
     let run = NewRun {
         cwd: "/w",
@@ -389,6 +394,9 @@ fn the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing() {
     assert_eq!(register.unwrap_err().class, "LockError");
     assert_eq!(change.unwrap_err().class, "LockError");
     assert_eq!(fs::read(store.index_path()).unwrap(), before);
+    let logged = fs::read_to_string(&log).unwrap();
+    assert_eq!(logged.matches("file_lock_refused").count(), 2, "{logged}");
+    assert!(logged.contains(&store.index_path()), "{logged}");
     store.register("r2", run).unwrap();
 }
 

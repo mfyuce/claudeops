@@ -8,11 +8,13 @@ use crate::live::{FileStat, LiveProbe, SqlCell};
 use crate::probe::{Effect, McpRegisterError, Paths, Probe};
 use crate::pyjson::Py;
 use crate::real::agents::AgentRegistry;
+use crate::real::diaglog::DiagLog;
 use crate::real::docs::DocStore;
 use crate::real::effects::EffectError;
 use crate::real::help::HelpCache;
 use crate::real::process::{self, Capture, RunError, Spec};
 use crate::real::{checks, effects, fsio, oserr, pathexec, sqlite, Env};
+use crate::spawn_exec::DiagSink;
 use crate::ucli_opts::Toolchain;
 use std::fs;
 use std::path::Path;
@@ -68,7 +70,8 @@ pub struct RealProbe {
 
 impl RealProbe {
     pub fn new(paths: Paths, env: Env, deps: RealDeps) -> RealProbe {
-        let agents = AgentRegistry::new(&paths);
+        let agents =
+            AgentRegistry::new(&paths).with_diag(Arc::new(DiagLog::from_env(&paths, &env)));
         RealProbe {
             paths,
             env,
@@ -78,6 +81,12 @@ impl RealProbe {
             proc_root: "/proc".into(),
             mcp_timeout: MCP_ADD_TIMEOUT,
         }
+    }
+
+    /// Reddedilen ajan defteri kilidinin yazılacağı günlük (verilmezse `diag.log`).
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> RealProbe {
+        self.agents = self.agents.with_diag(diag);
+        self
     }
 
     /// Göreli yolların tabanı (verilmezse sürecin çalışma dizini).

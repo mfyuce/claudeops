@@ -12,6 +12,7 @@ use crate::pyfmt::strip;
 use crate::pyjson::Py;
 use crate::real::lock::{FileLock, LOCK_TIMEOUT};
 use crate::real::{effects, fsio, Env};
+use crate::spawn_exec::DiagSink;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -106,6 +107,7 @@ pub struct DocAgySidStore {
     path: String,
     cwd: String,
     timeout: Duration,
+    diag: Option<Arc<dyn DiagSink>>,
 }
 
 impl DocAgySidStore {
@@ -117,7 +119,14 @@ impl DocAgySidStore {
             path: paths.agy_sids_json(),
             cwd,
             timeout: LOCK_TIMEOUT,
+            diag: None,
         }
+    }
+
+    /// Reddedilen kilidin (`file_lock_refused`) yazılacağı günlük.
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> DocAgySidStore {
+        self.diag = Some(diag);
+        self
     }
 
     pub fn with_lock_timeout(mut self, timeout: Duration) -> DocAgySidStore {
@@ -136,8 +145,9 @@ impl AgySidStore for DocAgySidStore {
     }
 
     fn locked(&self, f: &mut dyn FnMut() -> Result<bool, String>) -> Result<bool, String> {
-        let _lock = FileLock::acquire(&self.path, &self.cwd, self.timeout)
-            .map_err(|e| format!("agy_sids kilidi alınamadı: {e}"))?;
+        let _lock =
+            FileLock::acquire_logged(&self.path, &self.cwd, self.timeout, self.diag.as_deref())
+                .map_err(|e| format!("agy_sids kilidi alınamadı: {e}"))?;
         f()
     }
 

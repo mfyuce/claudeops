@@ -9,13 +9,14 @@ use crate::probe::Paths;
 use crate::pyjson::Py;
 use crate::real::lock::{FileLock, LOCK_TIMEOUT};
 use crate::real::{docs::DOC_MAX_BYTES, effects, fsio, oserr};
+use crate::spawn_exec::DiagSink;
 use crate::ucli::is_child_name;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions, Permissions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// `_SAFE_NAME_RE` (Python `$`: sondaki tek satır sonu kabul edilir).
@@ -57,11 +58,21 @@ impl Default for Sources {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AgentRegistry {
     state_file: String,
     token_dir: String,
     sources: Sources,
+    diag: Option<Arc<dyn DiagSink>>,
+}
+
+impl std::fmt::Debug for AgentRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentRegistry")
+            .field("state_file", &self.state_file)
+            .field("token_dir", &self.token_dir)
+            .finish_non_exhaustive()
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -105,7 +116,14 @@ impl AgentRegistry {
             state_file: paths.ucli_agents_json(),
             token_dir: paths.ucli_agent_token_dir(),
             sources: Sources::default(),
+            diag: None,
         }
+    }
+
+    /// Reddedilen kilidin (`file_lock_refused`) yazılacağı günlük.
+    pub fn with_diag(mut self, diag: Arc<dyn DiagSink>) -> AgentRegistry {
+        self.diag = Some(diag);
+        self
     }
 
     pub fn with_sources(mut self, sources: Sources) -> AgentRegistry {
@@ -118,7 +136,7 @@ impl AgentRegistry {
     }
 
     fn lock(&self) -> io::Result<FileLock> {
-        FileLock::acquire(&self.state_file, "/", LOCK_TIMEOUT)
+        FileLock::acquire_logged(&self.state_file, "/", LOCK_TIMEOUT, self.diag.as_deref())
     }
 
     /// `_load`: yok/bozuk/nesne olmayan belge boş defter; `parents`/`children` nesne değilse boşaltılır.

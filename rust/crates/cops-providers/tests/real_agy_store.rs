@@ -6,6 +6,7 @@ mod support;
 
 use cops_providers::agy_resume::remember_agy_sid;
 use cops_providers::pyjson::Py;
+use cops_providers::real::diaglog::DiagLog;
 use cops_providers::real::docs::{DocAgySidStore, DocStore, FileDocs};
 use cops_providers::real::lock::FileLock;
 use cops_providers::{AgySidStore, Paths};
@@ -163,7 +164,13 @@ fn a_symlinked_lock_file_is_refused_and_nothing_is_written() {
     let paths = t.paths();
     let victim = t.write("work/kurban", "x", 0o600);
     std::os::unix::fs::symlink(&victim, format!("{}.lock", paths.agy_sids_json())).unwrap();
-    assert!(remember_agy_sid(&store(&paths, t.env(&[])), "a", "1", false).is_err());
+    let log = t.path("state/diag.log");
+    let logged = store(&paths, t.env(&[])).with_diag(Arc::new(DiagLog::new(log.clone())));
+    assert!(remember_agy_sid(&logged, "a", "1", false).is_err());
+    let text = fs::read_to_string(log).unwrap();
+    assert_eq!(text.lines().count(), 1, "{text}");
+    assert!(text.contains("\"event\": \"file_lock_refused\""), "{text}");
+    assert!(text.contains(&paths.agy_sids_json()), "{text}");
     assert!(!std::path::Path::new(&paths.agy_sids_json()).exists());
     assert_eq!(fs::read_to_string(victim).unwrap(), "x");
     assert!(FileLock::acquire(&t.path("work/kurban2"), "/", Duration::from_millis(10)).is_ok());

@@ -3,10 +3,13 @@
 //! `rs/state` `cops-state::fsutil::FileLock` aynı sözleşmeyi uygular; o dal birleşince bu dosya onunla
 //! tekleştirilmeli.
 //!
-//! Python'dan BİLİNÇLİ fark: kilit alınamazsa (symlink, başkasının dosyası, zaman aşımı) Python yalnız iş parçacığı
-//! kilidiyle DEVAM eder; burada hata döner (kayıp güncelleme sessiz olmasın).
+//! Kilit alınamazsa (symlink, başkasının dosyası, zaman aşımı) iki tarafta da yazım YOK (kayıp güncelleme sessiz
+//! olmasın) ve ret günlüğe girer (`file_lock_refused`, TBD#397; [`FileLock::acquire_logged`]).
 
+use crate::probe::Diag;
 use crate::pyfmt::abspath;
+use crate::spawn_exec::DiagSink;
+use serde_json::json;
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -14,6 +17,16 @@ use std::time::{Duration, Instant};
 
 /// `LOCK_TIMEOUT_SECONDS`.
 pub const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `atomic_json._log_lock_refused`.
+pub(crate) fn log_refused(path: &str, diag: Option<&dyn DiagSink>) {
+    if let Some(sink) = diag {
+        sink.log(&Diag {
+            event: "file_lock_refused",
+            fields: vec![("path", json!(path))],
+        });
+    }
+}
 
 /// Tutulan kilit; düşünce (tanıtıcı kapanınca) bırakılır. Her alım ayrı tanıtıcı açar: aynı süreçteki iş parçacıkları da
 /// birbirini dışlar. İÇ İÇE alınamaz (Python'daki yeniden giriş yok).
@@ -23,6 +36,20 @@ pub struct FileLock {
 }
 
 impl FileLock {
+    /// [`FileLock::acquire`]; ret `diag`e `file_lock_refused` (mutlak belge yolu) olarak yazılır.
+    pub fn acquire_logged(
+        path: &str,
+        cwd: &str,
+        timeout: Duration,
+        diag: Option<&dyn DiagSink>,
+    ) -> io::Result<FileLock> {
+        let got = FileLock::acquire(path, cwd, timeout);
+        if got.is_err() {
+            log_refused(&abspath(path, cwd), diag);
+        }
+        got
+    }
+
     /// `path` kilitlenen BELGENİN yolu (`.lock` eki burada).
     pub fn acquire(path: &str, cwd: &str, timeout: Duration) -> io::Result<FileLock> {
         let path = abspath(path, cwd);

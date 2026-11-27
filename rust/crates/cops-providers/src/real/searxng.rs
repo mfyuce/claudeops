@@ -335,7 +335,7 @@ impl ManagedSearch {
     /// `_update_state`: en iyi çaba; kilit alınamazsa yazılmaz.
     fn update_state(&self, key: &str, value: Py) {
         let path = self.state_path();
-        let Ok(_lock) = FileLock::acquire(&path, "/", LOCK_TIMEOUT) else {
+        let Ok(_lock) = FileLock::acquire_logged(&path, "/", LOCK_TIMEOUT, Some(&self.diag)) else {
             return;
         };
         let mut state = self.read_state();

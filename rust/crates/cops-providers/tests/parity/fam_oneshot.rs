@@ -932,8 +932,10 @@ fn rs_g10(e: &Env, c: &Case) -> RsOut {
     } else {
         zero
     };
-    let approvals = ApprovalStore::new(&paths).with_clock(clock);
     let diag = DiagLog::from_env(&paths, &env);
+    let approvals = ApprovalStore::new(&paths)
+        .with_clock(clock)
+        .with_diag(std::sync::Arc::new(diag.clone()));
     let shot = OneShot {
         providers: &providers,
         env: &env,

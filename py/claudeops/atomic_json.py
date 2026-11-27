@@ -233,6 +233,12 @@ def roster_lock(tsv_path: str):
     return file_lock(os.path.join(os.path.dirname(os.path.abspath(tsv_path)), "roster"))
 
 
+def _log_lock_refused(path: str) -> None:
+    """Reddedilen yazım çağıranda yutulsa da iz kalsın (TBD#397)."""
+    from .diaglog import diag_log      # geç import: günlük aynası (statedocs) bu modülü import eder
+    diag_log("file_lock_refused", path=path)
+
+
 @contextlib.contextmanager
 def _file_lock_outer(path: str) -> Iterator[None]:
     fd = None
@@ -244,8 +250,10 @@ def _file_lock_outer(path: str) -> Iterator[None]:
             fd = _open_lock_file(path + ".lock")
             flock_bounded(fd)
         except LockError:
+            _log_lock_refused(path)
             raise
         except OSError as e:
+            _log_lock_refused(path)
             raise LockError(f"{path}.lock alınamadı: {e}") from e
         yield                   # gövdenin hatası LockError'a çevrilmez (yukarıdaki try'ın dışında)
     finally:
