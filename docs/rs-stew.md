@@ -986,9 +986,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1943 satır)
+### Python testleri (1946 satır)
 
-Test satırı özeti: 1943 satır; doğrudan açık (aşağıda `AÇIK`) 197; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 1946 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 857, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2912,6 +2912,9 @@ Test satırı özeti: 1943 satır; doğrudan açık (aşağıda `AÇIK`) 197; pa
 | `test_web_review_runner.TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
 | `test_web_review_runner.TestProviderErrorNoLesson.test_other_failures_still_write_lesson` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
 | `test_web_review_runner.TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
+| `test_web_review_runner.TestProviderErrorNoLesson.test_quote_in_long_stderr_is_not_capacity` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
+| `test_web_review_runner.TestProviderErrorNoLesson.test_structured_error_with_long_stderr_is_capacity` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
+| `test_web_review_runner.TestProviderErrorNoLesson.test_ucli_own_retry_notice_still_backs_off_scaler` | AÇIK (taşınmadı ya da kısmen): `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`) |
 | `test_web_review_runner.TestRecover.test_recover_on_start` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.load_history, review.pair_key, review.update_pair, web_review.recover_on_start |
 | `test_web_review_runner.TestRecover.test_recover_on_start_salvages_draft_report` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.draft_path, review.load_findings, review.update_pair, web_review.io_path_for, web_review.recover_on_start |
 | `test_web_review_runner.TestRecover.test_recover_on_start_salvages_report_from_io_log` | identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): review.load_findings, review.update_pair, web_review.io_path_for, web_review.recover_on_start |

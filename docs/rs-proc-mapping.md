@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 557 | 153 | 404 | 0 |
-| test durumu (125 dosya) | 1642 | 115 | 1527 | 0 |
+| test durumu (125 dosya) | 1645 | 115 | 1530 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -2944,18 +2944,21 @@ Yok.
 | `test_web_review_runner.py::TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` | 593 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestProviderErrorNoLesson.test_other_failures_still_write_lesson` | 602 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 | `test_web_review_runner.py::TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` | 608 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 614 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 622 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 634 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 652 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 691 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 708 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 733 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 748 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 756 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 761 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 772 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
-| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 783 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_quote_in_long_stderr_is_not_capacity` | 620 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_structured_error_with_long_stderr_is_capacity` | 631 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestProviderErrorNoLesson.test_ucli_own_retry_notice_still_backs_off_scaler` | 638 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start` | 647 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_draft_report` | 655 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_salvages_report_from_io_log` | 667 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` | 685 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_findings_are_saved_before_pair_turns_done` | 724 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_detached_run_writes_files_and_finishes` | 741 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_restart_adopts_live_run_and_finishes_it` | 766 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_run_finished_while_service_down_is_processed` | 781 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_pid_reuse_is_not_adopted_as_alive` | 789 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_keeps_pre_restart_io_log` | 794 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_adopt_failure_marks_partial_not_stuck_running` | 805 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
+| `test_web_review_runner.py::TestDetached.test_without_cfg_old_behavior_partial` | 816 | kapsam dışı | yok | reviewer koşucusu. İz: T8 (reviewer) |
 
 ### `py/tests/test_web_ucli_flags.py`
 

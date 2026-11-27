@@ -1308,7 +1308,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
         # mesajıysa (copilot kota mesajını çıkış kodu 0 ile basar; rapor sanılıp `done` olmasın).
         if target.mode == "evren":       # 503 model_capacity_exhausted / 429: ölçekleyici yuvayı yarıya indirir (10 dk)
             try:
-                evren_scale.note_if_capacity("\n".join(str(x or "") for x in (err, jerr)) if status != "done" else "")
+                evren_scale.note_if_capacity("\n".join([str(_error_text(jerr, err) or ""), *_UCLI_CAPACITY_NOTICE_RE.findall(err)])
+                                             if status != "done" else "")
             except Exception:       # noqa: BLE001
                 pass
         chk = rv.limit_scan_texts(out, err, jerr, err_has_model_text=target.mode in rv.UCLI_MODES) if (status != "done" or rv.is_short_banner(text)) else ()
@@ -1330,8 +1331,8 @@ def _execute(job: _Job, paths: Any, cfg: Any, project: str, target: rv.ReviewTar
             status = "limit"
             error = f"model kotası doldu ({target.key}); {time.strftime('%Y-%m-%d %H:%M', time.localtime(until))} dolayına dek planlayıcıdan çıktı"
             rv.set_block(paths, target.mode if rv.is_usage_limit(*chk) else target.key, until, error)   # codex sınırı hesap geneli: tüm mod
-        elif target.mode == "evren" and status == "error" and not text.strip() and not timed_out and rv.is_capacity_error(err, jerr):
-            wait = rv.capacity_retry_seconds(err, jerr)      # Evren 429/503: deneme hakkı yanmaz, Retry-After'a dek çift sıradan çekilir
+        elif target.mode == "evren" and status == "error" and not text.strip() and not timed_out and rv.is_capacity_error(_error_text(jerr, err)):
+            wait = rv.capacity_retry_seconds(_error_text(jerr, err))      # Evren 429/503: deneme hakkı yanmaz, Retry-After'a dek çift sıradan çekilir
             error = f"{rv.CAPACITY_ERROR_PREFIX} sağlayıcı sıkışık (429/503); {int(wait)} sn sonra yeniden denenecek. {error}"[:300]
             fields["retry_at"] = now() + wait
         elif target.mode in rv.UCLI_MODES and status in ("error", "partial") \
@@ -1439,11 +1440,19 @@ _PROVIDER_FAILURE_RE = re.compile(
     r"|before any request reached the server", re.I)
 
 
+# ucli'nin istek denemeleri arasında stderr'e yazdığı kendi sıkışıklık satırı (`UnifiedCLI reasoning:` model metnidir, eşleşmez).
+_UCLI_CAPACITY_NOTICE_RE = re.compile(r"^UnifiedCLI: model endpoint (?:returned HTTP (?:429|503)\b|rate-limited \(HTTP 429\)).*$", re.M)
+
+
+def _error_text(jerr: str, err: str) -> str:
+    """Koşunun hata mesajı: `jerr` (ucli'nin yapılı hatası) esas; yoksa stderr yalnız KISA mesajsa (uzun stderr modelin canlı
+    akışını taşır, içindeki "503/429" alıntısı yanlış pozitif verir)."""
+    return jerr or (err if rv.is_short_banner(err) else "")
+
+
 def _provider_failure(jerr: str, err: str) -> bool:
-    """Hata sağlayıcıdan/ağdan mı. `jerr` (ucli'nin yapılı hatası) esas; yoksa stderr yalnız KISA mesajsa taranır (uzun stderr
-    modelin canlı akışını taşır, alıntı yanlış pozitif verir)."""
-    text = jerr or (err if rv.is_short_banner(err) else "")
-    return bool(_PROVIDER_FAILURE_RE.search(str(text or "")))
+    """Hata sağlayıcıdan/ağdan mı (`_error_text`)."""
+    return bool(_PROVIDER_FAILURE_RE.search(str(_error_text(jerr, err) or "")))
 
 
 def _write_lesson(p: Any, project: str, target: rv.ReviewTarget, status: str, error: str, learned: Sequence[str] = ()) -> None:
