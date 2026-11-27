@@ -409,6 +409,11 @@ impl StateDocs {
         Ok(self.lock().store.get_or_insert(s).clone())
     }
 
+    /// Yalnız okuyan komutlar için ayrı, önbelleklenmeyen salt okunur bağlantı ([`Store::open_read_only`]).
+    pub fn read_only_store(&self) -> Result<Store, StoreError> {
+        Store::open_read_only(&sqlite_path_from_url(&self.db_url, &self.dir.db())?)
+    }
+
     /// `read_json(name, path)` (`file_truth=True`).
     pub fn read(&self, name: &str, path: &Path) -> Read {
         self.read_opts(name, path, true)
@@ -630,6 +635,43 @@ impl StateDocs {
 #[cfg(test)]
 mod backend_tests {
     use super::*;
+
+    /// Salt okunur açılış: temiz kapanmış ve yazarı açık WAL DB okunur, yazma reddedilir, ana dosya değişmez.
+    #[test]
+    fn read_only_store_reads_wal_and_never_writes() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let db = env.dir().db();
+        let writer = || {
+            let c = rusqlite::Connection::open(&db).unwrap();
+            c.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))
+                .unwrap();
+            c
+        };
+        let c = writer();
+        c.execute_batch(
+            "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);
+             INSERT INTO docs VALUES('a', '1', 1, 2.5);",
+        )
+        .unwrap();
+        c.pragma_update(None, "user_version", crate::store::SCHEMA_VERSION)
+            .unwrap();
+        drop(c);
+        let docs = StateDocs::isolated(env.dir().clone(), Some(Backend::Db), "");
+        let ro = docs.read_only_store().unwrap();
+        assert_eq!(ro.get_doc_raw("a").unwrap().as_deref(), Some("1"));
+        assert!(ro.set_doc("a", &Json::parse("2").unwrap()).is_err());
+        drop(ro);
+
+        let c = writer();
+        c.execute("UPDATE docs SET body='3'", []).unwrap();
+        let ro = docs.read_only_store().unwrap();
+        assert_eq!(ro.get_doc_raw("a").unwrap().as_deref(), Some("3"));
+        let before = std::fs::read(&db).unwrap();
+        // yazar açık kaldığı için WAL beklemede; okuyucu kapanışı onu ana dosyaya aktarmamalı
+        drop(ro);
+        assert!(std::fs::read(&db).unwrap() == before);
+        drop(c);
+    }
 
     /// Son DB yazımı başarısız belge (dosya daha yeni) ve db dışı kip damga vermez.
     #[test]

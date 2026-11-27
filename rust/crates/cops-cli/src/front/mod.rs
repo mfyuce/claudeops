@@ -777,17 +777,72 @@ fn front_listen(front_unit: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.into())
 }
 
-/// `off` sonrası web'in döneceği adres: web biriminin (drop-in'siz) ExecStart'ındaki `--host`/`--port` (ya da `=`li biçim),
+/// `web` alt komutunun uzun seçenekleri (Python `_WEB_LONG_OPTS`; argparse kısaltmaları için).
+const WEB_LONG_OPTS: [&str; 6] = [
+    "--help",
+    "--port",
+    "--host",
+    "--print-token",
+    "--tunnel",
+    "--grpc-port",
+];
+
+/// Python `_effective_execstart`: birim + drop-in metinlerinde son `ExecStart=` kazanır, boş atama sıfırlar.
+fn effective_execstart(text: &str) -> Option<String> {
+    text.split('\n')
+        .filter_map(|l| l.strip_prefix("ExecStart="))
+        .map(cops_auth::py_strip)
+        .next_back()
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+}
+
+/// Python `_web_dropins`: `front.conf` dışındaki drop-in'ler ad sırasıyla birleşik; biri okunamazsa `None`.
+fn web_dropins(dropin: &Path) -> Option<String> {
+    let dir = dropin.parent()?;
+    let rd = match std::fs::read_dir(dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(String::new()),
+        Err(_) => return None,
+    };
+    let mut names = rd
+        .map(|e| e.map(|e| e.file_name()))
+        .collect::<std::io::Result<Vec<_>>>()
+        .ok()?;
+    names.retain(|n| {
+        let b = n.as_encoded_bytes();
+        b.ends_with(b".conf") && !b.starts_with(b".") && Some(n.as_os_str()) != dropin.file_name()
+    });
+    names.sort();
+    let mut out = String::new();
+    for n in names {
+        out.push('\n');
+        out.push_str(&std::fs::read_to_string(dir.join(n)).ok()?);
+    }
+    Some(out)
+}
+
+/// `off` sonrası web'in döneceği adres: web biriminin ve drop-in'lerinin geçerli ExecStart'ındaki `--host`/`--port` (ya da `=`li biçim),
 /// yoksa web varsayılanı `127.0.0.1:8765` (`web.DEFAULT_HOST/DEFAULT_PORT`). Joker ya da ad olan host loopback'ten yoklanır.
 /// Biçim tanınmazsa `None` (çağıran ön kapının dış adresine düşer).
 pub fn web_addr(web_unit_text: &str) -> Option<SocketAddr> {
-    let es = web_execstart(web_unit_text)?;
+    let es = effective_execstart(web_unit_text)?;
     let es = es.strip_suffix('\'').unwrap_or(&es);
     let toks: Vec<&str> = es.split_whitespace().collect();
     let (mut host, mut port) = ("127.0.0.1".to_string(), "8765".to_string());
     let mut i = 0;
     while i < toks.len() {
-        let t = toks[i];
+        let mut t = toks[i].to_string();
+        let (name, rest) = t.split_at(t.find('=').unwrap_or(t.len()));
+        if name.len() > 2 && name.starts_with("--") && !WEB_LONG_OPTS.contains(&name) {
+            let mut full = WEB_LONG_OPTS.iter().filter(|o| o.starts_with(name));
+            match (full.next(), full.next()) {
+                // argparse "ambiguous option": web açılmaz, adres bilinmiyor
+                (Some(_), Some(_)) => return None,
+                (Some(o), None) => t = format!("{o}{rest}"),
+                _ => {}
+            }
+        }
         if t == "--host" || t == "--port" {
             if let Some(v) = toks.get(i + 1) {
                 *(if t == "--host" { &mut host } else { &mut port }) = v.to_string();
@@ -821,7 +876,11 @@ fn off(ctx: &mut Ctx<'_>, apply: bool, listen_arg: &str) -> std::io::Result<i32>
         return Ok(0);
     }
     // Doğrulanacak adres: web'in kendi adresi (ön kapının `--listen`i farklı olabilir; web oraya değil kendi portuna döner).
-    let wa = match read_web_unit(&p.web_unit).ok().and_then(|t| web_addr(&t)) {
+    let wa = match read_web_unit(&p.web_unit)
+        .ok()
+        .zip(web_dropins(Path::new(&p.dropin)))
+        .and_then(|(unit, extra)| web_addr(&(unit + &extra)))
+    {
         Some(a) => a,
         None => match net::parse_listen(&front_listen(&p.front_unit, listen_arg)) {
             Ok(a) => a,
