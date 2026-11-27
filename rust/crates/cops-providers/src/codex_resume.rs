@@ -64,8 +64,8 @@ impl Live<'_> {
             })
     }
 
-    /// cwd'nin en yeni, başkasının tutmadığı konuşması. En yeni uygun dosyada kimlik yoksa tarama orada BİTER
-    /// (Python gibi).
+    /// cwd'nin en yeni, başkasının tutmadığı konuşması. Kimliği olmayan (ya da metin olmayan) dosya atlanır, tarama daha
+    /// eski dosyalarla sürer.
     pub(crate) fn codex_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>) -> Option<String> {
         for (path, payload) in self.rollouts_for(cwd) {
             let sid = match ROLLOUT_UUID
@@ -78,23 +78,30 @@ impl Live<'_> {
                     .find_map(|k| payload.get(k).filter(|v| v.truthy()))
                     .and_then(|v| v.as_str().map(String::from)),
             };
-            if sid.as_ref().is_some_and(|s| in_use.contains(s)) {
-                continue;
+            match sid {
+                Some(s) if !in_use.contains(&s) => return Some(s),
+                _ => continue,
             }
-            return sid;
         }
         None
     }
 
-    /// `sid`in rollout dosyası (adı `{sid}.jsonl` ile biten ilk eşleşme); `sid` yoksa ya da eşleşmezse cwd'nin en yeni
-    /// dosyası. Joker ya da `/` taşıyan `sid` ad eşleşmesinde kullanılmaz.
+    /// `sid`in rollout dosyası: adının sonundaki konuşma kimliği TAM `sid` olan ilk dosya (kimliksiz adda `{sid}.jsonl`
+    /// ya da `-{sid}.jsonl` ile biten); `sid` yoksa ya da eşleşmezse cwd'nin en yeni dosyası. Kısmi kimlik, joker ya
+    /// da `/` taşıyan `sid` başka konuşmanın dosyasını vermez.
     pub fn codex_rollout_path(&self, cwd: &str, sid: Option<&str>) -> Option<String> {
-        if let Some(sid) = sid.filter(|s| !s.is_empty() && !s.contains(['*', '?', '[', '/'])) {
-            if let Some(path) = self
-                .rollout_files(&format!("{sid}.jsonl"))
-                .into_iter()
-                .next()
-            {
+        if let Some(sid) = sid.filter(|s| !s.is_empty() && !s.contains(['/', '\0'])) {
+            let exact = |p: &String| {
+                let name = basename(p);
+                match ROLLOUT_UUID.captures(name).and_then(|c| c.get(1)) {
+                    Some(m) => m.as_str() == sid,
+                    None => name
+                        .strip_suffix(".jsonl")
+                        .and_then(|stem| stem.strip_suffix(sid))
+                        .is_some_and(|rest| rest.is_empty() || rest.ends_with('-')),
+                }
+            };
+            if let Some(path) = self.rollout_files(".jsonl").into_iter().find(exact) {
                 return Some(path);
             }
         }

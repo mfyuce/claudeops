@@ -327,6 +327,13 @@ pub fn basename(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or("")
 }
 
+/// Ek alacak (`{ad}.jsonl`, `{kimlik}.db`) dosya adının başı olarak yola eklenebilir mi (oturum adı, konuşma
+/// kimliği): boş değil, `/` ve NUL yok (mutlak ya da `../` taşıyan değer dizinin dışını açmasın). Bugünkü geçerli
+/// adların (harf, rakam, `.`, `-`, `_`) hiçbiri reddedilmez. Python `providers.base._path_part_ok`.
+pub fn is_path_part(s: &str) -> bool {
+    !s.is_empty() && !s.contains(['/', '\0'])
+}
+
 /// `os.path.join` (POSIX, iki parça).
 pub fn join_path(a: &str, b: &str) -> String {
     if b.starts_with('/') || a.is_empty() {

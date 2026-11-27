@@ -11,7 +11,7 @@
 
 use crate::live::{Live, SqlCell};
 use crate::provider::Cli;
-use crate::pyfmt::{join_path, strip};
+use crate::pyfmt::{is_path_part, join_path, strip};
 use crate::pyjson::Py;
 use std::collections::BTreeSet;
 
@@ -512,6 +512,9 @@ impl Live<'_> {
 
     /// [`Live::read_chat_history`] gövdesi: `(turlar, yarım son satır atlandı mı)`.
     fn ucli_turns(&self, cwd: &str, session: &str) -> Option<(Vec<ChatTurn>, bool)> {
+        if session.contains(['/', '\0']) {
+            return None; // yol parçası olamayan ad: okunamaz sayılır, dizinin dışı okunmaz
+        }
         let path = self.find_chat_file(cwd, &format!("{session}.jsonl"));
         if !self.probe.is_file(&path) {
             return Some((Vec::new(), false));
@@ -553,6 +556,9 @@ impl Live<'_> {
                 .agy_resume_id(cwd, &BTreeSet::new(), "")
                 .filter(|s| !s.is_empty())?,
         };
+        if !is_path_part(&id) {
+            return None;
+        }
         let path = join_path(&self.paths.agy_conversations_dir(), &format!("{id}.db"));
         self.probe.is_file(&path).then_some(path)
     }

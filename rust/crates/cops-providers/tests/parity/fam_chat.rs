@@ -803,6 +803,15 @@ fn ucli_cases(b: &mut Build<'_>) {
         let c = b.case(&format!("ucli-{id}"), "ucli", sid).file(file);
         b.push(c);
     }
+    // 27 Kas: `/` taşıyan ad oturum dizininin dışını okumaz (iki tarafta "okunamadı")
+    let c = b
+        .case("ucli-yol-disi", "ucli", Some("../../../dis"))
+        .file(Fx::File(
+            "dis.jsonl".into(),
+            body.clone().into_bytes(),
+            0o644,
+        ));
+    b.push(c);
     let c = b
         .case("ucli-dizin-dosya-yerinde", "ucli", Some("s1"))
         .file(Fx::Dir("work/p1/.ucli/chat/s1.jsonl".into(), 0o755));

@@ -75,7 +75,7 @@ import threading
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _ro_sqlite_uri
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok, _ro_sqlite_uri
 from ..atomic_json import LockError, atomic_write_json, file_lock
 from ..diaglog import diag_log
 from .. import preview
@@ -214,10 +214,27 @@ def _load_agy_sids() -> Dict[str, str]:
         return {}
 
 
+_ABSENT = object()
+
+
+def _load_agy_sids_for_write() -> Optional[Dict[str, str]]:
+    """Yazımdan önce (kilit altında) okuma: belge yoksa `{}`; var ama okunamıyor, UTF-8/JSON değil ya da nesne değilse
+    None. `_load_agy_sids` bozuk belgeyi `{}` sayar: yazım ona dayanırsa öğrenilen bütün eşleşmeler yedeksiz ezilirdi."""
+    from .. import statedocs
+    bad: List[str] = []
+    data = statedocs.read_json("agy_sids", AGY_SIDS_JSON, _ABSENT, on_corrupt=bad.append)
+    if bad:
+        return None
+    if data is _ABSENT:
+        return None if os.path.lexists(AGY_SIDS_JSON) else {}      # var ama açılamıyor (izin, dizin)
+    return data if isinstance(data, dict) else None
+
+
 def _remember_agy_sid(session_name: str, sid: str) -> None:
     """`extract_info()`'nun her discovery tick'inde çağırdığı öğrenme adımı —
     zaten aynı değer kayıtlıysa diske hiç yazmaz (4s'lik poll döngüsünde
-    gereksiz I/O yapmamak için)."""
+    gereksiz I/O yapmamak için). Var olan belge okunamıyorsa ya da nesne değilse HİÇ yazılmaz (`agy_sids_unreadable`
+    günlüğü): bozuk belge boş sayılıp ezilmez."""
     if preview.active():            # kuru çalıştırmanın süreç taraması öğrenilen sid'i yazmaz
         return
     if _load_agy_sids().get(session_name) == sid:
@@ -225,13 +242,21 @@ def _remember_agy_sid(session_name: str, sid: str) -> None:
     from .. import statedocs
     try:
         with file_lock(AGY_SIDS_JSON):  # oku-değiştir-yaz bütün kilit altında: eşzamanlı iki agy açılışı birbirinin kaydını silmez (SQL göçü Adım C)
-            known = _load_agy_sids()
+            known = _load_agy_sids_for_write()
+            if known is None:
+                diag_log("agy_sids_unreadable", name=session_name)
+                return
             if known.get(session_name) == sid:
                 return
             known[session_name] = sid
             statedocs.write_json("agy_sids", AGY_SIDS_JSON, known, writer=atomic_write_json)
     except LockError as e:          # keşif turu düşmesin: sonraki turda yeniden öğrenilir
         diag_log("agy_sids_lock_busy", error=str(e)[:200])
+
+
+def _conversation_db_exists(sid: str) -> bool:
+    """Konuşmanın veritabanı dosyası duruyor mu (kimlik tek yol parçası olmalı: mutlak/`../` kimlik dizinin dışını açmaz)."""
+    return _path_part_ok(sid) and os.path.isfile(os.path.join(CONVERSATIONS_DIR, f"{sid}.db"))
 
 
 def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) -> bool:
@@ -260,12 +285,13 @@ class AgyProvider(CliProvider):
         alternatif YOK, fresh başlanır (None)."""
         known = _load_agy_sids()
         own = known.get(session_name) if session_name else None
-        if own and own not in in_use:
+        # Öğrenilen kimlik yalnız metinse ve konuşmanın veritabanı hâlâ duruyorsa (silinmiş konuşma devralınmaz).
+        if isinstance(own, str) and own not in in_use and _conversation_db_exists(own):
             return own
         try:
             with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
                 data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
+        except (OSError, ValueError, RecursionError):      # ValueError: bozuk JSON ve UTF-8 olmayan dosya
             return None
         if not isinstance(data, dict):
             return None
@@ -273,7 +299,10 @@ class AgyProvider(CliProvider):
         if not (isinstance(val, str) and val.strip()):
             return None
         sid = val.strip()
-        return None if sid in in_use else sid
+        # Önbellekteki kimlik BAŞKA ada öğrenilmişse alınmaz: o oturum kapalıyken konuşmasını yeni ad devralmasın.
+        if sid in in_use or _sid_claimed_by_other(known, sid, session_name):
+            return None
+        return sid
 
     def build_inner_command(self, cwd, model, permission_mode, effort,
                              resume_id, prompt, session_name, extra_args: Sequence[str] = ()) -> str:
@@ -368,7 +397,7 @@ class AgyProvider(CliProvider):
             try:
                 with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
                     cache = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError, OSError):
+            except (OSError, ValueError, RecursionError):      # ValueError: UTF-8 olmayan önbellek de keşif turunu düşürmesin
                 cache = {}
             cached = cache.get(cwd) if isinstance(cache, dict) else None
             if isinstance(cached, str) and cached.strip():
@@ -509,7 +538,7 @@ class AgyProvider(CliProvider):
         muadili) `resolve_resume_id` ile cwd'den çözülür (aynı `--conversation`
         argümanının spawn-zamanındaki çözümü)."""
         conv_id = sid or self.resolve_resume_id(cwd)
-        if not conv_id:
+        if not _path_part_ok(conv_id):      # boş ya da `/` taşıyan kimlik: konuşma dizininin dışı açılmaz
             return []
         db_path = os.path.join(CONVERSATIONS_DIR, f"{conv_id}.db")
         if not os.path.isfile(db_path):
@@ -537,7 +566,7 @@ class AgyProvider(CliProvider):
         """`_transcript_steps` ile AYNI süzgeç/sözleşme, ama SONDAN BAŞA ve tembel: `last_exchange` yalnız son asistan+kullanıcı
         çiftini ister; bütün konuşmayı (büyük payload'lar) belleğe çekmek uzak hostta `mode=last`ı 13 sn'ye çıkarıyordu."""
         conv_id = sid or self.resolve_resume_id(cwd)
-        if not conv_id:
+        if not _path_part_ok(conv_id):      # boş ya da `/` taşıyan kimlik: konuşma dizininin dışı açılmaz
             return
         db_path = os.path.join(CONVERSATIONS_DIR, f"{conv_id}.db")
         if not os.path.isfile(db_path):
@@ -605,7 +634,7 @@ class AgyProvider(CliProvider):
         id tutuyor, yani aynı klasördeki durmuş instance'ların hepsine aynı (en yeni) konuşmayı
         gösterir; öğrenme 2026-09-29'da eklendi, öncesinin adı yok → None → eski davranış."""
         sid = _load_agy_sids().get(session_name) if session_name else None
-        if isinstance(sid, str) and sid and os.path.isfile(os.path.join(CONVERSATIONS_DIR, f"{sid}.db")):
+        if isinstance(sid, str) and _conversation_db_exists(sid):
             return sid
         return None
 

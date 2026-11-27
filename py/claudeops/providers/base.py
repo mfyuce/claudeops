@@ -28,6 +28,13 @@ def cmd_arg(cmd: List[str], flag: str) -> Optional[str]:
         return None
     return cmd[i + 1] if i + 1 < len(cmd) else None
 
+def _path_part_ok(s: Any) -> bool:
+    """Ek alacak (`{ad}.jsonl`, `{kimlik}.db`) dosya adının başı olarak yola eklenebilir mi (oturum adı, konuşma
+    kimliği): boş olmayan metin, `/` ve NUL yok. Mutlak ya da `../` taşıyan değer dizinin dışını açmasın; bugünkü geçerli
+    adların (harf, rakam, `.`, `-`, `_`) hiçbiri reddedilmez. Rust `pyfmt::is_path_part`."""
+    return isinstance(s, str) and bool(s) and "/" not in s and "\0" not in s
+
+
 def _ro_sqlite_uri(path: str) -> str:
     """`path`i salt okunur açan SQLite URI'si. Yol kaçışlanır: ham `#`/`?`/`%` başka bir dosya açtırıyor, `mode=ro`yu
     düşürüp boş dosya yarattırıyordu."""

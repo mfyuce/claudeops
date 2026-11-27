@@ -792,13 +792,24 @@ fn rs_g8(e: &Env, c: &Case) -> RsOut {
         "g8_agy" => {
             let docs = Arc::new(FileDocs::new(&paths, case_env(e, c)));
             let store = DocAgySidStore::new(&paths, docs);
+            // Okunamayan ya da nesne olmayan belge yazılmaz: çağıran (`ProcScan`, Python `_remember_agy_sid`) günlüğe yazar.
+            let mut diags = Vec::new();
             for (name, sid) in pairs(&a["writes"]) {
-                if let Err(err) = remember_agy_sid(&store, name, sid, false) {
-                    return RsOut::ret(json!(err));
+                match remember_agy_sid(&store, name, sid, false) {
+                    Err(err) if err == cops_providers::agy_resume::AGY_SIDS_UNREADABLE => diags
+                        .push(cops_providers::Diag {
+                            event: "agy_sids_unreadable",
+                            fields: vec![("name", json!(name))],
+                        }),
+                    Err(err) => return RsOut::ret(json!(err)),
+                    Ok(_) => {}
                 }
             }
             let doc = store.load().filter(Py::is_object);
-            RsOut::ret(doc.map_or(json!({}), |d| d.to_value()))
+            RsOut {
+                extra_diags: diags,
+                ..RsOut::ret(doc.map_or(json!({}), |d| d.to_value()))
+            }
         }
         "g8_proxy" => RsOut::ret(
             a["cases"]

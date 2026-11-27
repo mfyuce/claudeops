@@ -35,7 +35,7 @@ import shlex
 import time
 from typing import Dict, FrozenSet, List, Optional, Sequence
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..effort import sort_levels
 from ..settings import resolved_binary
 
@@ -112,14 +112,29 @@ def _session_meta(path: str) -> Optional[dict]:
     """Rollout dosyasının İLK satırı (session_meta) — cwd eşleşmesi için tek satır
     okumak yeterli, tüm dosyayı (görüşme geçmişi dahil) parse etmeye gerek yok."""
     try:
-        with open(path, encoding="utf-8") as f:
+        # `surrogateescape`: okuma tamponundaki SONRAKİ satırın bozuk baytı ilk satırı düşürmesin; ilk satırın kendisi
+        # bozuksa `encode` `UnicodeEncodeError` (ValueError) verir.
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
             first = f.readline()
+        first.encode("utf-8")
         d = json.loads(first)
-        if d.get("type") == "session_meta":
-            return d.get("payload") or {}
-    except (OSError, json.JSONDecodeError):
-        pass
+    except (OSError, ValueError, RecursionError):      # ValueError: bozuk JSON VE UTF-8 olmayan satır (tek bozuk dosya aramayı düşürmesin)
+        return None
+    if isinstance(d, dict) and d.get("type") == "session_meta":
+        payload = d.get("payload")
+        return payload if isinstance(payload, dict) and payload else None    # nesne olmayan payload aday değil
     return None
+
+
+def _rollout_sid_matches(path: str, sid: str) -> bool:
+    """Dosya adının sonundaki konuşma kimliği TAM `sid` mi (kimliksiz adda `{sid}.jsonl` ya da `-{sid}.jsonl`). Eskiden
+    `*{sid}.jsonl` glob'uydu: kısmi kimlik ya da joker başka konuşmanın dosyasını veriyordu."""
+    name = os.path.basename(path)
+    m = _ROLLOUT_UUID_RE.search(name)
+    if m:
+        return m.group(1) == sid
+    stem = name[:-len(".jsonl")]
+    return stem == sid or stem.endswith("-" + sid)
 
 
 def _codex_text(content) -> str:
@@ -176,8 +191,8 @@ class CodexProvider(CliProvider):
                 continue
             m = _ROLLOUT_UUID_RE.search(os.path.basename(path))
             sid = m.group(1) if m else (payload.get("id") or payload.get("session_id"))
-            if sid and sid in in_use:
-                continue
+            if not isinstance(sid, str) or not sid or sid in in_use:
+                continue        # kimliksiz / metin olmayan kimlik: daha eski dosyaya bakılır
             return sid
         return None
 
@@ -325,10 +340,10 @@ class CodexProvider(CliProvider):
         sid yoksa/hiç eşleşmezse aynı cwd-taramalı mtime-fallback'i) döndürür — o
         metod id'yi (dosya adının SONUNDAKİ uuid) döndürüyordu, bu ise dosyanın
         KENDİSİNİ (chat parse için gerçek yol gerekiyor)."""
-        if sid:
-            matches = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", f"*{sid}.jsonl"))
-            if matches:
-                return matches[0]
+        if _path_part_ok(sid):
+            for path in glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl")):
+                if _rollout_sid_matches(path, sid):
+                    return path
         target = os.path.normpath(os.path.abspath(cwd))
         files = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl"))
         files.sort(key=_safe_mtime, reverse=True)

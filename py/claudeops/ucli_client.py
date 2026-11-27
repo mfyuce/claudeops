@@ -378,6 +378,8 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     `/exit`'te siler ama crash/kill'de BİLEREK silmez — kendisi de bir sinyal,
     bkz. status.rs) — hiçbiri hata sayılmaz, hepsinde `None` (çağıran
     pane-capture'a düşsün)."""
+    if "/" in str(session) or "\0" in str(session):      # yol parçası olamayan ad: oturum dizininin dışı okunmaz
+        return None
     path = find_chat_file(cwd, f"{session}.status.json")
     try:
         with open(path, encoding="utf-8") as f:
@@ -427,6 +429,8 @@ def read_chat_history(cwd: str, session: str) -> Optional[List[Dict[str, str]]]:
 
 def _read_turns(cwd: str, session: str):
     """`read_chat_history`nin gövdesi: `(turlar | None, yarım son satır atlandı mı)`."""
+    if "/" in str(session) or "\0" in str(session):      # yol parçası olamayan ad: okunamaz sayılır, oturum dizininin dışı okunmaz
+        return None, False
     path = find_chat_file(cwd, f"{session}.jsonl")
     if not os.path.isfile(path):
         return [], False

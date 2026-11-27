@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
-from .base import CliProvider, McpServerSpec, cmd_arg as _arg
+from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..paths import CLAUDE_MODELS_JSON, CLAUDEOPS_DIR, PROJECTS_DIR, SESSIONS_DIR, proc_stat_fields
 from .. import preview
 from ..routing import claude_guidance_path
@@ -125,7 +125,10 @@ def jsonl_path_for(cwd: str, sid: Optional[str]) -> Optional[Path]:
         if "/" in s or "\0" in s:       # tek yol parçası olmalı: `../x` dizinin dışına çıkarır, NUL is_file'ı düşürür
             return None
         candidate = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{s}.jsonl"
-        return candidate if candidate.is_file() else None
+        try:
+            return candidate if candidate.is_file() else None
+        except OSError:                 # dosya adı sınırını aşan sid (`ENAMETOOLONG`): transkript yok
+            return None
     return find_latest_jsonl(cwd)
 
 
@@ -133,9 +136,10 @@ def find_latest_jsonl(cwd: str) -> Optional[Path]:
     """CWD için en son değiştirilen jsonl dosyasını döndür (resume sid için)."""
     encoded = _encode_cwd(cwd)
     proj_dir = Path(PROJECTS_DIR) / encoded
-    if not proj_dir.exists():
+    try:
+        jsonls = [p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()]
+    except OSError:                     # yok, dizin yerinde dosya, okunamıyor: transkript yok
         return None
-    jsonls = [p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()]
     return max(jsonls, key=_safe_mtime) if jsonls else None
 
 
@@ -296,7 +300,7 @@ def session_file_sid(pid: Optional[int]) -> Optional[str]:
         if proc_stat_fields(pid)[19] != want:
             return None
         return sid.strip()
-    except (OSError, ValueError, TypeError, IndexError):
+    except (OSError, ValueError, TypeError, IndexError, OverflowError):     # OverflowError: `pid: Infinity`
         return None
 
 
@@ -539,12 +543,13 @@ class ClaudeProvider(CliProvider):
            olması önemli: yeniden adlandırılmış bir session eski adlı konuşmasını
            yine de sürdürebilsin."""
         proj_dir = Path(PROJECTS_DIR) / _encode_cwd(cwd)
-        if not proj_dir.exists():
+        try:
+            candidates = sorted(
+                (p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()),
+                key=_safe_mtime, reverse=True,
+            )[:_RESUME_SCAN_LIMIT]
+        except OSError:                 # yok, dizin yerinde dosya, okunamıyor: devam edilecek konuşma yok
             return None
-        candidates = sorted(
-            (p for p in proj_dir.iterdir() if p.suffix == ".jsonl" and p.is_file()),
-            key=_safe_mtime, reverse=True,
-        )[:_RESUME_SCAN_LIMIT]
         fallback = None
         for path in candidates:
             if path.stem in in_use:
@@ -873,8 +878,14 @@ class ClaudeProvider(CliProvider):
         geçmiş olabilir). Eşleşme yoksa None: çağıran eski davranışa düşer."""
         epochs = []
         for cand in dict.fromkeys(s for s in (sid, session_file_sid(pid)) if s):
+            if not _path_part_ok(cand):     # `/` ya da NUL: mutlak/`../` aday proje dizininin dışını açmaz
+                continue
             path = Path(PROJECTS_DIR) / _encode_cwd(cwd) / f"{cand}.jsonl"
-            if path.is_file():
+            try:
+                is_file = path.is_file()
+            except OSError:             # dosya adı sınırını aşan aday
+                continue
+            if is_file:
                 epoch = last_real_request_epoch(path)
                 if epoch is not None:
                     epochs.append(epoch)

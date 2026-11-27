@@ -112,6 +112,11 @@ impl Build<'_> {
         self.times.insert(b.id, b.times);
         self.cases.push(c);
     }
+    /// 27 Kas'ta iki tarafta düzelen eski ayrışma: Python ile eşit olmalı VE güvenli sonuç beklenen değer.
+    fn fixed(&mut self, b: B, expect: Value) {
+        self.expect.insert(b.id.clone(), expect);
+        self.push(b);
+    }
     fn diverges(&mut self, b: B, why: &'static str, expect: Value) {
         self.expect.insert(b.id.clone(), expect);
         self.push(b);
@@ -977,7 +982,8 @@ fn dispatch_cases(b: &mut Build<'_>) {
     b.push(c);
 }
 
-/// Python'un istisna attığı ya da başka tip döndürdüğü girdiler: Rust yalnız o adayı atlar.
+/// Python'un istisna attığı ya da başka tip döndürdüğü girdiler: Rust yalnız o adayı atlar. 27 Kas: `meta-derin` dışındakiler
+/// Python'da da düzeldi (`py/tests/test_rsprov_g1_fixes.py`); vaka adları (`sapma-`) iz için korunur.
 fn divergences(b: &mut Build<'_>) {
     let (cwd, dir) = (b.cwd(), b.dir());
     let resolve =
@@ -1006,7 +1012,7 @@ fn divergences(b: &mut Build<'_>) {
         } else {
             U1
         };
-        b.diverges(c, "ilk okuma parçasında bozuk UTF-8 / nesne olmayan satır ya da payload: Python istisna, Rust yalnız o satırı değerlendirir", json!([want]));
+        b.fixed(c, json!([want]));
     }
     for (id, v) in [("sayi", json!(7)), ("liste", json!(["x"]))] {
         let c = B::new(&format!("sapma-codex-kimlik-{id}"))
@@ -1016,11 +1022,7 @@ fn divergences(b: &mut Build<'_>) {
                 T0,
             )
             .q(resolve("codex", ""));
-        b.diverges(
-            c,
-            "metin olmayan kimlik: Python sayıyı döndürür / listede istisna, Rust 'yok'",
-            json!([null]),
-        );
+        b.fixed(c, json!([null]));
     }
     // `[`: Python sid'i glob deseni sayar
     let c = B::new("sapma-codex-joker")
@@ -1028,56 +1030,32 @@ fn divergences(b: &mut Build<'_>) {
         .at(newer.clone(), meta_line(json!("/baska"), json!({})), T0 + 5)
         .q(json!({"f": "rollout", "cwd": cwd, "sid": "[0-9]"}));
     let want = b.abs(&good);
-    b.diverges(
-        c,
-        "joker taşıyan sid: Python glob deseni sayar (başka dosya), Rust ad eşleşmesi yapmaz",
-        json!([want]),
-    );
+    b.fixed(c, json!([want]));
     let c = B::new("sapma-agy-onbellek-utf8")
         .raw(AGY_CACHE, vec![b'{', 0xff, b'}'])
         .q(resolve("agy", ""));
-    b.diverges(
-        c,
-        "UTF-8 olmayan cwd önbelleği: Python istisna, Rust 'yok'",
-        json!([null]),
-    );
+    b.fixed(c, json!([null]));
     let c = B::new("sapma-agy-kimlik-sayi")
         .raw("state/agy_sids.json", r#"{"inst":7}"#)
         .raw(AGY_CACHE, json!({ cwd.clone(): "c1" }).to_string())
         .q(resolve("agy", "inst"));
-    b.diverges(
-        c,
-        "metin olmayan öğrenilen kimlik: Python döndürür, Rust cwd önbelleğine düşer",
-        json!(["c1"]),
-    );
+    b.fixed(c, json!(["c1"]));
     let c = B::new("sapma-claude-dizin-dosya")
         .raw(dir.clone(), "dosya")
         .q(resolve("claude", ""))
         .q(json!({"f": "latest", "cwd": cwd}));
-    b.diverges(
-        c,
-        "proje dizini yerinde dosya: Python `NotADirectoryError`, Rust 'yok'",
-        json!([null, null]),
-    );
+    b.fixed(c, json!([null, null]));
     let c = B::new("sapma-claude-uzun-sid")
         .at(format!("{dir}/z.jsonl"), "", T0)
         .q(json!({"f": "jsonl", "cwd": cwd, "sid": "s".repeat(300)}));
-    b.diverges(
-        c,
-        "dosya adı sınırını aşan sid: Python `is_file` `OSError`, Rust 'yok' (TBD#365: tahmin yok)",
-        json!([null]),
-    );
+    b.fixed(c, json!([null]));
     let c = B::new("sapma-kayit-sonsuz-pid")
         .raw(
             "home/.claude/sessions/42.json",
             r#"{"pid":Infinity,"sessionId":"s","procStart":"777"}"#,
         )
         .q(json!({"f": "session_sid", "pid": 42}));
-    b.diverges(
-        c,
-        "sonsuz pid: Python `OverflowError` yakalamaz, Rust 'yok'",
-        json!([null]),
-    );
+    b.fixed(c, json!([null]));
     let c = B::new("sapma-meta-derin")
         .raw(
             "work/m.jsonl",
@@ -1099,21 +1077,24 @@ fn divergences(b: &mut Build<'_>) {
             sessions_db(&[(Sql::Integer(7), Sql::Text(cwd.clone()))]),
         )
         .q(resolve("copilot", ""));
-    b.diverges(
-        c,
-        "metin olmayan oturum kimliği: Python sayıyı döndürür, Rust 'yok'",
-        json!([null]),
-    );
+    b.fixed(c, json!([null]));
 }
 
 // ------------------------------------------------------------------------------------------------------------- koşum
 
-/// `agy_sids` belgesi bellekte: yazım dizilerinde dönüş karşılaştırılır.
-struct MemStore(RefCell<Option<Py>>);
+/// `agy_sids` belgesi bellekte: yazım dizilerinde dönüş karşılaştırılır. İkinci alan: belge dosyası var ama
+/// ayrıştırılamıyor (yazım reddedilir).
+struct MemStore(RefCell<Option<Py>>, bool);
 
 impl AgySidStore for MemStore {
     fn load(&self) -> Option<Py> {
         self.0.borrow().clone()
+    }
+    fn load_for_write(&self) -> Result<Option<Py>, String> {
+        if self.1 && self.0.borrow().is_none() {
+            return Err(agy_resume::AGY_SIDS_UNREADABLE.into());
+        }
+        Ok(self.load())
     }
     fn locked(&self, f: &mut dyn FnMut() -> Result<bool, String>) -> Result<bool, String> {
         f()
@@ -1140,9 +1121,16 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
     };
     let cache = MetaCache::default();
     let doc = format!("{}/agy_sids.json", e.state);
-    let store = MemStore(RefCell::new(
-        fs::read_to_string(&doc).ok().and_then(|t| Py::parse(&t)),
-    ));
+    let raw = fs::read(&doc).ok();
+    let parsed = raw
+        .as_ref()
+        .and_then(|b| std::str::from_utf8(b).ok())
+        .and_then(Py::parse);
+    let store = MemStore(
+        RefCell::new(parsed.clone()),
+        raw.is_some() && parsed.is_none(),
+    );
+    let mut diags = Vec::new();
     let queries = c.args["queries"].as_array().unwrap();
     let set = |v: &Value| -> BTreeSet<String> { strs(Some(v)).into_iter().collect() };
     let out: Vec<Value> = queries
@@ -1189,7 +1177,17 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
                     ))
                 }
                 "remember" => {
-                    agy_resume::remember_agy_sid(&store, name, s("sid").unwrap(), false).unwrap();
+                    match agy_resume::remember_agy_sid(&store, name, s("sid").unwrap(), false) {
+                        Err(e) if e == agy_resume::AGY_SIDS_UNREADABLE => {
+                            diags.push(cops_providers::Diag {
+                                event: "agy_sids_unreadable",
+                                fields: vec![("name", json!(name))],
+                            })
+                        }
+                        r => {
+                            r.unwrap();
+                        }
+                    }
                     match store.load() {
                         Some(d @ Py::Object(_)) => d.to_value(),
                         _ => json!({}),
@@ -1216,7 +1214,10 @@ fn rs_resume(e: &Env, c: &Case) -> RsOut {
     if queries.iter().any(|q| q["f"] == "remember") {
         let _ = fs::remove_file(doc);
     }
-    RsOut::ret(Value::Array(out))
+    RsOut {
+        extra_diags: diags,
+        ..RsOut::ret(Value::Array(out))
+    }
 }
 
 pub fn run() {

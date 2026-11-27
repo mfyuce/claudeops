@@ -130,6 +130,9 @@ impl Live<'_> {
 
     /// `{session}.status.json`; yok/bozuk/UTF-8 değil/nesne değilse None.
     pub fn read_status_file(&self, cwd: &str, session: &str) -> Option<Py> {
+        if session.contains(['/', '\0']) {
+            return None; // yol parçası olamayan ad: dizinin dışı okunmaz
+        }
         let path = self.find_chat_file(cwd, &format!("{session}.status.json"));
         self.read_json(&path, STATUS_MAX_BYTES)
             .filter(Py::is_object)

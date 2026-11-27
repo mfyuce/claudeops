@@ -11,7 +11,7 @@
 use crate::bg_work::iso_epoch;
 use crate::live::Live;
 use crate::provider::Cli;
-use crate::pyfmt::strip;
+use crate::pyfmt::{is_path_part, strip};
 use crate::pyjson::Py;
 use fancy_regex::Regex;
 use std::sync::LazyLock;
@@ -215,13 +215,10 @@ impl Live<'_> {
         [first, second]
             .into_iter()
             .flatten()
+            .filter(|candidate| is_path_part(candidate))
             .filter_map(|candidate| {
-                // `Path(dir) / ad`: mutlak ad dizini yok sayar.
-                let path = if candidate.starts_with('/') {
-                    format!("{candidate}.jsonl")
-                } else {
-                    format!("{dir}/{candidate}.jsonl")
-                };
+                // `/` ya da NUL taşıyan aday (mutlak yol, `../`) proje dizininin dışını açmaz.
+                let path = format!("{dir}/{candidate}.jsonl");
                 self.probe
                     .is_file(&path)
                     .then(|| self.last_real_request_epoch(&path))

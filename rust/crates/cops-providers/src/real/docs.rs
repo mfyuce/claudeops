@@ -6,7 +6,7 @@
 //! yazmaz (bayat aynadan karar verilmez, yalnız aynaya yazıp başarı sayılmaz): birleştirmede [`DocStore`] `statedocs`
 //! ile uygulanmalı.
 
-use crate::agy_resume::AgySidStore;
+use crate::agy_resume::{AgySidStore, AGY_SIDS_UNREADABLE};
 use crate::probe::Paths;
 use crate::pyfmt::strip;
 use crate::pyjson::Py;
@@ -24,6 +24,11 @@ const DB_READY: [&str; 2] = ["agy_sids", "claude_models"];
 pub trait DocStore: Send + Sync {
     /// `statedocs.read_json(name, path, ..)`: yok, bozuk ya da okunamıyorsa None.
     fn read(&self, name: &str, path: &str) -> Option<Py>;
+    /// Yazımdan önce okuma: yoksa `Ok(None)`; var ama okunamıyor, UTF-8 değil ya da JSON değilse `Err`
+    /// ([`crate::agy_resume::AGY_SIDS_UNREADABLE`]).
+    fn read_checked(&self, name: &str, path: &str) -> Result<Option<Py>, String> {
+        Ok(self.read(name, path))
+    }
     /// `statedocs.write_json(name, path, doc, writer=atomic_write_json)`.
     fn write(&self, name: &str, path: &str, doc: &Py) -> Result<(), String>;
 }
@@ -70,6 +75,19 @@ impl DocStore for FileDocs {
         Py::parse(std::str::from_utf8(&data).ok()?)
     }
 
+    fn read_checked(&self, name: &str, path: &str) -> Result<Option<Py>, String> {
+        if self.db_only(name) {
+            return Ok(None); // yazım zaten reddedilir (`write`)
+        }
+        if std::fs::symlink_metadata(path).is_err() {
+            return Ok(None);
+        }
+        fsio::read_bytes(path, DOC_MAX_BYTES)
+            .and_then(|b| Py::parse(std::str::from_utf8(&b).ok()?))
+            .map(Some)
+            .ok_or_else(|| AGY_SIDS_UNREADABLE.to_string())
+    }
+
     fn write(&self, name: &str, path: &str, doc: &Py) -> Result<(), String> {
         if self.db_only(name) {
             return Err(format!(
@@ -111,6 +129,10 @@ impl DocAgySidStore {
 impl AgySidStore for DocAgySidStore {
     fn load(&self) -> Option<Py> {
         self.docs.read("agy_sids", &self.path)
+    }
+
+    fn load_for_write(&self) -> Result<Option<Py>, String> {
+        self.docs.read_checked("agy_sids", &self.path)
     }
 
     fn locked(&self, f: &mut dyn FnMut() -> Result<bool, String>) -> Result<bool, String> {

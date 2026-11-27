@@ -11,7 +11,7 @@
 //!
 //! Kilit alınamazsa Python gibi tarama sürer, `agy_sids_lock_busy` günlüğe düşer.
 
-use crate::agy_resume::{remember_agy_sid, AgySidStore};
+use crate::agy_resume::{remember_agy_sid, AgySidStore, AGY_SIDS_UNREADABLE};
 use crate::probe::{Diag, Paths};
 use crate::pyjson::Py;
 use crate::spawn_exec::{DiagSink, SessionScan};
@@ -68,6 +68,9 @@ impl AgySidStore for SaveWatch<'_> {
     fn load(&self) -> Option<Py> {
         self.inner.load()
     }
+    fn load_for_write(&self) -> Result<Option<Py>, String> {
+        self.inner.load_for_write()
+    }
     fn locked(&self, f: &mut dyn FnMut() -> Result<bool, String>) -> Result<bool, String> {
         self.inner.locked(f)
     }
@@ -99,6 +102,13 @@ impl SessionScan for ProcScan<'_> {
             if let Err(e) = remember_agy_sid(&watch, name, sid, preview) {
                 if watch.save_failed.get() {
                     return None;
+                }
+                if e == AGY_SIDS_UNREADABLE {
+                    self.diag.log(&Diag {
+                        event: "agy_sids_unreadable",
+                        fields: vec![("name", json!(name))],
+                    });
+                    continue;
                 }
                 self.diag.log(&Diag {
                     event: "agy_sids_lock_busy",

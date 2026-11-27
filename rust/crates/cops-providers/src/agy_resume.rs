@@ -3,7 +3,7 @@
 //! `agy_sids` yazımı [`AgySidStore`] ile çağırandadır: belge claudeops.db'de + dosya aynasıdır (rs/state `statedocs`).
 
 use crate::live::Live;
-use crate::pyfmt::{abspath, join_path, strip};
+use crate::pyfmt::{abspath, is_path_part, join_path, strip};
 use crate::pyjson::Py;
 use std::collections::BTreeSet;
 
@@ -14,11 +14,20 @@ const CACHE_MAX_BYTES: u64 = 8 * 1024 * 1024;
 pub trait AgySidStore {
     /// Belge; yok, bozuk ya da okunamıyorsa None.
     fn load(&self) -> Option<Py>;
+    /// Yazımdan önce (kilit altında) okuma: belge yoksa `Ok(None)`, var ama okunamıyor ya da ayrıştırılamıyorsa `Err`
+    /// (bozuk belge boş sayılıp ezilmez, öğrenilen eşleşmeler yedeksiz kaybolmasın).
+    fn load_for_write(&self) -> Result<Option<Py>, String> {
+        Ok(self.load())
+    }
     /// `f` süreç içi VE süreçler arası kilit altında koşar (Python `file_lock(AGY_SIDS_JSON)`).
     fn locked(&self, f: &mut dyn FnMut() -> Result<bool, String>) -> Result<bool, String>;
     /// Belgeyi atomik yazar (DB + ayna).
     fn save(&self, doc: &Py) -> Result<(), String>;
 }
+
+/// [`remember_agy_sid`] hatası: belge okunamıyor ya da nesne değil, hiçbir şey yazılmadı (çağıran
+/// `agy_sids_unreadable` günlüğü yazar).
+pub const AGY_SIDS_UNREADABLE: &str = "agy_sids belgesi okunamıyor ya da nesne değil; yazılmadı";
 
 /// Belgenin girdileri; nesne olmayan belge boş sayılır.
 fn entries(doc: Option<Py>) -> Vec<(String, Py)> {
@@ -43,7 +52,8 @@ pub fn sid_claimed_by_other(doc: &Py, sid: &str, session_name: &str) -> bool {
 }
 
 /// `session_name -> sid` kaydı; değer aynıysa yazmaz (kilitsiz ucuz yol, sonra kilit altında yeniden okuma).
-/// `preview` (kuru çalıştırma) hiçbir şey yazmaz. Dönüş: yazıldı mı.
+/// `preview` (kuru çalıştırma) hiçbir şey yazmaz. Var olan belge okunamıyor ya da nesne değilse yazılmaz
+/// ([`AGY_SIDS_UNREADABLE`]). Dönüş: yazıldı mı.
 pub fn remember_agy_sid(
     store: &dyn AgySidStore,
     session_name: &str,
@@ -56,7 +66,11 @@ pub fn remember_agy_sid(
         return Ok(false);
     }
     store.locked(&mut || {
-        let mut known = entries(store.load());
+        let mut known = match store.load_for_write()? {
+            None => Vec::new(),
+            Some(Py::Object(o)) => o,
+            Some(_) => return Err(AGY_SIDS_UNREADABLE.to_string()),
+        };
         if same(&known) {
             return Ok(false);
         }
@@ -71,18 +85,21 @@ pub fn remember_agy_sid(
 }
 
 impl Live<'_> {
-    /// Önce bu ADA öğrenilen kimlik; yoksa (ya da başkasının elindeyse) agy'nin cwd başına TEK kimlik tutan önbelleği.
+    /// Önce bu ADA öğrenilen kimlik (veritabanı duruyorsa); yoksa (ya da başkasının elindeyse) agy'nin cwd başına TEK
+    /// kimlik tutan önbelleği. Önbellekteki kimlik BAŞKA ada öğrenilmişse alınmaz (o oturum kapalıyken konuşması
+    /// devralınmasın).
     pub(crate) fn agy_resume_id(
         &self,
         cwd: &str,
         in_use: &BTreeSet<String>,
         session_name: &str,
     ) -> Option<String> {
-        let known = entries(self.probe.agy_sids_doc());
+        let doc = self.probe.agy_sids_doc();
+        let known = entries(doc.clone());
         let own = learned(&known, session_name)
             .filter(|_| !session_name.is_empty())
             .and_then(Py::as_str);
-        if let Some(own) = own.filter(|o| !o.is_empty() && !in_use.contains(*o)) {
+        if let Some(own) = own.filter(|o| !in_use.contains(*o) && self.agy_db_exists(o)) {
             return Some(own.to_string());
         }
         let bytes = self
@@ -94,7 +111,19 @@ impl Live<'_> {
             .filter(|v| v.truthy())
             .or_else(|| data.get(&abspath(cwd, &self.probe.current_dir())))?;
         let sid = strip(value.as_str()?);
-        (!sid.is_empty() && !in_use.contains(sid)).then(|| sid.to_string())
+        let claimed = doc
+            .as_ref()
+            .is_some_and(|d| sid_claimed_by_other(d, sid, session_name));
+        (!sid.is_empty() && !in_use.contains(sid) && !claimed).then(|| sid.to_string())
+    }
+
+    /// Konuşmanın veritabanı dosyası duruyor mu (kimlik tek yol parçası olmalı).
+    fn agy_db_exists(&self, sid: &str) -> bool {
+        is_path_part(sid)
+            && self.probe.is_file(&join_path(
+                &self.paths.agy_conversations_dir(),
+                &format!("{sid}.db"),
+            ))
     }
 
     /// Yalnız bu ADA öğrenilmiş VE veritabanı duran konuşma (cwd önbelleğine düşülmez).
@@ -103,11 +132,8 @@ impl Live<'_> {
             return None;
         }
         let known = entries(self.probe.agy_sids_doc());
-        let sid = learned(&known, session_name)?
-            .as_str()
-            .filter(|s| !s.is_empty())?;
-        let db = join_path(&self.paths.agy_conversations_dir(), &format!("{sid}.db"));
-        self.probe.is_file(&db).then(|| sid.to_string())
+        let sid = learned(&known, session_name)?.as_str()?;
+        self.agy_db_exists(sid).then(|| sid.to_string())
     }
 
     /// Konuşma dizinindeki kimlikler (`*.db*` adlarının `.db` öncesi); dizin yoksa boş.

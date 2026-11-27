@@ -7,7 +7,8 @@ use crate::model_sources::{
 use crate::probe::{BuildOutput, Effect, McpRegisterError, SpawnError};
 use crate::provider::{BuildArgs, McpSpec, Providers};
 use crate::pyfmt::{
-    basename, fmt_g, join_path, join_quoted, py_float, py_str_repr, quote, str_of, truthy,
+    basename, fmt_g, is_path_part, join_path, join_quoted, py_float, py_str_repr, quote, str_of,
+    truthy,
 };
 use crate::pyjson::Py;
 use crate::settings::Settings;
@@ -507,12 +508,14 @@ impl Ctx<'_, '_> {
     fn state_dir_args(&mut self, argv: &mut Vec<String>, cwd: &str, force: bool) {
         let sdir = state_dir_for(&self.p.paths.ucli_state_root(), &self.p.probe.realpath(cwd));
         let file = format!("{}.jsonl", self.session);
-        let in_new = !self.session.is_empty() && self.p.probe.exists(&join_path(&sdir, &file));
+        // Yol parçası olamayan ad (`/`, NUL) hiçbir dizinde aranmaz.
+        let named = is_path_part(self.session);
+        let in_new = named && self.p.probe.exists(&join_path(&sdir, &file));
         if !(self.p.settings.ucli_state_dir() || in_new || force) || !self.known("--state-dir") {
             return;
         }
         let legacy = join_path(&join_path(&join_path(cwd, ".ucli"), "chat"), &file);
-        if !in_new && !self.session.is_empty() && self.p.probe.exists(&legacy) {
+        if !in_new && named && self.p.probe.exists(&legacy) {
             return;
         }
         argv.extend(["--state-dir".into(), sdir]);

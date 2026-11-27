@@ -107,7 +107,7 @@ from ..settings import (ucli_show_reasoning_enabled, byok_env_for, ucli_endpoint
 from ..ucli_client import _read_turns
 from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
-from .base import CliProvider, McpServerSpec, OneshotError, _open_private_target
+from .base import CliProvider, McpServerSpec, OneshotError, _open_private_target, _path_part_ok
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
 # TOBEDECIDED.md'sine bu boşluk ayrıca not edildi) — ama 2026-09-24'te
@@ -462,14 +462,15 @@ def _state_dir_args(binary: str, cwd: str, session_name: str = "", force: bool =
     dosyaları depo dışına gider. Atlanır: ayar kapalı, ikili bayrağı tanımıyor (günlüğe yazılır) ya da GEÇMİŞİ eski dizinde olan
     oturum (`<kök>/.ucli/chat/NAME.jsonl` var: yeni dizinle açılırsa konuşma geçmişi görünmez olurdu; o oturum eskisi gibi sürer)."""
     sdir = state_dir_for(cwd)
+    named = _path_part_ok(session_name)     # `/` ya da NUL taşıyan ad hiçbir dizinde aranmaz
     # Ayar sonradan kapatılsa bile geçmişi YENİ dizinde olan oturum onunla açılır (aksi halde konuşması kaybolurdu).
-    in_new = bool(session_name) and os.path.exists(os.path.join(sdir, f"{session_name}.jsonl"))
+    in_new = named and os.path.exists(os.path.join(sdir, f"{session_name}.jsonl"))
     if not (ucli_state_dir_enabled() or in_new or force):      # force: ucli_checks mod dosyası state-dir ister
         return []
     if not binary_supports_flag(binary, "--state-dir"):
         diag_log("ucli_flag_unsupported", name=session_name, flag="--state-dir", binary=binary)
         return []
-    if not in_new and session_name and os.path.exists(os.path.join(legacy_chat_dir(cwd), f"{session_name}.jsonl")):
+    if not in_new and named and os.path.exists(os.path.join(legacy_chat_dir(cwd), f"{session_name}.jsonl")):
         return []
     return ["--state-dir", sdir]
 

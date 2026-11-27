@@ -826,8 +826,8 @@ fn requests(b: &mut Build<'_>) {
     b.cases.push(c);
     let long =
         json!({"requests": [{"cli": "claude", "cwd": cwd, "sid": "s".repeat(300), "pid": 4242}]});
-    let mut c = registered(b.case("sapma-uzun-sid", long), &[(4242, "new-sid")])
-        .known("dosya adı sınırını aşan sid: Python `is_file` `OSError` atar, Rust adayı yok sayıp diğerine bakar");
+    // 27 Kas: Python da aşırı uzun adayı yok sayıp diğerine bakar (iki tarafta düzeldi)
+    let mut c = registered(b.case("sapma-uzun-sid", long), &[(4242, "new-sid")]);
     c = put(c, "new-sid", -40);
     c.args["expect_requests"] = json!([at(-40)]);
     b.cases.push(c);

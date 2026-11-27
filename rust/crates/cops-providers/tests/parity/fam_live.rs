@@ -346,6 +346,15 @@ fn status_bodies(b: &mut Build<'_>) {
         ),
     );
     b.push(c);
+    // 27 Kas: `/` taşıyan ad oturum dizininin dışındaki durum dosyasını okumaz
+    let c = b
+        .case("durum-yol-disi", "ucli", Some("../../../dis"), "")
+        .file(file(
+            "dis.status.json",
+            r#"{"activity": "running_tool", "tool": "x"}"#,
+            0o644,
+        ));
+    b.push(c);
     let c = b
         .case("durum-dizin", "ucli", Some("s1"), "")
         .file(Fx::Dir("work/p1/.ucli/chat/s1.status.json".into(), 0o755));
