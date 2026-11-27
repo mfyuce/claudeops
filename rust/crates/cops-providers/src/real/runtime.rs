@@ -15,10 +15,6 @@ use crate::real::Env;
 use crate::spawn_exec::{Launcher, SpawnTmux};
 use std::sync::Arc;
 
-fn settings_json_path(paths: &Paths) -> String {
-    format!("{}/settings.json", paths.claudeops_dir)
-}
-
 pub struct SpawnRuntime {
     pub ledger: Arc<CostLedger>,
     pub search: Arc<ManagedSearch>,
@@ -32,7 +28,7 @@ impl SpawnRuntime {
     /// `python`: SearXNG ayrık kurulumunu (`-m claudeops searxng provision`) çalıştıracak, PANEL SERVİSİNİN KENDİ
     /// Python'u (Python'da `sys.executable`; ör. yuhem `py/.venv/bin/python3`, ulak_31 `/usr/bin/python3`).
     pub fn new(paths: &Paths, env: &Env, python: &str) -> SpawnRuntime {
-        let settings = file_cost_settings(settings_json_path(paths));
+        let settings = file_cost_settings(paths.settings_json());
         SpawnRuntime::with_cost_settings(paths, env, python, settings)
     }
 
@@ -56,7 +52,7 @@ impl SpawnRuntime {
             )),
             help: Arc::new(HelpCache::default().with_diag(Arc::new(diag.clone()))),
             diag,
-            settings_json: settings_json_path(paths),
+            settings_json: paths.settings_json(),
         }
     }
 

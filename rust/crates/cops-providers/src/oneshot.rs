@@ -6,6 +6,7 @@
 use crate::probe::SpawnError;
 use crate::pyfmt::{py_str_repr, strip};
 use crate::pyjson::Py;
+use crate::settings::Settings;
 use std::fmt;
 
 /// `OneshotError`.
@@ -77,6 +78,30 @@ pub fn build_chat_argv(a: &ChatArgv<'_>) -> Vec<String> {
     }
     argv.extend(a.extra_args.iter().cloned());
     argv
+}
+
+/// ucli'nin kendi anahtar değişkeni: her zaman kabul.
+pub const DEFAULT_KEY_ENV: &str = "UCLI_API_KEY";
+
+/// `_key_env_refusal` (TBD#401): anahtar adı yalnız [`DEFAULT_KEY_ENV`] ya da ayarlarda tanımlı bir ucli hizmetinin
+/// `env`i. `settings` None = ayar belirsiz (okunamadı/bozuk): yalnız varsayılan ad. Ret metni adı YANKILAMAZ (alana
+/// yanlışlıkla anahtar yapıştırılmış olabilir).
+pub fn check_key_env(name: &str, settings: Option<&Settings>) -> Result<(), SpawnError> {
+    if name == DEFAULT_KEY_ENV {
+        return Ok(());
+    }
+    let Some(settings) = settings else {
+        return Err(SpawnError(
+            "api_key_env kabul edilmedi: settings.json okunamadı ya da bozuk, yalnız UCLI_API_KEY kullanılabilir"
+                .into(),
+        ));
+    };
+    if settings.ucli_services().iter().any(|s| s.env == name) {
+        return Ok(());
+    }
+    Err(SpawnError(
+        "api_key_env kabul edilmedi: yalnız UCLI_API_KEY ya da ayarlarda tanımlı ucli hizmetlerinin anahtar adları".into(),
+    ))
 }
 
 /// `prompt` konumsal argümandır: `-` ile başlayan (tek `-` dışında) ucli'de bayrak sayılır, reddedilir.

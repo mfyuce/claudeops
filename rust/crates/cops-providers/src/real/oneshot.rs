@@ -4,6 +4,7 @@
 //! çocuğun ORTAMINDADIR: argv'ye, hata metnine, günlüğe ve onay kaydına girmez.
 
 use crate::approval::{self, NewRun};
+use crate::ojson::OValue;
 use crate::oneshot::{self, ChatArgv, OneshotError};
 use crate::probe::SpawnError;
 use crate::provider::{Cli, Providers};
@@ -11,9 +12,11 @@ use crate::pyfmt::{float_repr, join_path, py_str_repr, strip};
 use crate::pyjson::Py;
 use crate::real::approval::ApprovalStore;
 use crate::real::diaglog::DiagLog;
+use crate::real::docs::DOC_MAX_BYTES;
 use crate::real::effects::makedirs;
 use crate::real::process::{self, Capture, RunError, Spec};
 use crate::real::{fsio, oserr, Env};
+use crate::settings::Settings;
 use crate::ucli::{self, DEFAULT_ENDPOINT};
 use serde_json::json;
 use std::fs;
@@ -67,7 +70,7 @@ impl<'a> ChatRequest<'a> {
             session: None,
             model: None,
             endpoint: None,
-            api_key_env: "UCLI_API_KEY",
+            api_key_env: oneshot::DEFAULT_KEY_ENV,
             api_key: None,
             with_mcp: false,
             max_steps: None,
@@ -180,9 +183,35 @@ impl OneShot<'_, '_> {
         ucli::supports_flag(&self.providers.probe.ucli_chat_help(binary), flag)
     }
 
+    /// `_key_env_refusal`: `settings.json` her çağrıda yeniden okunur (yok = yerleşik hizmetler). Var ama okunamıyor,
+    /// normal dosya değil, bozuk, nesne değil ya da `ucli_services` liste değilse yalnız `UCLI_API_KEY`.
+    fn check_key_env(&self, name: &str) -> Result<(), SpawnError> {
+        if name == oneshot::DEFAULT_KEY_ENV {
+            return Ok(());
+        }
+        let path = self.providers.paths.settings_json();
+        let settings = match fs::metadata(&path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Settings::default()),
+            _ => fsio::read_bytes(&path, DOC_MAX_BYTES)
+                .and_then(|b| String::from_utf8(b).ok())
+                .filter(|text| {
+                    OValue::parse(text).is_some_and(|doc| {
+                        doc.entries().is_some()
+                            && doc
+                                .get("ucli_services")
+                                .is_none_or(|v| v.as_array().is_some())
+                    })
+                })
+                .map(|text| Settings::from_json(&text)),
+        };
+        oneshot::check_key_env(name, settings.as_ref())
+    }
+
     /// `ucli_chat_once`. `approval_run_key` verilmişse ve ucli 75 + `suspended` satırıyla çıkarsa koşu onay kaydına
     /// `suspended` yazılır ve `{"ok", "status", "run_key", "approval_id"}` döner.
     pub fn chat_once(&self, req: &ChatRequest<'_>) -> Result<Py, SpawnError> {
+        // Her şeyden önce (TBD#401): alt süreç yok, ortam okunmaz.
+        self.check_key_env(req.api_key_env)?;
         oneshot::check_prompt(req.prompt)?;
         let binary = match req.binary.filter(|b| !b.is_empty()) {
             Some(b) => b.to_string(),

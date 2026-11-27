@@ -13,6 +13,7 @@ use cops_providers::real::{Env, RealProbe};
 use cops_providers::{Cli, ModelCatalog, Paths, Providers, Settings};
 use std::fs;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use support::{mkfifo, mode, spawn_guard, Tmp};
@@ -150,6 +151,82 @@ fn the_key_reaches_only_the_child_environment() {
         log.contains("ucli_approval_record_failed") && !log.contains(KEY),
         "{log}"
     );
+}
+
+/// TBD#401: anahtar adı yalnız `UCLI_API_KEY` ya da ayardaki hizmetlerin `env`i; ret hiçbir alt süreç açmadan, adı ve
+/// değeri yankılamadan. Ayar belirsizse yalnız `UCLI_API_KEY`.
+#[test]
+fn only_known_key_env_names_start_a_child() {
+    let _g = spawn_guard();
+    let c = Ctx::new("{}");
+    let mark = c.t.path("work/calisti");
+    // yardım yoklaması dahil HER başlatma iz bırakır
+    let bin = c.t.script(
+        "bin/ucli",
+        &format!("echo x >> {mark}; printf '{{\"answer\":\"a\"}}'"),
+    );
+    let work = c.t.path("work");
+    let settings = c.t.path("state/settings.json");
+    let ask = |name: &str, key: Option<&str>| {
+        let _ = fs::remove_file(&mark);
+        let mut req = ChatRequest::new(&work, "p");
+        req.binary = Some(&bin);
+        req.session = Some("s");
+        req.api_key_env = name;
+        req.api_key = key.map(ApiKey::new);
+        let result = c.with(|s| s.chat_once(&req));
+        let ran = Path::new(&mark).exists();
+        assert_eq!(result.is_ok(), ran, "{name:?}");
+        result.map(|_| ()).map_err(|e| e.0)
+    };
+    let refused = |name: &str| {
+        for key in [None, Some(KEY)] {
+            let text = ask(name, key).unwrap_err();
+            assert!(text.starts_with("api_key_env kabul edilmedi"), "{text}");
+            assert!(!text.contains(KEY), "{text}");
+            if !name.to_uppercase().contains("UCLI_API_KEY") && !name.is_empty() {
+                assert!(!text.contains(name), "{text}");
+            }
+        }
+    };
+    // dosya yok: yerleşik hizmetler
+    for name in ["UCLI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY"] {
+        assert_eq!(ask(name, None), Ok(()), "{name}");
+    }
+    for name in [
+        "HOME",
+        "OZEL_API_KEY",
+        "",
+        "ucli_api_key",
+        "UCLI_API_KEY\n",
+        KEY,
+    ] {
+        refused(name);
+    }
+    fs::write(
+        &settings,
+        r#"{"ucli_services": [{"id": "ozel", "endpoint": "https://o.invalid/v1", "env": "OZEL_API_KEY"},
+            {"id": "ucsuz", "env": "BASKA_SIR"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(ask("OZEL_API_KEY", None), Ok(()));
+    refused("GROQ_API_KEY");
+    refused("BASKA_SIR");
+    for broken in [
+        &b"{bozuk"[..],
+        b"[1]",
+        b"{\"ucli_services\": null}",
+        b"{\"ucli_services\": \"x\"}",
+        b"{\"a\": \"\xff\"}",
+    ] {
+        fs::write(&settings, broken).unwrap();
+        refused("ANTHROPIC_API_KEY");
+        assert_eq!(ask("UCLI_API_KEY", None), Ok(()));
+    }
+    // normal dosya değil (FIFO okumak bloklardı)
+    fs::remove_file(&settings).unwrap();
+    mkfifo(&settings);
+    refused("ANTHROPIC_API_KEY");
 }
 
 #[test]

@@ -31,6 +31,10 @@ impl Paths {
     pub fn copilot_env_file(&self) -> String {
         format!("{}/copilot_byok_env", self.home_state())
     }
+    /// `settings.SETTINGS_JSON`.
+    pub fn settings_json(&self) -> String {
+        format!("{}/settings.json", self.claudeops_dir)
+    }
     pub fn ucli_usage_dir(&self) -> String {
         format!("{}/ucli_usage", self.home_state())
     }

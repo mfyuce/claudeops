@@ -107,18 +107,73 @@ fn chat_cases(r: &str) -> Vec<Case> {
         ANSWER,
         vec![call(
             "p",
-            json!({"model": "", "endpoint": "", "api_key_env": "", "session": "", "max_steps": 0,
+            json!({"model": "", "endpoint": "", "session": "", "max_steps": 0,
             "approval_run_key": ""}),
         )],
     ));
-    v.push(case(
-        "anahtar-adi".into(),
-        ANSWER,
-        vec![call(
-            "p",
-            json!({"api_key": KEY, "api_key_env": "X_API_KEY"}),
-        )],
-    ));
+    let services = |envs: &[&str]| {
+        let list: Vec<Value> = envs
+            .iter()
+            .enumerate()
+            .map(|(i, e)| json!({"id": format!("h{i}"), "endpoint": "https://h.invalid/v1", "env": e}))
+            .collect();
+        json!({ "ucli_services": list })
+    };
+    v.push(
+        case(
+            "anahtar-adi".into(),
+            ANSWER,
+            vec![call(
+                "p",
+                json!({"api_key": KEY, "api_key_env": "X_API_KEY"}),
+            )],
+        )
+        .settings_json(services(&["X_API_KEY"])),
+    );
+    // TBD#401: yalnız `UCLI_API_KEY` ve ayardaki hizmetlerin `env`i; belirsiz ayarda yalnız `UCLI_API_KEY`.
+    let named = |name: &str| {
+        vec![
+            call("p", json!({"api_key_env": name})),
+            call("p", json!({"api_key_env": name, "api_key": KEY})),
+        ]
+    };
+    for (id, name) in [
+        ("varsayilan", "UCLI_API_KEY"),
+        ("yerlesik", "ANTHROPIC_API_KEY"),
+        ("baska", "HOME"),
+        ("tanimsiz", "OZEL_API_KEY"),
+        ("anahtar-yapistirilmis", KEY),
+    ] {
+        v.push(case(format!("tbd401-{id}"), ANSWER, named(name)).env("OZEL_API_KEY", KEY));
+    }
+    for (id, name) in [
+        ("hizmet", "OZEL_API_KEY"),
+        ("hizmet-listesi-disi", "GROQ_API_KEY"),
+        // ayarda tanımlı ama `*_API_KEY` değil: anahtar verilince eski ad denetimi de reddeder
+        ("hizmet-baska-bicim", "BASKA_SIR"),
+    ] {
+        v.push(
+            case(format!("tbd401-{id}"), ANSWER, named(name))
+                .settings_json(services(&["OZEL_API_KEY", "BASKA_SIR"])),
+        );
+    }
+    for (id, doc) in [
+        ("bozuk", "{bozuk"),
+        ("liste", "[1]"),
+        ("hizmet-null", r#"{"ucli_services": null}"#),
+        ("hizmet-metin", r#"{"ucli_services": "x"}"#),
+        ("hizmet-bos", r#"{"ucli_services": []}"#),
+    ] {
+        for name in ["ANTHROPIC_API_KEY", "UCLI_API_KEY"] {
+            v.push(
+                case(format!("tbd401-ayar-{id}-{name}"), ANSWER, named(name)).file(file(
+                    "state/settings.json",
+                    doc,
+                    0o600,
+                )),
+            );
+        }
+    }
     v.push(
         case(
             "anahtar-bos".into(),
