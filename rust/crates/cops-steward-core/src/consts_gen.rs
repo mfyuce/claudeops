@@ -33,6 +33,7 @@ pub static P_CONFIRM_HASH_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::R
 pub static P_CONFIRM_ZERO_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?<![\\w.])0(?![\\w.])").expect("_CONFIRM_ZERO_RE"));
 pub static P_CONFIRM_COLON_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("[`*_\\s]*[:：]").expect("_CONFIRM_COLON_RE"));
 pub static P_CONFIRM_LEAD_HASH_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("[`*_\\s]*(?:[(\\[,;=→>\\-–—][`*_\\s]*)*[0-9a-f]{7,40}\\b").expect("_CONFIRM_LEAD_HASH_RE"));
+pub static P_CONFIRM_DENIAL_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?i)[`*_:：\\s]*[^,;:.()\\n]*?(?<![^\\W\\d_])(?:yazm[ıi]yor|yazmayaca|yazam|yazmad[ıi]|demiyorum|diyem|veremiyor|vermiyor|henüz değil|not yet|not writing|(?:cannot|can['’]t|won['’]t) (?:write|confirm))").expect("_CONFIRM_DENIAL_RE"));
 pub const NO_DONE_TAG: &str = "NO-STEWARD-DONE";
 pub const READY_FOR_HANDOVER: &str = "READY FOR HANDOVER";
 pub static P_NAME_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$").expect("_NAME_RE"));
@@ -201,6 +202,8 @@ pub static P_AJ_CHILD_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex
 pub static P_NEXT_NOTE_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("(?i)(?:sıradaki|siradaki|next)\\s*(?:iş|is|adım|adim|step|task)?\\s*[:：]\\s*(.+)").expect("_NEXT_NOTE_RE"));
 pub const P_NO_WORK_VALUES: &[&str] = &["-", "bitti", "done", "n/a", "none", "yok", "–", "—"];
 pub static P_NEXT_DONE_VALUE_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?i)^[`*_\\s]*(?:[-—–][`*_\\s.,;:!]*$|(?:n/a|bitti|done)[`*_]*(?:\\s*$|[.,;:!](?=[`*_\\s]|$)|\\s*\\(|\\s+[-—–]\\s))").expect("_NEXT_DONE_VALUE_RE"));
+pub static P_NEXT_DONE_THEN_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?is)^[`*_\\s]*(?:bitti|done)[`*_]*(?:\\s*[.,;:!]|\\s+[-—–])[`*_\\s]*(?:şimdi|s[ıi]rada(?:ki)?|next|now|then)(?![^\\W\\d_])(?:\\s+(?:iş|is|adım|adim|step|task)(?![^\\W\\d_]))?[`*_\\s]*(?:[:：][`*_\\s]*)?(?P<rest>(?=.*[^\\W_])\\S.*)$").expect("_NEXT_DONE_THEN_RE"));
+pub static P_NEXT_IDLE_REST_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("(?i)^(?:yok|none|nothing|iş yok|no work|bekliyor|bekleniyor|beklemede|waiting|wait|idle)").expect("_NEXT_IDLE_REST_RE"));
 pub static P_DONE_TEXT_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fancy_regex::Regex::new("(?<![-\\w])STEWARD-DONE(?![-\\w])").expect("_DONE_TEXT_RE"));
 pub static P_NEGATED_TAIL_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("(?i)[\\s,;:.]*(?:demiyorum|demedim|değil|degil|diyemem|diyemiyorum|not true|isn't|is not)").expect("_NEGATED_TAIL_RE"));
 pub static P_NEXT_NONE_LINE_RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new("(?im)(?:^|[\\s`*-])(?:sıradaki|siradaki|next)\\s*(?:iş|is|adım|adim|step|task)?\\s*[:：]\\s*(?:yok|none|n/a)\\b").expect("_NEXT_NONE_LINE_RE"));
