@@ -3,6 +3,7 @@ import calendar
 import json
 import os
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -219,6 +220,32 @@ class SessionRecordSignal(unittest.TestCase):
         self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
         self.assertFalse(bg_work.session_record_active(os.path.join(self.dir, "yok"), "s1"))
         self.assertFalse(bg_work.session_record_active(self.dir, None))
+
+    def test_fifo_record_does_not_block(self):
+        fifo = os.path.join(self.dir, "1.json")
+        os.mkfifo(fifo)
+        out = []
+        t = threading.Thread(target=lambda: out.append(bg_work.session_record_active(self.dir, "s1")), daemon=True)
+        t.start()
+        t.join(5)
+        if t.is_alive():                       # takılan okuyucuyu bırak: yazma ucu açılıp kapanınca EOF alır
+            with open(fifo, "w"):
+                pass
+            t.join(5)
+            self.fail("süreç kaydı okuması FIFO'da bloklandı")
+        self.assertEqual(out, [False])
+        self.record("busy")                    # sağlam kayıt FIFO'nun yanında yine okunur
+        self.assertTrue(bg_work.session_record_active(self.dir, "s1"))
+
+    def test_non_finite_pid_and_oversized_record_are_skipped(self):
+        with open(os.path.join(self.dir, "1.json"), "w") as f:
+            f.write('{"pid": Infinity, "sessionId": "s1", "status": "busy", "procStart": "1"}')
+        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
+        self.record("busy")
+        path = os.path.join(self.dir, f"{os.getpid()}.json")
+        with open(path, "a") as f:
+            f.write(" " * (1024 * 1024))
+        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
 
 
 class SubagentActiveForUsesBoth(unittest.TestCase):

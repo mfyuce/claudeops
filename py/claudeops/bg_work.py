@@ -24,6 +24,7 @@ _RECORD_TYPES = (None, "assistant", "user")      # araç çağrısı yalnız ile
 SCREEN_TAIL_LINES = 14
 TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024
 PENDING_MAX_AGE_SECONDS = 6 * 3600.0      # bildirimi hiç gelmemiş (öldürülmüş oturum vb.) işi sonsuza dek meşgul sayma
+_SESSION_RECORD_MAX_BYTES = 1024 * 1024
 
 _NOTIF_ID_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
@@ -188,14 +189,18 @@ def session_record_active(sessions_dir: str, sid: Optional[str]) -> bool:
     for n in names:
         if not n.endswith(".json"):
             continue
+        path = os.path.join(sessions_dir, n)
         try:
-            with open(os.path.join(sessions_dir, n), encoding="utf-8") as f:
+            # yalnız normal dosya: FIFO açılışta bloklar
+            if not os.path.isfile(path) or os.path.getsize(path) > _SESSION_RECORD_MAX_BYTES:
+                continue
+            with open(path, encoding="utf-8") as f:
                 d = json.load(f)
             if d.get("sessionId") != sid or d.get("status") not in ("busy", "shell"):
                 continue
             with open(f"/proc/{int(d['pid'])}/stat", encoding="utf-8", errors="replace") as f:
                 started = f.read().rsplit(")", 1)[1].split()[19]
-        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RecursionError):
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, OverflowError, RecursionError):
             continue
         if str(d.get("procStart")) == started:
             return True
