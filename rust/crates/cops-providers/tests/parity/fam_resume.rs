@@ -1024,6 +1024,39 @@ fn divergences(b: &mut Build<'_>) {
             .q(resolve("codex", ""));
         b.fixed(c, json!([null]));
     }
+    // en yeni uyan dosyada / satırda metin kimlik yoksa sonuç yok (taze konuşma), eskiye düşülmez
+    for (id, extra) in [
+        ("yok", json!({})),
+        ("bos", json!({"id": ""})),
+        ("sayi", json!({"id": 7})),
+    ] {
+        let c = B::new(&format!("codex-kimliksiz-yeni-{id}"))
+            .at(good.clone(), own.clone(), T0)
+            .at(
+                format!("{ROLL}/adsiz.jsonl"),
+                meta_line(json!(cwd), extra),
+                T0 + 5,
+            )
+            .q(resolve("codex", ""));
+        b.fixed(c, json!([null]));
+    }
+    for (id, bad) in [
+        ("null", Sql::Null),
+        ("bos", Sql::Text(String::new())),
+        ("sayi", Sql::Integer(7)),
+        ("blob", Sql::Blob(b"x".to_vec())),
+    ] {
+        let c = B::new(&format!("copilot-kimliksiz-yeni-{id}"))
+            .raw(
+                COPILOT_DB,
+                sessions_db(&[
+                    (Sql::Text("eski".into()), Sql::Text(cwd.clone())),
+                    (bad, Sql::Text(cwd.clone())),
+                ]),
+            )
+            .q(resolve("copilot", ""));
+        b.fixed(c, json!([null]));
+    }
     // `[`: Python sid'i glob deseni sayar
     let c = B::new("sapma-codex-joker")
         .at(good.clone(), own.clone(), T0)

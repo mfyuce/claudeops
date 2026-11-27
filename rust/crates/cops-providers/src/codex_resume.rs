@@ -64,8 +64,8 @@ impl Live<'_> {
             })
     }
 
-    /// cwd'nin en yeni, başkasının tutmadığı konuşması. Kimliği olmayan (ya da metin olmayan) dosya atlanır, tarama daha
-    /// eski dosyalarla sürer.
+    /// cwd'nin en yeni, başkasının tutmadığı konuşması. En yeni uygun dosyada metin kimlik yoksa tarama orada BİTER
+    /// (sonuç yok = taze konuşma; Python gibi).
     pub(crate) fn codex_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>) -> Option<String> {
         for (path, payload) in self.rollouts_for(cwd) {
             let sid = match ROLLOUT_UUID
@@ -78,10 +78,10 @@ impl Live<'_> {
                     .find_map(|k| payload.get(k).filter(|v| v.truthy()))
                     .and_then(|v| v.as_str().map(String::from)),
             };
-            match sid {
-                Some(s) if !in_use.contains(&s) => return Some(s),
-                _ => continue,
+            if sid.as_ref().is_some_and(|s| in_use.contains(s)) {
+                continue;
             }
+            return sid;
         }
         None
     }

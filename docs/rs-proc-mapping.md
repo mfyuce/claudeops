@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 564 | 153 | 411 | 0 |
-| test durumu (138 dosya) | 1712 | 115 | 1597 | 0 |
+| test durumu (138 dosya) | 1714 | 115 | 1599 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -378,25 +378,25 @@ Yok.
 | `providers/codex_provider.py::CodexProvider.name` | sabit:170 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
 | `providers/codex_provider.py::CodexProvider.__init__` | işlev:172 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/codex_provider.py::CodexProvider.resolve_resume_id` | işlev:176 | kapsam dışı | yok | yok | devam kimliği ve rollout dosyası tam kimlik eşleşmesi. İz: T4 (yaşam döngüsü) |
-| `providers/codex_provider.py::CodexProvider.build_inner_command` | işlev:199 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.mcp_launch_args` | işlev:217 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.env_overrides` | işlev:228 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.matches_proc` | işlev:231 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
-| `providers/codex_provider.py::CodexProvider.extract_name` | işlev:239 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
-| `providers/codex_provider.py::CodexProvider.extract_info` | işlev:246 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yok |
-| `providers/codex_provider.py::CodexProvider.model_choices` | işlev:267 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.permission_modes` | işlev:286 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.effort_levels` | işlev:289 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.model_effort_levels` | işlev:292 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:313 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:316 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider.background_work` | işlev:327 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:338 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:357 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.live_context` | işlev:386 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:415 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:422 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.full_history` | işlev:447 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.build_inner_command` | işlev:201 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.mcp_launch_args` | işlev:219 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.env_overrides` | işlev:230 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.matches_proc` | işlev:233 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
+| `providers/codex_provider.py::CodexProvider.extract_name` | işlev:241 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
+| `providers/codex_provider.py::CodexProvider.extract_info` | işlev:248 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yok |
+| `providers/codex_provider.py::CodexProvider.model_choices` | işlev:269 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.permission_modes` | işlev:288 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.effort_levels` | işlev:291 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.model_effort_levels` | işlev:294 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:315 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:318 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider.background_work` | işlev:329 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:340 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:359 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.live_context` | işlev:388 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
+| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:417 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:424 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.full_history` | işlev:449 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/copilot_provider.py`
 
@@ -424,23 +424,23 @@ Yok.
 | `providers/copilot_provider.py::CopilotProvider` | sınıf:265 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
 | `providers/copilot_provider.py::CopilotProvider.name` | sabit:266 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
 | `providers/copilot_provider.py::CopilotProvider.resolve_resume_id` | işlev:268 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `providers/copilot_provider.py::CopilotProvider.build_inner_command` | işlev:296 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.env_overrides` | işlev:323 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.matches_proc` | işlev:329 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
-| `providers/copilot_provider.py::CopilotProvider.extract_name` | işlev:348 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | agy/codex ile aynı kol; copilot'a özel ad testi yok |
-| `providers/copilot_provider.py::CopilotProvider.extract_info` | işlev:355 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::copilot_info` | yok |
-| `providers/copilot_provider.py::CopilotProvider.model_choices` | işlev:371 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.permission_modes` | işlev:374 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.effort_levels` | işlev:377 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.mode_status_patterns` | işlev:380 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/copilot_provider.py::CopilotProvider.busy_status_pattern` | işlev:383 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/copilot_provider.py::CopilotProvider.usage_command` | işlev:386 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider.parse_usage_text` | işlev:395 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider.usage_fresh_tui_argv` | işlev:406 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:410 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::CopilotProvider.live_context` | işlev:433 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:456 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:465 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.build_inner_command` | işlev:298 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.env_overrides` | işlev:325 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.matches_proc` | işlev:331 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
+| `providers/copilot_provider.py::CopilotProvider.extract_name` | işlev:350 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | agy/codex ile aynı kol; copilot'a özel ad testi yok |
+| `providers/copilot_provider.py::CopilotProvider.extract_info` | işlev:357 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::copilot_info` | yok |
+| `providers/copilot_provider.py::CopilotProvider.model_choices` | işlev:373 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.permission_modes` | işlev:376 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.effort_levels` | işlev:379 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.mode_status_patterns` | işlev:382 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/copilot_provider.py::CopilotProvider.busy_status_pattern` | işlev:385 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/copilot_provider.py::CopilotProvider.usage_command` | işlev:388 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider.parse_usage_text` | işlev:397 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider.usage_fresh_tui_argv` | işlev:408 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:412 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.live_context` | işlev:435 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
+| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:458 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:467 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/agy_provider.py`
 
@@ -1435,21 +1435,23 @@ Yok.
 |---|---|---|---|---|
 | `test_rsprov_g1_fixes.py::CodexTest.test_one_broken_rollout_does_not_drop_the_search` | 58 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
 | `test_rsprov_g1_fixes.py::CodexTest.test_only_the_first_line_must_be_utf8` | 66 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::CodexTest.test_newest_file_without_id_falls_back_to_an_older_one` | 70 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::CodexTest.test_rollout_path_needs_the_exact_id` | 77 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::CodexTest.test_rollout_without_uuid_name_matches_whole_id` | 85 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::CopilotTest.test_null_or_non_text_newest_id_falls_back` | 101 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_cached_id_learned_by_another_name_is_not_taken` | 142 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_learned_id_whose_database_is_gone_is_not_resumed` | 149 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_non_text_learned_id_falls_back_to_the_cache` | 156 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_absolute_learned_id_never_opens_outside` | 161 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_valid_ids_still_resolve` | 169 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_non_utf8_cache_is_no_cache` | 177 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_broken_document_is_not_overwritten` | 184 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::AgyTest.test_missing_document_is_created` | 200 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::ClaudeTest.test_project_path_that_is_a_file_means_nothing` | 217 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::ClaudeTest.test_overlong_sid_means_no_transcript` | 222 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `test_rsprov_g1_fixes.py::ClaudeTest.test_infinite_pid_in_session_file` | 229 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CodexTest.test_newest_file_without_text_id_means_no_resume` | 70 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CodexTest.test_held_newest_file_is_still_skipped` | 77 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CodexTest.test_rollout_path_needs_the_exact_id` | 82 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CodexTest.test_rollout_without_uuid_name_matches_whole_id` | 90 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CopilotTest.test_newest_row_without_text_id_means_no_resume` | 115 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::CopilotTest.test_held_newest_row_is_still_skipped` | 120 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_cached_id_learned_by_another_name_is_not_taken` | 156 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_learned_id_whose_database_is_gone_is_not_resumed` | 163 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_non_text_learned_id_falls_back_to_the_cache` | 170 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_absolute_learned_id_never_opens_outside` | 175 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_valid_ids_still_resolve` | 183 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_non_utf8_cache_is_no_cache` | 191 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_broken_document_is_not_overwritten` | 198 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::AgyTest.test_missing_document_is_created` | 214 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::ClaudeTest.test_project_path_that_is_a_file_means_nothing` | 231 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::ClaudeTest.test_overlong_sid_means_no_transcript` | 236 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `test_rsprov_g1_fixes.py::ClaudeTest.test_infinite_pid_in_session_file` | 243 | kapsam dışı | yok | oturum kimliği ve devam hata düzeltmeleri (codex/copilot/agy/claude). İz: rs/prov (G1, açık); canlı bağlantı T4 |
 
 ### `py/tests/test_rsprov_g4_dismiss.py`
 

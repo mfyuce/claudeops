@@ -288,8 +288,10 @@ class CopilotProvider(CliProvider):
         for sid, raw_cwd in rows:
             if not raw_cwd or os.path.normpath(os.path.abspath(str(raw_cwd))) != target:
                 continue
-            if not isinstance(sid, str) or not sid or sid in in_use:
-                continue        # NULL/boş/metin olmayan kimlik: daha eski oturuma bakılır
+            if not isinstance(sid, str) or not sid:
+                return None     # en yeni uyan satırda metin kimlik yok: taze konuşma, eskiye bakılmaz
+            if sid in in_use:
+                continue
             return sid
         return None
 

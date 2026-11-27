@@ -191,8 +191,10 @@ class CodexProvider(CliProvider):
                 continue
             m = _ROLLOUT_UUID_RE.search(os.path.basename(path))
             sid = m.group(1) if m else (payload.get("id") or payload.get("session_id"))
-            if not isinstance(sid, str) or not sid or sid in in_use:
-                continue        # kimliksiz / metin olmayan kimlik: daha eski dosyaya bakılır
+            if not isinstance(sid, str) or not sid:
+                return None     # en yeni uyan dosyada metin kimlik yok: taze konuşma, eskiye bakılmaz
+            if sid in in_use:
+                continue
             return sid
         return None
 

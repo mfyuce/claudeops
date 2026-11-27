@@ -181,9 +181,9 @@ pub const RESUME_SCAN_LIMIT: i64 = 500;
 pub const RESUME_SQL: &str = "SELECT id, cwd FROM sessions ORDER BY updated_at DESC LIMIT ?";
 
 impl Live<'_> {
-    /// cwd'nin en son güncellenen, `in_use`da olmayan, kimliği dolu metin olan oturumu
-    /// (`CopilotProvider.resolve_resume_id`). Taramanın herhangi bir yerindeki SQLite hatası sonucu geçersiz kılar
-    /// (Python `fetchall`).
+    /// cwd'nin en son güncellenen, `in_use`da olmayan oturumu (`CopilotProvider.resolve_resume_id`). O satırın kimliği
+    /// dolu metin değilse sonuç yok (taze konuşma), eskiye bakılmaz. Taramanın herhangi bir yerindeki SQLite hatası
+    /// sonucu geçersiz kılar (Python `fetchall`).
     pub(crate) fn copilot_resume_id(&self, cwd: &str, in_use: &BTreeSet<String>) -> Option<String> {
         let mut found: Option<Option<String>> = None;
         let complete = self.probe.sqlite_rows(
@@ -200,19 +200,13 @@ impl Live<'_> {
                     SqlCell::Real(f) if *f != 0.0 => float_repr(*f),
                     _ => return true,
                 };
-                // NULL, boş ya da metin olmayan kimlik atlanır, tarama daha eski oturumlarla sürer.
-                let SqlCell::Text(id) = id else {
-                    return true;
+                let id = match id {
+                    SqlCell::Text(s) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
                 };
-                if id.is_empty() {
-                    return true;
-                }
-                if found.is_none()
-                    && !raw.is_empty()
-                    && self.same_path(&raw, cwd)
-                    && !in_use.contains(id)
-                {
-                    found = Some(Some(id.clone()));
+                let held = id.as_ref().is_some_and(|i| in_use.contains(i));
+                if found.is_none() && !raw.is_empty() && self.same_path(&raw, cwd) && !held {
+                    found = Some(id);
                 }
                 true
             },

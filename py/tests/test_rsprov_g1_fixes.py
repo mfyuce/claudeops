@@ -67,12 +67,17 @@ class CodexTest(Tmp):
         self.put(f"{self.roll}/rollout-b-{U2}.jsonl", meta(self.cwd).encode() + b"\xff\n", 2000)
         self.assertEqual(self.prov.resolve_resume_id(self.cwd), U2)
 
-    def test_newest_file_without_id_falls_back_to_an_older_one(self):    # aday 2, 11
+    def test_newest_file_without_text_id_means_no_resume(self):          # aday 2 uygulanmadı; 11
         self.put(f"{self.roll}/rollout-a-{U1}.jsonl", meta(self.cwd), 1000)
-        for extra in ({}, {"id": 7}, {"id": ["x"]}, {"id": ""}):
+        for extra in ({}, {"id": 7}, {"id": ["x"]}, {"id": ""}, {"session_id": ""}):
             with self.subTest(extra=extra):
                 self.put(f"{self.roll}/adsiz.jsonl", meta(self.cwd, **extra), 2000)
-                self.assertEqual(self.prov.resolve_resume_id(self.cwd), U1)
+                self.assertIsNone(self.prov.resolve_resume_id(self.cwd))
+
+    def test_held_newest_file_is_still_skipped(self):
+        self.put(f"{self.roll}/rollout-a-{U1}.jsonl", meta(self.cwd), 1000)
+        self.put(f"{self.roll}/rollout-b-{U2}.jsonl", meta(self.cwd), 2000)
+        self.assertEqual(self.prov.resolve_resume_id(self.cwd, in_use=frozenset({U2})), U1)
 
     def test_rollout_path_needs_the_exact_id(self):                        # aday 4
         own = self.put(f"{self.roll}/rollout-a-{U1}.jsonl", meta(self.cwd), 1000)
@@ -98,14 +103,23 @@ class CopilotTest(Tmp):
         c.close()
         return p
 
-    def test_null_or_non_text_newest_id_falls_back(self):                  # aday 3, 11
-        for bad in (None, 7, ""):
+    def resolve(self, rows, **kw):
+        p = self.db(rows)
+        try:
+            with mock.patch.object(cop, "SESSION_STORE_DB", p), \
+                    mock.patch.object(cop, "_connect_ro", lambda: sqlite3.connect(p)):
+                return cop.CopilotProvider().resolve_resume_id(self.cwd, **kw)
+        finally:
+            os.remove(p)
+
+    def test_newest_row_without_text_id_means_no_resume(self):             # aday 3 uygulanmadı; 11
+        for bad in (None, 7, "", b"x"):
             with self.subTest(bad=bad):
-                p = self.db([("eski", self.cwd), (bad, self.cwd)])
-                with mock.patch.object(cop, "SESSION_STORE_DB", p), \
-                        mock.patch.object(cop, "_connect_ro", lambda: sqlite3.connect(p)):
-                    self.assertEqual(cop.CopilotProvider().resolve_resume_id(self.cwd), "eski")
-                os.remove(p)
+                self.assertIsNone(self.resolve([("eski", self.cwd), (bad, self.cwd)]))
+
+    def test_held_newest_row_is_still_skipped(self):
+        rows = [("eski", self.cwd), ("yeni", self.cwd)]
+        self.assertEqual(self.resolve(rows, in_use=frozenset({"yeni"})), "eski")
 
 
 class AgyBase(Tmp):

@@ -8,14 +8,14 @@ G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçü
 görüldü, tek başına üç koşuda yeşil; yük altında oynak, nedeni açık); `clippy --workspace --all-targets -D warnings` temiz;
 `cargo fmt --check -p cops-providers` temiz; Python tam paket 6225 OK (23 atlanan) + yeni `test_rsprov_*` dosyaları;
 eşleme denetimleri (hosts `--check`, rs-proc `--check --strict`, steward `map.py --check`) temiz.
-27 Kas düzeltme turu: G1 1-11, G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
+27 Kas düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
 denetimi, yutulan model çekimi ve `agy_sids` hatalarının günlüğü; her biri Python + Rust + test (aşağıda grup bölümleri).
 
 ## Parite (`tests/parity.rs`)
 - Python tek alt süreçte (boş ortam, geçici HOME/CLAUDEOPS_DIR/PATH, eklentiler kapalı), süreç/ağ çağrıları sahte. Her vaka aynı
   başlangıç ağacından iki tarafta koşar; dönüş, hata metni, diag, argv ve dosya ağacı (izinlerle) karşılaştırılır.
-- 7281 vaka: spawn yürütme 172 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
-  (G8; `parity_real`), resume 334 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 344 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
+- 7288 vaka: spawn yürütme 172 (G9; `parity_g9`, sahte tmux/`Popen`/saat çağrı günlüğü sırasıyla, kanca ve eklenti MCP'si iki tarafta gerçek kod), tek atımlık çağrı ve onay 198 (G10; `parity_oneshot`, iki tarafta gerçek alt süreç, yalnız sahte betikler), TUI 1079 (G4; `parity_tui`, sahte pane + sahte saat), maliyet defteri 299 ve SearXNG 72 (G8 ikinci parça; `parity_ledger`, `parity_searxng`), gerçek uygulayıcı 129
+  (G8; `parity_real`), resume 341 (G1; her biri bir sorgu dizisi), model kaynakları 700 (G7; her biri sahte saatli bir adım dizisi), transcript 536 (G3), chat 1178 (G2), bg_work 73 ve live 654 (G6), model/effort 105, settings/pyfmt 89, build 364, ucli 344 + tırnaklama 5, spawn 402, misc 438, usage 16 (G5; 6 sağlayıcı
   x 94 metin x 10 yöntem + 10 ikili çözümü vakası), panel 94 (G11: `ucli_cost_config` 39, `ucli_metrics.get_config` 36,
   `instructions_check` 19).
 - 38 "bilinen ayrışma" (1i G1, 3ü G7, 8i G3, 2si G2, 5i G6, 2si G4, 7si ayar/pyfmt, 8i misc, 2si model/effort) testte
@@ -83,7 +83,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 1. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
 2. Ders tablosundaki AÇIK satırların Python farkı gerektirenleri (G4 aday 1, 2, 5; G10 aday 1; G9 aday 5, 6; kanca ortamı
-   argv'de; G3 aday 3-6): sahip/cops kararı; karar gelince iki tarafta `fix:` + test. 27 Kas'ta kapandı: G1 1-11, G7
+   argv'de; G3 aday 3-6): sahip/cops kararı; karar gelince iki tarafta `fix:` + test. 27 Kas'ta kapandı: G1 1-11 (2 ve 3 uygulanmadı, G1 bölümü), G7
    (agy çıkış kodu dışında), G5/G11, G10 aday 5, sid/ad yola ekleme, model çekimi ve `agy_sids` günlükleri.
 3. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve
    ayar okuma rs/proc, rs/state ile ortaklaştırılmalı.
@@ -465,13 +465,14 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Testsiz farklar: okuma sınırları (Python sınırsız); UTF-8 olmayan dosya adları listelenmeyebilir;
   `sid_for_stopped_session`/`session_file_sid` imzaları tipli (metin pid yok).
 
-### Python hataları (27 Kas kalıcı kurala göre iki tarafta DÜZELDİ; `py/tests/test_rsprov_g1_fixes.py`, düzeltmeden önce 17 testin 15'i kırmızı; Rust parite `parity_resume`)
+### Python hataları (27 Kas kalıcı kurala göre iki tarafta DÜZELDİ, 2 ve 3 hariç; `py/tests/test_rsprov_g1_fixes.py`, düzeltmeden önce 17 testin 15'i kırmızı; Rust parite `parity_resume`)
 1. codex `_session_meta`: bozuk/UTF-8 olmayan/nesne olmayan ilk satır ya da `payload` o dosyayı atlatır, aramayı düşürmez.
    Yalnız İLK satır çözülür (`surrogateescape` + `encode`; metin kipi tamponun tamamını çözüp sonraki satırın bozuk baytında
    düşüyordu).
-2. codex `resolve_resume_id`: kimliksiz (ya da metin olmayan kimlikli) en yeni dosya taramayı bitirmez, daha eski dosyaya
-   bakılır (Rust da).
-3. copilot `resolve_resume_id`: NULL, boş ya da metin olmayan kimlikli satır atlanır, daha eski oturuma bakılır (Rust da).
+2. UYGULANMADI (geri alındı): codex `resolve_resume_id`te en yeni uyan dosyada kimlik yoksa tarama orada biter, sonuç
+   yok (taze konuşma). Neden: eskiye bakmak hangi konuşmanın devam edeceğini değiştiriyor; belirsizlikte reddet.
+3. UYGULANMADI (geri alındı): copilot `resolve_resume_id`te en yeni uyan satırın kimliği boş/NULL ise sonuç yok, eski
+   oturuma bakılmaz. Neden: 2 ile aynı.
 4. codex `_rollout_path`: `sid` dosya adının sonundaki kimlikle TAM eşleşmeli (`_rollout_sid_matches`; kimliksiz adda
    `{sid}.jsonl` ya da `-{sid}.jsonl`); kısmi kimlik, joker, `/` taşıyan `sid` başka konuşmanın dosyasını vermez (Rust da).
 5. agy `resolve_resume_id`: cwd önbelleğindeki kimlik BAŞKA ada öğrenilmişse alınmaz (reddeden yön; Rust da).
@@ -484,7 +485,8 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 9. claude `resolve_resume_id`/`find_latest_jsonl`: proje yolu dosya ya da okunamıyorsa "yok"; `jsonl_path_for` aşırı uzun
    `sid`de "yok".
 10. `session_file_sid`: `pid: Infinity` "yok" (`OverflowError` yakalanır).
-11. Metin olmayan kimlik (codex, copilot, agy öğrenilen) döndürülmez: 2, 3 ve 6. maddelerin süzgeci.
+11. Metin olmayan kimlik (codex, copilot, agy öğrenilen) döndürülmez: codex/copilot'ta sonuç yok (eskiye düşme yok; 2,
+    3), agy'de 6. maddenin süzgeciyle önbelleğe düşülür.
 
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G1 koduna düşen maddeler
 Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
