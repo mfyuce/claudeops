@@ -8,9 +8,7 @@
 
 use crate::pyfmt::py_isspace;
 use crate::{claude, copilot, Cli};
-use regex::Regex;
 use std::borrow::Cow;
-use std::sync::LazyLock;
 
 /// Literal olmayan yoldan gönderilen tuşlar (bu grubun bastıkları; serbest metin tuş adı olamaz).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,12 +44,8 @@ pub trait Pane {
     fn sleep(&self, secs: f64);
 }
 
-/// Python `tmux_backend.strip_ansi` (SGR + BEL ile biten OSC). Birleştirmede `cops-tmux` `strip_ansi` ile tekleştirilir.
-pub fn strip_ansi(text: &str) -> String {
-    static SGR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap());
-    static OSC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\][^\x07]*\x07").unwrap());
-    OSC.replace_all(&SGR.replace_all(text, ""), "").into_owned()
-}
+/// Python `tmux_backend.strip_ansi` (SGR + BEL ya da ST ile biten OSC): tek kaynak `cops-tmux`.
+pub use cops_tmux::strip_ansi;
 
 /// Canlı geçişte yakalanan geçmiş satırı sayısı.
 pub const DIALOG_CAPTURE_LINES: u32 = 20;

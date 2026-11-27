@@ -6,6 +6,8 @@ license.workspace = true
 description = "CLI saglayicilari: spawn komut satiri ve ortam (saf cekirdek) + gercek G/C uygulayicisi (`real`); Python py/claudeops/providers paritesi"
 
 [dependencies]
+# strip_ansi tek kaynak (Python tmux_backend.strip_ansi paritesi rs/tmux'ta)
+cops-tmux = { path = "../cops-tmux" }
 serde = "1"
 serde_json = "1"
 regex = "1"
