@@ -1,12 +1,12 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
-Durum (27 Kas 2026, `origin/main` `7ac858e0` birleşimi `59135fb8` + kalıcı kurala göre Python hata düzeltmeleri):
+Durum (27 Kas 2026, `origin/main` `9e5bcf24` birleşimi `3aee9ac7` + TBD#399 düzeltmesi):
 **BİRLEŞTİRMEYE HAZIR DEĞİL** (G1-G11 taşındı; eşleme ve test tablolarında EKSİK ve TAŞINDI-TESTSİZ satır yok. Açık: ders
-tablosundaki gerekçeli AÇIK satırlar, sahip/cops kararı bekleyen Python farkları (G4 aday 1, 2, 5; G10 aday 1; G9 aday 5, 6;
-G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `bf4d3ed7`, TBD#397
-düzeltmeleri dahil): `cargo test --workspace` 1239 geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings`
-ve `cargo fmt --check -p cops-providers` temiz; Python tam paket 6263 OK (23 atlanan); eşleme denetimleri (hosts `--check`,
-rs-proc `--check --strict`, steward `map.py --check`) temiz. Oynak testler (yük altında bir kez): `parity_live`
+tablosundaki gerekçeli AÇIK satırlar, sahip/cops kararı bekleyen Python farkları (G10 aday 1; G9 aday 5, 6;
+G3 aday 3-6; agy `models` çıkış kodu) ve bağlayan uç). Son ağaç (ölçülen, `8bef883a`): `cargo test --workspace` 1243
+geçti, 0 kaldı, 1 atlandı; `clippy --workspace --all-targets -D warnings` ve `cargo fmt --check -p cops-providers` temiz;
+Python tam paket 6305 OK (23 atlanan); eşleme denetimleri (hosts `--check`, rs-proc `--check --strict`, steward
+`map.py --check`) temiz. Oynak testler (yük altında bir kez): `parity_live`
 `live-codex-ctx-dev` (önceki turda) ve `real_fs::concurrent_issue_keeps_file_and_digest_consistent` (yük ortalaması ~20 iken
 30 sn kilit sınırı aşıldı; tek başına üç koşuda ve tam koşuda yeşil).
 27 Kas düzeltme turu: G1 1-11 (2 ve 3 sonradan geri alındı), G7 (TODO 1-5, 7, 8; 6 dokunulmadı), G5/G11 ayrıştırıcıları, G10 aday 5, sid/ad yol parçası
@@ -83,7 +83,7 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 ## Sıradaki
 1. Bağlayan uç (copsd/panel `_start`, rc, devir) `SpawnRuntime` + `CopsTmux` + `ProcScan` + `TmuxPane` ile; o izlerin işi
    (async çağıranda `spawn_blocking`; bekçi `Watchdog` `join`; spawn'ı `guard.lock` altında tutmak `guard.py` taşımasının).
-2. Ders tablosundaki AÇIK satırların Python farkı gerektirenleri (G4 aday 1, 2, 5; G10 aday 1; G9 aday 5, 6; kanca ortamı
+2. Ders tablosundaki AÇIK satırların Python farkı gerektirenleri (G10 aday 1; G9 aday 5, 6; kanca ortamı
    argv'de; G3 aday 3-6): sahip/cops kararı; karar gelince iki tarafta `fix:` + test. 27 Kas'ta kapandı: G1 1-11 (2 ve 3 uygulanmadı, G1 bölümü), G7
    (agy çıkış kodu dışında), G5/G11, G10 aday 5, sid/ad yola ekleme, model çekimi ve `agy_sids` günlükleri.
 3. Birleştirmede: `main_session_model_effort` rs/stew'de de var (tek kopya); `is_safe_env_name`, `py_*` yardımcıları ve
@@ -95,8 +95,8 @@ tek tablo "Ders listesi: crate'in tamamı" bölümünde (AÇIK satırlar gerekç
 ## Parite testinde bakılacak bilinen farklar / şüpheler
 Parite testinde kayıtlı ayrışmalar yukarıdaki "Parite" bölümünde. Açık kalanlar:
 - Gerçek tmux ile Python'a karşı (paritenin dışında, `tests/real_pane.rs`): bilinçli tek fark özel tuşta maske denetimi
-  (Python `tmux_send_special_key` denetlemez, Rust `RefuseMasked`): gizli girdi bekleyen pane'de Python diyaloğu `Down` +
-  Enter ile kapatır, Rust hiçbir şey göndermez (`masked_pane_gets_no_text_and_rust_sends_no_keys` ikisini de ölçer).
+  (Python `tmux_send_special_key` denetlemez, Rust `RefuseMasked`). Gizli girdi bekleyen pane'de iki tarafta da ekrana
+  hiçbir şey ulaşmaz ve Enter basılmaz (`masked_pane_gets_no_command_and_no_enter`).
   `settle` NaN/inf: Python metni yapıştırıp düşer ya da boş metinde Enter gönderir, Rust hiçbir şey göndermez (çağıranlar
   yalnız sabit verir).
 - G5/G11 Python hataları (27 Kas iki tarafta DÜZELDİ; `py/tests/test_rsprov_g5_fixes.py`, Rust `usage::tests::parser_corners_fixed_on_both_sides`, `python_classes`):
@@ -126,12 +126,12 @@ sır-argv birim testleri.
 |---|---|---|
 | §3.1 hedef `Unique`; yıkıcı eylem ön ek / "en yeni" ile çalışmaz (H7) | tmux hedefi hep `=ad:` (`cops-tmux`), hedeflenemeyen ad hiçbir tmux komutu çalıştırmaz: `real_tmux::unaddressable_names_run_no_tmux_command_and_open_nothing`; ön ek kardeşe dokunulmaz: `real_tmux::spawn_direct_runs_inner_with_only_the_given_env_in_the_exact_session`, `real_pane::prefix_name_never_reaches_another_session`, `real_tmux::reclaim_kills_only_the_exact_old_childless_shell`, `open_window_attaches_to_the_exact_existing_session`; sid verilince tahmin yok: `resume::only_a_sidless_lookup_guesses_the_newest_transcript`, `claude_transcript::cache_candidates_are_exact_files_and_newest_wins` | TAMAM (yıkıcı yollar; 27 Kas: agy önbellek kimliği başka ada öğrenilmişse alınmaz, codex `sid` tam eşleşir, G1 5 ve 4). AÇIK: (a) sid'siz okumalar (`jsonl_path_for`, codex rollout, `live_or_spawn_*`) Python gibi cwd'deki en yeniye düşer (G3 şüphe 4; kaldırmak devir davranışını değiştirir, sorulur); (c) `ids_held_by_others` taraması ile spawn arasındaki yarış: kilit çağıranın (`guard.lock`, `guard.py` taşıması; G9 bölümü) |
 | §3.2 atomik yazım; çok yazarlı belgede kilit sözleşmesi (H2) | `real_fs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp`, `concurrent_atomic_writes_never_expose_a_partial_file` (dosya `sync_all`, aynı dizinde benzersiz tmp); Python'la aynı `flock`: `real_agy_store::rust_and_python_writers_across_processes_lose_nothing`, `the_lock_is_the_one_python_takes_and_waiting_is_bounded`, `real_oneshot::the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing`, `concurrent_registrations_lose_nothing_and_one_key_has_one_winner`, `real_searxng::the_state_write_waits_for_the_lock_python_takes_and_keeps_other_keys`; pay: `real_ledger::concurrent_starts_cannot_oversubscribe_the_cap`; token: `real_fs::concurrent_issue_keeps_file_and_digest_consistent`; `resume::value_is_checked_again_under_the_lock`, `concurrent_remembers_lose_nothing` | TAMAM. AÇIK: `db` kipindeki belge deposu (DB doğruluk kaynağı) rs/state'in; `DocAgySidStore` o kipte yazımı reddeder (`real_agy_store::db_backend_documents_are_neither_read_from_nor_written_to_the_mirror`) |
-| §3.3 belirsiz / okunamayan durum `Allow`, başarı ya da "yok" olmaz (H13, H10, H9) | pane maskesi bilinmiyor = hiçbir şey gönderilmez: `real_pane::hung_tmux_times_out_to_false_and_none`, `masked_pane_gets_no_text_and_rust_sends_no_keys`; okunamayan defter/ayar tavanı kapatır: `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`; kanca hatası ret: `parity_g9` `kanca-hata`, `kanca-hata-uzun`; `/proc` okunamazsa tarama düşer: `real_scan::unreadable_process_list_drops_the_scan_and_writes_nothing`; okunamayan transkript "bilinmiyor": `claude_transcript::truncated_file_and_read_errors_mean_unknown`; okunamayan `--help` = bayrak yok: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAMAM (27 Kas: açılamayan ucli anahtar dosyası ret, `real_oneshot::an_unreadable_key_file_is_refused_not_treated_as_missing`; bozuk `agy_sids` belgesi ezilmez, `parity_resume` `agy-yaz-bozuk`/`-liste`, `parity_real` `agy-belge1..3`; başarısız hizmet çekimi iyi listeyi ezmez). Uzak host (H10) UYGULANMAZ: crate uzak çağrı yapmaz |
-| §3.4 eylem sonucu tipte; NEGATİF test (H9) | `#[must_use] SwitchOutcome`; `tui::a_failed_send_returns_without_waiting`, `permission_dialog_is_not_confirmed`, `stray_dialog_is_refused_and_a_failed_down_sends_no_enter`; gerçek tmux: `real_pane::masked_pane_gets_no_text_and_rust_sends_no_keys` (`SendFailed`); `Effect` uygulaması `Result`: `real_fs::apply_all_stops_at_the_first_failure_and_reports_where`; `register_mcp` hata metni: `real_process::register_mcp_errors_carry_python_reprs`; spawn `SpawnFailure` + pay iadesi (`parity_g9` her vakada `release`) | TAMAM. AÇIK: `MarkerSeen` başarının kanıtı değil: eski sonuç satırı ilk yoklamada döngüyü bitirir, onay Enter'ının sonucuna bakılmaz (G4 aday 1, 5; Python farkı, sahibe/cops) |
+| §3.3 belirsiz / okunamayan durum `Allow`, başarı ya da "yok" olmaz (H13, H10, H9) | pane maskesi bilinmiyor = hiçbir şey gönderilmez: `real_pane::hung_tmux_times_out_to_false_and_none`, `masked_pane_gets_no_command_and_no_enter`; okunamayan defter/ayar tavanı kapatır: `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap`, `settings_are_read_on_every_call_and_an_unreadable_document_refuses`; kanca hatası ret: `parity_g9` `kanca-hata`, `kanca-hata-uzun`; `/proc` okunamazsa tarama düşer: `real_scan::unreadable_process_list_drops_the_scan_and_writes_nothing`; okunamayan transkript "bilinmiyor": `claude_transcript::truncated_file_and_read_errors_mean_unknown`; okunamayan `--help` = bayrak yok: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAMAM (27 Kas: açılamayan ucli anahtar dosyası ret, `real_oneshot::an_unreadable_key_file_is_refused_not_treated_as_missing`; bozuk `agy_sids` belgesi ezilmez, `parity_resume` `agy-yaz-bozuk`/`-liste`, `parity_real` `agy-belge1..3`; başarısız hizmet çekimi iyi listeyi ezmez). Uzak host (H10) UYGULANMAZ: crate uzak çağrı yapmaz |
+| §3.4 eylem sonucu tipte; NEGATİF test (H9) | `#[must_use] SwitchOutcome`; `tui::a_failed_send_returns_without_waiting`, `permission_dialog_is_never_confirmed_even_with_switch_text_above_it`, `no_enter_unless_the_cursor_is_seen_on_no`; gerçek tmux: `real_pane::masked_pane_gets_no_command_and_no_enter` (`DialogOpen`, tuş reddi `LeftOpen`); `Effect` uygulaması `Result`: `real_fs::apply_all_stops_at_the_first_failure_and_reports_where`; `register_mcp` hata metni: `real_process::register_mcp_errors_carry_python_reprs`; spawn `SpawnFailure` + pay iadesi (`parity_g9` her vakada `release`) | TAMAM. AÇIK: `MarkerSeen` başarının kanıtı değil: eski sonuç satırı ilk yoklamada döngüyü bitirir, onay Enter'ının sonucuna bakılmaz (G4 aday 1, 5; Python farkı, sahibe/cops) |
 | §3.5 hata yutma / panik yok; yutulana sayaç ya da günlük (H9, H20) | üretim kodunda `panic!`/`unreachable!` yok; `unwrap`/`expect` yalnız sabit desen derlemesi ve önceden denetlenmiş değişmez (`py_re` kaçışları sınır denetiminden sonra; `claude.rs::refresh_stored_model`, `ucli.rs` ön ayar, `ucli_opts.rs` elenmiş `None`). Rastgele girdi: `py_re::tests::random_patterns_never_panic`, `*::truncated_and_mutated_input_never_panics` (`claude_transcript`, `resume`, `chat`, `bg_work`), `model_sources::broken_and_mutated_model_answers_never_panic`. Bu turda bulunan panik: `SystemClock::sleep(1e300)` (`g9::system_clock_is_monotonic_and_ignores_bad_sleeps`), `TmuxPane` geçersiz `settle` (`real::pane::tests::settle_maps_python_values_and_never_panics`). `let _ =` olanlar Python'un `except: pass` dallarının karşılığı (çocuğu öldür+topla, tmp sil, dizin fsync, `kill-session`, iş parçacığı başlatma: `a_background_job_that_cannot_start_keeps_the_old_list`) | TAMAM (panik). 27 Kas: model kaynağı çekim hatası `models_fetch_failed`, okunamayan `agy_sids` `agy_sids_unreadable` olarak iki tarafta günlükte (`parity_model_sources`, `parity_misc` `live5`, `parity_resume`, `model_sources::service_models_keep_the_good_list_and_follow_the_key`). AÇIK: atlanan bozuk rollout/transkript adayı (her 4 sn'lik yoklamada tekrar eder: tekilleştirmesiz günlük `diag.log`u şişirir), `Effect::Remove` hatası ve `DiagLog`un kendi yazım hatası (yazılacak yer yok) günlüğe girmiyor |
 | §3.6 önbellek / ayar bayatlamaz; hata `last_good`u ezmez (H3) | `model_sources::repeated_errors_never_replace_the_last_good_list`, `a_background_job_that_cannot_start_keeps_the_old_list`, `codex_choices_are_cached_but_effort_levels_read_the_current_file`; ayar her çağrıda: `real_ledger::settings_are_read_on_every_call_and_an_unreadable_document_refuses`, `the_state_is_cached_until_ttl_or_invalidate`; dosya imzası: `resume::unchanged_files_are_not_reread_but_changed_ones_are`, `real_process::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery`; canlı model/effort jsonl'den (G3): `claude_transcript::synthetic_and_unexpected_rows_do_not_hide_the_real_model` | TAMAM |
-| §3.7 her bekleme sınırlı; bildirim durumu kalıcı (H8) | `tui::every_wait_ends_on_its_budget_even_when_the_pane_cannot_be_read`; gerçek tmux: `real_pane::no_dialog_means_no_keys_on_either_side` (6 sn), `hung_tmux_times_out_to_false_and_none` (5 sn); bekçi `g9::watchdog_retries_then_falls_back_to_headless_tmux`; süreç: `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_hits_the_deadline_like_python` (`Spec.timeout` zorunlu alan); HTTP: `real_http::the_timeout_is_the_total_time_not_per_read`, `an_endless_body_stops_at_the_limit`; docker: `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (kalıcı "down"); `flock` 30 sn: `real_agy_store::the_lock_is_the_one_python_takes_and_waiting_is_bounded`. Üretim `loop`ları okuma sınırı ya da son tarihle biter | TAMAM. AÇIK: maliyet günlüğü taraması dosya boyutuyla sınırsız (Python gibi; G8 ikinci parça). Nag/bildirim UYGULANMAZ |
-| §3.8 dış TUI davranışı fixture ile; `Unknown` ekranda gönderim yok (H4) | kelime kelime ANSI'li diyalog basan sahte claude TUI'sine Python `ClaudeProvider` ve Rust `TmuxPane` aynı baytları gönderir: `real_pane::model_switch_confirms_the_dialog_like_python`, `model_switch_without_dialog_sends_no_extra_enter_like_python`, `effort_switch_confirms_the_dialog_like_python`, `stray_dialog_is_declined_with_down_enter_like_python`; `parity_tui` 1079 (sahte pane); diyalog görünmüyorsa Enter yok: `tui::applied_without_dialog_sends_no_key`, `effort_without_dialog_sends_no_enter`; maske bilinmiyorsa metin ve tuş yok (yukarıda) | AÇIK: gerçek claude sürümünden yakalanmış ekran fixture'ı yok (canlı claude ister; teslim doğrulaması ve mod tespiti çağıran izlerde, T4/T10); diyalog metni ekranın herhangi bir yerinde aranır (G4 aday 2, Python farkı) |
+| §3.7 her bekleme sınırlı; bildirim durumu kalıcı (H8) | `tui::every_wait_ends_on_its_budget_even_when_the_pane_stops_being_readable`; gerçek tmux: `real_pane::no_dialog_means_no_keys_on_either_side` (6 sn), `hung_tmux_times_out_to_false_and_none` (5 sn); bekçi `g9::watchdog_retries_then_falls_back_to_headless_tmux`; süreç: `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `a_grandchild_holding_the_pipe_hits_the_deadline_like_python` (`Spec.timeout` zorunlu alan); HTTP: `real_http::the_timeout_is_the_total_time_not_per_read`, `an_endless_body_stops_at_the_limit`; docker: `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again` (kalıcı "down"); `flock` 30 sn: `real_agy_store::the_lock_is_the_one_python_takes_and_waiting_is_bounded`. Üretim `loop`ları okuma sınırı ya da son tarihle biter | TAMAM. AÇIK: maliyet günlüğü taraması dosya boyutuyla sınırsız (Python gibi; G8 ikinci parça). Nag/bildirim UYGULANMAZ |
+| §3.8 dış TUI davranışı fixture ile; `Unknown` ekranda gönderim yok (H4) | kelime kelime ANSI'li diyalog basan sahte claude TUI'sine Python `ClaudeProvider` ve Rust `TmuxPane` aynı baytları gönderir: `real_pane::model_switch_confirms_the_dialog_like_python`, `model_switch_without_dialog_sends_no_extra_enter_like_python`, `effort_switch_confirms_the_dialog_like_python`, `stray_dialog_is_declined_with_down_enter_like_python`; `parity_tui` 1079 (sahte pane); diyalog görünmüyorsa Enter yok: `tui::applied_without_dialog_sends_no_key`, `an_old_result_line_does_not_count`; maske bilinmiyorsa metin ve tuş yok (yukarıda) | AÇIK: gerçek claude sürümünden yakalanmış ekran fixture'ı yok (canlı claude ister; teslim doğrulaması ve mod tespiti çağıran izlerde, T4/T10); diyalog metni ekranın herhangi bir yerinde aranır (G4 aday 2, Python farkı) |
 | §3.9 süreç / bağlantı sahipliği, fd sızıntısı (H1) | `real_fd::a_hundred_rounds_of_failures_leak_no_descriptor_and_no_child`; `real_process::a_timeout_kills_the_whole_process_group_and_waits`, `closed_pipes_with_a_running_child_still_time_out`, `bounded_capture_overflows_and_tail_capture_keeps_the_end` (akışlar boşaltılır); `real_oneshot::timeouts_kill_the_whole_group_and_return_promptly`; `g9::gnome_terminal_runs_with_only_the_given_env_and_is_reaped`; `real_searxng::a_hanging_docker_is_killed_marked_down_and_not_asked_again`. Sinyal yalnız kendi başlattığı çocuğun grubuna (`real/process.rs`, `process_group(0)`); oturum öldürme yok (`kill.py` kuralı); tmux istemcisi `cops-tmux`ta öldür+topla | TAMAM. Bekçi iş parçacığı: kısa ömürlü çağıran `Watchdog`u `join` etmeli (G9; bağlayan uç) |
 | §3.10 girdi sınırları: boş, negatif, NaN/inf, bozuk UTF-8, tip (H5) | NaN/inf: `real::pane::tests::settle_maps_python_values_and_never_panics`, `g9::system_clock_is_monotonic_and_ignores_bad_sleeps`, `real_ledger::an_unreadable_or_invalid_ledger_closes_an_open_cap` (NaN, negatif, metin), `ucli_opts::tests::validate_opts_matches_python` (`nan`, `inf`, `-1`), `parity_panel` `metrics-nan`; UTF-8: `real_process::empty_failed_slow_huge_or_non_utf8_help_is_not_cached`, `real_ledger::a_log_with_a_non_utf8_name_still_counts`, `real_pane::capture_matches_python_and_keeps_ansi`; başlık olamayan anahtar: `model_sources::a_key_that_cannot_be_a_header_value_sends_nothing`; FIFO: `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo`, `real_oneshot::a_fifo_key_file_or_index_is_refused_without_blocking`; bozuk/kesik girdi: §3.5 rastgele testleri | TAMAM. AÇIK: bozuk `agy_sids` belgesi Python gibi üzerine yazılır, `.corrupt` yedeği yok (G1 şüphe 7; `ucli_agents`te var: `real_fs::a_corrupt_agent_registry_is_copied_aside_and_an_unreadable_one_is_not_overwritten`) |
 | §3.11 işaret / ad ayrıştırma tek modül, corpus, Python vektörü (H6, H14) | crate STEWARD/RFH işareti ayrıştırmaz (UYGULANMAZ, değnekçi izi). Crate'in ayrıştırıcıları Python'a karşı: kota/bağlam `parity_usage`, transkript `parity_transcript`, protobuf/SQLite sohbet `parity_chat`, `exec_cmds` regex çevirmeni `parity_ucli` + `py_re::tests::random_patterns_never_panic`, oturum adı `ucli::is_child_name` `parity_ucli` | TAMAM |
@@ -194,10 +194,12 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 - `tui.rs`: sağlayıcı dağıtımı `Cli` yöntemleri (`if cli == ..` zinciri çağıranda yok); claude dışı CLI'da canlı geçiş
   `Unsupported`, diyalog taraması boş.
 - Dış olgular `Pane` arkasında: `send_text`, `send_key` (yalnız `Key::{Enter, Down}`), `capture` (ham ANSI), `monotonic`,
-  `sleep`. ANSI temizliği çekirdekte (`strip_ansi`): uygulayıcı unutamaz.
-- Canlı geçiş Python None döner; Rust `#[must_use] SwitchOutcome` (`Unsupported`, `SendFailed`, `MarkerSeen`, `TimedOut`) verir.
-  `MarkerSeen` başarının KANITI DEĞİL (aşağıda aday 1).
-- Diag olayı yok (Python bu yöntemlerde günlük yazmaz).
+  `sleep`, `diag`. ANSI temizliği çekirdekte (`strip_ansi`): uygulayıcı unutamaz.
+- Canlı geçiş Python `_Switch` döner; Rust `#[must_use] SwitchOutcome` (`Unsupported` = Python None, `Done`, `Busy`, `Draft`,
+  `DialogOpen`, `Unreadable`, `SendFailed`, `Unconfirmed`); `safe_to_type()` = Python `handover._SWITCH_SAFE`.
+  `dismiss_stray_dialog` `DismissOutcome` (`NotSeen`, `Closed`, `LeftOpen`).
+- Diag olayları: `live_switch_not_done` (name, command, result, stage), `stray_dialog_left_open` (name, stage). `TmuxPane`
+  günlük için `with_diag` ister.
 
 ### `Pane` sözleşmesi (gerçek uygulayıcı `real/pane.rs::TmuxPane`, 27 Kas; `cops-tmux` üstüne, o crate'e dokunulmadı)
 | `Pane` | `TmuxPane` (`cops-tmux` çağrısı) | Zorunlu anlam |
@@ -205,6 +207,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 | `send_text(ad, metin, settle)` | `Tmux::send_text(ad, metin, Duration, MaskGuard::RefuseMasked)`; `Ok` = true; `settle` negatif = 0, NaN/inf/sığmayan = false (hiçbir şey gönderilmez) | hedef `exact_target` (ön ek eşleşmesi yok); metin argv'ye girmez; gizli girdi ya da durumu bilinmeyen pane'e hiçbir şey; metin + tek Enter; süre `max(5, 5 + karakter/1500)` sn; yarım kalan gönderim = false (metin kutuda kalmış olabilir, çağıran yeniden göndermez) |
 | `send_key(ad, tuş)` | `Tmux::send_special_key(ad, tuş.name(), MaskGuard::RefuseMasked)` | TAM ad; tek tuş; 5 sn; her hata ve zaman aşımı false. Python özel tuşta maske denetlemez: Rust daha sıkı (kapalı yön) |
 | `capture(ad, satır)` | `Tmux::capture(ad, satır)` (ANSI korunur, `capture_plain` DEĞİL) | `-e -p -S -satır` (geçmişten `satır` + görünür alan); 5 sn; hata, oturum yok, UTF-8 olmayan çıktı = None; Python `text=True` `\r\n`/`\r`yi `\n` yapar (işaretler tek satırda, sonucu etkilemez); pane copy-mode'a sokulmaz |
+| `diag` | `DiagSink` (`TmuxPane::with_diag`) | en iyi çaba; verilmezse olay düşer, sonuç yine tipli döner |
 | `monotonic` / `sleep` | `Instant` / `thread::sleep` | geri gitmez; `sleep(s)` saati en az `s` ilerletir (döngülerin bitişi buna bağlı). Yöntemler bloklayıcıdır (async'te `spawn_blocking`) |
 
 - Hiçbir `Pane` yöntemi panik atmaz; hata değeri (false / None) döner.
@@ -213,7 +216,7 @@ Satır sayıları aşağıdaki iki tablodan üretildi (işlev/atama satırı + t
 - `tui::strip_ansi` = `cops_tmux::strip_ansi` (tek kaynak; OSC `ESC \` bitişi dahil).
 - Sınayan (yalıtılmış tmux sunucusu, `tests/real_pane.rs` 10): tam hedef ve ön ek (`prefix_name_never_reaches_another_session`),
   metin argv'de değil (araya konan sahte tmux argv'yi kaydeder: `text_never_appears_in_tmux_argv`), maske
-  (`masked_pane_gets_no_text_and_rust_sends_no_keys`), 5 sn zaman aşımı (hiç dönmeyen sahte tmux:
+  (`masked_pane_gets_no_command_and_no_enter`), 5 sn zaman aşımı (hiç dönmeyen sahte tmux:
   `hung_tmux_times_out_to_false_and_none`), ANSI korunan yakalama Python `tmux_capture` ile aynı ve copy-mode'a girilmez
   (`capture_matches_python_and_keeps_ansi`, her senaryoda `#{pane_in_mode}` = 0), Python `ClaudeProvider` ile aynı bayt
   (`*_like_python`, `no_dialog_means_no_keys_on_either_side`). Copy-mode kuralı: `TmuxPane` hiçbir zaman `copy-mode`
@@ -232,20 +235,29 @@ ayrışma yok.
   istenen model değişikliği onaylanıyordu. Artık `Down` başarısızsa tuş yok (diyalog zararsız kalıntı). Yalnız hata
   yolunda davranış değişir.
 
-### Python hatası adayları (devir davranışını görünür değiştirir: UYGULANMADI, Rust Python gibi; sahibe/cops'a)
-1. Eski sonuç metni: yakalama 20 satır geçmişi de içerir; önceki `/model` ya da `/effort`ten kalan "Set model to" /
-   "Kept model as" / "Set effort level to" / "Not applied:" ilk yoklamada döngüyü bitirir, SONRA açılan onay diyaloğu
-   onaysız kalır ve ardından gönderilen devir mesajı diyaloğa yazılır. Öneri: göndermeden önceki yakalamaya göre yalnız
-   YENİ işaret say.
-2. Diyalog metni ekranın herhangi bir yerinde aranır: sohbet çıktısında "Switch model?" / "Change effort level?" geçiyorsa
-   (bu depoda çalışan oturum) ve o sırada izin sorusu açıksa Enter "Yes"i onaylar. `dismiss_stray_dialog`ta aynı durumda
-   `Down`+Enter izin sorusunun 2. seçeneğini ("bir daha sorma" olabilir) seçer. Öneri: başlık + düğme metni birlikte ve
-   yalnız son satırlarda.
-3. `/model` ve `/effort` kutuda yazılı kullanıcı taslağı denetlenmeden gönderilir (taslağa eklenip birlikte gider).
-4. `dismiss_stray_dialog` yalnız "Switch model?" arar; geç açılan "Change effort level?" kalır.
-5. Onay Enter'ının sonucuna bakılmaz ve ikinci kez basılmaz; `Down` ile Enter arasında ekran yeniden okunmaz.
-6. `prepare_input` yalnız satır sonu/sekme varsa katlar; diğer denetim karakterleri (`\x03`, `\x1b`) aynen gider; yalnız
-   satır sonundan oluşan metin boş metne iner ve tek Enter gönderilir.
+### TBD#399: canlı geçişte altı açık (sahip onayı (a), 27 Kas; iki tarafta DÜZELDİ). Kural: emin olunamayan ekranda tuş yok
+Eski aday listesinin (1-6) tamamı. Python testleri `py/tests/test_tbd399_{live_switch,control_chars}.py`, Rust `tests/tui.rs`,
+`tests/real_pane.rs`, parite `g4-pane-*` ve `g4-ekran-*`, `cops-tmux` parite (`writes`/sahte tmux).
+
+| # | Açık | Davranış şimdi |
+|---|---|---|
+| 1 | eski sonuç satırı yeni isteğin sonucu sayılıyordu | komuttan önceki yakalamadaki (200 satır) işaret sayısı tabandır; yalnız sayı artarsa VE giriş kutusu hazırsa `Done` |
+| 2 | diyalog başlığı ekranın her yerinde aranıyordu | yalnız ekranın SONUNDAKİ diyalog: ardışık `1. Yes, switch to X` / `2. No, go back`, tam birinde `❯`, altında en çok 2 yardım satırı, üstünde (15 satır içinde) tam başlık satırı; onay için ayrıca başlık = gönderilen komut, X = hedef, imleç "Yes"te |
+| 3 | taslak varken `/model` `/effort` gidiyordu | komut yalnız boş (soluk öneri sayılmaz), altında menü/yardım satırı olmayan kutuya; taslak `Draft`, açık geçiş diyaloğu `DialogOpen`, kutu yok `Unreadable`, tur sürüyorsa (`esc to interrupt`) `Busy`: hiçbiri bir şey göndermez |
+| 4 | geç açılan effort diyaloğu kapatılmıyordu | `dismiss_stray_dialog` iki başlığı da reddeder; güvenli bitmeyen geçişte çağıran da onu koşar |
+| 5 | onay Enter'ının sonucuna bakılmıyordu | tuş başarısız = hemen `Unconfirmed`; ikinci Enter yok; `Down` sonrası ekran yeniden okunur (imleç "No"da değilse Enter yok); reddetme sonrası kapandı denetimi |
+| 6 | denetim karakterleri aynen, satır sonu tek Enter | `tmux_send_keys` / `cops-tmux` `send_text`: sekme/satır sonu dışındaki C0, DEL, C1 atılır; boş olmayan metinden yalnız boşluk kalırsa hiçbir şey gönderilmez; `""` bilinçli Enter olarak kalır; ucli katlaması boş metne inmez |
+
+- Çağıranlar: `handover.apply_handover_downgrades` `blocked` doldurur (model adımı güvenli değilse effort denenmez);
+  `web._handover` `handover_switch_blocked` hatası, `handover_faz1` `failed-switch`; ikisi de mesaj göndermez. `Busy`de
+  mesaj gider. Bu politika Python'da; Rust'ta çağıran henüz yok (T4): `safe_to_type()` şartı bağlayan uçta uygulanmalı.
+- Doğrulanamayan varsayımlar (gerçek claude ekranı üretilmedi): diyalog metinleri 2.1.332 ikilisindeki bileşenden okundu,
+  satır düzeni (numaralı iki seçenek, `❯`, alt yardım satırı "Enter to confirm / Esc to cancel", çerçeve) depodaki izin ve
+  güven diyaloğu örneklerine benzetildi; hedef adının seçenek metninde geçtiği; yardım satırı başka ise diyalog TANINMAZ
+  (kapalı yön: tuş yok, devir `unconfirmed` ile durur). Kutuda taslak varken açılan diyalog numarasızdır (ikili): tanınmaz.
+  Giriş kutusunda imleç ters renkli bir yer tutucu harfi çizilirse taslak sayılır (mevcut `input_box` kuralı).
+- Bilinen sınırlar: 200 satırlık pencerenin üstünden düşen eski işaret yenisini gizler (`Unconfirmed`); kutunun altında 12'den
+  çok dolu satır `Unreadable`; yakalama ile tuş arasındaki yarış kapatılamaz.
 
 ### Test edilemeyenler
 Gerçek claude diyaloğu (gerçek tmux artık `tests/real_pane.rs`te, sahte claude TUI'siyle; "Change effort level?" ve
@@ -635,6 +647,11 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   `SpawnRuntime` `HelpCache`e ve arama yöneticisine bağlar). `rs/state` `cops-state::fsutil::FileLock` bu olayı yazmaz (o iz).
 - TBD#397 maddeleri 4, 5, 6 (süreçler arası pay, ayrıştırılamayan günlük satırı, SearXNG port sahibi) DEĞİŞMEDİ.
 
+## main `9e5bcf24` eşitlemesi: fiyatsız modelde USD tavanı (27 Kas)
+claude hizmetinde claudeops tablosundan `--price` (dilimli modelde en pahalı dilim), tur tavanı `--price` verilen modelde de
+eklenir, fiyatı bilinmeyen modele oturum tavanı `SpawnError`. Rust `ucli.rs` (`claudeops_price`, `has_price`), parite
+`parity_ucli` `fiyat-*`. TBD#397 günlük tavan reddiyle çakışmaz (biri `settings.json`, öbürü argv fiyatı).
+
 ## G10: tek atımlık çağrı ve onay
 
 ### Sahiplik
@@ -817,7 +834,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 669 satır: TAŞINDI 597, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. 690 satır: TAŞINDI 618, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 72, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1035,6 +1052,27 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:926) | `tui.rs::STRAY_DIALOG_TIMEOUT_SECONDS` | `parity.rs::parity_tui` `g4-pane-dialog-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:927) | `tui.rs::STRAY_DIALOG_POLL_SECONDS` | `parity.rs::parity_tui` `g4-pane-dialog-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider.dismiss_stray_dialog` (py/claudeops/providers/claude_provider.py:929) | `tui.rs::Cli::dismiss_stray_dialog` | `parity.rs::parity_tui` `g4-pane-dialog-` `g4-pane-rastgele-` | TAŞINDI |
+| `_Switch` (py/claudeops/providers/base.py:25) | `tui.rs::{SwitchOutcome, DismissOutcome}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_CAPTURE_LINES` (py/claudeops/providers/claude_provider.py:89) | `tui.rs::SWITCH_CAPTURE_LINES` | `parity.rs::parity_tui` `g4-pane-model-` | TAŞINDI |
+| `_SWITCH_TITLES` (py/claudeops/providers/claude_provider.py:90) | `tui.rs::{MODEL_SWITCH_DIALOG, EFFORT_SWITCH_DIALOG}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_YES_RE` (py/claudeops/providers/claude_provider.py:91) | `tui.rs::{SWITCH_YES_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_NO_RE` (py/claudeops/providers/claude_provider.py:92) | `tui.rs::{SWITCH_NO_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_GUIDE_RE` (py/claudeops/providers/claude_provider.py:93) | `tui.rs::{SWITCH_GUIDE_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_GUIDE_MAX` (py/claudeops/providers/claude_provider.py:94) | `tui.rs::SWITCH_GUIDE_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_TITLE_WINDOW` (py/claudeops/providers/claude_provider.py:95) | `tui.rs::SWITCH_TITLE_WINDOW` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SCREEN_FRAME` (py/claudeops/providers/claude_provider.py:96) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_BOX_FOOTER_MAX` (py/claudeops/providers/claude_provider.py:97) | `tui.rs::BOX_FOOTER_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_FOOTER_MENU_RE` (py/claudeops/providers/claude_provider.py:98) | `tui.rs::FOOTER_MENU_RE` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_BUSY_TAIL_LINES` (py/claudeops/providers/claude_provider.py:99) | `tui.rs::BUSY_TAIL_LINES` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_screen_rows` (py/claudeops/providers/claude_provider.py:102) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_open_switch_dialog` (py/claudeops/providers/claude_provider.py:108) | `tui.rs::open_switch_dialog` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_switch_label_matches` (py/claudeops/providers/claude_provider.py:130) | `tui.rs::label_matches` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_switch_pane_state` (py/claudeops/providers/claude_provider.py:137) | `tui.rs::pane_state` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_live_switch` (py/claudeops/providers/claude_provider.py:163) | `tui.rs::{run_switch, Run::look}` | `parity.rs::parity_tui` `g4-ekran-` `g4-pane-` | TAŞINDI |
+| `_TOP_TIER_PRICES` (py/claudeops/providers/ucli_provider.py:616) | `ucli.rs::TOP_TIER_PRICES` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_claudeops_price` (py/claudeops/providers/ucli_provider.py:619) | `ucli.rs::claudeops_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_argv_model` (py/claudeops/providers/ucli_provider.py:627) | `ucli.rs::{value_after, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_has_price` (py/claudeops/providers/ucli_provider.py:631) | `ucli.rs::has_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `ClaudeProvider.matches_proc` (py/claudeops/providers/claude_provider.py:970) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
 | `ClaudeProvider.extract_name` (py/claudeops/providers/claude_provider.py:975) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
 | `ClaudeProvider.extract_info` (py/claudeops/providers/claude_provider.py:978) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
@@ -1506,7 +1544,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 
 ## TEST EŞLEME TABLOSU
 
-1424 satır: TAŞINDI 662, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 762, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
+1461 satır: TAŞINDI 694, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 767, EKSİK 0 (27 Kas: 19 TAŞINDI-TESTSİZ satır parite vakası ya da birim testiyle kapandı; `test_spawn_bad_tmux_name` eklendi).
 - Vaka ailesi, `tests/parity/fam_*.rs` içindeki vaka kimliğinin bir parçasıdır. `TAŞINDI` = aynı davranış parite vakasıyla sınanıyor (Python testinin birebir kopyası değil).
 - `steward_*` testlerinde `rs/stew` notu `origin/rs/stew:docs/rs-stew.md` satırından alındı.
 
@@ -1720,7 +1758,7 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `LiveModelEndpointTests.test_live_model_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:168) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
 | `LiveModelEndpointTests.test_live_effort_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:175) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
 | `LiveModelEndpointTests.test_neighbour_transcript_is_not_reported` (py/tests/test_live_model_effort.py:183) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
-| `EffortSwitchNoBlindEnter.test_no_dialog_no_enter` (py/tests/test_live_model_effort.py:215) | `tests/tui.rs::effort_without_dialog_sends_no_enter`; parite `g4-pane-effort-yaziyor` | TAŞINDI |
+| `EffortSwitchNoBlindEnter.test_no_dialog_no_enter` (py/tests/test_live_model_effort.py:215) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-pane-effort-yaziyor` | TAŞINDI |
 | `NoteMirrorTests.test_records_the_pid_under_the_spec` (py/tests/test_mirror_marker.py:47) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
 | `NoteMirrorTests.test_same_spec_accumulates_pids` (py/tests/test_mirror_marker.py:52) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
 | `NoteMirrorTests.test_anything_else_leaves_the_dict_alone` (py/tests/test_mirror_marker.py:58) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
@@ -1790,8 +1828,8 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `MatchesProcTest.test_oneshot_and_reviewer_are_not_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:18) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
 | `IoAskLiveNameTest.test_rejects_live_same_name` (py/tests/test_proc07_io_ucli_not_fleet.py:28) | T7: `/api/io` ucu | KAPSAM DIŞI |
 | `IoAskLiveNameTest.test_other_name_goes_through` (py/tests/test_proc07_io_ucli_not_fleet.py:36) | T7: `/api/io` ucu | KAPSAM DIŞI |
-| `NoBlindEnterTest.test_permission_dialog_is_not_confirmed` (py/tests/test_proc08_model_switch_no_blind_enter.py:33) | `tests/tui.rs::permission_dialog_is_not_confirmed`; parite `g4-pane-model-izin` | TAŞINDI |
-| `NoBlindEnterTest.test_switch_dialog_confirmed_once` (py/tests/test_proc08_model_switch_no_blind_enter.py:36) | `tests/tui.rs::switch_dialog_is_confirmed_once`; parite `g4-pane-model-model-diyalog` | TAŞINDI |
+| `NoBlindEnterTest.test_permission_dialog_is_not_confirmed` (py/tests/test_proc08_model_switch_no_blind_enter.py:33) | `tests/tui.rs::permission_dialog_is_never_confirmed_even_with_switch_text_above_it`; parite `g4-pane-model-izin` | TAŞINDI |
+| `NoBlindEnterTest.test_switch_dialog_confirmed_once` (py/tests/test_proc08_model_switch_no_blind_enter.py:36) | `tests/tui.rs::switch_dialog_is_confirmed_once_and_waits_for_a_new_result`; parite `g4-pane-model-model-diyalog` | TAŞINDI |
 | `NoBlindEnterTest.test_applied_without_dialog` (py/tests/test_proc08_model_switch_no_blind_enter.py:39) | `tests/tui.rs::applied_without_dialog_sends_no_key`; parite `g4-pane-model-model-uygulandi` | TAŞINDI |
 | `TestBase.test_default_and_unsupported_are_none` (py/tests/test_provider_live_context.py:23) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `TestCodex.test_last_token_count_input_tokens` (py/tests/test_provider_live_context.py:43) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
@@ -2867,8 +2905,45 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 | `DryRunPureTest.test_ucli_unsafe_name_gets_no_agent_flags_in_either_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry-1` | TAŞINDI |
 | `DryRunPureTest.test_ucli_claude_service_with_ask_dir` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-hizmet-` | TAŞINDI |
 | `DryRunPureTest.test_ucli_removed_key_is_not_deleted_by_dry_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry` | TAŞINDI |
-| `DismissStrayDialogTest.test_failed_down_sends_no_enter` (py/tests/test_rsprov_g4_dismiss.py:32) | `tests/tui.rs::stray_dialog_is_refused_and_a_failed_down_sends_no_enter`; parite `g4-pane-dialog-tus-basarisiz` | TAŞINDI |
-| `DismissStrayDialogTest.test_successful_down_is_followed_by_enter` (py/tests/test_rsprov_g4_dismiss.py:35) | `tests/tui.rs::stray_dialog_is_refused_and_a_failed_down_sends_no_enter`; parite `g4-pane-dialog-model-diyalog` | TAŞINDI |
+| `DismissStrayDialogTest.test_failed_down_sends_no_enter` (py/tests/test_rsprov_g4_dismiss.py:32) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-tus-basarisiz` | TAŞINDI |
+| `DismissStrayDialogTest.test_successful_down_is_followed_by_enter` (py/tests/test_rsprov_g4_dismiss.py:35) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-model-diyalog` | TAŞINDI |
+| `StaleResultText.test_old_marker_does_not_end_the_wait_and_the_late_dialog_is_confirmed` (py/tests/test_tbd399_live_switch.py:88) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
+| `StaleResultText.test_old_effort_marker_alone_is_unconfirmed` (py/tests/test_tbd399_live_switch.py:95) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
+| `StaleResultText.test_new_marker_is_done` (py/tests/test_tbd399_live_switch.py:101) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
+| `StaleResultText.test_claude_refusal_is_a_finished_command` (py/tests/test_tbd399_live_switch.py:106) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
+| `OnlyTheOpenExpectedDialog.test_dialog_text_in_conversation_does_not_confirm_a_permission_prompt` (py/tests/test_tbd399_live_switch.py:114) | `tests/tui.rs::only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed`; parite `g4-ekran-` | TAŞINDI |
+| `OnlyTheOpenExpectedDialog.test_stray_scan_never_touches_a_permission_prompt` (py/tests/test_tbd399_live_switch.py:121) | `tests/tui.rs::only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed`; parite `g4-ekran-` | TAŞINDI |
+| `OnlyTheOpenExpectedDialog.test_quoted_dialog_above_the_input_box_is_not_open` (py/tests/test_tbd399_live_switch.py:126) | `tests/tui.rs::only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed`; parite `g4-ekran-` | TAŞINDI |
+| `OnlyTheOpenExpectedDialog.test_wrong_kind_wrong_label_or_cursor_on_no_is_not_confirmed` (py/tests/test_tbd399_live_switch.py:131) | `tests/tui.rs::only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed`; parite `g4-ekran-` | TAŞINDI |
+| `OnlyTheOpenExpectedDialog.test_precondition_refuses_when_any_dialog_is_open_or_screen_unknown` (py/tests/test_tbd399_live_switch.py:138) | `tests/tui.rs::only_the_expected_dialog_with_the_cursor_on_yes_is_confirmed`; parite `g4-ekran-` | TAŞINDI |
+| `Draft.test_typed_draft_blocks_both_commands` (py/tests/test_tbd399_live_switch.py:149) | `tests/tui.rs::draft_dialog_busy_and_unknown_screens_get_no_command`, `a_dim_suggestion_is_not_a_draft` | TAŞINDI |
+| `Draft.test_dim_suggestion_is_not_a_draft` (py/tests/test_tbd399_live_switch.py:155) | `tests/tui.rs::draft_dialog_busy_and_unknown_screens_get_no_command`, `a_dim_suggestion_is_not_a_draft` | TAŞINDI |
+| `Draft.test_busy_session_gets_no_command_and_is_safe_to_message` (py/tests/test_tbd399_live_switch.py:160) | `tests/tui.rs::draft_dialog_busy_and_unknown_screens_get_no_command`, `a_dim_suggestion_is_not_a_draft` | TAŞINDI |
+| `LateDialog.test_late_effort_dialog_is_refused` (py/tests/test_tbd399_live_switch.py:169) | `tests/tui.rs::late_model_and_effort_dialogs_are_refused_after_rereading_the_screen` | TAŞINDI |
+| `LateDialog.test_late_model_dialog_is_refused` (py/tests/test_tbd399_live_switch.py:174) | `tests/tui.rs::late_model_and_effort_dialogs_are_refused_after_rereading_the_screen` | TAŞINDI |
+| `KeyResultsAreChecked.test_failed_confirm_enter_is_reported` (py/tests/test_tbd399_live_switch.py:183) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `KeyResultsAreChecked.test_ignored_confirm_enter_is_not_repeated` (py/tests/test_tbd399_live_switch.py:189) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `KeyResultsAreChecked.test_failed_command_send_is_reported` (py/tests/test_tbd399_live_switch.py:194) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `KeyResultsAreChecked.test_down_that_did_not_move_the_cursor_gets_no_enter` (py/tests/test_tbd399_live_switch.py:199) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `KeyResultsAreChecked.test_dialog_still_open_after_refusing_is_reported` (py/tests/test_tbd399_live_switch.py:205) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `KeyResultsAreChecked.test_dialog_in_the_last_look_is_confirmed_and_verified` (py/tests/test_tbd399_live_switch.py:211) | `tests/tui.rs::a_failed_or_ignored_confirm_enter_is_reported_and_never_repeated`, `no_enter_unless_the_cursor_is_seen_on_no` | TAŞINDI |
+| `CallersDoNotType.test_blocked_model_step_stops_before_effort` (py/tests/test_tbd399_live_switch.py:250) | Rust'ta çağıran yok (`handover` politikası ve `web._handover`, T4) | KAPSAM DIŞI |
+| `CallersDoNotType.test_blocked_effort_step` (py/tests/test_tbd399_live_switch.py:256) | Rust'ta çağıran yok (`handover` politikası ve `web._handover`, T4) | KAPSAM DIŞI |
+| `CallersDoNotType.test_done_and_busy_do_not_block` (py/tests/test_tbd399_live_switch.py:262) | Rust'ta çağıran yok (`handover` politikası ve `web._handover`, T4) | KAPSAM DIŞI |
+| `CallersDoNotType.test_web_handover_sends_nothing_and_says_why` (py/tests/test_tbd399_live_switch.py:269) | Rust'ta çağıran yok (`handover` politikası ve `web._handover`, T4) | KAPSAM DIŞI |
+| `CallersDoNotType.test_batch_handover_sends_nothing_and_counts_a_failure` (py/tests/test_tbd399_live_switch.py:286) | Rust'ta çağıran yok (`handover` politikası ve `web._handover`, T4) | KAPSAM DIŞI |
+| `SendText.test_control_characters_are_removed_but_newline_tab_cr_stay` (py/tests/test_tbd399_control_chars.py:28) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
+| `SendText.test_every_other_control_character_is_removed` (py/tests/test_tbd399_control_chars.py:33) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
+| `SendText.test_text_with_nothing_but_blanks_and_controls_sends_nothing` (py/tests/test_tbd399_control_chars.py:39) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
+| `SendText.test_empty_text_is_still_a_deliberate_enter` (py/tests/test_tbd399_control_chars.py:43) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
+| `SendText.test_ucli_folding_never_turns_newlines_into_an_empty_enter` (py/tests/test_tbd399_control_chars.py:48) | `cops-tmux` `parity.rs` (sahte tmux `tmux_send_keys` ve yazma vakaları); ucli: `tests/tui.rs::ucli_input_is_folded_to_one_line_without_truncation` | TAŞINDI |
+| `UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` (py/tests/test_ucli_unpriced_model_cap.py:31) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_fable_gets_table_price` (py/tests/test_ucli_unpriced_model_cap.py:37) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` (py/tests/test_ucli_unpriced_model_cap.py:41) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` (py/tests/test_ucli_unpriced_model_cap.py:46) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` (py/tests/test_ucli_unpriced_model_cap.py:51) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_binary_without_price_flag_is_refused` (py/tests/test_ucli_unpriced_model_cap.py:57) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `UnpricedModelCapTest.test_no_cap_no_refusal` (py/tests/test_ucli_unpriced_model_cap.py:61) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
 | `Names.test_trailing_newline_run_key_refused` (py/tests/test_rsprov_g10_approval.py:37) | `approval::tests::names_are_full_matches`; `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
 | `Names.test_trailing_newline_approval_id_ignored` (py/tests/test_rsprov_g10_approval.py:41) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |
 | `Names.test_deep_line_is_skipped` (py/tests/test_rsprov_g10_approval.py:44) | `approval::tests::suspended_line_is_searched_from_the_end` | TAŞINDI |

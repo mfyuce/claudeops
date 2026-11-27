@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 565 | 153 | 412 | 0 |
-| test durumu (141 dosya) | 1743 | 115 | 1628 | 0 |
+| tanım | 599 | 153 | 446 | 0 |
+| test durumu (144 dosya) | 1780 | 115 | 1665 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -23,13 +23,13 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `needs_ho.py` | TAM | 20 | 20 | 0 | 0 |
 | `commands/ls.py` | TAM | 2 | 2 | 0 | 0 |
 | `providers/__init__.py` | KISMİ | 3 | 1 | 2 | 0 |
-| `providers/base.py` | KISMİ | 76 | 6 | 70 | 0 |
-| `providers/claude_provider.py` | KISMİ | 103 | 8 | 95 | 0 |
+| `providers/base.py` | KISMİ | 84 | 6 | 78 | 0 |
+| `providers/claude_provider.py` | KISMİ | 125 | 8 | 117 | 0 |
 | `providers/codex_provider.py` | KISMİ | 42 | 8 | 34 | 0 |
 | `providers/copilot_provider.py` | KISMİ | 39 | 5 | 34 | 0 |
 | `providers/agy_provider.py` | KISMİ | 53 | 10 | 43 | 0 |
 | `providers/shell_provider.py` | KISMİ | 14 | 6 | 8 | 0 |
-| `providers/ucli_provider.py` | KISMİ | 83 | 10 | 73 | 0 |
+| `providers/ucli_provider.py` | KISMİ | 87 | 10 | 77 | 0 |
 | `commands/usage.py` | KISMİ | 9 | 0 | 9 | 0 |
 | `model_usage.py` | KISMİ | 13 | 2 | 11 | 0 |
 | `orphan_watch.py` | KISMİ | 19 | 0 | 19 | 0 |
@@ -167,82 +167,90 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `providers/base.py::cmd_arg` | işlev:24 | karşılandı | `providers.rs::arg` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
-| `providers/base.py::_path_part_ok` | işlev:32 | kapsam dışı | yok | yok | oturum adı/kimlik dosya yoluna tek parça olarak eklenebilir mi (sağlayıcı dosya yolları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::_ro_sqlite_uri` | işlev:39 | kapsam dışı | yok | yok | sağlayıcı SQLite deposunu salt okunur açma (agy/copilot sohbet ve model okuma). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/base.py::OneshotError` | sınıf:47 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
-| `providers/base.py::_open_private_target` | işlev:51 | kapsam dışı | yok | yok | sır/damga dosyasını 0600 ve bloklamadan yazma (açılış ortamı). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::McpServerSpec` | sınıf:62 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::McpServerSpec.name` | sabit:73 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::McpServerSpec.command` | sabit:74 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::McpServerSpec.args` | sabit:75 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::McpServerSpec.allowed_tools` | sabit:78 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider` | sınıf:81 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma yüzeyi; kalan metotlar kendi satırında |
-| `providers/base.py::CliProvider.name` | sabit:82 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/base.py::CliProvider.accepts_cli_opts` | sabit:86 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.mcp_needs_cwd` | sabit:90 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.validate_cli_opts` | işlev:92 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.resolve_resume_id` | işlev:99 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.build_inner_command` | işlev:121 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.has_conversation` | işlev:142 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.wants_handover_wrapup` | işlev:150 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.wants_stuck_recovery` | işlev:154 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.last_exchange` | işlev:158 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/base.py::CliProvider.full_history` | işlev:167 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/base.py::CliProvider.sid_for_stopped_session` | işlev:176 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/base.py::CliProvider.last_message_role` | işlev:191 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/base.py::CliProvider.handover_model_downgrade` | işlev:204 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.apply_live_model_switch` | işlev:214 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.handover_effort_downgrade` | işlev:222 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.apply_live_effort_switch` | işlev:229 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.prompt_cache_ttl_seconds` | işlev:235 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.last_request_epoch` | işlev:247 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.effort_switch_keeps_cache` | işlev:255 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.dismiss_stray_dialog` | işlev:262 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.input_settle_delay` | işlev:281 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.prepare_input` | işlev:293 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.compact_command` | işlev:298 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.usage_fresh_argv` | işlev:313 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.usage_fresh_tui_argv` | işlev:319 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.usage_auth_missing` | işlev:324 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.parse_fresh_usage` | işlev:328 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.usage_command` | işlev:332 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.parse_usage_text` | işlev:348 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.context_command` | işlev:359 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.parse_context_text` | işlev:373 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/base.py::CliProvider.context_needs_dismiss` | işlev:385 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.usage_needs_dismiss` | işlev:396 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.extra_file_roots` | işlev:408 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
-| `providers/base.py::CliProvider.env_overrides` | işlev:423 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.mcp_launch_args` | işlev:439 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.mcp_setup_command` | işlev:450 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.oneshot_argv` | işlev:462 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
-| `providers/base.py::CliProvider.oneshot` | işlev:469 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
-| `providers/base.py::CliProvider.matches_proc` | işlev:497 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/base.py::CliProvider.extract_name` | işlev:501 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
-| `providers/base.py::CliProvider.extract_info` | işlev:506 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::Info` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/base.py::CliProvider.model_choices` | işlev:518 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.refresh_stored_model` | işlev:521 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.permission_modes` | işlev:530 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.effort_levels` | işlev:534 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.model_effort_levels` | işlev:537 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.effort_levels_for` | işlev:547 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.default_permission_mode` | işlev:553 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.preferred_default_model` | işlev:558 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.default_effort` | işlev:563 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.resolve_effort` | işlev:569 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/base.py::CliProvider.mode_status_patterns` | işlev:581 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.busy_status_pattern` | işlev:588 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.background_work` | işlev:598 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.live_busy` | işlev:604 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.live_tools` | işlev:617 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.live_context` | işlev:622 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.live_usage` | işlev:629 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.live_failed_turns` | işlev:639 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.live_phase` | işlev:644 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
-| `providers/base.py::CliProvider.cyclable_modes` | işlev:653 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/base.py::CliProvider.snapshot_for_live_sid` | işlev:662 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/base.py::CliProvider.discover_live_sid` | işlev:683 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch` | sınıf:25 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.DONE` | sabit:28 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.BUSY` | sabit:29 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.DRAFT` | sabit:30 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.DIALOG` | sabit:31 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.UNREADABLE` | sabit:32 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.SEND_FAILED` | sabit:33 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::_Switch.UNCONFIRMED` | sabit:34 | kapsam dışı | yok | yok | canlı model/effort geçişinin sonucu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `providers/base.py::cmd_arg` | işlev:37 | karşılandı | `providers.rs::arg` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
+| `providers/base.py::_path_part_ok` | işlev:45 | kapsam dışı | yok | yok | oturum adı/kimlik dosya yoluna tek parça olarak eklenebilir mi (sağlayıcı dosya yolları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::_ro_sqlite_uri` | işlev:52 | kapsam dışı | yok | yok | sağlayıcı SQLite deposunu salt okunur açma (agy/copilot sohbet ve model okuma). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::OneshotError` | sınıf:60 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
+| `providers/base.py::_open_private_target` | işlev:64 | kapsam dışı | yok | yok | sır/damga dosyasını 0600 ve bloklamadan yazma (açılış ortamı). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::McpServerSpec` | sınıf:75 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::McpServerSpec.name` | sabit:86 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::McpServerSpec.command` | sabit:87 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::McpServerSpec.args` | sabit:88 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::McpServerSpec.allowed_tools` | sabit:91 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider` | sınıf:94 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma yüzeyi; kalan metotlar kendi satırında |
+| `providers/base.py::CliProvider.name` | sabit:95 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/base.py::CliProvider.accepts_cli_opts` | sabit:99 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.mcp_needs_cwd` | sabit:103 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.validate_cli_opts` | işlev:105 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.resolve_resume_id` | işlev:112 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.build_inner_command` | işlev:134 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.has_conversation` | işlev:155 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.wants_handover_wrapup` | işlev:163 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.wants_stuck_recovery` | işlev:167 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.last_exchange` | işlev:171 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.full_history` | işlev:180 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.sid_for_stopped_session` | işlev:189 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.last_message_role` | işlev:204 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/base.py::CliProvider.handover_model_downgrade` | işlev:217 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.apply_live_model_switch` | işlev:227 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.handover_effort_downgrade` | işlev:235 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.apply_live_effort_switch` | işlev:242 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.prompt_cache_ttl_seconds` | işlev:248 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.last_request_epoch` | işlev:260 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.effort_switch_keeps_cache` | işlev:268 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.dismiss_stray_dialog` | işlev:275 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.input_settle_delay` | işlev:294 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.prepare_input` | işlev:306 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.compact_command` | işlev:311 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.usage_fresh_argv` | işlev:326 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.usage_fresh_tui_argv` | işlev:332 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.usage_auth_missing` | işlev:337 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.parse_fresh_usage` | işlev:341 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.usage_command` | işlev:345 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.parse_usage_text` | işlev:361 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.context_command` | işlev:372 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.parse_context_text` | işlev:386 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/base.py::CliProvider.context_needs_dismiss` | işlev:398 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.usage_needs_dismiss` | işlev:409 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.extra_file_roots` | işlev:421 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
+| `providers/base.py::CliProvider.env_overrides` | işlev:436 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.mcp_launch_args` | işlev:452 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.mcp_setup_command` | işlev:463 | kapsam dışı | yok | yok | MCP kaydı ve açılış argümanları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.oneshot_argv` | işlev:475 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
+| `providers/base.py::CliProvider.oneshot` | işlev:482 | kapsam dışı | yok | yok | tek atımlık model çağrısı. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
+| `providers/base.py::CliProvider.matches_proc` | işlev:510 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/base.py::CliProvider.extract_name` | işlev:514 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
+| `providers/base.py::CliProvider.extract_info` | işlev:519 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::Info` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/base.py::CliProvider.model_choices` | işlev:531 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.refresh_stored_model` | işlev:534 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.permission_modes` | işlev:543 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.effort_levels` | işlev:547 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.model_effort_levels` | işlev:550 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.effort_levels_for` | işlev:560 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.default_permission_mode` | işlev:566 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.preferred_default_model` | işlev:571 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.default_effort` | işlev:576 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.resolve_effort` | işlev:582 | kapsam dışı | yok | yok | açılış argv/env ve model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/base.py::CliProvider.mode_status_patterns` | işlev:594 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.busy_status_pattern` | işlev:601 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.background_work` | işlev:611 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.live_busy` | işlev:617 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.live_tools` | işlev:630 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.live_context` | işlev:635 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.live_usage` | işlev:642 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.live_failed_turns` | işlev:652 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.live_phase` | işlev:657 | kapsam dışı | yok | yok | `/api/status` satır alanları (durum dosyası/transkript). İz: T1 (durum) |
+| `providers/base.py::CliProvider.cyclable_modes` | işlev:666 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/base.py::CliProvider.snapshot_for_live_sid` | işlev:675 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/base.py::CliProvider.discover_live_sid` | işlev:696 | kapsam dışı | yok | yok | devam/devir/canlı model değiştirme. İz: T4 (yaşam döngüsü) |
 
 ### `py/claudeops/providers/claude_provider.py`
 
@@ -262,95 +270,117 @@ Yok.
 | `providers/claude_provider.py::MODE_STATUS_PATTERNS` | sabit:64 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/claude_provider.py::CYCLABLE_MODES` | sabit:76 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
 | `providers/claude_provider.py::BUSY_STATUS_PATTERN` | sabit:83 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::_encode_cwd` | işlev:86 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
-| `providers/claude_provider.py::_encode_cwd::re1` | regex:102 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
-| `providers/claude_provider.py::_safe_mtime` | işlev:105 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::jsonl_path_for` | işlev:113 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid`<br>`run.py:scan_sessions` | sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3. Sid VARKEN Python da yalnız tam dosya, yoksa None (sözleşme: None = transkript yok). Python düzeltildi: 43753998. Kalan kasıtlı fark: sid YOKKEN Python tahmini (koşucu `KNOWN_DEVIATIONS`, `python_guess_without_sid`) |
-| `providers/claude_provider.py::find_latest_jsonl` | işlev:137 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:156 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:157 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_row_epoch` | işlev:160 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_last_assistant_value` | işlev:171 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::last_assistant_model` | işlev:222 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_row_model` | işlev:228 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::last_assistant_effort` | işlev:236 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:250 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_real_request_epoch` | işlev:253 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::last_real_request_epoch` | işlev:276 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::session_file_sid` | işlev:282 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `providers/claude_provider.py::_EFFORT_BUSTS_CACHE_RE` | sabit:315 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::live_or_spawn_model` | işlev:318 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::live_or_spawn_effort` | işlev:337 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::_META_HEAD_LINES` | sabit:353 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_RESUME_SCAN_LIMIT` | sabit:356 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_jsonl_meta` | işlev:359 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_same_path` | işlev:386 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_META_CACHE` | sabit:394 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_META_CACHE_MAX` | sabit:395 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_jsonl_meta_cached` | işlev:398 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_STUB_MAX_BYTES` | sabit:413 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::_has_chat_rows` | işlev:416 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::MCP_CONFIG_PATH` | sabit:436 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_mcp_config_path` | işlev:439 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_write_mcp_config_file` | işlev:453 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_extract_text` | işlev:464 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::_row_content` | işlev:476 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::_is_real_user_text` | işlev:482 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::_HELP_CACHE` | sabit:496 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_HELP_UNREADABLE` | sabit:497 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::_HELP_TIMEOUT_SECONDS` | sabit:498 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_help_text` | işlev:501 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_supports_flag` | işlev:528 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::claude_supports_flag::re1` | regex:531 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider` | sınıf:534 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma; kalan metotlar kendi satırında |
-| `providers/claude_provider.py::ClaudeProvider.name` | sabit:535 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:537 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
-| `providers/claude_provider.py::ClaudeProvider.build_inner_command` | işlev:582 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.oneshot_argv` | işlev:623 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.mcp_launch_args` | işlev:639 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.compact_command` | işlev:647 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.usage_command` | işlev:650 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.usage_needs_dismiss` | işlev:653 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.parse_usage_text` | işlev:661 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.usage_fresh_argv` | işlev:703 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.parse_fresh_usage` | işlev:706 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.context_command` | işlev:717 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.context_needs_dismiss` | işlev:720 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.parse_context_text` | işlev:726 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/claude_provider.py::ClaudeProvider.handover_model_downgrade` | işlev:785 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_TIMEOUT_SECONDS` | sabit:802 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` | sabit:803 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.apply_live_model_switch` | işlev:805 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.handover_effort_downgrade` | işlev:865 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:878 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:881 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.effort_switch_keeps_cache` | işlev:906 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` | sabit:909 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` | sabit:910 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` | sabit:911 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider.apply_live_effort_switch` | işlev:914 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
-| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` | sabit:973 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` | sabit:974 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog` | işlev:976 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.matches_proc` | işlev:1018 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/claude_provider.py::ClaudeProvider.extract_name` | işlev:1023 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/claude_provider.py::ClaudeProvider.extract_info` | işlev:1026 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
-| `providers/claude_provider.py::ClaudeProvider.preferred_default_model` | işlev:1034 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.default_effort` | işlev:1040 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.model_choices` | işlev:1043 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.refresh_stored_model` | işlev:1058 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.permission_modes` | işlev:1077 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.effort_levels` | işlev:1080 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/claude_provider.py::ClaudeProvider.mode_status_patterns` | işlev:1083 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1086 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1096 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1099 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1102 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.last_message_role` | işlev:1135 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1142 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1173 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
-| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1178 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1209 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::_SWITCH_CAPTURE_LINES` | sabit:89 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_TITLES` | sabit:90 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_YES_RE` | sabit:91 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_NO_RE` | sabit:92 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_GUIDE_RE` | sabit:93 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_GUIDE_MAX` | sabit:94 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SWITCH_TITLE_WINDOW` | sabit:95 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_SCREEN_FRAME` | sabit:96 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_BOX_FOOTER_MAX` | sabit:97 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_FOOTER_MENU_RE` | sabit:98 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_BUSY_TAIL_LINES` | sabit:99 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_screen_rows` | işlev:102 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_open_switch_dialog` | işlev:108 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_switch_label_matches` | işlev:130 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_switch_label_matches::re1` | regex:132 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_switch_pane_state` | işlev:137 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_live_switch` | işlev:163 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_live_switch._count` | işlev:169 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_live_switch._give_up` | işlev:173 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_live_switch._look` | işlev:186 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::_encode_cwd` | işlev:216 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
+| `providers/claude_provider.py::_encode_cwd::re1` | regex:232 | karşılandı | `transcript.rs::encode_cwd` | `transcript.rs::encodes_non_ascii_per_char`<br>`golden.rs::names_paths_and_token_format` | yok |
+| `providers/claude_provider.py::_safe_mtime` | işlev:235 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::jsonl_path_for` | işlev:243 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid`<br>`run.py:scan_sessions` | sapma 1: yalnız tam sid; en yeni dosyaya düşüş yok; `/`/NUL içeren sid yok sayılır. Python düzeltildi: 6ae5da3. Sid VARKEN Python da yalnız tam dosya, yoksa None (sözleşme: None = transkript yok). Python düzeltildi: 43753998. Kalan kasıtlı fark: sid YOKKEN Python tahmini (koşucu `KNOWN_DEVIATIONS`, `python_guess_without_sid`) |
+| `providers/claude_provider.py::find_latest_jsonl` | işlev:267 | kapsam dışı | yok | yok | cwd'deki en yeni transkript düşüşü BİLEREK taşınmadı (sapma 1); düşüşe dayanan Python çağıranları taşınırken yeniden karar gerekir. İz: T1 (durum); T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_LAST_MODEL_CHUNK_BYTES` | sabit:286 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_LAST_MODEL_MAX_BYTES` | sabit:287 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_row_epoch` | işlev:290 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_last_assistant_value` | işlev:301 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_assistant_model` | işlev:352 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_row_model` | işlev:358 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_assistant_effort` | işlev:366 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::PROMPT_CACHE_TTL_SECONDS` | sabit:380 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_real_request_epoch` | işlev:383 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::last_real_request_epoch` | işlev:406 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::session_file_sid` | işlev:412 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `providers/claude_provider.py::_EFFORT_BUSTS_CACHE_RE` | sabit:445 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::live_or_spawn_model` | işlev:448 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::live_or_spawn_effort` | işlev:467 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::_META_HEAD_LINES` | sabit:483 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_RESUME_SCAN_LIMIT` | sabit:486 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_jsonl_meta` | işlev:489 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_same_path` | işlev:516 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_META_CACHE` | sabit:524 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_META_CACHE_MAX` | sabit:525 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_jsonl_meta_cached` | işlev:528 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_STUB_MAX_BYTES` | sabit:543 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::_has_chat_rows` | işlev:546 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::MCP_CONFIG_PATH` | sabit:566 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_mcp_config_path` | işlev:569 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_write_mcp_config_file` | işlev:583 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_extract_text` | işlev:594 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::_row_content` | işlev:606 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::_is_real_user_text` | işlev:612 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::_HELP_CACHE` | sabit:626 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_HELP_UNREADABLE` | sabit:627 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::_HELP_TIMEOUT_SECONDS` | sabit:628 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_help_text` | işlev:631 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_supports_flag` | işlev:658 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::claude_supports_flag::re1` | regex:661 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider` | sınıf:664 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma; kalan metotlar kendi satırında |
+| `providers/claude_provider.py::ClaudeProvider.name` | sabit:665 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/claude_provider.py::ClaudeProvider.resolve_resume_id` | işlev:667 | kapsam dışı | yok | yok | oturum kimliği ve devam kimliği. İz: rs/prov (G1, açık); canlı bağlantı T4 |
+| `providers/claude_provider.py::ClaudeProvider.build_inner_command` | işlev:712 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.oneshot_argv` | işlev:753 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.mcp_launch_args` | işlev:769 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.compact_command` | işlev:777 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.usage_command` | işlev:780 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.usage_needs_dismiss` | işlev:783 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.parse_usage_text` | işlev:791 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.usage_fresh_argv` | işlev:833 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.parse_fresh_usage` | işlev:836 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.context_command` | işlev:847 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.context_needs_dismiss` | işlev:850 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.parse_context_text` | işlev:856 | kapsam dışı | yok | yok | kota/bağlam okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/claude_provider.py::ClaudeProvider.handover_model_downgrade` | işlev:915 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_TIMEOUT_SECONDS` | sabit:932 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` | sabit:933 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.apply_live_model_switch` | işlev:935 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.handover_effort_downgrade` | işlev:948 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.prompt_cache_ttl_seconds` | işlev:961 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_request_epoch` | işlev:964 | kapsam dışı | yok | yok | transkriptten canlı model/effort ve önbellek yaşı. İz: rs/prov (G3 transkript okuma); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.effort_switch_keeps_cache` | işlev:989 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` | sabit:992 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` | sabit:993 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` | sabit:994 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider.apply_live_effort_switch` | işlev:997 | kapsam dışı | yok | yok | devam kimliği, devir ve canlı model/effort değiştirme. İz: T4 (yaşam döngüsü) |
+| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` | sabit:1008 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` | sabit:1009 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog` | işlev:1011 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog._read` | işlev:1022 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::ClaudeProvider.dismiss_stray_dialog._stuck` | işlev:1026 | kapsam dışı | yok | yok | canlı model/effort geçişinde ekran tanıma ve tuş gönderme. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `providers/claude_provider.py::ClaudeProvider.matches_proc` | işlev:1049 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/claude_provider.py::ClaudeProvider.extract_name` | işlev:1054 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/claude_provider.py::ClaudeProvider.extract_info` | işlev:1057 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::claude_info` | yok |
+| `providers/claude_provider.py::ClaudeProvider.preferred_default_model` | işlev:1065 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.default_effort` | işlev:1071 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.model_choices` | işlev:1074 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.refresh_stored_model` | işlev:1089 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.permission_modes` | işlev:1108 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.effort_levels` | işlev:1111 | kapsam dışı | yok | yok | açılış argv'si, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/claude_provider.py::ClaudeProvider.mode_status_patterns` | işlev:1114 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.background_work` | işlev:1117 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.busy_status_pattern` | işlev:1127 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider.cyclable_modes` | işlev:1130 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/claude_provider.py::ClaudeProvider._transcript_lines` | işlev:1133 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_message_role` | işlev:1166 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.last_exchange` | işlev:1173 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.extra_file_roots` | işlev:1204 | kapsam dışı | yok | yok | dosya gezgini kökleri. İz: T3 (dosya) |
+| `providers/claude_provider.py::ClaudeProvider.full_history` | işlev:1209 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/claude_provider.py::ClaudeProvider.sid_for_stopped_session` | işlev:1240 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/codex_provider.py`
 
@@ -565,48 +595,52 @@ Yok.
 | `providers/ucli_provider.py::instructions_check` | işlev:557 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/ucli_provider.py::_claude_service_flags` | işlev:578 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `providers/ucli_provider.py::_PRICED_MODELS` | sabit:612 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_default_session_cap` | işlev:615 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_max_cost_args` | işlev:624 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_MCP_NAME_BAD` | sabit:639 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_MCP_TOOL_RE` | sabit:640 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_MCP_ADD_TIMEOUT` | sabit:641 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::mcp_server_name` | işlev:644 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::mcp_add_argv` | işlev:648 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::register_mcp` | işlev:657 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_apply_cli_opts` | işlev:691 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::_agent_setup` | işlev:866 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider` | sınıf:888 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
-| `providers/ucli_provider.py::UcliProvider.name` | sabit:889 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/ucli_provider.py::UcliProvider.prepare_input` | işlev:891 | kapsam dışı | yok | yok | tmux girişi ve arka plan işi. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/ucli_provider.py::UcliProvider.has_conversation` | işlev:899 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
-| `providers/ucli_provider.py::UcliProvider.wants_handover_wrapup` | işlev:902 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
-| `providers/ucli_provider.py::UcliProvider.resolve_resume_id` | işlev:905 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
-| `providers/ucli_provider.py::UcliProvider.accepts_cli_opts` | sabit:909 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.mcp_needs_cwd` | sabit:910 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.validate_cli_opts` | işlev:912 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.mcp_launch_args` | işlev:915 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.build_inner_command` | işlev:938 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.oneshot` | işlev:1018 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
-| `providers/ucli_provider.py::UcliProvider.env_overrides` | işlev:1051 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.matches_proc` | işlev:1056 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
-| `providers/ucli_provider.py::UcliProvider._parse_session` | işlev:1061 | karşılandı | `providers.rs::arg` | `golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
-| `providers/ucli_provider.py::UcliProvider.extract_name` | işlev:1067 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | yok |
-| `providers/ucli_provider.py::UcliProvider.extract_info` | işlev:1070 | karşılandı | `providers.rs::ucli_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::ucli_effort_presets` | yok |
-| `providers/ucli_provider.py::UcliProvider.model_choices` | işlev:1106 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.default_permission_mode` | işlev:1109 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.permission_modes` | işlev:1114 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.effort_levels` | işlev:1117 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/ucli_provider.py::UcliProvider.full_history` | işlev:1120 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/ucli_provider.py::UcliProvider.last_message_role` | işlev:1125 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/ucli_provider.py::UcliProvider.sid_for_stopped_session` | işlev:1131 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/ucli_provider.py::UcliProvider.live_busy` | işlev:1137 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.background_work` | işlev:1152 | kapsam dışı | yok | yok | tmux girişi ve arka plan işi. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/ucli_provider.py::UcliProvider.live_tools` | işlev:1167 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.live_context` | işlev:1181 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.live_usage` | işlev:1196 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.live_failed_turns` | işlev:1213 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.live_phase` | işlev:1236 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
-| `providers/ucli_provider.py::UcliProvider.last_exchange` | işlev:1266 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/ucli_provider.py::_TOP_TIER_PRICES` | sabit:616 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_claudeops_price` | işlev:619 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_argv_model` | işlev:627 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_has_price` | işlev:631 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_default_session_cap` | işlev:635 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_max_cost_args` | işlev:644 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_MCP_NAME_BAD` | sabit:659 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_MCP_TOOL_RE` | sabit:660 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_MCP_ADD_TIMEOUT` | sabit:661 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::mcp_server_name` | işlev:664 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::mcp_add_argv` | işlev:668 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::register_mcp` | işlev:677 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_apply_cli_opts` | işlev:711 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::_agent_setup` | işlev:900 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider` | sınıf:922 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
+| `providers/ucli_provider.py::UcliProvider.name` | sabit:923 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/ucli_provider.py::UcliProvider.prepare_input` | işlev:925 | kapsam dışı | yok | yok | tmux girişi ve arka plan işi. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/ucli_provider.py::UcliProvider.has_conversation` | işlev:934 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
+| `providers/ucli_provider.py::UcliProvider.wants_handover_wrapup` | işlev:937 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
+| `providers/ucli_provider.py::UcliProvider.resolve_resume_id` | işlev:940 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
+| `providers/ucli_provider.py::UcliProvider.accepts_cli_opts` | sabit:944 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.mcp_needs_cwd` | sabit:945 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.validate_cli_opts` | işlev:947 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.mcp_launch_args` | işlev:950 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.build_inner_command` | işlev:973 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.oneshot` | işlev:1053 | kapsam dışı | yok | yok | devam/devir ve tek atımlık çağrı. İz: T4 (yaşam döngüsü) |
+| `providers/ucli_provider.py::UcliProvider.env_overrides` | işlev:1086 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.matches_proc` | işlev:1091 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
+| `providers/ucli_provider.py::UcliProvider._parse_session` | işlev:1096 | karşılandı | `providers.rs::arg` | `golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yok |
+| `providers/ucli_provider.py::UcliProvider.extract_name` | işlev:1102 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | yok |
+| `providers/ucli_provider.py::UcliProvider.extract_info` | işlev:1105 | karşılandı | `providers.rs::ucli_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::ucli_effort_presets` | yok |
+| `providers/ucli_provider.py::UcliProvider.model_choices` | işlev:1141 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.default_permission_mode` | işlev:1144 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.permission_modes` | işlev:1149 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.effort_levels` | işlev:1152 | kapsam dışı | yok | yok | açılış argv/env, MCP, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/ucli_provider.py::UcliProvider.full_history` | işlev:1155 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/ucli_provider.py::UcliProvider.last_message_role` | işlev:1160 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/ucli_provider.py::UcliProvider.sid_for_stopped_session` | işlev:1166 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/ucli_provider.py::UcliProvider.live_busy` | işlev:1172 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.background_work` | işlev:1187 | kapsam dışı | yok | yok | tmux girişi ve arka plan işi. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/ucli_provider.py::UcliProvider.live_tools` | işlev:1202 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.live_context` | işlev:1216 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.live_usage` | işlev:1231 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.live_failed_turns` | işlev:1248 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.live_phase` | işlev:1271 | kapsam dışı | yok | yok | durum dosyasından `/api/status` alanları. İz: T1 (durum) |
+| `providers/ucli_provider.py::UcliProvider.last_exchange` | işlev:1301 | kapsam dışı | yok | yok | sohbet geçmişi okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/commands/usage.py`
 
@@ -692,13 +726,13 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `commands/web.py::_find_gnome_terminal_server` | işlev:1130 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
-| `commands/web.py::_diag_status` | işlev:1146 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1637 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1689 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1696 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1699 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1728 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_find_gnome_terminal_server` | işlev:1135 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
+| `commands/web.py::_diag_status` | işlev:1151 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1642 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1694 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1701 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1704 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1733 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
@@ -706,7 +740,7 @@ Yok.
 |---|---|---|---|---|---|
 | `tmux_backend.py::TMUX_SOCKET` | sabit:23 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
 | `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:25 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
-| `tmux_backend.py::is_tmux_backed` | işlev:900 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
+| `tmux_backend.py::is_tmux_backed` | işlev:912 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
 
 ## Python test durumları
 
@@ -1054,9 +1088,9 @@ Yok.
 | `test_handover_cache_policy.py::EffortDowngradeTests.test_effort_command_failure_is_swallowed` | 493 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
 | `test_handover_cache_policy.py::EffortDowngradeTests.test_public_wrapper_keeps_its_old_positional_signature` | 500 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
 | `test_handover_cache_policy.py::CallSiteWiringTests.test_cli_path_calls_the_shared_policy_once_per_target` | 520 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
-| `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` | 534 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
-| `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` | 547 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
-| `test_handover_cache_policy.py::CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` | 564 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
+| `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` | 535 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
+| `test_handover_cache_policy.py::CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` | 549 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
+| `test_handover_cache_policy.py::CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` | 567 | kapsam dışı | yok | devirde model/effort düşürme ve önbellek yaşı. İz: T4 (yaşam döngüsü); T1 (durum) |
 
 ### `py/tests/test_input_box_typed.py`
 
@@ -1258,9 +1292,9 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_permission_dialog_is_not_confirmed` | 33 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
-| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_switch_dialog_confirmed_once` | 36 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
-| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_applied_without_dialog` | 39 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
+| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_permission_dialog_is_not_confirmed` | 37 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
+| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_switch_dialog_confirmed_once` | 40 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
+| `test_proc08_model_switch_no_blind_enter.py::NoBlindEnterTest.test_applied_without_dialog` | 43 | kapsam dışı | yok | canlı model değiştirme tuşları. İz: T4 (yaşam döngüsü) |
 
 ### `py/tests/test_proc_stat_parse.py`
 
@@ -1491,8 +1525,8 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_rsprov_g4_dismiss.py::DismissStrayDialogTest.test_failed_down_sends_no_enter` | 32 | kapsam dışı | yok | başıboş diyalog kapatma tuşları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
-| `test_rsprov_g4_dismiss.py::DismissStrayDialogTest.test_successful_down_is_followed_by_enter` | 35 | kapsam dışı | yok | başıboş diyalog kapatma tuşları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `test_rsprov_g4_dismiss.py::DismissStrayDialogTest.test_failed_down_sends_no_enter` | 40 | kapsam dışı | yok | başıboş diyalog kapatma tuşları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
+| `test_rsprov_g4_dismiss.py::DismissStrayDialogTest.test_successful_down_is_followed_by_enter` | 43 | kapsam dışı | yok | başıboş diyalog kapatma tuşları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal) |
 
 ### `py/tests/test_rsprov_g5_fixes.py`
 
@@ -2390,6 +2424,46 @@ Yok.
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_dry_run_kills_nothing` | 40 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` | 46 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 
+### `py/tests/test_tbd399_control_chars.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_tbd399_control_chars.py::SendText.test_control_characters_are_removed_but_newline_tab_cr_stay` | 28 | kapsam dışı | yok | pane'e giden metinde denetim karakterleri ve yalın Enter. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-b tmux (rs/tmux) |
+| `test_tbd399_control_chars.py::SendText.test_every_other_control_character_is_removed` | 33 | kapsam dışı | yok | pane'e giden metinde denetim karakterleri ve yalın Enter. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-b tmux (rs/tmux) |
+| `test_tbd399_control_chars.py::SendText.test_text_with_nothing_but_blanks_and_controls_sends_nothing` | 39 | kapsam dışı | yok | pane'e giden metinde denetim karakterleri ve yalın Enter. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-b tmux (rs/tmux) |
+| `test_tbd399_control_chars.py::SendText.test_empty_text_is_still_a_deliberate_enter` | 43 | kapsam dışı | yok | pane'e giden metinde denetim karakterleri ve yalın Enter. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-b tmux (rs/tmux) |
+| `test_tbd399_control_chars.py::SendText.test_ucli_folding_never_turns_newlines_into_an_empty_enter` | 48 | kapsam dışı | yok | pane'e giden metinde denetim karakterleri ve yalın Enter. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-b tmux (rs/tmux) |
+
+### `py/tests/test_tbd399_live_switch.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_tbd399_live_switch.py::StaleResultText.test_old_marker_does_not_end_the_wait_and_the_late_dialog_is_confirmed` | 88 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::StaleResultText.test_old_effort_marker_alone_is_unconfirmed` | 95 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::StaleResultText.test_new_marker_is_done` | 101 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::StaleResultText.test_claude_refusal_is_a_finished_command` | 106 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::OnlyTheOpenExpectedDialog.test_dialog_text_in_conversation_does_not_confirm_a_permission_prompt` | 114 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::OnlyTheOpenExpectedDialog.test_stray_scan_never_touches_a_permission_prompt` | 121 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::OnlyTheOpenExpectedDialog.test_quoted_dialog_above_the_input_box_is_not_open` | 126 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::OnlyTheOpenExpectedDialog.test_wrong_kind_wrong_label_or_cursor_on_no_is_not_confirmed` | 131 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::OnlyTheOpenExpectedDialog.test_precondition_refuses_when_any_dialog_is_open_or_screen_unknown` | 138 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::Draft.test_typed_draft_blocks_both_commands` | 149 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::Draft.test_dim_suggestion_is_not_a_draft` | 155 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::Draft.test_busy_session_gets_no_command_and_is_safe_to_message` | 160 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::LateDialog.test_late_effort_dialog_is_refused` | 169 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::LateDialog.test_late_model_dialog_is_refused` | 174 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_failed_confirm_enter_is_reported` | 183 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_ignored_confirm_enter_is_not_repeated` | 189 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_failed_command_send_is_reported` | 194 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_down_that_did_not_move_the_cursor_gets_no_enter` | 199 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_dialog_still_open_after_refusing_is_reported` | 205 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::KeyResultsAreChecked.test_dialog_in_the_last_look_is_confirmed_and_verified` | 211 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::CallersDoNotType.test_blocked_model_step_stops_before_effort` | 250 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::CallersDoNotType.test_blocked_effort_step` | 256 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::CallersDoNotType.test_done_and_busy_do_not_block` | 262 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::CallersDoNotType.test_web_handover_sends_nothing_and_says_why` | 269 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+| `test_tbd399_live_switch.py::CallersDoNotType.test_batch_handover_sends_nothing_and_counts_a_failure` | 286 | kapsam dışı | yok | canlı model/effort geçişinde tuş ve metin güvenliği. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T2 (terminal); T4 (yaşam döngüsü) |
+
 ### `py/tests/test_tmux_list_utf8.py`
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
@@ -2944,6 +3018,18 @@ Yok.
 | `test_ucli_stream.py::BuildCommandTests.test_off_leaves_the_command_without_the_flag` | 124 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_stream.py::BuildCommandTests.test_on_adds_exactly_one_bare_flag` | 129 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_stream.py::BuildCommandTests.test_an_old_binary_without_the_flag_is_not_given_it_and_the_skip_is_logged` | 134 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+
+### `py/tests/test_ucli_unpriced_model_cap.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_haiku_gets_highest_tier_price_and_both_caps` | 34 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_fable_gets_table_price` | 40 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_builtin_priced_model_gets_no_price_flag` | 44 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_explicit_price_wins_and_enables_per_turn_cap` | 49 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_unknown_price_with_cap_is_refused_with_reason` | 54 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_binary_without_price_flag_is_refused` | 60 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_unpriced_model_cap.py::UnpricedModelCapTest.test_no_cap_no_refusal` | 64 | kapsam dışı | yok | fiyatsız modelde USD tavanı (açılış bayrakları). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_usage.py`
 

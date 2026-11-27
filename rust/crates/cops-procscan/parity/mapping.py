@@ -310,6 +310,9 @@ DEFS["providers/base.py"] = [
         "CliProvider.parse_fresh_usage CliProvider.usage_command CliProvider.parse_usage_text "
         "CliProvider.context_command CliProvider.parse_context_text", "kota/bağlam okuma ve ayrıştırma", T7),
     oos("CliProvider.extra_file_roots", "dosya gezgini kökleri", T3),
+    oos("_Switch " + " ".join("_Switch." + n for n in
+                              "DONE BUSY DRAFT DIALOG UNREADABLE SEND_FAILED UNCONFIRMED".split()),
+        "canlı model/effort geçişinin sonucu", f"{SAG}; {T4}"),
 ]
 
 C = "ClaudeProvider."
@@ -362,6 +365,12 @@ DEFS["providers/claude_provider.py"] = [
         + " ".join(C + n for n in
                    "usage_command parse_usage_text usage_fresh_argv parse_fresh_usage context_command "
                    "parse_context_text".split()), "kota/bağlam okuma ve ayrıştırma", T7),
+    oos("_SWITCH_CAPTURE_LINES _SWITCH_TITLES _SWITCH_YES_RE _SWITCH_NO_RE _SWITCH_GUIDE_RE _SWITCH_GUIDE_MAX "
+        "_SWITCH_TITLE_WINDOW _SCREEN_FRAME _BOX_FOOTER_MAX _FOOTER_MENU_RE _BUSY_TAIL_LINES _screen_rows "
+        "_open_switch_dialog _switch_label_matches _switch_label_matches::re1 _switch_pane_state _live_switch "
+        "_live_switch._count _live_switch._give_up _live_switch._look " + C + "dismiss_stray_dialog._read " + C
+        + "dismiss_stray_dialog._stuck", "canlı model/effort geçişinde ekran tanıma ve tuş gönderme",
+        f"{SAG}; {T2}"),
     oos(C + "extra_file_roots", "dosya gezgini kökleri", T3),
 ]
 
@@ -487,7 +496,7 @@ DEFS["providers/ucli_provider.py"] = [
         "_script_args _stream_args _reasoning_display_args _metrics_file_args _interactive_args _state_dir_args "
         "_timeout_args _history_args _effort_args _set_flag_value _service_key_file _INSTRUCTIONS_MAX_BYTES "
         "_instructions_too_big instructions_check _claude_service_flags _PRICED_MODELS _default_session_cap "
-        "_max_cost_args _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
+        "_max_cost_args _TOP_TIER_PRICES _claudeops_price _argv_model _has_price _MCP_NAME_BAD _MCP_TOOL_RE _MCP_ADD_TIMEOUT mcp_server_name mcp_add_argv register_mcp "
         "_apply_cli_opts _agent_setup "
         + " ".join(U_ + n for n in "accepts_cli_opts mcp_needs_cwd validate_cli_opts mcp_launch_args "
                    "build_inner_command env_overrides model_choices default_permission_mode permission_modes "
@@ -931,6 +940,9 @@ FILES = {
     "rsprov_help_utf8": ("UTF-8 olmayan yardım ve mcp add çıktısı (açılış)", SAG),
     "rsprov_chat_readers": (_HIST + " (bozuk bayt/biçim, ucli yarım satır)", CHAT),
     "rsprov_g10_oneshot": ("tek atımlık model çağrısı", f"{SAG}; {T10}"),
+    "tbd399_control_chars": ("pane'e giden metinde denetim karakterleri ve yalın Enter", f"{SAG}; {W0B}"),
+    "tbd399_live_switch": ("canlı model/effort geçişinde tuş ve metin güvenliği", f"{SAG}; {T2}; {T4}"),
+    "ucli_unpriced_model_cap": ("fiyatsız modelde USD tavanı (açılış bayrakları)", SAG),
     "rsprov_g4_dismiss": ("başıboş diyalog kapatma tuşları", f"{SAG}; {T2}"),
     "rsprov_g8_spawn_helpers": ("açılış yardımcıları (yardım yoklaması, araç zinciri, PATH)", SAG),
     "rsprov_live_readers": ("durum dosyası/transkriptten canlı satır alanları", f"{SAG}; {T1}"),
@@ -1428,6 +1440,9 @@ paths_isolation:5:5103a70284
 proc08_model_switch_no_blind_enter:3:7cba6c87a9
 provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a
+tbd399_control_chars:5:bfcb26369c
+tbd399_live_switch:25:2807ab8040
+ucli_unpriced_model_cap:7:11fa4f0ea5
 rsprov_cap_settings:10:ec39da701f
 rsprov_child_group:13:1224408fb8
 rsprov_help_utf8:6:88fc88f6f4

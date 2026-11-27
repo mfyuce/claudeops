@@ -250,7 +250,7 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `py/claudeops/tmux_backend.py:200` `ANSI_SGR_RE` (regex) | `text::ANSI_SGR_RE` (`patterns()`) | PC (desen metni), PP | eş |
 | `py/claudeops/tmux_backend.py:201` `ANSI_OSC_RE` (regex) | `text::ANSI_OSC_RE` (`patterns()`) | PC, PP | eş |
 | `py/claudeops/tmux_backend.py:204` `strip_ansi` (işlev) | `text::strip_ansi` | PP, PR | eş |
-| `py/claudeops/tmux_backend.py:208` `tmux_send_keys` (işlev) | `keys::Tmux::send_text` (+`send_text_timeout`) | PW, PF (argv + `load-buffer` girdisi) | eş (her metin stdin'den tampona; tampon adı `cops-rs-*`; P8, P9 TBD 369 ile düzeltildi) |
+| `py/claudeops/tmux_backend.py:208` `tmux_send_keys` (işlev) | `keys::Tmux::send_text` (+`send_text_timeout`) | PW, PF (argv + `load-buffer` girdisi) | eş (her metin stdin'den tampona; tampon adı `cops-rs-*`; P8, P9 TBD 369 ile düzeltildi; TBD#399/6: sekme/satır sonu dışındaki denetim karakterleri iki tarafta atılır, yalnız boşluk kalan metin gönderilmez) |
 | `py/claudeops/tmux_backend.py:248` `_mask_allows` (işlev) | `keys::Tmux::guard` (`MaskGuard::RefuseMasked`) | Rust testi + PF (maske argv) | eş (kapı 2; Python varsayılan açık, Rust'ta her çağrıda açık seçim; ret günlüğü Rust'ta hata türü: `Masked`/`MaskUnknown`) |
 | `py/claudeops/tmux_backend.py:262` `_PASTE_SETTLE` (sabit) | `keys::PASTE_SETTLE` | yok (süre argv'de görünmez) | eş (150 ms) |
 | `py/claudeops/tmux_backend.py:263` `_BUFFER_SEQ` (sabit) | `keys::next_buffer` içindeki `SEQ` | PF (tampon adı normalleştirilir) | eş (ad öneki Python/Rust'ta ayrı) |
