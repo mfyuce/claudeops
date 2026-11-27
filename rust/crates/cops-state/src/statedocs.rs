@@ -89,12 +89,15 @@ pub enum WriteOutcome {
 pub enum WriteError {
     Io(io::Error),
     Db(StoreError),
+    /// [`StateDocs::into_read_only`] kipinde yazım istendi (hiçbir şeye dokunulmadı).
+    ReadOnly,
 }
 impl std::fmt::Display for WriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WriteError::Io(e) => write!(f, "durum yazımı: {e}"),
             WriteError::Db(e) => write!(f, "durum yazımı: {e}"),
+            WriteError::ReadOnly => write!(f, "durum yazımı: salt okuma kipi"),
         }
     }
 }
@@ -186,6 +189,18 @@ pub struct StateDocs {
     state: Mutex<State>,
     /// `None` = [`StateDocs::diag_log`].
     logger: Option<Logger>,
+    /// [`StateDocs::into_read_only`].
+    read_only: bool,
+}
+
+impl std::fmt::Debug for StateDocs {
+    /// `db_url` parola taşıyabilir: yazılmaz.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StateDocs")
+            .field("dir", &self.dir.root())
+            .field("read_only", &self.read_only)
+            .finish_non_exhaustive()
+    }
 }
 
 impl StateDocs {
@@ -199,6 +214,7 @@ impl StateDocs {
             db_url,
             state: Mutex::new(State::default()),
             logger: None,
+            read_only: false,
         }
     }
     /// Ortamdan bağımsız kurulum (testler): kip ve `db_url` açık; `None` = settings.json.
@@ -213,6 +229,23 @@ impl StateDocs {
         self.logger = Some(Box::new(f));
         self
     }
+
+    /// SALT OKUMA kipi (B1, copsd: tek yazar Python). Okuma kararları Python `read_json` ile aynı kalır, ama:
+    /// - içe aktarma (`db`: DB'de olmayan belge), uydurma (`dual`: drift/import), kirli kurtarma (`recover`) YOK;
+    /// - DB her kullanımda [`Store::open_read_only`] ile açılır (yan dosya yaratmaz, pragma yazmaz; önbellek yok);
+    /// - [`write`](Self::write) [`WriteError::ReadOnly`] döner; [`mirror_log`](Self::mirror_log),
+    ///   [`shadow_tsv`](Self::shadow_tsv) hiçbir şey yapmaz; [`diag_log`](Self::diag_log) dosyaya YAZMAZ (günlükçü ya da stderr);
+    /// - `Instances` bozuk ayna yedeği (`.corrupt-<sha8>`) yazmaz, `mutate` kilit dosyası açmadan reddeder; `Roster::lock`
+    ///   reddeder.
+    ///
+    /// Dizin, dosya, izin yaratılmaz (`tests/read_only.rs` ham yolla karşılaştırarak kanıtlar).
+    pub fn into_read_only(mut self) -> StateDocs {
+        self.read_only = true;
+        self
+    }
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
     pub fn dir(&self) -> &StateDir {
         &self.dir
     }
@@ -224,6 +257,7 @@ impl StateDocs {
     fn log(&self, msg: &str) {
         match &self.logger {
             Some(f) => f(msg),
+            None if self.read_only => eprintln!("statedocs {msg}"),
             None => self.diag_log(&format!("statedocs {msg}")),
         }
     }
@@ -240,6 +274,13 @@ impl StateDocs {
     /// `diaglog.diag_log(event)`: `{"ts": yerel saniye, "event": ..}` satırı + `log` akışı `diag` (dual/db). Best-effort:
     /// hiçbir hata çağırana dönmez; dosyaya yazılamazsa DB'ye de eklenmez (Python gibi).
     pub fn diag_log(&self, event: &str) {
+        if self.read_only {
+            match &self.logger {
+                Some(f) => f(event),
+                None => eprintln!("{event}"),
+            }
+            return;
+        }
         let Some(ts) = crate::pytime::local_isoformat_seconds(crate::now()) else {
             return;
         };
@@ -401,6 +442,9 @@ impl StateDocs {
 
     /// Paylaşılan DB bağlantısı (ilk kullanımda açılır; başarısız açılış önbelleklenmez).
     pub fn store(&self) -> Result<Arc<Store>, StoreError> {
+        if self.read_only {
+            return self.read_only_store().map(Arc::new);
+        }
         if let Some(s) = &self.lock().store {
             return Ok(s.clone());
         }
@@ -461,6 +505,9 @@ impl StateDocs {
         file_first: bool,
         read_file: &dyn Fn(&Path) -> Read,
     ) -> Result<Read, StoreError> {
+        if self.read_only {
+            return self.read_db_ro(name, path, file_first, read_file);
+        }
         if file_first {
             // DB açılamasa da dosya (doğruluk kaynağı) döner: hata üst katta dosyaya düşer
             let st = self.store()?;
@@ -514,6 +561,29 @@ impl StateDocs {
         Ok(r)
     }
 
+    /// [`read_db`](Self::read_db)in salt okuma karşılığı: aynı karar, DB'ye yazım yok. `dual`: dosya (doğruluk kaynağı) okunursa
+    /// o, yoksa/bozuksa DB'deki değer; `db`: DB, satır yoksa dosya (içe AKTARILMAZ). DB açılamazsa hata (üst kat dosyaya düşer).
+    fn read_db_ro(
+        &self,
+        name: &str,
+        path: &Path,
+        file_first: bool,
+        read_file: &dyn Fn(&Path) -> Read,
+    ) -> Result<Read, StoreError> {
+        let st = self.store()?;
+        if file_first {
+            let r = read_file(path);
+            if matches!(r, Read::Value(_) | Read::Lossy(_)) {
+                return Ok(r);
+            }
+            return Ok(st.get_doc(name)?.map_or(r, Read::Value));
+        }
+        if let Some(v) = st.get_doc(name)? {
+            return Ok(Read::Value(v));
+        }
+        Ok(read_file(path))
+    }
+
     /// `write_json`. `mode`: dosya izni (`None` = var olan korunur).
     pub fn write(
         &self,
@@ -522,6 +592,9 @@ impl StateDocs {
         obj: &Json,
         mode: Option<u32>,
     ) -> Result<WriteOutcome, WriteError> {
+        if self.read_only {
+            return Err(WriteError::ReadOnly);
+        }
         let be = if self.db_ok(path) {
             self.effective(name)
         } else {
@@ -570,7 +643,7 @@ impl StateDocs {
     /// best-effort; hata yalnız sayılır, loglanmaz: günlük -> mirror -> log döngüsü olmasın). Akış her
     /// [`MIRROR_EVERY`] eklemede [`MIRROR_KEEP`] satıra kırpılır. Dönüş: eklendi mi.
     pub fn mirror_log(&self, stream: &str, path: &Path, entry: &Json) -> bool {
-        if self.backend() == Backend::Files || !self.db_ok(path) {
+        if self.read_only || self.backend() == Backend::Files || !self.db_ok(path) {
             return false;
         }
         let Ok(st) = self.store() else {
@@ -598,7 +671,7 @@ impl StateDocs {
             .file_name()
             .and_then(|f| f.to_str())
             .is_some_and(|f| TSV_FILES.contains(&f));
-        if self.backend() == Backend::Files || !is_tsv || !self.db_ok(path) {
+        if self.read_only || self.backend() == Backend::Files || !is_tsv || !self.db_ok(path) {
             return;
         }
         if let Err(e) = self.shadow_tsv_inner(path, force) {

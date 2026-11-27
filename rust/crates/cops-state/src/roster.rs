@@ -291,6 +291,12 @@ impl<'a> Roster<'a> {
 
     /// İki TSV için TEK kilit (`<dizin>/roster.lock`; Python panel/CLI ile aynı). İç içe alma.
     pub fn lock(&self) -> io::Result<RosterGuard<'a>> {
+        if self.docs.is_read_only() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "roster: salt okuma kipi (kilit dosyası açılmadı)",
+            ));
+        }
         let lock = FileLock::roster(&self.path(Tsv::Roster))?;
         Ok(RosterGuard {
             roster: *self,

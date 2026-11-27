@@ -11,7 +11,7 @@
 use crate::state::ReadDocs;
 use cops_proxy::routes::RouteTable;
 use cops_state::settings_read::SysEnv;
-use cops_state::StateDir;
+use cops_state::{StateDir, StateDocs};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -27,6 +27,10 @@ pub struct RouteCtx {
     pub instances: PathBuf,
     /// Durum belgeleri, YALNIZ okuma (R2: tek yazar Python; bkz. [`crate::state`]).
     pub docs: Arc<ReadDocs>,
+    /// B1: `cops-state` okuyucuları (`Instances`, ayarlar) için SALT OKUMA kipindeki `StateDocs`
+    /// ([`StateDocs::into_read_only`]: içe aktarma/uydurma/günlük/yan dosya yok, yazım reddedilir). `docs`taki ile aynı
+    /// dizin ve kip kuralı; ayrı nesne çünkü `ReadDocs` içindekini dışarı vermez (`state.rs` B1 yol listesinde değil).
+    pub state: Arc<StateDocs>,
     /// `HOME`/`PATH` okuyan `cops-state` okuyucuları için süreç ortamı (açılışta bir kez alınır).
     pub env: SysEnv,
 }
@@ -36,6 +40,11 @@ impl RouteCtx {
     pub fn new(state_dir: PathBuf, db: PathBuf, instances: PathBuf) -> RouteCtx {
         RouteCtx {
             docs: Arc::new(ReadDocs::new(StateDir::at(&state_dir))),
+            state: Arc::new(
+                StateDocs::new(StateDir::at(&state_dir))
+                    .into_read_only()
+                    .with_logger(|m| eprintln!("copsd: statedocs {m}")),
+            ),
             env: SysEnv::from_process(),
             state_dir,
             db,
@@ -44,5 +53,34 @@ impl RouteCtx {
     }
 }
 
-/// Çekirdek rota tablosu. Şimdilik boş: Dalga 2 izleri (B1+) satırlarını buraya ekler.
-pub fn register(_table: &mut RouteTable, _ctx: &RouteCtx) {}
+/// Çekirdek rota tablosu (Dalga 2 izleri satırlarını buraya ekler).
+///
+/// B1 (`cops-ep-state`, `docs/rs-ep-state.md`): `GET /api/instances` (yalnız yerel `host`; uzak istek Python'a) ve
+/// `GET /api/diag/log`. `--instances` durum dizinindeki `instances.json`dan farklıysa `/api/instances` KAYDEDİLMEZ (Python
+/// `instances.json`u yalnız durum dizininde bilir).
+pub fn register(table: &mut RouteTable, ctx: &RouteCtx) {
+    let dir = StateDir::at(&ctx.state_dir);
+    if ctx.instances == dir.instances_json() {
+        let scan = ctx
+            .env
+            .home
+            .as_deref()
+            .filter(|h| !h.is_empty())
+            .map(|h| cops_procscan::Config::for_dirs(std::path::Path::new(h), &ctx.state_dir));
+        table.get(
+            cops_ep_state::INSTANCES_PATH,
+            Arc::new(cops_ep_state::InstancesHook::new(ctx.state.clone(), scan)),
+        );
+    } else {
+        eprintln!(
+            "copsd: /api/instances Python'da: --instances {} durum dizini dışında",
+            ctx.instances.display()
+        );
+    }
+    let diag =
+        cops_ep_state::diag::diag_log_path(&ctx.state_dir, std::env::var_os("CLAUDEOPS_DIAG_LOG"));
+    table.get(
+        cops_ep_state::DIAG_LOG_PATH,
+        Arc::new(cops_ep_state::DiagLogHook::new(diag)),
+    );
+}

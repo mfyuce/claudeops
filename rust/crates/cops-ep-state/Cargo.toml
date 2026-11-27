@@ -1,0 +1,18 @@
+[package]
+name = "cops-ep-state"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+# Dalga 2 İz B1: salt okuma durum uçları (`GET /api/instances` yerel dalı, `GET /api/diag/log`). copsd bağlar.
+# DIKKAT: `cops-steward-core`a BAĞLANMAZ (serde_json `preserve_order` copsd ikilisine yayılır: docs/rs-b0.md R1).
+[dependencies]
+cops-auth = { path = "../cops-auth" }
+cops-proxy = { path = "../cops-proxy" }
+cops-state = { path = "../cops-state" }
+cops-procscan = { path = "../cops-procscan" }
+indexmap = "2"
+tokio.workspace = true
+
+[dev-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
