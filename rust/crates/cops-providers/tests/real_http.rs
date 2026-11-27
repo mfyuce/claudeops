@@ -522,9 +522,10 @@ fn the_real_model_io_runs_reads_and_fetches() {
             max_stdout: 100,
         })
     };
-    // çıkış koduna bakılmaz; stderr atılır
+    // sıfır olmayan çıkış = başarısız çekim; stderr atılır
+    assert_eq!(run("echo m1; echo hata >&2; exit 9", 3000), None);
     assert_eq!(
-        run("echo m1; echo hata >&2; exit 9", 3000).as_deref(),
+        run("echo m1; echo hata >&2", 3000).as_deref(),
         Some(&b"m1\n"[..])
     );
     assert_eq!(run("sleep 30", 300), None);

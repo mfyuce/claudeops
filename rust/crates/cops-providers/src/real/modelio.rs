@@ -82,7 +82,8 @@ impl ModelIo for RealModelIo {
             stdout: Capture::Bounded(req.max_stdout),
             stderr: Capture::Discard,
         };
-        process::run(&spec).ok().map(|out| out.stdout)
+        let out = process::run(&spec).ok()?;
+        (out.code == 0).then_some(out.stdout)
     }
     fn http_get(&self, req: &HttpRequest) -> Option<Vec<u8>> {
         self.http.get(req).ok()

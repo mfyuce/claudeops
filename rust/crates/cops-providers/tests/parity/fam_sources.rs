@@ -33,6 +33,10 @@ fn hex(b: impl AsRef<[u8]>) -> String {
 impl StepIo {
     fn payload(&self) -> Option<Vec<u8>> {
         let s = self.0.lock().unwrap();
+        // `run_stdout` sözleşmesi: sıfır olmayan çıkış None (HTTP yanıtlarında `rc` alanı yok).
+        if s.resp.get("rc").and_then(Value::as_i64).unwrap_or(0) != 0 {
+            return None;
+        }
         if let Some(r) = s.resp.get("rep") {
             return Some(unhex(r[0].as_str().unwrap()).repeat(r[1].as_u64().unwrap() as usize));
         }

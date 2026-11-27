@@ -92,7 +92,7 @@ impl ModelsCache {
     }
 }
 
-/// `agy models`; hata, zaman aşımı, UTF-8 olmayan ya da modelsiz çıktı eski listeyi bırakır.
+/// `agy models`; hata, sıfır olmayan çıkış, zaman aşımı, UTF-8 olmayan ya da modelsiz çıktı eski listeyi bırakır.
 fn refresh(io: &dyn ModelIo, cache: &Mutex<Cached>, binary: String) {
     let req = RunRequest {
         argv: vec![binary, "models".into()],

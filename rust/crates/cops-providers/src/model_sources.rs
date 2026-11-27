@@ -110,7 +110,7 @@ pub trait ModelIo: Send + Sync {
     fn claude_models_doc(&self) -> Option<Value>;
     /// Normal dosyanın tamamı; `max` bayttan büyükse ya da okunamazsa None.
     fn read_file(&self, path: &str, max: u64) -> Option<Vec<u8>>;
-    /// Süreci koştur, stdout'u döndür; ÇIKIŞ KODUNA BAKILMAZ. stdin boş, stderr boşaltılır ya da atılır. Başlatılamazsa,
+    /// Süreci koştur, stdout'u döndür. stdin boş, stderr boşaltılır ya da atılır. Başlatılamazsa, sıfır olmayan çıkışta,
     /// zaman aşımında (süreç öldürülür VE beklenir) ya da stdout `max_stdout`u aşarsa None.
     fn run_stdout(&self, req: &RunRequest) -> Option<Vec<u8>>;
     /// `GET`; yalnız 2xx yanıtın gövdesi. Diğer durum, ağ hatası, zaman aşımı ya da `max_body` aşımı None. Yönlendirme
