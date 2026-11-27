@@ -2,7 +2,8 @@
 //! yazımdan önce `.bak-routing` yedeği (`shutil.copy2`), silme ve bağlantının HEDEFİNE atomik yazım.
 //!
 //! Sonuç metinleri Python ile aynı: `written`, `removed`, `unchanged`, `skipped:no file`, `skipped:<OSError sınıfı>`,
-//! `skipped:UnicodeDecodeError` (yalnız bu sonuçta `routing_guidance_unreadable` günlüğü).
+//! `skipped:UnicodeDecodeError` (`routing_guidance_unreadable` günlüğü), `skipped:broken backup link` (yedek gerekirken
+//! `.bak-routing` hedefsiz bağlantı: hiçbir şey yazılmaz, `routing_guidance_backup_broken_link` günlüğü).
 
 use crate::probe::{Diag, Paths, Probe};
 use crate::real::effects::atomic_write_text;
@@ -85,7 +86,15 @@ pub fn sync_one(
         },
         SyncAction::Write { content, backup, removed } => {
             let bak = format!("{path}{BACKUP_SUFFIX}");
-            // `os.path.exists`: bağlantı izlenir (kırık bağlantı = yok)
+            // kırık bağlantı: `copy2` onu izleyip dizin dışına yazardı. Yedek alınamıyorsa yönerge dosyasına da dokunulmaz.
+            if backup && Path::new(&bak).is_symlink() && !Path::new(&bak).exists() {
+                diag.log(&Diag {
+                    event: "routing_guidance_backup_broken_link",
+                    fields: vec![("path", json!(path)), ("backup", json!(bak))],
+                });
+                return "skipped:broken backup link".into();
+            }
+            // `os.path.exists`: bağlantı izlenir
             if backup && !Path::new(&bak).exists() {
                 if let Err(e) = copy2(path, &bak) {
                     return skipped(&e);

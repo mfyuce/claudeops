@@ -452,3 +452,29 @@ fn default_sync_paths_are_under_home() {
     assert!(agy.starts_with("<!-- claudeops-routing:begin -->\nyönerge\n"), "{agy}");
     assert!(log.diags.lock().unwrap().is_empty());
 }
+
+/// `BrokenBackupLinkTest` karşılığı: hedefsiz ya da döngülü `.bak-routing` bağlantısında ne yedek ne yönerge dosyası
+/// yazılır.
+#[test]
+fn dangling_backup_link_writes_neither_backup_nor_target() {
+    for target in ["../disarisi.md", "AGENTS.md.bak-routing"] {
+        let t = support::Tmp::new();
+        let probe = t.probe();
+        let settings = Settings::from_json(r#"{"routing_guidance_text": "yönerge"}"#);
+        let codex = t.path("home/.codex/AGENTS.md");
+        let bak = format!("{codex}.bak-routing");
+        fs::create_dir_all(Path::new(&codex).parent().unwrap()).unwrap();
+        fs::write(&codex, "kullanıcı\n").unwrap();
+        std::os::unix::fs::symlink(target, &bak).unwrap();
+        let log = Arc::new(Log::default());
+        let out = sync_global_files(&probe, &settings, &t.paths(), &Sink(log.clone()));
+        assert_eq!(out[0], ("codex", "skipped:broken backup link".to_string()));
+        assert_eq!(fs::read_to_string(&codex).unwrap(), "kullanıcı\n");
+        assert_eq!(fs::read_link(&bak).unwrap(), Path::new(target));
+        assert!(!Path::new(&t.path("home/disarisi.md")).exists());
+        let diags = log.diags.lock().unwrap();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].event, "routing_guidance_backup_broken_link");
+        assert_eq!(diags[0].fields, vec![("path", json!(codex)), ("backup", json!(bak))]);
+    }
+}

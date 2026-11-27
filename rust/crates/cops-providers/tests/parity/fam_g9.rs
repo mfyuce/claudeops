@@ -448,10 +448,20 @@ fn sync_cases(e: &Env) -> Vec<Case> {
     v.push(Case::new("esitle-yedek-var", "g9_sync", args.clone())
         .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
         .file(file("home/.codex/AGENTS.md.bak-routing", "eski", 0o600)));
-    // Kırık bağlantı yedek: `os.path.exists` false, `copy2` bağlantıyı izleyip HEDEFİ oluşturur (Python hatası adayı).
+    // Kırık bağlantı yedek (hedefsiz, döngü, agy): yedek de yönerge dosyası da yazılmaz.
     v.push(Case::new("esitle-kirik-yedek", "g9_sync", args.clone())
         .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
         .file(Fx::Link("home/.codex/AGENTS.md.bak-routing".into(), "../baska-yer.md".into())));
+    v.push(Case::new("esitle-dongu-yedek", "g9_sync", args.clone())
+        .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
+        .file(Fx::Link("home/.codex/AGENTS.md.bak-routing".into(), "AGENTS.md.bak-routing".into())));
+    v.push(Case::new("esitle-kirik-yedek-agy", "g9_sync", args.clone())
+        .file(file("home/.gemini/GEMINI.md", "g\n", 0o600))
+        .file(Fx::Link("home/.gemini/GEMINI.md.bak-routing".into(), "../baska-yer.md".into())));
+    v.push(Case::new("esitle-bagli-yedek", "g9_sync", args.clone())
+        .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
+        .file(file("home/eski.md", "eski", 0o600))
+        .file(Fx::Link("home/.codex/AGENTS.md.bak-routing".into(), "../eski.md".into())));
     v.push(Case::new("esitle-salt-okunur", "g9_sync", args.clone())
         .file(file("home/.codex/AGENTS.md", "k\n", 0o600))
         .file(Fx::Dir("home/.gemini".into(), 0o500)));
