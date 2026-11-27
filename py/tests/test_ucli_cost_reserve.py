@@ -15,6 +15,9 @@ class ReserveTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.base = self._tmp.name
+        p = mock.patch("claudeops.settings.SETTINGS_JSON", os.path.join(self.base, "settings.json"))     # canlı dosya okunmasın
+        p.start()
+        self.addCleanup(p.stop)
         ucli_cost._RESERVED.clear()
         self.addCleanup(ucli_cost._RESERVED.clear)
 

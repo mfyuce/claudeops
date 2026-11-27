@@ -64,6 +64,8 @@ pub enum CostRefusal {
     CapExceeded { today_usd: f64, cap_usd: f64 },
     /// Tavan açık (ya da bilinemiyor) ama harcama güvenilir biçimde sayılamıyor.
     Unverifiable(String),
+    /// Tavanın kendisi okunamıyor: `settings.json` bozuk ya da değer geçersiz.
+    BadSettings(String),
 }
 
 impl fmt::Display for CostRefusal {
@@ -86,6 +88,11 @@ impl fmt::Display for CostRefusal {
                 f,
                 "claude: günlük USD tavanı denetlenemiyor ({why}); ucli_usage günlüklerini düzelt ya da Ayarlar'dan \
                  ucli_cost.daily_cap_usd'yi kapat"
+            ),
+            CostRefusal::BadSettings(why) => write!(
+                f,
+                "claude: günlük USD tavanı denetlenemiyor ({why}); settings.json'ı düzelt \
+                 (ucli_cost.daily_cap_usd: 0 = tavan yok ya da pozitif sayı)"
             ),
         }
     }

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import urllib.parse
 from typing import Any, Dict, Tuple, TYPE_CHECKING
 
@@ -879,6 +880,42 @@ def ucli_cost_config() -> Dict[str, Any]:
         v = str(raw.get(k) or "").strip()
         dates[k] = v if re.match(r"^\d{4}-\d{2}-\d{2}$", v) else ""
     return {"daily_cap_usd": cap, "cache_ttl": ttl if ttl in ("5m", "1h") else "1h", "credit_total_usd": credit, **dates}
+
+
+def _ucli_cap_problem() -> str:
+    """Günlük USD tavanı güvenle OKUNAMIYORSA nedeni, aksi "" (TBD#397 soru 1). `ucli_cost_config` bozuk belgeyi/değeri
+    "tavan yok" yapar; başlatma kapısı bunu izin saymasın diye dosyayı ayrıca okur. Dosyanın, bloğun ya da anahtarın
+    olmaması, boş değer ve 0 "tavan yok"tur."""
+    try:
+        fd = os.open(str(SETTINGS_JSON), os.O_RDONLY | os.O_NONBLOCK)      # FIFO açılışta bloklamasın
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise OSError("normal dosya değil")
+            with os.fdopen(fd, "rb", closefd=False) as f:
+                stored = json.loads(f.read().decode("utf-8"))
+        finally:
+            os.close(fd)
+    except FileNotFoundError:
+        return ""
+    except (OSError, ValueError, RecursionError):
+        return "settings.json okunamadı ya da bozuk"
+    if not isinstance(stored, dict):
+        return "settings.json okunamadı ya da bozuk"
+    block = stored.get("ucli_cost")
+    if block is None or block == "":
+        return ""
+    if not isinstance(block, dict):
+        return "ucli_cost ayarı geçersiz"
+    raw = block.get("daily_cap_usd")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return ""
+    if isinstance(raw, (int, float, str)) and not isinstance(raw, bool):
+        try:
+            if 0 <= float(str(raw).replace(",", ".")) < float("inf"):
+                return ""
+        except ValueError:
+            pass
+    return "ucli_cost.daily_cap_usd geçersiz"
 
 
 def ucli_script_mode() -> str:

@@ -60,7 +60,8 @@ class BuildTests(unittest.TestCase):
         self.addCleanup(ucli_client._HELP_CACHE.clear)
         self.binary = fake_ucli(self._tmp.name, HELP_EXEC)
         self.keys = {}
-        for p in (mock.patch.object(up, "resolve_binary", lambda: self.binary),
+        for p in (mock.patch("claudeops.settings.SETTINGS_JSON", os.path.join(self._tmp.name, "settings.json")),
+                  mock.patch.object(up, "resolve_binary", lambda: self.binary),
                   mock.patch.object(up, "_sync_api_key_file", lambda: False),
                   mock.patch.object(up, "ucli_limit_overrides", lambda: {}),
                   mock.patch.object(up, "diag_log", lambda *a, **k: None),

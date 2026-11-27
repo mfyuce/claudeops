@@ -25,6 +25,9 @@ class _Ledger(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.base = tmp.name
+        p = mock.patch("claudeops.settings.SETTINGS_JSON", os.path.join(tmp.name, "yok", "settings.json"))   # canlı dosya okunmasın
+        p.start()
+        self.addCleanup(p.stop)
         ucli_cost.invalidate()
         ucli_cost._RESERVED.clear()
         self.addCleanup(ucli_cost.invalidate)

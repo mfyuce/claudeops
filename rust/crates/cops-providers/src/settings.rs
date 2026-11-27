@@ -185,7 +185,13 @@ pub struct UcliCostConfig {
     /// `YYYY-MM-DD` ya da "".
     pub credit_since: String,
     pub credit_until: String,
+    /// `settings._ucli_cap_problem`: tavan güvenle okunamıyorsa nedeni (`daily_cap_usd` o zaman 0 görünür; başlatma
+    /// kapısı reddeder).
+    pub cap_problem: Option<&'static str>,
 }
+
+pub(crate) const BAD_COST_BLOCK: &str = "ucli_cost ayarı geçersiz";
+pub(crate) const BAD_CAP: &str = "ucli_cost.daily_cap_usd geçersiz";
 
 /// `float(str(v or "0").replace(",", "."))`; bozuk, pozitif olmayan, sonsuz ya da NaN = 0.
 fn cost_amount(v: Option<&Value>) -> f64 {
@@ -653,6 +659,26 @@ impl Settings {
         self.ucli_cost_config().cache_ttl
     }
 
+    /// `_ucli_cap_problem`in belge içi yarısı: blok/anahtar yok, boş ve 0 "tavan yok"; sözlük olmayan blok ya da
+    /// sayı olmayan, negatif, sonlu olmayan değer sorundur.
+    fn ucli_cap_problem(&self) -> Option<&'static str> {
+        let block = match self.get("ucli_cost") {
+            None | Some(Value::Null) => return None,
+            Some(Value::String(s)) if s.is_empty() => return None,
+            Some(Value::Object(block)) => block,
+            Some(_) => return Some(BAD_COST_BLOCK),
+        };
+        let valid = match block.get("daily_cap_usd") {
+            None | Some(Value::Null) => true,
+            Some(Value::String(s)) if strip(s).is_empty() => true,
+            Some(v @ (Value::Number(_) | Value::String(_))) => {
+                parse_float(&str_of(v).replace(',', ".")).is_some_and(|f| f >= 0.0 && f.is_finite())
+            }
+            Some(_) => false,
+        };
+        (!valid).then_some(BAD_CAP)
+    }
+
     /// `ucli_cost_config`: blok sözlük değilse hepsi varsayılan (tavan yok, `1h`, kredi yok, tarih yok). Asla hata vermez.
     pub fn ucli_cost_config(&self) -> UcliCostConfig {
         let empty = Map::new();
@@ -675,6 +701,7 @@ impl Settings {
             credit_total_usd: cost_amount(raw.get("credit_total_usd")),
             credit_since: date("credit_since"),
             credit_until: date("credit_until"),
+            cap_problem: self.ucli_cap_problem(),
         }
     }
 

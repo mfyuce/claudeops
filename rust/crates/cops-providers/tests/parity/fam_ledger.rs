@@ -6,7 +6,7 @@ use crate::fam_bg::Rng;
 use cops_providers::cost::{self, refusal, write_mult};
 use cops_providers::pyfmt::float_repr;
 use cops_providers::real::ledger::{self, file_cost_settings, CostLedger};
-use cops_providers::settings::UcliCostConfig;
+use cops_providers::settings::{Settings, UcliCostConfig};
 use serde_json::{json, Value};
 use std::fs;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -341,6 +341,64 @@ fn cases() -> Vec<Case> {
             v.push(c.settings_json(cap(json!({"daily_cap_usd": limit}))));
         }
     }
+    // bozuk ayar belgesi ve geçersiz / boş / sıfır tavan (TBD#397 soru 1)
+    let documents = [
+        "{bozuk",
+        "",
+        "[]",
+        "5",
+        "null",
+        "{}",
+        r#"{"ucli_cost": null}"#,
+        r#"{"ucli_cost": ""}"#,
+        r#"{"ucli_cost": "bozuk"}"#,
+        r#"{"ucli_cost": []}"#,
+        r#"{"ucli_cost": false}"#,
+        r#"{"ucli_cost": NaN}"#,
+    ];
+    let values = [
+        r#""abc""#,
+        r#""-5""#,
+        "-5",
+        r#""inf""#,
+        "Infinity",
+        "-Infinity",
+        "NaN",
+        "1e400",
+        "100000000000000000000000000000",
+        "true",
+        "false",
+        "[]",
+        "{}",
+        "[20]",
+        "0",
+        "-0.0",
+        r#""0,0""#,
+        r#"" 0 ""#,
+        r#""""#,
+        r#""  ""#,
+        "null",
+        r#"" 1_0 ""#,
+        r#""٣""#,
+    ];
+    let documents = documents.iter().map(|d| d.to_string()).chain(
+        values
+            .iter()
+            .map(|v| format!(r#"{{"ucli_cost": {{"daily_cap_usd": {v}}}}}"#)),
+    );
+    for (i, doc) in documents.enumerate() {
+        let mut c = case(
+            format!("tavan-ayari{i}"),
+            vec![
+                json!(["state", now, false]),
+                json!(["gate", "s", now]),
+                json!(["reserve", "t", now]),
+                json!(["held"]),
+            ],
+        );
+        c.files = vec![log("a.jsonl", rec(ms, 1).as_bytes(), 0o600)];
+        v.push(c.settings(doc));
+    }
     // yerel gün ve tarih
     let days = [
         "2026-11-22",
@@ -445,7 +503,9 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
             let op = s[0].as_str().unwrap();
             let num = |i: usize| s[i].as_f64().unwrap();
             let text = |i: usize| s[i].as_str().unwrap();
-            let mult = write_mult(&settings().unwrap());
+            // okunamayan belge: Python gibi varsayılan çarpan
+            let mult =
+                write_mult(&settings().unwrap_or_else(|_| Settings::default().ucli_cost_config()));
             let gated = |r: Result<(), cost::CostRefusal>| match r {
                 Ok(()) => json!(["ok", null]),
                 Err(x) => json!(["err", refusal(&x.to_string(), Some(&x))]),
@@ -509,6 +569,7 @@ fn rs_ledger(e: &Env, c: &Case) -> RsOut {
                         credit_total_usd: s[1]["credit_total_usd"].as_f64().unwrap(),
                         credit_since: field("credit_since"),
                         credit_until: field("credit_until"),
+                        cap_problem: None,
                     };
                     ok(Value::Object(cost::credit_window(
                         &cfg,

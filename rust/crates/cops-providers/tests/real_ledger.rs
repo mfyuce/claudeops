@@ -54,6 +54,7 @@ fn config(cap: f64, credit: f64) -> UcliCostConfig {
         credit_total_usd: credit,
         credit_since: String::new(),
         credit_until: String::new(),
+        cap_problem: None,
     }
 }
 
@@ -440,14 +441,64 @@ fn settings_are_read_on_every_call_and_an_unreadable_document_refuses() {
     for broken in ["{bozuk", ""] {
         t.write("state/settings.json", broken, 0o600);
         assert!(
-            matches!(b.check_and_reserve("s"), Err(CostRefusal::Unverifiable(_))),
+            matches!(b.check_and_reserve("s"), Err(CostRefusal::BadSettings(_))),
             "{broken:?}"
         );
         assert_eq!(b.state(noon(), false)["cap_usd"], json!(0.0));
+        assert!(b.reserved_sessions().iter().all(|n| n != "yeni"));
     }
     fs::remove_file(&path).unwrap();
     fs::create_dir(&path).unwrap();
     assert!(b.check_and_reserve("s").is_err());
+}
+
+#[test]
+fn a_broken_document_or_an_invalid_cap_refuses_but_absent_empty_and_zero_stay_open() {
+    let t = Tmp::new();
+    put(&t, "a.jsonl", &rec(noon(), 1_000_000));
+    let path = t.path("state/settings.json");
+    let b = CostLedger::new(t.path("usage"), file_cost_settings(path)).with_clock(Arc::new(noon));
+    let refused = |doc: &str, why: &str| {
+        t.write("state/settings.json", doc, 0o600);
+        let got = b.check_and_reserve("s");
+        assert_eq!(got, Err(CostRefusal::BadSettings(why.into())), "{doc}");
+        assert!(b.reserved_sessions().is_empty(), "{doc}");
+        assert!(refusal("x", got.as_ref().err()).get("code").is_none());
+    };
+    for doc in ["{bozuk", "", "[]", "5", "null"] {
+        refused(doc, "settings.json okunamadı ya da bozuk");
+    }
+    for v in [
+        r#""abc""#, r#""-5""#, "-5", r#""inf""#, "Infinity", "NaN", "1e400", "true", "false", "[]",
+        "{}", "[20]",
+    ] {
+        refused(
+            &format!(r#"{{"ucli_cost": {{"daily_cap_usd": {v}}}}}"#),
+            "ucli_cost.daily_cap_usd geçersiz",
+        );
+    }
+    for v in [r#""bozuk""#, "5", "[]", "false", "NaN"] {
+        refused(
+            &format!(r#"{{"ucli_cost": {v}}}"#),
+            "ucli_cost ayarı geçersiz",
+        );
+    }
+    let mut open = vec![
+        "{}".to_string(),
+        r#"{"ucli_cost": {}}"#.into(),
+        r#"{"ucli_cost": null}"#.into(),
+        r#"{"ucli_cost": ""}"#.into(),
+    ];
+    for v in [
+        "0", "0.0", "-0.0", r#""0""#, r#""0,0""#, r#"" 0 ""#, r#""""#, r#""  ""#, "null",
+    ] {
+        open.push(format!(r#"{{"ucli_cost": {{"daily_cap_usd": {v}}}}}"#));
+    }
+    for doc in open {
+        t.write("state/settings.json", &doc, 0o600);
+        assert_eq!(b.check_and_reserve("s"), Ok(()), "{doc}");
+        assert!(b.reserved_sessions().is_empty(), "{doc}");
+    }
 }
 
 /// Başka süreç (ucli yerine kabuk) satırları parça parça eklerken okuma: hata ve sahte "bozuk" yok, toplam geri gitmez.

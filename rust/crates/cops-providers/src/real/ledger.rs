@@ -7,7 +7,8 @@
 //! örnek olmalı.
 //!
 //! Para sınırı kapalı yöne düşer: tavan açıkken okunamayan dizin/dosya, normal olmayan dosya ya da geçersiz sayaç
-//! başlatmayı reddeder; ayar belgesi okunamıyorsa tavan bilinemediğinden yine reddedilir.
+//! başlatmayı reddeder; ayar belgesi okunamıyor/bozuksa ya da tavan değeri geçersizse tavan bilinemediğinden yine
+//! reddedilir.
 
 use crate::cost::{
     credit_window, py_round, write_mult, CostRefusal, UsageScan, BY_SESSION_TOP, RESERVE_TTL,
@@ -17,7 +18,7 @@ use crate::probe::Diag;
 use crate::pyfmt::parse_int;
 use crate::pyjson::Py;
 use crate::real::{docs::DOC_MAX_BYTES, fsio};
-use crate::settings::{Settings, UcliCostConfig};
+use crate::settings::{Settings, UcliCostConfig, BAD_CAP, BAD_COST_BLOCK};
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
@@ -43,8 +44,9 @@ pub fn system_clock() -> WallClock {
     })
 }
 
-/// `settings.json` dosyasından ayar: dosya yoksa varsayılan (tavan yok). Var ama okunamıyor ya da ayrıştırılamıyorsa
-/// `Err` (Python varsayılana düşer, yani tavanı kapatır). `db` kipi ve birleştirme için rs/state yükleyicisi bağlanır.
+/// `settings.json` dosyasından ayar: dosya yoksa varsayılan (tavan yok). Var ama okunamıyor, ayrıştırılamıyor ya da
+/// nesne değilse `Err`; geçersiz tavan [`UcliCostConfig::cap_problem`]de. İkisi de başlatmayı reddettirir (Python
+/// `_ucli_cap_problem`). `db` kipi ve birleştirme için rs/state yükleyicisi bağlanır.
 pub fn file_cost_settings(path: impl Into<String>) -> CostSettings {
     let path = path.into();
     Arc::new(move || {
@@ -56,9 +58,28 @@ pub fn file_cost_settings(path: impl Into<String>) -> CostSettings {
         }
         let parsed = fsio::read_bytes(&path, DOC_MAX_BYTES)
             .and_then(|b| Py::parse(std::str::from_utf8(&b).ok()?))
-            .ok_or_else(|| "settings.json okunamadı".to_string())?;
-        Ok(Settings::from_json(&parsed.to_value().to_string()).ucli_cost_config())
+            .filter(Py::is_object)
+            .ok_or_else(|| BAD_SETTINGS.to_string())?;
+        let mut cfg = Settings::from_json(&parsed.to_value().to_string()).ucli_cost_config();
+        cfg.cap_problem = cfg.cap_problem.or_else(|| non_finite_cap(&parsed));
+        Ok(cfg)
     })
+}
+
+const BAD_SETTINGS: &str = "settings.json okunamadı ya da bozuk";
+
+/// `serde_json` sonlu olmayan sayıyı `null` yapar ("tavan yok" gibi görünür): ham belgeden ayrıca bakılır.
+fn non_finite_cap(doc: &Py) -> Option<&'static str> {
+    let non_finite = |v: &Py| match v {
+        Py::Float(f) => !f.is_finite(),
+        Py::BigInt(s) => !s.parse::<f64>().is_ok_and(f64::is_finite),
+        _ => false,
+    };
+    let block = doc.get("ucli_cost")?;
+    if non_finite(block) {
+        return Some(BAD_COST_BLOCK);
+    }
+    non_finite(block.get("daily_cap_usd")?).then_some(BAD_CAP)
 }
 
 fn local_tm(now: f64) -> Option<libc::tm> {
@@ -468,7 +489,7 @@ impl CostLedger {
     }
 
     fn config(&self) -> Result<UcliCostConfig, CostRefusal> {
-        (self.settings)().map_err(CostRefusal::Unverifiable)
+        (self.settings)().map_err(CostRefusal::BadSettings)
     }
 
     /// (yuvarlanmış bugünkü harcama, tavan) — taze tarama.
@@ -497,6 +518,9 @@ impl CostLedger {
         held.retain(|(_, _, until)| *until > now);
         let cfg = self.config()?;
         let (usd, cap) = self.fresh_totals(&cfg, now);
+        if let Some(why) = cfg.cap_problem {
+            return Err(CostRefusal::BadSettings(why.to_string()));
+        }
         if cap <= 0.0 {
             held.retain(|(n, _, _)| n != session);
             return Ok(());

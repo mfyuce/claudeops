@@ -11,7 +11,7 @@ import time
 from typing import Any, Dict, Optional, Tuple
 
 from . import review as rv
-from .settings import ucli_cost_config
+from .settings import _ucli_cap_problem, ucli_cost_config
 
 USAGE_DIR = os.path.expanduser("~/.claude/claudeops/ucli_usage")
 _CACHE: Dict[str, Any] = {"at": 0.0, "usd": 0.0, "day": ""}
@@ -257,12 +257,17 @@ def _ledger_problem(now: float, base: str, write_mult: float) -> str:
 
 def reserve(session_name: str, now: Optional[float] = None, base: str = USAGE_DIR) -> None:
     """Başlatma için RESERVE_USD ayır; tavan (bugün + başkalarının payı + bu pay) aşılıyorsa DailyCapExceeded; tavan
-    açıkken günlükler okunamıyor/bozuksa ValueError. Tavan yoksa (0) rezervasyon tutulmaz. Aynı ad yeniden ayırırsa öncekinin yerine geçer."""
+    açıkken günlükler okunamıyor/bozuksa, ya da `settings.json`/tavan değeri bozuksa ValueError. Tavan yoksa (0) rezervasyon
+    tutulmaz. Aynı ad yeniden ayırırsa öncekinin yerine geçer."""
     t = time.time() if now is None else now
     with _RESERVE_LOCK:
         for k in [k for k, (_, exp) in _RESERVED.items() if exp <= t]:
             del _RESERVED[k]
         s = state(t, base, use_cache=False)
+        why = _ucli_cap_problem()
+        if why:      # bilinemeyen tavan "tavan yok" DEĞİLDİR: kapalı yön
+            raise ValueError(f"claude: günlük USD tavanı denetlenemiyor ({why}); settings.json'ı düzelt "
+                             "(ucli_cost.daily_cap_usd: 0 = tavan yok ya da pozitif sayı)")
         cap = float(s["cap_usd"])
         if cap <= 0:
             _RESERVED.pop(session_name, None)
