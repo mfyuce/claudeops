@@ -1,7 +1,7 @@
 //! `cops-rs`: claudeops CLI'ın Rust ikilisi (strangler, docs/rs-cli.md).
 //!
-//! Rust'ın işlediği komutlar: `front status|on|off` ([`front`]) ve `self` ([`selfcmd`]). Geri kalan her şey (bilinmeyen komut,
-//! `list`, `--version`, `-h`, Rust'ın taklit etmediği argüman biçimleri) [`delegate`] ile Python `py/cops`a AYNEN devredilir.
+//! Rust'ın işlediği komutlar: `front status|on|off` ([`front`]), `list`/`ls` ([`list`]) ve `self` ([`selfcmd`]). Geri kalan her
+//! şey (bilinmeyen komut, `--version`, `-h`, Rust'ın taklit etmediği argüman biçimleri ve şüpheli tarama) [`delegate`] ile Python `py/cops`a AYNEN devredilir.
 
 // Ders H5: üretim yolunda panik yok (testler hariç).
 #![cfg_attr(
@@ -23,6 +23,8 @@ use std::ffi::OsString;
 pub enum Route {
     /// `front ...`
     Front(argp::FrontArgs),
+    /// `list ...` / `ls ...` (taramaya göre yine devredilebilir)
+    List(argp::ListArgs),
     /// `self`
     SelfCmd,
     /// Python'a (neden tanı içindir)
@@ -35,6 +37,10 @@ pub fn route(args: &[OsString]) -> Route {
         Some("front") => match argp::parse_front(&args[1..]) {
             argp::Parsed::Front(f) => Route::Front(f),
             argp::Parsed::Delegate(why) => Route::Delegate(why),
+        },
+        Some("list" | "ls") => match argp::parse_list(&args[1..]) {
+            Ok(a) => Route::List(a),
+            Err(why) => Route::Delegate(why),
         },
         // bash `cmd_self` yalnız $1'e bakar: fazladan argüman yok sayılır.
         Some("self") => Route::SelfCmd,
@@ -54,10 +60,13 @@ mod tests {
     fn routing() {
         assert!(matches!(r(&["front", "status"]), Route::Front(_)));
         assert_eq!(r(&["self", "x"]), Route::SelfCmd);
+        assert!(matches!(r(&["list"]), Route::List(_)));
+        assert!(matches!(r(&["ls", "--json"]), Route::List(a) if a.json));
         for v in [
             &[][..],
-            &["list"],
-            &["ls", "--json"],
+            &["list", "-h"],
+            &["ls", "x"],
+            &["List"],
             &["--version"],
             &["-h"],
             &["front"],

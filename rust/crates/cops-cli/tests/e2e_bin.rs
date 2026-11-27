@@ -89,7 +89,7 @@ fn python_not_found_is_loud_with_its_own_exit_code() {
     let out = sb
         .cmd(&bin())
         .env_remove("COPS_PY")
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
@@ -147,23 +147,21 @@ fn self_symlink_and_exec_loop_are_refused() {
     let out = sb
         .cmd(&bin())
         .env("COPS_PY", &link)
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
     assert!(String::from_utf8_lossy(&out.stderr).contains("özyineleme"));
     // dolaylı döngü: başlatıcı yine cops-rs'yi çağırır; derinlik sınırı keser
     let wrap = sb.t.path().join("wrap.sh");
-    std::fs::write(
+    write_exe(
         &wrap,
-        format!("#!/bin/sh\nexec {} \"$@\"\n", bin().display()),
-    )
-    .unwrap();
-    std::fs::set_permissions(&wrap, std::fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\nexec {} \"$@\"\n", bin().display()),
+    );
     let out = sb
         .cmd(&bin())
         .env("COPS_PY", &wrap)
-        .arg("list")
+        .arg("--version")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(125));
@@ -178,12 +176,10 @@ fn self_symlink_and_exec_loop_are_refused() {
 fn exit_code_and_signal_pass_through() {
     let sb = Sandbox::new();
     let s = sb.t.path().join("py.sh");
-    std::fs::write(
+    write_exe(
         &s,
         "#!/bin/sh\n[ \"$1\" = kill ] && kill -TERM $$\nprintf '%s|' \"$@\"\nexit 7\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&s, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     use std::os::unix::ffi::OsStrExt;
     let out = sb
         .cmd(&bin())
@@ -214,8 +210,7 @@ fn leaked_depth_from_other_lineage_is_ignored() {
     // gelen (burada test süreci, cops-rs'nin atası) sayılır.
     let sb = Sandbox::new();
     let s = sb.t.path().join("py.sh");
-    std::fs::write(&s, "#!/bin/sh\nexit 7\n").unwrap();
-    std::fs::set_permissions(&s, std::fs::Permissions::from_mode(0o755)).unwrap();
+    write_exe(&s, "#!/bin/sh\nexit 7\n");
     let mut other = std::process::Command::new("sleep")
         .arg("5")
         .spawn()
@@ -224,7 +219,7 @@ fn leaked_depth_from_other_lineage_is_ignored() {
         sb.cmd(&bin())
             .env("COPS_PY", &s)
             .env("COPS_RS_DEPTH", v)
-            .arg("list")
+            .arg("--version")
             .output()
             .unwrap()
     };

@@ -571,6 +571,27 @@ class DiagSkippedTest(unittest.TestCase):
         with mock.patch.object(web, "find_sessions", return_value=[]):
             self.assertEqual(web._diag_status([])["skipped"], {})
 
+    def test_diag_survives_counter_growing_while_read(self):
+        """Kapı 2. tur D1: arka plan iplikleri sayacı artırırken `items()` dolaşılırsa "dictionary changed size during
+        iteration" fırlar ve `skipped` sessizce boş dönerdi; sayaç kopyalanıp okunmalı."""
+        from collections import Counter
+
+        from claudeops.commands import web
+
+        class Growing(Counter):
+            def items(self):                        # dolaşım sırasında başka iplik yeni anahtar eklemiş gibi
+                for k, v in super().items():
+                    self["usage_line_too_long"] += 1
+                    yield k, v
+
+        for mod in (discovery, needs_ho):
+            _reset(mod)
+            self.addCleanup(_reset, mod)
+        with mock.patch.object(su, "_skipped", Growing(usage_row=4)), \
+                mock.patch.object(web, "find_sessions", return_value=[]):
+            got = web._diag_status([])["skipped"]
+        self.assertEqual(got, {"usage_row": 4})
+
 
 if __name__ == "__main__":
     unittest.main()
