@@ -706,6 +706,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 .ok_or_else(|| SpawnError(format!("bilinmeyen hizmet: {service}")))?;
             let key = self.p.settings.byok_value("ucli", &svc.env);
             if key.is_empty() {
+                // Anahtar ayardan kaldırılmış: eski açılışın yazdığı dosya diskte kalmasın (sahip, TBD#451 (a)); kuru
+                // koşuda hiçbir şey yapılmaz, silme hatası yutulur (Python `os.remove` + `except OSError`).
+                let path = self.p.service_key_file(&service);
+                let _ = self.out.apply_now(probe, Effect::Remove { path });
                 return Err(SpawnError(format!(
                     "{service}: anahtar yok (Model anahtarları panelinden gir: {})",
                     svc.env

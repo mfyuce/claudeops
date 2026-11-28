@@ -813,7 +813,25 @@ fn opts_cases(e: &Env) -> Vec<Case> {
         v.push(make("varsayilan", byok.clone()).default_instance());
         v.push(make("ikinci", byok.clone()));
         v.push(make("ikinci-anahtarsiz", json!({})));
+        // TBD#451 (a): anahtar ayardan kaldırılınca bu örneğin yazdığı dosya silinir (ikinci örnek ortak dosyaya dokunmaz)
+        v.push(make("varsayilan-anahtarsiz", json!({})).default_instance());
+        v.push(make("ikinci-anahtarsiz-kendi", json!({})).file(file(
+            &format!("state/ucli_key_{service}"),
+            "deneme",
+            0o600,
+        )));
     }
+    // TBD#451 (a): bağlantının kendisi silinir, hedefi kalır
+    v.push(
+        opts(e, "hizmet-anahtarsiz-symlink", json!({"service": "grok"}))
+            .settings_json(json!({}))
+            .file(file("home/hedef", "h", 0o600))
+            .file(Fx::Link(
+                "home/.claude/claudeops/ucli_key_grok".into(),
+                "../../hedef".into(),
+            ))
+            .default_instance(),
+    );
     // Dizin açılamayınca komut değişir (`Probe::apply_now`): bayrak düşer ve/veya günlüğe yazılır.
     v.push(ucase(e, "dizin-metrics-dosya", json!({})).file(file("state/ucli_metrics", "x", 0o600)));
     let usage = "home/.claude/claudeops/ucli_usage";

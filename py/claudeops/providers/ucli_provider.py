@@ -773,6 +773,13 @@ def _apply_cli_opts(argv: List[str], opts: Dict[str, Any], session_name: str = "
         wire, ep, env_name = _services()[service]
         key = byok_env_for("ucli").get(env_name, "").strip()
         if not key:
+            # Anahtar ayardan kaldırılmış: eski açılışın yazdığı dosya diskte kalmasın (sahip, TBD#451 (a)). Yalnız bu
+            # tanımlı hizmetin bu örneğin yazdığı dosyası; bağlantının kendisi silinir, hata yutulur.
+            if not preview.active():
+                try:
+                    os.remove(_service_key_file(service))
+                except OSError:
+                    pass
             raise ValueError(f"{service}: anahtar yok (Model anahtarları panelinden gir: {env_name})")
         if wire and not binary_supports_flag(binary, "--provider"):
             raise ValueError("ucli ikilisi --provider bayrağını tanımıyor")

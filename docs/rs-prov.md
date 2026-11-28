@@ -1199,10 +1199,11 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   bilinmiyorsa ya da konuşmayı başka canlı oturum tutuyorsa süreç öldürülmez, dönüş `skipped: <neden>` (CLI hata sayar).
   `find_stuck`/`recover_stuck`ın Rust karşılığı yok (T4 akışı); taşınan yalnız açılıştaki `resume_id`.
 - Öteki sağlayıcılar bu turda değişmemişti; codex, agy ve copilot sonradan aynı kurala bağlandı ("TBD#425").
+- **Kaldırılan hizmet anahtarı (TBD#451 (a), sahip 28 Kas).** Hizmet seçili ama anahtarı ayarda yoksa açılış reddedilirken bu örneğin yazdığı `ucli_key_<hizmet>` dosyası silinir (Python `os.remove` + `except OSError`, Rust `apply_now(Effect::Remove)`); kuru koşuda silinmez, bağlantının kendisi silinir, ikinci örnek ortak dosyaya dokunmaz (parite `ornek-hizmet-*-anahtarsiz*`, `hizmet-anahtarsiz-symlink`).
 - **Hizmet anahtarı (S6 (b), `0dfe682a`).** İkinci örnekte `ucli_key_<hizmet>` `<CLAUDEOPS_DIR>` altına yazılır ve oradan
   okunur (`_service_key_file`, `Paths::service_key_file`); ortak dosyaya yazma ve silme yok. Ayarda anahtar yoksa ret
   aynı (ortak dosyaya düşülmez). Evren (`ucli_api_key`) ve copilot dosyası `d0054ada` kuralında kaldı (salt okunur).
-  Varsayılan örnek değişmedi. Kaldırılan anahtarın hizmet dosyası iki kipte de silinmez (eskisi gibi).
+  Varsayılan örnek değişmedi. Kaldırılan anahtarın hizmet dosyası 28 Kas'tan beri silinir (üstteki TBD#451 maddesi).
 - **Uzun harcama satırı (`54ed8a8e`).** Satır sonu hariç 16 MiB'tan uzun satır toplama girmez; açık günlük tavan `çok
   uzun satır` ile kapanır, `review_bad_record` `usage.length`, inceleme bütçe kapısı `_UNCOUNTABLE_SPENT_USD` görür.
   Zaman penceresi bilinemediğinden bütün pencereler güvenilmez. Kural `cops-review-core` `usage.rs`
@@ -3005,6 +3006,10 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `InteractiveArgsTest.test_unsupported_skips_and_logs` (py/tests/test_ucli_interactive_flag.py:16) | `parity.rs::parity_ucli` `eksik` `temel-` | TAŞINDI |
 | `UcliKeyPathTest.test_default_and_service` (py/tests/test_ucli_key_path.py:15) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
 | `UcliKeyPathTest.test_callers_share_helper` (py/tests/test_ucli_key_path.py:20) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `RemovedServiceKeyTest.test_stale_key_file_is_removed` (py/tests/test_ucli_key_path.py:45) | `parity.rs::parity_ucli` `ornek-hizmet-varsayilan-anahtarsiz-` | TAŞINDI |
+| `RemovedServiceKeyTest.test_symlink_itself_is_removed_target_kept` (py/tests/test_ucli_key_path.py:51) | `parity.rs::parity_ucli` `hizmet-anahtarsiz-symlink` | TAŞINDI |
+| `RemovedServiceKeyTest.test_missing_file_still_refuses` (py/tests/test_ucli_key_path.py:60) | `parity.rs::parity_ucli` `hizmet-grok-anahtarsiz` | TAŞINDI |
+| `RemovedServiceKeyTest.test_dry_run_keeps_the_file` (py/tests/test_ucli_key_path.py:63) | `parity.rs::parity_ucli` `ornek-hizmet-ikinci-anahtarsiz-` | TAŞINDI |
 | `LastExchangePairingTest.test_pending_user_turn_has_empty_assistant` (py/tests/test_ucli_last_exchange_pairing.py:17) | `parity.rs::parity_chat` `ucli-bekleyen` | TAŞINDI |
 | `LastExchangePairingTest.test_answered_turn_pairs_normally` (py/tests/test_ucli_last_exchange_pairing.py:22) | `parity.rs::parity_chat` `ucli-cevapli` | TAŞINDI |
 | `LastExchangePairingTest.test_assistant_only_and_empty` (py/tests/test_ucli_last_exchange_pairing.py:26) | `parity.rs::parity_chat` `ucli-yalniz-asistan` `ucli-satir-bos` `ucli-sid-yok` | TAŞINDI |
@@ -3767,7 +3772,7 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `SpawnResumeIdTest.test_given_conversation_is_resumed_without_guessing` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 | `SpawnResumeIdTest.test_force_new_wins` (py/tests/test_rsprov_stuck_own_conversation.py) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 | `SharedStateTest.test_service_key_of_a_second_instance_lives_in_its_own_dir` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
-| `SharedStateTest.test_second_instance_without_a_service_key_refuses_and_removes_nothing` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
+| `SharedStateTest.test_second_instance_without_a_service_key_refuses_and_removes_only_its_own_key` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
 | `SharedStateTest.test_preview_writes_no_service_key_but_names_the_own_path` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
 | `SharedStateTest.test_own_key_link_into_the_shared_dir_is_not_followed` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |
 | `SharedStateTest.test_default_instance_writes_the_shared_service_key` (py/tests/test_shared_state_readonly.py) | `parity.rs::parity_ucli` `ornek-hizmet-` `hizmet-anahtar-dosyasi-symlink` | TAŞINDI |

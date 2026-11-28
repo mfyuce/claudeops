@@ -111,7 +111,7 @@ class SharedStateTest(unittest.TestCase):
             self.assertEqual((_read(own), os.stat(own).st_mode & 0o777), ("trial", 0o600))
             self.assertEqual((_read(shared), os.stat(shared).st_mtime_ns), ("live", before))
 
-    def test_second_instance_without_a_service_key_refuses_and_removes_nothing(self):
+    def test_second_instance_without_a_service_key_refuses_and_removes_only_its_own_key(self):
         shared = os.path.join(self.shared, "ucli_key_grok")
         own = os.path.join(self.own, "ucli_key_grok")
         _put(shared, "live")
@@ -119,7 +119,8 @@ class SharedStateTest(unittest.TestCase):
         _put(own, "eski")
         with self.assertRaises(ValueError):          # ortak anahtara düşülmez
             self._service("grok", "XAI_API_KEY", "")
-        self.assertEqual((_read(shared), _read(own)), ("live", "eski"))
+        # TBD#451 (a): kaldırılan anahtarın bu örnekteki dosyası silinir; ortak dosyaya ve işaretine dokunulmaz
+        self.assertEqual((_read(shared), os.path.lexists(own)), ("live", False))
         self.assertTrue(os.path.exists(shared + ".managed"))
 
     def test_preview_writes_no_service_key_but_names_the_own_path(self):
