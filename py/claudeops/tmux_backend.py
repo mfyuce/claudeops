@@ -20,6 +20,8 @@ import unicodedata
 from pathlib import Path
 from typing import List, Optional
 
+from .paths import trusted_path_env
+
 TMUX_SOCKET = "cops"
 _TIMEOUT = 5.0
 _ANCESTOR_WALK_LIMIT = 6
@@ -95,6 +97,13 @@ def _tmux_arg(arg: str) -> str:
     return arg[:-1] + "\\;" if arg.endswith(";") else arg
 
 
+def _client_path(path: Optional[str]) -> str:
+    """Oturumu açan tmux İSTEMCİSİNE verilecek PATH (P2-2 parça 2, TBD#450): bağlı olmayan istemcinin açtığı oturumda tmux
+    pane PATH'ini istemci sürecinin PATH'inden alır (`new-session -e PATH=` bunu EZEMEZ, tmux 3.2a'da ölçüldü), yoksa
+    sunucunun genel ortamından. Süzülmüş (`paths.trusted_path_env`) değer döner; güvenilir girdi yoksa "" (dokunulmaz)."""
+    return trusted_path_env(path or "")
+
+
 def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     """Bash-fragment (NOT executed here) spawn.py splices into its gnome-terminal
     command: `tmux -L cops -f <conf> new-session -A -s NAME -c CWD -x 100 -y 30 INNER`.
@@ -107,7 +116,9 @@ def tmux_new_session_shell_fragment(name: str, cwd: str, inner: str) -> str:
     """
     if not _addressable(name):
         raise ValueError("tmux hedefi olamayan oturum adı")
+    path = _client_path(os.environ.get("PATH"))
     return (
+        f"{'PATH=' + shlex.quote(path) + ' ' if path else ''}"
         f"{shlex.join(_base_argv())} -f {shlex.quote(tmux_conf_path())} "
         f"new-session -A -s {shlex.quote(_tmux_arg(name))} -c {shlex.quote(_tmux_arg(_tmux_format_literal(cwd)))} "
         f"-x 100 -y 30 {shlex.quote(_tmux_arg(inner))}"
@@ -142,6 +153,9 @@ def tmux_spawn_direct(name: str, cwd: str, inner: str, env: dict) -> bool:
         "-s", _tmux_arg(name), "-c", _tmux_arg(_tmux_format_literal(cwd)), "-x", "100", "-y", "30",
         f"{inner}; exec bash",
     ]
+    path = _client_path(env.get("PATH") if "PATH" in env else os.environ.get("PATH"))
+    if path:
+        env = dict(env, PATH=path)
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=_TIMEOUT, env=env)
         return r.returncode == 0
