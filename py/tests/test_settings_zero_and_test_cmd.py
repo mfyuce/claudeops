@@ -49,5 +49,19 @@ class TestCmdBaseTest(unittest.TestCase):
         self.assertIn("taban okunamadı: yok", out.getvalue())
 
 
+class TestCmdDistNoteTest(unittest.TestCase):
+    def test_dist_files_not_counted_as_unselected(self):
+        """`dist` dosyaları `test_webui_dist*` seçtirir; "python dışı, seçime girmedi" notunda sayılmaz."""
+        py_root = os.path.abspath(os.path.join(os.path.dirname(test_cmd.__file__), "..", ".."))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = test_cmd.run(Namespace(files=[os.path.join(py_root, "webui", "dist", "index.html"),
+                                               os.path.join(py_root, "..", "README.md")],
+                                        base="", deep=False, list=True))
+        self.assertEqual(rc, 0)
+        self.assertIn("test_webui_dist_renders", out.getvalue())
+        self.assertIn("python dışı 1 dosya", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

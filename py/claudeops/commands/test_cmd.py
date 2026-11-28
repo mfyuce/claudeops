@@ -52,7 +52,8 @@ def run(args) -> int:
         print(f"HATA: {e}")
         return 2
     sel = rt.related_tests(files, str(py_root), deep=args.deep)
-    others = [f for f in files if not f.endswith(".py")]
+    dist = str(py_root / "webui" / "dist") + os.sep     # dist dosyaları seçime girer (`related_tests`)
+    others = [f for f in files if not f.endswith(".py") and not f.startswith(dist)]
     if not sel:
         print("ilgili test yok" + (f" (python dışı değişiklik: {len(others)} dosya; panel için tsc/dist_check)" if others else ""))
         return 0
