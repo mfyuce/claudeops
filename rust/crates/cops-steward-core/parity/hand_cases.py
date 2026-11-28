@@ -1379,6 +1379,38 @@ for _ in range(300):
     else:
         add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, [], None, c["open_work"]), {"open_work": {"a": 2}})
 
+# L2 bayat izleme (28 Kas, hc): manual_hold_step; ayrı üreteç
+rmh = random.Random(4428)
+MH = sw.MANUAL_HOLD_ASK_SECONDS
+for i in range(600):
+    owned = {p: rmh.choice(["", p, p + "20261120", "zz"]) for p in ("hc", "x") if rmh.random() < 0.85}
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned=owned)
+    pool = ["hc", "hc20261123", "hc20261124", "x", "x20261101", "hcr", "degnekci", "zz"]
+    views = [V(n, rmh.random() < 0.85, blueprint=rmh.choice([None, None, "hc", "x", ""])) for n in rmh.sample(pool, rmh.randint(0, 4))]
+    projects = {p: P(p, phase=rmh.choice(["planned", "planned", "planning", "paused", "done"])) for p in ("hc", "x") if rmh.random() < 0.9}
+    hold = {}
+    for p in ("hc", "x", "eski"):
+        if rmh.random() < 0.5:
+            hold[p] = rmh.choice([{"since": NOW - rmh.choice([0, MH - 1, MH, 3 * MH]), "session": rmh.choice(pool), "asked": rmh.choice([False, True, 1, 0, None])},
+                                  {"since": NOW - MH, "session": rmh.choice(pool)}, {"session": rmh.choice(pool)}, "bozuk", [1],
+                                  {"since": rmh.choice(["x", "12", None, 0, [1]]), "session": rmh.choice(pool)}])
+    questions = []
+    for j in range(rmh.randint(0, 3)):
+        st = rmh.choice(["answered", "answered", "open"])
+        questions.append(Q(f"q{j}", rmh.choice(["hc", "x", "yok"]), "soru", status=st, answer=rmh.choice(["evet", "Evet, izlensin", "hayır", "hayır beklesin", "aç", "belki", ""]) if st == "answered" else "",
+                           delivered_at=rmh.choice([0.0, 0.0, NOW - 5]), source=rmh.choice([sw.OWNED_ADOPT_SOURCE, sw.OWNED_ADOPT_SOURCE, "hc", "brain"])))
+    add("manual_hold_step", {"hold": hold, "views": views, "world": w, "projects": projects, "questions": questions, "now": NOW, "lang": rmh.choice(["tr", "en"])})
+for i in range(300):     # yönlendirilmiş: hc kayıtlı, elle açılan tek oturum çalışıyor
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned={"hc": "hc", "x": "x"})
+    views = [V("hc20261123", True, blueprint=rmh.choice(["hc", None]))] + ([V("hc", rmh.random() < 0.5)] if rmh.random() < 0.2 else [])
+    projects = {"hc": P("hc", phase=rmh.choice(["planned", "planned", "planned", "paused"])), "x": P("x")}
+    hold = {"hc": rmh.choice([{"since": NOW - rmh.choice([10, MH - 1, MH, 5 * MH]), "session": "hc20261123", "asked": rmh.choice([False, True])},
+                              {"since": rmh.choice(["x", "12", [1], None, 0, NOW - MH]), "session": "hc20261123"},
+                              {"since": NOW - MH, "session": "baska"}])} if rmh.random() < 0.85 else {}
+    questions = [Q("q1", "hc", "soru", status="answered", answer=rmh.choice(["evet", "hayır", "evet ama sonra", "aç", "2) beklesin", "izle"]),
+                   source=sw.OWNED_ADOPT_SOURCE)] if rmh.random() < 0.5 else []
+    add("manual_hold_step", {"hold": hold, "views": views, "world": w, "projects": projects, "questions": questions, "now": NOW, "lang": rmh.choice(["tr", "en"])})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

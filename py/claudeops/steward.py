@@ -3451,6 +3451,62 @@ def update_owned(owned: Dict[str, str], views: List["SessionView"], world: "Worl
     return out, changes
 
 
+OWNED_ADOPT_SOURCE = "owned_adopt"          # "elle açılan oturumu izleyeyim mi?" sorusunun `source`u (cevabı oturuma iletilmez)
+MANUAL_HOLD_ASK_SECONDS = 6 * 3600          # izlenen ad kapalı + sahibin elle açtığı TEK oturum bu kadar sürünce sahibe sorulur
+
+
+def manual_hold_step(hold: Dict[str, Any], views: List["SessionView"], world: "World", projects: Dict[str, "Project"],
+                     questions: List["Question"], now: float, lang: str = "tr") -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """L2 bayat izleme kaydı (28 Kas, hc 24->28 Kas 4 gün tur yok): projenin kayıtlı (`world.owned`) oturumu çalışmıyor, sahibin elle
+    açtığı TEK oturum (`manual`) çalışıyor ve proje done/paused değilse süre tutulur; `MANUAL_HOLD_ASK_SECONDS` dolunca sahibe BİR KEZ
+    "X'i izleyeyim mi?" sorulur (sessiz benimseme YOK). Cevap: açık olumlu (`is_open_answer`, olumsuz değil) ve oturum hâlâ o tek elle
+    açılan oturumsa benimse; değilse cevap kapanır, kayıt değişmez, aynı oturum için yeniden sorulmaz. SAF.
+    Dönüş: (yeni `hold`, sorulacaklar [{project, session, text}], çözülenler [{question_id, project, session, adopt}])."""
+    out: Dict[str, Any] = {k: dict(v) for k, v in (hold or {}).items() if isinstance(v, dict)}
+    asks: List[Dict[str, Any]] = []
+    resolved: List[Dict[str, Any]] = []
+    manual: Dict[str, List[str]] = {}
+    running = {v.name for v in views if v.running}
+    for v in views:
+        if v.running and world.session_class(v.name, v.blueprint) == "manual":
+            key = world.owned_key(v.name, v.blueprint)
+            if key:
+                manual.setdefault(key, []).append(v.name)
+    for q in questions:
+        if q.status != "answered" or q.delivered_at or q.source != OWNED_ADOPT_SOURCE:
+            continue
+        sess = str((out.get(q.project) or {}).get("session") or "")
+        adopt = (bool(sess) and manual.get(q.project) == [sess] and is_open_answer(q.answer) and not is_negative_answer(q.answer))
+        resolved.append({"question_id": q.id, "project": q.project, "session": sess, "adopt": adopt})
+        if adopt:
+            out.pop(q.project, None)
+    adopted = {r["project"] for r in resolved if r["adopt"]}
+    keep: Set[str] = set()
+    for proj, names in sorted(manual.items()):
+        p = projects.get(proj)
+        reg = world.owned.get(proj) or ""
+        if proj in adopted or p is None or p.phase in ("done", "paused") or len(names) != 1 or not reg or reg in running:
+            continue
+        keep.add(proj)
+        r = out.get(proj) or {}
+        if r.get("session") != names[0]:
+            r = {"since": now, "session": names[0]}
+        if not r.get("asked") and now - float(r.get("since") or now) >= MANUAL_HOLD_ASK_SECONDS:
+            hours = MANUAL_HOLD_ASK_SECONDS // 3600     # sabit: metin değişmesin, açık soru tekrarlanırsa birleşsin
+            text = (f"{proj}: the registered session '{reg}' has not run for {hours}+ h while your own session '{names[0]}' works on the "
+                    f"project, so the steward gives it no tours. Should the steward track '{names[0]}' (yes) or keep waiting (no)?"
+                    if lang == "en" else
+                    f"{proj}: kayıtlı oturum '{reg}' {hours}+ saattir çalışmıyor, projede sizin açtığınız '{names[0]}' çalışıyor; değnekçi "
+                    f"bu yüzden projeye tur vermiyor. '{names[0]}' izlensin mi (evet), yoksa beklensin mi (hayır)?")
+            asks.append({"project": proj, "session": names[0], "text": text})
+            r["asked"] = True
+        out[proj] = r
+    for proj in list(out):
+        if proj not in keep:
+            out.pop(proj, None)
+    return out, asks, resolved
+
+
 def select_rows(rows: List[Dict[str, Any]], world: World, fresh_hosts: Any = ()) -> List[Dict[str, Any]]:
     """`/api/status` satırlarından değnekçinin göreceği oturumlar. SAF. Yerel satır (`host` yok/`local`) dahil; istisna:
     adı (ya da instance blueprint'i) UZAK host'lu bir projeye çözülüyorsa düşer (o proje orada yaşar, buradaki aynı adlı

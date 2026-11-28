@@ -82,6 +82,23 @@ parity!("update_owned", update_owned_vectors, |c| {
     )
 });
 
+parity!("manual_hold_step", manual_hold_step_vectors, |c| {
+    let got = manual_hold_step(
+        &c.opt::<Map<String, Value>>("hold").unwrap_or_default(),
+        &c.arg::<Vec<SessionView>>("views"),
+        &c.arg("world"),
+        &c.arg::<Projects>("projects"),
+        &c.arg::<Vec<cops_steward_core::types::Question>>("questions"),
+        c.arg("now"),
+        &c.str("lang"),
+    );
+    match got {
+        Ok(r) => json!(r),
+        Err(e) if c.ret.get("__error__").is_none() => panic!("hata: {e}"),
+        Err(_) => c.ret.clone(),
+    }
+});
+
 parity!("select_rows", select_rows_vectors, |c| select_rows(
     &c.arg::<Vec<Doc>>("rows"),
     &c.arg("world"),
