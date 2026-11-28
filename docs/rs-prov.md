@@ -2114,6 +2114,8 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `_RECORD_TYPES` (py/claudeops/bg_work.py:22) | `bg_work.rs::{RECORD_TYPES, transcript_pending}` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `_SESSION_RECORD_MAX_BYTES` (py/claudeops/bg_work.py:27) | `claude_resume.rs::{SESSION_FILE_MAX_BYTES, Live::session_file}` | `parity.rs::parity_live` `kayit-govde-`; `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
 | `session_record_status` (py/claudeops/bg_work.py:181) | `live.rs::Live::session_record_status`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
+| `_live_records` (py/claudeops/bg_work.py, 28 Kas) | `live.rs::Live::{session_record_status, session_record_shell_since}` (aynı canlı kayıt süzgeci: `session_file` + `proc_start`) | `parity.rs::parity_live` `kayit-` `kabuk-olu-yeni` | TAŞINDI |
+| `SHELL_ONLY_DIRECTIVE_SECONDS`, `session_record_shell_since`, `shell_only_stale` (py/claudeops/bg_work.py, main `220007a9` TBD#442 a; 28 Kas rs-prov `fix:` FIFO + ölü süreç) | `bg_work.rs::SHELL_ONLY_DIRECTIVE_SECONDS`, `live.rs::Live::{session_record_shell_since, shell_only_stale}`, `live.rs::py_float_of` | `parity.rs::parity_live` `kabuk-` (eşik, `float()` köşeleri, ölü/iki canlı kayıt) | TAŞINDI |
 
 ## TEST EŞLEME TABLOSU
 
@@ -3587,6 +3589,8 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `InstancesLockRefusalIsLogged.test_symlinked_lock_file` (py/tests/test_rsprov_instances_lock_log.py) | rs/state `FileLock` (`instances` deposu o izde; kilit reddi günlüğü orada eklenecek, TODO) | KAPSAM DIŞI |
 | `InstancesLockRefusalIsLogged.test_lock_held_elsewhere` (py/tests/test_rsprov_instances_lock_log.py) | rs/state `FileLock` (`instances` deposu o izde; kilit reddi günlüğü orada eklenecek, TODO) | KAPSAM DIŞI |
 | `InstancesLockRefusalIsLogged.test_success_logs_nothing` (py/tests/test_rsprov_instances_lock_log.py) | rs/state `FileLock` (`instances` deposu o izde; kilit reddi günlüğü orada eklenecek, TODO) | KAPSAM DIŞI |
+| `ShellSinceReadsLiveRecordsOnly.test_fifo_named_json_does_not_block` (py/tests/test_rsprov_shell_since_records.py) | `live.rs::Live::session_file` (yalnız normal dosya: `tests/real_bg_record.rs`) | TAŞINDI |
+| `ShellSinceReadsLiveRecordsOnly.test_dead_process_record_does_not_reset_the_age` (py/tests/test_rsprov_shell_since_records.py) | `parity.rs::parity_live` `kabuk-olu-yeni` | TAŞINDI |
 | `EveryHelperKillsItsOwnGroup.test_oneshot` (py/tests/test_rsprov_child_group.py:76) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
 | `EveryHelperKillsItsOwnGroup.test_ucli_chat_once` (py/tests/test_rsprov_child_group.py:87) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |
 | `EveryHelperKillsItsOwnGroup.test_resume` (py/tests/test_rsprov_child_group.py:94) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits`; `tests/real_oneshot.rs::timeouts_kill_the_whole_group_and_return_promptly`; `tests/real_searxng.rs::a_hanging_docker_is_killed_marked_down_and_not_asked_again` | TAŞINDI |

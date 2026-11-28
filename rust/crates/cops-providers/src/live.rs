@@ -3,11 +3,11 @@
 //!
 //! `None` her yerde "bilinmiyor" demektir; 0, `false` ya da boş listeyle karıştırılmaz.
 
-use crate::bg_work::{self, Clock, TRANSCRIPT_TAIL_BYTES};
+use crate::bg_work::{self, Clock, SHELL_ONLY_DIRECTIVE_SECONDS, TRANSCRIPT_TAIL_BYTES};
 use crate::claude_resume::py_int;
 use crate::probe::{Paths, Probe};
 use crate::provider::Cli;
-use crate::pyfmt::{parse_int, splitlines};
+use crate::pyfmt::{parse_float, parse_int, splitlines};
 use crate::pyjson::Py;
 use crate::settings::Settings;
 use crate::ucli_status::{FailedTurns, LivePhase, LiveUsage};
@@ -237,6 +237,53 @@ impl Live<'_> {
             .or_else(|| found.contains("idle").then(|| "idle".to_string()))
     }
 
+    /// `bg_work.session_record_shell_since` (TBD#442 a): bu konuşmanın canlı kayıtlarının birleşik durumu `shell` ise
+    /// o duruma geçiş anı (epoch sn, `statusUpdatedAt` ms / 1000; birden çok CANLI `shell` kaydında en yenisi). Ölü ya da
+    /// yeniden kullanılmış pid'in kaydı sayılmaz (`procStart`); `float()` dönüşmeyen, NaN ya da pozitif olmayan damga atlanır.
+    pub fn session_record_shell_since(&self, sid: Option<&str>) -> Option<f64> {
+        if self.session_record_status(sid).as_deref() != Some("shell") {
+            return None;
+        }
+        let sid = sid?;
+        let names = self.probe.list_dir(&self.paths.claude_sessions_dir())?;
+        let mut best: Option<f64> = None;
+        for name in names.iter().filter(|n| n.ends_with(".json")) {
+            let Some(data) = self.session_file(name) else {
+                continue;
+            };
+            if data.get("sessionId").and_then(Py::as_str) != Some(sid)
+                || data.get("status").and_then(Py::as_str) != Some("shell")
+            {
+                continue;
+            }
+            let live = data
+                .get("pid")
+                .and_then(py_int)
+                .and_then(|pid| self.proc_start(pid))
+                .is_some_and(|start| data.get("procStart").is_some_and(|w| w.py_str() == start));
+            if !live {
+                continue;
+            }
+            let Some(t) = data
+                .get("statusUpdatedAt")
+                .and_then(py_float_of)
+                .map(|ms| ms / 1000.0)
+            else {
+                continue;
+            };
+            if t > 0.0 && best.is_none_or(|b| t > b) {
+                best = Some(t);
+            }
+        }
+        best
+    }
+
+    /// `bg_work.shell_only_stale`: tur bitmiş, `SHELL_ONLY_DIRECTIVE_SECONDS`ten uzun süredir yalnız kabuk/Monitor açık.
+    pub fn shell_only_stale(&self, sid: Option<&str>, now: f64) -> bool {
+        self.session_record_shell_since(sid)
+            .is_some_and(|since| now - since >= SHELL_ONLY_DIRECTIVE_SECONDS)
+    }
+
     /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean ve negatif değer sayaç
     /// sayılmaz: olay atlanır.
     fn codex_context(&self, cwd: &str, sid: Option<&str>) -> Option<i64> {
@@ -284,5 +331,18 @@ impl Live<'_> {
             SqlCell::Text(s) => parse_int(&s),
             SqlCell::Blob(b) => parse_int(std::str::from_utf8(&b).ok()?),
         }
+    }
+}
+
+/// Python `float(v)` bir süreç kaydı değerinde: sayı, bool (0/1), dize (`float(str)`); `float()`ın taşma verdiği dev tam
+/// sayı ve başka tip `None`.
+fn py_float_of(v: &Py) -> Option<f64> {
+    match v {
+        Py::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        Py::Int(n) => Some(*n as f64),
+        Py::BigInt(s) => s.parse::<f64>().ok().filter(|f| f.is_finite()),
+        Py::Float(f) => Some(*f),
+        Py::Str(s) => parse_float(s),
+        _ => None,
     }
 }

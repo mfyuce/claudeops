@@ -140,6 +140,9 @@ fn sum_counts<'a>(found: impl Iterator<Item = &'a str>) -> u64 {
     found.fold(0u64, |acc, g| acc.saturating_add(count_value(g)))
 }
 
+/// TBD#442 (a): tur bitmiş, yalnız kabuk/Monitor bu kadar süredir açıksa yönerge yine gider (`bg_work.SHELL_ONLY_DIRECTIVE_SECONDS`).
+pub const SHELL_ONLY_DIRECTIVE_SECONDS: f64 = 1800.0;
+
 /// Ekrandaki arka plan işi sayısı (alt durum satırındaki N'lerin toplamı; yalnız "waiting on" görünürse en az 1).
 pub fn screen_bg_count(text: &str) -> u64 {
     let mut total = 0u64;

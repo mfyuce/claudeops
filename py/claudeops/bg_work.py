@@ -8,7 +8,6 @@ Bağımsız kanıtlar (23 Kas, derbent kanıtı: alt ajan KENDİ arka plan işin
 Ayrıştırma işlevleri saftır; dosya erişimi `*_path`, `tail_lines` ve `session_record_status`tadır."""
 from __future__ import annotations
 
-import json
 import os
 import re
 import time
@@ -179,17 +178,9 @@ def transcript_pending_path(path: Optional[str], now: Optional[float] = None) ->
     return transcript_pending(data.split("\n"), now)
 
 
-def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str]:
-    """claude'un süreç kaydının (`<pid>.json`) bu konuşma için bildirdiği durum: `busy` (tur ya da devredilen ajan), `shell`
-    (tur bitti, kabuk/Monitor açık), `idle` (açık iş yok). Aynı konuşmanın birden çok canlı kaydında `busy`/`shell` kazanır,
-    sonra tanınmayan durum (ör. `waiting`). Canlı kayıt yoksa, pid yeniden kullanılmışsa ya da kayıt okunamıyorsa None."""
-    if not sid:
-        return None
-    try:
-        names = os.listdir(sessions_dir)
-    except OSError:
-        return None
-    found: Set[str] = set()
+def _live_records(sessions_dir: str, names: Iterable[str], sid: str) -> Iterable[dict]:
+    """`sid` konuşmasının CANLI süreç kayıtları: yalnız normal dosya (`_read_session_record`, FIFO bloklamaz), pid'in
+    `/proc` başlangıcı `procStart` ile eşleşen (ölü/yeniden kullanılmış pid'in kaydı sayılmaz). Okunamayan kayıt atlanır."""
     for n in names:
         if not n.endswith(".json"):
             continue
@@ -203,7 +194,22 @@ def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, OverflowError, RecursionError):
             continue
         if str(d.get("procStart")) == started:
-            found.add(str(d.get("status") or ""))
+            yield d
+
+
+def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str]:
+    """claude'un süreç kaydının (`<pid>.json`) bu konuşma için bildirdiği durum: `busy` (tur ya da devredilen ajan), `shell`
+    (tur bitti, kabuk/Monitor açık), `idle` (açık iş yok). Aynı konuşmanın birden çok canlı kaydında `busy`/`shell` kazanır,
+    sonra tanınmayan durum (ör. `waiting`). Canlı kayıt yoksa, pid yeniden kullanılmışsa ya da kayıt okunamıyorsa None."""
+    if not sid:
+        return None
+    try:
+        names = os.listdir(sessions_dir)
+    except OSError:
+        return None
+    found: Set[str] = set()
+    for d in _live_records(sessions_dir, names, sid):
+        found.add(str(d.get("status") or ""))
     for st in ("busy", "shell"):
         if st in found:
             return st
@@ -226,16 +232,12 @@ def session_record_shell_since(sessions_dir: str, sid: Optional[str]) -> Optiona
     except OSError:
         return None
     best: Optional[float] = None
-    for n in names:
-        if not n.endswith(".json"):
+    for d in _live_records(sessions_dir, names, sid):     # FIFO bloklamaz; ölü sürecin kaydı yaşı sıfırlamaz
+        if d.get("status") != "shell":
             continue
         try:
-            with open(os.path.join(sessions_dir, n), encoding="utf-8") as f:
-                d = json.load(f)
-            if d.get("sessionId") != sid or d.get("status") != "shell":
-                continue
             t = float(d["statusUpdatedAt"]) / 1000.0
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError):
+        except (ValueError, TypeError, KeyError, OverflowError):
             continue
         if t == t and t > 0 and (best is None or t > best):
             best = t

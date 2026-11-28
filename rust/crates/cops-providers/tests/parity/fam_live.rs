@@ -124,6 +124,13 @@ fn rs_live(e: &Env, c: &Case) -> RsOut {
         "live_failed_turns": failed,
         "live_phase": phase,
     }));
+    if c.args["cli"] == "claude" {
+        out.insert(
+            "shell_only_stale".into(),
+            live.shell_only_stale(sid, c.args["now"].as_f64().unwrap())
+                .into(),
+        );
+    }
     if cli == Cli::Ucli {
         out.insert("dirs".into(), json!(live.chat_session_dirs(cwd)));
         // Python f-string: sid None ise "None"
@@ -662,6 +669,7 @@ fn background(b: &mut Build<'_>) {
         b.push(c);
     }
     session_records(b, &projects, &pend);
+    shell_records(b);
     // diğer CLI'lar: ekran ve sid ne olursa olsun varsayılanlar
     for cli in [
         "claude", "agy", "codex", "copilot", "ucli", "shell", "bogus",
@@ -893,6 +901,95 @@ fn session_records(b: &mut Build<'_>, projects: &str, pend: &str) {
             .file(file(&format!("{projects}/abc.jsonl"), pend, 0o600));
         b.push(c);
     }
+}
+
+/// TBD#442 (a) `shell_only_stale` (28 Kas, main `220007a9` + rs-prov düzeltmesi): yalnız CANLI `shell` kaydının
+/// `statusUpdatedAt`ı sayılır; eşik 30 dk; `float()` köşeleri.
+fn shell_records(b: &mut Build<'_>) {
+    const DIR: &str = "home/.claude/sessions";
+    const IDLE: &str = "❯\n";
+    let stats = json!({"proc_stat": {"42": proc_stat(42, "777"), "43": proc_stat(43, "888")}});
+    let rec = |pid: u32, start: &str, status: &str, at: &str| {
+        format!(
+            r#"{{"pid":{pid},"sessionId":"abc","status":"{status}","procStart":"{start}","statusUpdatedAt":{at}}}"#
+        )
+    };
+    let ms = |ago: f64| format!("{}", ((T - ago) * 1000.0) as i64);
+    let mut one: Vec<(String, String)> = Vec::new();
+    for (id, at) in [
+        ("1801", ms(1801.0)),
+        ("1800", ms(1800.0)),
+        ("1799", ms(1799.0)),
+        ("ondalik", format!("{}.5", ms(4000.0))),
+        ("dize", format!("\"{}\"", ms(4000.0))),
+        ("dize-bosluk", format!("\" {} \"", ms(4000.0))),
+        ("bool", "true".into()),
+        ("null", "null".into()),
+        ("negatif", "-5".into()),
+        ("sifir", "0".into()),
+        ("nan", "NaN".into()),
+        ("sonsuz", "Infinity".into()),
+        ("dev", "1".repeat(400)),
+        ("liste", "[1]".into()),
+        ("yazi", "\"x\"".into()),
+    ] {
+        one.push((id.into(), rec(42, "777", "shell", &at)));
+    }
+    one.push((
+        "yok".into(),
+        r#"{"pid":42,"sessionId":"abc","status":"shell","procStart":"777"}"#.into(),
+    ));
+    one.push(("busy".into(), rec(42, "777", "busy", &ms(9999.0))));
+    for (id, body) in one {
+        let c = b
+            .case(&format!("kabuk-{id}"), "claude", Some("abc"), IDLE)
+            .facts(stats.clone())
+            .file(file(&format!("{DIR}/42.json"), &body, 0o600));
+        b.push(c);
+    }
+    // ölü süreç (procStart tutmuyor) daha yeni damgayla yaşı sıfırlamaz; iki canlıda en yenisi
+    let c = b
+        .case("kabuk-olu-yeni", "claude", Some("abc"), IDLE)
+        .facts(stats.clone())
+        .file(file(
+            &format!("{DIR}/42.json"),
+            &rec(42, "777", "shell", &ms(4000.0)),
+            0o600,
+        ))
+        .file(file(
+            &format!("{DIR}/43.json"),
+            &rec(43, "999", "shell", &ms(10.0)),
+            0o600,
+        ));
+    b.push(c);
+    let c = b
+        .case("kabuk-iki-canli", "claude", Some("abc"), IDLE)
+        .facts(stats.clone())
+        .file(file(
+            &format!("{DIR}/42.json"),
+            &rec(42, "777", "shell", &ms(4000.0)),
+            0o600,
+        ))
+        .file(file(
+            &format!("{DIR}/43.json"),
+            &rec(43, "888", "shell", &ms(10.0)),
+            0o600,
+        ));
+    b.push(c);
+    let c = b
+        .case("kabuk-ikinci-busy", "claude", Some("abc"), IDLE)
+        .facts(stats)
+        .file(file(
+            &format!("{DIR}/42.json"),
+            &rec(42, "777", "shell", &ms(4000.0)),
+            0o600,
+        ))
+        .file(file(
+            &format!("{DIR}/43.json"),
+            &rec(43, "888", "busy", &ms(10.0)),
+            0o600,
+        ));
+    b.push(c);
 }
 
 fn token_count(input: Value) -> String {

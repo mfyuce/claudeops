@@ -610,6 +610,8 @@ def op_live(a):
             "live_failed_turns": _safe(lambda: p.live_failed_turns(cwd, sid)),
             "live_phase": _safe(lambda: p.live_phase(cwd, sid)),
         }
+        if a["cli"] == "claude":
+            out["shell_only_stale"] = _safe(lambda: bg_work.shell_only_stale(claude_p.SESSIONS_DIR, sid, a["now"]))
         if a["cli"] == "ucli":
             out["dirs"] = ucli_client.chat_session_dirs(cwd)
             out["status_path"] = ucli_client.find_chat_file(cwd, f"{sid}.status.json")
