@@ -215,16 +215,17 @@ def run(args) -> int:
     models = read_models()
     roster = roster_by_name()
 
+    if args.dry_run:
+        # Kuru koşu baştan önizleme kipinde: `--kill-first` süreç taraması `spawn_session`dan ÖNCE koşar ve
+        # keşif (agy `extract_info` -> `_remember_agy_sid`) önizleme dışında öğrenilen sid'i diske yazardı.
+        # guard.lock ALINMAZ: kuru koşu öldürmez/açmaz; kilit tutulurken 5 sn bekleyip düşmesin, kilit dosyası açılmasın.
+        with preview.preview_only():
+            return _run_inner(args, display, models, roster)
+
     # guard.lock: kill-first sırasında guard cron ile DUP spawn önle
     try:
         with guard_lock(timeout=5.0):
-            if args.dry_run:
-                # Kuru koşu baştan önizleme kipinde: `--kill-first` süreç taraması `spawn_session`dan ÖNCE koşar ve
-                # keşif (agy `extract_info` -> `_remember_agy_sid`) önizleme dışında öğrenilen sid'i diske yazardı.
-                with preview.preview_only():
-                    errors = _run_inner(args, display, models, roster)
-            else:
-                errors = _run_inner(args, display, models, roster)
+            errors = _run_inner(args, display, models, roster)
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
         return 1

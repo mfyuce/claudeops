@@ -22,7 +22,7 @@ def _args(dry_run: bool):
 
 
 class RcDryRunRunsInPreview(unittest.TestCase):
-    def run_rc(self, dry_run: bool):
+    def run_rc(self, dry_run: bool, lock=None):
         seen = {"scan": [], "spawn": []}
         writes = []
 
@@ -36,7 +36,8 @@ class RcDryRunRunsInPreview(unittest.TestCase):
             return "[dry-run] x" if kw["dry_run"] else "new"
 
         roster = {"agyproj": RosterEntry(name="agyproj", cwd="/tmp", model="m", cli="agy")}
-        with mock.patch.object(rc, "guard_lock", lambda timeout: contextlib.nullcontext()), \
+        lock = lock or (lambda timeout: contextlib.nullcontext())
+        with mock.patch.object(rc, "guard_lock", lock), \
                 mock.patch.object(rc, "read_models", return_value={}), \
                 mock.patch.object(rc, "roster_by_name", return_value=roster), \
                 mock.patch.object(rc, "find_sessions", fake_find_sessions), \
@@ -63,6 +64,27 @@ class RcDryRunRunsInPreview(unittest.TestCase):
         self.assertEqual(seen["scan"], [False])
         self.assertEqual(seen["spawn"], [(False, False)])
         self.assertEqual(len(writes), 1)
+
+    def test_dry_run_does_not_take_the_guard_lock(self):
+        """TODO rs-prov 254 kalanı: kuru koşu hiçbir şey öldürmez/açmaz; başka bir guard kilidi tutarken 5 sn bekleyip
+        düşmemeli, kilit dosyasını da açmamalı."""
+        calls = []
+
+        def held(timeout):
+            calls.append(timeout)
+            raise TimeoutError("guard.lock 5s içinde alınamadı")
+        seen, writes = self.run_rc(True, lock=held)
+        self.assertEqual(calls, [])
+        self.assertEqual(seen["spawn"], [(True, True)])
+
+    def test_real_run_still_needs_the_guard_lock(self):
+        def held(timeout):
+            raise TimeoutError("guard.lock 5s içinde alınamadı")
+        with mock.patch.object(rc, "guard_lock", held), mock.patch.object(rc, "read_models", return_value={}), \
+                mock.patch.object(rc, "roster_by_name", return_value={}), mock.patch.object(rc, "spawn_session") as sp, \
+                mock.patch("builtins.print"):
+            self.assertEqual(rc.run(_args(False)), 1)
+        sp.assert_not_called()
 
 
 if __name__ == "__main__":
