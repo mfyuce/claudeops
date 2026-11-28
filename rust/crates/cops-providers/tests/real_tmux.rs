@@ -237,10 +237,12 @@ print(json.dumps(out))
     let arg = serde_json::to_string(&cases).unwrap();
     let home = s.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
-    let out = Command::new("python3")
+    // Yeni oturum parçası SÜREÇ PATH'ini süzüp başa koyar (TBD#450, Python `os.environ`): Python'a da aynısı verilir.
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let out = Command::new("/usr/bin/python3")
         .args(["-I", "-c", code, &repo(), &arg])
         .env_clear()
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", path)
         .env("HOME", &home)
         .env("CLAUDEOPS_DIR", s.path().join("state"))
         .output()
