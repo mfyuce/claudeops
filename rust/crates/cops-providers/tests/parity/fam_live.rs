@@ -859,11 +859,37 @@ fn session_records(b: &mut Build<'_>, projects: &str, pend: &str) {
             .file(file(&format!("{DIR}/42.json"), good, 0o600));
         b.push(c);
     }
-    for (id, status) in [("bos-transkript", "idle"), ("dolu-transkript", "busy")] {
+    // main `1c0bde13`: `idle` kaydı transkript geçmişini ezer; karar veremeyen kayıt (`waiting`, tanınmayan, boş) yedeğe düşer.
+    for (id, status) in [
+        ("bos-transkript", "idle"),
+        ("dolu-transkript", "busy"),
+        ("bekleyen-transkript", "waiting"),
+        ("tanimsiz-transkript", "yeni-durum"),
+        ("bosdurum-transkript", ""),
+    ] {
         let c = case(b, id, IDLE)
             .file(file(
                 &format!("{DIR}/42.json"),
                 &good.replace("busy", status),
+                0o600,
+            ))
+            .file(file(&format!("{projects}/abc.jsonl"), pend, 0o600));
+        b.push(c);
+    }
+    // aynı konuşmanın iki canlı kaydı: etkin olan (`shell`) `idle`ı ezer; `idle` + tanınmayan = tanınmayan (yedek)
+    for (id, a, z) in [
+        ("iki-kayit-shell", "shell", "idle"),
+        ("iki-kayit-tanimsiz", "idle", "zzz"),
+    ] {
+        let c = case(b, id, IDLE)
+            .file(file(
+                &format!("{DIR}/0.json"),
+                &good.replace("busy", a),
+                0o600,
+            ))
+            .file(file(
+                &format!("{DIR}/42.json"),
+                &good.replace("busy", z),
                 0o600,
             ))
             .file(file(&format!("{projects}/abc.jsonl"), pend, 0o600));
