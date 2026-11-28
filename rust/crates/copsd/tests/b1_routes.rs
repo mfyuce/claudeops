@@ -84,6 +84,35 @@ fn foreign_instances_path_is_left_to_python() {
     assert!(routes.contains(&("GET", "/api/diag/log")), "{routes:?}");
 }
 
+/// R-B1-3: `--db` durum dizinindekinden farklıysa salt okuma `StateDocs` (`/api/instances`, terminal çözümü) da O DB'yi
+/// okur (yalıtılmış deneme/paritede `/api/steward/questions` ile aynı DB). Varsayılan yolda ortam kuralı (`CLAUDEOPS_DB_URL`).
+#[test]
+fn db_flag_reaches_read_only_state() {
+    let env = TestEnv::new().unwrap();
+    let other = env.root().join("baska.db");
+    let c = rusqlite::Connection::open(&other).unwrap();
+    c.execute_batch(
+        "CREATE TABLE docs(name TEXT PRIMARY KEY, body TEXT, version INTEGER, updated REAL);",
+    )
+    .unwrap();
+    c.pragma_update(None, "user_version", cops_state::store::SCHEMA_VERSION)
+        .unwrap();
+    drop(c);
+    let ctx = RouteCtx::new(
+        env.dir().root().to_path_buf(),
+        other.clone(),
+        env.dir().instances_json(),
+    );
+    assert_eq!(ctx.state.read_only_store().unwrap().path(), other);
+    assert_eq!(ctx.docs.db_path().unwrap(), other);
+    let dflt = RouteCtx::new(
+        env.dir().root().to_path_buf(),
+        env.dir().db(),
+        env.dir().instances_json(),
+    );
+    assert_eq!(dflt.docs.db_path().unwrap(), env.dir().db());
+}
+
 async fn get(addr: SocketAddr, path: &str) -> String {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let req = format!(

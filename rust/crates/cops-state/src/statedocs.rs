@@ -186,6 +186,8 @@ pub struct StateDocs {
     /// `CLAUDEOPS_STORE_BACKEND` her çağrıda okunur (Python `backend()` gibi); `isolated` kapatır.
     read_env: bool,
     db_url: String,
+    /// [`StateDocs::with_db_path`]: `db_url`den üstün açık SQLite yolu.
+    db_path: Option<PathBuf>,
     state: Mutex<State>,
     /// `None` = [`StateDocs::diag_log`].
     logger: Option<Logger>,
@@ -212,6 +214,7 @@ impl StateDocs {
             forced: None,
             read_env: true,
             db_url,
+            db_path: None,
             state: Mutex::new(State::default()),
             logger: None,
             read_only: false,
@@ -225,6 +228,20 @@ impl StateDocs {
         s.db_url = db_url.to_string();
         s
     }
+    /// Açık SQLite yolu (`CLAUDEOPS_DB_URL` ve durum dizini varsayılanından üstün): copsd `--db` (R-B1-3).
+    pub fn with_db_path(mut self, path: &Path) -> StateDocs {
+        self.db_path = Some(path.to_path_buf());
+        self
+    }
+
+    /// Kullanılacak SQLite yolu: [`StateDocs::with_db_path`], yoksa `db_url`, o da boşsa durum dizinindeki DB.
+    pub fn db_path(&self) -> Result<PathBuf, StoreError> {
+        match &self.db_path {
+            Some(p) => Ok(p.clone()),
+            None => sqlite_path_from_url(&self.db_url, &self.dir.db()),
+        }
+    }
+
     pub fn with_logger(mut self, f: impl Fn(&str) + Send + Sync + 'static) -> StateDocs {
         self.logger = Some(Box::new(f));
         self
@@ -448,7 +465,7 @@ impl StateDocs {
         if let Some(s) = &self.lock().store {
             return Ok(s.clone());
         }
-        let path = sqlite_path_from_url(&self.db_url, &self.dir.db())?;
+        let path = self.db_path()?;
         let s = Arc::new(Store::open(&path)?);
         Ok(self.lock().store.get_or_insert(s).clone())
     }
@@ -458,7 +475,7 @@ impl StateDocs {
     /// DB şeması bu koddan YENİYSE (Python yeni göç ekledi, ikili güncellenmedi) okuma sürer; süreç başına sürüm başına BİR
     /// kez günlüğe yazılır (sessiz değil, ama her okumada da değil).
     pub fn read_only_store(&self) -> Result<Store, StoreError> {
-        let st = Store::open_read_only(&sqlite_path_from_url(&self.db_url, &self.dir.db())?)?;
+        let st = Store::open_read_only(&self.db_path()?)?;
         static LOGGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
         let v = st.schema();
         if v > crate::store::SCHEMA_VERSION

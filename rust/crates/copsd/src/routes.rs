@@ -42,13 +42,23 @@ pub struct RouteCtx {
 }
 
 impl RouteCtx {
-    /// `state_dir` altındaki durum belgeleri + süreç ortamı. Dosya/DB'ye dokunmaz.
+    /// `state_dir` altındaki durum belgeleri + süreç ortamı. Dosya/DB'ye dokunmaz. `db` durum dizinindekinden farklıysa
+    /// (`--db`) iki `StateDocs` de onu okur (R-B1-3: copsd'nin tüm yerel uçları tek DB); aynıysa ortam kuralı
+    /// (`CLAUDEOPS_DB_URL`, Python ile aynı).
     pub fn new(state_dir: PathBuf, db: PathBuf, instances: PathBuf) -> RouteCtx {
+        let explicit = db != StateDir::at(&state_dir).db();
+        let mk = || {
+            let d = StateDocs::new(StateDir::at(&state_dir));
+            if explicit {
+                d.with_db_path(&db)
+            } else {
+                d
+            }
+        };
         RouteCtx {
-            docs: Arc::new(ReadDocs::new(StateDir::at(&state_dir))),
+            docs: Arc::new(ReadDocs::from_docs(mk())),
             state: Arc::new(
-                StateDocs::new(StateDir::at(&state_dir))
-                    .into_read_only()
+                mk().into_read_only()
                     .with_logger(|m| eprintln!("copsd: statedocs {m}")),
             ),
             env: SysEnv::from_process(),

@@ -38,6 +38,11 @@ impl ReadDocs {
         }
     }
 
+    /// Okunan SQLite yolu ([`StateDocs::db_path`]).
+    pub fn db_path(&self) -> Result<std::path::PathBuf, cops_state::store::StoreError> {
+        self.docs.db_path()
+    }
+
     pub fn dir(&self) -> &StateDir {
         self.docs.dir()
     }
