@@ -998,7 +998,7 @@ def steward_config(sid: str = "default") -> "Config":
     if cfg.role not in ROLES or sid == "default":      # bilinmeyen rol = sıradan değnekçi; default ASLA reviewer değil
         cfg.role = "steward"
     if cfg.role == "generic":
-        # generic: proje ANA oturumu `GENERIC_MODEL` + `GENERIC_EFFORT` (28 Kas 2026'dan beri Opus medium; faz alanları default dışı kimlikte zaten yalnız kendi bloğundan gelir;
+        # generic: proje ANA oturumu Sonnet medium (faz alanları default dışı kimlikte zaten yalnız kendi bloğundan gelir;
         # boşsa doldurulur, sahibin kimlik bloğuna açıkça yazdığı değer geçer).
         from .steward import GENERIC_EFFORT, GENERIC_MODEL
         for key, val in (("planning_model", GENERIC_MODEL), ("planned_model", GENERIC_MODEL),

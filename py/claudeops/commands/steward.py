@@ -1193,7 +1193,7 @@ def register(sub):
     pcr.add_argument("--label", default="")
     pcr.add_argument("--role", default="steward", choices=sw.ROLES,
                      help="steward (varsayılan) | reviewer (projesiz, beyinsiz, oturuma dokunmaz) | generic (dinamik "
-                          "projeler, Opus medium, üst model (Fable, high+) sahibin onayıyla); yalnız yaratılırken")
+                          "projeler, Sonnet medium, üst model sahibin onayıyla); yalnız yaratılırken")
     pcr.set_defaults(func=cmd_create)
     prm = s.add_parser("remove", help="kimliği sil (projesi varsa reddedilir)")
     prm.add_argument("target_sid", metavar="SID")

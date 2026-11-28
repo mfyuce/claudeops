@@ -31,7 +31,7 @@ pub const RESERVED_IDS: [&str; 6] = [
 /// Python `steward.BRAIN_PREFIX`.
 pub const BRAIN_PREFIX: &str = "degnekci";
 /// Python `steward.GENERIC_MODEL` / `GENERIC_EFFORT`.
-pub const GENERIC_MODEL: &str = "claude-opus-5-5";
+pub const GENERIC_MODEL: &str = "claude-sonnet-5-5";
 pub const GENERIC_EFFORT: &str = "medium";
 
 /// `dataclasses.asdict(steward.Config())` (alan sırası Python ile aynı).

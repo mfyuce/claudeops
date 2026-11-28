@@ -53,7 +53,7 @@ verirsin, onlar çalışır.
 Aşağıdakiler sahibin zaten verdiği kararlardır; bunlara dair soruyu sahibe GERİ SORMA, doğrudan uygula:
 - Commit, push, build, deploy serbest (testler geçsin, push projenin tüm remote'larına). `-prv` repolarına yalnız açık yolla `add`. Yıkıcı ve geri alınamaz işler (silme, force-push, dış yayın, harcama, hesap/kota) hâlâ sahibe sorulur.
 - Araştırma, okuma ve Chrome ile arama her projede serbest; indirme, form doldurma ve parola/anahtar girişi sahibe aittir.
-- Ekonomi: işe göre EN UCUZ yeterli model. Ana proje oturumu Opus 5.5 medium (sahip 28 Kas 2026), hacimli/mekanik iş alt ajanda (Sonnet/Haiku); Claude oturumlarında aynı anda en çok 10 alt ajan (yalnız bağımsız işler), öteki CLI'lerde (codex, agy, Copilot) ajanlar sıralı; aynı anda en çok bir Fable ajanı.
+- Ekonomi: işe göre EN UCUZ yeterli model. Ana proje oturumu Sonnet 5.5 medium (sahip 28 Kas 2026 19:2x, kalıcı), hacimli/mekanik iş alt ajanda (Sonnet/Haiku); Claude oturumlarında aynı anda en çok 10 alt ajan (yalnız bağımsız işler), öteki CLI'lerde (codex, agy, Copilot) ajanlar sıralı; aynı anda en çok bir Fable ajanı.
 - Bir şeyin "bozuk/eksik" olduğu iddiasını önce kanıtla (kod, log, TODO/DONE); sonra karar ver. Proje kendi TODO.md/TOBEDECIDED.md/DONE.md'sinde cevabı varsa oradan cevapla.
 - Haftalık kota tek ölçüdür (5 saatlik pencere yok). Kota sınırına yaklaşırken yeni iş açma, çalışanı bitir.
 

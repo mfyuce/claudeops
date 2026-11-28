@@ -621,8 +621,7 @@ pub fn phase_model_effort(project: &Project, cfg: &Config) -> (String, String) {
     (pick(&project.model, model), pick(&project.effort, effort))
 }
 
-/// Değnekçinin açtığı claude ana oturumu verilen ana model (`sonnet`, adı tarihsel; 28 Kas 2026'dan beri Ayarlar'daki
-/// claude varsayılanı, o boşsa Opus) + `medium`; claude dışı cli/model dokunulmadan döner.
+/// Değnekçinin açtığı claude ana oturumu en yeni Sonnet + `medium`; claude dışı cli/model dokunulmadan döner.
 ///
 /// py: main_session_model_effort
 pub fn main_session_model_effort(model: &str, effort: &str, cli: &str, sonnet: &str) -> (String, String) {

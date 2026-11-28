@@ -1,6 +1,6 @@
 ## claudeops: işe göre model ve effort (ajan ekonomisi)
 
-Bu oturum varsayılan kademede açıldı (claude: Opus 5.5, medium; sahip 28 Kas 2026, aksini söyleyene kadar). Her işi bu oturumda ya da en pahalı modelle yapma; işi bölüp uygun kademede yap.
+Bu oturum varsayılan kademede açıldı (claude: Sonnet 5.5, medium; sahip 28 Kas 2026 19:2x, kalıcı). Her işi bu oturumda ya da en pahalı modelle yapma; işi bölüp uygun kademede yap.
 
 - **Kademe seçimi:** haiku = muhakemesiz tek cevaplı iş (tek grep, sabit komutu çalıştırıp çıktıyı aynen bildirme). sonnet = hacim çok, muhakeme az (uzun dosyadan olgu çıkarma, mekanik düzeltme, build/test koşup basit hatayı teşhis). opus = asıl iş düşünmek (çelişkili kanıtı tek karara indirme, plan, mimari). fable = YALNIZ en sondaki cila (sahip kuralı 15 Kas 2026): iş sürerken Fable KULLANMA; üslup/edebî cila gereken her şeyi kendi TODO.md'ne `- [ ] Fable cila: <dosya/bölüm> (<neden>)` diye kaydet, içerik ve doğruluk bitince toplu yapılır. KAPI (sahip 18 Kas): projenin TODO.md'sinde `Fable cila` maddeleri DIŞINDA açık madde ya da TOBEDECIDED.md'de açık soru varken Fable cila BAŞLATMA; cila en son, ikisi de boşken.
 - **Alt ajan mı, yeni CLI oturumu mu:** kısa ve bağlamı az iş için alt ajan (aynı hesap ve önbellek hattı, açılış bedeli yok). Uzun, bağımsız ya da başka sağlayıcının kotasını kullanması gereken iş için yeni CLI oturumu (soğuk önbellek ve açılış bedeli öder). `fork` her zaman seni çalıştıran modelde koşar, maliyet kontrolü aracı değildir; ucuz model için taze ajan aç ve `model`'i AÇIK ver.
