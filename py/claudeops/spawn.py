@@ -287,9 +287,11 @@ def spawn_session(
     Returns: "resume:<id[:8]>", "new", veya "[dry-run] ..." dry_run modunda.
     """
     if dry_run and not preview.active():
+        # Bütün argümanlar ADIYLA iletilir (`locals()` burada yalnız parametreleri tutar): yeni parametre eklenip bu satır
+        # unutulursa kuru koşuda sessizce varsayılana düşmesin (imza testi `test_spawn_dry_run_forwards_every_argument`).
+        args = dict(locals())
         with preview.preview_only():
-            return spawn_session(name, cwd, model, display, permission_mode, effort, force_new, prompt, dry_run,
-                                 cli, mcp_server, hidden, cli_opts, resume_id)
+            return spawn_session(**args)
     provider = get_provider(cli)
 
     if display is None:
