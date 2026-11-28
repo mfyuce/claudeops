@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .atomic_json import atomic_write_json, file_lock
 from .paths import CLAUDEOPS_DIR
+from . import jsonbound as _jsonbound
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_approval")
 MAX_EDITED_BYTES = 64 * 1024
@@ -71,7 +72,7 @@ def _read_index() -> Optional[bytes]:
 
 def _parse_index(raw: bytes) -> Optional[Dict[str, Any]]:
     try:
-        d = json.loads(raw.decode("utf-8"))
+        d = _jsonbound.loads(raw.decode("utf-8"))
     except (ValueError, RecursionError):
         return None
     return d if isinstance(d, dict) else None
@@ -236,7 +237,7 @@ def parse_suspended(stdout: str) -> Optional[Dict[str, Any]]:
         if not line.startswith("{"):
             continue
         try:
-            d = json.loads(line)
+            d = _jsonbound.loads(line)
         except (ValueError, RecursionError):
             continue
         s = d.get("suspended") if isinstance(d, dict) else None
@@ -257,7 +258,7 @@ def _pending_files(run_key: str) -> List[Dict[str, Any]]:
         if not fn.endswith(".json"):
             continue
         try:
-            q = json.loads(_read_regular(os.path.join(pdir, fn)).decode("utf-8"))
+            q = _jsonbound.loads(_read_regular(os.path.join(pdir, fn)).decode("utf-8"))
         except (OSError, ValueError, RecursionError):
             continue
         if isinstance(q, dict) and isinstance(q.get("id"), str) and _ID.fullmatch(q["id"]):

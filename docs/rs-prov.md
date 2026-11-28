@@ -466,11 +466,12 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Taşınmayan: `web_steward` durum dosyası kullanımı ve panel sarmalayıcıları (T1/T10); `quota_equivalent_tokens`,
   `usage_warn_level`, `archive_session_files`, `read_chat_history` (bu grupta değil).
 
-### Bilinen ayrışmalar (5; testte `known(`)
-- `live` 5: 512'den derin durum dosyası; u64/i64'e sığmayan sayaç ve zaman (doygun) (3); 8 MiB üstü durum dosyası.
-- Testsiz farklar: 64 MiB üstü hata kaydı okunmaz; eşlenmemiş vekil kaçışı çıktıda U+FFFD olur (Python vekili taşır);
+### Bilinen ayrışmalar (4; testte `known(`)
+- (28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`).)
+- `live` 4: u64/i64'e sığmayan sayaç ve zaman (doygun) (3); 8 MiB üstü durum dosyası.
+- Testsiz farklar: 64 MiB üstü hata kaydı okunmaz;
   UTF-8 olmayan dosya adları listelenmeyebilir (oturum adıyla eşleşemez); 2^53 mikro saniyeyi aşan yıllarda (~2255 sonrası)
-  damga son bitte ayrışabilir; 512-1000 arası iç içe transkript satırını Python okur, Rust atlar.
+  damga son bitte ayrışabilir.
 
 ### Python hataları (26 Kas gece iki tarafta DÜZELDİ; her biri ayrı `fix:` + `py/tests/test_rsprov_live_readers.py`)
 1. `bg_work`: beklenmedik yapıdaki tek satır/blok yalnız atlanır (parite `bg-sekil-`).
@@ -500,9 +501,8 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
   sondan tembel aranır. Boyut sınırı konmadı (konursa Python'dan sapma olur); bellek dosya boyutu kadar.
 - Taşınmayan: `web._term_chat` bağlaması (T1), `io_providers`.
 
-### Bilinen ayrışmalar (2; testte `chat-...sapma-vekil`, Rust sonucu `expect` ile ayrıca doğrulanır)
-- claude 1 ve ucli 1: eşlenmemiş vekil (Python vekili taşır, Rust U+FFFD).
-- Testsiz fark: 512-1000 arası iç içe JSON satırı Python'da okunur, Rust atlar (ucli'de okunamadı sayar).
+### Bilinen ayrışmalar (0)
+- 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`); `chat-...sapma-vekil` vakaları eşit ve Rust sonucu `expect` ile sabit.
 
 ### Python hataları (26 Kas gece iki tarafta DÜZELDİ; `py/tests/test_rsprov_{chat,sqlite}_readers.py`)
 1. claude/codex'te bozuk bayt yalnız kendi satırını atlatır; ucli'de tamamlanmış satırdaki bozuk bayt dosyayı okunamaz yapar.
@@ -545,8 +545,8 @@ bu ize yönlendirilmeli.
   uygulamalı); `handover` politikası (T4); `handover_*_downgrade` ve canlı geçiş (G4, `tui.rs`); `web_steward.context_tokens_for`
   (T10; `rs/stew` tablosunda EKSİK, henüz kimse taşımadı).
 
-### Bilinen ayrışmalar (3; testte `known(`, Rust sonucu çoğunda `expect*` ile ayrıca doğrulanır)
-- 512'den derin satır, eşlenmemiş vekil, 1. yılın ilk günü dilimsiz damga (1'er).
+### Bilinen ayrışmalar (1; testte `known(`, Rust sonucu `expect*` ile ayrıca doğrulanır)
+- 1. yılın ilk günü dilimsiz damga. 512'den derin satır ve eşlenmemiş vekil: 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`).
 - Testsiz fark: i128'e sığmayan birbirini götüren token sayaçları (doygun toplam); yaz saati geçişli dilimsiz damga.
 
 ### Python hatası şüpheleri (hepsi DÜZELDİ; 4 ve 6 sahip onayıyla, S1 ve S2)
@@ -590,9 +590,9 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
   bakmama, yalnız 2xx gövdesi, latin-1 başlık baytı, `*_proxy` ortamı, `CLOCK_MONOTONIC`, normal dosya) G8'de uygulandı.
 - HTTP yönlendirmesi: iki tarafta da İZLENMEZ (TBD#389).
 
-### Bilinen ayrışmalar (3; testte `diverges(`, Rust dönüşü `expect` ile ayrıca doğrulanır; 27 Kas'ta 4'ü iki tarafta düzeldi, `fixed(`)
+### Bilinen ayrışmalar (1; testte `diverges(`, Rust dönüşü `expect` ile ayrıca doğrulanır; 27 Kas'ta 4'ü iki tarafta düzeldi, `fixed(`)
 - ucli: UTF-16 gövde (Rust yalnız UTF-8, BOM kabul; Rust'ta başarısız çekim + `models_fetch_failed`).
-- hizmet: eşlenmemiş vekil (U+FFFD), 512'den derin gövde (Rust başarısız çekim: boş liste + günlük).
+- hizmet: eşlenmemiş vekil ve 512'den derin gövde: 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`).
 - Testsiz ya da yalnız birim testli farklar: okuma üst sınırları (Python sınırsız); süre toplam (Python soket işlemi başına);
   `catalog` effort'u kimliğinde taşıyan agy modeli ve ucli `reasoning_effort=off` için de listeyi ister; katlanmış başlık
   (`\r\n `) reddedilir; agy stderr'i UTF-8 değilse Python listeyi atar, Rust stderr'e bakmaz; arka plan işi başlatılamazsa Python
@@ -652,8 +652,8 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 - Okuma sınırları: baş satırlar 8 MiB (64 KiB parçalarla, yarım satır atılır), stub taraması 8 MiB, `sessions/<pid>.json`
   1 MiB, agy cwd önbelleği 8 MiB.
 
-### Bilinen ayrışmalar (1; testte `devam-sapma-meta-derin`)
-- claude: 512'den derin başlık satırı (Python okur, Rust atlar). 27 Kas: eski 13 ayrışma (codex 7, agy 2, claude 3,
+### Bilinen ayrışmalar (0)
+- claude 512'den derin başlık satırı (`devam-sapma-meta-derin`): 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`). 27 Kas: eski 13 ayrışma (codex 7, agy 2, claude 3,
   copilot 1) iki tarafta düzeldi; vakalar `devam-sapma-*` adıyla `fixed(` (Python ile eşit + Rust `expect`) kaldı.
 - Testsiz farklar: okuma sınırları (Python sınırsız); UTF-8 olmayan dosya adları listelenmeyebilir;
   `sid_for_stopped_session`/`session_file_sid` imzaları tipli (metin pid yok).
@@ -1328,6 +1328,8 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
+| `MAX_DEPTH`, `too_deep` (py/claudeops/jsonbound.py) | `pyjson.rs::MAX_DEPTH` (kapsayıcı derinliği `depth >= MAX_DEPTH` ret) | `parity.rs::{parity_live `durum-cok-derin`, parity_resume `devam-sapma-meta-derin`, parity_transcript `esit-derin`, parity_model_sources `src-svc-sapma-derinlik`}` | TAŞINDI |
+| `loads`, `load`, `_replace_lone_surrogates`, `_fix_str` (py/claudeops/jsonbound.py) | `pyjson.rs::Py` ayrıştırıcısı (eşlenmemiş vekil U+FFFD, yinelenen anahtar ilk yer son değer) | `parity.rs::{parity_chat `sapma-vekil`, parity_transcript `esit-vekil`, parity_model_sources `src-svc-sapma-vekil`}` | TAŞINDI |
 | `_run_grouped` (py/claudeops/childgroup.py:25) | `real/process.rs::run` | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
 | `_kill_group` (py/claudeops/childgroup.py:13) | `real/process.rs::Guard` (`Drop`) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
 | `_ucli_cap_problem` (py/claudeops/settings.py:885) | `settings.rs::cap_problem` (ham belge), `real/ledger.rs::{file_cost_settings, non_finite_cap}` | `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
@@ -3755,6 +3757,13 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
 | `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
 | `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
+| `LoadsTest.test_depth_limit_is_rusts` (py/tests/test_rsprov_json_bounds.py) | `pyjson.rs::MAX_DEPTH`; `parity_live` `durum-cok-derin`, `parity_chat` `derin` | TAŞINDI |
+| `LoadsTest.test_brackets_inside_strings_do_not_count` (py/tests/test_rsprov_json_bounds.py) | `pyjson.rs::Parser::string` (dize içeriği derinliğe sayılmaz); Python birim testi | TAŞINDI |
+| `LoadsTest.test_lone_surrogates_become_replacement_char` (py/tests/test_rsprov_json_bounds.py) | `parity_chat` `sapma-vekil`, `parity_transcript` `esit-vekil` | TAŞINDI |
+| `LoadsTest.test_colliding_keys_keep_first_place_last_value` (py/tests/test_rsprov_json_bounds.py) | `pyjson.rs::Parser::value` (`index` ilk yer, son değer) | TAŞINDI |
+| `LoadsTest.test_bytes_are_accepted` (py/tests/test_rsprov_json_bounds.py) | `parity_model_sources` (gövde bayt olarak; Rust UTF-16'yı reddeder: `src-ucli-sapma-utf16` ayrışması sürer) | TAŞINDI |
+| `ReadersTest.test_claude_meta_skips_a_600_deep_line` (py/tests/test_rsprov_json_bounds.py) | `parity_resume` `devam-sapma-meta-derin` | TAŞINDI |
+| `ReadersTest.test_ucli_status_file_too_deep_is_unreadable` (py/tests/test_rsprov_json_bounds.py) | `parity_live` `durum-cok-derin` | TAŞINDI |
 | `WatchdogRestoresTheEnvFileTest.test_relaunch_finds_the_file_again` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` | TAŞINDI |
 | `WatchdogRestoresTheEnvFileTest.test_an_unconsumed_file_is_left_untouched` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` (ikinci yarı) | TAŞINDI |
 | `WatchdogRestoresTheEnvFileTest.test_unwritable_directory_stops_the_relaunch` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_does_not_relaunch_when_the_env_file_cannot_be_restored` | TAŞINDI |

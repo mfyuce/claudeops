@@ -496,13 +496,8 @@ fn divergences(b: &mut Build<'_>) {
         "[".repeat(600),
         "]".repeat(600)
     );
-    b.diverge(
-        "derin",
-        lines(&[base.clone(), deep]),
-        expect.clone(),
-        "512'den derin satır: Python okur, Rust atlar",
-    );
-    b.diverge(
+    b.agree("derin", lines(&[base.clone(), deep]), expect.clone());
+    b.agree(
         "vekil",
         lines(&[
             base.clone(),
@@ -512,7 +507,6 @@ fn divergences(b: &mut Build<'_>) {
             both(Some("a\u{fffd}"), Some("low"), Some(at(-30))),
             both(Some("a\u{fffd}"), Some("low"), Some(at(-30)))
         ]),
-        "eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
     );
     b.diverge(
         "yil-bir",

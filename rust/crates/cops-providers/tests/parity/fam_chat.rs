@@ -3,7 +3,7 @@
 //! stopped_session_chat,ucli_last_exchange_pairing,ucli_state_dir}.py` + boş/bozuk/kısmi/Unicode/yanlış tip sınırları ve
 //! rastgele girdiler. Tüm veri SENTETİK ve geçici HOME altında.
 //!
-//! Bilinen ayrışma vakalarında (`chat-sapma-`) Rust'ın güvenli sonucu `expect` ile ayrıca doğrulanır.
+//! Eski ayrışma vakaları (`chat-sapma-`, 28 Kas `jsonbound` ile eşit) Rust sonucunu `expect` ile ayrıca sabitler.
 
 use crate::common::*;
 use crate::fam_bg::Rng;
@@ -46,12 +46,6 @@ impl Build<'_> {
 
     fn push(&mut self, c: Case) {
         self.cases.push(c);
-    }
-
-    /// Bilinen ayrışma: Rust sonucu `expect` alanlarını taşımalı.
-    fn diverges(&mut self, c: Case, why: &'static str, expect: Value) {
-        self.expect.insert(c.id.clone(), expect);
-        self.push(c.known(why));
     }
 
     /// Eskiden ayrışan, artık iki tarafta eşit vaka: sonuç `expect` ile de sabitlenir.
@@ -464,9 +458,9 @@ fn claude_divergences(b: &mut Build<'_>) {
     );
     let lone = r#"{"type":"assistant","message":{"content":"yarım \ud83d"}}"#;
     let c = b.claude("sapma-vekil", lines(&[q.as_str(), lone]));
-    b.diverges(
+    // 28 Kas: Python da U+FFFD (`jsonbound`), eşit
+    b.agrees(
         c,
-        "eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
         json!({"last_exchange": {"user": "soru", "assistant": "yarım \u{fffd}"}}),
     );
 }
@@ -877,11 +871,7 @@ fn ucli_cases(b: &mut Build<'_>) {
         "sapma-vekil",
         lines(&[r#"{"role":"user","content":"\udc00"}"#]),
     );
-    b.diverges(
-        c,
-        "eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
-        json!({"full_history": turns(&[("user", "\u{fffd}")])}),
-    );
+    b.agrees(c, json!({"full_history": turns(&[("user", "\u{fffd}")])}));
 }
 
 // --------------------------------------------------------------------------------------------------------------- agy

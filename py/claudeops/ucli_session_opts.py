@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Tuple
 
 from .envnames import is_safe_env_name
 from .settings import ucli_services
+from . import jsonbound as _jsonbound
 
 def services() -> Dict[str, Tuple[str, str, str]]:
     """id -> (ucli `--provider` değeri ya da "" = varsayılan chat-completions, uç nokta ya da "" = ayardaki Evren uç noktası,
@@ -458,7 +459,7 @@ def _models_cache_key(service: str, ep: str, key: str) -> str:
 def _parse_service_models(raw: bytes) -> List[str]:
     """`{"data": [...]}` ya da doğrudan dizi -> sıralı, tekrarsız kimlikler. `data` yok/`null` boş liste; JSON olmayan
     gövde ya da dizi olmayan `data` `ValueError` (başarısız çekim). Rust `ucli_opts::parse_service_models`."""
-    data = _json.loads(raw.decode("utf-8", "replace"))
+    data = _jsonbound.loads(raw.decode("utf-8", "replace"))
     rows = data.get("data") if isinstance(data, dict) else data
     if rows is None:
         return []

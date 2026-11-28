@@ -52,6 +52,7 @@ from . import preview
 from .childgroup import _run_grouped
 from .diaglog import diag_log
 from .settings import load_settings
+from . import jsonbound as _jsonbound
 
 # claudeops'un KENDİ ucli kopyası: `<repo>/bin/ucli` (kullanıcı kararı, 2026-10-09:
 # "claudeops ucli'yi kendi reposunda tutsun, gerektiğinde release'i/debug'ı oraya
@@ -271,7 +272,7 @@ def _key_env_refusal(name: str) -> str:
         if os.path.exists(settings.SETTINGS_JSON) and not os.path.isfile(settings.SETTINGS_JSON):
             raise ValueError("normal dosya değil")      # FIFO/aygıt: açmak bloklar
         with open(settings.SETTINGS_JSON, encoding="utf-8") as f:
-            stored = json.load(f)
+            stored = _jsonbound.load(f)
     except FileNotFoundError:
         stored = {}
     except (OSError, ValueError, RecursionError):
@@ -424,7 +425,7 @@ def read_status_file(cwd: str, session: str) -> Optional[Dict[str, Any]]:
     path = find_chat_file(cwd, f"{session}.status.json")
     try:
         with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+            data = _jsonbound.load(f)
     except (OSError, ValueError, RecursionError):     # bozuk JSON/UTF-8, dev sayı, aşırı derin yapı
         return None
     return data if isinstance(data, dict) else None
@@ -484,7 +485,7 @@ def _read_turns(cwd: str, session: str):
                     line = raw.strip()
                     if not line:
                         continue
-                    turn = json.loads(line)
+                    turn = _jsonbound.loads(line)
                 except (ValueError, RecursionError):
                     return (None, False) if raw.endswith("\n") else (turns, True)
                 if not isinstance(turn, dict) or "role" not in turn:
@@ -518,7 +519,7 @@ def _parse_turn(line: str) -> Dict[str, Any]:
     if not line:
         raise UcliError("ucli hiçbir çıktı vermeden kapandı")
     try:
-        value = json.loads(line)
+        value = _jsonbound.loads(line)
     except json.JSONDecodeError as e:
         raise UcliError(f"ucli çıktısı tek-satır JSON değildi: {e}\nsatır={line!r}") from e
     if "error" in value:
@@ -613,7 +614,7 @@ def ucli_chat_once(
     if result.returncode != 0:
         raise UcliError(_redact(result.stderr.strip(), secret) or f"ucli exit={result.returncode}")
     try:
-        value = json.loads(result.stdout)
+        value = _jsonbound.loads(result.stdout)
     except (ValueError, RecursionError) as e:
         raise UcliError(f"ucli çıktısı JSON değildi: {e}\nstdout={_redact(result.stdout, secret)!r}") from None
     if not isinstance(value, dict):
@@ -796,7 +797,7 @@ def _run_resume(run_key: str, approval_id: str, argv: List[str], timeout: float,
         ucli_approval.set_result(run_key, "done", {"error": (err or f"ucli exit={result.returncode}")})
         return {"ok": False, "error": "ucli failed"}
     try:
-        value = json.loads(result.stdout)
+        value = _jsonbound.loads(result.stdout)
     except ValueError:
         ucli_approval.set_result(run_key, "done", {"error": "ucli output was not JSON"})
         return {"ok": False, "error": "bad output"}

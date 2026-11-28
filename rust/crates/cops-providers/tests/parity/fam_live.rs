@@ -318,9 +318,7 @@ fn status_bodies(b: &mut Build<'_>) {
         let c = b.status(id, body);
         b.push(c);
     }
-    let c = b
-        .status("cok-derin", nested(600))
-        .known("512'den derin belge: Python okur, Rust 'okunamadı' sayar (yığın sınırı)");
+    let c = b.status("cok-derin", nested(600)); // 28 Kas: Python da 512 sınırında (`jsonbound`), eşit
     b.push(c);
     // 4300 basamaktan uzun sayı iki tarafta da "okunamadı"
     let c = b.status(

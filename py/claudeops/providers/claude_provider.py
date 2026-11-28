@@ -17,6 +17,7 @@ from ..childgroup import _run_grouped
 from ..diaglog import diag_log
 from ..routing import claude_guidance_path
 from ..settings import resolved_binary
+from .. import jsonbound as _jsonbound
 
 MODEL_CHOICES = [
     "claude-sonnet-5-5",
@@ -329,7 +330,7 @@ def _last_assistant_value(jsonl_path: Path, extract, since: Optional[float] = No
                     if not line:
                         continue
                     try:
-                        obj = json.loads(line)
+                        obj = _jsonbound.loads(line)
                     except Exception:
                         continue
                     # Geçerli JSON ama nesne olmayan satır yalnız atlanır (`obj.get` istisnası okumayı düşürmesin).
@@ -453,7 +454,7 @@ def _session_record(pid: Optional[int]) -> Optional[Tuple[str, Optional[str]]]:
         return None
     try:
         pid = int(pid)
-        data = json.loads(_read_session_record(os.path.join(SESSIONS_DIR, f"{pid}.json")))
+        data = _jsonbound.loads(_read_session_record(os.path.join(SESSIONS_DIR, f"{pid}.json")))
         if not isinstance(data, dict) or int(data.get("pid") or 0) != pid:
             return None
         sid = data.get("sessionId")
@@ -558,7 +559,7 @@ def _jsonl_meta(path: Path) -> Dict[str, Optional[str]]:
                 if i >= _META_HEAD_LINES:
                     break
                 try:
-                    row = json.loads(line)
+                    row = _jsonbound.loads(line)
                 except (json.JSONDecodeError, ValueError):
                     continue
                 if not isinstance(row, dict):
@@ -610,7 +611,7 @@ def _has_chat_rows(path: Path) -> bool:
         with open(path, encoding="utf-8", errors="replace") as f:
             for raw in f:
                 try:
-                    row = json.loads(raw)
+                    row = _jsonbound.loads(raw)
                 except (json.JSONDecodeError, ValueError):
                     continue
                 if isinstance(row, dict) and row.get("type") in ("user", "assistant"):
@@ -1220,7 +1221,7 @@ class ClaudeProvider(CliProvider):
                         lines.append({})        # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
-                        row = json.loads(raw)
+                        row = _jsonbound.loads(raw)
                     except (ValueError, RecursionError):     # bozuk, aşırı derin ya da dev sayılı satır
                         continue
                     lines.append(row if isinstance(row, dict) else {})

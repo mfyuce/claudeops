@@ -2,8 +2,9 @@
 //!
 //! `serde_json` yerine ayrı ayrıştırıcı: Python `NaN`/`Infinity` kabul eder, 64 bite sığmayan tam sayı tam sayı kalır
 //! ve eşlenmemiş vekil kaçışı (`"\ud83d"`, kesilmiş emoji: JS `JSON.stringify` böyle yazar) satırı düşürmez; `serde_json`
-//! üçünde de belgeyi reddeder. Bilinen farklar: eşlenmemiş vekil U+FFFD olur; [`MAX_DEPTH`]ten derin belge ve 4300
-//! basamaktan uzun tam sayı hatadır (Python ilkinde ~1000'de `RecursionError`, ikincisinde `ValueError`).
+//! üçünde de belgeyi reddeder. Eşlenmemiş vekil U+FFFD olur; [`MAX_DEPTH`]ten derin belge ve 4300 basamaktan uzun tam
+//! sayı hatadır. Sağlayıcı okuyucularının Python tarafı (`py/claudeops/jsonbound.py`, 28 Kas) ilk ikisini aynı kuralla
+//! uygular; 4300 basamak Python'un kendi `ValueError`ıdır.
 //!
 //! `rs/state` (`cops-state::json::Json`) aynı ailenin okuyup YAZAN sürümü; o dal birleşince bu dosya onunla
 //! tekleştirilmeli.

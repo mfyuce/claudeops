@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .atomic_json import atomic_write_text, file_lock
 from .paths import CLAUDEOPS_DIR
+from . import jsonbound as _jsonbound
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_checks")
 MODES = ("restricted", "full")
@@ -79,7 +80,7 @@ def load_registry(owner: str = "") -> Tuple[Dict[str, Any], str]:
             raw = f.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
             return {}, "kayıt çok büyük"
-        data = json.loads(raw.decode("utf-8"))
+        data = _jsonbound.loads(raw.decode("utf-8"))
     except (OSError, ValueError, RecursionError):
         return {}, "kayıt geçerli JSON değil"
     ok, why = check_shape(data)
@@ -135,7 +136,7 @@ def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
         r = subprocess.run([binary, "checks", "validate", "--checks-file", tmp, "--json", "--not-under", ROOT.replace("ucli_checks", "__none__")],
                            capture_output=True, text=True, timeout=20)
         try:
-            doc = json.loads(r.stdout or "{}")
+            doc = _jsonbound.loads(r.stdout or "{}")
         except ValueError:
             return False, (r.stderr or r.stdout or "doğrulama çıktısı okunamadı").strip()[:300]
         if not isinstance(doc, dict):
@@ -240,7 +241,7 @@ def set_mode(state_dir: str, session: str, mode: str, cap: str, *, confirm: bool
         cur, seq = "off", 0
         try:
             with open(path, encoding="utf-8") as f:
-                d = json.load(f)
+                d = _jsonbound.load(f)
             cur, seq = str(d.get("mode") or "off"), int(d.get("seq") or 0)
         except (OSError, ValueError, TypeError):
             pass
@@ -265,7 +266,7 @@ def get_mode(state_dir: str, session: str) -> Dict[str, Any]:
     """Mod dosyasının içeriği (`mode`, `seq`); dosya yok/bozuk/geçersiz ad = kapalı. Salt okur."""
     try:
         with open(mode_file(state_dir, session), encoding="utf-8") as f:
-            d = json.load(f)
+            d = _jsonbound.load(f)
         mode = str(d.get("mode") or "off")
         return {"mode": mode if mode in _RANK else "off", "seq": int(d.get("seq") or 0)}
     except (OSError, ValueError, TypeError):

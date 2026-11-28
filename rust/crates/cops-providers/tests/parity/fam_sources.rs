@@ -620,7 +620,7 @@ fn service_cases() -> Vec<Case> {
         "service",
         vec![s(0.0, "grok", "K", json!({"rep": [hex("["), 100000]}))],
     ));
-    v.push(diverges(
+    v.push(fixed(
         "src-svc-sapma-vekil",
         "service",
         vec![s(
@@ -630,9 +630,8 @@ fn service_cases() -> Vec<Case> {
             ok("{\"data\": [{\"id\": \"a\\ud800\"}]}"),
         )],
         json!([["a\u{fffd}"]]),
-        "hizmet /models eşlenmemiş vekil: Python vekili taşır, Rust U+FFFD",
     ));
-    v.push(diverges(
+    v.push(fixed(
         "src-svc-sapma-derinlik",
         "service",
         vec![s(
@@ -646,7 +645,6 @@ fn service_cases() -> Vec<Case> {
             )),
         )],
         json!([[]]),
-        "hizmet /models 512'den derin gövde: Python okur, Rust boş liste",
     ));
     let mut r = Rng(0x005e_71ce_0004);
     for i in 0..200 {

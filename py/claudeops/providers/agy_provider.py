@@ -84,6 +84,7 @@ from .. import preview
 from ..effort import sort_levels, split_tier
 from ..paths import CLAUDEOPS_DIR
 from ..settings import resolved_binary
+from .. import jsonbound as _jsonbound
 
 CONVERSATIONS_CACHE =os.path.expanduser("~/.gemini/antigravity-cli/cache/last_conversations.json")
 CONVERSATIONS_DIR = os.path.expanduser("~/.gemini/antigravity-cli/conversations")
@@ -305,7 +306,7 @@ class AgyProvider(CliProvider):
             return own
         try:
             with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
-                data = json.load(f)
+                data = _jsonbound.load(f)
         except (OSError, ValueError, RecursionError):      # ValueError: bozuk JSON ve UTF-8 olmayan dosya
             return None
         if not isinstance(data, dict):
@@ -411,7 +412,7 @@ class AgyProvider(CliProvider):
             # turu olmamış demektir.
             try:
                 with open(CONVERSATIONS_CACHE, encoding="utf-8") as f:
-                    cache = json.load(f)
+                    cache = _jsonbound.load(f)
             except (OSError, ValueError, RecursionError):      # ValueError: UTF-8 olmayan önbellek de keşif turunu düşürmesin
                 cache = {}
             cached = cache.get(cwd) if isinstance(cache, dict) else None

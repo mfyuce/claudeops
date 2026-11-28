@@ -110,6 +110,7 @@ from ..ucli_client import _read_turns
 from ..ucli_client import (UcliError, binary_derives_context, binary_flag_values, chat_help_text, binary_supports_flag, legacy_chat_dir, read_chat_history, state_dir_for, read_status_file, status_is_busy, failed_turn_records, resolve_binary,
                            ucli_chat_once)
 from .base import CliProvider, McpServerSpec, OneshotError, _open_private_target, _path_part_ok
+from .. import jsonbound as _jsonbound
 
 # effort: "ne kadar düşünsün" anlamında GERÇEK bir karşılığı yok (unified-cli
 # TOBEDECIDED.md'sine bu boşluk ayrıca not edildi) — ama 2026-09-24'te
@@ -247,7 +248,7 @@ def _fetch_live_models() -> Optional[List[str]]:
     )
     try:
         with _open_no_redirect(req, timeout=5.0) as resp:
-            payload = json.loads(resp.read())
+            payload = _jsonbound.loads(resp.read())
     except (urllib.error.URLError, OSError, ValueError, RecursionError):     # RecursionError: aşırı derin gövde
         diag_log("models_fetch_failed", source="ucli")      # yutulan hata günlüğe (anahtar/adres yok)
         return None
@@ -1303,7 +1304,7 @@ class UcliProvider(CliProvider):
         out: Dict[str, Any] = {"count": len(recs), "last_unix": recs[-1][0]}
         try:
             with open(recs[-1][1], encoding="utf-8") as f:
-                err = json.load(f).get("error")
+                err = _jsonbound.load(f).get("error")
             if isinstance(err, dict):
                 err = err.get("message") or err.get("error") or json.dumps(err, ensure_ascii=False)
             if err:

@@ -117,12 +117,6 @@ impl Build<'_> {
         self.expect.insert(b.id.clone(), expect);
         self.push(b);
     }
-    fn diverges(&mut self, b: B, why: &'static str, expect: Value) {
-        self.expect.insert(b.id.clone(), expect);
-        self.push(b);
-        let c = self.cases.last_mut().unwrap();
-        c.known = Some(why);
-    }
 
     /// claude sorguları: `sid` yolları, resume seçimi (adlarla ve ellerdekiyle) ve durmuş oturum.
     fn claude_queries(&self, b: B, names: &[&str], held: &[&str]) -> B {
@@ -1099,11 +1093,7 @@ fn divergences(b: &mut Build<'_>) {
             ),
         )
         .q(json!({"f": "meta", "path": b.abs("work/m.jsonl")}));
-    b.diverges(
-        c,
-        "512'den derin satır: Python okur, Rust atlar",
-        json!([[null, null]]),
-    );
+    b.fixed(c, json!([[null, null]])); // 28 Kas: Python da 512 sınırında (`jsonbound`)
     let c = B::new("sapma-copilot-kimlik-sayi")
         .raw(
             COPILOT_DB,

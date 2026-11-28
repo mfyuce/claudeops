@@ -38,6 +38,7 @@ from typing import Dict, FrozenSet, List, Optional, Sequence
 from .base import CliProvider, McpServerSpec, cmd_arg as _arg, _path_part_ok
 from ..effort import sort_levels
 from ..settings import resolved_binary
+from .. import jsonbound as _jsonbound
 
 CODEX_HOME =os.path.expanduser("~/.codex")
 SESSIONS_DIR = os.path.join(CODEX_HOME, "sessions")
@@ -117,7 +118,7 @@ def _session_meta(path: str) -> Optional[dict]:
         with open(path, encoding="utf-8", errors="surrogateescape") as f:
             first = f.readline()
         first.encode("utf-8")
-        d = json.loads(first)
+        d = _jsonbound.loads(first)
     except (OSError, ValueError, RecursionError):      # ValueError: bozuk JSON VE UTF-8 olmayan satır (tek bozuk dosya aramayı düşürmesin)
         return None
     if isinstance(d, dict) and d.get("type") == "session_meta":
@@ -279,7 +280,7 @@ class CodexProvider(CliProvider):
             self._cache_ts = now
             try:
                 with open(MODELS_CACHE, encoding="utf-8") as f:
-                    data = json.load(f)
+                    data = _jsonbound.load(f)
                 listed = [m for m in data.get("models", [])
                           if m.get("visibility") == "list" and m.get("slug")]
                 listed.sort(key=lambda m: m.get("priority", 999))
@@ -306,7 +307,7 @@ class CodexProvider(CliProvider):
             return None
         try:
             with open(MODELS_CACHE, encoding="utf-8") as f:
-                data = json.load(f)
+                data = _jsonbound.load(f)
             for m in data.get("models", []):
                 if m.get("slug") != model:
                     continue
@@ -389,7 +390,7 @@ class CodexProvider(CliProvider):
                         out.append({})          # okunamayan satır: içeriği yok, yeri belli (bkz. `last_message_role`)
                         continue
                     try:
-                        row = json.loads(raw)
+                        row = _jsonbound.loads(raw)
                     except (ValueError, RecursionError):
                         continue
                     out.append(row if isinstance(row, dict) else {})
@@ -414,7 +415,7 @@ class CodexProvider(CliProvider):
             if '"token_count"' not in raw:
                 continue
             try:
-                o = json.loads(raw)
+                o = _jsonbound.loads(raw)
             except (ValueError, RecursionError):
                 continue
             p = o.get("payload") if isinstance(o, dict) else None

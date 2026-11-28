@@ -25,6 +25,7 @@ from .paths import CLAUDEOPS_DIR
 from . import preview
 from .preview import preview_only  # noqa: F401  (eski yol: `ucli_agents.preview_only`)
 from .settings import load_settings
+from . import jsonbound as _jsonbound
 
 STATE_FILE = os.path.join(CLAUDEOPS_DIR, "ucli_agents.json")
 TOKEN_DIR = os.path.join(CLAUDEOPS_DIR, "ucli_agent_tokens")
@@ -124,7 +125,7 @@ def _empty() -> Dict[str, Any]:
 def _load() -> Dict[str, Any]:
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+            data = _jsonbound.load(f)
     except (OSError, ValueError):
         return _empty()
     if not isinstance(data, dict):
@@ -144,7 +145,7 @@ def _keep_corrupt_copy() -> None:
     except FileNotFoundError:
         return
     try:
-        data = json.loads(raw.decode("utf-8"))
+        data = _jsonbound.loads(raw.decode("utf-8"))
         if isinstance(data, dict) and all(isinstance(data.get(k, {}), dict) for k in ("parents", "children")):
             return
     except (ValueError, RecursionError):

@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .atomic_json import atomic_write_json
 from .paths import CLAUDEOPS_DIR
+from . import jsonbound as _jsonbound
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_ask")
 MAX_ANSWER_BYTES = 64 * 1024
@@ -39,7 +40,7 @@ def pending(name: str) -> Optional[Dict[str, Any]]:
     """Bekleyen soru (`{id, header, question, options}`) ya da None. Bozuk/yarım dosya = None."""
     try:
         with open(os.path.join(dir_for(name), "question.json"), encoding="utf-8") as f:
-            q = json.load(f)
+            q = _jsonbound.load(f)
     except (OSError, ValueError):
         return None
     if not isinstance(q, dict) or not isinstance(q.get("id"), int):

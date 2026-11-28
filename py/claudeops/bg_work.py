@@ -15,6 +15,7 @@ import time
 from typing import Iterable, Optional, Set
 
 from .paths import _read_session_record
+from . import jsonbound as _jsonbound
 
 # Alt durum satırı: sayı + (background task|shell|agent) ve yönetim/kesme ipucu AYNI satırda (düzyazıdaki "2 agents" sayılmasın).
 _COUNT_RE = re.compile(r"(?<![\w.])([1-9]\d*) (?:background tasks?|shells?|agents?|monitors?)\b", re.I)
@@ -85,7 +86,7 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
         if not any(m in ln for m in _LINE_MARKS):
             continue
         try:
-            o = json.loads(ln)
+            o = _jsonbound.loads(ln)
         except (ValueError, RecursionError):
             continue
         # Beklenmedik yapıdaki satır/blok yalnız atlanır: istisna bütün taramayı düşürüyordu.
@@ -194,7 +195,7 @@ def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str
             continue
         path = os.path.join(sessions_dir, n)
         try:
-            d = json.loads(_read_session_record(path))
+            d = _jsonbound.loads(_read_session_record(path))
             if d.get("sessionId") != sid:
                 continue
             with open(f"/proc/{int(d['pid'])}/stat", encoding="utf-8", errors="replace") as f:
@@ -231,7 +232,7 @@ def codex_subagents_pending(lines: Iterable[str], now: Optional[float] = None) -
         if "SubAgentActivity" not in ln:
             continue
         try:
-            o = json.loads(ln)
+            o = _jsonbound.loads(ln)
         except (ValueError, RecursionError):
             continue
         payload = (o.get("payload") or {}) if isinstance(o, dict) else None
