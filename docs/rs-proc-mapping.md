@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 617 | 153 | 464 | 0 |
-| test durumu (157 dosya) | 1964 | 115 | 1849 | 0 |
+| test durumu (157 dosya) | 1966 | 115 | 1851 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -1729,8 +1729,10 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_dry_run_scan_is_in_preview_and_writes_no_sid` | 54 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_real_run_is_unchanged` | 61 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_dry_run_scan_is_in_preview_and_writes_no_sid` | 55 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_real_run_is_unchanged` | 62 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_dry_run_does_not_take_the_guard_lock` | 68 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_real_run_still_needs_the_guard_lock` | 80 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_rsprov_s1_own_session.py`
 

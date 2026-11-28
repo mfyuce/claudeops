@@ -567,7 +567,15 @@ fn run(
         let handle = std::thread::Builder::new()
             .name("cops-spawn-watchdog".into())
             .spawn(move || {
-                fallback_watchdog_with(&l, &name, &cwd, &inner, &env, &window_cmd, env_file.as_ref())
+                fallback_watchdog_with(
+                    &l,
+                    &name,
+                    &cwd,
+                    &inner,
+                    &env,
+                    &window_cmd,
+                    env_file.as_ref(),
+                )
             })
             .map_err(|_| SpawnFailure::Error {
                 class: "RuntimeError".into(),

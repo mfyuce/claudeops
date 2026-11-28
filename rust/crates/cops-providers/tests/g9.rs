@@ -7,8 +7,9 @@ use cops_providers::real::routing_sync::{copy2, sync_global_files};
 use cops_providers::real::startup_desktop::X11Desktop;
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
-    fallback_watchdog, fallback_watchdog_with, reclaim_ghost_session, SpawnEnvFile, Clock, DiagSink, LaunchError, Launcher, SpawnTmux,
-    Terminal, FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
+    fallback_watchdog, fallback_watchdog_with, reclaim_ghost_session, Clock, DiagSink, LaunchError,
+    Launcher, SpawnEnvFile, SpawnTmux, Terminal, FALLBACK_ATTEMPT_WAIT_SECONDS,
+    FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
 };
 use cops_providers::startup_desktop::{
     build_message, chunks, resolve_desktop, startup_id, DesktopIo,
@@ -317,7 +318,10 @@ fn watchdog_restores_a_consumed_spawn_env_file_before_relaunching() {
     fallback_watchdog_with(&r.launcher, "s", "/w", "inner", &[], "cmd", Some(&f));
     let path = format!("{dir}/abc.env");
     assert_eq!(fs::read_to_string(&path).unwrap(), f.content);
-    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
     assert_eq!(r.calls().last().unwrap(), "direct s");
     assert!(!format!("{f:?}{:?}", r.events()).contains("s1r"));
 
@@ -344,7 +348,12 @@ fn watchdog_does_not_relaunch_when_the_env_file_cannot_be_restored() {
     let r = rig(|_| {}, vec![]);
     fallback_watchdog_with(&r.launcher, "s", "/w", "inner", &[], "cmd", Some(&f));
     let calls = r.calls();
-    assert!(!calls.iter().any(|c| c.starts_with("launch") || c.starts_with("direct")), "{calls:?}");
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.starts_with("launch") || c.starts_with("direct")),
+        "{calls:?}"
+    );
     let ev = r.events();
     let names: Vec<&str> = ev.iter().map(|e| e.0).collect();
     assert_eq!(names, ["spawn_retry", "spawn_env_file_refused"]);
