@@ -1249,18 +1249,18 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_orphan_watch.py::Sockets.test_dead_server_socket_deleted` | 44 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Sockets.test_live_server_owner_dead_old_reported_not_killed` | 50 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Sockets.test_young_or_owner_alive_not_reported` | 57 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Sockets.test_usage_socket_killed_and_removed` | 63 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Sockets.test_main_and_foreign_sockets_ignored` | 70 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Procs.test_app_server_child_skipped_when_parent_has_no_info` | 107 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Procs.test_old_unknown_cli_flagged_young_and_known_not` | 116 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Procs.test_under_cops_pane_or_known_ancestor_not_flagged` | 120 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Procs.test_chrome_native_host_ignored` | 126 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Procs.test_codex_app_server_and_its_children_ignored` | 130 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Job.test_notifies_only_new_keys_and_forgets_resolved` | 145 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
-| `test_orphan_watch.py::Job.test_registered_as_light_job` | 157 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Sockets.test_dead_server_socket_deleted` | 48 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Sockets.test_live_server_owner_dead_old_reported_not_killed` | 54 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Sockets.test_young_or_owner_alive_not_reported` | 61 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Sockets.test_usage_socket_killed_and_removed` | 67 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Sockets.test_main_and_foreign_sockets_ignored` | 74 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Procs.test_app_server_child_skipped_when_parent_has_no_info` | 111 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Procs.test_old_unknown_cli_flagged_young_and_known_not` | 120 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Procs.test_under_cops_pane_or_known_ancestor_not_flagged` | 124 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Procs.test_chrome_native_host_ignored` | 130 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Procs.test_codex_app_server_and_its_children_ignored` | 134 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Job.test_notifies_only_new_keys_and_forgets_resolved` | 149 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+| `test_orphan_watch.py::Job.test_registered_as_light_job` | 161 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
 
 ### `py/tests/test_paths_isolation.py`
 
