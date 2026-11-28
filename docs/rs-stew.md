@@ -990,9 +990,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (2001 satır)
+### Python testleri (2004 satır)
 
-Test satırı özeti: 2001 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 2004 satır; doğrudan açık (aşağıda `AÇIK`) 203; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2702,8 +2702,11 @@ Test satırı özeti: 2001 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_steward_start_backoff.BackoffMath.test_steps_and_reset` | AÇIK (taşınmadı ya da kısmen): `web_steward._start_backoff_note/_remaining` 10 dk / 1 sa / 6 sa geri çekilme; saf matematik (süreç içi tablo), iz T10 |
 | `test_steward_start_backoff.EnsureRunningBackoff.test_failed_start_backs_off_and_logs_no_big_context` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._ensure_running |
 | `test_steward_start_backoff.EnsureRunningBackoff.test_success_logs_big_context_and_clears` | identity::brain_name_for_vectors, identity::build_ownership_index_vectors, identity::name_rules_edges, identity::ownership_index_edges_keep_order (+9); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._ensure_running |
-| `test_steward_symlinked_todo.SymlinkedTodo.test_symlinked_worktree_is_unknown` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
+| `test_steward_symlinked_todo.SymlinkedTodo.test_symlinked_worktree_without_tagged_lines_is_unknown` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
 | `test_steward_symlinked_todo.SymlinkedTodo.test_owner_main_checkout_still_counts` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
+| `test_steward_symlinked_todo.SymlinkedTodo.test_symlinked_worktree_counts_its_tagged_lines` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
+| `test_steward_symlinked_todo.SymlinkedTodo.test_same_cwd_extension_project_is_shared` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
+| `test_steward_symlinked_todo.SymlinkedTodo.test_same_cwd_unrelated_names_keep_counting` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
 | `test_steward_symlinked_todo.SymlinkedTodo.test_symlink_to_unregistered_dir_still_counts` | AÇIK (taşınmadı ya da kısmen): `web_steward._todo_owned_by_other`: başka projenin TODO.md'sine symlink ise sayı bilinmiyor (gerçek git worktree); sahiplik kuralı, iz T10 |
 | `test_steward_tbd370.TrailingNewlineNameTest.test_valid_name` | identity::name_rules_edges, identity::valid_name_vectors |
 | `test_steward_tbd370.TrailingNewlineNameTest.test_valid_custom_id` | identity::name_rules_edges, identity::valid_custom_id_vectors |

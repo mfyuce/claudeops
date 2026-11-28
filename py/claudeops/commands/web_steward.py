@@ -4126,18 +4126,34 @@ _TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re
 def _todo_owned_by_other(projects: Dict[str, sw.Project], proj: str, cwd: str, real: str, resolve: Callable[[str], str]) -> bool:
     """TODO.md'nin GERÇEK yolu (symlink çözülmüş), bu projenin kendi klasörünün dışında ve BAŞKA kayıtlı bir projenin klasöründeyse True
     (worktree projesi: `scripts/worktree-docs-link.sh` TODO.md'yi ana checkout'a symlink'ler; copsdevderbent'e claudeops'un açık
-    maddeleri yazılıyordu). Sayı o projeye ait DEĞİL: çağıran None (bilinmiyor) sayar, kanıtlı teyit kanıta kalır."""
+    maddeleri yazılıyordu). Aynı klasörü paylaşan kayıtlı projeden adı uzun olan (cops -> copsdevderbent) da paylaşan sayılır.
+    Paylaşılan dosyada `_scan_todo` yalnız bu projeye etiketli satırları sayar (`_todo_line_tagged`), hiç yoksa None (bilinmiyor);
+    metin/sha okuyucuları '' döner."""
     own = os.path.realpath(cwd)
     home = os.path.dirname(real)
-    if home == own:
-        return False
     for name in projects:
         if name == proj:
             continue
         oc = resolve(name)
-        if oc and os.path.realpath(oc) == home:
+        if not oc or os.path.realpath(oc) != home:
+            continue
+        # aynı klasör: yalnız adı diğerinin uzantısıysa paylaşılan (copsdevderbent 28 Kas: cwd ana checkout, cops'un 435 maddesi)
+        if home != own or (len(proj) > len(name) and proj.startswith(name)):
             return True
     return False
+
+
+_TODO_OPEN_TAG_RE = re.compile(r"\s*(?:[-*+]|\d+[.)])\s*\[[ ~]\]\s*\(([^)]*)\)")
+
+
+def _todo_line_tagged(ln: str, proj: str) -> bool:
+    """Ortak TODO satırı bu projeye mi etiketli: kutudan sonraki ilk parantezin `,`/`;` ile ayrılan parçalarından biri, harf/rakam
+    dışı karakterler atılınca proje adına eşit (`(rs-prov, ...)` -> rsprov, `(26 Kas, copsdev; kapı: cops)` -> copsdev)."""
+    m = _TODO_OPEN_TAG_RE.match(ln)
+    if not m:
+        return False
+    want = re.sub(r"[\W_]", "", proj).lower()
+    return any(re.sub(r"[\W_]", "", t).lower() == want for t in re.split(r"[,;]", m.group(1)))
 
 
 def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = False) -> Optional[Tuple[int, int]]:
@@ -4153,11 +4169,12 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = Fal
         real = _doc_path(cwd, "TODO.md")
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
             return None
-        if _todo_owned_by_other(projects, proj, cwd, real, resolve):
-            return None
+        shared = _todo_owned_by_other(projects, proj, cwd, real, resolve)
         n_open = n_owner = n_boxed = n_unboxed = 0
         with open(real, encoding="utf-8", errors="replace") as f:
             for ln in f:
+                if shared and not _todo_line_tagged(ln, proj):
+                    continue
                 if re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[[xX]\]", ln):
                     n_boxed += 1
                     continue
@@ -4174,6 +4191,8 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = Fal
                     continue
                 if not sw.OWNER_WAIT_LINE_RE.search(ln):
                     n_open += 1
+        if shared:      # yalnız bu projeye etiketli açık satırlar; hiç yoksa bilinmiyor (kanıtlı teyit kanıta kalır)
+            return (n_open, n_owner) if n_open or n_owner else None
         if n_boxed == 0 and n_open == 0:
             n_open = n_unboxed        # biçim tanınmadı: sahipsiz iş olabilir, "iş yok" diye kapatma (isparta 14 Kas)
         return n_open, n_owner
