@@ -836,3 +836,83 @@ print(json.dumps([c.os.path.join(c.PROJECTS_DIR, c._encode_cwd(x)) for x in json
         assert_eq!(dirs.claude_project_dir(cwd), want, "{cwd:?}");
     }
 }
+
+/// WAL kipinde yazılmış veritabanını Python (`mode=ro`) ve gerçek okuyucu aynı okur: yazar kapanmadan ölmüş, temiz
+/// kapanmış, `-shm`siz kopya, salt okunur dizindeki kopya (TODO rs-prov G2). Her okuyucu kendi kopyasını açar.
+#[test]
+fn wal_databases_read_the_same_as_python() {
+    let code = r#"
+import json, os, shutil, sqlite3, sys
+sys.path.insert(0, sys.argv[1] + "/py")
+from claudeops.sqlite_uri import ro_sqlite_uri
+root = sys.argv[2]
+sql = "SELECT sum(v) FROM t WHERE ? IS NOT NULL"
+def make(path, close):
+    w = sqlite3.connect(path)
+    w.executescript("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE t(v INTEGER); INSERT INTO t VALUES(5);")
+    w.execute("INSERT INTO t VALUES(6)"); w.commit()
+    if close:
+        w.close()
+    return w
+states = ["olu-yazar", "kapali", "shm-yok", "salt-okunur-dizin", "salt-okunur-wal"]
+src = os.path.join(root, "kaynak"); os.makedirs(src)
+keep = make(os.path.join(src, "acik.db"), False)
+make(os.path.join(src, "kapali.db"), True)
+out = {}
+for state in states:
+    for who in ("py", "rs"):
+        d = os.path.join(root, who, state); os.makedirs(d)
+        name = "kapali.db" if state in ("kapali", "salt-okunur-dizin") else "acik.db"
+        suffixes = [""] if name == "kapali.db" else ["", "-wal"] if state in ("shm-yok", "salt-okunur-wal") else ["", "-wal", "-shm"]
+        for s in suffixes:
+            shutil.copy(os.path.join(src, name + s), os.path.join(d, "x.db" + s))
+        if state.startswith("salt-okunur"):
+            os.chmod(d, 0o500)
+    try:
+        c = sqlite3.connect(ro_sqlite_uri(os.path.join(root, "py", state, "x.db")), uri=True, timeout=2.0)
+        out[state] = c.execute(sql, ("x",)).fetchone()[0]
+        c.close()
+    except sqlite3.Error:
+        out[state] = None
+print(json.dumps(out), flush=True)
+os._exit(0)
+"#;
+    let t = Tmp::new();
+    let root = t.path("work/wal-parite");
+    fs::create_dir_all(&root).unwrap();
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let out = std::process::Command::new("python3")
+        .args(["-I", "-c", code, repo.to_str().unwrap(), &root])
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", t.path("work"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want: serde_json::Map<String, Value> = serde_json::from_slice(&out.stdout).unwrap();
+    let probe = t.probe();
+    let mut got = serde_json::Map::new();
+    for state in want.keys() {
+        let db = format!("{root}/rs/{state}/x.db");
+        let cell = probe.sqlite_cell(&db, "SELECT sum(v) FROM t WHERE ? IS NOT NULL", "x");
+        got.insert(
+            state.clone(),
+            match cell {
+                Some(cops_providers::SqlCell::Int(i)) => json!(i),
+                None => Value::Null,
+                other => panic!("{state}: {other:?}"),
+            },
+        );
+        for who in ["py", "rs"] {
+            let dir = format!("{root}/{who}/{state}");
+            fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+        }
+    }
+    println!("{want:?}");
+    assert_eq!(got, want);
+    assert_eq!(want["olu-yazar"], json!(11));
+}

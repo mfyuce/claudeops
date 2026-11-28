@@ -885,3 +885,88 @@ fn the_start_gate_decides_like_the_separate_reads() {
     assert_eq!(kinds.len(), 3, "{kinds:?}");
     assert!(logged > 0, "günlük olayı hiç karşılaştırılmadı");
 }
+
+/// Yaz saati olan dilimlerde gün başı ve kredi tarihi Python ile aynı (`mktime`; TODO rs-prov birleştirme). Süreç
+/// `TZ`si paralel testlerde değiştirilemez: karşılaştırma bu ikiliyi `TZ` verilmiş çocuk olarak yeniden koşar.
+#[test]
+fn day_start_and_date_ms_match_python_across_dst() {
+    const MARK: &str = "COPS_TEST_DST_CHILD";
+    if std::env::var_os(MARK).is_none() {
+        // Avrupa, Güney yarıküre, gece yarısında atlayan dilim (Havana, Santiago)
+        for tz in [
+            "Europe/Berlin",
+            "Australia/Lord_Howe",
+            "America/Havana",
+            "America/Santiago",
+        ] {
+            let out = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "day_start_and_date_ms_match_python_across_dst",
+                    "--nocapture",
+                ])
+                .env(MARK, "1")
+                .env("TZ", tz)
+                .output()
+                .unwrap();
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                out.status.success() && text.contains("DST karşılaştırıldı"),
+                "{tz}: {text}{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        return;
+    }
+    let code = r#"
+import json, sys, time, datetime
+sys.path.insert(0, sys.argv[1] + "/py")
+from claudeops import ucli_cost as c
+days, stamps = [], []
+d = datetime.date(2026, 1, 1)
+while d.year == 2026:
+    s = d.isoformat()
+    days.append([s, c._date_ms(s), c._date_ms(s, end=True)])
+    noon = datetime.datetime(d.year, d.month, d.day, 12, tzinfo=datetime.timezone.utc).timestamp()
+    for t in (noon - 43200.0, noon - 36000.0, noon + 0.5, noon + 39600.0):
+        stamps.append([t, c._day_start_ms(t)])
+    d += datetime.timedelta(days=1)
+print(json.dumps({"days": days, "stamps": stamps, "tz": time.tzname}))
+"#;
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let tmp = Tmp::new();
+    let out = Command::new("python3")
+        .args(["-I", "-c", code, repo.to_str().unwrap()])
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", tmp.path("home"))
+        .env("CLAUDEOPS_DIR", tmp.path("state"))
+        .env("TZ", std::env::var("TZ").unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_ne!(want["tz"][0], want["tz"][1], "dilimde yaz saati yok");
+    for row in want["days"].as_array().unwrap() {
+        let day = row[0].as_str().unwrap();
+        assert_eq!(
+            ledger::date_ms(day, false),
+            row[1].as_f64().unwrap(),
+            "{day}"
+        );
+        assert_eq!(
+            ledger::date_ms(day, true),
+            row[2].as_f64().unwrap(),
+            "{day} son"
+        );
+    }
+    for row in want["stamps"].as_array().unwrap() {
+        let t = row[0].as_f64().unwrap();
+        assert_eq!(ledger::day_start_ms(t), row[1].as_f64().unwrap(), "{t}");
+    }
+    println!("DST karşılaştırıldı");
+}
