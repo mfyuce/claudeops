@@ -144,6 +144,19 @@ parity!("blocked_reason", blocked_reason_vectors, |c| blocked_reason(
     c.arg("now")
 ));
 
+/// py: brain_may_answer (28 Kas: motorun "aç ya da atla" maddesi sahibin alıntılanan cevabıyla sahibe düşmez)
+#[test]
+fn held_answer_item_owner_words_do_not_block_brain() {
+    let held = format!(
+        "{} p projesi done/paused. Cevap: eski taslakları sil",
+        cops_steward_core::consts_gen::P_HELD_ANSWER_PREFIX
+    );
+    assert_eq!(brain_may_answer(&Question { routine: true, text: held.clone(), ..Question::default() }), (true, ""));
+    assert!(!brain_may_answer(&Question { routine: false, text: held, ..Question::default() }).0);
+    let mid = format!("dosyayı sileyim mi? {}", cops_steward_core::consts_gen::P_HELD_ANSWER_PREFIX);
+    assert!(!brain_may_answer(&Question { routine: true, text: mid, ..Question::default() }).0);
+}
+
 /// py: brain_may_answer, is_context_question
 #[test]
 fn long_texts_stay_within_regex_limits() {
