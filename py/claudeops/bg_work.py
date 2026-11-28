@@ -4,8 +4,8 @@ Bağımsız kanıtlar (23 Kas, derbent kanıtı: alt ajan KENDİ arka plan işin
   1. EKRAN: alt durum satırı ("1 shell · esc to interrupt", "2 background tasks · ↓ to manage"; "← N agent" sayılmaz) ya da ajan satırı
      ("general-purpose waiting on 1 shell · ... · since 18:08", "waiting on its own background work · 40m").
   2. TRANSKRİPT: `run_in_background` ile başlamış, `<task-notification>` (completed/failed/killed) kaydı gelmemiş iş.
-  3. SÜREÇ KAYDI: claude'un `sessions/<pid>.json` `status` alanı `busy` / `shell` (`session_record_active`).
-Ayrıştırma işlevleri saftır; dosya erişimi `*_path`, `tail_lines` ve `session_record_active`tedir."""
+  3. SÜREÇ KAYDI: claude'un `sessions/<pid>.json` `status` alanı `busy` / `shell` / `idle` (`session_record_status`).
+Ayrıştırma işlevleri saftır; dosya erişimi `*_path`, `tail_lines` ve `session_record_status`tadır."""
 from __future__ import annotations
 
 import json
@@ -153,30 +153,38 @@ def transcript_pending_path(path: Optional[str], now: Optional[float] = None) ->
     return transcript_pending(data.split("\n"), now)
 
 
-def session_record_active(sessions_dir: str, sid: Optional[str]) -> bool:
-    """claude'un süreç kaydı (`<pid>.json`) bu konuşma için çalışan iş bildiriyor mu: `busy` (tur ya da devredilen ajan) ya da
-    `shell` (tur bitti, kabuk/Monitor açık). Süreç yaşamıyorsa, pid yeniden kullanılmışsa ya da kayıt okunamıyorsa False."""
+def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str]:
+    """claude'un süreç kaydının (`<pid>.json`) bu konuşma için bildirdiği durum: `busy` (tur ya da devredilen ajan), `shell`
+    (tur bitti, kabuk/Monitor açık), `idle` (açık iş yok). Aynı konuşmanın birden çok canlı kaydında `busy`/`shell` kazanır,
+    sonra tanınmayan durum (ör. `waiting`). Canlı kayıt yoksa, pid yeniden kullanılmışsa ya da kayıt okunamıyorsa None."""
     if not sid:
-        return False
+        return None
     try:
         names = os.listdir(sessions_dir)
     except OSError:
-        return False
+        return None
+    found: Set[str] = set()
     for n in names:
         if not n.endswith(".json"):
             continue
         try:
             with open(os.path.join(sessions_dir, n), encoding="utf-8") as f:
                 d = json.load(f)
-            if d.get("sessionId") != sid or d.get("status") not in ("busy", "shell"):
+            if d.get("sessionId") != sid:
                 continue
             with open(f"/proc/{int(d['pid'])}/stat", encoding="utf-8", errors="replace") as f:
                 started = f.read().rsplit(")", 1)[1].split()[19]
         except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RecursionError):
             continue
         if str(d.get("procStart")) == started:
-            return True
-    return False
+            found.add(str(d.get("status") or ""))
+    for st in ("busy", "shell"):
+        if st in found:
+            return st
+    other = sorted(found - {"idle"})
+    if other:
+        return other[0]
+    return "idle" if found else None
 
 
 _CODEX_BG_RE = re.compile(r"(?<![\w.])([1-9]\d*) background terminals? running", re.I)

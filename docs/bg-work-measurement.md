@@ -201,3 +201,32 @@ Ortak zayıflık: süreç durumu ekran metninden ve olay günlüğünden yeniden
 28 Kas 00:10 ölçümü: `shell` kaydı olan 4 oturumun hepsinde kabuk süreci var, `idle` kaydı olan 13 oturumun hiçbirinde yok; copsdev'de eski transkript kanıtı hâlâ 1, yeni 0.
 
 Kalıcı öneri: kayıt `idle` ise ekran ve transkript kanıtı yok sayılsın (şimdi yalnız `busy` / `shell` ekleyici kanıt). Koşul: kayıt okunamıyorsa, süreç eşleşmiyorsa ya da sürüm tanınmıyorsa bugünkü yedekler kalsın.
+
+## 28 Kas 2026: süreç kaydı gecikmesi, görev türleri ve `idle` önceliği (claude 2.1.332)
+
+Yöntem: özel tmux soketinde yalıtılmış Haiku oturumu; kayıt, ekran sayacı ve transkript kanıtı 0,5 sn'de bir örneklendi.
+Gecikme = transkriptteki son asistan olayının zamanı ile kaydın `statusUpdatedAt` farkı.
+
+| Senaryo | Kayıt | Ekran sayacı | Transkript |
+|---|---|---|---|
+| Düz tur | `busy` → `idle` | 0 | yok |
+| Arka plan kabuğu (`sleep 30`) | `busy` → `shell` → bitince `busy` → `idle` | 1 → 0 | var → yok |
+| Kendini eşleyen `pgrep` döngüsü | `shell` (45 sn boyunca; süreç kapatılınca `idle`) | 1 | var |
+| Monitor | `busy` → `shell` → akış bitince `idle` | 1 → 0 | yok (Monitor sayılmaz) |
+| Arka plan alt ajanı (42 sn) | ana tur bitip "Waiting for 1 background agent" yazarken de `busy`, bitince `idle` | 0 | yok |
+| `sleep 600` açıkken oturumu kapatıp `--resume` | `idle`; claude "didn't finish" bildirimi yazdı, süreç kalmadı | 0 | yok |
+
+- Tur sonunda kayıt 18-76 ms içinde yazıldı (8 geçiş); arka plan işi bitince uyanış `busy`si de aynı anda. Gözlenen geçişlerde
+  `busy` ile `shell` arasında geçici `idle` görülmedi.
+- Alt ajan bittikten sonra alt satırda `← 1 agent` kalıyor, kayıt `idle` (gezinme ipucu, iş değil).
+- Canlı filo: 8 dk, 30 sn aralıkla 298 oturum örneği; kayıt `idle`/yok iken ekran ya da transkript kanıtı olan örnek 0.
+- Canlı ÖLÇÜLMEYEN: `monitor_mcp`/`ws`, `mcp_task`, uzun süren uzak ajan. İkili okumasına göre claude bunları `idle` sayar.
+
+Karar: kayıt `idle` ise transkript kanıtı yok sayılır (geçmişten yeniden kurulan "bekleyen iş" hayaletleri). Ekran sayacı
+`idle` kayıtta da sayılır (claude'un kendi canlı göstergesi; ölçülmeyen türler orada görünürse korunur). Kayıt yok, bayat ya
+da `waiting` ise eski transkript yedeği sürer. Bilinen kenar: yalnız transkriptte görünen uzun süreli uzak ajan artık
+meşgul saymaz.
+
+Çözülmeyen: hiç bitmeyen kabuk (kendini eşleyen `pgrep` döngüsü) üç kanıtta da gerçek çalışan iştir; kayıt `shell` der.
+Bu bir algı hatası değil politika sorusudur (TOBEDECIDED).
+
