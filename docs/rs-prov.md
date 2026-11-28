@@ -71,7 +71,7 @@ sid/ad yol parçası denetimi, yutulan model çekimi ve `agy_sids` hatalarının
   `_row_content`, `codex_provider._codex_item` (`chat.rs`), `copilot_provider._cell_value` (`chat.rs::cell_or_empty`),
   `ucli_client._read_turns` (`chat.rs::ucli_turns`), `bg_work.{_result_text, _hashable}` (`bg_work.rs::{result_text, key}`),
   `sqlite_uri.ro_sqlite_uri` (eski `base._ro_sqlite_uri`; Rust yolu URI diye ayrıştırmaz), `ucli_session_opts._open_no_redirect` (`real/http.rs`). Tablodaki
-  Python satır numaraları bu düzeltmelerden önceki konumlardır.
+  Python satır numaraları 28 Kas akşam `ast` ile yeniden hesaplandı (eşleme tablosu, ad + yol taşıyan satırlar).
 - TBD#373 maddeleri 1, 3-8 iki tarafta düzeltildi (Python `fix:` commit'leri + Rust eşitlemesi). Madde 2 (bozuk UTF-8
   `settings.json`) rs/state'in işi. Kalan fark: var olan ama izin yüzünden okunamayan yönerge override dosyasında Python üzerine
   yazar, Rust dokunmaz (`Probe::read_text` iki durumu ayırmıyor); `trustedFolders`ta eşi olmayan vekil kod (`\ud800`) içeren
@@ -159,7 +159,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 | `CallersTest.test_handover_reads_the_own_conversation` (py/tests/test_rsprov_s1_own_session.py:128) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `CallersTest.test_handover_without_a_record_uses_spawn_values` (py/tests/test_rsprov_s1_own_session.py:136) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `CallersTest.test_effort_wrapper_passes_the_pid` (py/tests/test_rsprov_s1_own_session.py:142) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
-| `CallersTest.test_recovery_reads_the_own_record_before_the_kill` (py/tests/test_rsprov_s1_own_session.py:163) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
+| `CallersTest.test_recovery_reads_the_own_record_before_the_kill` (py/tests/test_rsprov_s1_own_session.py:167) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `CallersTest.test_recovery_without_a_record_leaves_the_session_alone` (py/tests/test_rsprov_s1_own_session.py:172) | T4: `handover.py` ve `stuck.py` akışı; okuyucular taşındı | KAPSAM DIŞI |
 | `EffortFollowsTheModelTest.test_effort_of_the_previous_model_is_not_carried_over` (py/tests/test_rsprov_s2_effort_model.py:37) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
 | `EffortFollowsTheModelTest.test_same_model_keeps_the_older_effort` (py/tests/test_rsprov_s2_effort_model.py:40) | `claude_transcript::effort_never_outlives_its_model`; `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
@@ -171,7 +171,7 @@ Ayrıca kuralın parçası olmayan ama canlıdan önce gerekenler: bağlayan uç
 
 | Python öğesi (dosya:satır) | Rust karşılığı | sınayan | durum |
 |---|---|---|---|
-| `_session_record` (py/claudeops/providers/claude_provider.py:450) | `claude_resume.rs::Live::session_record` | `parity.rs::parity_transcript` `canli-kimlik`; `parity_resume` `devam-kayit-` | TAŞINDI |
+| `_session_record` (py/claudeops/providers/claude_provider.py:451) | `claude_resume.rs::Live::session_record` | `parity.rs::parity_transcript` `canli-kimlik`; `parity_resume` `devam-kayit-` | TAŞINDI |
 | `_read_session_record`, `_SESSION_RECORD_MAX_BYTES` (py/claudeops/paths.py) | `claude_resume.rs::Live::session_file` (`read_bytes`: yalnız normal dosya, 1 MiB) | `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo` | TAŞINDI |
 | `_live_transcript` (py/claudeops/providers/claude_provider.py:483) | `claude_transcript.rs::Live::live_transcript` | `parity.rs::parity_transcript` `canli-kimlik` | TAŞINDI |
 | `_effort_of_answering_model` (py/claudeops/providers/claude_provider.py:390) | `claude_transcript.rs::Live::last_assistant_effort` (kapama) | `parity.rs::parity_transcript` `esit-effort-` | TAŞINDI |
@@ -1302,8 +1302,8 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 
 | Python (dosya:satır) | Rust karşılığı / neden gereksiz | parite testi | durum |
 |---|---|---|---|
-| `probe_checks` (py/claudeops/ucli_checks.py:109) | T7: kayıt yazımı (`save_registry`/`delete_check`) öncesi ikili yoklaması; bu crate yalnız kaydı okur (`real/checks.rs`) | - | KAPSAM DIŞI |
-| `binary_supports_checks` (py/claudeops/ucli_checks.py:123) | T7: aynı yazım yolu | - | KAPSAM DIŞI |
+| `probe_checks` (py/claudeops/ucli_checks.py:115) | T7: kayıt yazımı (`save_registry`/`delete_check`) öncesi ikili yoklaması; bu crate yalnız kaydı okur (`real/checks.rs`) | - | KAPSAM DIŞI |
+| `binary_supports_checks` (py/claudeops/ucli_checks.py:130) | T7: aynı yazım yolu | - | KAPSAM DIŞI |
 | `models_catalog` (py/claudeops/commands/web_agents.py:58) | T4/T10: panel ucu `/api/agents/models`; ret kuralı `ucli.rs::session_cap_refusal`de hazır | - | KAPSAM DIŞI |
 | `_start_block` (py/claudeops/commands/web_agents.py:82) | T4/T10: panel kataloğunun `startable`/`reason` alanı ve hata yutması | - | KAPSAM DIŞI |
 
@@ -1341,7 +1341,7 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 
 ## EŞLEME TABLOSU
 
-26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 718 satır: TAŞINDI 644, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi, Python satır numaraları düzeltme öncesi).
+26 Kas 2026'da `564c4cf` koduna bakarak dolduruldu; G5, G11, G6, G2 ve G3 satırları taşımadan sonra güncellendi. TBD#373 düzeltmesinde `preview.py` ve `_TRUST_TOKEN_RE` satırları eklendi. G10 satırları ve yeni yardımcılar sonradan güncellendi. Güncel sayım (27 Kas, `ast` ile satır satır): 718 satır: TAŞINDI 644, TAŞINDI-TESTSİZ 0, KAPSAM DIŞI 74, EKSİK 0 (G9 satırları 27 Kas; 27 Kas düzeltme turunun 5 yardımcı satırı eklendi; Python satır numaraları 28 Kas akşam `ast` ile güncellendi: 1081 satır düzeldi, 26 satırda ad dosyada bulunamadı (sabit/takma ad), olduğu gibi kaldı).
 - Durumlar: `TAŞINDI` (Rust adı + onu sınayan parite vaka ailesi; vaka kimliğinde geçen parça yazıldı), `TAŞINDI-TESTSİZ`, `EKSİK(Gn)`, `KAPSAM DIŞI` (sahibi olan iz).
 - `KAPSAM DIŞI` karşılıkları `origin/rs/{proc,tmux,state,stew}` dallarında görüldü; o dallar henüz birleşmedi (rs/tmux, rs/state, rs/stew kendi belgelerinde "birleştirmeye hazır değil" diyor). Sprint planındaki T1..T10 sahipleri için kod henüz yok.
 - `rs/proc` kendi tablosunda sağlayıcıların çoğunu "rs/prov" diye bu ize bırakıyor; burada yalnız süreç tarama işlevleri ona bırakıldı.
@@ -1352,331 +1352,331 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `loads`, `load`, `_replace_lone_surrogates`, `_fix_str` (py/claudeops/jsonbound.py) | `pyjson.rs::Py` ayrıştırıcısı (eşlenmemiş vekil U+FFFD, yinelenen anahtar ilk yer son değer) | `parity.rs::{parity_chat `sapma-vekil`, parity_transcript `esit-vekil`, parity_model_sources `src-svc-sapma-vekil`}` | TAŞINDI |
 | `_run_grouped` (py/claudeops/childgroup.py:25) | `real/process.rs::run` | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
 | `_kill_group` (py/claudeops/childgroup.py:13) | `real/process.rs::Guard` (`Drop`) | `tests/real_process.rs::a_timeout_kills_the_whole_process_group_and_waits` | TAŞINDI |
-| `_ucli_cap_problem` (py/claudeops/settings.py:885) | `settings.rs::cap_problem` (ham belge), `real/ledger.rs::{file_cost_settings, non_finite_cap}` | `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
+| `_ucli_cap_problem` (py/claudeops/settings.py:929) | `settings.rs::cap_problem` (ham belge), `real/ledger.rs::{file_cost_settings, non_finite_cap}` | `parity.rs::parity_ledger` `tavan-ayari` | TAŞINDI |
 | `_log_lock_refused` (py/claudeops/atomic_json.py:236) | `real/lock.rs::{FileLock::acquire_logged, log_refused}` | `parity.rs::parity_oneshot` `kayit-kok-` | TAŞINDI |
 | `DEFAULT_CLI` (py/claudeops/providers/__init__.py:14) | `provider.rs::Cli::parse` (bilinmeyen = claude) | `parity.rs::parity_spawn` `bogus-*` | TAŞINDI |
 | `PROVIDERS` (py/claudeops/providers/__init__.py:16) | `provider.rs::Cli`, `Cli::ALL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `get_provider` (py/claudeops/providers/__init__.py:26) | `provider.rs::Cli::parse` | `parity.rs::parity_build` `bogus`; ayrıca `parity_spawn` `bogus-*` | TAŞINDI |
-| `CONVERSATIONS_CACHE` (py/claudeops/providers/agy_provider.py:84) | `probe.rs::Paths::agy_conversations_cache` | `parity.rs::parity_resume` `devam-diger` `devam-agy-onbellek-` | TAŞINDI |
-| `CONVERSATIONS_DIR` (py/claudeops/providers/agy_provider.py:85) | `probe.rs::Paths::agy_conversations_dir` | `parity.rs::parity_chat` `chat-agy-` (`roots`) | TAŞINDI |
-| `AGY_SIDS_JSON` (py/claudeops/providers/agy_provider.py:94) | `rs/proc` `Config::agy_sids` | rs/proc: `fake_proc::broken_agy_files` (okuma); yazım yolu `agy_resume.rs::AgySidStore` (G1) | KAPSAM DIŞI |
-| `_STEP_TYPE_USER` (py/claudeops/providers/agy_provider.py:98) | `chat.rs::AGY_STEP_USER` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
-| `_STEP_TYPE_ASSISTANT` (py/claudeops/providers/agy_provider.py:99) | `chat.rs::AGY_STEP_ASSISTANT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
-| `_STEP_TYPE_CHECKPOINT` (py/claudeops/providers/agy_provider.py:101) | `chat.rs::AGY_STEP_CHECKPOINT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-sinir-yarim` | TAŞINDI |
-| `_read_varint` (py/claudeops/providers/agy_provider.py:104) | `chat.rs::read_varint` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `chat::tests::varint_limits` | TAŞINDI |
-| `_iter_fields` (py/claudeops/providers/agy_provider.py:116) | `chat.rs::bytes_field` (tek döngü) | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `huge_length_and_field_number_do_not_wrap` | TAŞINDI |
-| `_get_bytes_field` (py/claudeops/providers/agy_provider.py:144) | `chat.rs::bytes_field` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `truncated_and_mutated_protobuf_never_panics` | TAŞINDI |
-| `_get_text_field` (py/claudeops/providers/agy_provider.py:160) | `chat.rs::nested_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
-| `_step_user_text` (py/claudeops/providers/agy_provider.py:165) | `chat.rs::agy_user_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
-| `_step_assistant_text` (py/claudeops/providers/agy_provider.py:172) | `chat.rs::agy_assistant_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
-| `_conversation_ids` (py/claudeops/providers/agy_provider.py:179) | `agy_resume.rs::Live::agy_conversation_ids` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
-| `PERMISSION_MODES` (py/claudeops/providers/agy_provider.py:187) | `agy.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `EFFORT_LEVELS` (py/claudeops/providers/agy_provider.py:188) | `agy.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:195) | `agy.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `_PERMISSION_FLAGS` (py/claudeops/providers/agy_provider.py:197) | `agy.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:203) | `agy.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-agy-akis`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
-| `_load_agy_sids` (py/claudeops/providers/agy_provider.py:206) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur. Devam yolunda okuma `LiveProbe::agy_sids_doc` (G1, parite `devam-agy-ogrenilen-`) | KAPSAM DIŞI |
-| `_remember_agy_sid` (py/claudeops/providers/agy_provider.py:215) | `agy_resume.rs::remember_agy_sid` + `AgySidStore` (`flock`: `real/docs.rs::DocAgySidStore`; belge `StateDocStore`, files/dual/db); `parity_docs`; `tests/real_agy_store.rs`, `parity_real` `agy-` | `parity.rs::parity_resume` `devam-agy-yaz-`; `tests/resume.rs::concurrent_remembers_lose_nothing`, `value_is_checked_again_under_the_lock`, `preview_writes_nothing_and_save_errors_surface` | TAŞINDI |
+| `CONVERSATIONS_CACHE` (py/claudeops/providers/agy_provider.py:89) | `probe.rs::Paths::agy_conversations_cache` | `parity.rs::parity_resume` `devam-diger` `devam-agy-onbellek-` | TAŞINDI |
+| `CONVERSATIONS_DIR` (py/claudeops/providers/agy_provider.py:90) | `probe.rs::Paths::agy_conversations_dir` | `parity.rs::parity_chat` `chat-agy-` (`roots`) | TAŞINDI |
+| `AGY_SIDS_JSON` (py/claudeops/providers/agy_provider.py:99) | `rs/proc` `Config::agy_sids` | rs/proc: `fake_proc::broken_agy_files` (okuma); yazım yolu `agy_resume.rs::AgySidStore` (G1) | KAPSAM DIŞI |
+| `_STEP_TYPE_USER` (py/claudeops/providers/agy_provider.py:103) | `chat.rs::AGY_STEP_USER` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
+| `_STEP_TYPE_ASSISTANT` (py/claudeops/providers/agy_provider.py:104) | `chat.rs::AGY_STEP_ASSISTANT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-tur-tipi-` | TAŞINDI |
+| `_STEP_TYPE_CHECKPOINT` (py/claudeops/providers/agy_provider.py:106) | `chat.rs::AGY_STEP_CHECKPOINT` | `parity.rs::parity_chat` `agy-sikistirma` `agy-sinir-yarim` | TAŞINDI |
+| `_read_varint` (py/claudeops/providers/agy_provider.py:109) | `chat.rs::read_varint` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `chat::tests::varint_limits` | TAŞINDI |
+| `_iter_fields` (py/claudeops/providers/agy_provider.py:121) | `chat.rs::bytes_field` (tek döngü) | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `huge_length_and_field_number_do_not_wrap` | TAŞINDI |
+| `_get_bytes_field` (py/claudeops/providers/agy_provider.py:149) | `chat.rs::bytes_field` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-`; `truncated_and_mutated_protobuf_never_panics` | TAŞINDI |
+| `_get_text_field` (py/claudeops/providers/agy_provider.py:165) | `chat.rs::nested_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
+| `_step_user_text` (py/claudeops/providers/agy_provider.py:170) | `chat.rs::agy_user_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
+| `_step_assistant_text` (py/claudeops/providers/agy_provider.py:177) | `chat.rs::agy_assistant_text` | `parity.rs::parity_chat` `agy-yuk-` `agy-rastgele-` | TAŞINDI |
+| `_conversation_ids` (py/claudeops/providers/agy_provider.py:184) | `agy_resume.rs::Live::agy_conversation_ids` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
+| `PERMISSION_MODES` (py/claudeops/providers/agy_provider.py:192) | `agy.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `EFFORT_LEVELS` (py/claudeops/providers/agy_provider.py:193) | `agy.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/agy_provider.py:200) | `agy.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `_PERMISSION_FLAGS` (py/claudeops/providers/agy_provider.py:202) | `agy.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_MODELS_TTL` (py/claudeops/providers/agy_provider.py:208) | `agy.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-agy-akis`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
+| `_load_agy_sids` (py/claudeops/providers/agy_provider.py:211) | `rs/proc` `providers.rs::AgyState::load` | rs/proc: `providers.rs::agy_sid_rules`, `broken_agy_files`; DB yerine dosya aynası okur. Devam yolunda okuma `LiveProbe::agy_sids_doc` (G1, parite `devam-agy-ogrenilen-`) | KAPSAM DIŞI |
+| `_remember_agy_sid` (py/claudeops/providers/agy_provider.py:242) | `agy_resume.rs::remember_agy_sid` + `AgySidStore` (`flock`: `real/docs.rs::DocAgySidStore`; belge `StateDocStore`, files/dual/db); `parity_docs`; `tests/real_agy_store.rs`, `parity_real` `agy-` | `parity.rs::parity_resume` `devam-agy-yaz-`; `tests/resume.rs::concurrent_remembers_lose_nothing`, `value_is_checked_again_under_the_lock`, `preview_writes_nothing_and_save_errors_surface` | TAŞINDI |
 | `_ABSENT`, `_load_agy_sids_for_write` (py/claudeops/providers/agy_provider.py, 27 Kas `fix:`) | `agy_resume.rs::AgySidStore::load_for_write`, `real/docs.rs::DocStore::read_checked`, `AGY_SIDS_UNREADABLE` | `parity.rs::parity_resume` `devam-agy-yaz-bozuk` `-liste`, `parity_real` `agy-belge1..3`; `test_rsprov_g1_fixes.py::AgyTest.{test_broken_document_is_not_overwritten, test_document_that_cannot_be_written_back_does_not_drop_the_scan}`; `parity_docs` `bozuk-*` `vekil` | TAŞINDI |
 | `_conversation_db_exists` (py/claudeops/providers/agy_provider.py, 27 Kas `fix:`) | `agy_resume.rs::Live::agy_db_exists` | `parity.rs::parity_resume` `devam-agy-ogrenilen-tam`; `test_rsprov_g1_fixes.py::AgyTest.test_learned_id_whose_database_is_gone_is_not_resumed` | TAŞINDI |
-| `_sid_claimed_by_other` (py/claudeops/providers/agy_provider.py:230) | `agy_resume.rs::sid_claimed_by_other` | `parity.rs::parity_resume` `devam-agy-sahipli-` | TAŞINDI |
-| `AgyProvider` (py/claudeops/providers/agy_provider.py:237) | `agy.rs` + `Cli::Agy` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_sid_claimed_by_other` (py/claudeops/providers/agy_provider.py:271) | `agy_resume.rs::sid_claimed_by_other` | `parity.rs::parity_resume` `devam-agy-sahipli-` | TAŞINDI |
+| `AgyProvider` (py/claudeops/providers/agy_provider.py:278) | `agy.rs` + `Cli::Agy` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `AgyProvider.name` (py/claudeops/providers/agy_provider.py:238) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `AgyProvider.__init__` (py/claudeops/providers/agy_provider.py:240) | `agy.rs::ModelsCache` (`model_sources.rs::ModelSources::new`) | `parity.rs::parity_model_sources` `src-agy-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
-| `AgyProvider.resolve_resume_id` (py/claudeops/providers/agy_provider.py:244) | `agy_resume.rs::Live::agy_resume_id` | `parity.rs::parity_resume` `devam-agy-onbellek-` `devam-agy-ogrenilen-` `devam-agy-cwd-` | TAŞINDI |
-| `AgyProvider.build_inner_command` (py/claudeops/providers/agy_provider.py:271) | `agy.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra`; ve `parity_spawn` `agy-effort-ayar agy-effort-kardes` | TAŞINDI |
-| `AgyProvider.env_overrides` (py/claudeops/providers/agy_provider.py:320) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `AgyProvider.mcp_setup_command` (py/claudeops/providers/agy_provider.py:323) | `agy.rs::mcp_setup_command` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `AgyProvider.matches_proc` (py/claudeops/providers/agy_provider.py:333) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `AgyProvider.extract_name` (py/claudeops/providers/agy_provider.py:336) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
-| `AgyProvider.extract_info` (py/claudeops/providers/agy_provider.py:343) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `AgyProvider._fetch_models` (py/claudeops/providers/agy_provider.py:380) | `agy.rs::{refresh, parse_models}` (`ModelIo::run_stdout`; gerçek süreç G8) | `parity.rs::parity_model_sources` `src-agy-bicim` `src-agy-cikis-kodu` `src-agy-rastgele-` (Python hatası? G7 şüphe 8) | TAŞINDI |
-| `AgyProvider.model_choices` (py/claudeops/providers/agy_provider.py:394) | `provider.rs::Providers::model_choices` (`ModelCatalog::agy_models`) | `parity.rs::parity_model_effort` `agy-models`; canlı liste `parity_model_sources` `src-agy-` | TAŞINDI |
-| `AgyProvider.permission_modes` (py/claudeops/providers/agy_provider.py:411) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `AgyProvider.effort_levels` (py/claudeops/providers/agy_provider.py:414) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `AgyProvider.model_effort_levels` (py/claudeops/providers/agy_provider.py:417) | `agy.rs::model_effort_levels` | `parity.rs::parity_model_effort` `agy-models` | TAŞINDI |
-| `AgyProvider.busy_status_pattern` (py/claudeops/providers/agy_provider.py:430) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `AgyProvider.usage_command` (py/claudeops/providers/agy_provider.py:433) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
-| `AgyProvider.usage_fresh_argv` (py/claudeops/providers/agy_provider.py:444) | `usage.rs::Providers::usage_fresh_argv` | `parity.rs::parity_usage` `usage-agy` `usage-bin-*-agy` | TAŞINDI |
-| `AgyProvider.usage_auth_missing` (py/claudeops/providers/agy_provider.py:449) | `usage.rs::Cli::usage_auth_missing` | `parity.rs::parity_usage` `usage-agy` (giriş iletisi metinleri) | TAŞINDI |
-| `AgyProvider.parse_fresh_usage` (py/claudeops/providers/agy_provider.py:454) | `usage.rs::Cli::parse_fresh_usage` (-> `agy_usage`) | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
-| `AgyProvider.usage_needs_dismiss` (py/claudeops/providers/agy_provider.py:457) | `usage.rs::Cli::usage_needs_dismiss` | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
-| `AgyProvider.parse_usage_text` (py/claudeops/providers/agy_provider.py:467) | `usage.rs::agy_usage` (`Cli::parse_usage_text`, `py_isdigit`) | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
-| `AgyProvider._transcript_steps` (py/claudeops/providers/agy_provider.py:498) | `chat.rs::Live::agy_db`/`agy_steps` + `agy_step` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
-| `AgyProvider._steps_desc` (py/claudeops/providers/agy_provider.py:528) | `chat.rs::Live::agy_steps` (`AGY_STEPS_DESC_SQL`) | `parity.rs::parity_chat` `agy-son-cift` `agy-sapma-utf8-hucre` | TAŞINDI |
-| `AgyProvider.last_exchange` (py/claudeops/providers/agy_provider.py:554) | `chat.rs::Live::agy_last` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
-| `AgyProvider.full_history` (py/claudeops/providers/agy_provider.py:573) | `chat.rs::Live::agy_history` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
-| `AgyProvider.sid_for_stopped_session` (py/claudeops/providers/agy_provider.py:591) | `agy_resume.rs::Live::agy_stopped_sid` | `parity.rs::parity_resume` `devam-agy-ogrenilen-` | TAŞINDI |
-| `AgyProvider.snapshot_for_live_sid` (py/claudeops/providers/agy_provider.py:601) | `resume.rs::Live::snapshot_for_live_sid` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-diger` | TAŞINDI |
-| `AgyProvider.discover_live_sid` (py/claudeops/providers/agy_provider.py:611) | `agy_resume.rs::Live::agy_discover` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
-| `cmd_arg` (py/claudeops/providers/base.py:20) | `rs/proc` `providers.rs::arg` | rs/proc: `providers.rs::claude_info` | KAPSAM DIŞI |
-| `OneshotError` (py/claudeops/providers/base.py:28) | `oneshot.rs::OneshotError` | `parity.rs::parity_oneshot` `argv-` `ucli-` | TAŞINDI |
-| `McpServerSpec` (py/claudeops/providers/base.py:33) | `provider.rs::McpSpec` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
+| `AgyProvider.__init__` (py/claudeops/providers/agy_provider.py:286) | `agy.rs::ModelsCache` (`model_sources.rs::ModelSources::new`) | `parity.rs::parity_model_sources` `src-agy-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
+| `AgyProvider.resolve_resume_id` (py/claudeops/providers/agy_provider.py:292) | `agy_resume.rs::Live::agy_resume_id` | `parity.rs::parity_resume` `devam-agy-onbellek-` `devam-agy-ogrenilen-` `devam-agy-cwd-` | TAŞINDI |
+| `AgyProvider.build_inner_command` (py/claudeops/providers/agy_provider.py:323) | `agy.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra`; ve `parity_spawn` `agy-effort-ayar agy-effort-kardes` | TAŞINDI |
+| `AgyProvider.env_overrides` (py/claudeops/providers/agy_provider.py:372) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `AgyProvider.mcp_setup_command` (py/claudeops/providers/agy_provider.py:375) | `agy.rs::mcp_setup_command` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `AgyProvider.matches_proc` (py/claudeops/providers/agy_provider.py:385) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `AgyProvider.extract_name` (py/claudeops/providers/agy_provider.py:388) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
+| `AgyProvider.extract_info` (py/claudeops/providers/agy_provider.py:395) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
+| `AgyProvider._fetch_models` (py/claudeops/providers/agy_provider.py:432) | `agy.rs::{refresh, parse_models}` (`ModelIo::run_stdout`; gerçek süreç G8) | `parity.rs::parity_model_sources` `src-agy-bicim` `src-agy-cikis-kodu` `src-agy-rastgele-` (Python hatası? G7 şüphe 8) | TAŞINDI |
+| `AgyProvider.model_choices` (py/claudeops/providers/agy_provider.py:451) | `provider.rs::Providers::model_choices` (`ModelCatalog::agy_models`) | `parity.rs::parity_model_effort` `agy-models`; canlı liste `parity_model_sources` `src-agy-` | TAŞINDI |
+| `AgyProvider.permission_modes` (py/claudeops/providers/agy_provider.py:484) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `AgyProvider.effort_levels` (py/claudeops/providers/agy_provider.py:487) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `AgyProvider.model_effort_levels` (py/claudeops/providers/agy_provider.py:490) | `agy.rs::model_effort_levels` | `parity.rs::parity_model_effort` `agy-models` | TAŞINDI |
+| `AgyProvider.busy_status_pattern` (py/claudeops/providers/agy_provider.py:503) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `AgyProvider.usage_command` (py/claudeops/providers/agy_provider.py:506) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
+| `AgyProvider.usage_fresh_argv` (py/claudeops/providers/agy_provider.py:517) | `usage.rs::Providers::usage_fresh_argv` | `parity.rs::parity_usage` `usage-agy` `usage-bin-*-agy` | TAŞINDI |
+| `AgyProvider.usage_auth_missing` (py/claudeops/providers/agy_provider.py:522) | `usage.rs::Cli::usage_auth_missing` | `parity.rs::parity_usage` `usage-agy` (giriş iletisi metinleri) | TAŞINDI |
+| `AgyProvider.parse_fresh_usage` (py/claudeops/providers/agy_provider.py:527) | `usage.rs::Cli::parse_fresh_usage` (-> `agy_usage`) | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
+| `AgyProvider.usage_needs_dismiss` (py/claudeops/providers/agy_provider.py:530) | `usage.rs::Cli::usage_needs_dismiss` | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
+| `AgyProvider.parse_usage_text` (py/claudeops/providers/agy_provider.py:540) | `usage.rs::agy_usage` (`Cli::parse_usage_text`, `py_isdigit`) | `parity.rs::parity_usage` `usage-agy` | TAŞINDI |
+| `AgyProvider._transcript_steps` (py/claudeops/providers/agy_provider.py:572) | `chat.rs::Live::agy_db`/`agy_steps` + `agy_step` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
+| `AgyProvider._steps_desc` (py/claudeops/providers/agy_provider.py:603) | `chat.rs::Live::agy_steps` (`AGY_STEPS_DESC_SQL`) | `parity.rs::parity_chat` `agy-son-cift` `agy-sapma-utf8-hucre` | TAŞINDI |
+| `AgyProvider.last_exchange` (py/claudeops/providers/agy_provider.py:632) | `chat.rs::Live::agy_last` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
+| `AgyProvider.full_history` (py/claudeops/providers/agy_provider.py:651) | `chat.rs::Live::agy_history` | `parity.rs::parity_chat` `agy-` | TAŞINDI |
+| `AgyProvider.sid_for_stopped_session` (py/claudeops/providers/agy_provider.py:669) | `agy_resume.rs::Live::agy_stopped_sid` | `parity.rs::parity_resume` `devam-agy-ogrenilen-` | TAŞINDI |
+| `AgyProvider.snapshot_for_live_sid` (py/claudeops/providers/agy_provider.py:679) | `resume.rs::Live::snapshot_for_live_sid` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-diger` | TAŞINDI |
+| `AgyProvider.discover_live_sid` (py/claudeops/providers/agy_provider.py:689) | `agy_resume.rs::Live::agy_discover` | `parity.rs::parity_resume` `devam-agy-konusmalar` `devam-agy-dizin-yok` | TAŞINDI |
+| `cmd_arg` (py/claudeops/providers/base.py:36) | `rs/proc` `providers.rs::arg` | rs/proc: `providers.rs::claude_info` | KAPSAM DIŞI |
+| `OneshotError` (py/claudeops/providers/base.py:51) | `oneshot.rs::OneshotError` | `parity.rs::parity_oneshot` `argv-` `ucli-` | TAŞINDI |
+| `McpServerSpec` (py/claudeops/providers/base.py:66) | `provider.rs::McpSpec` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
 | `McpServerSpec.name` (py/claudeops/providers/base.py:44) | `provider.rs::McpSpec::name` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
 | `McpServerSpec.command` (py/claudeops/providers/base.py:45) | `provider.rs::McpSpec::command` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
 | `McpServerSpec.args` (py/claudeops/providers/base.py:46) | `provider.rs::McpSpec::args` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
 | `McpServerSpec.allowed_tools` (py/claudeops/providers/base.py:49) | `provider.rs::McpSpec::allowed_tools` | `parity.rs::parity_build` `mcp`; ve `parity_ucli` `ucli-mcp-*` | TAŞINDI |
-| `CliProvider` (py/claudeops/providers/base.py:52) | `provider.rs::{Cli, Providers}` (spawn tarafı) | `parity.rs::parity_model_effort` `bos-*` `ayar-*`; yalnız satırlarında TAŞINDI yazan yöntemler | TAŞINDI |
+| `CliProvider` (py/claudeops/providers/base.py:85) | `provider.rs::{Cli, Providers}` (spawn tarafı) | `parity.rs::parity_model_effort` `bos-*` `ayar-*`; yalnız satırlarında TAŞINDI yazan yöntemler | TAŞINDI |
 | `CliProvider.name` (py/claudeops/providers/base.py:53) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.accepts_cli_opts` (py/claudeops/providers/base.py:57) | `provider.rs::Cli::accepts_cli_opts` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `CliProvider.mcp_needs_cwd` (py/claudeops/providers/base.py:61) | `provider.rs::Cli::mcp_needs_cwd` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.validate_cli_opts` (py/claudeops/providers/base.py:63) | `provider.rs::Providers::validate_cli_opts` | `parity.rs::parity_ucli` `opts-*`; ucli dışı ret: `parity_spawn` `claude-opts`; ret metni için ayrı vaka yok | TAŞINDI |
-| `CliProvider.resolve_resume_id` (py/claudeops/providers/base.py:70) | `resume.rs::Live::resolve_resume_id` (soyut yöntem: kapsayıcı `match`) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
-| `CliProvider.build_inner_command` (py/claudeops/providers/base.py:92) | `provider.rs::Providers::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
-| `CliProvider.has_conversation` (py/claudeops/providers/base.py:113) | `tui.rs::Cli::has_conversation` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.wants_handover_wrapup` (py/claudeops/providers/base.py:121) | `tui.rs::Cli::wants_handover_wrapup` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.wants_stuck_recovery` (py/claudeops/providers/base.py:125) | `tui.rs::Cli::wants_stuck_recovery` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.last_exchange` (py/claudeops/providers/base.py:129) | `chat.rs::Live::last_exchange` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
-| `CliProvider.full_history` (py/claudeops/providers/base.py:138) | `chat.rs::Live::full_history` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
-| `CliProvider.sid_for_stopped_session` (py/claudeops/providers/base.py:147) | `resume.rs::Live::sid_for_stopped_session` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
-| `CliProvider.last_message_role` (py/claudeops/providers/base.py:162) | `chat.rs::Live::last_message_role` | `parity.rs::parity_chat` `chat-` (her vakada) | TAŞINDI |
-| `CliProvider.handover_model_downgrade` (py/claudeops/providers/base.py:175) | `tui.rs::Cli::handover_model_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.apply_live_model_switch` (py/claudeops/providers/base.py:185) | `tui.rs::Cli::apply_live_model_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-model-` `g4-pane-rastgele-` | TAŞINDI |
-| `CliProvider.handover_effort_downgrade` (py/claudeops/providers/base.py:193) | `tui.rs::Cli::handover_effort_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.apply_live_effort_switch` (py/claudeops/providers/base.py:200) | `tui.rs::Cli::apply_live_effort_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-effort-` `g4-pane-rastgele-` | TAŞINDI |
-| `CliProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/base.py:206) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` (claude dışı None) | `parity.rs::parity_transcript` `model-listesi` `istek-`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
-| `CliProvider.last_request_epoch` (py/claudeops/providers/base.py:218) | `claude_transcript.rs::Live::last_request_epoch` (claude dışı None) | `parity.rs::parity_transcript` `istek-codex` `istek-ucli` | TAŞINDI |
-| `CliProvider.effort_switch_keeps_cache` (py/claudeops/providers/base.py:226) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` (claude dışı true) | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
-| `CliProvider.dismiss_stray_dialog` (py/claudeops/providers/base.py:233) | `tui.rs::Cli::dismiss_stray_dialog` | `parity.rs::parity_tui` `g4-pane-dialog-` `g4-pane-rastgele-` | TAŞINDI |
-| `CliProvider.input_settle_delay` (py/claudeops/providers/base.py:252) | `tui.rs::Cli::input_settle_delay` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.prepare_input` (py/claudeops/providers/base.py:264) | `tui.rs::Cli::prepare_input` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.compact_command` (py/claudeops/providers/base.py:269) | `tui.rs::Cli::compact_command` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.usage_fresh_argv` (py/claudeops/providers/base.py:284) | `usage.rs::Providers::usage_fresh_argv` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` `usage-copilot` | TAŞINDI |
-| `CliProvider.usage_fresh_tui_argv` (py/claudeops/providers/base.py:290) | `usage.rs::Providers::usage_fresh_tui_argv` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.usage_auth_missing` (py/claudeops/providers/base.py:295) | `usage.rs::Cli::usage_auth_missing` (agy dışı false) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.parse_fresh_usage` (py/claudeops/providers/base.py:299) | `usage.rs::Cli::parse_fresh_usage` (claude dışı `parse_usage_text`) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.usage_command` (py/claudeops/providers/base.py:303) | `usage.rs::Cli::usage_command` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` | TAŞINDI |
-| `CliProvider.parse_usage_text` (py/claudeops/providers/base.py:319) | `usage.rs::Cli::parse_usage_text` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` | TAŞINDI |
-| `CliProvider.context_command` (py/claudeops/providers/base.py:330) | `usage.rs::Cli::context_command` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.parse_context_text` (py/claudeops/providers/base.py:344) | `usage.rs::Cli::parse_context_text` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.context_needs_dismiss` (py/claudeops/providers/base.py:356) | `usage.rs::Cli::context_needs_dismiss` | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.usage_needs_dismiss` (py/claudeops/providers/base.py:367) | `usage.rs::Cli::usage_needs_dismiss` (varsayılan kol false) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
-| `CliProvider.extra_file_roots` (py/claudeops/providers/base.py:379) | `chat.rs::Live::extra_file_roots` | `parity.rs::parity_chat` `chat-kok-` | TAŞINDI |
-| `CliProvider.env_overrides` (py/claudeops/providers/base.py:394) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.mcp_launch_args` (py/claudeops/providers/base.py:410) | `provider.rs::Providers::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `CliProvider.mcp_setup_command` (py/claudeops/providers/base.py:421) | `provider.rs::Providers::mcp_setup_command` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `CliProvider.oneshot_argv` (py/claudeops/providers/base.py:433) | `provider.rs::Providers::oneshot_argv` | `parity.rs::parity_build` `oneshot` | TAŞINDI |
-| `CliProvider.oneshot` (py/claudeops/providers/base.py:440) | `real/oneshot.rs::OneShot::{oneshot, run_argv}`, `oneshot.rs::argv_result` | `parity.rs::parity_oneshot` `argv-` `claude` `desteklemeyen`; `tests/real_oneshot.rs` | TAŞINDI |
-| `CliProvider.matches_proc` (py/claudeops/providers/base.py:464) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` (taban sözleşmesi) | KAPSAM DIŞI |
-| `CliProvider.extract_name` (py/claudeops/providers/base.py:468) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) (taban sözleşmesi) | KAPSAM DIŞI |
-| `CliProvider.extract_info` (py/claudeops/providers/base.py:473) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` (taban sözleşmesi) | KAPSAM DIŞI |
-| `CliProvider.model_choices` (py/claudeops/providers/base.py:485) | `provider.rs::Providers::model_choices` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.refresh_stored_model` (py/claudeops/providers/base.py:488) | `provider.rs::Providers::refresh_stored_model` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.permission_modes` (py/claudeops/providers/base.py:497) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.effort_levels` (py/claudeops/providers/base.py:501) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.model_effort_levels` (py/claudeops/providers/base.py:504) | `provider.rs::Providers::model_effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.effort_levels_for` (py/claudeops/providers/base.py:514) | `provider.rs::Providers::effort_levels_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.default_permission_mode` (py/claudeops/providers/base.py:520) | `provider.rs::Cli::default_permission_mode` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.preferred_default_model` (py/claudeops/providers/base.py:525) | `provider.rs::Providers::preferred_default_model` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.default_effort` (py/claudeops/providers/base.py:530) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.resolve_effort` (py/claudeops/providers/base.py:536) | `provider.rs::Providers::resolve_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CliProvider.mode_status_patterns` (py/claudeops/providers/base.py:548) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
-| `CliProvider.busy_status_pattern` (py/claudeops/providers/base.py:555) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.background_work` (py/claudeops/providers/base.py:565) | `live.rs::Live::background_work` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_busy` (py/claudeops/providers/base.py:571) | `live.rs::Live::live_busy` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_tools` (py/claudeops/providers/base.py:584) | `live.rs::Live::live_tools` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_context` (py/claudeops/providers/base.py:589) | `live.rs::Live::live_context` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_usage` (py/claudeops/providers/base.py:596) | `live.rs::Live::live_usage` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_failed_turns` (py/claudeops/providers/base.py:606) | `live.rs::Live::live_failed_turns` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.live_phase` (py/claudeops/providers/base.py:611) | `live.rs::Live::live_phase` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CliProvider.cyclable_modes` (py/claudeops/providers/base.py:620) | `tui.rs::Cli::cyclable_modes` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CliProvider.snapshot_for_live_sid` (py/claudeops/providers/base.py:629) | `resume.rs::Live::snapshot_for_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
-| `CliProvider.discover_live_sid` (py/claudeops/providers/base.py:650) | `resume.rs::Live::discover_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
-| `MODEL_CHOICES` (py/claudeops/providers/claude_provider.py:18) | `claude.rs::MODEL_CHOICES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
-| `PERMISSION_MODES` (py/claudeops/providers/claude_provider.py:24) | `claude.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
-| `EFFORT_LEVELS` (py/claudeops/providers/claude_provider.py:25) | `claude.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
-| `_SONNET_PIN_RE` (py/claudeops/providers/claude_provider.py:29) | `claude.rs::SONNET_PIN` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
-| `_sonnet_version` (py/claudeops/providers/claude_provider.py:32) | `claude.rs::sonnet_version` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
-| `_USAGE_HEADER_RE` (py/claudeops/providers/claude_provider.py:39) | `usage.rs::USAGE_HEADER` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `_USAGE_PERCENT_RE` (py/claudeops/providers/claude_provider.py:40) | `usage.rs::USAGE_PERCENT` | `parity.rs::parity_usage` `usage-claude`; birim `usage.rs::tests::python_classes` | TAŞINDI |
-| `_USAGE_RESETS_RE` (py/claudeops/providers/claude_provider.py:41) | `usage.rs::USAGE_RESETS` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `_USAGE_FRESH_RE` (py/claudeops/providers/claude_provider.py:43) | `usage.rs::USAGE_FRESH` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `_CONTEXT_TOTAL_RE` (py/claudeops/providers/claude_provider.py:48) | `usage.rs::CONTEXT_TOTAL` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `_CONTEXT_CATEGORY_RE` (py/claudeops/providers/claude_provider.py:49) | `usage.rs::CONTEXT_CATEGORY` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `MODE_STATUS_PATTERNS` (py/claudeops/providers/claude_provider.py:61) | `claude.rs::MODE_STATUS_PATTERNS` | `parity.rs::parity_tui` `g4-sabit-claude`, `g4-mod-claude` | TAŞINDI |
-| `CYCLABLE_MODES` (py/claudeops/providers/claude_provider.py:73) | `claude.rs::CYCLABLE_MODES` | `parity.rs::parity_tui` `g4-sabit-claude` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/claude_provider.py:80) | `claude.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `_encode_cwd` (py/claudeops/providers/claude_provider.py:83) | `rs/proc` `transcript.rs::encode_cwd` | rs/proc: `transcript.rs::encodes_non_ascii_per_char`, altın ad+cwd kodlama | KAPSAM DIŞI |
-| `_safe_mtime` (py/claudeops/providers/claude_provider.py:102) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-claude-zaman-` `devam-claude-adlar` | TAŞINDI |
-| `jsonl_path_for` (py/claudeops/providers/claude_provider.py:110) | `claude_resume.rs::Live::jsonl_path_for` | `parity.rs::parity_resume` `devam-claude-`; `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest` | TAŞINDI |
-| `find_latest_jsonl` (py/claudeops/providers/claude_provider.py:125) | `claude_resume.rs::Live::find_latest_jsonl` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
-| `_LAST_MODEL_CHUNK_BYTES` (py/claudeops/providers/claude_provider.py:143) | `claude_transcript.rs::FIRST_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
-| `_LAST_MODEL_MAX_BYTES` (py/claudeops/providers/claude_provider.py:144) | `claude_transcript.rs::MAX_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
-| `_row_epoch` (py/claudeops/providers/claude_provider.py:147) | `bg_work.rs::iso_epoch` | `parity.rs::parity_transcript` `damga-listesi-` `damga-` | TAŞINDI |
-| `_last_assistant_value` (py/claudeops/providers/claude_provider.py:158) | `claude_transcript.rs::Live::last_assistant_value` | `parity.rs::parity_transcript` `pencere-` `satir-` `rastgele-` | TAŞINDI |
-| `last_assistant_model` (py/claudeops/providers/claude_provider.py:208) | `claude_transcript.rs::Live::last_assistant_model` | `parity.rs::parity_transcript` `satir-` `rastgele-` `sapma-model-` | TAŞINDI |
-| `last_assistant_effort` (py/claudeops/providers/claude_provider.py:214) | `claude_transcript.rs::Live::last_assistant_effort` | `parity.rs::parity_transcript` `satir-` `rastgele-` `pencere-effort-` | TAŞINDI |
-| `PROMPT_CACHE_TTL_SECONDS` (py/claudeops/providers/claude_provider.py:228) | `claude_transcript.rs::PROMPT_CACHE_TTL_SECONDS` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
-| `_real_request_epoch` (py/claudeops/providers/claude_provider.py:231) | `claude_transcript.rs::real_request_epoch` | `parity.rs::parity_transcript` `kullanim-` `istek-model-` `damga-` | TAŞINDI |
-| `last_real_request_epoch` (py/claudeops/providers/claude_provider.py:254) | `claude_transcript.rs::Live::last_real_request_epoch` | `parity.rs::parity_transcript` `son-istek` `alt-ajan` `pencere-` `yollar` | TAŞINDI |
-| `session_file_sid` (py/claudeops/providers/claude_provider.py:260) | `claude_resume.rs::Live::session_file_sid` | `parity.rs::parity_resume` `devam-kayit-` `devam-stat-` | TAŞINDI |
-| `_EFFORT_BUSTS_CACHE_RE` (py/claudeops/providers/claude_provider.py:293) | `claude_transcript.rs::EFFORT_BUSTS_CACHE` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
-| `live_or_spawn_model` (py/claudeops/providers/claude_provider.py:296) | `claude_transcript.rs::Live::live_or_spawn_model` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
-| `live_or_spawn_effort` (py/claudeops/providers/claude_provider.py:315) | `claude_transcript.rs::Live::live_or_spawn_effort` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
-| `_META_HEAD_LINES` (py/claudeops/providers/claude_provider.py:331) | `claude_resume.rs::META_HEAD_LINES` | `parity.rs::parity_resume` `devam-diger` `devam-meta-` | TAŞINDI |
-| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/claude_provider.py:334) | `claude_resume.rs::RESUME_SCAN_LIMIT` | `parity.rs::parity_resume` `devam-diger` `devam-claude-sinir-` | TAŞINDI |
-| `_jsonl_meta` (py/claudeops/providers/claude_provider.py:337) | `claude_resume.rs::Live::jsonl_meta` + `resume.rs::Live::head_lines` | `parity.rs::parity_resume` `devam-meta-`; `tests/resume.rs::head_reading_is_bounded_and_drops_the_unfinished_line` | TAŞINDI |
-| `_same_path` (py/claudeops/providers/claude_provider.py:364) | `resume.rs::Live::same_path` + `pyfmt.rs::{abspath, normpath}` | `parity.rs::parity_resume` `devam-claude-cwd`; `pyfmt::tests::path_normalisation` | TAŞINDI |
-| `_META_CACHE` (py/claudeops/providers/claude_provider.py:372) | `claude_resume.rs::MetaCache` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
-| `_META_CACHE_MAX` (py/claudeops/providers/claude_provider.py:373) | `claude_resume.rs::META_CACHE_MAX` | `parity.rs::parity_resume` `devam-diger`; `tests/resume.rs::meta_cache_is_bounded` | TAŞINDI |
-| `_jsonl_meta_cached` (py/claudeops/providers/claude_provider.py:376) | `claude_resume.rs::MetaCache::get` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
-| `_STUB_MAX_BYTES` (py/claudeops/providers/claude_provider.py:391) | `claude_resume.rs::STUB_MAX_BYTES` | `parity.rs::parity_resume` `devam-diger` `devam-claude-stub-` | TAŞINDI |
-| `_has_chat_rows` (py/claudeops/providers/claude_provider.py:394) | `claude_resume.rs::Live::has_chat_rows` | `parity.rs::parity_resume` `devam-meta-` | TAŞINDI |
-| `MCP_CONFIG_PATH` (py/claudeops/providers/claude_provider.py:414) | `probe.rs::Paths::mcp_config` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `_mcp_config_path` (py/claudeops/providers/claude_provider.py:417) | `claude.rs::mcp_config_path` | `parity.rs::parity_spawn` `-mcp` `-eklenti-mcp`; beyin/eklenti dosya adı dalları | TAŞINDI |
-| `_write_mcp_config_file` (py/claudeops/providers/claude_provider.py:431) | `claude.rs::{mcp_config_json, mcp_launch_args}` + `Effect::WriteAtomic` | `parity.rs::parity_build` `mcp-orchestration-dosya` `mcp-orchestration-engel`; dosya yazımı yalnız test uygulayıcısında (G8) | TAŞINDI |
-| `_extract_text` (py/claudeops/providers/claude_provider.py:440) | `chat.rs::claude_text` | `parity.rs::parity_chat` `claude-icerik-` `claude-ozet-` | TAŞINDI |
-| `_is_real_user_text` (py/claudeops/providers/claude_provider.py:452) | `chat.rs::claude_real_user` | `parity.rs::parity_chat` `claude-icerik-` | TAŞINDI |
-| `_HELP_CACHE` (py/claudeops/providers/claude_provider.py:466) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
-| `_HELP_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:467) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
-| `claude_help_text` (py/claudeops/providers/claude_provider.py:470) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
-| `claude_supports_flag` (py/claudeops/providers/claude_provider.py:492) | `claude.rs::supports_flag` (`ucli.rs::find_flag`) | `parity.rs::parity_build` `oneshot` | TAŞINDI |
-| `ClaudeProvider` (py/claudeops/providers/claude_provider.py:498) | `claude.rs` + `provider.rs::Cli::Claude` | `parity.rs::parity_build` `claude-extra` `claude-routing-` | TAŞINDI |
+| `CliProvider.validate_cli_opts` (py/claudeops/providers/base.py:96) | `provider.rs::Providers::validate_cli_opts` | `parity.rs::parity_ucli` `opts-*`; ucli dışı ret: `parity_spawn` `claude-opts`; ret metni için ayrı vaka yok | TAŞINDI |
+| `CliProvider.resolve_resume_id` (py/claudeops/providers/base.py:103) | `resume.rs::Live::resolve_resume_id` (soyut yöntem: kapsayıcı `match`) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `CliProvider.build_inner_command` (py/claudeops/providers/base.py:125) | `provider.rs::Providers::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
+| `CliProvider.has_conversation` (py/claudeops/providers/base.py:146) | `tui.rs::Cli::has_conversation` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.wants_handover_wrapup` (py/claudeops/providers/base.py:154) | `tui.rs::Cli::wants_handover_wrapup` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.wants_stuck_recovery` (py/claudeops/providers/base.py:158) | `tui.rs::Cli::wants_stuck_recovery` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.last_exchange` (py/claudeops/providers/base.py:162) | `chat.rs::Live::last_exchange` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
+| `CliProvider.full_history` (py/claudeops/providers/base.py:171) | `chat.rs::Live::full_history` (`Cli::Shell` None) | `parity.rs::parity_chat` `shell-` | TAŞINDI |
+| `CliProvider.sid_for_stopped_session` (py/claudeops/providers/base.py:180) | `resume.rs::Live::sid_for_stopped_session` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `CliProvider.last_message_role` (py/claudeops/providers/base.py:195) | `chat.rs::Live::last_message_role` | `parity.rs::parity_chat` `chat-` (her vakada) | TAŞINDI |
+| `CliProvider.handover_model_downgrade` (py/claudeops/providers/base.py:208) | `tui.rs::Cli::handover_model_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.apply_live_model_switch` (py/claudeops/providers/base.py:218) | `tui.rs::Cli::apply_live_model_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-model-` `g4-pane-rastgele-` | TAŞINDI |
+| `CliProvider.handover_effort_downgrade` (py/claudeops/providers/base.py:226) | `tui.rs::Cli::handover_effort_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.apply_live_effort_switch` (py/claudeops/providers/base.py:233) | `tui.rs::Cli::apply_live_effort_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-effort-` `g4-pane-rastgele-` | TAŞINDI |
+| `CliProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/base.py:239) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` (claude dışı None) | `parity.rs::parity_transcript` `model-listesi` `istek-`; `cache_candidates_are_exact_files_and_newest_wins` | TAŞINDI |
+| `CliProvider.last_request_epoch` (py/claudeops/providers/base.py:251) | `claude_transcript.rs::Live::last_request_epoch` (claude dışı None) | `parity.rs::parity_transcript` `istek-codex` `istek-ucli` | TAŞINDI |
+| `CliProvider.effort_switch_keeps_cache` (py/claudeops/providers/base.py:259) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` (claude dışı true) | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
+| `CliProvider.dismiss_stray_dialog` (py/claudeops/providers/base.py:266) | `tui.rs::Cli::dismiss_stray_dialog` | `parity.rs::parity_tui` `g4-pane-dialog-` `g4-pane-rastgele-` | TAŞINDI |
+| `CliProvider.input_settle_delay` (py/claudeops/providers/base.py:285) | `tui.rs::Cli::input_settle_delay` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.prepare_input` (py/claudeops/providers/base.py:297) | `tui.rs::Cli::prepare_input` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.compact_command` (py/claudeops/providers/base.py:302) | `tui.rs::Cli::compact_command` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.usage_fresh_argv` (py/claudeops/providers/base.py:317) | `usage.rs::Providers::usage_fresh_argv` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` `usage-copilot` | TAŞINDI |
+| `CliProvider.usage_fresh_tui_argv` (py/claudeops/providers/base.py:323) | `usage.rs::Providers::usage_fresh_tui_argv` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.usage_auth_missing` (py/claudeops/providers/base.py:328) | `usage.rs::Cli::usage_auth_missing` (agy dışı false) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.parse_fresh_usage` (py/claudeops/providers/base.py:332) | `usage.rs::Cli::parse_fresh_usage` (claude dışı `parse_usage_text`) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.usage_command` (py/claudeops/providers/base.py:336) | `usage.rs::Cli::usage_command` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` | TAŞINDI |
+| `CliProvider.parse_usage_text` (py/claudeops/providers/base.py:352) | `usage.rs::Cli::parse_usage_text` (varsayılan kol None) | `parity.rs::parity_usage` `usage-codex` `usage-shell` `usage-ucli` | TAŞINDI |
+| `CliProvider.context_command` (py/claudeops/providers/base.py:363) | `usage.rs::Cli::context_command` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.parse_context_text` (py/claudeops/providers/base.py:377) | `usage.rs::Cli::parse_context_text` (varsayılan kol None) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.context_needs_dismiss` (py/claudeops/providers/base.py:389) | `usage.rs::Cli::context_needs_dismiss` | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.usage_needs_dismiss` (py/claudeops/providers/base.py:400) | `usage.rs::Cli::usage_needs_dismiss` (varsayılan kol false) | `parity.rs::parity_usage` `usage-*` | TAŞINDI |
+| `CliProvider.extra_file_roots` (py/claudeops/providers/base.py:412) | `chat.rs::Live::extra_file_roots` | `parity.rs::parity_chat` `chat-kok-` | TAŞINDI |
+| `CliProvider.env_overrides` (py/claudeops/providers/base.py:427) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.mcp_launch_args` (py/claudeops/providers/base.py:443) | `provider.rs::Providers::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `CliProvider.mcp_setup_command` (py/claudeops/providers/base.py:454) | `provider.rs::Providers::mcp_setup_command` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `CliProvider.oneshot_argv` (py/claudeops/providers/base.py:466) | `provider.rs::Providers::oneshot_argv` | `parity.rs::parity_build` `oneshot` | TAŞINDI |
+| `CliProvider.oneshot` (py/claudeops/providers/base.py:473) | `real/oneshot.rs::OneShot::{oneshot, run_argv}`, `oneshot.rs::argv_result` | `parity.rs::parity_oneshot` `argv-` `claude` `desteklemeyen`; `tests/real_oneshot.rs` | TAŞINDI |
+| `CliProvider.matches_proc` (py/claudeops/providers/base.py:501) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` (taban sözleşmesi) | KAPSAM DIŞI |
+| `CliProvider.extract_name` (py/claudeops/providers/base.py:505) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) (taban sözleşmesi) | KAPSAM DIŞI |
+| `CliProvider.extract_info` (py/claudeops/providers/base.py:510) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` (taban sözleşmesi) | KAPSAM DIŞI |
+| `CliProvider.model_choices` (py/claudeops/providers/base.py:522) | `provider.rs::Providers::model_choices` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.refresh_stored_model` (py/claudeops/providers/base.py:525) | `provider.rs::Providers::refresh_stored_model` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.permission_modes` (py/claudeops/providers/base.py:534) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.effort_levels` (py/claudeops/providers/base.py:538) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.model_effort_levels` (py/claudeops/providers/base.py:541) | `provider.rs::Providers::model_effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.effort_levels_for` (py/claudeops/providers/base.py:551) | `provider.rs::Providers::effort_levels_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.default_permission_mode` (py/claudeops/providers/base.py:557) | `provider.rs::Cli::default_permission_mode` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.preferred_default_model` (py/claudeops/providers/base.py:562) | `provider.rs::Providers::preferred_default_model` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.default_effort` (py/claudeops/providers/base.py:567) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.resolve_effort` (py/claudeops/providers/base.py:573) | `provider.rs::Providers::resolve_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CliProvider.mode_status_patterns` (py/claudeops/providers/base.py:585) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
+| `CliProvider.busy_status_pattern` (py/claudeops/providers/base.py:592) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.background_work` (py/claudeops/providers/base.py:602) | `live.rs::Live::background_work` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_busy` (py/claudeops/providers/base.py:608) | `live.rs::Live::live_busy` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_tools` (py/claudeops/providers/base.py:621) | `live.rs::Live::live_tools` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_context` (py/claudeops/providers/base.py:626) | `live.rs::Live::live_context` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_usage` (py/claudeops/providers/base.py:633) | `live.rs::Live::live_usage` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_failed_turns` (py/claudeops/providers/base.py:643) | `live.rs::Live::live_failed_turns` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.live_phase` (py/claudeops/providers/base.py:648) | `live.rs::Live::live_phase` (varsayılan kol: None) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CliProvider.cyclable_modes` (py/claudeops/providers/base.py:657) | `tui.rs::Cli::cyclable_modes` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CliProvider.snapshot_for_live_sid` (py/claudeops/providers/base.py:666) | `resume.rs::Live::snapshot_for_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `CliProvider.discover_live_sid` (py/claudeops/providers/base.py:687) | `resume.rs::Live::discover_live_sid` (varsayılan None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `MODEL_CHOICES` (py/claudeops/providers/claude_provider.py:22) | `claude.rs::MODEL_CHOICES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
+| `PERMISSION_MODES` (py/claudeops/providers/claude_provider.py:28) | `claude.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
+| `EFFORT_LEVELS` (py/claudeops/providers/claude_provider.py:29) | `claude.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
+| `_SONNET_PIN_RE` (py/claudeops/providers/claude_provider.py:33) | `claude.rs::SONNET_PIN` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
+| `_sonnet_version` (py/claudeops/providers/claude_provider.py:36) | `claude.rs::sonnet_version` | `parity.rs::parity_model_effort` `bos-*` `claude-state` | TAŞINDI |
+| `_USAGE_HEADER_RE` (py/claudeops/providers/claude_provider.py:43) | `usage.rs::USAGE_HEADER` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `_USAGE_PERCENT_RE` (py/claudeops/providers/claude_provider.py:44) | `usage.rs::USAGE_PERCENT` | `parity.rs::parity_usage` `usage-claude`; birim `usage.rs::tests::python_classes` | TAŞINDI |
+| `_USAGE_RESETS_RE` (py/claudeops/providers/claude_provider.py:45) | `usage.rs::USAGE_RESETS` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `_USAGE_FRESH_RE` (py/claudeops/providers/claude_provider.py:47) | `usage.rs::USAGE_FRESH` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `_CONTEXT_TOTAL_RE` (py/claudeops/providers/claude_provider.py:52) | `usage.rs::CONTEXT_TOTAL` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `_CONTEXT_CATEGORY_RE` (py/claudeops/providers/claude_provider.py:53) | `usage.rs::CONTEXT_CATEGORY` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `MODE_STATUS_PATTERNS` (py/claudeops/providers/claude_provider.py:65) | `claude.rs::MODE_STATUS_PATTERNS` | `parity.rs::parity_tui` `g4-sabit-claude`, `g4-mod-claude` | TAŞINDI |
+| `CYCLABLE_MODES` (py/claudeops/providers/claude_provider.py:77) | `claude.rs::CYCLABLE_MODES` | `parity.rs::parity_tui` `g4-sabit-claude` | TAŞINDI |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/claude_provider.py:84) | `claude.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `_encode_cwd` (py/claudeops/providers/claude_provider.py:217) | `rs/proc` `transcript.rs::encode_cwd` | rs/proc: `transcript.rs::encodes_non_ascii_per_char`, altın ad+cwd kodlama | KAPSAM DIŞI |
+| `_safe_mtime` (py/claudeops/providers/claude_provider.py:236) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-claude-zaman-` `devam-claude-adlar` | TAŞINDI |
+| `jsonl_path_for` (py/claudeops/providers/claude_provider.py:244) | `claude_resume.rs::Live::jsonl_path_for` | `parity.rs::parity_resume` `devam-claude-`; `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest` | TAŞINDI |
+| `find_latest_jsonl` (py/claudeops/providers/claude_provider.py:268) | `claude_resume.rs::Live::find_latest_jsonl` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
+| `_LAST_MODEL_CHUNK_BYTES` (py/claudeops/providers/claude_provider.py:287) | `claude_transcript.rs::FIRST_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
+| `_LAST_MODEL_MAX_BYTES` (py/claudeops/providers/claude_provider.py:288) | `claude_transcript.rs::MAX_WINDOW_BYTES` | `parity.rs::parity_transcript` `pencere-` (`constants`) | TAŞINDI |
+| `_row_epoch` (py/claudeops/providers/claude_provider.py:291) | `bg_work.rs::iso_epoch` | `parity.rs::parity_transcript` `damga-listesi-` `damga-` | TAŞINDI |
+| `_last_assistant_value` (py/claudeops/providers/claude_provider.py:302) | `claude_transcript.rs::Live::last_assistant_value` | `parity.rs::parity_transcript` `pencere-` `satir-` `rastgele-` | TAŞINDI |
+| `last_assistant_model` (py/claudeops/providers/claude_provider.py:353) | `claude_transcript.rs::Live::last_assistant_model` | `parity.rs::parity_transcript` `satir-` `rastgele-` `sapma-model-` | TAŞINDI |
+| `last_assistant_effort` (py/claudeops/providers/claude_provider.py:378) | `claude_transcript.rs::Live::last_assistant_effort` | `parity.rs::parity_transcript` `satir-` `rastgele-` `pencere-effort-` | TAŞINDI |
+| `PROMPT_CACHE_TTL_SECONDS` (py/claudeops/providers/claude_provider.py:409) | `claude_transcript.rs::PROMPT_CACHE_TTL_SECONDS` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
+| `_real_request_epoch` (py/claudeops/providers/claude_provider.py:412) | `claude_transcript.rs::real_request_epoch` | `parity.rs::parity_transcript` `kullanim-` `istek-model-` `damga-` | TAŞINDI |
+| `last_real_request_epoch` (py/claudeops/providers/claude_provider.py:435) | `claude_transcript.rs::Live::last_real_request_epoch` | `parity.rs::parity_transcript` `son-istek` `alt-ajan` `pencere-` `yollar` | TAŞINDI |
+| `session_file_sid` (py/claudeops/providers/claude_provider.py:441) | `claude_resume.rs::Live::session_file_sid` | `parity.rs::parity_resume` `devam-kayit-` `devam-stat-` | TAŞINDI |
+| `_EFFORT_BUSTS_CACHE_RE` (py/claudeops/providers/claude_provider.py:480) | `claude_transcript.rs::EFFORT_BUSTS_CACHE` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
+| `live_or_spawn_model` (py/claudeops/providers/claude_provider.py:505) | `claude_transcript.rs::Live::live_or_spawn_model` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
+| `live_or_spawn_effort` (py/claudeops/providers/claude_provider.py:527) | `claude_transcript.rs::Live::live_or_spawn_effort` | `parity.rs::parity_transcript` `canli` | TAŞINDI |
+| `_META_HEAD_LINES` (py/claudeops/providers/claude_provider.py:545) | `claude_resume.rs::META_HEAD_LINES` | `parity.rs::parity_resume` `devam-diger` `devam-meta-` | TAŞINDI |
+| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/claude_provider.py:548) | `claude_resume.rs::RESUME_SCAN_LIMIT` | `parity.rs::parity_resume` `devam-diger` `devam-claude-sinir-` | TAŞINDI |
+| `_jsonl_meta` (py/claudeops/providers/claude_provider.py:551) | `claude_resume.rs::Live::jsonl_meta` + `resume.rs::Live::head_lines` | `parity.rs::parity_resume` `devam-meta-`; `tests/resume.rs::head_reading_is_bounded_and_drops_the_unfinished_line` | TAŞINDI |
+| `_same_path` (py/claudeops/providers/claude_provider.py:578) | `resume.rs::Live::same_path` + `pyfmt.rs::{abspath, normpath}` | `parity.rs::parity_resume` `devam-claude-cwd`; `pyfmt::tests::path_normalisation` | TAŞINDI |
+| `_META_CACHE` (py/claudeops/providers/claude_provider.py:586) | `claude_resume.rs::MetaCache` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
+| `_META_CACHE_MAX` (py/claudeops/providers/claude_provider.py:587) | `claude_resume.rs::META_CACHE_MAX` | `parity.rs::parity_resume` `devam-diger`; `tests/resume.rs::meta_cache_is_bounded` | TAŞINDI |
+| `_jsonl_meta_cached` (py/claudeops/providers/claude_provider.py:590) | `claude_resume.rs::MetaCache::get` | `tests/resume.rs::unchanged_files_are_not_reread_but_changed_ones_are` | TAŞINDI |
+| `_STUB_MAX_BYTES` (py/claudeops/providers/claude_provider.py:605) | `claude_resume.rs::STUB_MAX_BYTES` | `parity.rs::parity_resume` `devam-diger` `devam-claude-stub-` | TAŞINDI |
+| `_has_chat_rows` (py/claudeops/providers/claude_provider.py:608) | `claude_resume.rs::Live::has_chat_rows` | `parity.rs::parity_resume` `devam-meta-` | TAŞINDI |
+| `MCP_CONFIG_PATH` (py/claudeops/providers/claude_provider.py:628) | `probe.rs::Paths::mcp_config` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `_mcp_config_path` (py/claudeops/providers/claude_provider.py:631) | `claude.rs::mcp_config_path` | `parity.rs::parity_spawn` `-mcp` `-eklenti-mcp`; beyin/eklenti dosya adı dalları | TAŞINDI |
+| `_write_mcp_config_file` (py/claudeops/providers/claude_provider.py:645) | `claude.rs::{mcp_config_json, mcp_launch_args}` + `Effect::WriteAtomic` | `parity.rs::parity_build` `mcp-orchestration-dosya` `mcp-orchestration-engel`; dosya yazımı yalnız test uygulayıcısında (G8) | TAŞINDI |
+| `_extract_text` (py/claudeops/providers/claude_provider.py:656) | `chat.rs::claude_text` | `parity.rs::parity_chat` `claude-icerik-` `claude-ozet-` | TAŞINDI |
+| `_is_real_user_text` (py/claudeops/providers/claude_provider.py:674) | `chat.rs::claude_real_user` | `parity.rs::parity_chat` `claude-icerik-` | TAŞINDI |
+| `_HELP_CACHE` (py/claudeops/providers/claude_provider.py:688) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
+| `_HELP_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:690) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
+| `claude_help_text` (py/claudeops/providers/claude_provider.py:693) | `real/help.rs::{HelpCache, HELP_TIMEOUT}` (`RealProbe::claude_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::empty_failed_slow_huge_or_non_utf8_help_is_not_cached` | TAŞINDI |
+| `claude_supports_flag` (py/claudeops/providers/claude_provider.py:720) | `claude.rs::supports_flag` (`ucli.rs::find_flag`) | `parity.rs::parity_build` `oneshot` | TAŞINDI |
+| `ClaudeProvider` (py/claudeops/providers/claude_provider.py:726) | `claude.rs` + `provider.rs::Cli::Claude` | `parity.rs::parity_build` `claude-extra` `claude-routing-` | TAŞINDI |
 | `ClaudeProvider.name` (py/claudeops/providers/claude_provider.py:499) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.resolve_resume_id` (py/claudeops/providers/claude_provider.py:501) | `claude_resume.rs::Live::claude_resume_id` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
-| `ClaudeProvider.build_inner_command` (py/claudeops/providers/claude_provider.py:545) | `claude.rs::build_inner_command` | `parity.rs::parity_build` `claude-extra` `claude-routing-` `claude-bilinen` | TAŞINDI |
-| `ClaudeProvider.oneshot_argv` (py/claudeops/providers/claude_provider.py:586) | `claude.rs::oneshot_argv` | `parity.rs::parity_build` `oneshot` | TAŞINDI |
-| `ClaudeProvider.mcp_launch_args` (py/claudeops/providers/claude_provider.py:602) | `claude.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `ClaudeProvider.compact_command` (py/claudeops/providers/claude_provider.py:610) | `tui.rs::Cli::compact_command` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `ClaudeProvider.usage_command` (py/claudeops/providers/claude_provider.py:613) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.usage_needs_dismiss` (py/claudeops/providers/claude_provider.py:616) | `usage.rs::Cli::usage_needs_dismiss` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.parse_usage_text` (py/claudeops/providers/claude_provider.py:624) | `usage.rs::claude_usage` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.usage_fresh_argv` (py/claudeops/providers/claude_provider.py:666) | `usage.rs::Providers::usage_fresh_argv` | `parity.rs::parity_usage` `usage-claude` `usage-bin-*-claude` | TAŞINDI |
-| `ClaudeProvider.parse_fresh_usage` (py/claudeops/providers/claude_provider.py:669) | `usage.rs::claude_fresh_usage` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.context_command` (py/claudeops/providers/claude_provider.py:678) | `usage.rs::Cli::context_command` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.context_needs_dismiss` (py/claudeops/providers/claude_provider.py:681) | `usage.rs::Cli::context_needs_dismiss` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.parse_context_text` (py/claudeops/providers/claude_provider.py:687) | `usage.rs::claude_context` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
-| `ClaudeProvider.handover_model_downgrade` (py/claudeops/providers/claude_provider.py:744) | `tui.rs::Cli::handover_model_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `ClaudeProvider.resolve_resume_id` (py/claudeops/providers/claude_provider.py:729) | `claude_resume.rs::Live::claude_resume_id` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
+| `ClaudeProvider.build_inner_command` (py/claudeops/providers/claude_provider.py:774) | `claude.rs::build_inner_command` | `parity.rs::parity_build` `claude-extra` `claude-routing-` `claude-bilinen` | TAŞINDI |
+| `ClaudeProvider.oneshot_argv` (py/claudeops/providers/claude_provider.py:815) | `claude.rs::oneshot_argv` | `parity.rs::parity_build` `oneshot` | TAŞINDI |
+| `ClaudeProvider.mcp_launch_args` (py/claudeops/providers/claude_provider.py:831) | `claude.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `ClaudeProvider.compact_command` (py/claudeops/providers/claude_provider.py:839) | `tui.rs::Cli::compact_command` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `ClaudeProvider.usage_command` (py/claudeops/providers/claude_provider.py:842) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.usage_needs_dismiss` (py/claudeops/providers/claude_provider.py:845) | `usage.rs::Cli::usage_needs_dismiss` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.parse_usage_text` (py/claudeops/providers/claude_provider.py:853) | `usage.rs::claude_usage` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.usage_fresh_argv` (py/claudeops/providers/claude_provider.py:895) | `usage.rs::Providers::usage_fresh_argv` | `parity.rs::parity_usage` `usage-claude` `usage-bin-*-claude` | TAŞINDI |
+| `ClaudeProvider.parse_fresh_usage` (py/claudeops/providers/claude_provider.py:898) | `usage.rs::claude_fresh_usage` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.context_command` (py/claudeops/providers/claude_provider.py:909) | `usage.rs::Cli::context_command` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.context_needs_dismiss` (py/claudeops/providers/claude_provider.py:912) | `usage.rs::Cli::context_needs_dismiss` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.parse_context_text` (py/claudeops/providers/claude_provider.py:918) | `usage.rs::claude_context` | `parity.rs::parity_usage` `usage-claude` | TAŞINDI |
+| `ClaudeProvider.handover_model_downgrade` (py/claudeops/providers/claude_provider.py:977) | `tui.rs::Cli::handover_model_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
 | `ClaudeProvider._MODEL_SWITCH_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:761) | `tui.rs::MODEL_SWITCH_TIMEOUT_SECONDS` | `parity.rs::parity_tui` `g4-pane-model-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider._MODEL_SWITCH_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:762) | `tui.rs::MODEL_SWITCH_POLL_SECONDS` | `parity.rs::parity_tui` `g4-pane-model-` (`sinir-`) | TAŞINDI |
-| `ClaudeProvider.apply_live_model_switch` (py/claudeops/providers/claude_provider.py:764) | `tui.rs::Cli::apply_live_model_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-model-` `g4-pane-rastgele-` | TAŞINDI |
-| `ClaudeProvider.handover_effort_downgrade` (py/claudeops/providers/claude_provider.py:824) | `tui.rs::Cli::handover_effort_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `ClaudeProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/claude_provider.py:837) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
-| `ClaudeProvider.last_request_epoch` (py/claudeops/providers/claude_provider.py:840) | `claude_transcript.rs::Live::last_request_epoch` | `parity.rs::parity_transcript` `istek-claude` `istek-mutlak` `sapma-uzun-sid` | TAŞINDI |
-| `ClaudeProvider.effort_switch_keeps_cache` (py/claudeops/providers/claude_provider.py:859) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
+| `ClaudeProvider.apply_live_model_switch` (py/claudeops/providers/claude_provider.py:997) | `tui.rs::Cli::apply_live_model_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-model-` `g4-pane-rastgele-` | TAŞINDI |
+| `ClaudeProvider.handover_effort_downgrade` (py/claudeops/providers/claude_provider.py:1010) | `tui.rs::Cli::handover_effort_downgrade` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `ClaudeProvider.prompt_cache_ttl_seconds` (py/claudeops/providers/claude_provider.py:1023) | `claude_transcript.rs::Cli::prompt_cache_ttl_seconds` | `parity.rs::parity_transcript` `model-listesi` (`ttl`) | TAŞINDI |
+| `ClaudeProvider.last_request_epoch` (py/claudeops/providers/claude_provider.py:1026) | `claude_transcript.rs::Live::last_request_epoch` | `parity.rs::parity_transcript` `istek-claude` `istek-mutlak` `sapma-uzun-sid` | TAŞINDI |
+| `ClaudeProvider.effort_switch_keeps_cache` (py/claudeops/providers/claude_provider.py:1051) | `claude_transcript.rs::Cli::effort_switch_keeps_cache` | `parity.rs::parity_transcript` `model-listesi` | TAŞINDI |
 | `ClaudeProvider._EFFORT_SWITCH_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:862) | `tui.rs::EFFORT_SWITCH_TIMEOUT_SECONDS` | `parity.rs::parity_tui` `g4-pane-effort-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider._EFFORT_SWITCH_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:863) | `tui.rs::EFFORT_SWITCH_POLL_SECONDS` | `parity.rs::parity_tui` `g4-pane-effort-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider._EFFORT_SWITCH_DONE_MARKERS` (py/claudeops/providers/claude_provider.py:864) | `tui.rs::EFFORT_SWITCH_DONE_MARKERS` | `parity.rs::parity_tui` `g4-pane-effort-` | TAŞINDI |
-| `ClaudeProvider.apply_live_effort_switch` (py/claudeops/providers/claude_provider.py:867) | `tui.rs::Cli::apply_live_effort_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-effort-` `g4-pane-rastgele-` | TAŞINDI |
+| `ClaudeProvider.apply_live_effort_switch` (py/claudeops/providers/claude_provider.py:1059) | `tui.rs::Cli::apply_live_effort_switch` (`SwitchOutcome`) | `parity.rs::parity_tui` `g4-pane-effort-` `g4-pane-rastgele-` | TAŞINDI |
 | `ClaudeProvider._STRAY_DIALOG_TIMEOUT_SECONDS` (py/claudeops/providers/claude_provider.py:926) | `tui.rs::STRAY_DIALOG_TIMEOUT_SECONDS` | `parity.rs::parity_tui` `g4-pane-dialog-` (`sinir-`) | TAŞINDI |
 | `ClaudeProvider._STRAY_DIALOG_POLL_SECONDS` (py/claudeops/providers/claude_provider.py:927) | `tui.rs::STRAY_DIALOG_POLL_SECONDS` | `parity.rs::parity_tui` `g4-pane-dialog-` (`sinir-`) | TAŞINDI |
-| `ClaudeProvider.dismiss_stray_dialog` (py/claudeops/providers/claude_provider.py:929) | `tui.rs::Cli::dismiss_stray_dialog` | `parity.rs::parity_tui` `g4-pane-dialog-` `g4-pane-rastgele-` | TAŞINDI |
-| `_Switch` (py/claudeops/providers/base.py:25) | `tui.rs::{SwitchOutcome, DismissOutcome}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_CAPTURE_LINES` (py/claudeops/providers/claude_provider.py:89) | `tui.rs::SWITCH_CAPTURE_LINES` | `parity.rs::parity_tui` `g4-pane-model-` | TAŞINDI |
-| `_SWITCH_TITLES` (py/claudeops/providers/claude_provider.py:90) | `tui.rs::{MODEL_SWITCH_DIALOG, EFFORT_SWITCH_DIALOG}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_YES_RE` (py/claudeops/providers/claude_provider.py:91) | `tui.rs::{SWITCH_YES_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_NO_RE` (py/claudeops/providers/claude_provider.py:92) | `tui.rs::{SWITCH_NO_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_GUIDE_RE` (py/claudeops/providers/claude_provider.py:93) | `tui.rs::{SWITCH_GUIDE_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_GUIDE_MAX` (py/claudeops/providers/claude_provider.py:94) | `tui.rs::SWITCH_GUIDE_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SWITCH_TITLE_WINDOW` (py/claudeops/providers/claude_provider.py:95) | `tui.rs::SWITCH_TITLE_WINDOW` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_SCREEN_FRAME` (py/claudeops/providers/claude_provider.py:96) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_BOX_FOOTER_MAX` (py/claudeops/providers/claude_provider.py:97) | `tui.rs::BOX_FOOTER_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_FOOTER_MENU_RE` (py/claudeops/providers/claude_provider.py:98) | `tui.rs::FOOTER_MENU_RE` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_BUSY_TAIL_LINES` (py/claudeops/providers/claude_provider.py:99) | `tui.rs::BUSY_TAIL_LINES` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_screen_rows` (py/claudeops/providers/claude_provider.py:102) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_open_switch_dialog` (py/claudeops/providers/claude_provider.py:108) | `tui.rs::open_switch_dialog` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_switch_label_matches` (py/claudeops/providers/claude_provider.py:130) | `tui.rs::label_matches` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_switch_pane_state` (py/claudeops/providers/claude_provider.py:137) | `tui.rs::pane_state` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
-| `_live_switch` (py/claudeops/providers/claude_provider.py:163) | `tui.rs::{run_switch, Run::look}` | `parity.rs::parity_tui` `g4-ekran-` `g4-pane-` | TAŞINDI |
-| `_claudeops_price` (py/claudeops/providers/ucli_provider.py:614) | `ucli.rs::claudeops_price` (tablo `cops_review_core::targets`) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `_argv_model` (py/claudeops/providers/ucli_provider.py:627) | `ucli.rs::{value_after, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `_has_price` (py/claudeops/providers/ucli_provider.py:631) | `ucli.rs::has_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `ClaudeProvider.matches_proc` (py/claudeops/providers/claude_provider.py:970) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `ClaudeProvider.extract_name` (py/claudeops/providers/claude_provider.py:975) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
-| `ClaudeProvider.extract_info` (py/claudeops/providers/claude_provider.py:978) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `ClaudeProvider.preferred_default_model` (py/claudeops/providers/claude_provider.py:986) | `claude.rs::newest_sonnet` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
-| `ClaudeProvider.default_effort` (py/claudeops/providers/claude_provider.py:992) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.model_choices` (py/claudeops/providers/claude_provider.py:995) | `claude.rs::model_choices` | `parity.rs::parity_model_effort` `claude-state` `claude-state-bozuk`; belge `ModelIo::claude_models_doc` (G7) | TAŞINDI |
-| `ClaudeProvider.refresh_stored_model` (py/claudeops/providers/claude_provider.py:1010) | `claude.rs::refresh_stored_model` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
-| `ClaudeProvider.permission_modes` (py/claudeops/providers/claude_provider.py:1029) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.effort_levels` (py/claudeops/providers/claude_provider.py:1032) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `ClaudeProvider.mode_status_patterns` (py/claudeops/providers/claude_provider.py:1035) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
-| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1038) | `live.rs::Live::background_work` | `parity.rs::parity_live` `claude-`, `ekran-claude-` (transkript yolu `claude_resume.rs::Live::jsonl_path_for`) | TAŞINDI |
-| `ClaudeProvider.busy_status_pattern` (py/claudeops/providers/claude_provider.py:1048) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `ClaudeProvider.cyclable_modes` (py/claudeops/providers/claude_provider.py:1051) | `tui.rs::Cli::cyclable_modes` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `ClaudeProvider._transcript_lines` (py/claudeops/providers/claude_provider.py:1054) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::jsonl_path_for`) | `parity.rs::parity_chat` `claude-satir-` `claude-kesik-` | TAŞINDI |
-| `ClaudeProvider.last_exchange` (py/claudeops/providers/claude_provider.py:1080) | `chat.rs::claude_last` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
-| `ClaudeProvider.extra_file_roots` (py/claudeops/providers/claude_provider.py:1110) | `chat.rs::Live::extra_file_roots` (dizin: `LiveProbe::claude_project_dir`, rs/proc) | `parity.rs::parity_chat` `chat-kok-claude-` | TAŞINDI |
-| `ClaudeProvider.full_history` (py/claudeops/providers/claude_provider.py:1115) | `chat.rs::claude_history` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
-| `ClaudeProvider.sid_for_stopped_session` (py/claudeops/providers/claude_provider.py:1144) | `claude_resume.rs::Live::claude_stopped_sid` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
-| `CODEX_HOME` (py/claudeops/providers/codex_provider.py:42) | `probe.rs::Paths::codex_home` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
-| `SESSIONS_DIR` (py/claudeops/providers/codex_provider.py:43) | `probe.rs::Paths::codex_sessions_dir` (rollout taraması `codex_resume.rs`) | `parity.rs::parity_chat` `chat-codex-` (`roots`) | TAŞINDI |
-| `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:44) | `probe.rs::Paths::codex_models_cache`, `codex.rs::read_models_cache` | `parity.rs::parity_model_sources` `src-codex-akis` `src-codex-nan` (Python hatası? G7 şüphe 2) | TAŞINDI |
-| `PERMISSION_MODES` (py/claudeops/providers/codex_provider.py:46) | `codex.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `EFFORT_LEVELS` (py/claudeops/providers/codex_provider.py:47) | `codex.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/codex_provider.py:58) | `codex.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `FALLBACK_MODELS` (py/claudeops/providers/codex_provider.py:62) | `codex.rs::FALLBACK_MODELS` | `parity.rs::parity_model_effort` `codex-cache-bozuk` `bos-*` | TAŞINDI |
-| `_NON_SESSION_SUBCOMMANDS` (py/claudeops/providers/codex_provider.py:77) | `rs/proc` `providers.rs::CODEX_NON_SESSION` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `_PERMISSION_FLAGS` (py/claudeops/providers/codex_provider.py:84) | `codex.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/codex_provider.py:91) | `codex.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
-| `_ROLLOUT_UUID_RE` (py/claudeops/providers/codex_provider.py:92) | `codex_resume.rs::ROLLOUT_UUID` | `parity.rs::parity_resume` `devam-codex-temel` `devam-codex-adsiz-` | TAŞINDI |
-| `_MAX_ROLLOUT_SCAN` (py/claudeops/providers/codex_provider.py:93) | `codex_resume.rs::MAX_ROLLOUT_SCAN` | `parity.rs::parity_resume` `devam-diger` `devam-codex-sinir-` | TAŞINDI |
-| `_config_value` (py/claudeops/providers/codex_provider.py:96) | `rs/proc` `providers.rs::codex_config` | rs/proc: `providers.rs::codex_info` | KAPSAM DIŞI |
-| `_safe_mtime` (py/claudeops/providers/codex_provider.py:104) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-codex-esit` `devam-codex-glob` | TAŞINDI |
-| `_session_meta` (py/claudeops/providers/codex_provider.py:111) | `codex_resume.rs::Live::session_meta` | `parity.rs::parity_resume` `devam-codex-satir-` | TAŞINDI |
+| `ClaudeProvider.dismiss_stray_dialog` (py/claudeops/providers/claude_provider.py:1073) | `tui.rs::Cli::dismiss_stray_dialog` | `parity.rs::parity_tui` `g4-pane-dialog-` `g4-pane-rastgele-` | TAŞINDI |
+| `_Switch` (py/claudeops/providers/base.py:24) | `tui.rs::{SwitchOutcome, DismissOutcome}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_CAPTURE_LINES` (py/claudeops/providers/claude_provider.py:90) | `tui.rs::SWITCH_CAPTURE_LINES` | `parity.rs::parity_tui` `g4-pane-model-` | TAŞINDI |
+| `_SWITCH_TITLES` (py/claudeops/providers/claude_provider.py:91) | `tui.rs::{MODEL_SWITCH_DIALOG, EFFORT_SWITCH_DIALOG}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_YES_RE` (py/claudeops/providers/claude_provider.py:92) | `tui.rs::{SWITCH_YES_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_NO_RE` (py/claudeops/providers/claude_provider.py:93) | `tui.rs::{SWITCH_NO_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_GUIDE_RE` (py/claudeops/providers/claude_provider.py:94) | `tui.rs::{SWITCH_GUIDE_RE, open_switch_dialog}` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_GUIDE_MAX` (py/claudeops/providers/claude_provider.py:95) | `tui.rs::SWITCH_GUIDE_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SWITCH_TITLE_WINDOW` (py/claudeops/providers/claude_provider.py:96) | `tui.rs::SWITCH_TITLE_WINDOW` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_SCREEN_FRAME` (py/claudeops/providers/claude_provider.py:97) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_BOX_FOOTER_MAX` (py/claudeops/providers/claude_provider.py:98) | `tui.rs::BOX_FOOTER_MAX` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_FOOTER_MENU_RE` (py/claudeops/providers/claude_provider.py:99) | `tui.rs::FOOTER_MENU_RE` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_BUSY_TAIL_LINES` (py/claudeops/providers/claude_provider.py:100) | `tui.rs::BUSY_TAIL_LINES` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_screen_rows` (py/claudeops/providers/claude_provider.py:103) | `tui.rs::screen_rows` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_open_switch_dialog` (py/claudeops/providers/claude_provider.py:109) | `tui.rs::open_switch_dialog` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_switch_label_matches` (py/claudeops/providers/claude_provider.py:131) | `tui.rs::label_matches` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_switch_pane_state` (py/claudeops/providers/claude_provider.py:138) | `tui.rs::pane_state` | `parity.rs::parity_tui` `g4-ekran-` | TAŞINDI |
+| `_live_switch` (py/claudeops/providers/claude_provider.py:164) | `tui.rs::{run_switch, Run::look}` | `parity.rs::parity_tui` `g4-ekran-` `g4-pane-` | TAŞINDI |
+| `_claudeops_price` (py/claudeops/providers/ucli_provider.py:637) | `ucli.rs::claudeops_price` (tablo `cops_review_core::targets`) | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_argv_model` (py/claudeops/providers/ucli_provider.py:646) | `ucli.rs::{value_after, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `_has_price` (py/claudeops/providers/ucli_provider.py:650) | `ucli.rs::has_price` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `ClaudeProvider.matches_proc` (py/claudeops/providers/claude_provider.py:1111) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `ClaudeProvider.extract_name` (py/claudeops/providers/claude_provider.py:1116) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
+| `ClaudeProvider.extract_info` (py/claudeops/providers/claude_provider.py:1119) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
+| `ClaudeProvider.preferred_default_model` (py/claudeops/providers/claude_provider.py:1127) | `claude.rs::newest_sonnet` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
+| `ClaudeProvider.default_effort` (py/claudeops/providers/claude_provider.py:1133) | `provider.rs::Cli::default_effort` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `ClaudeProvider.model_choices` (py/claudeops/providers/claude_provider.py:1136) | `claude.rs::model_choices` | `parity.rs::parity_model_effort` `claude-state` `claude-state-bozuk`; belge `ModelIo::claude_models_doc` (G7) | TAŞINDI |
+| `ClaudeProvider.refresh_stored_model` (py/claudeops/providers/claude_provider.py:1151) | `claude.rs::refresh_stored_model` | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
+| `ClaudeProvider.permission_modes` (py/claudeops/providers/claude_provider.py:1170) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `ClaudeProvider.effort_levels` (py/claudeops/providers/claude_provider.py:1173) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `ClaudeProvider.mode_status_patterns` (py/claudeops/providers/claude_provider.py:1176) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
+| `ClaudeProvider.background_work` (py/claudeops/providers/claude_provider.py:1179) | `live.rs::Live::background_work` | `parity.rs::parity_live` `claude-`, `ekran-claude-` (transkript yolu `claude_resume.rs::Live::jsonl_path_for`) | TAŞINDI |
+| `ClaudeProvider.busy_status_pattern` (py/claudeops/providers/claude_provider.py:1193) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `ClaudeProvider.cyclable_modes` (py/claudeops/providers/claude_provider.py:1196) | `tui.rs::Cli::cyclable_modes` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `ClaudeProvider._transcript_lines` (py/claudeops/providers/claude_provider.py:1199) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::jsonl_path_for`) | `parity.rs::parity_chat` `claude-satir-` `claude-kesik-` | TAŞINDI |
+| `ClaudeProvider.last_exchange` (py/claudeops/providers/claude_provider.py:1239) | `chat.rs::claude_last` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
+| `ClaudeProvider.extra_file_roots` (py/claudeops/providers/claude_provider.py:1270) | `chat.rs::Live::extra_file_roots` (dizin: `LiveProbe::claude_project_dir`, rs/proc) | `parity.rs::parity_chat` `chat-kok-claude-` | TAŞINDI |
+| `ClaudeProvider.full_history` (py/claudeops/providers/claude_provider.py:1275) | `chat.rs::claude_history` | `parity.rs::parity_chat` `chat-claude-` | TAŞINDI |
+| `ClaudeProvider.sid_for_stopped_session` (py/claudeops/providers/claude_provider.py:1306) | `claude_resume.rs::Live::claude_stopped_sid` | `parity.rs::parity_resume` `devam-claude-` | TAŞINDI |
+| `CODEX_HOME` (py/claudeops/providers/codex_provider.py:43) | `probe.rs::Paths::codex_home` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
+| `SESSIONS_DIR` (py/claudeops/providers/codex_provider.py:44) | `probe.rs::Paths::codex_sessions_dir` (rollout taraması `codex_resume.rs`) | `parity.rs::parity_chat` `chat-codex-` (`roots`) | TAŞINDI |
+| `MODELS_CACHE` (py/claudeops/providers/codex_provider.py:45) | `probe.rs::Paths::codex_models_cache`, `codex.rs::read_models_cache` | `parity.rs::parity_model_sources` `src-codex-akis` `src-codex-nan` (Python hatası? G7 şüphe 2) | TAŞINDI |
+| `PERMISSION_MODES` (py/claudeops/providers/codex_provider.py:47) | `codex.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `EFFORT_LEVELS` (py/claudeops/providers/codex_provider.py:48) | `codex.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/codex_provider.py:59) | `codex.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `FALLBACK_MODELS` (py/claudeops/providers/codex_provider.py:63) | `codex.rs::FALLBACK_MODELS` | `parity.rs::parity_model_effort` `codex-cache-bozuk` `bos-*` | TAŞINDI |
+| `_NON_SESSION_SUBCOMMANDS` (py/claudeops/providers/codex_provider.py:78) | `rs/proc` `providers.rs::CODEX_NON_SESSION` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `_PERMISSION_FLAGS` (py/claudeops/providers/codex_provider.py:85) | `codex.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_MODELS_TTL` (py/claudeops/providers/codex_provider.py:92) | `codex.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-codex-akis` | TAŞINDI |
+| `_ROLLOUT_UUID_RE` (py/claudeops/providers/codex_provider.py:93) | `codex_resume.rs::ROLLOUT_UUID` | `parity.rs::parity_resume` `devam-codex-temel` `devam-codex-adsiz-` | TAŞINDI |
+| `_MAX_ROLLOUT_SCAN` (py/claudeops/providers/codex_provider.py:94) | `codex_resume.rs::MAX_ROLLOUT_SCAN` | `parity.rs::parity_resume` `devam-diger` `devam-codex-sinir-` | TAŞINDI |
+| `_config_value` (py/claudeops/providers/codex_provider.py:97) | `rs/proc` `providers.rs::codex_config` | rs/proc: `providers.rs::codex_info` | KAPSAM DIŞI |
+| `_safe_mtime` (py/claudeops/providers/codex_provider.py:105) | `resume.rs::Live::safe_mtime` | `parity.rs::parity_resume` `devam-codex-esit` `devam-codex-glob` | TAŞINDI |
+| `_session_meta` (py/claudeops/providers/codex_provider.py:112) | `codex_resume.rs::Live::session_meta` | `parity.rs::parity_resume` `devam-codex-satir-` | TAŞINDI |
 | `_rollout_sid_matches` (py/claudeops/providers/codex_provider.py, 27 Kas `fix:`) | `codex_resume.rs::Live::codex_rollout_path` (`exact`) | `parity.rs::parity_resume` `devam-codex-glob` `devam-sapma-codex-joker`; `test_rsprov_g1_fixes.py::CodexTest.test_rollout_path_needs_the_exact_id` | TAŞINDI |
 | `_path_part_ok` (py/claudeops/providers/base.py, 27 Kas `fix:`) | `pyfmt.rs::is_path_part` | `parity.rs::parity_chat` `chat-agy-mutlak-kimlik` `chat-ucli-yol-disi`, `parity_live` `live-durum-yol-disi`, `parity_transcript` `transkript-istek-mutlak`; `test_rsprov_paths.py` | TAŞINDI |
-| `_codex_text` (py/claudeops/providers/codex_provider.py:125) | `chat.rs::codex_text` | `parity.rs::parity_chat` `codex-icerik-` | TAŞINDI |
-| `_is_real_codex_user_text` (py/claudeops/providers/codex_provider.py:139) | `chat.rs::codex_real_user` | `parity.rs::parity_chat` `codex-metin-` | TAŞINDI |
-| `CodexProvider` (py/claudeops/providers/codex_provider.py:148) | `codex.rs` + `Cli::Codex` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_codex_text` (py/claudeops/providers/codex_provider.py:141) | `chat.rs::codex_text` | `parity.rs::parity_chat` `codex-icerik-` | TAŞINDI |
+| `_is_real_codex_user_text` (py/claudeops/providers/codex_provider.py:161) | `chat.rs::codex_real_user` | `parity.rs::parity_chat` `codex-metin-` | TAŞINDI |
+| `CodexProvider` (py/claudeops/providers/codex_provider.py:170) | `codex.rs` + `Cli::Codex` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CodexProvider.name` (py/claudeops/providers/codex_provider.py:149) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CodexProvider.__init__` (py/claudeops/providers/codex_provider.py:151) | `codex.rs::ModelsCache` | `parity.rs::parity_model_sources` `src-codex-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
-| `CodexProvider.resolve_resume_id` (py/claudeops/providers/codex_provider.py:155) | `codex_resume.rs::Live::codex_resume_id` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
-| `CodexProvider.build_inner_command` (py/claudeops/providers/codex_provider.py:178) | `codex.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
-| `CodexProvider.mcp_launch_args` (py/claudeops/providers/codex_provider.py:196) | `codex.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
-| `CodexProvider.env_overrides` (py/claudeops/providers/codex_provider.py:207) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CodexProvider.matches_proc` (py/claudeops/providers/codex_provider.py:210) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `CodexProvider.extract_name` (py/claudeops/providers/codex_provider.py:218) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
-| `CodexProvider.extract_info` (py/claudeops/providers/codex_provider.py:225) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `CodexProvider.model_choices` (py/claudeops/providers/codex_provider.py:246) | `codex.rs::model_choices` | `parity.rs::parity_model_effort` `codex-cache`; TTL önbelleği `parity_model_sources` `src-codex-` | TAŞINDI |
-| `CodexProvider.permission_modes` (py/claudeops/providers/codex_provider.py:265) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CodexProvider.effort_levels` (py/claudeops/providers/codex_provider.py:268) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CodexProvider.model_effort_levels` (py/claudeops/providers/codex_provider.py:271) | `codex.rs::model_effort_levels` | `parity.rs::parity_model_effort` `codex-cache`; ve `parity_spawn` `codex-effort` | TAŞINDI |
-| `CodexProvider.busy_status_pattern` (py/claudeops/providers/codex_provider.py:292) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CodexProvider.input_settle_delay` (py/claudeops/providers/codex_provider.py:295) | `tui.rs::Cli::input_settle_delay` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:306) | `live.rs::Live::background_work` | `parity.rs::parity_live` `codex-ajan-`, `ekran-codex-` (rollout yolu `Live::codex_rollout_path`) | TAŞINDI |
-| `CodexProvider._rollout_path` (py/claudeops/providers/codex_provider.py:317) | `codex_resume.rs::Live::codex_rollout_path` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
-| `CodexProvider._transcript_lines` (py/claudeops/providers/codex_provider.py:336) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::codex_rollout_path`) | `parity.rs::parity_chat` `codex-satir-` `codex-sid-yok` | TAŞINDI |
-| `CodexProvider.live_context` (py/claudeops/providers/codex_provider.py:358) | `live.rs::Live::codex_context` | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
-| `CodexProvider.last_exchange` (py/claudeops/providers/codex_provider.py:385) | `chat.rs::codex_last` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
-| `CodexProvider.full_history` (py/claudeops/providers/codex_provider.py:410) | `chat.rs::codex_history` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
-| `SESSION_STORE_DB` (py/claudeops/providers/copilot_provider.py:107) | `probe.rs::Paths::copilot_session_db` | `parity.rs::parity_chat` `copilot-sohbet-` (`roots`) | TAŞINDI |
-| `_BYOK_ENV_FILE` (py/claudeops/providers/copilot_provider.py:119) | `probe.rs::Paths::copilot_env_file` | `parity.rs::parity_build` `copilot-byok-` | TAŞINDI |
-| `_BYOK_ENV_MANAGED_MARKER` (py/claudeops/providers/copilot_provider.py:120) | `copilot.rs::sync_byok_env_file` (`.managed`) | `parity.rs::parity_build` `byok-sil-yonetilen` `byok-elle` | TAŞINDI |
-| `_sync_byok_env_file` (py/claudeops/providers/copilot_provider.py:123) | `copilot.rs::sync_byok_env_file` + `Effect` | `parity.rs::parity_build` `byok-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
-| `MODEL_CHOICES` (py/claudeops/providers/copilot_provider.py:157) | `copilot.rs::MODEL_CHOICES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `PERMISSION_MODES` (py/claudeops/providers/copilot_provider.py:176) | `copilot.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `EFFORT_LEVELS` (py/claudeops/providers/copilot_provider.py:177) | `copilot.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `MODE_STATUS_PATTERNS` (py/claudeops/providers/copilot_provider.py:183) | `copilot.rs::MODE_STATUS_PATTERNS` | `parity.rs::parity_tui` `g4-sabit-copilot`, `g4-mod-copilot` | TAŞINDI |
-| `BUSY_STATUS_PATTERN` (py/claudeops/providers/copilot_provider.py:187) | `copilot.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `_PERMISSION_FLAGS` (py/claudeops/providers/copilot_provider.py:189) | `copilot.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/copilot_provider.py:196) | `copilot.rs::RESUME_SCAN_LIMIT`, `RESUME_SQL` | `parity.rs::parity_resume` `devam-diger` `devam-copilot-sinir-` | TAŞINDI |
-| `_USAGE_PLAN_RE` (py/claudeops/providers/copilot_provider.py:205) | `usage.rs::PLAN` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `_USAGE_FRACTION_RE` (py/claudeops/providers/copilot_provider.py:206) | `usage.rs::FRACTION` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `_USAGE_RESET_RE` (py/claudeops/providers/copilot_provider.py:207) | `usage.rs::RESET_IN` (`$` -> `\z`, gerekçe kodda) | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `trust_folder` (py/claudeops/providers/copilot_provider.py:210) | `copilot.rs::{trust_folder, trust_folder_edit}` + `Effect` | `parity.rs::parity_build` `trust-` (`trust-ayrac`); `config_path` parametresi yok | TAŞINDI |
+| `CodexProvider.__init__` (py/claudeops/providers/codex_provider.py:178) | `codex.rs::ModelsCache` | `parity.rs::parity_model_sources` `src-codex-acilis` (Python hatası? G7 şüphe 1) | TAŞINDI |
+| `CodexProvider.resolve_resume_id` (py/claudeops/providers/codex_provider.py:182) | `codex_resume.rs::Live::codex_resume_id` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
+| `CodexProvider.build_inner_command` (py/claudeops/providers/codex_provider.py:207) | `codex.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` | TAŞINDI |
+| `CodexProvider.mcp_launch_args` (py/claudeops/providers/codex_provider.py:225) | `codex.rs::mcp_launch_args` | `parity.rs::parity_build` `mcp` | TAŞINDI |
+| `CodexProvider.env_overrides` (py/claudeops/providers/codex_provider.py:236) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CodexProvider.matches_proc` (py/claudeops/providers/codex_provider.py:239) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `CodexProvider.extract_name` (py/claudeops/providers/codex_provider.py:247) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
+| `CodexProvider.extract_info` (py/claudeops/providers/codex_provider.py:254) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
+| `CodexProvider.model_choices` (py/claudeops/providers/codex_provider.py:275) | `codex.rs::model_choices` | `parity.rs::parity_model_effort` `codex-cache`; TTL önbelleği `parity_model_sources` `src-codex-` | TAŞINDI |
+| `CodexProvider.permission_modes` (py/claudeops/providers/codex_provider.py:294) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CodexProvider.effort_levels` (py/claudeops/providers/codex_provider.py:297) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CodexProvider.model_effort_levels` (py/claudeops/providers/codex_provider.py:300) | `codex.rs::model_effort_levels` | `parity.rs::parity_model_effort` `codex-cache`; ve `parity_spawn` `codex-effort` | TAŞINDI |
+| `CodexProvider.busy_status_pattern` (py/claudeops/providers/codex_provider.py:321) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CodexProvider.input_settle_delay` (py/claudeops/providers/codex_provider.py:324) | `tui.rs::Cli::input_settle_delay` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `CodexProvider.background_work` (py/claudeops/providers/codex_provider.py:335) | `live.rs::Live::background_work` | `parity.rs::parity_live` `codex-ajan-`, `ekran-codex-` (rollout yolu `Live::codex_rollout_path`) | TAŞINDI |
+| `CodexProvider._rollout_path` (py/claudeops/providers/codex_provider.py:354) | `codex_resume.rs::Live::codex_rollout_path` | `parity.rs::parity_resume` `devam-codex-` | TAŞINDI |
+| `CodexProvider._transcript_lines` (py/claudeops/providers/codex_provider.py:372) | `chat.rs::Live::transcript_bytes` + `raw_lines`/`object_line` (yol: `Live::codex_rollout_path`) | `parity.rs::parity_chat` `codex-satir-` `codex-sid-yok` | TAŞINDI |
+| `CodexProvider.live_context` (py/claudeops/providers/codex_provider.py:401) | `live.rs::Live::codex_context` | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
+| `CodexProvider.last_exchange` (py/claudeops/providers/codex_provider.py:440) | `chat.rs::codex_last` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
+| `CodexProvider.full_history` (py/claudeops/providers/codex_provider.py:465) | `chat.rs::codex_history` | `parity.rs::parity_chat` `chat-codex-` | TAŞINDI |
+| `SESSION_STORE_DB` (py/claudeops/providers/copilot_provider.py:110) | `probe.rs::Paths::copilot_session_db` | `parity.rs::parity_chat` `copilot-sohbet-` (`roots`) | TAŞINDI |
+| `_BYOK_ENV_FILE` (py/claudeops/providers/copilot_provider.py:123) | `probe.rs::Paths::copilot_env_file` | `parity.rs::parity_build` `copilot-byok-` | TAŞINDI |
+| `_BYOK_ENV_MANAGED_MARKER` (py/claudeops/providers/copilot_provider.py:124) | `copilot.rs::sync_byok_env_file` (`.managed`) | `parity.rs::parity_build` `byok-sil-yonetilen` `byok-elle` | TAŞINDI |
+| `_sync_byok_env_file` (py/claudeops/providers/copilot_provider.py:127) | `copilot.rs::sync_byok_env_file` + `Effect` | `parity.rs::parity_build` `byok-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
+| `MODEL_CHOICES` (py/claudeops/providers/copilot_provider.py:174) | `copilot.rs::MODEL_CHOICES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `PERMISSION_MODES` (py/claudeops/providers/copilot_provider.py:193) | `copilot.rs::PERMISSION_MODES` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `EFFORT_LEVELS` (py/claudeops/providers/copilot_provider.py:194) | `copilot.rs::EFFORT_LEVELS` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `MODE_STATUS_PATTERNS` (py/claudeops/providers/copilot_provider.py:200) | `copilot.rs::MODE_STATUS_PATTERNS` | `parity.rs::parity_tui` `g4-sabit-copilot`, `g4-mod-copilot` | TAŞINDI |
+| `BUSY_STATUS_PATTERN` (py/claudeops/providers/copilot_provider.py:204) | `copilot.rs::BUSY_STATUS_PATTERN` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `_PERMISSION_FLAGS` (py/claudeops/providers/copilot_provider.py:206) | `copilot.rs::permission_flags` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_RESUME_SCAN_LIMIT` (py/claudeops/providers/copilot_provider.py:213) | `copilot.rs::RESUME_SCAN_LIMIT`, `RESUME_SQL` | `parity.rs::parity_resume` `devam-diger` `devam-copilot-sinir-` | TAŞINDI |
+| `_USAGE_PLAN_RE` (py/claudeops/providers/copilot_provider.py:222) | `usage.rs::PLAN` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
+| `_USAGE_FRACTION_RE` (py/claudeops/providers/copilot_provider.py:223) | `usage.rs::FRACTION` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
+| `_USAGE_RESET_RE` (py/claudeops/providers/copilot_provider.py:224) | `usage.rs::RESET_IN` (`$` -> `\z`, gerekçe kodda) | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
+| `trust_folder` (py/claudeops/providers/copilot_provider.py:231) | `copilot.rs::{trust_folder, trust_folder_edit}` + `Effect` | `parity.rs::parity_build` `trust-` (`trust-ayrac`); `config_path` parametresi yok | TAŞINDI |
 | `_TRUST_TOKEN_RE` (py/claudeops/providers/copilot_provider.py) | `copilot.rs::TRUST_TOKEN` | `parity.rs::parity_build` `trust-ayrac` | TAŞINDI |
-| `_connect_ro` (py/claudeops/providers/copilot_provider.py:232) | `live.rs::LiveProbe::sqlite_rows` sözleşmesi (gerçek uygulama G8) | `parity.rs::parity_chat` `copilot-sohbet-db-` | TAŞINDI |
-| `CopilotProvider` (py/claudeops/providers/copilot_provider.py:239) | `copilot.rs` + `Cli::Copilot` | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `_connect_ro` (py/claudeops/providers/copilot_provider.py:264) | `live.rs::LiveProbe::sqlite_rows` sözleşmesi (gerçek uygulama G8) | `parity.rs::parity_chat` `copilot-sohbet-db-` | TAŞINDI |
+| `CopilotProvider` (py/claudeops/providers/copilot_provider.py:281) | `copilot.rs` + `Cli::Copilot` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `CopilotProvider.name` (py/claudeops/providers/copilot_provider.py:240) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.resolve_resume_id` (py/claudeops/providers/copilot_provider.py:242) | `copilot.rs::Live::copilot_resume_id` | `parity.rs::parity_resume` `devam-copilot-` | TAŞINDI |
-| `CopilotProvider.build_inner_command` (py/claudeops/providers/copilot_provider.py:270) | `copilot.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` `byok-` `trust-` | TAŞINDI |
-| `CopilotProvider.env_overrides` (py/claudeops/providers/copilot_provider.py:297) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.matches_proc` (py/claudeops/providers/copilot_provider.py:303) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `CopilotProvider.extract_name` (py/claudeops/providers/copilot_provider.py:322) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
-| `CopilotProvider.extract_info` (py/claudeops/providers/copilot_provider.py:329) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `CopilotProvider.model_choices` (py/claudeops/providers/copilot_provider.py:345) | `provider.rs` `model_choices` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.permission_modes` (py/claudeops/providers/copilot_provider.py:348) | `provider.rs` `permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.effort_levels` (py/claudeops/providers/copilot_provider.py:351) | `provider.rs` `effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `CopilotProvider.mode_status_patterns` (py/claudeops/providers/copilot_provider.py:354) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
-| `CopilotProvider.busy_status_pattern` (py/claudeops/providers/copilot_provider.py:357) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
-| `CopilotProvider.usage_command` (py/claudeops/providers/copilot_provider.py:360) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `CopilotProvider.parse_usage_text` (py/claudeops/providers/copilot_provider.py:369) | `usage.rs::copilot_usage` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
-| `CopilotProvider.usage_fresh_tui_argv` (py/claudeops/providers/copilot_provider.py:380) | `usage.rs::Providers::usage_fresh_tui_argv` | `parity.rs::parity_usage` `usage-copilot` `usage-bin-*-copilot` | TAŞINDI |
-| `CopilotProvider._turns` (py/claudeops/providers/copilot_provider.py:384) | `chat.rs::Live::copilot_turns` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
-| `CopilotProvider.live_context` (py/claudeops/providers/copilot_provider.py:407) | `live.rs::Live::copilot_context`, `COPILOT_CONTEXT_SQL` | `parity.rs::parity_live` `copilot-` | TAŞINDI |
-| `CopilotProvider.last_exchange` (py/claudeops/providers/copilot_provider.py:425) | `chat.rs::Live::last_exchange` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
-| `CopilotProvider.full_history` (py/claudeops/providers/copilot_provider.py:434) | `chat.rs::Live::full_history` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
+| `CopilotProvider.resolve_resume_id` (py/claudeops/providers/copilot_provider.py:284) | `copilot.rs::Live::copilot_resume_id` | `parity.rs::parity_resume` `devam-copilot-` | TAŞINDI |
+| `CopilotProvider.build_inner_command` (py/claudeops/providers/copilot_provider.py:314) | `copilot.rs::build_inner_command` | `parity.rs::parity_build` `-perm` `-extra` `byok-` `trust-` | TAŞINDI |
+| `CopilotProvider.env_overrides` (py/claudeops/providers/copilot_provider.py:341) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CopilotProvider.matches_proc` (py/claudeops/providers/copilot_provider.py:347) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `CopilotProvider.extract_name` (py/claudeops/providers/copilot_provider.py:366) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
+| `CopilotProvider.extract_info` (py/claudeops/providers/copilot_provider.py:373) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
+| `CopilotProvider.model_choices` (py/claudeops/providers/copilot_provider.py:389) | `provider.rs` `model_choices` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CopilotProvider.permission_modes` (py/claudeops/providers/copilot_provider.py:392) | `provider.rs` `permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CopilotProvider.effort_levels` (py/claudeops/providers/copilot_provider.py:395) | `provider.rs` `effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `CopilotProvider.mode_status_patterns` (py/claudeops/providers/copilot_provider.py:398) | `tui.rs::Cli::mode_status_patterns` | `parity.rs::parity_tui` `g4-sabit-`, `g4-mod-` | TAŞINDI |
+| `CopilotProvider.busy_status_pattern` (py/claudeops/providers/copilot_provider.py:401) | `live.rs::Cli::busy_status_pattern` | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
+| `CopilotProvider.usage_command` (py/claudeops/providers/copilot_provider.py:404) | `usage.rs::Cli::usage_command` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
+| `CopilotProvider.parse_usage_text` (py/claudeops/providers/copilot_provider.py:413) | `usage.rs::copilot_usage` | `parity.rs::parity_usage` `usage-copilot` | TAŞINDI |
+| `CopilotProvider.usage_fresh_tui_argv` (py/claudeops/providers/copilot_provider.py:424) | `usage.rs::Providers::usage_fresh_tui_argv` | `parity.rs::parity_usage` `usage-copilot` `usage-bin-*-copilot` | TAŞINDI |
+| `CopilotProvider._turns` (py/claudeops/providers/copilot_provider.py:428) | `chat.rs::Live::copilot_turns` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
+| `CopilotProvider.live_context` (py/claudeops/providers/copilot_provider.py:451) | `live.rs::Live::copilot_context`, `COPILOT_CONTEXT_SQL` | `parity.rs::parity_live` `copilot-` | TAŞINDI |
+| `CopilotProvider.last_exchange` (py/claudeops/providers/copilot_provider.py:474) | `chat.rs::Live::last_exchange` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
+| `CopilotProvider.full_history` (py/claudeops/providers/copilot_provider.py:483) | `chat.rs::Live::full_history` | `parity.rs::parity_chat` `copilot-sohbet-` | TAŞINDI |
 | `PROC_TAG` (py/claudeops/providers/shell_provider.py:31) | `shell.rs::PROC_TAG` | `parity.rs::parity_build` `-perm` | TAŞINDI |
 | `_SENTINEL` (py/claudeops/providers/shell_provider.py:38) | `shell.rs::SENTINEL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider` (py/claudeops/providers/shell_provider.py:41) | `shell.rs` + `Cli::Shell` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
@@ -1691,122 +1691,122 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `ShellProvider.model_choices` (py/claudeops/providers/shell_provider.py:73) | `shell.rs::SENTINEL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider.permission_modes` (py/claudeops/providers/shell_provider.py:76) | `shell.rs::SENTINEL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `ShellProvider.effort_levels` (py/claudeops/providers/shell_provider.py:79) | `shell.rs::SENTINEL` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `_EFFORT_LIMITS` (py/claudeops/providers/ucli_provider.py:153) | `ucli.rs::{EFFORT_LIMITS, EFFORT_LEVELS}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` | TAŞINDI |
-| `_EFFORT_LEVELS` (py/claudeops/providers/ucli_provider.py:157) | `ucli.rs::{EFFORT_LIMITS, EFFORT_LEVELS}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` | TAŞINDI |
-| `_REQUEST_TIMEOUT_SECS` (py/claudeops/providers/ucli_provider.py:167) | `ucli.rs::{REQUEST_TIMEOUT_SECS, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
-| `_MAX_HISTORY_KIB` (py/claudeops/providers/ucli_provider.py:173) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
-| `_USAGE_FIELDS` (py/claudeops/providers/ucli_provider.py:178) | `ucli_status.rs::USAGE_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
-| `_PHASE_INT_FIELDS` (py/claudeops/providers/ucli_provider.py:182) | `ucli_status.rs::PHASE_INT_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
-| `_READ_ONLY` (py/claudeops/providers/ucli_provider.py:187) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `_ALLOW_EDIT` (py/claudeops/providers/ucli_provider.py:188) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `_ALLOW_CREATE` (py/claudeops/providers/ucli_provider.py:192) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `_PERMISSION_MODES` (py/claudeops/providers/ucli_provider.py:193) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `_MODEL_CHOICES` (py/claudeops/providers/ucli_provider.py:201) | `ucli.rs::{FALLBACK_MODEL, LiveModels::choices}` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `DEFAULT_ENDPOINT` (py/claudeops/providers/ucli_provider.py:202) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
-| `_ENDPOINT` (py/claudeops/providers/ucli_provider.py:203) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
-| `endpoint` (py/claudeops/providers/ucli_provider.py:206) | `ucli.rs::build_inner_command` (`Settings::ucli_endpoint` yoksa varsayılan) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz`; ayrı public işlev yok | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/providers/ucli_provider.py:221) | `ucli.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
-| `_LIVE_MODEL_CACHE` (py/claudeops/providers/ucli_provider.py:222) | `ucli.rs::LiveCache` (`live.ids`) | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
-| `_LIVE_MODEL_CACHE_TS` (py/claudeops/providers/ucli_provider.py:223) | `ucli.rs::LiveCache` (`ts`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
-| `_LIVE_CAPS` (py/claudeops/providers/ucli_provider.py:226) | `ucli.rs::LiveCache` (`live.caps`) | `parity.rs::parity_model_sources` `src-ucli-yetenek` (ret + caps) | TAŞINDI |
-| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:229) | `ucli.rs::{fetch_live_models, parse_live_models}` (`ModelIo::http_get`; gerçek HTTP G8) | `parity.rs::parity_model_sources` `src-ucli-*` (Python hatası? G7 şüphe 3-5, 10) | TAŞINDI |
-| `_live_models` (py/claudeops/providers/ucli_provider.py:266) | `ucli.rs::LiveCache::get` (`ModelSources::ucli_live`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
-| `reasoning_effort_for` (py/claudeops/providers/ucli_provider.py:283) | `ucli.rs::reasoning_effort_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `temel-` | TAŞINDI |
-| `_API_KEY_FILE` (py/claudeops/providers/ucli_provider.py:307) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
-| `_API_KEY_MANAGED_MARKER` (py/claudeops/providers/ucli_provider.py:313) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
-| `_sync_api_key_file` (py/claudeops/providers/ucli_provider.py:316) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
-| `_web_args` (py/claudeops/providers/ucli_provider.py:345) | `ucli.rs::Ctx::web_args` | `parity.rs::parity_ucli` `web-` `eksik`; `ucli_web_searxng_error` diag bilerek yok (Rust yöneticisi istisna üretmez) | TAŞINDI |
-| `_script_args` (py/claudeops/providers/ucli_provider.py:383) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
-| `_stream_args` (py/claudeops/providers/ucli_provider.py:397) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
-| `_reasoning_display_args` (py/claudeops/providers/ucli_provider.py:409) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
-| `_metrics_file_args` (py/claudeops/providers/ucli_provider.py:420) | `ucli.rs::Ctx::tuning_args` + `Effect::MkdirPrivate` | `parity.rs::parity_ucli` `ayar-metrics-off` `eksik` `temel-`; Python mkdir hatasında bayrağı düşürür; Rust'ta çağıran sözleşmesi (G8) | TAŞINDI |
-| `_interactive_args` (py/claudeops/providers/ucli_provider.py:442) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `eksik` `temel-` | TAŞINDI |
-| `_state_dir_args` (py/claudeops/providers/ucli_provider.py:451) | `ucli.rs::Ctx::state_dir_args` | `parity.rs::parity_ucli` `statedir-` | TAŞINDI |
-| `_timeout_args` (py/claudeops/providers/ucli_provider.py:468) | `ucli.rs::{REQUEST_TIMEOUT_SECS, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
-| `_history_args` (py/claudeops/providers/ucli_provider.py:478) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
-| `_effort_args` (py/claudeops/providers/ucli_provider.py:495) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
-| `_set_flag_value` (py/claudeops/providers/ucli_provider.py:513) | `ucli.rs::set_flag_value` | `parity.rs::parity_ucli` `hizmet-claude` `opts-` | TAŞINDI |
-| `_service_key_file` (py/claudeops/providers/ucli_provider.py:554) | `probe.rs::Paths::service_key_file` | `parity.rs::parity_ucli` `hizmet-` `ornek-hizmet-` | TAŞINDI |
-| `_INSTRUCTIONS_MAX_BYTES` (py/claudeops/providers/ucli_provider.py:529) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
-| `_instructions_too_big` (py/claudeops/providers/ucli_provider.py:532) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
-| `instructions_check` (py/claudeops/providers/ucli_provider.py:543) | `ucli.rs::instructions_check` (`InstructionsCheck`) | `parity.rs::parity_panel` `instr-*` | TAŞINDI |
-| `_claude_service_flags` (py/claudeops/providers/ucli_provider.py:564) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude`; günlük tavan `Probe::claude_cost_gate` sahte (G8); `ucli_usage_log_dir_failed` diag yok (G8) | TAŞINDI |
-| `_PRICED_MODELS` (py/claudeops/providers/ucli_provider.py:597) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
-| `_default_session_cap` (py/claudeops/providers/ucli_provider.py:600) | `ucli.rs::Ctx::apply_cli_opts` + `Settings::default_max_session_usd` | `parity.rs::parity_ucli` `hizmet-grok-tavan-ayar` `ham-service-evren` | TAŞINDI |
-| `_max_cost_args` (py/claudeops/providers/ucli_provider.py:609) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
-| `_with_price` (py/claudeops/providers/ucli_provider.py:653) | `ucli.rs::Ctx::apply_price` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
-| `_effective_session_cap` (py/claudeops/providers/ucli_provider.py:665) | `ucli.rs::effective_session_cap` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
-| `_unpriced_cap_reason` (py/claudeops/providers/ucli_provider.py:670) | `ucli.rs::unpriced_cap_reason` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
-| `session_cap_refusal` (py/claudeops/providers/ucli_provider.py:680) | `ucli.rs::session_cap_refusal` (crate'te çağıran yok; panel kataloğu bağlar) | `parity.rs::parity_ucli` `fiyat-ret-` | TAŞINDI |
-| `_MCP_NAME_BAD` (py/claudeops/providers/ucli_provider.py:624) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `ucli-mcp-ad` | TAŞINDI |
-| `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:625) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-` (satır sonlu ad: `spec` içindeki `ok\n`) | TAŞINDI |
-| `_MCP_ADD_TIMEOUT` (py/claudeops/providers/ucli_provider.py:626) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
-| `mcp_server_name` (py/claudeops/providers/ucli_provider.py:629) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `mcp_add_argv` (py/claudeops/providers/ucli_provider.py:633) | `ucli.rs::mcp_add_argv` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
-| `register_mcp` (py/claudeops/providers/ucli_provider.py:642) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
-| `_apply_cli_opts` (py/claudeops/providers/ucli_provider.py:672) | `ucli.rs::Ctx::apply_cli_opts` | `parity.rs::parity_ucli` `opts-` `ham-` | TAŞINDI |
-| `_agent_setup` (py/claudeops/providers/ucli_provider.py:845) | `ucli.rs::Ctx::agent_setup` | `parity.rs::parity_ucli` `ajan-`; token üretimi `Probe` sahte (G8) | TAŞINDI |
-| `UcliProvider` (py/claudeops/providers/ucli_provider.py:867) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
+| `_EFFORT_LIMITS` (py/claudeops/providers/ucli_provider.py:159) | `ucli.rs::{EFFORT_LIMITS, EFFORT_LEVELS}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` | TAŞINDI |
+| `_EFFORT_LEVELS` (py/claudeops/providers/ucli_provider.py:163) | `ucli.rs::{EFFORT_LIMITS, EFFORT_LEVELS}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` | TAŞINDI |
+| `_REQUEST_TIMEOUT_SECS` (py/claudeops/providers/ucli_provider.py:173) | `ucli.rs::{REQUEST_TIMEOUT_SECS, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
+| `_MAX_HISTORY_KIB` (py/claudeops/providers/ucli_provider.py:179) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
+| `_USAGE_FIELDS` (py/claudeops/providers/ucli_provider.py:184) | `ucli_status.rs::USAGE_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `_PHASE_INT_FIELDS` (py/claudeops/providers/ucli_provider.py:188) | `ucli_status.rs::PHASE_INT_FIELDS` | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `_READ_ONLY` (py/claudeops/providers/ucli_provider.py:193) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `_ALLOW_EDIT` (py/claudeops/providers/ucli_provider.py:194) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `_ALLOW_CREATE` (py/claudeops/providers/ucli_provider.py:198) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `_PERMISSION_MODES` (py/claudeops/providers/ucli_provider.py:199) | `ucli.rs::{ALLOW_EDIT, PERMISSION_MODES}` (+ özel sabitler) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `_MODEL_CHOICES` (py/claudeops/providers/ucli_provider.py:207) | `ucli.rs::{FALLBACK_MODEL, LiveModels::choices}` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `DEFAULT_ENDPOINT` (py/claudeops/providers/ucli_provider.py:208) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
+| `_ENDPOINT` (py/claudeops/providers/ucli_provider.py:209) | `ucli.rs::DEFAULT_ENDPOINT` | `parity.rs::parity_ucli` `temel-` `ayar-endpoint` | TAŞINDI |
+| `endpoint` (py/claudeops/providers/ucli_provider.py:212) | `ucli.rs::build_inner_command` (`Settings::ucli_endpoint` yoksa varsayılan) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz`; ayrı public işlev yok | TAŞINDI |
+| `_MODELS_TTL` (py/claudeops/providers/ucli_provider.py:227) | `ucli.rs::MODELS_TTL` | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
+| `_LIVE_MODEL_CACHE` (py/claudeops/providers/ucli_provider.py:228) | `ucli.rs::LiveCache` (`live.ids`) | `parity.rs::parity_model_sources` `src-ucli-akis` | TAŞINDI |
+| `_LIVE_MODEL_CACHE_TS` (py/claudeops/providers/ucli_provider.py:229) | `ucli.rs::LiveCache` (`ts`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
+| `_LIVE_CAPS` (py/claudeops/providers/ucli_provider.py:232) | `ucli.rs::LiveCache` (`live.caps`) | `parity.rs::parity_model_sources` `src-ucli-yetenek` (ret + caps) | TAŞINDI |
+| `_fetch_live_models` (py/claudeops/providers/ucli_provider.py:235) | `ucli.rs::{fetch_live_models, parse_live_models}` (`ModelIo::http_get`; gerçek HTTP G8) | `parity.rs::parity_model_sources` `src-ucli-*` (Python hatası? G7 şüphe 3-5, 10) | TAŞINDI |
+| `_live_models` (py/claudeops/providers/ucli_provider.py:278) | `ucli.rs::LiveCache::get` (`ModelSources::ucli_live`) | `parity.rs::parity_model_sources` `src-ucli-akis` `src-ucli-anahtarsiz` | TAŞINDI |
+| `reasoning_effort_for` (py/claudeops/providers/ucli_provider.py:295) | `ucli.rs::reasoning_effort_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `temel-` | TAŞINDI |
+| `_API_KEY_FILE` (py/claudeops/providers/ucli_provider.py:319) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `_API_KEY_MANAGED_MARKER` (py/claudeops/providers/ucli_provider.py:325) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
+| `_sync_api_key_file` (py/claudeops/providers/ucli_provider.py:328) | `ucli.rs::Ctx::sync_api_key_file` + `Effect` | `parity.rs::parity_ucli` `anahtar-`; yazım uygulayıcısı yalnız testte (G8) | TAŞINDI |
+| `_web_args` (py/claudeops/providers/ucli_provider.py:373) | `ucli.rs::Ctx::web_args` | `parity.rs::parity_ucli` `web-` `eksik`; `ucli_web_searxng_error` diag bilerek yok (Rust yöneticisi istisna üretmez) | TAŞINDI |
+| `_script_args` (py/claudeops/providers/ucli_provider.py:411) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
+| `_stream_args` (py/claudeops/providers/ucli_provider.py:425) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
+| `_reasoning_display_args` (py/claudeops/providers/ucli_provider.py:437) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
+| `_metrics_file_args` (py/claudeops/providers/ucli_provider.py:448) | `ucli.rs::Ctx::tuning_args` + `Effect::MkdirPrivate` | `parity.rs::parity_ucli` `ayar-metrics-off` `eksik` `temel-`; Python mkdir hatasında bayrağı düşürür; Rust'ta çağıran sözleşmesi (G8) | TAŞINDI |
+| `_interactive_args` (py/claudeops/providers/ucli_provider.py:471) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `eksik` `temel-` | TAŞINDI |
+| `_state_dir_args` (py/claudeops/providers/ucli_provider.py:480) | `ucli.rs::Ctx::state_dir_args` | `parity.rs::parity_ucli` `statedir-` | TAŞINDI |
+| `_timeout_args` (py/claudeops/providers/ucli_provider.py:498) | `ucli.rs::{REQUEST_TIMEOUT_SECS, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
+| `_history_args` (py/claudeops/providers/ucli_provider.py:508) | `ucli.rs::{MAX_HISTORY_KIB, Ctx::tuning_args}` | `parity.rs::parity_ucli` `temel-` `ayar-limit` `eksik` | TAŞINDI |
+| `_effort_args` (py/claudeops/providers/ucli_provider.py:525) | `ucli.rs::Ctx::tuning_args` | `parity.rs::parity_ucli` `ayar-reasoning-` `ayar-script-full` `ayar-stream-off` `eksik` | TAŞINDI |
+| `_set_flag_value` (py/claudeops/providers/ucli_provider.py:543) | `ucli.rs::set_flag_value` | `parity.rs::parity_ucli` `hizmet-claude` `opts-` | TAŞINDI |
+| `_service_key_file` (py/claudeops/providers/ucli_provider.py:555) | `probe.rs::Paths::service_key_file` | `parity.rs::parity_ucli` `hizmet-` `ornek-hizmet-` | TAŞINDI |
+| `_INSTRUCTIONS_MAX_BYTES` (py/claudeops/providers/ucli_provider.py:564) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
+| `_instructions_too_big` (py/claudeops/providers/ucli_provider.py:567) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` `hizmet-claude-sinir-talimat` | TAŞINDI |
+| `instructions_check` (py/claudeops/providers/ucli_provider.py:578) | `ucli.rs::instructions_check` (`InstructionsCheck`) | `parity.rs::parity_panel` `instr-*` | TAŞINDI |
+| `_claude_service_flags` (py/claudeops/providers/ucli_provider.py:599) | `ucli.rs::Ctx::claude_service_flags` | `parity.rs::parity_ucli` `hizmet-claude`; günlük tavan `Probe::claude_cost_gate` sahte (G8); `ucli_usage_log_dir_failed` diag yok (G8) | TAŞINDI |
+| `_PRICED_MODELS` (py/claudeops/providers/ucli_provider.py:635) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
+| `_default_session_cap` (py/claudeops/providers/ucli_provider.py:689) | `ucli.rs::Ctx::apply_cli_opts` + `Settings::default_max_session_usd` | `parity.rs::parity_ucli` `hizmet-grok-tavan-ayar` `ham-service-evren` | TAŞINDI |
+| `_max_cost_args` (py/claudeops/providers/ucli_provider.py:698) | `ucli.rs::{PRICED_MODELS, Ctx::apply_cli_opts}` | `parity.rs::parity_ucli` `opts-cost-fiyatli` `opts-cost-fiyatsiz` `opts-cost-modelsiz` | TAŞINDI |
+| `_with_price` (py/claudeops/providers/ucli_provider.py:654) | `ucli.rs::Ctx::apply_price` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
+| `_effective_session_cap` (py/claudeops/providers/ucli_provider.py:666) | `ucli.rs::effective_session_cap` | `parity.rs::parity_ucli` `fiyat-` `opts-` | TAŞINDI |
+| `_unpriced_cap_reason` (py/claudeops/providers/ucli_provider.py:671) | `ucli.rs::unpriced_cap_reason` | `parity.rs::parity_ucli` `fiyat-` | TAŞINDI |
+| `session_cap_refusal` (py/claudeops/providers/ucli_provider.py:681) | `ucli.rs::session_cap_refusal` (crate'te çağıran yok; panel kataloğu bağlar) | `parity.rs::parity_ucli` `fiyat-ret-` | TAŞINDI |
+| `_MCP_NAME_BAD` (py/claudeops/providers/ucli_provider.py:713) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `ucli-mcp-ad` | TAŞINDI |
+| `_MCP_TOOL_RE` (py/claudeops/providers/ucli_provider.py:714) | `ucli.rs::valid_tool_name` | `parity.rs::parity_ucli` `ucli-mcp-` (satır sonlu ad: `spec` içindeki `ok\n`) | TAŞINDI |
+| `_MCP_ADD_TIMEOUT` (py/claudeops/providers/ucli_provider.py:715) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
+| `mcp_server_name` (py/claudeops/providers/ucli_provider.py:718) | `ucli.rs::mcp_server_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `mcp_add_argv` (py/claudeops/providers/ucli_provider.py:722) | `ucli.rs::mcp_add_argv` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
+| `register_mcp` (py/claudeops/providers/ucli_provider.py:731) | `real/probe.rs::{MCP_ADD_TIMEOUT, RealProbe::register_mcp}` + `ucli.rs::mcp_launch_args` | `parity.rs::parity_real` `mcp-`; `tests/real_process.rs::register_mcp_errors_carry_python_reprs` | TAŞINDI |
+| `_apply_cli_opts` (py/claudeops/providers/ucli_provider.py:765) | `ucli.rs::Ctx::apply_cli_opts` | `parity.rs::parity_ucli` `opts-` `ham-` | TAŞINDI |
+| `_agent_setup` (py/claudeops/providers/ucli_provider.py:945) | `ucli.rs::Ctx::agent_setup` | `parity.rs::parity_ucli` `ajan-`; token üretimi `Probe` sahte (G8) | TAŞINDI |
+| `UcliProvider` (py/claudeops/providers/ucli_provider.py:967) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
 | `UcliProvider.name` (py/claudeops/providers/ucli_provider.py:868) | `provider.rs::Cli::name` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.prepare_input` (py/claudeops/providers/ucli_provider.py:870) | `tui.rs::Cli::prepare_input` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `UcliProvider.has_conversation` (py/claudeops/providers/ucli_provider.py:878) | `tui.rs::Cli::has_conversation` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `UcliProvider.wants_handover_wrapup` (py/claudeops/providers/ucli_provider.py:881) | `tui.rs::Cli::wants_handover_wrapup` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
-| `UcliProvider.resolve_resume_id` (py/claudeops/providers/ucli_provider.py:884) | `resume.rs::Live::resolve_resume_id` (`Cli::Ucli` = None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `UcliProvider.prepare_input` (py/claudeops/providers/ucli_provider.py:970) | `tui.rs::Cli::prepare_input` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `UcliProvider.has_conversation` (py/claudeops/providers/ucli_provider.py:979) | `tui.rs::Cli::has_conversation` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `UcliProvider.wants_handover_wrapup` (py/claudeops/providers/ucli_provider.py:982) | `tui.rs::Cli::wants_handover_wrapup` | `parity.rs::parity_tui` `g4-sabit-` | TAŞINDI |
+| `UcliProvider.resolve_resume_id` (py/claudeops/providers/ucli_provider.py:985) | `resume.rs::Live::resolve_resume_id` (`Cli::Ucli` = None) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
 | `UcliProvider.accepts_cli_opts` (py/claudeops/providers/ucli_provider.py:888) | `provider.rs::Cli::accepts_cli_opts` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
 | `UcliProvider.mcp_needs_cwd` (py/claudeops/providers/ucli_provider.py:889) | `provider.rs::Cli::mcp_needs_cwd` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.validate_cli_opts` (py/claudeops/providers/ucli_provider.py:891) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-` | TAŞINDI |
-| `UcliProvider.mcp_launch_args` (py/claudeops/providers/ucli_provider.py:894) | `ucli.rs::mcp_launch_args` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
-| `UcliProvider.build_inner_command` (py/claudeops/providers/ucli_provider.py:917) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
-| `UcliProvider.oneshot` (py/claudeops/providers/ucli_provider.py:997) | `real/oneshot.rs::OneShot::{ucli_oneshot, oneshot_key}`, `oneshot.rs::ucli_answer` | `parity.rs::parity_oneshot` `ucli-`; `tests/real_oneshot.rs::the_configured_key_goes_into_the_child_only_for_the_ucli_oneshot` | TAŞINDI |
-| `UcliProvider.env_overrides` (py/claudeops/providers/ucli_provider.py:1017) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.matches_proc` (py/claudeops/providers/ucli_provider.py:1022) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
-| `UcliProvider._parse_session` (py/claudeops/providers/ucli_provider.py:1027) | `rs/proc` `providers.rs::arg` (`Cli::extract_name`, `ucli_info`) | rs/proc: `providers.rs::ucli_effort_presets`, altın `detect_info` | KAPSAM DIŞI |
-| `UcliProvider.extract_name` (py/claudeops/providers/ucli_provider.py:1033) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
-| `UcliProvider.extract_info` (py/claudeops/providers/ucli_provider.py:1036) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
-| `UcliProvider.model_choices` (py/claudeops/providers/ucli_provider.py:1072) | `ucli.rs::LiveModels::choices` | `parity.rs::parity_model_effort` `ucli-live`; canlı liste `parity_model_sources` `src-ucli-` | TAŞINDI |
-| `UcliProvider.default_permission_mode` (py/claudeops/providers/ucli_provider.py:1075) | `provider.rs::Cli::default_permission_mode` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.permission_modes` (py/claudeops/providers/ucli_provider.py:1080) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.effort_levels` (py/claudeops/providers/ucli_provider.py:1083) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `UcliProvider.full_history` (py/claudeops/providers/ucli_provider.py:1086) | `chat.rs::Live::full_history` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
-| `UcliProvider.sid_for_stopped_session` (py/claudeops/providers/ucli_provider.py:1091) | `resume.rs::Live::sid_for_stopped_session` (`Cli::Ucli` = ad) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
-| `UcliProvider.live_busy` (py/claudeops/providers/ucli_provider.py:1097) | `ucli_status.rs::Live::ucli_busy` (`Live::live_busy`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.background_work` (py/claudeops/providers/ucli_provider.py:1112) | `live.rs::Live::background_work` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.live_tools` (py/claudeops/providers/ucli_provider.py:1127) | `ucli_status.rs::Live::ucli_tools` (`Live::live_tools`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.live_context` (py/claudeops/providers/ucli_provider.py:1141) | `ucli_status.rs::Live::ucli_context` (`Live::live_context`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.live_usage` (py/claudeops/providers/ucli_provider.py:1156) | `ucli_status.rs::Live::ucli_usage` (`Live::live_usage`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.live_failed_turns` (py/claudeops/providers/ucli_provider.py:1173) | `ucli_status.rs::Live::ucli_failed_turns` (`Live::live_failed_turns`) | `parity.rs::parity_live` `hata-` | TAŞINDI |
-| `UcliProvider.live_phase` (py/claudeops/providers/ucli_provider.py:1196) | `ucli_status.rs::Live::ucli_phase` (`Live::live_phase`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `UcliProvider.last_exchange` (py/claudeops/providers/ucli_provider.py:1226) | `chat.rs::ucli_last` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
-| `BUNDLED_PATH` (py/claudeops/routing.py:21) | `probe.rs::Paths::routing_bundled` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
-| `OVERRIDE_PATH` (py/claudeops/routing.py:22) | `probe.rs::Paths::routing_override` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
-| `BLOCK_BEGIN` (py/claudeops/routing.py:23) | `routing.rs::BLOCK_BEGIN` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `BLOCK_END` (py/claudeops/routing.py:24) | `routing.rs::BLOCK_END` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `CODEX_AGENTS` (py/claudeops/routing.py:25) | `probe.rs::Paths::codex_agents_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
-| `AGY_GEMINI` (py/claudeops/routing.py:26) | `probe.rs::Paths::agy_gemini_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
-| `routing_text` (py/claudeops/routing.py:29) | `routing.rs::routing_text` | `parity.rs::parity_misc` `sync`; ve `parity_build` `claude-routing-` | TAŞINDI |
-| `claude_guidance_path` (py/claudeops/routing.py:41) | `routing.rs::claude_guidance_path` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
-| `_with_block` (py/claudeops/routing.py:66) | `routing.rs::with_block` | `parity.rs::parity_misc` `blok` | TAŞINDI |
-| `_sync_one` (py/claudeops/routing.py:81) | `real/routing_sync.rs::sync_one` (karar `routing.rs::sync_plan`; yedek `copy2`, silme, realpath'e atomik yazım, `skipped:<OSError sınıfı>`) | `parity.rs::parity_misc` `sync` (gerçek uygulayıcı); `parity.rs::parity_g9` `esitle-` | TAŞINDI |
-| `sync_global_files` (py/claudeops/routing.py:109) | `real/routing_sync.rs::{sync_global_files, sync_global_files_at}` | `parity.rs::parity_g9` `esitle-`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
-| `_DANGEROUS_ENV_NAMES` (py/claudeops/spawn.py:36) | `spawn.rs::DANGEROUS_ENV` | `parity.rs::parity_spawn` `filter` | TAŞINDI |
-| `FALLBACK_ATTEMPT_WAIT_SECONDS` (py/claudeops/spawn.py:50) | `spawn_exec.rs::FALLBACK_ATTEMPT_WAIT_SECONDS` (+ `FALLBACK_POLL_SECONDS`) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
-| `FALLBACK_RETRY_COUNT` (py/claudeops/spawn.py:51) | `spawn_exec.rs::FALLBACK_RETRY_COUNT` | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
-| `_filter_env_overrides` (py/claudeops/spawn.py:54) | `spawn.rs::filter_env_overrides` | `parity.rs::parity_spawn` `filter` `-kanca` | TAŞINDI |
-| `DRY_RUN_PREVIEW_MAX` (py/claudeops/spawn.py:59) | `spawn.rs::DRY_RUN_PREVIEW_MAX` | `parity.rs::parity_spawn` `preview-sinir` `preview-sinir2` | TAŞINDI |
-| `_SECRET_ENV_RE` (py/claudeops/spawn.py:60) | `spawn.rs::{SECRET_WORDS, fold_char}` | `parity.rs::parity_spawn` `preview` | TAŞINDI |
-| `_dry_run_preview` (py/claudeops/spawn.py:63) | `spawn.rs::{dry_run_preview, SpawnPlan::dry_run_line}` | `parity.rs::parity_spawn` `preview` `-dry` | TAŞINDI |
-| `detect_display` (py/claudeops/spawn.py:71) | `spawn.rs::detect_display` | `parity.rs::parity_spawn` `display-env` `display-bos` `display-yok`; soket/kilit dosyası senaryoları denetimli değil | TAŞINDI |
-| `_ids_held_by_others` (py/claudeops/spawn.py:83) | `resume.rs::ids_held_by_others` (süreç taraması girdi: rs/proc) | `parity.rs::parity_resume` `devam-tutulan` | TAŞINDI |
-| `SESSION_USD_CAP_KEY` (py/claudeops/spawn.py:110) | `spawn.rs::SESSION_USD_CAP_KEY` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
-| `_apply_hook_session_cap` (py/claudeops/spawn.py:113) | `spawn.rs::apply_hook_session_cap` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
-| `BRAIN_NAME_PREFIXES` (py/claudeops/spawn.py:138) | `spawn.rs::BRAIN_NAME_PREFIX` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
-| `spawn_priority_prefix` (py/claudeops/spawn.py:141) | `spawn.rs::priority_prefix` + `Settings::spawn_nice` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
-| `spawn_session` (py/claudeops/spawn.py:163) | `spawn_exec.rs::spawn_session` (komut kurma `spawn.rs::plan_spawn_with`; sınırlar `SpawnTmux`/`Terminal`/`Clock`/`DiagSink`/`SessionScan`/`ResumeResolver`/`SpawnHooks`/`CostRelease`; kuru ya da hatalı başlatmada `release` burada). Gerçek `SpawnTmux` uygulayıcısı `cops-tmux` birleşimini, `SessionScan` rs/proc'u bekler. Python hatası? dry_run yan etkisi (TBD#373) | `parity.rs::parity_g9` `{cli}-gt|gizli|gizli-tmuxsuz|gtsiz|gtsiz-tmuxsuz|tmuxsuz|kuru|hayalet|devam|yeni-zorla|eklenti|kanca|kanca-red`, `ekran-`, `ortam-supurme`, `bekci-`, `ilk-`, `kanca-`, `eklenti-`, `tarama-dustu`, `ad-tirnak`; `release` her vakada ayrıca | TAŞINDI |
-| `_launch_gnome_terminal` (py/claudeops/spawn.py:325) | `real/launch.rs::GnomeTerminal` (`Terminal::launch`; argv `spawn.rs::gnome_terminal_argv`) | `tests/g9.rs::{gnome_terminal_runs_with_only_the_given_env_and_is_reaped, gnome_terminal_popen_failures}`; `parity.rs::parity_g9` `ilk-oserror` `ilk-valueerror` `bekci-baslatilamadi` | TAŞINDI |
-| `_reclaim_ghost_session` (py/claudeops/spawn.py:366) | `spawn_exec.rs::reclaim_ghost_session` (hata dalı yok: tmux sınırı yükseltmez) | `parity.rs::parity_g9` `hayalet-`, `{cli}-hayalet`; `tests/g9.rs` ReclaimTest karşılıkları | TAŞINDI |
-| `_fallback_watchdog` (py/claudeops/spawn.py:384) | `spawn_exec.rs::fallback_watchdog` (+ `Watchdog` join tanıtıcısı) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_*` | TAŞINDI |
-| `open_window` (py/claudeops/spawn.py:409) | `spawn_exec.rs::open_window` | `parity.rs::parity_g9` `pencere-` | TAŞINDI |
-| `open_mirror_window` (py/claudeops/spawn.py:425) | `spawn_exec.rs::open_mirror_window` (argv/ortam `spawn.rs::{mirror_window_command, mirror_child_env}`) | `parity.rs::parity_g9` `ayna-`; `parity_spawn` `ayna ayna-tirnak` | TAŞINDI |
+| `UcliProvider.validate_cli_opts` (py/claudeops/providers/ucli_provider.py:992) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-` | TAŞINDI |
+| `UcliProvider.mcp_launch_args` (py/claudeops/providers/ucli_provider.py:995) | `ucli.rs::mcp_launch_args` | `parity.rs::parity_ucli` `ucli-mcp-` | TAŞINDI |
+| `UcliProvider.build_inner_command` (py/claudeops/providers/ucli_provider.py:1018) | `ucli.rs::build_inner_command` | `parity.rs::parity_ucli` `temel-` `anahtar-` `opts-` | TAŞINDI |
+| `UcliProvider.oneshot` (py/claudeops/providers/ucli_provider.py:1098) | `real/oneshot.rs::OneShot::{ucli_oneshot, oneshot_key}`, `oneshot.rs::ucli_answer` | `parity.rs::parity_oneshot` `ucli-`; `tests/real_oneshot.rs::the_configured_key_goes_into_the_child_only_for_the_ucli_oneshot` | TAŞINDI |
+| `UcliProvider.env_overrides` (py/claudeops/providers/ucli_provider.py:1131) | `provider.rs::Cli::env_overrides` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `UcliProvider.matches_proc` (py/claudeops/providers/ucli_provider.py:1136) | `rs/proc` `cops-procscan/src/providers.rs::Cli::detect` | rs/proc: `providers.rs::detect`, altın `detect_info` | KAPSAM DIŞI |
+| `UcliProvider._parse_session` (py/claudeops/providers/ucli_provider.py:1141) | `rs/proc` `providers.rs::arg` (`Cli::extract_name`, `ucli_info`) | rs/proc: `providers.rs::ucli_effort_presets`, altın `detect_info` | KAPSAM DIŞI |
+| `UcliProvider.extract_name` (py/claudeops/providers/ucli_provider.py:1147) | `rs/proc` `providers.rs::Cli::extract_name` | rs/proc: `golden.rs::provider_detect_and_info` (süreç taraması rs/proc) | KAPSAM DIŞI |
+| `UcliProvider.extract_info` (py/claudeops/providers/ucli_provider.py:1150) | `rs/proc` `providers.rs::Cli::extract_info` | rs/proc: `providers.rs::{claude,codex,copilot}_info`, `ucli_effort_presets`, `agy_sid_rules` | KAPSAM DIŞI |
+| `UcliProvider.model_choices` (py/claudeops/providers/ucli_provider.py:1186) | `ucli.rs::LiveModels::choices` | `parity.rs::parity_model_effort` `ucli-live`; canlı liste `parity_model_sources` `src-ucli-` | TAŞINDI |
+| `UcliProvider.default_permission_mode` (py/claudeops/providers/ucli_provider.py:1189) | `provider.rs::Cli::default_permission_mode` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `UcliProvider.permission_modes` (py/claudeops/providers/ucli_provider.py:1194) | `provider.rs::Cli::permission_modes` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `UcliProvider.effort_levels` (py/claudeops/providers/ucli_provider.py:1197) | `provider.rs::Cli::effort_levels` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `UcliProvider.full_history` (py/claudeops/providers/ucli_provider.py:1200) | `chat.rs::Live::full_history` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
+| `UcliProvider.sid_for_stopped_session` (py/claudeops/providers/ucli_provider.py:1211) | `resume.rs::Live::sid_for_stopped_session` (`Cli::Ucli` = ad) | `parity.rs::parity_resume` `devam-diger` | TAŞINDI |
+| `UcliProvider.live_busy` (py/claudeops/providers/ucli_provider.py:1217) | `ucli_status.rs::Live::ucli_busy` (`Live::live_busy`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.background_work` (py/claudeops/providers/ucli_provider.py:1232) | `live.rs::Live::background_work` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_tools` (py/claudeops/providers/ucli_provider.py:1247) | `ucli_status.rs::Live::ucli_tools` (`Live::live_tools`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_context` (py/claudeops/providers/ucli_provider.py:1261) | `ucli_status.rs::Live::ucli_context` (`Live::live_context`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_usage` (py/claudeops/providers/ucli_provider.py:1276) | `ucli_status.rs::Live::ucli_usage` (`Live::live_usage`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.live_failed_turns` (py/claudeops/providers/ucli_provider.py:1293) | `ucli_status.rs::Live::ucli_failed_turns` (`Live::live_failed_turns`) | `parity.rs::parity_live` `hata-` | TAŞINDI |
+| `UcliProvider.live_phase` (py/claudeops/providers/ucli_provider.py:1316) | `ucli_status.rs::Live::ucli_phase` (`Live::live_phase`) | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `UcliProvider.last_exchange` (py/claudeops/providers/ucli_provider.py:1346) | `chat.rs::ucli_last` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
+| `BUNDLED_PATH` (py/claudeops/routing.py:23) | `probe.rs::Paths::routing_bundled` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
+| `OVERRIDE_PATH` (py/claudeops/routing.py:24) | `probe.rs::Paths::routing_override` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
+| `BLOCK_BEGIN` (py/claudeops/routing.py:25) | `routing.rs::BLOCK_BEGIN` | `parity.rs::parity_misc` `blok` | TAŞINDI |
+| `BLOCK_END` (py/claudeops/routing.py:26) | `routing.rs::BLOCK_END` | `parity.rs::parity_misc` `blok` | TAŞINDI |
+| `CODEX_AGENTS` (py/claudeops/routing.py:27) | `probe.rs::Paths::codex_agents_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `AGY_GEMINI` (py/claudeops/routing.py:28) | `probe.rs::Paths::agy_gemini_md` | `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `routing_text` (py/claudeops/routing.py:31) | `routing.rs::routing_text` | `parity.rs::parity_misc` `sync`; ve `parity_build` `claude-routing-` | TAŞINDI |
+| `claude_guidance_path` (py/claudeops/routing.py:43) | `routing.rs::claude_guidance_path` | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
+| `_with_block` (py/claudeops/routing.py:73) | `routing.rs::with_block` | `parity.rs::parity_misc` `blok` | TAŞINDI |
+| `_sync_one` (py/claudeops/routing.py:88) | `real/routing_sync.rs::sync_one` (karar `routing.rs::sync_plan`; yedek `copy2`, silme, realpath'e atomik yazım, `skipped:<OSError sınıfı>`) | `parity.rs::parity_misc` `sync` (gerçek uygulayıcı); `parity.rs::parity_g9` `esitle-` | TAŞINDI |
+| `sync_global_files` (py/claudeops/routing.py:124) | `real/routing_sync.rs::{sync_global_files, sync_global_files_at}` | `parity.rs::parity_g9` `esitle-`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `_DANGEROUS_ENV_NAMES` (py/claudeops/spawn.py:41) | `spawn.rs::DANGEROUS_ENV` | `parity.rs::parity_spawn` `filter` | TAŞINDI |
+| `FALLBACK_ATTEMPT_WAIT_SECONDS` (py/claudeops/spawn.py:55) | `spawn_exec.rs::FALLBACK_ATTEMPT_WAIT_SECONDS` (+ `FALLBACK_POLL_SECONDS`) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
+| `FALLBACK_RETRY_COUNT` (py/claudeops/spawn.py:56) | `spawn_exec.rs::FALLBACK_RETRY_COUNT` | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_retries_then_falls_back_to_headless_tmux` | TAŞINDI |
+| `_filter_env_overrides` (py/claudeops/spawn.py:59) | `spawn.rs::filter_env_overrides` | `parity.rs::parity_spawn` `filter` `-kanca` | TAŞINDI |
+| `DRY_RUN_PREVIEW_MAX` (py/claudeops/spawn.py:64) | `spawn.rs::DRY_RUN_PREVIEW_MAX` | `parity.rs::parity_spawn` `preview-sinir` `preview-sinir2` | TAŞINDI |
+| `_SECRET_ENV_RE` (py/claudeops/spawn.py:65) | `spawn.rs::{SECRET_WORDS, fold_char}` | `parity.rs::parity_spawn` `preview` | TAŞINDI |
+| `_dry_run_preview` (py/claudeops/spawn.py:68) | `spawn.rs::{dry_run_preview, SpawnPlan::dry_run_line}` | `parity.rs::parity_spawn` `preview` `-dry` | TAŞINDI |
+| `detect_display` (py/claudeops/spawn.py:181) | `spawn.rs::detect_display` | `parity.rs::parity_spawn` `display-env` `display-bos` `display-yok`; soket/kilit dosyası senaryoları denetimli değil | TAŞINDI |
+| `_ids_held_by_others` (py/claudeops/spawn.py:199) | `resume.rs::ids_held_by_others` (süreç taraması girdi: rs/proc) | `parity.rs::parity_resume` `devam-tutulan` | TAŞINDI |
+| `SESSION_USD_CAP_KEY` (py/claudeops/spawn.py:227) | `spawn.rs::SESSION_USD_CAP_KEY` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
+| `_apply_hook_session_cap` (py/claudeops/spawn.py:230) | `spawn.rs::apply_hook_session_cap` | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
+| `BRAIN_NAME_PREFIXES` (py/claudeops/spawn.py:255) | `spawn.rs::BRAIN_NAME_PREFIX` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
+| `spawn_priority_prefix` (py/claudeops/spawn.py:258) | `spawn.rs::priority_prefix` + `Settings::spawn_nice` | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
+| `spawn_session` (py/claudeops/spawn.py:280) | `spawn_exec.rs::spawn_session` (komut kurma `spawn.rs::plan_spawn_with`; sınırlar `SpawnTmux`/`Terminal`/`Clock`/`DiagSink`/`SessionScan`/`ResumeResolver`/`SpawnHooks`/`CostRelease`; kuru ya da hatalı başlatmada `release` burada). Gerçek `SpawnTmux` uygulayıcısı `cops-tmux` birleşimini, `SessionScan` rs/proc'u bekler. Python hatası? dry_run yan etkisi (TBD#373) | `parity.rs::parity_g9` `{cli}-gt|gizli|gizli-tmuxsuz|gtsiz|gtsiz-tmuxsuz|tmuxsuz|kuru|hayalet|devam|yeni-zorla|eklenti|kanca|kanca-red`, `ekran-`, `ortam-supurme`, `bekci-`, `ilk-`, `kanca-`, `eklenti-`, `tarama-dustu`, `ad-tirnak`; `release` her vakada ayrıca | TAŞINDI |
+| `_launch_gnome_terminal` (py/claudeops/spawn.py:483) | `real/launch.rs::GnomeTerminal` (`Terminal::launch`; argv `spawn.rs::gnome_terminal_argv`) | `tests/g9.rs::{gnome_terminal_runs_with_only_the_given_env_and_is_reaped, gnome_terminal_popen_failures}`; `parity.rs::parity_g9` `ilk-oserror` `ilk-valueerror` `bekci-baslatilamadi` | TAŞINDI |
+| `_reclaim_ghost_session` (py/claudeops/spawn.py:529) | `spawn_exec.rs::reclaim_ghost_session` (hata dalı yok: tmux sınırı yükseltmez) | `parity.rs::parity_g9` `hayalet-`, `{cli}-hayalet`; `tests/g9.rs` ReclaimTest karşılıkları | TAŞINDI |
+| `_fallback_watchdog` (py/claudeops/spawn.py:567) | `spawn_exec.rs::fallback_watchdog` (+ `Watchdog` join tanıtıcısı) | `parity.rs::parity_g9` `bekci-`; `tests/g9.rs::watchdog_*` | TAŞINDI |
+| `open_window` (py/claudeops/spawn.py:610) | `spawn_exec.rs::open_window` | `parity.rs::parity_g9` `pencere-` | TAŞINDI |
+| `open_mirror_window` (py/claudeops/spawn.py:626) | `spawn_exec.rs::open_mirror_window` (argv/ortam `spawn.rs::{mirror_window_command, mirror_child_env}`) | `parity.rs::parity_g9` `ayna-`; `parity_spawn` `ayna ayna-tirnak` | TAŞINDI |
 | `EFFORT_LADDER` (py/claudeops/effort.py:19) | `effort.rs::EFFORT_LADDER` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `_RANK` (py/claudeops/effort.py:20) | `effort.rs::effort_rank` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `_ID_TIERS` (py/claudeops/effort.py:25) | `effort.rs::ID_TIERS` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
@@ -1816,215 +1816,215 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `nearest_effort` (py/claudeops/effort.py:56) | `effort.rs::nearest_effort` | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `ENV_NAME_RE` (py/claudeops/envnames.py:7) | rs/state `settings_read.rs::is_safe_env_name` (`settings.rs` yeniden dışa açar) | `parity.rs::parity_spawn` `filter` | TAŞINDI |
 | `is_safe_env_name` (py/claudeops/envnames.py:10) | rs/state `settings_read.rs::is_safe_env_name` (`settings.rs` yeniden dışa açar) | `parity.rs::parity_spawn` `filter` | TAŞINDI |
-| `services` (py/claudeops/ucli_session_opts.py:21) | `settings.rs::Settings::ucli_services` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
-| `effort_levels_for` (py/claudeops/ucli_session_opts.py:27) | `settings.rs::Settings::ucli_effort_levels_for` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
-| `FORBIDDEN_CMDS` (py/claudeops/ucli_session_opts.py:40) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_FORBIDDEN_RE` (py/claudeops/ucli_session_opts.py:54) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `is_forbidden_cmd` (py/claudeops/ucli_session_opts.py:57) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_FORBIDDEN_LOWER` (py/claudeops/ucli_session_opts.py:62) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_CMD_RE` (py/claudeops/ucli_session_opts.py:64) | `ucli_opts.rs::CMD` | `parity.rs::parity_ucli` `opts-`; `path_executables` kullanımı `real/pathexec.rs::CMD_NAME` (`parity_real` `yol-`) | TAŞINDI |
-| `_GLOB_RE` (py/claudeops/ucli_session_opts.py:65) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
-| `MAX_CMDS` (py/claudeops/ucli_session_opts.py:66) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
-| `MAX_EXPANDED` (py/claudeops/ucli_session_opts.py:67) | `ucli_opts.rs::{MAX_EXPANDED, expand_exec_cmds}` | `parity.rs::parity_misc` `expand` `re-exp` | TAŞINDI |
-| `_PATTERN_CHARS` (py/claudeops/ucli_session_opts.py:68) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
-| `MAX_GLOBS` (py/claudeops/ucli_session_opts.py:69) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
-| `MAX_BINDS` (py/claudeops/ucli_session_opts.py:70) | `ucli_opts.rs::{MAX_BINDS, BIND}` | `parity.rs::parity_ucli` `bind-` | TAŞINDI |
-| `_BIND_RE` (py/claudeops/ucli_session_opts.py:71) | `ucli_opts.rs::{MAX_BINDS, BIND}` | `parity.rs::parity_ucli` `bind-` | TAŞINDI |
-| `TIMEOUT_RANGE` (py/claudeops/ucli_session_opts.py:72) | `ucli_opts.rs::TIMEOUT_RANGE` | `parity.rs::parity_ucli` `timeout-` | TAŞINDI |
-| `MAX_COST_USD` (py/claudeops/ucli_session_opts.py:73) | `ucli_opts.rs::MAX_COST_USD` | `parity.rs::parity_ucli` `cost-` `session-sinir` | TAŞINDI |
-| `INT_LIMITS` (py/claudeops/ucli_session_opts.py:75) | `ucli_opts.rs::INT_LIMITS` | `parity.rs::parity_ucli` `int-` | TAŞINDI |
-| `PRICE_MAX` (py/claudeops/ucli_session_opts.py:83) | `ucli_opts.rs::PRICE_MAX` | `parity.rs::parity_ucli` `price-` | TAŞINDI |
-| `BROAD_GLOBS` (py/claudeops/ucli_session_opts.py:86) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
-| `_is_glob` (py/claudeops/ucli_session_opts.py:89) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
-| `_items` (py/claudeops/ucli_session_opts.py:93) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
-| `validate_opts` (py/claudeops/ucli_session_opts.py:101) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-`; ve `parity_misc` `val re-val` | TAŞINDI |
-| `DEFAULT_MAX_SESSION_USD` (py/claudeops/ucli_session_opts.py:305) | `settings.rs::{DEFAULT_MAX_SESSION_USD, Settings::default_max_session_usd}` | `parity.rs::parity_settings_pyfmt` `usd` | TAŞINDI |
-| `default_max_session_usd` (py/claudeops/ucli_session_opts.py:308) | `settings.rs::{DEFAULT_MAX_SESSION_USD, Settings::default_max_session_usd}` | `parity.rs::parity_settings_pyfmt` `usd` | TAŞINDI |
-| `path_executables` (py/claudeops/ucli_session_opts.py:323) | `real/pathexec.rs::path_executables` | `parity.rs::parity_real` `yol-` | TAŞINDI |
-| `expand_exec_cmds` (py/claudeops/ucli_session_opts.py:343) | `ucli_opts.rs::{MAX_EXPANDED, expand_exec_cmds}` | `parity.rs::parity_misc` `expand` `re-exp` | TAŞINDI |
-| `_rustup_default_toolchain` (py/claudeops/ucli_session_opts.py:368) | `real/pathexec.rs::{rustup_default_toolchain, rust_toolchain}` | `parity.rs::parity_real` `zincir-`; `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one` | TAŞINDI |
-| `rust_toolchain` (py/claudeops/ucli_session_opts.py:381) | `real/pathexec.rs::{rustup_default_toolchain, rust_toolchain}` | `parity.rs::parity_real` `zincir-`; `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one` | TAŞINDI |
-| `exec_flags` (py/claudeops/ucli_session_opts.py:410) | `ucli_opts.rs::exec_flags` | `parity.rs::parity_misc` `exec` | TAŞINDI |
-| `_MODELS_CACHE` (py/claudeops/ucli_session_opts.py:446) | `ucli_opts.rs::ServiceModelsCache` | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` (Python hatası? G7 şüphe 7) | TAŞINDI |
-| `_MODELS_TTL` (py/claudeops/ucli_session_opts.py:447) | `ucli_opts.rs::{SERVICE_MODELS_TTL, SERVICE_MODELS_RETRY}` | `parity.rs::parity_model_sources` `src-svc-ttl`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
-| `service_models` (py/claudeops/ucli_session_opts.py:450) | `ucli_opts.rs::{ServiceModelsCache::get, parse_service_models}` (`ModelSources::service_models`) | `parity.rs::parity_model_sources` `src-svc-*` (Python hatası? G7 şüphe 6) | TAŞINDI |
+| `services` (py/claudeops/ucli_session_opts.py:22) | `settings.rs::Settings::ucli_services` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
+| `effort_levels_for` (py/claudeops/ucli_session_opts.py:28) | `settings.rs::Settings::ucli_effort_levels_for` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
+| `FORBIDDEN_CMDS` (py/claudeops/ucli_session_opts.py:41) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_FORBIDDEN_RE` (py/claudeops/ucli_session_opts.py:55) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `is_forbidden_cmd` (py/claudeops/ucli_session_opts.py:58) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_FORBIDDEN_LOWER` (py/claudeops/ucli_session_opts.py:63) | `ucli_opts.rs::{FORBIDDEN, FORBIDDEN_VERSIONED, is_forbidden_cmd}` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_CMD_RE` (py/claudeops/ucli_session_opts.py:65) | `ucli_opts.rs::CMD` | `parity.rs::parity_ucli` `opts-`; `path_executables` kullanımı `real/pathexec.rs::CMD_NAME` (`parity_real` `yol-`) | TAŞINDI |
+| `_GLOB_RE` (py/claudeops/ucli_session_opts.py:66) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
+| `MAX_CMDS` (py/claudeops/ucli_session_opts.py:67) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
+| `MAX_EXPANDED` (py/claudeops/ucli_session_opts.py:68) | `ucli_opts.rs::{MAX_EXPANDED, expand_exec_cmds}` | `parity.rs::parity_misc` `expand` `re-exp` | TAŞINDI |
+| `_PATTERN_CHARS` (py/claudeops/ucli_session_opts.py:69) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
+| `MAX_GLOBS` (py/claudeops/ucli_session_opts.py:70) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
+| `MAX_BINDS` (py/claudeops/ucli_session_opts.py:71) | `ucli_opts.rs::{MAX_BINDS, BIND}` | `parity.rs::parity_ucli` `bind-` | TAŞINDI |
+| `_BIND_RE` (py/claudeops/ucli_session_opts.py:72) | `ucli_opts.rs::{MAX_BINDS, BIND}` | `parity.rs::parity_ucli` `bind-` | TAŞINDI |
+| `TIMEOUT_RANGE` (py/claudeops/ucli_session_opts.py:73) | `ucli_opts.rs::TIMEOUT_RANGE` | `parity.rs::parity_ucli` `timeout-` | TAŞINDI |
+| `MAX_COST_USD` (py/claudeops/ucli_session_opts.py:74) | `ucli_opts.rs::MAX_COST_USD` | `parity.rs::parity_ucli` `cost-` `session-sinir` | TAŞINDI |
+| `INT_LIMITS` (py/claudeops/ucli_session_opts.py:76) | `ucli_opts.rs::INT_LIMITS` | `parity.rs::parity_ucli` `int-` | TAŞINDI |
+| `PRICE_MAX` (py/claudeops/ucli_session_opts.py:84) | `ucli_opts.rs::PRICE_MAX` | `parity.rs::parity_ucli` `price-` | TAŞINDI |
+| `BROAD_GLOBS` (py/claudeops/ucli_session_opts.py:87) | `ucli_opts.rs::{GLOB, MAX_GLOBS, BROAD_GLOBS}` | `parity.rs::parity_ucli` `glob-` | TAŞINDI |
+| `_is_glob` (py/claudeops/ucli_session_opts.py:90) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
+| `_items` (py/claudeops/ucli_session_opts.py:94) | `ucli_opts.rs::{MAX_CMDS, PATTERN, is_glob, items}` | `parity.rs::parity_ucli` `cmds-` | TAŞINDI |
+| `validate_opts` (py/claudeops/ucli_session_opts.py:102) | `ucli_opts.rs::validate_opts` | `parity.rs::parity_ucli` `opts-`; ve `parity_misc` `val re-val` | TAŞINDI |
+| `DEFAULT_MAX_SESSION_USD` (py/claudeops/ucli_session_opts.py:306) | `settings.rs::{DEFAULT_MAX_SESSION_USD, Settings::default_max_session_usd}` | `parity.rs::parity_settings_pyfmt` `usd` | TAŞINDI |
+| `default_max_session_usd` (py/claudeops/ucli_session_opts.py:309) | `settings.rs::{DEFAULT_MAX_SESSION_USD, Settings::default_max_session_usd}` | `parity.rs::parity_settings_pyfmt` `usd` | TAŞINDI |
+| `path_executables` (py/claudeops/ucli_session_opts.py:324) | `real/pathexec.rs::path_executables` | `parity.rs::parity_real` `yol-` | TAŞINDI |
+| `expand_exec_cmds` (py/claudeops/ucli_session_opts.py:344) | `ucli_opts.rs::{MAX_EXPANDED, expand_exec_cmds}` | `parity.rs::parity_misc` `expand` `re-exp` | TAŞINDI |
+| `_rustup_default_toolchain` (py/claudeops/ucli_session_opts.py:369) | `real/pathexec.rs::{rustup_default_toolchain, rust_toolchain}` | `parity.rs::parity_real` `zincir-`; `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one` | TAŞINDI |
+| `rust_toolchain` (py/claudeops/ucli_session_opts.py:382) | `real/pathexec.rs::{rustup_default_toolchain, rust_toolchain}` | `parity.rs::parity_real` `zincir-`; `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one` | TAŞINDI |
+| `exec_flags` (py/claudeops/ucli_session_opts.py:411) | `ucli_opts.rs::exec_flags` | `parity.rs::parity_misc` `exec` | TAŞINDI |
+| `_MODELS_CACHE` (py/claudeops/ucli_session_opts.py:447) | `ucli_opts.rs::ServiceModelsCache` | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` (Python hatası? G7 şüphe 7) | TAŞINDI |
+| `_MODELS_TTL` (py/claudeops/ucli_session_opts.py:448) | `ucli_opts.rs::{SERVICE_MODELS_TTL, SERVICE_MODELS_RETRY}` | `parity.rs::parity_model_sources` `src-svc-ttl`; `tests/model_sources.rs::lifetimes_and_limits_match_python` | TAŞINDI |
+| `service_models` (py/claudeops/ucli_session_opts.py:481) | `ucli_opts.rs::{ServiceModelsCache::get, parse_service_models}` (`ModelSources::service_models`) | `parity.rs::parity_model_sources` `src-svc-*` (Python hatası? G7 şüphe 6) | TAŞINDI |
 | `_MODELS_RETRY`, `_models_cache_key`, `_parse_service_models` (py/claudeops/ucli_session_opts.py, 27 Kas `fix:`) | `ucli_opts.rs::{SERVICE_MODELS_RETRY, models_cache_key, parse_service_models}` | `tests/model_sources.rs::service_models_keep_the_good_list_and_follow_the_key`; `parity_model_sources` `src-svc-`; `test_rsprov_g7_fixes.py::ServiceModelsTest` | TAŞINDI |
 
 ### Kapsam dosyalarının çağırdığı dış adlar (`ucli_session_opts` dışındaki ayar/ucli/paths/steward modülleri; yalnız kullanılanlar ve onların bağımlılıkları)
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
-| `HOME` (py/claudeops/paths.py:5) | `rs/state` `paths.rs` / `probe.rs::Paths::home` girdisi | rs/state (yol çözümü); crate girdi alır | KAPSAM DIŞI |
-| `CLAUDE_DIR` (py/claudeops/paths.py:6) | `rs/proc` `Config::claude_dir` | rs/proc | KAPSAM DIŞI |
-| `CLAUDEOPS_DIR` (py/claudeops/paths.py:45) | `rs/state` `paths.rs::StateDir::resolve` | rs/state; crate `Paths::claudeops_dir` girdisi alır | KAPSAM DIŞI |
-| `REPO_DIR` (py/claudeops/paths.py:50) | `real/launch.rs::repo_dir_of` (`Paths::repo_dir` değeri) | `parity.rs::parity_g9` `depo-dizini`; `tests/g9.rs::repo_dir_resolves_links_and_two_parents` | TAŞINDI |
-| `CLAUDE_MODELS_JSON` (py/claudeops/paths.py:54) | `probe.rs::Paths::claude_models_json`; okuma `ModelIo::claude_models_doc` sözleşmesi (DB/dosya kipi rs/state `statedocs`, gerçek uygulama G8) | `tests/model_sources.rs::catalog_touches_only_its_own_source` | TAŞINDI |
-| `SESSIONS_DIR` (py/claudeops/paths.py:56) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
-| `PROJECTS_DIR` (py/claudeops/paths.py:57) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
-| `parse_proc_stat` (py/claudeops/paths.py:60) | `rs/proc` `procfs.rs::parse_stat` | rs/proc: `procfs::tests::stat_with_parens_in_comm` | KAPSAM DIŞI |
-| `proc_stat_fields` (py/claudeops/paths.py:66) | `rs/proc` `procfs.rs::OwnProc::stat` | rs/proc: `fake_proc::own_ppid_from_real_proc` | KAPSAM DIŞI |
-| `ucli_key_file` (py/claudeops/paths.py:76) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
-| `SETTINGS_JSON` (py/claudeops/settings.py:28) | `rs/state` `paths.rs::StateDir::settings_json` | rs/state (durum dizini ve dosya okuma) | KAPSAM DIŞI |
-| `DEFAULT_SETTINGS` (py/claudeops/settings.py:38) | `rs/state` `settings.rs::defaults` (`default_settings.json`) | rs/state; bu crate okuduğu anahtarların varsayılanını kendi içinde verir (`dosya-yok`) | KAPSAM DIŞI |
-| `_LOAD_CACHE` (py/claudeops/settings.py:239) | `rs/state` `settings.rs::SettingsReader` | rs/state (önbellek) | KAPSAM DIŞI |
-| `load_settings` (py/claudeops/settings.py:242) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
-| `_load_settings_uncached` (py/claudeops/settings.py:268) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
-| `resolved_binary` (py/claudeops/settings.py:442) | `provider.rs::Providers::resolved_binary` | `parity.rs::parity_build` `-override` `-path-` `rb-` | TAŞINDI |
-| `_KNOWN_BINARY_PATHS` (py/claudeops/settings.py:466) | `provider.rs::CLAUDE_KNOWN_PATHS` | `parity.rs::parity_build` `claude-bilinen` | TAŞINDI |
-| `default_model_for` (py/claudeops/settings.py:478) | `provider.rs::Providers::default_model_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `default_effort_for` (py/claudeops/settings.py:504) | `provider.rs::Providers::default_effort_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `resolved_model_for` (py/claudeops/settings.py:513) | `provider.rs::Providers::resolved_model_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
-| `byok_env_for` (py/claudeops/settings.py:532) | `settings.rs::Settings::byok_env` | `parity.rs::parity_settings_pyfmt` `byok` | TAŞINDI |
-| `ucli_limit_overrides` (py/claudeops/settings.py:555) | `settings.rs::Settings::ucli_limit_overrides` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `routing_guidance_enabled` (py/claudeops/settings.py:601) | `settings.rs::Settings::routing_guidance_enabled` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
-| `_REASONING_LEVELS` (py/claudeops/settings.py:615) | rs/state `settings_read.rs` `Settings::ucli_reasoning_mode` (`settings.rs` devreder) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `ucli_reasoning_mode` (py/claudeops/settings.py:618) | rs/state `settings_read.rs` `Settings::ucli_reasoning_mode` (`settings.rs` devreder) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `_ON_WORDS` (py/claudeops/settings.py:632) | rs/state `settings_read.rs` `ON_WORDS`, `OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `UCLI_STREAM_DEFAULT` (py/claudeops/settings.py:637) | `settings.rs::Settings::ucli_stream` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `ucli_stream_enabled` (py/claudeops/settings.py:640) | `settings.rs::Settings::ucli_stream` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `UCLI_SHOW_REASONING_DEFAULT` (py/claudeops/settings.py:655) | `settings.rs::Settings::ucli_show_reasoning` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `ucli_show_reasoning_enabled` (py/claudeops/settings.py:658) | `settings.rs::Settings::ucli_show_reasoning` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `UCLI_STATE_DIR_DEFAULT` (py/claudeops/settings.py:674) | `settings.rs::Settings::ucli_state_dir` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `ucli_state_dir_enabled` (py/claudeops/settings.py:677) | `settings.rs::Settings::ucli_state_dir` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `_HOST_RE` (py/claudeops/settings.py:696) | rs/state `settings_read.rs` `Settings::ucli_web_config` (`settings.rs::ucli_web` devreder) | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
-| `_MAX_FETCH_DOMAINS` (py/claudeops/settings.py:697) | rs/state `settings_read.rs` `MAX_FETCH_DOMAINS` | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
-| `_valid_http_url` (py/claudeops/settings.py:700) | rs/state `settings_read.rs` `valid_http_url` (`settings.rs` yeniden dışa açar) | `parity.rs::parity_settings_pyfmt` `url` `url-nfkc` (NFKC denetimi dahil, Python'a eşit) | TAŞINDI |
-| `_OFF_WORDS` (py/claudeops/settings.py:713) | rs/state `settings_read.rs` `OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
-| `DEFAULT_UCLI_SERVICES` (py/claudeops/settings.py:769) | rs/state `settings_read.rs` `default_ucli_services` (`default_ucli_services.json`) | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-*` `bos` | TAŞINDI |
-| `UCLI_REASONING_LEVELS` (py/claudeops/settings.py:784) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
-| `_SVC_ID_RE` (py/claudeops/settings.py:785) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
-| `_SVC_ENV_RE` (py/claudeops/settings.py:786) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
-| `normalize_ucli_services` (py/claudeops/settings.py:789) | rs/state `settings_read.rs` `normalize_ucli_services` (`settings.rs::ucli_services` devreder) | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-label-models` `servis-models2` `servis-evren-label` | TAŞINDI |
-| `ucli_services` (py/claudeops/settings.py:828) | `settings.rs::Settings::ucli_services` | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-*` | TAŞINDI |
-| `ucli_cost_config` (py/claudeops/settings.py:832) | rs/state `settings_read.rs` `Settings::ucli_cost_config` (`settings.rs` devreder; `cap_problem` ham belgeden `settings.rs::cap_problem`) | `parity.rs::parity_panel` `cost*` | TAŞINDI |
-| `ucli_script_mode` (py/claudeops/settings.py:858) | `settings.rs::Settings::ucli_script_mode` | `parity.rs::parity_settings_pyfmt` `script` | TAŞINDI |
-| `ucli_endpoint` (py/claudeops/settings.py:868) | `settings.rs::Settings::ucli_endpoint` | `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
-| `ucli_web_config` (py/claudeops/settings.py:875) | rs/state `settings_read.rs` `Settings::ucli_web_config` (`settings.rs::ucli_web` devreder) | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
-| `main_session_model_effort` (py/claudeops/steward.py:2920) | rs/stew `prompts.rs::main_session_model_effort` (tek kopya; bu izdeki kopya 27 Kas'ta silindi) | rs/stew `main_session_model_effort_vectors` | KAPSAM DIŞI |
-| `STATE_FILE` (py/claudeops/ucli_agents.py:26) | `probe.rs::Paths::{ucli_agents_json, ucli_agent_token_dir}` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
-| `TOKEN_DIR` (py/claudeops/ucli_agents.py:27) | `probe.rs::Paths::{ucli_agents_json, ucli_agent_token_dir}` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
-| `_CHILD_RE` (py/claudeops/ucli_agents.py:35) | `ucli.rs::is_child_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_SAFE_NAME_RE` (py/claudeops/ucli_agents.py:36) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `_LOCK` (py/claudeops/ucli_agents.py:38) | `real/agents.rs::AgentRegistry::lock` (`flock`, süreçler arası; Python yalnız süreç içi) | `tests/real_fs.rs::concurrent_issue_keeps_file_and_digest_consistent` | TAŞINDI |
+| `HOME` (py/claudeops/paths.py:6) | `rs/state` `paths.rs` / `probe.rs::Paths::home` girdisi | rs/state (yol çözümü); crate girdi alır | KAPSAM DIŞI |
+| `CLAUDE_DIR` (py/claudeops/paths.py:7) | `rs/proc` `Config::claude_dir` | rs/proc | KAPSAM DIŞI |
+| `CLAUDEOPS_DIR` (py/claudeops/paths.py:46) | `rs/state` `paths.rs::StateDir::resolve` | rs/state; crate `Paths::claudeops_dir` girdisi alır | KAPSAM DIŞI |
+| `REPO_DIR` (py/claudeops/paths.py:93) | `real/launch.rs::repo_dir_of` (`Paths::repo_dir` değeri) | `parity.rs::parity_g9` `depo-dizini`; `tests/g9.rs::repo_dir_resolves_links_and_two_parents` | TAŞINDI |
+| `CLAUDE_MODELS_JSON` (py/claudeops/paths.py:97) | `probe.rs::Paths::claude_models_json`; okuma `ModelIo::claude_models_doc` sözleşmesi (DB/dosya kipi rs/state `statedocs`, gerçek uygulama G8) | `tests/model_sources.rs::catalog_touches_only_its_own_source` | TAŞINDI |
+| `SESSIONS_DIR` (py/claudeops/paths.py:99) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
+| `PROJECTS_DIR` (py/claudeops/paths.py:100) | `rs/proc` `Config::claude_dir` | rs/proc (`sessions/`, `projects/`) | KAPSAM DIŞI |
+| `parse_proc_stat` (py/claudeops/paths.py:119) | `rs/proc` `procfs.rs::parse_stat` | rs/proc: `procfs::tests::stat_with_parens_in_comm` | KAPSAM DIŞI |
+| `proc_stat_fields` (py/claudeops/paths.py:125) | `rs/proc` `procfs.rs::OwnProc::stat` | rs/proc: `fake_proc::own_ppid_from_real_proc` | KAPSAM DIŞI |
+| `ucli_key_file` (py/claudeops/paths.py:135) | `probe.rs::Paths::ucli_key_file` | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `SETTINGS_JSON` (py/claudeops/settings.py:29) | `rs/state` `paths.rs::StateDir::settings_json` | rs/state (durum dizini ve dosya okuma) | KAPSAM DIŞI |
+| `DEFAULT_SETTINGS` (py/claudeops/settings.py:39) | `rs/state` `settings.rs::defaults` (`default_settings.json`) | rs/state; bu crate okuduğu anahtarların varsayılanını kendi içinde verir (`dosya-yok`) | KAPSAM DIŞI |
+| `_LOAD_CACHE` (py/claudeops/settings.py:241) | `rs/state` `settings.rs::SettingsReader` | rs/state (önbellek) | KAPSAM DIŞI |
+| `load_settings` (py/claudeops/settings.py:244) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
+| `_load_settings_uncached` (py/claudeops/settings.py:315) | `settings.rs::Settings::from_json` (ayrıştırma toleransı) | `parity.rs::parity_settings_pyfmt` `bozuk-json` `json-liste` `dosya-yok`; dosya okuma, varsayılan birleştirme, önbellek rs/state `SettingsReader`; Python hatası? bozuk UTF-8 (TBD#373) | TAŞINDI |
+| `resolved_binary` (py/claudeops/settings.py:510) | `provider.rs::Providers::resolved_binary` | `parity.rs::parity_build` `-override` `-path-` `rb-` | TAŞINDI |
+| `_KNOWN_BINARY_PATHS` (py/claudeops/settings.py:535) | `provider.rs::CLAUDE_KNOWN_PATHS` | `parity.rs::parity_build` `claude-bilinen` | TAŞINDI |
+| `default_model_for` (py/claudeops/settings.py:547) | `provider.rs::Providers::default_model_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `default_effort_for` (py/claudeops/settings.py:573) | `provider.rs::Providers::default_effort_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `resolved_model_for` (py/claudeops/settings.py:582) | `provider.rs::Providers::resolved_model_for` | `parity.rs::parity_model_effort` `bos-*` `ayar-*` | TAŞINDI |
+| `byok_env_for` (py/claudeops/settings.py:601) | `settings.rs::Settings::byok_env` | `parity.rs::parity_settings_pyfmt` `byok` | TAŞINDI |
+| `ucli_limit_overrides` (py/claudeops/settings.py:624) | `settings.rs::Settings::ucli_limit_overrides` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `routing_guidance_enabled` (py/claudeops/settings.py:670) | `settings.rs::Settings::routing_guidance_enabled` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
+| `_REASONING_LEVELS` (py/claudeops/settings.py:684) | rs/state `settings_read.rs` `Settings::ucli_reasoning_mode` (`settings.rs` devreder) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `ucli_reasoning_mode` (py/claudeops/settings.py:687) | rs/state `settings_read.rs` `Settings::ucli_reasoning_mode` (`settings.rs` devreder) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `_ON_WORDS` (py/claudeops/settings.py:701) | rs/state `settings_read.rs` `ON_WORDS`, `OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `UCLI_STREAM_DEFAULT` (py/claudeops/settings.py:706) | `settings.rs::Settings::ucli_stream` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `ucli_stream_enabled` (py/claudeops/settings.py:709) | `settings.rs::Settings::ucli_stream` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `UCLI_SHOW_REASONING_DEFAULT` (py/claudeops/settings.py:724) | `settings.rs::Settings::ucli_show_reasoning` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `ucli_show_reasoning_enabled` (py/claudeops/settings.py:727) | `settings.rs::Settings::ucli_show_reasoning` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `UCLI_STATE_DIR_DEFAULT` (py/claudeops/settings.py:743) | `settings.rs::Settings::ucli_state_dir` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `ucli_state_dir_enabled` (py/claudeops/settings.py:746) | `settings.rs::Settings::ucli_state_dir` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `_HOST_RE` (py/claudeops/settings.py:765) | rs/state `settings_read.rs` `Settings::ucli_web_config` (`settings.rs::ucli_web` devreder) | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
+| `_MAX_FETCH_DOMAINS` (py/claudeops/settings.py:766) | rs/state `settings_read.rs` `MAX_FETCH_DOMAINS` | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
+| `_valid_http_url` (py/claudeops/settings.py:769) | rs/state `settings_read.rs` `valid_http_url` (`settings.rs` yeniden dışa açar) | `parity.rs::parity_settings_pyfmt` `url` `url-nfkc` (NFKC denetimi dahil, Python'a eşit) | TAŞINDI |
+| `_OFF_WORDS` (py/claudeops/settings.py:782) | rs/state `settings_read.rs` `OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
+| `DEFAULT_UCLI_SERVICES` (py/claudeops/settings.py:838) | rs/state `settings_read.rs` `default_ucli_services` (`default_ucli_services.json`) | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-*` `bos` | TAŞINDI |
+| `UCLI_REASONING_LEVELS` (py/claudeops/settings.py:853) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
+| `_SVC_ID_RE` (py/claudeops/settings.py:854) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
+| `_SVC_ENV_RE` (py/claudeops/settings.py:855) | rs/state `settings_read.rs` `normalize_ucli_services`, `UCLI_REASONING_LEVELS` | `parity.rs::parity_settings_pyfmt` `servisler` | TAŞINDI |
+| `normalize_ucli_services` (py/claudeops/settings.py:858) | rs/state `settings_read.rs` `normalize_ucli_services` (`settings.rs::ucli_services` devreder) | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-label-models` `servis-models2` `servis-evren-label` | TAŞINDI |
+| `ucli_services` (py/claudeops/settings.py:899) | `settings.rs::Settings::ucli_services` | `parity.rs::parity_settings_pyfmt` `servisler*` `servis-*` | TAŞINDI |
+| `ucli_cost_config` (py/claudeops/settings.py:903) | rs/state `settings_read.rs` `Settings::ucli_cost_config` (`settings.rs` devreder; `cap_problem` ham belgeden `settings.rs::cap_problem`) | `parity.rs::parity_panel` `cost*` | TAŞINDI |
+| `ucli_script_mode` (py/claudeops/settings.py:965) | `settings.rs::Settings::ucli_script_mode` | `parity.rs::parity_settings_pyfmt` `script` | TAŞINDI |
+| `ucli_endpoint` (py/claudeops/settings.py:975) | `settings.rs::Settings::ucli_endpoint` | `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
+| `ucli_web_config` (py/claudeops/settings.py:982) | rs/state `settings_read.rs` `Settings::ucli_web_config` (`settings.rs::ucli_web` devreder) | `parity.rs::parity_settings_pyfmt` `web` | TAŞINDI |
+| `main_session_model_effort` (py/claudeops/steward.py:3023) | rs/stew `prompts.rs::main_session_model_effort` (tek kopya; bu izdeki kopya 27 Kas'ta silindi) | rs/stew `main_session_model_effort_vectors` | KAPSAM DIŞI |
+| `STATE_FILE` (py/claudeops/ucli_agents.py:30) | `probe.rs::Paths::{ucli_agents_json, ucli_agent_token_dir}` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
+| `TOKEN_DIR` (py/claudeops/ucli_agents.py:31) | `probe.rs::Paths::{ucli_agents_json, ucli_agent_token_dir}` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
+| `_CHILD_RE` (py/claudeops/ucli_agents.py:39) | `ucli.rs::is_child_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_SAFE_NAME_RE` (py/claudeops/ucli_agents.py:40) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `_LOCK` (py/claudeops/ucli_agents.py:42) | `real/agents.rs::AgentRegistry::lock` (`flock`, süreçler arası; Python yalnız süreç içi) | `tests/real_fs.rs::concurrent_issue_keeps_file_and_digest_consistent` | TAŞINDI |
 | `_STATE` (py/claudeops/preview.py) | `probe.rs::BuildOutput::dry_run` (iş parçacığı durumu yerine açık alan) | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
 | `preview_only` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` (`SpawnRequest::dry_run`) | `parity.rs::parity_spawn` `yan-` `-dry` | TAŞINDI |
 | `preview_only.__enter__` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
 | `preview_only.__exit__` (py/claudeops/preview.py) | `spawn.rs::plan_spawn` (önceki değeri geri koyar) | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
 | `active` (py/claudeops/preview.py) | `probe.rs::BuildOutput::dry_run` | `parity.rs::parity_spawn` `yan-` | TAŞINDI |
-| `_PANEL_PORT` (py/claudeops/ucli_agents.py:49) | `real/probe.rs::RealDeps::panel_port` | `parity.rs::parity_ucli` `ajan-port`; `real_fs.rs::a_dry_run_build_issues_no_token_and_writes_nothing` | TAŞINDI |
-| `_OFF_WORDS` (py/claudeops/ucli_agents.py:54) | `settings.rs::AGENTS_OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
-| `enabled` (py/claudeops/ucli_agents.py:57) | `settings.rs::Settings::ucli_agents_enabled` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
-| `panel_url` (py/claudeops/ucli_agents.py:96) | `ucli.rs::Ctx::agent_setup` (port -> URL) | `parity.rs::parity_ucli` `ajan-acik` `ajan-port` | TAŞINDI |
-| `is_child_name` (py/claudeops/ucli_agents.py:102) | `ucli.rs::is_child_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_empty` (py/claudeops/ucli_agents.py:127) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `_load` (py/claudeops/ucli_agents.py:131) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `_save` (py/claudeops/ucli_agents.py:145) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `_digest` (py/claudeops/ucli_agents.py:150) | `real/agents.rs::digest` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
-| `token_file` (py/claudeops/ucli_agents.py:154) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `_write_token_file` (py/claudeops/ucli_agents.py:158) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `issue_token` (py/claudeops/ucli_agents.py:168) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
-| `ROOT` (py/claudeops/ucli_approval.py:24) | `probe.rs::Paths::ucli_approval_root` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-` | TAŞINDI |
-| `STATES` (py/claudeops/ucli_approval.py:28) | `approval.rs::STATES` | `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
-| `_KEY` (py/claudeops/ucli_approval.py:29) | `approval.rs::valid_run_key` | `parity.rs::parity_oneshot` `saf` `onay-ad`; `approval::tests::names_are_full_matches` | TAŞINDI |
-| `_ID` (py/claudeops/ucli_approval.py:30) | `approval.rs::valid_approval_id` | `parity.rs::parity_oneshot` `saf` `onay-kotu-kimlik`; `approval::tests::names_are_full_matches` | TAŞINDI |
-| `_index_path` (py/claudeops/ucli_approval.py:33) | `real/approval.rs::ApprovalStore::index_path` | `parity.rs::parity_oneshot` `kayit-` | TAŞINDI |
-| `dir_for` (py/claudeops/ucli_approval.py:37) | `real/approval.rs::ApprovalStore::dir_for` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-baglanti` `kayit-kok-` | TAŞINDI |
-| `_load_index` (py/claudeops/ucli_approval.py:80) | `real/approval.rs::ApprovalStore::load_index`, `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` `kayit-utf8` `kayit-derin` `kayit-okunamaz` `kayit-dizin` | TAŞINDI |
-| `register` (py/claudeops/ucli_approval.py:117) | `real/approval.rs::ApprovalStore::register`, `approval.rs::insert_run` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-`; `tests/real_oneshot.rs::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` | TAŞINDI |
-| `set_state` (py/claudeops/ucli_approval.py:135) | `real/approval.rs::ApprovalStore::set_state`, `approval.rs::change_state` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-belge`; `the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
-| `parse_suspended` (py/claudeops/ucli_approval.py:232) | `approval.rs::parse_suspended` | `parity.rs::parity_oneshot` `saf` (1500+ rastgele metin) `sohbet-onay-` | TAŞINDI |
-| `_read_index` (py/claudeops/ucli_approval.py:64) | `real/approval.rs::ApprovalStore::read_index` | `parity.rs::parity_oneshot` `kayit-dizin` `kayit-okunamaz` | TAŞINDI |
-| `_parse_index` (py/claudeops/ucli_approval.py:72) | `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` | TAŞINDI |
-| `_load_index_for_overwrite` (py/claudeops/ucli_approval.py:89) | `real/approval.rs::ApprovalStore::load_index_for_overwrite` | `parity.rs::parity_oneshot` `onay-defter-bozuk` `kayit-kopya-var` | TAŞINDI |
-| `_slot_free` (py/claudeops/ucli_approval.py:108) | `approval.rs::slot_free`, `ApprovalStore::slot_free` | `parity.rs::parity_oneshot` `kayit-akis` `onay-defter-canli` | TAŞINDI |
-| `MAX_EDITED_BYTES` (py/claudeops/ucli_approval.py:25) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `MAX_NOTE_BYTES` (py/claudeops/ucli_approval.py:26) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `DECISIONS` (py/claudeops/ucli_approval.py:27) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `get` (py/claudeops/ucli_approval.py:130) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `set_result` (py/claudeops/ucli_approval.py:147) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `list_runs` (py/claudeops/ucli_approval.py:161) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `_consumed_path` (py/claudeops/ucli_approval.py:175) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
-| `_consumed` (py/claudeops/ucli_approval.py:179) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
-| `_mark_consumed` (py/claudeops/ucli_approval.py:187) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `begin_resume` (py/claudeops/ucli_approval.py:197) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `recover_resuming` (py/claudeops/ucli_approval.py:209) | `real/approval.rs::ApprovalStore::recover_resuming` (+ `RECOVER_MAX_AGE`), `approval.rs::recover` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_run_with_only_a_resumed_card_is_closed` | TAŞINDI |
-| `pending` (py/claudeops/ucli_approval.py:274) | `real/approval.rs::ApprovalStore::pending`, `approval.rs::pending_view` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_resumed_card_is_not_pending` | TAŞINDI |
-| `_pending_files` (py/claudeops/ucli_approval.py:248) | `real/approval.rs::ApprovalStore::pending_files`, `approval.rs::is_card` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
-| `_resume_started` (py/claudeops/ucli_approval.py:268) | `approval.rs::resume_started` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_chained_suspension_keeps_only_the_new_card` | TAŞINDI |
-| `_read_regular` (py/claudeops/ucli_approval.py:52) | `real/approval.rs::read_regular` | `parity.rs::parity_oneshot` `kayit-okunamaz` `kart-dizin-kart`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
-| `answer` (py/claudeops/ucli_approval.py:288) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
-| `ROOT` (py/claudeops/ucli_ask.py:22) | `probe.rs::Paths::ucli_ask_root` | `parity.rs::parity_ucli` `askdir` | TAŞINDI |
-| `_SAFE` (py/claudeops/ucli_ask.py:24) | `ucli.rs::valid_ask_name` | `parity.rs::parity_ucli` `askdir-gecersiz-ad` `askdir-satir-sonu` `askdir-uzun` | TAŞINDI |
-| `dir_for` (py/claudeops/ucli_ask.py:27) | `ucli.rs::Ctx::apply_cli_opts` (ask_dir) + `Effect` | `parity.rs::parity_ucli` `askdir`; dizin açma yalnız test uygulayıcısında (G8) | TAŞINDI |
-| `ROOT` (py/claudeops/ucli_checks.py:18) | `probe.rs::Paths::ucli_checks_root` | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
-| `MAX_BYTES` (py/claudeops/ucli_checks.py:20) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `MAX_CHECKS` (py/claudeops/ucli_checks.py:21) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `_OWNER` (py/claudeops/ucli_checks.py:22) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `_NAME` (py/claudeops/ucli_checks.py:23) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `registry_path` (py/claudeops/ucli_checks.py:26) | `ucli.rs::Ctx::apply_cli_opts` (`owner.json`) | `parity.rs::parity_ucli` `checks-uygula`; yalnız varsayılan sahip | TAŞINDI |
-| `check_shape` (py/claudeops/ucli_checks.py:33) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `load_registry` (py/claudeops/ucli_checks.py:53) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `OWN_UCLI` (py/claudeops/ucli_client.py:57) | `ucli.rs::resolve_binary` (`<repo>/bin/ucli`) | `parity.rs::parity_build` `ru-`; depo içi kopya senaryosu denetimli değil | TAŞINDI |
-| `_SAFE_ENV_NAME_RE` (py/claudeops/ucli_client.py:72) | `oneshot.rs::is_api_key_env_name` | `parity.rs::parity_oneshot` `saf` `anahtar-adi` | TAŞINDI |
-| `UcliError` (py/claudeops/ucli_client.py:75) | `probe.rs::SpawnError` | `parity.rs::parity_build` `ru-hic` | TAŞINDI |
-| `resolve_binary` (py/claudeops/ucli_client.py:79) | `ucli.rs::resolve_binary` | `parity.rs::parity_build` `ru-`; `binary` parametresi yok | TAŞINDI |
-| `_HELP_CACHE` (py/claudeops/ucli_client.py:149) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
-| `_HELP_TIMEOUT_SECONDS` (py/claudeops/ucli_client.py:150) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
-| `chat_help_text` (py/claudeops/ucli_client.py:153) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
-| `binary_supports_flag` (py/claudeops/ucli_client.py:177) | `ucli.rs::supports_flag` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `binary_flag_values` (py/claudeops/ucli_client.py:185) | `ucli.rs::flag_values` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_DERIVES_CONTEXT_MARK` (py/claudeops/ucli_client.py:195) | `ucli.rs::DERIVES_CONTEXT_MARK` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `binary_derives_context` (py/claudeops/ucli_client.py:198) | `ucli.rs::derives_context` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `build_chat_argv` (py/claudeops/ucli_client.py:203) | `oneshot.rs::{ChatArgv, build_chat_argv}` | `parity.rs::parity_oneshot` `saf` (200 rastgele) `sohbet-tum-bayraklar` `bos-degerler` | TAŞINDI |
-| `_subprocess_env` (py/claudeops/ucli_client.py:235) | `real/oneshot.rs::OneShot::chat_once` (`is_api_key_env_name` + `real/env.rs::Env::with_var`) | `parity.rs::parity_oneshot` `anahtar-`; `tests/real_oneshot.rs::the_key_reaches_only_the_child_environment` | TAŞINDI |
-| `STATE_ROOT` (py/claudeops/ucli_client.py:249) | `probe.rs::Paths::ucli_state_root` | `parity.rs::parity_ucli` `statedir-` | TAŞINDI |
-| `state_dir_for` (py/claudeops/ucli_client.py:252) | `ucli.rs::state_dir_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `statedir-` | TAŞINDI |
-| `legacy_chat_dir` (py/claudeops/ucli_client.py:260) | `ucli.rs::Ctx::state_dir_args` (satır içi yol) | `parity.rs::parity_ucli` `statedir-eski-gecmis`; okuyucular `ucli_status.rs::Live::chat_session_dirs` (`parity_live` `dizin-`) | TAŞINDI |
-| `chat_session_dirs` (py/claudeops/ucli_client.py:264) | `ucli_status.rs::Live::chat_session_dirs` | `parity.rs::parity_live` `dizin-` | TAŞINDI |
-| `find_chat_file` (py/claudeops/ucli_client.py:273) | `ucli_status.rs::Live::find_chat_file` | `parity.rs::parity_live` `dizin-`, `durum-` | TAŞINDI |
-| `failed_turn_records` (py/claudeops/ucli_client.py:292) | `ucli_status.rs::Live::failed_turn_records` | `parity.rs::parity_live` `hata-`, `dizin-` | TAŞINDI |
-| `status_is_busy` (py/claudeops/ucli_client.py:348) | `ucli_status.rs::status_is_busy` | `parity.rs::parity_live` `durum-` | TAŞINDI |
-| `read_status_file` (py/claudeops/ucli_client.py:354) | `ucli_status.rs::Live::read_status_file` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
-| `read_chat_history` (py/claudeops/ucli_client.py:402) | `chat.rs::Live::read_chat_history` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
-| `_BUDGET_NOTES` (py/claudeops/ucli_client.py:429) | `oneshot.rs::BUDGET_NOTES` | `parity.rs::parity_oneshot` `saf` `butce` | TAŞINDI |
-| `mark_budget_exhausted` (py/claudeops/ucli_client.py:434) | `oneshot.rs::mark_budget_exhausted` | `parity.rs::parity_oneshot` `saf` `butce`; `oneshot::tests::*budget*` | TAŞINDI |
-| `ucli_chat_once` (py/claudeops/ucli_client.py:460) | `real/oneshot.rs::{ChatRequest, OneShot::chat_once}`, `oneshot.rs::{check_prompt, chat_result}` | `parity.rs::parity_oneshot` `sohbet-` `ikili-` `coz-` `durum-dizini-`; `tests/real_oneshot.rs` | TAŞINDI |
-| `_redact` (py/claudeops/ucli_client.py:251) | `oneshot.rs::redact` | `parity.rs::parity_oneshot` `saf` `sir-`; `oneshot::tests::secrets_are_removed_from_every_error_text` | TAŞINDI |
-| `_effective_key` (py/claudeops/ucli_client.py:257) | `real/oneshot.rs::OneShot::chat_once` (`secret`) | `parity.rs::parity_oneshot` `sir-miras` | TAŞINDI |
-| `_diag_approval` (py/claudeops/ucli_client.py:715) | `real/oneshot.rs::OneShot::chat_once` (`DiagLog`) | `parity.rs::parity_oneshot` `onay-kayit-yazilamadi` `onay-yaris` `onay-kilit-baglanti` | TAŞINDI |
-| `_parse_turn` (py/claudeops/ucli_client.py:471) | üretimde çağıran yok (`UcliReplSession`ı yalnız testler kurar; `_parse_turn` onun parçası) | - | KAPSAM DIŞI |
-| `UcliReplSession` (py/claudeops/ucli_client.py:578) | üretimde çağıran yok (`UcliReplSession`ı yalnız testler kurar; `_parse_turn` onun parçası) | - | KAPSAM DIŞI |
-| `ucli_resume_approval` (py/claudeops/ucli_client.py:704) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
-| `_resume_approval` (py/claudeops/ucli_client.py:720) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
-| `_run_resume` (py/claudeops/ucli_client.py:732) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
-| `USAGE_DIR` (py/claudeops/ucli_cost.py:16) | `probe.rs::Paths::ucli_usage_dir` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `_CACHE` (py/claudeops/ucli_cost.py:17) | `real/ledger.rs::{CostLedger::cache, Snapshot}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `_TTL` (py/claudeops/ucli_cost.py:18) | `cost.rs::TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `DailyCapExceeded` (py/claudeops/ucli_cost.py:22) | `cost.rs::CostRefusal::CapExceeded` (+ `cost::refusal`, `CAP_CODE`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `DailyCapExceeded.__init__` (py/claudeops/ucli_cost.py:25) | `cost.rs::CostRefusal` `Display` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `log_path` (py/claudeops/ucli_cost.py:42) | `ucli.rs::usage_log_path` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `OTHER_DIR` (py/claudeops/ucli_cost.py:47) | `ucli.rs::Ctx::apply_cli_opts` (`<usage>/other`) | `parity.rs::parity_ucli` `hizmet-` | TAŞINDI |
-| `other_log_path` (py/claudeops/ucli_cost.py:50) | `ucli.rs::usage_log_path` + `/other` | `parity.rs::parity_ucli` `hizmet-grok` `opts-` | TAŞINDI |
-| `CACHE_1H_WRITE_MULT` (py/claudeops/ucli_cost.py:57) | `cost.rs::CACHE_1H_WRITE_MULT` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `write_mult` (py/claudeops/ucli_cost.py:60) | `cost.rs::write_mult` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `_day_start_ms` (py/claudeops/ucli_cost.py:66) | `real/ledger.rs::day_start_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `per_session_usd` (py/claudeops/ucli_cost.py:71) | `real/ledger.rs::per_session_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `rate_by_session` (py/claudeops/ucli_cost.py:91) | `real/ledger.rs::{rate_by_session, rate_usd_per_hour}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `total_usd` (py/claudeops/ucli_cost.py:127) | `real/ledger.rs::total_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `_date_ms` (py/claudeops/ucli_cost.py:147) | `real/ledger.rs::date_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `credit_window` (py/claudeops/ucli_cost.py:157) | `cost.rs::credit_window` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `today_usd` (py/claudeops/ucli_cost.py:174) | `real/ledger.rs::today_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `BY_SESSION_TOP` (py/claudeops/ucli_cost.py:179) | `cost.rs::BY_SESSION_TOP` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `state` (py/claudeops/ucli_cost.py:182) | `real/ledger.rs::CostLedger::{state, invalidate}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `cap_exceeded` (py/claudeops/ucli_cost.py:215) | `real/ledger.rs::CostLedger::cap_exceeded` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `RESERVE_USD` (py/claudeops/ucli_cost.py:223) | `cost.rs::RESERVE_USD` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `RESERVE_TTL` (py/claudeops/ucli_cost.py:224) | `cost.rs::RESERVE_TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `_RESERVE_LOCK` (py/claudeops/ucli_cost.py:225) | `real/ledger.rs::CostLedger::reserved` (`Mutex`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `_RESERVED` (py/claudeops/ucli_cost.py:226) | `real/ledger.rs::CostLedger::{reserved, reserved_sessions}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `reserve` (py/claudeops/ucli_cost.py:229) | `real/ledger.rs::CostLedger::{reserve, release, check_and_reserve_at}` (`_ledger_problem` = `ledger_problem`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
-| `DEFAULTS` (py/claudeops/ucli_metrics.py:26) | `settings.rs::METRICS_DEFAULTS` | `parity.rs::parity_panel` `metrics-*` | TAŞINDI |
-| `_num` (py/claudeops/ucli_metrics.py:41) | `settings.rs::metrics_num` (NaN sınırlanmaz, Python gibi) | `parity.rs::parity_panel` `metrics-*` `metrics-nan` | TAŞINDI |
-| `get_config` (py/claudeops/ucli_metrics.py:49) | `settings.rs::{metrics_config, Settings::ucli_metrics_config}` | `parity.rs::parity_panel` `metrics-raw*` `metrics-ayar*` | TAŞINDI |
+| `_PANEL_PORT` (py/claudeops/ucli_agents.py:43) | `real/probe.rs::RealDeps::panel_port` | `parity.rs::parity_ucli` `ajan-port`; `real_fs.rs::a_dry_run_build_issues_no_token_and_writes_nothing` | TAŞINDI |
+| `_OFF_WORDS` (py/claudeops/ucli_agents.py:48) | `settings.rs::AGENTS_OFF_WORDS` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
+| `enabled` (py/claudeops/ucli_agents.py:51) | `settings.rs::Settings::ucli_agents_enabled` | `parity.rs::parity_settings_pyfmt` `metrics` | TAŞINDI |
+| `panel_url` (py/claudeops/ucli_agents.py:90) | `ucli.rs::Ctx::agent_setup` (port -> URL) | `parity.rs::parity_ucli` `ajan-acik` `ajan-port` | TAŞINDI |
+| `is_child_name` (py/claudeops/ucli_agents.py:96) | `ucli.rs::is_child_name` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_empty` (py/claudeops/ucli_agents.py:121) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `_load` (py/claudeops/ucli_agents.py:125) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `_save` (py/claudeops/ucli_agents.py:162) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `_digest` (py/claudeops/ucli_agents.py:175) | `real/agents.rs::digest` | `parity.rs::parity_real` `ajan-` | TAŞINDI |
+| `token_file` (py/claudeops/ucli_agents.py:179) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `_write_token_file` (py/claudeops/ucli_agents.py:183) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `issue_token` (py/claudeops/ucli_agents.py:193) | `real/agents.rs::{SAFE_NAME, AgentRegistry::{load, save, token_file, write_token_file, issue_token}}` | `parity.rs::parity_real` `ajan-`; `tests/real_fs.rs::agent_*` | TAŞINDI |
+| `ROOT` (py/claudeops/ucli_approval.py:25) | `probe.rs::Paths::ucli_approval_root` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-` | TAŞINDI |
+| `STATES` (py/claudeops/ucli_approval.py:29) | `approval.rs::STATES` | `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
+| `_KEY` (py/claudeops/ucli_approval.py:30) | `approval.rs::valid_run_key` | `parity.rs::parity_oneshot` `saf` `onay-ad`; `approval::tests::names_are_full_matches` | TAŞINDI |
+| `_ID` (py/claudeops/ucli_approval.py:31) | `approval.rs::valid_approval_id` | `parity.rs::parity_oneshot` `saf` `onay-kotu-kimlik`; `approval::tests::names_are_full_matches` | TAŞINDI |
+| `_index_path` (py/claudeops/ucli_approval.py:34) | `real/approval.rs::ApprovalStore::index_path` | `parity.rs::parity_oneshot` `kayit-` | TAŞINDI |
+| `dir_for` (py/claudeops/ucli_approval.py:38) | `real/approval.rs::ApprovalStore::dir_for` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-baglanti` `kayit-kok-` | TAŞINDI |
+| `_load_index` (py/claudeops/ucli_approval.py:81) | `real/approval.rs::ApprovalStore::load_index`, `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` `kayit-utf8` `kayit-derin` `kayit-okunamaz` `kayit-dizin` | TAŞINDI |
+| `register` (py/claudeops/ucli_approval.py:118) | `real/approval.rs::ApprovalStore::register`, `approval.rs::insert_run` | `parity.rs::parity_oneshot` `kayit-` `sohbet-onay-`; `tests/real_oneshot.rs::concurrent_registrations_lose_nothing_and_one_key_has_one_winner` | TAŞINDI |
+| `set_state` (py/claudeops/ucli_approval.py:136) | `real/approval.rs::ApprovalStore::set_state`, `approval.rs::change_state` | `parity.rs::parity_oneshot` `kayit-akis` `kayit-belge`; `the_lock_is_the_one_python_takes_and_a_busy_lock_writes_nothing` | TAŞINDI |
+| `parse_suspended` (py/claudeops/ucli_approval.py:233) | `approval.rs::parse_suspended` | `parity.rs::parity_oneshot` `saf` (1500+ rastgele metin) `sohbet-onay-` | TAŞINDI |
+| `_read_index` (py/claudeops/ucli_approval.py:65) | `real/approval.rs::ApprovalStore::read_index` | `parity.rs::parity_oneshot` `kayit-dizin` `kayit-okunamaz` | TAŞINDI |
+| `_parse_index` (py/claudeops/ucli_approval.py:73) | `approval.rs::parse_index` | `parity.rs::parity_oneshot` `kayit-belge` | TAŞINDI |
+| `_load_index_for_overwrite` (py/claudeops/ucli_approval.py:90) | `real/approval.rs::ApprovalStore::load_index_for_overwrite` | `parity.rs::parity_oneshot` `onay-defter-bozuk` `kayit-kopya-var` | TAŞINDI |
+| `_slot_free` (py/claudeops/ucli_approval.py:109) | `approval.rs::slot_free`, `ApprovalStore::slot_free` | `parity.rs::parity_oneshot` `kayit-akis` `onay-defter-canli` | TAŞINDI |
+| `MAX_EDITED_BYTES` (py/claudeops/ucli_approval.py:26) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `MAX_NOTE_BYTES` (py/claudeops/ucli_approval.py:27) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `DECISIONS` (py/claudeops/ucli_approval.py:28) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `get` (py/claudeops/ucli_approval.py:131) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `set_result` (py/claudeops/ucli_approval.py:148) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `list_runs` (py/claudeops/ucli_approval.py:162) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `_consumed_path` (py/claudeops/ucli_approval.py:176) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
+| `_consumed` (py/claudeops/ucli_approval.py:180) | `real/approval.rs::ApprovalStore::consumed` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_consumed_mark_closes_the_run_even_with_a_pending_card` | TAŞINDI |
+| `_mark_consumed` (py/claudeops/ucli_approval.py:188) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `begin_resume` (py/claudeops/ucli_approval.py:198) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `recover_resuming` (py/claudeops/ucli_approval.py:210) | `real/approval.rs::ApprovalStore::recover_resuming` (+ `RECOVER_MAX_AGE`), `approval.rs::recover` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_run_with_only_a_resumed_card_is_closed` | TAŞINDI |
+| `pending` (py/claudeops/ucli_approval.py:275) | `real/approval.rs::ApprovalStore::pending`, `approval.rs::pending_view` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_resumed_card_is_not_pending` | TAŞINDI |
+| `_pending_files` (py/claudeops/ucli_approval.py:249) | `real/approval.rs::ApprovalStore::pending_files`, `approval.rs::is_card` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
+| `_resume_started` (py/claudeops/ucli_approval.py:269) | `approval.rs::resume_started` | `parity.rs::parity_oneshot` `kart-`; `tests/real_approval.rs::a_chained_suspension_keeps_only_the_new_card` | TAŞINDI |
+| `_read_regular` (py/claudeops/ucli_approval.py:53) | `real/approval.rs::read_regular` | `parity.rs::parity_oneshot` `kayit-okunamaz` `kart-dizin-kart`; `tests/real_approval.rs::fifo_and_deeply_nested_cards_are_skipped_without_blocking` | TAŞINDI |
+| `answer` (py/claudeops/ucli_approval.py:289) | T7: onay cevabı, sürdürme ve listeleme (`/api/ucli/approvals`; çağıran yalnız `web.py`/`authz.py`/`_resume_approval`) | - | KAPSAM DIŞI |
+| `ROOT` (py/claudeops/ucli_ask.py:23) | `probe.rs::Paths::ucli_ask_root` | `parity.rs::parity_ucli` `askdir` | TAŞINDI |
+| `_SAFE` (py/claudeops/ucli_ask.py:25) | `ucli.rs::valid_ask_name` | `parity.rs::parity_ucli` `askdir-gecersiz-ad` `askdir-satir-sonu` `askdir-uzun` | TAŞINDI |
+| `dir_for` (py/claudeops/ucli_ask.py:28) | `ucli.rs::Ctx::apply_cli_opts` (ask_dir) + `Effect` | `parity.rs::parity_ucli` `askdir`; dizin açma yalnız test uygulayıcısında (G8) | TAŞINDI |
+| `ROOT` (py/claudeops/ucli_checks.py:20) | `probe.rs::Paths::ucli_checks_root` | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
+| `MAX_BYTES` (py/claudeops/ucli_checks.py:22) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `MAX_CHECKS` (py/claudeops/ucli_checks.py:23) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `_OWNER` (py/claudeops/ucli_checks.py:24) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `_NAME` (py/claudeops/ucli_checks.py:25) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `registry_path` (py/claudeops/ucli_checks.py:28) | `ucli.rs::Ctx::apply_cli_opts` (`owner.json`) | `parity.rs::parity_ucli` `checks-uygula`; yalnız varsayılan sahip | TAŞINDI |
+| `check_shape` (py/claudeops/ucli_checks.py:35) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `load_registry` (py/claudeops/ucli_checks.py:55) | `real/checks.rs::{MAX_BYTES, MAX_CHECKS, OWNER, NAME, registry_path, check_shape, load_registry}` | `parity.rs::parity_real` `kayit-`; `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `OWN_UCLI` (py/claudeops/ucli_client.py:62) | `ucli.rs::resolve_binary` (`<repo>/bin/ucli`) | `parity.rs::parity_build` `ru-`; depo içi kopya senaryosu denetimli değil | TAŞINDI |
+| `_SAFE_ENV_NAME_RE` (py/claudeops/ucli_client.py:77) | `oneshot.rs::is_api_key_env_name` | `parity.rs::parity_oneshot` `saf` `anahtar-adi` | TAŞINDI |
+| `UcliError` (py/claudeops/ucli_client.py:80) | `probe.rs::SpawnError` | `parity.rs::parity_build` `ru-hic` | TAŞINDI |
+| `resolve_binary` (py/claudeops/ucli_client.py:84) | `ucli.rs::resolve_binary` | `parity.rs::parity_build` `ru-`; `binary` parametresi yok | TAŞINDI |
+| `_HELP_CACHE` (py/claudeops/ucli_client.py:155) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
+| `_HELP_TIMEOUT_SECONDS` (py/claudeops/ucli_client.py:157) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
+| `chat_help_text` (py/claudeops/ucli_client.py:160) | `real/help.rs::HelpCache` (`RealProbe::ucli_chat_help`) | `parity.rs::parity_real` `yardim`; `tests/real_process.rs::help_probe_runs_once_per_binary_version_and_again_after_a_new_delivery` | TAŞINDI |
+| `binary_supports_flag` (py/claudeops/ucli_client.py:190) | `ucli.rs::supports_flag` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `binary_flag_values` (py/claudeops/ucli_client.py:198) | `ucli.rs::flag_values` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_DERIVES_CONTEXT_MARK` (py/claudeops/ucli_client.py:208) | `ucli.rs::DERIVES_CONTEXT_MARK` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `binary_derives_context` (py/claudeops/ucli_client.py:211) | `ucli.rs::derives_context` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `build_chat_argv` (py/claudeops/ucli_client.py:216) | `oneshot.rs::{ChatArgv, build_chat_argv}` | `parity.rs::parity_oneshot` `saf` (200 rastgele) `sohbet-tum-bayraklar` `bos-degerler` | TAŞINDI |
+| `_subprocess_env` (py/claudeops/ucli_client.py:248) | `real/oneshot.rs::OneShot::chat_once` (`is_api_key_env_name` + `real/env.rs::Env::with_var`) | `parity.rs::parity_oneshot` `anahtar-`; `tests/real_oneshot.rs::the_key_reaches_only_the_child_environment` | TAŞINDI |
+| `STATE_ROOT` (py/claudeops/ucli_client.py:298) | `probe.rs::Paths::ucli_state_root` | `parity.rs::parity_ucli` `statedir-` | TAŞINDI |
+| `state_dir_for` (py/claudeops/ucli_client.py:301) | `ucli.rs::state_dir_for` | `parity.rs::parity_misc` `ucli-misc`; ve `parity_ucli` `statedir-` | TAŞINDI |
+| `legacy_chat_dir` (py/claudeops/ucli_client.py:311) | `ucli.rs::Ctx::state_dir_args` (satır içi yol) | `parity.rs::parity_ucli` `statedir-eski-gecmis`; okuyucular `ucli_status.rs::Live::chat_session_dirs` (`parity_live` `dizin-`) | TAŞINDI |
+| `chat_session_dirs` (py/claudeops/ucli_client.py:315) | `ucli_status.rs::Live::chat_session_dirs` | `parity.rs::parity_live` `dizin-` | TAŞINDI |
+| `find_chat_file` (py/claudeops/ucli_client.py:328) | `ucli_status.rs::Live::find_chat_file` | `parity.rs::parity_live` `dizin-`, `durum-` | TAŞINDI |
+| `failed_turn_records` (py/claudeops/ucli_client.py:347) | `ucli_status.rs::Live::failed_turn_records` | `parity.rs::parity_live` `hata-`, `dizin-` | TAŞINDI |
+| `status_is_busy` (py/claudeops/ucli_client.py:404) | `ucli_status.rs::status_is_busy` | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `read_status_file` (py/claudeops/ucli_client.py:410) | `ucli_status.rs::Live::read_status_file` | `parity.rs::parity_live` `durum-`, `rastgele-` | TAŞINDI |
+| `read_chat_history` (py/claudeops/ucli_client.py:460) | `chat.rs::Live::read_chat_history` | `parity.rs::parity_chat` `chat-ucli-` | TAŞINDI |
+| `_BUDGET_NOTES` (py/claudeops/ucli_client.py:499) | `oneshot.rs::BUDGET_NOTES` | `parity.rs::parity_oneshot` `saf` `butce` | TAŞINDI |
+| `mark_budget_exhausted` (py/claudeops/ucli_client.py:504) | `oneshot.rs::mark_budget_exhausted` | `parity.rs::parity_oneshot` `saf` `butce`; `oneshot::tests::*budget*` | TAŞINDI |
+| `ucli_chat_once` (py/claudeops/ucli_client.py:530) | `real/oneshot.rs::{ChatRequest, OneShot::chat_once}`, `oneshot.rs::{check_prompt, chat_result}` | `parity.rs::parity_oneshot` `sohbet-` `ikili-` `coz-` `durum-dizini-`; `tests/real_oneshot.rs` | TAŞINDI |
+| `_redact` (py/claudeops/ucli_client.py:287) | `oneshot.rs::redact` | `parity.rs::parity_oneshot` `saf` `sir-`; `oneshot::tests::secrets_are_removed_from_every_error_text` | TAŞINDI |
+| `_effective_key` (py/claudeops/ucli_client.py:293) | `real/oneshot.rs::OneShot::chat_once` (`secret`) | `parity.rs::parity_oneshot` `sir-miras` | TAŞINDI |
+| `_diag_approval` (py/claudeops/ucli_client.py:764) | `real/oneshot.rs::OneShot::chat_once` (`DiagLog`) | `parity.rs::parity_oneshot` `onay-kayit-yazilamadi` `onay-yaris` `onay-kilit-baglanti` | TAŞINDI |
+| `_parse_turn` (py/claudeops/ucli_client.py:517) | üretimde çağıran yok (`UcliReplSession`ı yalnız testler kurar; `_parse_turn` onun parçası) | - | KAPSAM DIŞI |
+| `UcliReplSession` (py/claudeops/ucli_client.py:627) | üretimde çağıran yok (`UcliReplSession`ı yalnız testler kurar; `_parse_turn` onun parçası) | - | KAPSAM DIŞI |
+| `ucli_resume_approval` (py/claudeops/ucli_client.py:753) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
+| `_resume_approval` (py/claudeops/ucli_client.py:769) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
+| `_run_resume` (py/claudeops/ucli_client.py:781) | T7: onay sürdürme (çağıran yalnız `web.py`) | - | KAPSAM DIŞI |
+| `USAGE_DIR` (py/claudeops/ucli_cost.py:18) | `probe.rs::Paths::ucli_usage_dir` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `_CACHE` (py/claudeops/ucli_cost.py:19) | `real/ledger.rs::{CostLedger::cache, Snapshot}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_TTL` (py/claudeops/ucli_cost.py:20) | `cost.rs::TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `DailyCapExceeded` (py/claudeops/ucli_cost.py:24) | `cost.rs::CostRefusal::CapExceeded` (+ `cost::refusal`, `CAP_CODE`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `DailyCapExceeded.__init__` (py/claudeops/ucli_cost.py:27) | `cost.rs::CostRefusal` `Display` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `log_path` (py/claudeops/ucli_cost.py:70) | `ucli.rs::usage_log_path` | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `OTHER_DIR` (py/claudeops/ucli_cost.py:76) | `ucli.rs::Ctx::apply_cli_opts` (`<usage>/other`) | `parity.rs::parity_ucli` `hizmet-` | TAŞINDI |
+| `other_log_path` (py/claudeops/ucli_cost.py:79) | `ucli.rs::usage_log_path` + `/other` | `parity.rs::parity_ucli` `hizmet-grok` `opts-` | TAŞINDI |
+| `CACHE_1H_WRITE_MULT` (py/claudeops/ucli_cost.py:86) | `cost.rs::CACHE_1H_WRITE_MULT` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `write_mult` (py/claudeops/ucli_cost.py:89) | `cost.rs::write_mult` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_day_start_ms` (py/claudeops/ucli_cost.py:95) | `real/ledger.rs::day_start_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `per_session_usd` (py/claudeops/ucli_cost.py:160) | `real/ledger.rs::per_session_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `rate_by_session` (py/claudeops/ucli_cost.py:175) | `real/ledger.rs::{rate_by_session, rate_usd_per_hour}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `total_usd` (py/claudeops/ucli_cost.py:206) | `real/ledger.rs::total_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_date_ms` (py/claudeops/ucli_cost.py:219) | `real/ledger.rs::date_ms` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `credit_window` (py/claudeops/ucli_cost.py:229) | `cost.rs::credit_window` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `today_usd` (py/claudeops/ucli_cost.py:246) | `real/ledger.rs::today_usd` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `BY_SESSION_TOP` (py/claudeops/ucli_cost.py:251) | `cost.rs::BY_SESSION_TOP` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `state` (py/claudeops/ucli_cost.py:254) | `real/ledger.rs::CostLedger::{state, invalidate}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `cap_exceeded` (py/claudeops/ucli_cost.py:290) | `real/ledger.rs::CostLedger::cap_exceeded` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `RESERVE_USD` (py/claudeops/ucli_cost.py:298) | `cost.rs::RESERVE_USD` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `RESERVE_TTL` (py/claudeops/ucli_cost.py:299) | `cost.rs::RESERVE_TTL` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_RESERVE_LOCK` (py/claudeops/ucli_cost.py:300) | `real/ledger.rs::CostLedger::reserved` (`Mutex`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `_RESERVED` (py/claudeops/ucli_cost.py:301) | `real/ledger.rs::CostLedger::{reserved, reserved_sessions}` | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `reserve` (py/claudeops/ucli_cost.py:333) | `real/ledger.rs::CostLedger::{reserve, release, check_and_reserve_at}` (`_ledger_problem` = `ledger_problem`) | `parity.rs::parity_ledger`; `tests/real_ledger.rs` | TAŞINDI |
+| `DEFAULTS` (py/claudeops/ucli_metrics.py:28) | `settings.rs::METRICS_DEFAULTS` | `parity.rs::parity_panel` `metrics-*` | TAŞINDI |
+| `_num` (py/claudeops/ucli_metrics.py:43) | `settings.rs::metrics_num` (NaN sınırlanmaz, Python gibi) | `parity.rs::parity_panel` `metrics-*` `metrics-nan` | TAŞINDI |
+| `get_config` (py/claudeops/ucli_metrics.py:53) | `settings.rs::{metrics_config, Settings::ucli_metrics_config}` | `parity.rs::parity_panel` `metrics-raw*` `metrics-ayar*` | TAŞINDI |
 
 ### Diğer dış bağımlılıklar (görevdeki satır kümesinin dışında, bilgi için)
 
@@ -2032,30 +2032,30 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 |---|---|---|---|
 | `atomic_write_json` (py/claudeops/atomic_json.py:71) | `rs/state` `fsutil.rs::atomic_write_json` | rs/state | KAPSAM DIŞI |
 | `atomic_write_text` (py/claudeops/atomic_json.py:101) | `real/effects.rs::atomic_write_text` (birleştirmede rs/state `fsutil`) | `parity.rs` (tüm `Effect` aileleri gerçek uygulayıcıyla); `tests/real_fs.rs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp` | TAŞINDI |
-| `file_lock` (py/claudeops/atomic_json.py:132) | `rs/state` `fsutil.rs::FileLock` | rs/state | KAPSAM DIŞI |
-| `spawn_env` (py/claudeops/authz.py:493) | `hooks.rs::spawn_env` (`Hooks`/`SpawnHooks`; kanca kaydı çağıranın) | `parity.rs::parity_g9` `{cli}-kanca` `{cli}-kanca-red` `kanca-` | TAŞINDI |
-| `codex_screen_count` (py/claudeops/bg_work.py:130) | `bg_work.rs::codex_screen_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
-| `codex_subagents_pending` (py/claudeops/bg_work.py:136) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-sekil-rollout-` | TAŞINDI |
-| `screen_bg_count` (py/claudeops/bg_work.py:32) | `bg_work.rs::screen_bg_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
-| `tail_lines` (py/claudeops/bg_work.py:160) | `live.rs::Live::tail_lines` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
-| `transcript_pending_path` (py/claudeops/bg_work.py:112) | `live.rs::Live::transcript_pending_path` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
-| `diag_log` (py/claudeops/diaglog.py:39) | `real/diaglog.rs::DiagLog` (DB aynası `Mirror` kancası; bağlama rs/state) | `parity.rs::parity_real` `gunluk-`; `tests/real_fs.rs::diag_log_appends_ordered_json_lines_rotates_and_never_fails_the_caller` | TAŞINDI |
-| `find_sessions` (py/claudeops/discovery.py:200) | `cops-procscan` `discovery.rs::find_sessions` (rs/proc, birleşti); spawn sınırı `real/scan.rs::ProcScan` (`SessionScan`) | rs/proc: `fake_proc::discovers_each_cli_and_names`; sınır `tests/real_scan.rs` | KAPSAM DIŞI |
-| `session_mcp_spec` (py/claudeops/extensions.py:440) | `hooks.rs::{session_mcp_spec, default_spec}` (kayıt `SessionMcpEntry` listesi çağıranın) | `parity.rs::parity_g9` `eklenti-` `{cli}-eklenti` `eklenti-acik-mcp` | TAŞINDI |
-| `ensure_search_url` (py/claudeops/searxng.py:526) | `real/searxng.rs::ManagedSearch::search_url` (yalnız spawn yolu bağımlılıklarıyla) | `parity.rs::parity_searxng`; `tests/real_searxng.rs` | TAŞINDI |
-| `read_json` (py/claudeops/statedocs.py:130) | `rs/state` `statedocs.rs::StateDocs::read` | rs/state; bu crate'te `StateDocStore::read`/`read_checked` ile bağlı (`parity_docs`) | KAPSAM DIŞI |
-| `write_json` (py/claudeops/statedocs.py:175) | `rs/state` `statedocs.rs::StateDocs::write` | rs/state; bu crate'te `StateDocStore::write` ile bağlı (`parity_docs`) | KAPSAM DIŞI |
-| `strip_ansi` (py/claudeops/tmux_backend.py:156) | `cops-tmux` `text.rs::strip_ansi` (tek kaynak; `tui.rs` yeniden dışa verir) | rs/tmux; `parity.rs::parity_tui` `g4-strip` | KAPSAM DIŞI |
-| `tmux_attach_shell_fragment` (py/claudeops/tmux_backend.py:73) | `cops-tmux` `shell.rs::attach_shell_fragment` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_available` (py/claudeops/tmux_backend.py:27) | `cops-tmux` `shell.rs::tmux_available` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_capture` (py/claudeops/tmux_backend.py:113) | `cops-tmux` `query.rs::capture` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_ghost_session` (py/claudeops/tmux_backend.py:642) | `cops-tmux` `shell.rs::ghost_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_has_session` (py/claudeops/tmux_backend.py:104) | `cops-tmux` `query.rs::has_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_kill_session` (py/claudeops/tmux_backend.py:677) | `cops-tmux` `shell.rs::kill_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_new_session_shell_fragment` (py/claudeops/tmux_backend.py:58) | `cops-tmux` `shell.rs::new_session_shell_fragment` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
-| `tmux_send_keys` (py/claudeops/tmux_backend.py:160) | `rs/tmux` `keys.rs::send_text` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
-| `tmux_send_special_key` (py/claudeops/tmux_backend.py:284) | `rs/tmux` `keys.rs::send_special_key` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
-| `tmux_spawn_direct` (py/claudeops/tmux_backend.py:81) | `cops-tmux` `shell.rs::spawn_direct` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `file_lock` (py/claudeops/atomic_json.py:191) | `rs/state` `fsutil.rs::FileLock` | rs/state | KAPSAM DIŞI |
+| `spawn_env` (py/claudeops/authz.py:521) | `hooks.rs::spawn_env` (`Hooks`/`SpawnHooks`; kanca kaydı çağıranın) | `parity.rs::parity_g9` `{cli}-kanca` `{cli}-kanca-red` `kanca-` | TAŞINDI |
+| `codex_screen_count` (py/claudeops/bg_work.py:264) | `bg_work.rs::codex_screen_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `codex_subagents_pending` (py/claudeops/bg_work.py:270) | `bg_work.rs::codex_subagents_pending` | `parity.rs::parity_bg_work` `bg-transkript-`, `bg-sekil-rollout-` | TAŞINDI |
+| `screen_bg_count` (py/claudeops/bg_work.py:39) | `bg_work.rs::screen_bg_count` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `tail_lines` (py/claudeops/bg_work.py:297) | `live.rs::Live::tail_lines` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
+| `transcript_pending_path` (py/claudeops/bg_work.py:172) | `live.rs::Live::transcript_pending_path` | `parity.rs::parity_bg_work` `bg-dosya`, `bg-kuyruk-` | TAŞINDI |
+| `diag_log` (py/claudeops/diaglog.py:40) | `real/diaglog.rs::DiagLog` (DB aynası `Mirror` kancası; bağlama rs/state) | `parity.rs::parity_real` `gunluk-`; `tests/real_fs.rs::diag_log_appends_ordered_json_lines_rotates_and_never_fails_the_caller` | TAŞINDI |
+| `find_sessions` (py/claudeops/discovery.py:219) | `cops-procscan` `discovery.rs::find_sessions` (rs/proc, birleşti); spawn sınırı `real/scan.rs::ProcScan` (`SessionScan`) | rs/proc: `fake_proc::discovers_each_cli_and_names`; sınır `tests/real_scan.rs` | KAPSAM DIŞI |
+| `session_mcp_spec` (py/claudeops/extensions.py:445) | `hooks.rs::{session_mcp_spec, default_spec}` (kayıt `SessionMcpEntry` listesi çağıranın) | `parity.rs::parity_g9` `eklenti-` `{cli}-eklenti` `eklenti-acik-mcp` | TAŞINDI |
+| `ensure_search_url` (py/claudeops/searxng.py:538) | `real/searxng.rs::ManagedSearch::search_url` (yalnız spawn yolu bağımlılıklarıyla) | `parity.rs::parity_searxng`; `tests/real_searxng.rs` | TAŞINDI |
+| `read_json` (py/claudeops/statedocs.py:168) | `rs/state` `statedocs.rs::StateDocs::read` | rs/state; bu crate'te `StateDocStore::read`/`read_checked` ile bağlı (`parity_docs`) | KAPSAM DIŞI |
+| `write_json` (py/claudeops/statedocs.py:214) | `rs/state` `statedocs.rs::StateDocs::write` | rs/state; bu crate'te `StateDocStore::write` ile bağlı (`parity_docs`) | KAPSAM DIŞI |
+| `strip_ansi` (py/claudeops/tmux_backend.py:206) | `cops-tmux` `text.rs::strip_ansi` (tek kaynak; `tui.rs` yeniden dışa verir) | rs/tmux; `parity.rs::parity_tui` `g4-strip` | KAPSAM DIŞI |
+| `tmux_attach_shell_fragment` (py/claudeops/tmux_backend.py:117) | `cops-tmux` `shell.rs::attach_shell_fragment` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_available` (py/claudeops/tmux_backend.py:28) | `cops-tmux` `shell.rs::tmux_available` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_capture` (py/claudeops/tmux_backend.py:161) | `cops-tmux` `query.rs::capture` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_ghost_session` (py/claudeops/tmux_backend.py:781) | `cops-tmux` `shell.rs::ghost_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_has_session` (py/claudeops/tmux_backend.py:152) | `cops-tmux` `query.rs::has_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_kill_session` (py/claudeops/tmux_backend.py:816) | `cops-tmux` `shell.rs::kill_session` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_new_session_shell_fragment` (py/claudeops/tmux_backend.py:98) | `cops-tmux` `shell.rs::new_session_shell_fragment` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
+| `tmux_send_keys` (py/claudeops/tmux_backend.py:214) | `rs/tmux` `keys.rs::send_text` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
+| `tmux_send_special_key` (py/claudeops/tmux_backend.py:396) | `rs/tmux` `keys.rs::send_special_key` | rs/tmux (`cops-tmux`; iz henüz birleşmedi) | KAPSAM DIŞI |
+| `tmux_spawn_direct` (py/claudeops/tmux_backend.py:125) | `cops-tmux` `shell.rs::spawn_direct` (rs/tmux, birleşti); spawn sınırı `real/tmux.rs::CopsTmux` | rs/tmux; sınır `tests/real_tmux.rs`, `parity.rs::parity_g9` (sahte) | KAPSAM DIŞI |
 
 ### main `f4679f51` eşitlemesinin satırları (27 Kas)
 
@@ -2078,19 +2078,19 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `startup_env` (py/claudeops/startup_desktop.py:146) | `startup_desktop.rs::startup_env`; çağrı `spawn_exec.rs::Launcher::launch_window` (`Terminal::startup_env`, gerçek `GnomeTerminal::with_desktop`) | `parity.rs::parity_g9` `masaustu-`; `tests/g9.rs::gnome_terminal_desktop_is_off_by_default_and_reads_settings_each_time` | TAŞINDI |
 | `HAIKU_LONG_PRICE` (py/claudeops/review.py:111) | `cops-review-core` `targets.rs::HAIKU_LONG_PRICE` (`cost.rs`, `ucli.rs` oradan) | `parity.rs::parity_ledger` `dilim`; `parity_ucli` `fiyat-` | TAŞINDI |
 | `HAIKU_LONG_PROMPT` (py/claudeops/review.py:112) | `cops-review-core` `targets.rs::HAIKU_LONG_PROMPT` | `parity.rs::parity_ledger` `dilim` | TAŞINDI |
-| `_scan_usage` (py/claudeops/review.py:1894) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına); toplam yarısı `cops-review-core` `report.rs::usage_cost_usd`, satır kuralları `usage.rs` | `parity.rs::parity_ledger` `dilim` `satir`; iki kopya birbirine karşı `tests/usage_two_copies.rs` | TAŞINDI |
-| `_MAX_LINE_DEPTH`, `_DEPTH_TOKEN_RE`, `_too_deep` (py/claudeops/review.py:1861) | `cops-review-core` `usage.rs::{MAX_LINE_DEPTH, too_deep}` | `usage_two_copies::both_copies_draw_the_depth_limit_at_the_same_line`; rev `parity` | TAŞINDI |
-| `_UNCOUNTABLE_SPENT_USD` (py/claudeops/review.py:1863) | `report.rs::{UNCOUNTABLE_SPENT_USD, scan_report}`, `usage.rs::{Line::Uncountable, long_integer}` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`; rev `parity` | TAŞINDI |
+| `_scan_usage` (py/claudeops/review.py:1945) | `cost.rs::UsageScan` (`task_end` atlanır, Haiku dilimi istek başına); toplam yarısı `cops-review-core` `report.rs::usage_cost_usd`, satır kuralları `usage.rs` | `parity.rs::parity_ledger` `dilim` `satir`; iki kopya birbirine karşı `tests/usage_two_copies.rs` | TAŞINDI |
+| `_MAX_LINE_DEPTH`, `_DEPTH_TOKEN_RE`, `_too_deep` (py/claudeops/review.py:1860) | `cops-review-core` `usage.rs::{MAX_LINE_DEPTH, too_deep}` | `usage_two_copies::both_copies_draw_the_depth_limit_at_the_same_line`; rev `parity` | TAŞINDI |
+| `_UNCOUNTABLE_SPENT_USD` (py/claudeops/review.py:1862) | `report.rs::{UNCOUNTABLE_SPENT_USD, scan_report}`, `usage.rs::{Line::Uncountable, long_integer}` | `usage_two_copies::an_integer_python_cannot_parse_is_uncountable_in_both_copies`; rev `parity` | TAŞINDI |
 | `_anthropic_spend` (py/claudeops/review.py) | `cops-review-core` `report.rs::anthropic_spend` | `usage_two_copies::{the_review_budget_distrusts_exactly_what_the_daily_cap_distrusts, the_review_budget_refuses_unreadable_files_and_directories}`; rev `parity` | TAŞINDI |
-| `_with_ucli_error` (py/claudeops/commands/web.py:2116) | bağlayan uç (copsd/panel `_start`); pane okuması için `cops-tmux` `query.rs::Tmux::capture_joined` hazır | rs/tmux `reads_match_python` (`-J`) | KAPSAM DIŞI |
+| `_with_ucli_error` (py/claudeops/commands/web.py:2121) | bağlayan uç (copsd/panel `_start`); pane okuması için `cops-tmux` `query.rs::Tmux::capture_joined` hazır | rs/tmux `reads_match_python` (`-J`) | KAPSAM DIŞI |
 
 ### 27 Kas ikinci turunun satırları (`726888f1` eşitlemesi, G3 3/5, TBD#401)
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
-| `_window_titled` (py/claudeops/spawn.py:406) | `spawn_exec.rs::{Launcher::window_titled, window_listed}`; okuma `Terminal::window_list` (gerçek `real/launch.rs::GnomeTerminal`) | `parity.rs::parity_g9` `bekci-pencere-`; `tests/g9.rs::{watchdog_waits_instead_of_opening_a_second_window, watchdog_relaunches_unless_the_exact_title_is_listed, gnome_terminal_window_list_runs_wmctrl_on_the_given_display}` | TAŞINDI |
-| `_row_effort` (py/claudeops/providers/claude_provider.py:368) | `claude_transcript.rs::assistant_effort` | `parity.rs::parity_transcript` `esit-alt-ajan-` `effort-` | TAŞINDI |
-| `_key_env_refusal` (py/claudeops/ucli_client.py:260) | `oneshot.rs::check_key_env` + `real/oneshot.rs::OneShot::check_key_env` (`DEFAULT_KEY_ENV`, `Paths::settings_json`) | `parity.rs::parity_oneshot` `tbd401-`; `tests/real_oneshot.rs::only_known_key_env_names_start_a_child` | TAŞINDI |
+| `_window_titled` (py/claudeops/spawn.py:549) | `spawn_exec.rs::{Launcher::window_titled, window_listed}`; okuma `Terminal::window_list` (gerçek `real/launch.rs::GnomeTerminal`) | `parity.rs::parity_g9` `bekci-pencere-`; `tests/g9.rs::{watchdog_waits_instead_of_opening_a_second_window, watchdog_relaunches_unless_the_exact_title_is_listed, gnome_terminal_window_list_runs_wmctrl_on_the_given_display}` | TAŞINDI |
+| `_row_effort` (py/claudeops/providers/claude_provider.py:369) | `claude_transcript.rs::assistant_effort` | `parity.rs::parity_transcript` `esit-alt-ajan-` `effort-` | TAŞINDI |
+| `_key_env_refusal` (py/claudeops/ucli_client.py:262) | `oneshot.rs::check_key_env` + `real/oneshot.rs::OneShot::check_key_env` (`DEFAULT_KEY_ENV`, `Paths::settings_json`) | `parity.rs::parity_oneshot` `tbd401-`; `tests/real_oneshot.rs::only_known_key_env_names_start_a_child` | TAŞINDI |
 | `shared_write_allowed` (py/claudeops/paths.py, `d0054ada`) | `probe.rs::Paths::shared_write_allowed` (`Providers::shared_write_allowed`) | `parity.rs::parity_ucli` `ornek-`, `parity_build` `copilot-ornek-` | TAŞINDI |
 | `write_dir` (py/claudeops/ucli_cost.py, `d0054ada`) | `probe.rs::Paths::usage_write_dir`, `pyfmt.rs::relpath` | `parity.rs::parity_misc` `ucli-misc`, `parity_ledger` `defter-ornek-` | TAŞINDI |
 | `read_dirs` (py/claudeops/ucli_cost.py, `d0054ada`) | `probe.rs::Paths::usage_read_dirs`; `real/ledger.rs::CostLedger::with_write_dir` | `parity.rs::parity_ledger` `defter-ornek-` | TAŞINDI |
@@ -2100,9 +2100,9 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
-| `_STOP_TOOLS` (py/claudeops/bg_work.py:30) | `bg_work.rs::STOP_TOOLS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `_LINE_MARKS` (py/claudeops/bg_work.py:31) | `bg_work.rs::LINE_MARKS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `_notification_text` (py/claudeops/bg_work.py:58) | `bg_work.rs::notification_text` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_STOP_TOOLS` (py/claudeops/bg_work.py:35) | `bg_work.rs::STOP_TOOLS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_LINE_MARKS` (py/claudeops/bg_work.py:36) | `bg_work.rs::LINE_MARKS` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_notification_text` (py/claudeops/bg_work.py:63) | `bg_work.rs::notification_text` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 
 ### TBD#419, S6 ve uzun satır turunun satırları (27 Kas)
 
@@ -2110,12 +2110,12 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 |---|---|---|---|
 | `_own_conversation` (py/claudeops/stuck.py) | yok: `find_stuck`/`recover_stuck` akışı T4 (okuyucusu `claude_transcript.rs::Live::live_transcript`) | yok | KAPSAM DIŞI |
 | `spawn_session(resume_id=)` (py/claudeops/spawn.py) | `spawn_exec.rs::StartRequest.resume_id` | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
-| `_SECRET_ENV_SUFFIXES` (py/claudeops/spawn.py:80) | `spawn.rs::{SECRET_ENV_SUFFIXES, is_secret_env_name}` | `parity.rs::parity_spawn` `-sir-` | TAŞINDI |
-| `_SPAWN_ENV_DIRNAME` (py/claudeops/spawn.py:81) | `spawn.rs::SPAWN_ENV_DIRNAME` | `parity.rs::parity_spawn` `-sir-`; `parity_g9` `sir-` | TAŞINDI |
-| `_SPAWN_ENV_STALE_SECONDS` (py/claudeops/spawn.py:82) | `real/effects.rs::SPAWN_ENV_STALE_SECONDS` | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (artık temizliği iki tarafta birim testli; parite fixture'ı mtime taşımaz) | TAŞINDI |
-| `_spawn_env_token` (py/claudeops/spawn.py:85) | `Probe::spawn_env_token`; gerçek `real/effects.rs::spawn_env_token` | `tests/secrets_argv.rs::spawn_env_tokens_are_random_hex`; parite koşucusu iki tarafı aynı sabite bağlar (`SPAWN_ENV_TOKEN`) | TAŞINDI |
-| `_prune_spawn_env` (py/claudeops/spawn.py:90) | `real/effects.rs::prune_spawn_env` (özel) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
-| `_write_spawn_env_file` (py/claudeops/spawn.py:107) | `Effect::WriteSpawnEnv` + `real/effects.rs::{write_spawn_env, write_spawn_env_as}`; ret `spawn_exec.rs` (`SPAWN_ENV_REFUSAL`, `spawn_env_file_refused`) | `parity.rs::parity_g9` `sir-gizli` `sir-pencere` `sir-kuru` `sir-dizin-genis` `sir-dizin-bag` `sir-dizin-dosya` `sir-dizin-yazilamaz`; `parity_spawn` `-sir-`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `_SECRET_ENV_SUFFIXES` (py/claudeops/spawn.py:81) | `spawn.rs::{SECRET_ENV_SUFFIXES, is_secret_env_name}` | `parity.rs::parity_spawn` `-sir-` | TAŞINDI |
+| `_SPAWN_ENV_DIRNAME` (py/claudeops/spawn.py:92) | `spawn.rs::SPAWN_ENV_DIRNAME` | `parity.rs::parity_spawn` `-sir-`; `parity_g9` `sir-` | TAŞINDI |
+| `_SPAWN_ENV_STALE_SECONDS` (py/claudeops/spawn.py:93) | `real/effects.rs::SPAWN_ENV_STALE_SECONDS` | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (artık temizliği iki tarafta birim testli; parite fixture'ı mtime taşımaz) | TAŞINDI |
+| `_spawn_env_token` (py/claudeops/spawn.py:96) | `Probe::spawn_env_token`; gerçek `real/effects.rs::spawn_env_token` | `tests/secrets_argv.rs::spawn_env_tokens_are_random_hex`; parite koşucusu iki tarafı aynı sabite bağlar (`SPAWN_ENV_TOKEN`) | TAŞINDI |
+| `_prune_spawn_env` (py/claudeops/spawn.py:101) | `real/effects.rs::prune_spawn_env` (özel) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `_write_spawn_env_file` (py/claudeops/spawn.py:118) | `Effect::WriteSpawnEnv` + `real/effects.rs::{write_spawn_env, write_spawn_env_as}`; ret `spawn_exec.rs` (`SPAWN_ENV_REFUSAL`, `spawn_env_file_refused`) | `parity.rs::parity_g9` `sir-gizli` `sir-pencere` `sir-kuru` `sir-dizin-genis` `sir-dizin-bag` `sir-dizin-dosya` `sir-dizin-yazilamaz`; `parity_spawn` `-sir-`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
 | `_MAX_LINE_BYTES` (py/claudeops/review.py) | `cops-review-core` `usage.rs::MAX_LINE_BYTES` | `usage_two_copies::both_copies_draw_the_line_length_limit_at_the_same_byte` | TAŞINDI |
 | `_usage_lines` (py/claudeops/review.py) | `cops-review-core` `usage.rs::{next_line, too_long}` | `usage_two_copies::a_huge_line_streams_through_a_bounded_buffer`; rev `parity` | TAŞINDI |
 
@@ -2123,17 +2123,17 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
-| `CodexProvider._exact_rollout` (py/claudeops/providers/codex_provider.py:340) | `codex_resume.rs::Live::codex_exact_rollout` | `parity.rs::parity_chat` `codex-sid-yok` `codex-yanlis-sid` | TAŞINDI |
+| `CodexProvider._exact_rollout` (py/claudeops/providers/codex_provider.py:346) | `codex_resume.rs::Live::codex_exact_rollout` | `parity.rs::parity_chat` `codex-sid-yok` `codex-yanlis-sid` | TAŞINDI |
 | `_argv_conversation` (py/claudeops/stuck.py:90) | yok: `find_stuck`/`recover_stuck` akışı T4 | yok | KAPSAM DIŞI |
 
 ### main `8613e2b1` eşitlemesinin satırları (28 Kas)
 
 | Python (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
-| `_NAV_RE` (py/claudeops/bg_work.py:21) | `bg_work.rs::{NAV, without_nav}` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
-| `_RECORD_TYPES` (py/claudeops/bg_work.py:22) | `bg_work.rs::{RECORD_TYPES, transcript_pending}` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `_NAV_RE` (py/claudeops/bg_work.py:23) | `bg_work.rs::{NAV, without_nav}` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
+| `_RECORD_TYPES` (py/claudeops/bg_work.py:24) | `bg_work.rs::{RECORD_TYPES, transcript_pending}` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `_SESSION_RECORD_MAX_BYTES` (py/claudeops/bg_work.py:27) | `claude_resume.rs::{SESSION_FILE_MAX_BYTES, Live::session_file}` | `parity.rs::parity_live` `kayit-govde-`; `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
-| `session_record_status` (py/claudeops/bg_work.py:181) | `live.rs::Live::session_record_status`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
+| `session_record_status` (py/claudeops/bg_work.py:206) | `live.rs::Live::session_record_status`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
 | `_live_records` (py/claudeops/bg_work.py, 28 Kas) | `live.rs::Live::{session_record_status, session_record_shell_since}` (aynı canlı kayıt süzgeci: `session_file` + `proc_start`) | `parity.rs::parity_live` `kayit-` `kabuk-olu-yeni` | TAŞINDI |
 | `SHELL_ONLY_DIRECTIVE_SECONDS`, `session_record_shell_since`, `shell_only_stale` (py/claudeops/bg_work.py, main `220007a9` TBD#442 a; 28 Kas rs-prov `fix:` FIFO + ölü süreç) | `bg_work.rs::SHELL_ONLY_DIRECTIVE_SECONDS`, `live.rs::Live::{session_record_shell_since, shell_only_stale}`, `live.rs::py_float_of` | `parity.rs::parity_live` `kabuk-` (eşik, `float()` köşeleri, ölü/iki canlı kayıt) | TAŞINDI |
 
@@ -2184,41 +2184,41 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `HttpTest.test_ui_extension_list_and_files` (py/tests/test_authz.py:236) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
 | `HttpTest.test_session_event_emitted_on_success` (py/tests/test_authz.py:253) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
 | `HttpTest.test_new_chat_and_adopt_event_use_real_instance_name` (py/tests/test_authz.py:264) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `HttpTest.test_session_event_emitted_before_response` (py/tests/test_authz.py:279) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `SpawnHookTest.test_no_hook_empty_and_threadlocal` (py/tests/test_authz.py:296) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
-| `SpawnHookTest.test_hook_env_refusal_and_fail_closed` (py/tests/test_authz.py:307) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
-| `SpawnHookTest.test_spawn_session_dry_run_gets_env` (py/tests/test_authz.py:320) | `parity.rs::parity_spawn` `-kanca`; kanca ortamı girdi | TAŞINDI |
-| `SpawnHookTest.test_hook_session_usd_cap_min_with_default_and_popped_from_env` (py/tests/test_authz.py:330) | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
-| `SpawnHookTest.test_refusal_formatting` (py/tests/test_authz.py:351) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
-| `TicketAndQuestionTest.test_ws_ticket_bound_to_principal` (py/tests/test_authz.py:358) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `TicketAndQuestionTest.test_ticket_replaces_cookie_for_ws_only` (py/tests/test_authz.py:368) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `TicketAndQuestionTest.test_steward_resource_uses_sid_not_project_name` (py/tests/test_authz.py:382) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `TicketAndQuestionTest.test_question_page_access_check` (py/tests/test_authz.py:388) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_multi_resources` (py/tests/test_authz.py:405) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_names_query_and_body_each_a_resource` (py/tests/test_authz.py:413) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_files_path_never_becomes_a_resource` (py/tests/test_authz.py:420) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_event_sink_error_swallowed` (py/tests/test_authz.py:428) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_doc_prefix` (py/tests/test_authz.py:436) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ResourcesTest.test_ws_client_view` (py/tests/test_authz.py:445) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtensionCommandTest.test_register_and_dispatch` (py/tests/test_authz.py:470) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtensionCommandTest.test_core_name_not_overridden_and_no_load_for_core` (py/tests/test_authz.py:479) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtensionCommandTest.test_bad_name` (py/tests/test_authz.py:488) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtActionTableTest.test_action_for_reads_ext_table_longest_first` (py/tests/test_authz.py:498) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtActionTableTest.test_register_action_prefix_restricted` (py/tests/test_authz.py:508) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ExtActionTableTest.test_ui_extension_title_en` (py/tests/test_authz.py:512) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
-| `ScreenFixture.test_busy_screens` (py/tests/test_bg_work.py:39) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
-| `ScreenFixture.test_idle_screen_with_prose_numbers` (py/tests/test_bg_work.py:43) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
-| `TranscriptFixture.test_pending_without_notification` (py/tests/test_bg_work.py:69) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `TranscriptFixture.test_completed_by_tool_use_id_or_task_id` (py/tests/test_bg_work.py:72) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `TranscriptFixture.test_foreground_and_stale` (py/tests/test_bg_work.py:77) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `TranscriptFixture.test_errored_call_is_not_pending` (py/tests/test_bg_work.py:81) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `TranscriptFixture.test_one_of_two_pending` (py/tests/test_bg_work.py:87) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` (py/tests/test_bg_work.py:92) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
-| `SubagentActiveForUsesBoth.test_transcript_pending_makes_active` (py/tests/test_bg_work.py:98) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
-| `ProviderBackgroundWork.test_base_unknown_and_claude_counts` (py/tests/test_bg_work.py:113) | `parity.rs::parity_live` `varsayilan-`, `ekran-claude-` | TAŞINDI |
-| `UcliBackgroundWork.test_reads_status_field_never_guesses` (py/tests/test_bg_work.py:126) | `parity.rs::parity_live` `durum-` | TAŞINDI |
-| `CodexBackgroundWork.test_screen_and_rollout` (py/tests/test_bg_work.py:150) | `parity.rs::parity_bg_work` `bg-ekran`, `bg-transkript-` | TAŞINDI |
-| `CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` (py/tests/test_bg_work.py:157) | `parity.rs::parity_live` `ekran-codex-`, `codex-ajan-` | TAŞINDI |
+| `HttpTest.test_session_event_emitted_before_response` (py/tests/test_authz.py:286) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `SpawnHookTest.test_no_hook_empty_and_threadlocal` (py/tests/test_authz.py:303) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
+| `SpawnHookTest.test_hook_env_refusal_and_fail_closed` (py/tests/test_authz.py:314) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
+| `SpawnHookTest.test_spawn_session_dry_run_gets_env` (py/tests/test_authz.py:327) | `parity.rs::parity_spawn` `-kanca`; kanca ortamı girdi | TAŞINDI |
+| `SpawnHookTest.test_hook_session_usd_cap_min_with_default_and_popped_from_env` (py/tests/test_authz.py:337) | `parity.rs::parity_spawn` `kanca-` | TAŞINDI |
+| `SpawnHookTest.test_refusal_formatting` (py/tests/test_authz.py:358) | T9: `authz` kancası ve ret biçimi | KAPSAM DIŞI |
+| `TicketAndQuestionTest.test_ws_ticket_bound_to_principal` (py/tests/test_authz.py:365) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `TicketAndQuestionTest.test_ticket_replaces_cookie_for_ws_only` (py/tests/test_authz.py:375) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `TicketAndQuestionTest.test_steward_resource_uses_sid_not_project_name` (py/tests/test_authz.py:389) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `TicketAndQuestionTest.test_question_page_access_check` (py/tests/test_authz.py:395) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_multi_resources` (py/tests/test_authz.py:412) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_names_query_and_body_each_a_resource` (py/tests/test_authz.py:420) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_files_path_never_becomes_a_resource` (py/tests/test_authz.py:427) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_event_sink_error_swallowed` (py/tests/test_authz.py:435) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_doc_prefix` (py/tests/test_authz.py:443) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ResourcesTest.test_ws_client_view` (py/tests/test_authz.py:452) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtensionCommandTest.test_register_and_dispatch` (py/tests/test_authz.py:477) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtensionCommandTest.test_core_name_not_overridden_and_no_load_for_core` (py/tests/test_authz.py:486) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtensionCommandTest.test_bad_name` (py/tests/test_authz.py:495) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtActionTableTest.test_action_for_reads_ext_table_longest_first` (py/tests/test_authz.py:505) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtActionTableTest.test_register_action_prefix_restricted` (py/tests/test_authz.py:515) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ExtActionTableTest.test_ui_extension_title_en` (py/tests/test_authz.py:519) | rs/gate / T9: `authz.py` eylem tablosu, HTTP kapısı ve eklenti kayıtları; bu iz kapsamı değil | KAPSAM DIŞI |
+| `ScreenFixture.test_busy_screens` (py/tests/test_bg_work.py:40) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `ScreenFixture.test_idle_screen_with_prose_numbers` (py/tests/test_bg_work.py:44) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `TranscriptFixture.test_pending_without_notification` (py/tests/test_bg_work.py:75) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_completed_by_tool_use_id_or_task_id` (py/tests/test_bg_work.py:78) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_foreground_and_stale` (py/tests/test_bg_work.py:83) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_errored_call_is_not_pending` (py/tests/test_bg_work.py:94) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `TranscriptFixture.test_one_of_two_pending` (py/tests/test_bg_work.py:100) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `SubagentActiveForUsesBoth.test_screen_makes_active_even_without_subagent_files` (py/tests/test_bg_work.py:301) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
+| `SubagentActiveForUsesBoth.test_transcript_pending_makes_active` (py/tests/test_bg_work.py:307) | T10: `web_steward` alt ajan etkinliği; `bg_work` okuyucusu G6 | KAPSAM DIŞI |
+| `ProviderBackgroundWork.test_base_unknown_and_claude_counts` (py/tests/test_bg_work.py:322) | `parity.rs::parity_live` `varsayilan-`, `ekran-claude-` | TAŞINDI |
+| `UcliBackgroundWork.test_reads_status_field_never_guesses` (py/tests/test_bg_work.py:335) | `parity.rs::parity_live` `durum-` | TAŞINDI |
+| `CodexBackgroundWork.test_screen_and_rollout` (py/tests/test_bg_work.py:359) | `parity.rs::parity_bg_work` `bg-ekran`, `bg-transkript-` | TAŞINDI |
+| `CodexBackgroundWork.test_provider_sums_screen_and_missing_rollout` (py/tests/test_bg_work.py:366) | `parity.rs::parity_live` `ekran-codex-`, `codex-ajan-` | TAŞINDI |
 | `BrainPermission.test_default_allow_edit_is_a_valid_ucli_mode` (py/tests/test_brain_permission_ucli.py:11) | rs/stew: `brain_permission`; mod listesi `parity_model_effort` `bos-*` | KAPSAM DIŞI |
 | `BrainPermission.test_applied_only_for_ucli` (py/tests/test_brain_permission_ucli.py:15) | rs/stew | KAPSAM DIŞI |
 | `CompactionViewTests.test_boundary_and_summary_roles_keep_pre_compaction_messages` (py/tests/test_chat_compaction_view.py:21) | `parity.rs::parity_chat` `claude-temel` `claude-sinir-` | TAŞINDI |
@@ -2230,19 +2230,19 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ClaudeModelsStoreTest.test_fallback_to_hardcoded_when_empty` (py/tests/test_claude_models_store.py:50) | `parity.rs::parity_model_effort` `claude-state` | TAŞINDI |
 | `TrustFolder.test_adds_and_keeps_comments` (py/tests/test_copilot_trust.py:14) | `parity.rs::parity_build` `trust-dolu` | TAŞINDI |
 | `TrustFolder.test_empty_list` (py/tests/test_copilot_trust.py:21) | `parity.rs::parity_build` `trust-bos` | TAŞINDI |
-| `TrustFolder.test_keeps_private_mode` (py/tests/test_copilot_trust.py:26) | `tests/real_fs.rs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp` | TAŞINDI |
-| `TrustFolder.test_idempotent_and_missing` (py/tests/test_copilot_trust.py:34) | `parity.rs::parity_build` `trust-var` `trust-anahtar-yok` | TAŞINDI |
-| `FindSessionsSidTests.test_a_fresh_session_gets_the_live_sid_from_the_json_entry` (py/tests/test_discovery_sid.py:77) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_a_resumed_session_keeps_its_sid_and_stays_resumed` (py/tests/test_discovery_sid.py:85) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_the_live_json_sid_wins_over_a_stale_cmdline_sid` (py/tests/test_discovery_sid.py:92) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before` (py/tests/test_discovery_sid.py:101) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_a_json_entry_without_a_sid_never_blanks_the_cmdline_sid` (py/tests/test_discovery_sid.py:106) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_a_tui_renamed_session_is_listed_once_under_its_spawn_name` (py/tests/test_discovery_sid.py:110) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_each_session_gets_its_own_sid_by_pid` (py/tests/test_discovery_sid.py:116) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_a_json_entry_of_another_cli_never_donates_its_sid` (py/tests/test_discovery_sid.py:121) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `FindSessionsSidTests.test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh` (py/tests/test_discovery_sid.py:129) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
-| `IsFreshTests.test_flag_unknown_falls_back_to_the_sid` (py/tests/test_discovery_sid.py:138) | rs/proc: `session.rs::Session::is_fresh` | KAPSAM DIŞI |
-| `IsFreshTests.test_flag_known_wins_over_the_sid` (py/tests/test_discovery_sid.py:143) | rs/proc: `session.rs::Session::is_fresh` | KAPSAM DIŞI |
+| `TrustFolder.test_keeps_private_mode` (py/tests/test_copilot_trust.py:38) | `tests/real_fs.rs::atomic_write_keeps_the_private_mode_replaces_links_and_leaves_no_tmp` | TAŞINDI |
+| `TrustFolder.test_idempotent_and_missing` (py/tests/test_copilot_trust.py:78) | `parity.rs::parity_build` `trust-var` `trust-anahtar-yok` | TAŞINDI |
+| `FindSessionsSidTests.test_a_fresh_session_gets_the_live_sid_from_the_json_entry` (py/tests/test_discovery_sid.py:80) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_a_resumed_session_keeps_its_sid_and_stays_resumed` (py/tests/test_discovery_sid.py:88) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_the_live_json_sid_wins_over_a_stale_cmdline_sid` (py/tests/test_discovery_sid.py:95) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_without_a_json_entry_the_cmdline_value_is_used_exactly_as_before` (py/tests/test_discovery_sid.py:104) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_a_json_entry_without_a_sid_never_blanks_the_cmdline_sid` (py/tests/test_discovery_sid.py:109) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_a_tui_renamed_session_is_listed_once_under_its_spawn_name` (py/tests/test_discovery_sid.py:113) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_each_session_gets_its_own_sid_by_pid` (py/tests/test_discovery_sid.py:119) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_a_json_entry_of_another_cli_never_donates_its_sid` (py/tests/test_discovery_sid.py:124) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `FindSessionsSidTests.test_a_non_claude_cli_keeps_its_cmdline_sid_and_its_old_is_fresh` (py/tests/test_discovery_sid.py:132) | rs/proc: rs-proc.md test eşlemesi: `fake_proc::json_sid_merge_rules_like_python`, `json_source_merges_with_proc_scan` | KAPSAM DIŞI |
+| `IsFreshTests.test_flag_unknown_falls_back_to_the_sid` (py/tests/test_discovery_sid.py:141) | rs/proc: `session.rs::Session::is_fresh` | KAPSAM DIŞI |
+| `IsFreshTests.test_flag_known_wins_over_the_sid` (py/tests/test_discovery_sid.py:146) | rs/proc: `session.rs::Session::is_fresh` | KAPSAM DIŞI |
 | `SplitTierTests.test_tiered_ids` (py/tests/test_effort_by_model.py:56) | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `SplitTierTests.test_untiered_ids_are_untouched` (py/tests/test_effort_by_model.py:62) | `parity.rs::parity_model_effort` `effort` | TAŞINDI |
 | `SplitTierTests.test_non_string` (py/tests/test_effort_by_model.py:66) | rs/prov: gereksiz: Rust imzası yalnız dize alır | KAPSAM DIŞI |
@@ -2334,9 +2334,9 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `EffortDowngradeTests.test_effort_command_failure_is_swallowed` (py/tests/test_handover_cache_policy.py:493) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
 | `EffortDowngradeTests.test_public_wrapper_keeps_its_old_positional_signature` (py/tests/test_handover_cache_policy.py:500) | T4: `handover` devir politikası; transkript ve önbellek girdileri taşındı (G3), `handover_*_downgrade`/canlı geçiş G4 | KAPSAM DIŞI |
 | `CallSiteWiringTests.test_cli_path_calls_the_shared_policy_once_per_target` (py/tests/test_handover_cache_policy.py:520) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
-| `CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` (py/tests/test_handover_cache_policy.py:534) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
-| `CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` (py/tests/test_handover_cache_policy.py:547) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
-| `CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` (py/tests/test_handover_cache_policy.py:564) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
+| `CallSiteWiringTests.test_web_path_calls_the_shared_policy_with_the_spawn_time_values` (py/tests/test_handover_cache_policy.py:535) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
+| `CallSiteWiringTests.test_web_path_targets_the_resolved_session_for_unique_base` (py/tests/test_handover_cache_policy.py:549) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
+| `CallSiteWiringTests.test_real_policy_runs_end_to_end_through_the_web_path` (py/tests/test_handover_cache_policy.py:567) | T4: `handover`/web çağrı bağlantısı | KAPSAM DIŞI |
 | `LastAssistantSinceTests.test_since_returns_only_rows_written_after_the_process_started` (py/tests/test_live_model_effort.py:62) | `parity_transcript` `surec-sonrasi` | TAŞINDI |
 | `LastAssistantSinceTests.test_only_previous_incarnation_rows_means_unknown` (py/tests/test_live_model_effort.py:68) | `parity_transcript` `onceki-surec` | TAŞINDI |
 | `LastAssistantSinceTests.test_without_since_behaviour_is_unchanged` (py/tests/test_live_model_effort.py:74) | `parity_transcript` `onceki-surec` (`since`siz okuma) | TAŞINDI |
@@ -2354,26 +2354,26 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `LiveModelEndpointTests.test_live_effort_ignores_previous_incarnation` (py/tests/test_live_model_effort.py:175) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
 | `LiveModelEndpointTests.test_neighbour_transcript_is_not_reported` (py/tests/test_live_model_effort.py:183) | T1: `web._live_model`/`_live_effort` uçları; `since` okuması taşındı (G3) | KAPSAM DIŞI |
 | `EffortSwitchNoBlindEnter.test_no_dialog_no_enter` (py/tests/test_live_model_effort.py:215) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-pane-effort-yaziyor` | TAŞINDI |
-| `NoteMirrorTests.test_records_the_pid_under_the_spec` (py/tests/test_mirror_marker.py:47) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `NoteMirrorTests.test_same_spec_accumulates_pids` (py/tests/test_mirror_marker.py:52) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `NoteMirrorTests.test_anything_else_leaves_the_dict_alone` (py/tests/test_mirror_marker.py:58) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `FindSessionsMirrorsOutTests.test_viewers_are_collected_in_the_same_pass` (py/tests/test_mirror_marker.py:91) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `FindSessionsMirrorsOutTests.test_viewers_are_not_sessions_and_fleet_result_is_unchanged` (py/tests/test_mirror_marker.py:97) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `FindSessionsMirrorsOutTests.test_default_does_not_collect_anything` (py/tests/test_mirror_marker.py:104) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `FindSessionsMirrorsOutTests.test_a_real_viewer_process_is_seen_by_the_real_scan` (py/tests/test_mirror_marker.py:110) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_open_and_closed_are_stamped_per_remote_row` (py/tests/test_mirror_marker.py:148) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_same_name_on_two_hosts_is_told_apart` (py/tests/test_mirror_marker.py:155) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_match_is_exact_not_a_prefix` (py/tests/test_mirror_marker.py:162) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_cached_rows_are_copied_not_mutated` (py/tests/test_mirror_marker.py:169) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_stale_value_from_upstream_is_overwritten` (py/tests/test_mirror_marker.py:177) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_no_marker_at_all_when_the_state_is_unknown` (py/tests/test_mirror_marker.py:182) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_empty_set_means_known_and_closed` (py/tests/test_mirror_marker.py:187) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_local_closed_and_retired_rows_are_not_stamped` (py/tests/test_mirror_marker.py:192) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_a_dict_works_as_the_container_like_find_sessions_hands_it_over` (py/tests/test_mirror_marker.py:201) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `MergeStatusMarkerTests.test_unpolled_host_adds_no_rows_and_no_crash` (py/tests/test_mirror_marker.py:206) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `StatusPayloadWiringTests.test_remote_rows_carry_the_marker_from_the_fleet_scan` (py/tests/test_mirror_marker.py:243) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `StatusPayloadWiringTests.test_exactly_one_scan_carries_the_collector` (py/tests/test_mirror_marker.py:249) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
-| `StatusPayloadWiringTests.test_a_closed_window_flips_the_marker_on_the_next_tick` (py/tests/test_mirror_marker.py:259) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `NoteMirrorTests.test_records_the_pid_under_the_spec` (py/tests/test_mirror_marker.py:50) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `NoteMirrorTests.test_same_spec_accumulates_pids` (py/tests/test_mirror_marker.py:55) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `NoteMirrorTests.test_anything_else_leaves_the_dict_alone` (py/tests/test_mirror_marker.py:61) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `FindSessionsMirrorsOutTests.test_viewers_are_collected_in_the_same_pass` (py/tests/test_mirror_marker.py:94) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `FindSessionsMirrorsOutTests.test_viewers_are_not_sessions_and_fleet_result_is_unchanged` (py/tests/test_mirror_marker.py:100) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `FindSessionsMirrorsOutTests.test_default_does_not_collect_anything` (py/tests/test_mirror_marker.py:107) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `FindSessionsMirrorsOutTests.test_a_real_viewer_process_is_seen_by_the_real_scan` (py/tests/test_mirror_marker.py:113) | rs/proc: `mirrors.rs`; rs-proc.md test eşlemesi | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_open_and_closed_are_stamped_per_remote_row` (py/tests/test_mirror_marker.py:151) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_same_name_on_two_hosts_is_told_apart` (py/tests/test_mirror_marker.py:158) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_match_is_exact_not_a_prefix` (py/tests/test_mirror_marker.py:165) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_cached_rows_are_copied_not_mutated` (py/tests/test_mirror_marker.py:172) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_stale_value_from_upstream_is_overwritten` (py/tests/test_mirror_marker.py:180) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_no_marker_at_all_when_the_state_is_unknown` (py/tests/test_mirror_marker.py:185) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_empty_set_means_known_and_closed` (py/tests/test_mirror_marker.py:190) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_local_closed_and_retired_rows_are_not_stamped` (py/tests/test_mirror_marker.py:195) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_a_dict_works_as_the_container_like_find_sessions_hands_it_over` (py/tests/test_mirror_marker.py:204) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `MergeStatusMarkerTests.test_unpolled_host_adds_no_rows_and_no_crash` (py/tests/test_mirror_marker.py:209) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `StatusPayloadWiringTests.test_remote_rows_carry_the_marker_from_the_fleet_scan` (py/tests/test_mirror_marker.py:246) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `StatusPayloadWiringTests.test_exactly_one_scan_carries_the_collector` (py/tests/test_mirror_marker.py:252) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
+| `StatusPayloadWiringTests.test_a_closed_window_flips_the_marker_on_the_next_tick` (py/tests/test_mirror_marker.py:262) | T1: panel durum satırı işaretleme (rs-proc.md aynı sahip) | KAPSAM DIŞI |
 | `SpecFromCmdlineTests.test_host_and_name` (py/tests/test_mirror_window.py:33) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
 | `SpecFromCmdlineTests.test_bare_name_is_local` (py/tests/test_mirror_window.py:36) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
 | `SpecFromCmdlineTests.test_flags_before_or_after_the_target` (py/tests/test_mirror_window.py:39) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
@@ -2382,50 +2382,50 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `SpecFromCmdlineTests.test_other_commands_do_not_match` (py/tests/test_mirror_window.py:50) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
 | `SpecFromCmdlineTests.test_watch_without_a_target` (py/tests/test_mirror_window.py:56) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
 | `SpecFromCmdlineTests.test_empty_parts` (py/tests/test_mirror_window.py:60) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `RunningMirrorsTests.test_collects_pids_per_spec` (py/tests/test_mirror_window.py:78) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `RunningMirrorsTests.test_other_users_processes_are_ignored` (py/tests/test_mirror_window.py:83) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `RunningMirrorsTests.test_unreadable_processes_are_skipped` (py/tests/test_mirror_window.py:86) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `RunningMirrorsTests.test_default_uid_is_the_current_user` (py/tests/test_mirror_window.py:89) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `RunningMirrorsTests.test_a_process_vanishing_mid_scan_is_skipped` (py/tests/test_mirror_window.py:94) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `FocusWindowTests.test_uses_exact_title_matching_and_the_given_display` (py/tests/test_mirror_window.py:104) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `FocusWindowTests.test_failures_are_false_not_exceptions` (py/tests/test_mirror_window.py:117) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
-| `OpenMirrorWindowSpawnTests.test_gnome_terminal_argv` (py/tests/test_mirror_window.py:138) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_the_command_runs_cops_watch_against_this_panels_port` (py/tests/test_mirror_window.py:145) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_a_failing_viewer_keeps_the_window_open_and_a_clean_exit_closes_it` (py/tests/test_mirror_window.py:151) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_arguments_are_shell_quoted` (py/tests/test_mirror_window.py:158) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_environment` (py/tests/test_mirror_window.py:162) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
-| `OpenMirrorWindowSpawnTests.test_popen_failure_is_false` (py/tests/test_mirror_window.py:170) | `parity.rs::parity_g9` `ayna-1`; `tests/g9.rs::gnome_terminal_popen_failures` | TAŞINDI |
-| `OpenMirrorWindowBackendTests.test_success_spawns_once_with_the_panels_port` (py/tests/test_mirror_window.py:211) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_local_sessions_are_rejected` (py/tests/test_mirror_window.py:215) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_bad_characters_never_reach_the_command_line` (py/tests/test_mirror_window.py:222) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_unknown_host` (py/tests/test_mirror_window.py:229) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_session_must_be_in_the_hosts_last_known_state` (py/tests/test_mirror_window.py:234) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_a_session_without_tmux_has_no_terminal_to_mirror` (py/tests/test_mirror_window.py:245) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_no_x11_display` (py/tests/test_mirror_window.py:250) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_an_open_mirror_is_focused_not_duplicated` (py/tests/test_mirror_window.py:257) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_force_opens_a_second_one` (py/tests/test_mirror_window.py:263) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_another_sessions_mirror_does_not_count` (py/tests/test_mirror_window.py:269) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_launch_failure` (py/tests/test_mirror_window.py:274) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `OpenMirrorWindowBackendTests.test_messages_follow_the_language` (py/tests/test_mirror_window.py:280) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `MirrorRouteHttpTests.test_route_is_declared_local_only` (py/tests/test_mirror_window.py:323) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `MirrorRouteHttpTests.test_post_with_a_remote_host_field_is_handled_locally` (py/tests/test_mirror_window.py:326) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `MirrorRouteHttpTests.test_force_flag_is_passed_through` (py/tests/test_mirror_window.py:331) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `MirrorRouteHttpTests.test_name_is_required` (py/tests/test_mirror_window.py:335) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `MirrorRouteHttpTests.test_token_is_required` (py/tests/test_mirror_window.py:340) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
-| `LayoutRecognisesMirrorWindowsTests.test_a_mirror_window_is_tiled_once_its_spec_is_known` (py/tests/test_mirror_window.py:355) | T7: pencere yerleşimi | KAPSAM DIŞI |
-| `LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` (py/tests/test_mirror_window.py:360) | T7: pencere yerleşimi | KAPSAM DIŞI |
-| `LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` (py/tests/test_mirror_window.py:365) | T7: pencere yerleşimi | KAPSAM DIŞI |
+| `RunningMirrorsTests.test_collects_pids_per_spec` (py/tests/test_mirror_window.py:81) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `RunningMirrorsTests.test_other_users_processes_are_ignored` (py/tests/test_mirror_window.py:86) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `RunningMirrorsTests.test_unreadable_processes_are_skipped` (py/tests/test_mirror_window.py:89) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `RunningMirrorsTests.test_default_uid_is_the_current_user` (py/tests/test_mirror_window.py:92) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `RunningMirrorsTests.test_a_process_vanishing_mid_scan_is_skipped` (py/tests/test_mirror_window.py:97) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `FocusWindowTests.test_uses_exact_title_matching_and_the_given_display` (py/tests/test_mirror_window.py:107) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `FocusWindowTests.test_failures_are_false_not_exceptions` (py/tests/test_mirror_window.py:120) | rs/proc: `mirrors.rs` | KAPSAM DIŞI |
+| `OpenMirrorWindowSpawnTests.test_gnome_terminal_argv` (py/tests/test_mirror_window.py:141) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
+| `OpenMirrorWindowSpawnTests.test_the_command_runs_cops_watch_against_this_panels_port` (py/tests/test_mirror_window.py:148) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
+| `OpenMirrorWindowSpawnTests.test_a_failing_viewer_keeps_the_window_open_and_a_clean_exit_closes_it` (py/tests/test_mirror_window.py:154) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
+| `OpenMirrorWindowSpawnTests.test_arguments_are_shell_quoted` (py/tests/test_mirror_window.py:161) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
+| `OpenMirrorWindowSpawnTests.test_environment` (py/tests/test_mirror_window.py:165) | `parity.rs::parity_spawn` `ayna` `ayna-tirnak` | TAŞINDI |
+| `OpenMirrorWindowSpawnTests.test_popen_failure_is_false` (py/tests/test_mirror_window.py:173) | `parity.rs::parity_g9` `ayna-1`; `tests/g9.rs::gnome_terminal_popen_failures` | TAŞINDI |
+| `OpenMirrorWindowBackendTests.test_success_spawns_once_with_the_panels_port` (py/tests/test_mirror_window.py:214) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_local_sessions_are_rejected` (py/tests/test_mirror_window.py:218) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_bad_characters_never_reach_the_command_line` (py/tests/test_mirror_window.py:225) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_unknown_host` (py/tests/test_mirror_window.py:232) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_session_must_be_in_the_hosts_last_known_state` (py/tests/test_mirror_window.py:237) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_a_session_without_tmux_has_no_terminal_to_mirror` (py/tests/test_mirror_window.py:248) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_no_x11_display` (py/tests/test_mirror_window.py:253) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_an_open_mirror_is_focused_not_duplicated` (py/tests/test_mirror_window.py:260) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_force_opens_a_second_one` (py/tests/test_mirror_window.py:266) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_another_sessions_mirror_does_not_count` (py/tests/test_mirror_window.py:272) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_launch_failure` (py/tests/test_mirror_window.py:277) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `OpenMirrorWindowBackendTests.test_messages_follow_the_language` (py/tests/test_mirror_window.py:283) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `MirrorRouteHttpTests.test_route_is_declared_local_only` (py/tests/test_mirror_window.py:326) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `MirrorRouteHttpTests.test_post_with_a_remote_host_field_is_handled_locally` (py/tests/test_mirror_window.py:329) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `MirrorRouteHttpTests.test_force_flag_is_passed_through` (py/tests/test_mirror_window.py:334) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `MirrorRouteHttpTests.test_name_is_required` (py/tests/test_mirror_window.py:338) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `MirrorRouteHttpTests.test_token_is_required` (py/tests/test_mirror_window.py:343) | T2: `/api/term/mirror-window` ucu | KAPSAM DIŞI |
+| `LayoutRecognisesMirrorWindowsTests.test_a_mirror_window_is_tiled_once_its_spec_is_known` (py/tests/test_mirror_window.py:358) | T7: pencere yerleşimi | KAPSAM DIŞI |
+| `LayoutRecognisesMirrorWindowsTests.test_without_the_spec_it_is_skipped_as_before` (py/tests/test_mirror_window.py:363) | T7: pencere yerleşimi | KAPSAM DIŞI |
+| `LayoutRecognisesMirrorWindowsTests.test_title_from_the_viewer_survives_list_windows_cleaning` (py/tests/test_mirror_window.py:368) | T7: pencere yerleşimi | KAPSAM DIŞI |
 | `WebNeedsHoCachedTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:64) | T1: web önbelleği; `needs_ho` rs/proc | KAPSAM DIŞI |
 | `WebNeedsHoCachedTests.test_only_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:68) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `web._needs_ho_cached` bağlaması T1 | TAŞINDI |
-| `HandoverBatchTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:89) | T4: devir toplu akışı; `needs_ho` rs/proc | KAPSAM DIŞI |
-| `HandoverBatchTests.test_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:93) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `handover_faz1` bağlaması T4 | TAŞINDI |
+| `HandoverBatchTests.test_the_sessions_own_transcript_is_used_not_the_newest_in_the_cwd` (py/tests/test_needs_ho_transcript.py:90) | T4: devir toplu akışı; `needs_ho` rs/proc | KAPSAM DIŞI |
+| `HandoverBatchTests.test_without_a_sid_it_falls_back_to_the_newest_file` (py/tests/test_needs_ho_transcript.py:94) | `tests/resume.rs::sidless_or_missing_transcript_falls_back_to_the_newest`; `parity.rs::parity_resume` `devam-claude-` (`jsonl`). `handover_faz1` bağlaması T4 | TAŞINDI |
 | `MatchesProcTest.test_repl_is_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:15) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
 | `MatchesProcTest.test_oneshot_and_reviewer_are_not_fleet` (py/tests/test_proc07_io_ucli_not_fleet.py:18) | rs/proc: `providers.rs::detect` | KAPSAM DIŞI |
 | `IoAskLiveNameTest.test_rejects_live_same_name` (py/tests/test_proc07_io_ucli_not_fleet.py:28) | T7: `/api/io` ucu | KAPSAM DIŞI |
 | `IoAskLiveNameTest.test_other_name_goes_through` (py/tests/test_proc07_io_ucli_not_fleet.py:36) | T7: `/api/io` ucu | KAPSAM DIŞI |
-| `NoBlindEnterTest.test_permission_dialog_is_not_confirmed` (py/tests/test_proc08_model_switch_no_blind_enter.py:33) | `tests/tui.rs::permission_dialog_is_never_confirmed_even_with_switch_text_above_it`; parite `g4-pane-model-izin` | TAŞINDI |
-| `NoBlindEnterTest.test_switch_dialog_confirmed_once` (py/tests/test_proc08_model_switch_no_blind_enter.py:36) | `tests/tui.rs::switch_dialog_is_confirmed_once_and_waits_for_a_new_result`; parite `g4-pane-model-model-diyalog` | TAŞINDI |
-| `NoBlindEnterTest.test_applied_without_dialog` (py/tests/test_proc08_model_switch_no_blind_enter.py:39) | `tests/tui.rs::applied_without_dialog_sends_no_key`; parite `g4-pane-model-model-uygulandi` | TAŞINDI |
+| `NoBlindEnterTest.test_permission_dialog_is_not_confirmed` (py/tests/test_proc08_model_switch_no_blind_enter.py:37) | `tests/tui.rs::permission_dialog_is_never_confirmed_even_with_switch_text_above_it`; parite `g4-pane-model-izin` | TAŞINDI |
+| `NoBlindEnterTest.test_switch_dialog_confirmed_once` (py/tests/test_proc08_model_switch_no_blind_enter.py:40) | `tests/tui.rs::switch_dialog_is_confirmed_once_and_waits_for_a_new_result`; parite `g4-pane-model-model-diyalog` | TAŞINDI |
+| `NoBlindEnterTest.test_applied_without_dialog` (py/tests/test_proc08_model_switch_no_blind_enter.py:43) | `tests/tui.rs::applied_without_dialog_sends_no_key`; parite `g4-pane-model-model-uygulandi` | TAŞINDI |
 | `TestBase.test_default_and_unsupported_are_none` (py/tests/test_provider_live_context.py:23) | `parity.rs::parity_live` `varsayilan-` | TAŞINDI |
 | `TestCodex.test_last_token_count_input_tokens` (py/tests/test_provider_live_context.py:43) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
 | `TestCodex.test_no_token_event_or_no_file_is_none` (py/tests/test_provider_live_context.py:47) | `parity.rs::parity_live` `codex-ctx-` | TAŞINDI |
@@ -2440,15 +2440,15 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `DefaultsTest.test_provider_without_model_choices_gives_empty_default` (py/tests/test_routing_guidance.py:38) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
 | `DefaultsTest.test_override_wins_and_invalid_override_falls_back` (py/tests/test_routing_guidance.py:44) | `parity.rs::parity_model_effort` `ayar-` | TAŞINDI |
 | `DefaultsTest.test_other_providers_keep_old_top_level_effort` (py/tests/test_routing_guidance.py:53) | `parity.rs::parity_model_effort` `bos-` `ayar-` | TAŞINDI |
-| `GuidanceTest.test_enabled_by_default_and_bundled_path_used` (py/tests/test_routing_guidance.py:60) | `parity.rs::parity_build` `-perm` | TAŞINDI |
-| `GuidanceTest.test_off_disables_flag` (py/tests/test_routing_guidance.py:65) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
-| `GuidanceTest.test_override_text_is_written_and_used` (py/tests/test_routing_guidance.py:71) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
-| `GuidanceTest.test_guidance_failure_never_breaks_spawn` (py/tests/test_routing_guidance.py:80) | `tests/py_rows.rs::guidance_failure_never_breaks_spawn` (paketli yönerge yok, dizin, UTF-8 değil, boş: bayraksız, yazım/günlük yok) | TAŞINDI |
-| `CodexSyncTest.test_agy_file_is_created_with_only_the_block_and_removed_with_it` (py/tests/test_routing_guidance.py:90) | `parity.rs::parity_g9` `esitle-0-0` (oluşturulur), `esitle-1-3` (kalkınca silinir) | TAŞINDI |
-| `CodexSyncTest.test_existing_agy_file_keeps_user_text` (py/tests/test_routing_guidance.py:98) | `parity.rs::parity_g9` `esitle-0-2` `esitle-1-2`; `parity_misc` `sync1-3-true` | TAŞINDI |
-| `CodexSyncTest.test_missing_file_is_not_created` (py/tests/test_routing_guidance.py:117) | `parity.rs::parity_g9` `esitle-0-0` `esitle-0-2`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
-| `CodexSyncTest.test_write_is_idempotent_keeps_rest_and_backs_up` (py/tests/test_routing_guidance.py:122) | `parity.rs::parity_g9` `esitle-0-1` (yedek), `esitle-yedek-var`; `parity_misc` `sync2-6-false` (değişmedi) | TAŞINDI |
-| `CodexSyncTest.test_text_change_replaces_block_and_off_removes_it` (py/tests/test_routing_guidance.py:131) | `parity.rs::parity_g9` `esitle-2-3`, `esitle-1-3`; `parity_misc` `sync1-3-false` | TAŞINDI |
+| `GuidanceTest.test_enabled_by_default_and_bundled_path_used` (py/tests/test_routing_guidance.py:76) | `parity.rs::parity_build` `-perm` | TAŞINDI |
+| `GuidanceTest.test_off_disables_flag` (py/tests/test_routing_guidance.py:81) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
+| `GuidanceTest.test_override_text_is_written_and_used` (py/tests/test_routing_guidance.py:87) | `parity.rs::parity_build` `claude-routing-` | TAŞINDI |
+| `GuidanceTest.test_guidance_failure_never_breaks_spawn` (py/tests/test_routing_guidance.py:96) | `tests/py_rows.rs::guidance_failure_never_breaks_spawn` (paketli yönerge yok, dizin, UTF-8 değil, boş: bayraksız, yazım/günlük yok) | TAŞINDI |
+| `CodexSyncTest.test_agy_file_is_created_with_only_the_block_and_removed_with_it` (py/tests/test_routing_guidance.py:106) | `parity.rs::parity_g9` `esitle-0-0` (oluşturulur), `esitle-1-3` (kalkınca silinir) | TAŞINDI |
+| `CodexSyncTest.test_existing_agy_file_keeps_user_text` (py/tests/test_routing_guidance.py:114) | `parity.rs::parity_g9` `esitle-0-2` `esitle-1-2`; `parity_misc` `sync1-3-true` | TAŞINDI |
+| `CodexSyncTest.test_missing_file_is_not_created` (py/tests/test_routing_guidance.py:133) | `parity.rs::parity_g9` `esitle-0-0` `esitle-0-2`; `tests/g9.rs::default_sync_paths_are_under_home` | TAŞINDI |
+| `CodexSyncTest.test_write_is_idempotent_keeps_rest_and_backs_up` (py/tests/test_routing_guidance.py:138) | `parity.rs::parity_g9` `esitle-0-1` (yedek), `esitle-yedek-var`; `parity_misc` `sync2-6-false` (değişmedi) | TAŞINDI |
+| `CodexSyncTest.test_text_change_replaces_block_and_off_removes_it` (py/tests/test_routing_guidance.py:147) | `parity.rs::parity_g9` `esitle-2-3`, `esitle-1-3`; `parity_misc` `sync1-3-false` | TAŞINDI |
 | `RustToolchainPickTest.test_single_toolchain_without_env` (py/tests/test_rust_toolchain_pick.py:30) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
 | `RustToolchainPickTest.test_prefix_match` (py/tests/test_rust_toolchain_pick.py:35) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
 | `RustToolchainPickTest.test_mismatch_is_error_not_fallback` (py/tests/test_rust_toolchain_pick.py:40) | `tests/real_fs.rs::rust_toolchain_never_silently_picks_another_one`; `parity.rs::parity_real` `zincir-` | TAŞINDI |
@@ -2472,9 +2472,9 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `GhostDetectTest.test_no_session_or_garbage` (py/tests/test_spawn_ghost_reclaim.py:37) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `GhostDetectTest.test_mixed_panes` (py/tests/test_spawn_ghost_reclaim.py:42) | rs/tmux: `shell.rs::ghost_session` | KAPSAM DIŞI |
 | `ReclaimTest.test_ghost_killed_and_tail_logged` (py/tests/test_spawn_ghost_reclaim.py:57) | `tests/g9.rs::ghost_is_killed_and_only_screen_counts_are_logged` (ekran metni günlükte yok, yalnız sayılar); `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
-| `ReclaimTest.test_shell_provider_untouched` (py/tests/test_spawn_ghost_reclaim.py:63) | `tests/g9.rs::shell_provider_is_untouched`; `parity.rs::parity_g9` `hayalet-shell` | TAŞINDI |
-| `ReclaimTest.test_not_ghost_untouched` (py/tests/test_spawn_ghost_reclaim.py:66) | `tests/g9.rs::non_ghost_and_missing_tmux_are_untouched`; `parity.rs::parity_g9` `hayalet-degil` `hayalet-tmuxsuz` | TAŞINDI |
-| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:69) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen` (Rust'ta tmux sınırı hata yükseltemez; `spawn_ghost_reclaim_error` dalı gereksiz) | TAŞINDI |
+| `ReclaimTest.test_shell_provider_untouched` (py/tests/test_spawn_ghost_reclaim.py:64) | `tests/g9.rs::shell_provider_is_untouched`; `parity.rs::parity_g9` `hayalet-shell` | TAŞINDI |
+| `ReclaimTest.test_not_ghost_untouched` (py/tests/test_spawn_ghost_reclaim.py:67) | `tests/g9.rs::non_ghost_and_missing_tmux_are_untouched`; `parity.rs::parity_g9` `hayalet-degil` `hayalet-tmuxsuz` | TAŞINDI |
+| `ReclaimTest.test_error_never_raises` (py/tests/test_spawn_ghost_reclaim.py:70) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen` (Rust'ta tmux sınırı hata yükseltemez; `spawn_ghost_reclaim_error` dalı gereksiz) | TAŞINDI |
 | `SpawnPriority.test_default_and_exempt_and_off` (py/tests/test_spawn_priority.py:17) | `parity.rs::parity_spawn` `prefix-` | TAŞINDI |
 | `SpawnPriority.test_child_inherits_nice` (py/tests/test_spawn_priority.py:27) | `tests/py_rows.rs::priority_prefix_child_inherits_nice` (gerçek `sh`/`bash`, `/proc/$$/stat` 19. alan) | TAŞINDI |
 | `TestDefaultClaudeMdGolden.test_default_output_is_byte_identical_to_pre_p5` (py/tests/test_steward_brain.py:62) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
@@ -2542,95 +2542,95 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `RulesTest.test_slot_pressure_stops_idle_session` (py/tests/test_steward_core_a.py:361) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `RulesTest.test_answer_delivery_running_busy_or_stopped` (py/tests/test_steward_core_a.py:372) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `RulesTest.test_adhoc_session_answer_goes_to_asking_session_only_if_running` (py/tests/test_steward_core_a.py:382) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `RulesTest.test_instance_sessions_map_to_blueprint_project` (py/tests/test_steward_core_a.py:394) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `RulesTest.test_tour_only_when_brain_idle_and_due` (py/tests/test_steward_core_a.py:400) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `RulesTest.test_phase_model_effort` (py/tests/test_steward_core_a.py:416) | rs/stew: rs-stew.md: prompts::phase_model_effort_vectors | KAPSAM DIŞI |
-| `CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` (py/tests/test_steward_core_a.py:424) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `CardCoreTest.test_raw_card_without_git_or_docs` (py/tests/test_steward_core_a.py:440) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `CardCoreTest.test_parse_card_json_variants` (py/tests/test_steward_core_a.py:452) | rs/stew: rs-stew.md: cards::p_short, cards::p_str_list, cards::parse_card_json_vectors, prompts::p_clip | KAPSAM DIŞI |
-| `CardCoreTest.test_make_card_falls_back_to_raw_fields` (py/tests/test_steward_core_a.py:465) | rs/stew: rs-stew.md: cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines ... | KAPSAM DIŞI |
-| `CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` (py/tests/test_steward_core_a.py:483) | rs/stew: rs-stew.md: cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short ... | KAPSAM DIŞI |
-| `CardCoreTest.test_store_stale_and_listing` (py/tests/test_steward_core_a.py:506) | rs/stew: rs-stew.md: cards::card_one_liner_vectors, cards::card_path_vectors, identity::name_rules_edges ... | KAPSAM DIŞI |
-| `CardCoreTest.test_model_pick_prompt_and_tour_rendering` (py/tests/test_steward_core_a.py:517) | rs/stew: rs-stew.md: cards::build_card_prompt_vectors, cards::p_short, cards::pick_card_model_vectors ... | KAPSAM DIŞI |
-| `OneshotProviderTest.test_claude_argv_shape_and_unsupported_default` (py/tests/test_steward_core_a.py:534) | `parity.rs::parity_build` `oneshot`; varsayılan "desteklenmiyor" dahil | TAŞINDI |
-| `OneshotProviderTest.test_ucli_oneshot_uses_chat_once_without_key_in_argv` (py/tests/test_steward_core_a.py:560) | `parity.rs::parity_oneshot` `ucli-ayar-anahtari`; `tests/real_oneshot.rs::the_configured_key_goes_into_the_child_only_for_the_ucli_oneshot` | TAŞINDI |
-| `OneshotProviderTest.test_oneshot_runs_argv_and_reports_failures` (py/tests/test_steward_core_a.py:579) | `parity.rs::parity_oneshot` `argv-` | TAŞINDI |
-| `SimilarAnswersTest.test_ranks_by_similarity_and_excludes_self` (py/tests/test_steward_core_a.py:604) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` (py/tests/test_steward_core_a.py:613) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` (py/tests/test_steward_core_a.py:622) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` (py/tests/test_steward_core_a.py:636) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` (py/tests/test_steward_core_a.py:663) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` (py/tests/test_steward_core_a.py:673) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` (py/tests/test_steward_core_a.py:685) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainCannotPauseTest.test_brain_cannot_pause_or_done_but_owner_can` (py/tests/test_steward_core_a.py:705) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownPlanTest.test_waits_for_quiet_then_handover_then_stop_then_brain` (py/tests/test_steward_core_a.py:721) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownPlanTest.test_subagent_blocks_and_timeouts_leave_session_open` (py/tests/test_steward_core_a.py:749) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownPlanTest.test_stale_ready_text_before_handover_does_not_count` (py/tests/test_steward_core_a.py:762) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReviewFindings20261029Test.test_job_requests_for_different_files_are_not_merged` (py/tests/test_steward_core_a.py:773) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReviewFindings20261029Test.test_done_and_plan_ready_in_prose_are_ignored` (py/tests/test_steward_core_a.py:779) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
-| `ReviewFindings20261029Test.test_owner_only_false_positives` (py/tests/test_steward_core_a.py:787) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OpenQuestionMergeTest.test_paraphrased_open_question_is_merged` (py/tests/test_steward_core_a.py:798) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OpenQuestionMergeTest.test_other_project_or_topic_not_merged` (py/tests/test_steward_core_a.py:808) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OpenQuestionMergeTest.test_short_distinct_questions_not_merged` (py/tests/test_steward_core_a.py:814) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OpenQuestionMergeTest.test_routine_question_promoted_when_asked_to_owner` (py/tests/test_steward_core_a.py:819) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OpenQuestionMergeTest.test_answered_question_not_merged_into_open_path` (py/tests/test_steward_core_a.py:834) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_topic_tokens` (py/tests/test_steward_core_a.py:851) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_generic_names_alone_do_not_match` (py/tests/test_steward_core_a.py:856) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_open_question_rephrased_is_merged_and_keeps_old_text` (py/tests/test_steward_core_a.py:861) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_hold_answer_suppresses_same_topic` (py/tests/test_steward_core_a.py:873) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_non_hold_answer_lets_new_decision_open` (py/tests/test_steward_core_a.py:880) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_old_open_question_outside_window_not_merged` (py/tests/test_steward_core_a.py:887) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TopicMergeTest.test_other_project_not_merged` (py/tests/test_steward_core_a.py:895) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SalientReaskTest.test_paraphrased_same_topic_is_duplicate` (py/tests/test_steward_core_a.py:905) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SalientReaskTest.test_different_topic_not_duplicate` (py/tests/test_steward_core_a.py:910) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneDeferralTest.test_done_deferred_while_subagent_then_applied` (py/tests/test_steward_core_a.py:916) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` (py/tests/test_steward_core_a.py:927) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneDeferralTest.test_done_immediate_without_subagent` (py/tests/test_steward_core_a.py:938) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `AnswerStartPhaseTest.test_active_phase_starts` (py/tests/test_steward_core_a.py:952) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `AnswerStartPhaseTest.test_owner_answer_reopens_paused_and_done_project` (py/tests/test_steward_core_a.py:955) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `NegativeAnswerTest.test_is_negative_answer` (py/tests/test_steward_core_a.py:963) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `NegativeAnswerTest.test_negative_answer_does_not_reopen` (py/tests/test_steward_core_a.py:975) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `NegativeAnswerTest.test_hold_answers_real_texts_do_not_reopen` (py/tests/test_steward_core_a.py:980) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `NegativeAnswerTest.test_sweep_question_has_options` (py/tests/test_steward_core_a.py:991) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` (py/tests/test_steward_core_a.py:1018) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` (py/tests/test_steward_core_a.py:1027) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` (py/tests/test_steward_core_a.py:1032) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` (py/tests/test_steward_core_a.py:1039) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` (py/tests/test_steward_core_a.py:1063) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` (py/tests/test_steward_core_a.py:1074) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_grace_expiry_still_stops` (py/tests/test_steward_core_a.py:1080) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_small_context_skips_handover` (py/tests/test_steward_core_a.py:1087) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_switch_off_is_old_direct_stop` (py/tests/test_steward_core_a.py:1095) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` (py/tests/test_steward_core_a.py:1101) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` (py/tests/test_steward_core_a.py:1115) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneHandoverTest.test_unanswered_conflict_still_asks` (py/tests/test_steward_core_a.py:1122) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` (py/tests/test_steward_core_a.py:1139) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` (py/tests/test_steward_core_a.py:1147) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` (py/tests/test_steward_core_a.py:1155) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_confirmed_without_evidence_is_not_done` (py/tests/test_steward_core_a.py:1160) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` (py/tests/test_steward_core_a.py:1166) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` (py/tests/test_steward_core_a.py:1178) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` (py/tests/test_steward_core_a.py:1184) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus ... | KAPSAM DIŞI |
-| `DoneConfirmTest.test_subagent_active_defers_confirmed` (py/tests/test_steward_core_a.py:1192) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_open_work_of_counts_local_todo` (py/tests/test_steward_core_a.py:1197) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` (py/tests/test_steward_core_a.py:1212) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
-| `TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` (py/tests/test_steward_core_a.py:1242) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` (py/tests/test_steward_core_a.py:1256) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_stale_undelivered_answer_closed_not_toured` (py/tests/test_steward_core_a.py:1270) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` (py/tests/test_steward_core_a.py:1285) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` (py/tests/test_steward_core_a.py:1299) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` (py/tests/test_steward_core_a.py:1309) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` (py/tests/test_steward_core_a.py:1323) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` (py/tests/test_steward_core_a.py:1339) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` (py/tests/test_steward_core_a.py:1350) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
-| `TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` (py/tests/test_steward_core_a.py:1356) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` (py/tests/test_steward_core_a.py:1364) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` (py/tests/test_steward_core_a.py:1389) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` (py/tests/test_steward_core_a.py:1405) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `MergedAnswersTest.test_answer_waits_while_subagent_active` (py/tests/test_steward_core_a.py:1413) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `MergedAnswersTest.test_subagent_active_for_reads_mtime` (py/tests/test_steward_core_a.py:1421) | `web_steward.subagent_active_for` (T10, rs/stew); crate yalnız transkript yolunu verir: `parity.rs::parity_resume` `devam-claude-` (`jsonl`) | KAPSAM DIŞI |
-| `MergedAnswersTest.test_compact_answer_directive_drops_preamble` (py/tests/test_steward_core_a.py:1438) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
-| `MergedAnswersTest.test_directive_contains_all_answers` (py/tests/test_steward_core_a.py:1454) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
+| `RulesTest.test_instance_sessions_map_to_blueprint_project` (py/tests/test_steward_core_a.py:401) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `RulesTest.test_tour_only_when_brain_idle_and_due` (py/tests/test_steward_core_a.py:407) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `RulesTest.test_phase_model_effort` (py/tests/test_steward_core_a.py:423) | rs/stew: rs-stew.md: prompts::phase_model_effort_vectors | KAPSAM DIŞI |
+| `CardCoreTest.test_build_raw_card_reads_doc_heads_and_git` (py/tests/test_steward_core_a.py:431) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `CardCoreTest.test_raw_card_without_git_or_docs` (py/tests/test_steward_core_a.py:447) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `CardCoreTest.test_parse_card_json_variants` (py/tests/test_steward_core_a.py:459) | rs/stew: rs-stew.md: cards::p_short, cards::p_str_list, cards::parse_card_json_vectors, prompts::p_clip | KAPSAM DIŞI |
+| `CardCoreTest.test_make_card_falls_back_to_raw_fields` (py/tests/test_steward_core_a.py:472) | rs/stew: rs-stew.md: cards::p_goal_from_docs, cards::p_short, cards::p_tbd_lines ... | KAPSAM DIŞI |
+| `CardCoreTest.test_refresh_reason_matrix_and_failure_backoff` (py/tests/test_steward_core_a.py:490) | rs/stew: rs-stew.md: cards::card_path_vectors, cards::card_refresh_reason_vectors, cards::p_short ... | KAPSAM DIŞI |
+| `CardCoreTest.test_store_stale_and_listing` (py/tests/test_steward_core_a.py:513) | rs/stew: rs-stew.md: cards::card_one_liner_vectors, cards::card_path_vectors, identity::name_rules_edges ... | KAPSAM DIŞI |
+| `CardCoreTest.test_model_pick_prompt_and_tour_rendering` (py/tests/test_steward_core_a.py:524) | rs/stew: rs-stew.md: cards::build_card_prompt_vectors, cards::p_short, cards::pick_card_model_vectors ... | KAPSAM DIŞI |
+| `OneshotProviderTest.test_claude_argv_shape_and_unsupported_default` (py/tests/test_steward_core_a.py:541) | `parity.rs::parity_build` `oneshot`; varsayılan "desteklenmiyor" dahil | TAŞINDI |
+| `OneshotProviderTest.test_ucli_oneshot_uses_chat_once_without_key_in_argv` (py/tests/test_steward_core_a.py:567) | `parity.rs::parity_oneshot` `ucli-ayar-anahtari`; `tests/real_oneshot.rs::the_configured_key_goes_into_the_child_only_for_the_ucli_oneshot` | TAŞINDI |
+| `OneshotProviderTest.test_oneshot_runs_argv_and_reports_failures` (py/tests/test_steward_core_a.py:586) | `parity.rs::parity_oneshot` `argv-` | TAŞINDI |
+| `SimilarAnswersTest.test_ranks_by_similarity_and_excludes_self` (py/tests/test_steward_core_a.py:611) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SimilarAnswersTest.test_open_or_unanswered_ignored_and_prompt_renders` (py/tests/test_steward_core_a.py:620) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `RosterGateTest.test_active_phase_needs_roster_but_idea_does_not` (py/tests/test_steward_core_a.py:629) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ScanCacheTest.test_scan_is_cached_inside_a_scope_and_invalidated_by_start` (py/tests/test_steward_core_a.py:643) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `EngineSmallsTest.test_fail_logged_is_pruned_and_thread_safe` (py/tests/test_steward_core_a.py:670) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `EngineSmallsTest.test_shutdown_blockers_survive_corrupt_jobs_file` (py/tests/test_steward_core_a.py:680) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownOnlyLeavesPausedTest.test_done_records_left_paused_and_warns` (py/tests/test_steward_core_a.py:692) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainCannotPauseTest.test_brain_cannot_pause_or_done_but_owner_can` (py/tests/test_steward_core_a.py:712) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownPlanTest.test_waits_for_quiet_then_handover_then_stop_then_brain` (py/tests/test_steward_core_a.py:728) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownPlanTest.test_subagent_blocks_and_timeouts_leave_session_open` (py/tests/test_steward_core_a.py:756) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownPlanTest.test_stale_ready_text_before_handover_does_not_count` (py/tests/test_steward_core_a.py:769) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReviewFindings20261029Test.test_job_requests_for_different_files_are_not_merged` (py/tests/test_steward_core_a.py:780) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReviewFindings20261029Test.test_done_and_plan_ready_in_prose_are_ignored` (py/tests/test_steward_core_a.py:786) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
+| `ReviewFindings20261029Test.test_owner_only_false_positives` (py/tests/test_steward_core_a.py:802) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OpenQuestionMergeTest.test_paraphrased_open_question_is_merged` (py/tests/test_steward_core_a.py:813) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OpenQuestionMergeTest.test_other_project_or_topic_not_merged` (py/tests/test_steward_core_a.py:823) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OpenQuestionMergeTest.test_short_distinct_questions_not_merged` (py/tests/test_steward_core_a.py:829) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OpenQuestionMergeTest.test_routine_question_promoted_when_asked_to_owner` (py/tests/test_steward_core_a.py:834) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OpenQuestionMergeTest.test_answered_question_not_merged_into_open_path` (py/tests/test_steward_core_a.py:849) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_topic_tokens` (py/tests/test_steward_core_a.py:866) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_generic_names_alone_do_not_match` (py/tests/test_steward_core_a.py:871) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_open_question_rephrased_is_merged_and_keeps_old_text` (py/tests/test_steward_core_a.py:876) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_hold_answer_suppresses_same_topic` (py/tests/test_steward_core_a.py:888) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_non_hold_answer_lets_new_decision_open` (py/tests/test_steward_core_a.py:895) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_old_open_question_outside_window_not_merged` (py/tests/test_steward_core_a.py:902) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TopicMergeTest.test_other_project_not_merged` (py/tests/test_steward_core_a.py:910) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SalientReaskTest.test_paraphrased_same_topic_is_duplicate` (py/tests/test_steward_core_a.py:920) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SalientReaskTest.test_different_topic_not_duplicate` (py/tests/test_steward_core_a.py:925) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneDeferralTest.test_done_deferred_while_subagent_then_applied` (py/tests/test_steward_core_a.py:931) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneDeferralTest.test_deferred_done_dropped_when_no_done_tag_added_later` (py/tests/test_steward_core_a.py:942) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneDeferralTest.test_done_immediate_without_subagent` (py/tests/test_steward_core_a.py:953) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `AnswerStartPhaseTest.test_active_phase_starts` (py/tests/test_steward_core_a.py:967) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `AnswerStartPhaseTest.test_owner_answer_reopens_paused_and_done_project` (py/tests/test_steward_core_a.py:970) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `NegativeAnswerTest.test_is_negative_answer` (py/tests/test_steward_core_a.py:978) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `NegativeAnswerTest.test_negative_answer_does_not_reopen` (py/tests/test_steward_core_a.py:990) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `NegativeAnswerTest.test_hold_answers_real_texts_do_not_reopen` (py/tests/test_steward_core_a.py:995) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `NegativeAnswerTest.test_sweep_question_has_options` (py/tests/test_steward_core_a.py:1021) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` (py/tests/test_steward_core_a.py:1048) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` (py/tests/test_steward_core_a.py:1057) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` (py/tests/test_steward_core_a.py:1062) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` (py/tests/test_steward_core_a.py:1069) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` (py/tests/test_steward_core_a.py:1093) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` (py/tests/test_steward_core_a.py:1104) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_grace_expiry_still_stops` (py/tests/test_steward_core_a.py:1110) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_small_context_skips_handover` (py/tests/test_steward_core_a.py:1117) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_switch_off_is_old_direct_stop` (py/tests/test_steward_core_a.py:1125) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` (py/tests/test_steward_core_a.py:1131) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` (py/tests/test_steward_core_a.py:1145) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneHandoverTest.test_unanswered_conflict_still_asks` (py/tests/test_steward_core_a.py:1152) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` (py/tests/test_steward_core_a.py:1169) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` (py/tests/test_steward_core_a.py:1177) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` (py/tests/test_steward_core_a.py:1185) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_confirmed_without_evidence_is_not_done` (py/tests/test_steward_core_a.py:1190) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` (py/tests/test_steward_core_a.py:1196) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` (py/tests/test_steward_core_a.py:1208) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` (py/tests/test_steward_core_a.py:1214) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus ... | KAPSAM DIŞI |
+| `DoneConfirmTest.test_subagent_active_defers_confirmed` (py/tests/test_steward_core_a.py:1222) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_open_work_of_counts_local_todo` (py/tests/test_steward_core_a.py:1227) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` (py/tests/test_steward_core_a.py:1242) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
+| `TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` (py/tests/test_steward_core_a.py:1272) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` (py/tests/test_steward_core_a.py:1286) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_stale_undelivered_answer_closed_not_toured` (py/tests/test_steward_core_a.py:1300) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` (py/tests/test_steward_core_a.py:1315) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` (py/tests/test_steward_core_a.py:1329) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` (py/tests/test_steward_core_a.py:1339) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` (py/tests/test_steward_core_a.py:1353) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` (py/tests/test_steward_core_a.py:1369) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` (py/tests/test_steward_core_a.py:1380) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
+| `TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` (py/tests/test_steward_core_a.py:1386) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` (py/tests/test_steward_core_a.py:1394) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` (py/tests/test_steward_core_a.py:1419) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` (py/tests/test_steward_core_a.py:1435) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `MergedAnswersTest.test_answer_waits_while_subagent_active` (py/tests/test_steward_core_a.py:1443) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `MergedAnswersTest.test_subagent_active_for_reads_mtime` (py/tests/test_steward_core_a.py:1451) | `web_steward.subagent_active_for` (T10, rs/stew); crate yalnız transkript yolunu verir: `parity.rs::parity_resume` `devam-claude-` (`jsonl`) | KAPSAM DIŞI |
+| `MergedAnswersTest.test_compact_answer_directive_drops_preamble` (py/tests/test_steward_core_a.py:1468) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
+| `MergedAnswersTest.test_directive_contains_all_answers` (py/tests/test_steward_core_a.py:1484) | rs/stew: rs-stew.md: identity::p_pp, identity::paths_for_vectors, identity::paths_layout_and_errors ... | KAPSAM DIŞI |
 | `ScanTicksTest.test_leading_code_tick_in_question_kept` (py/tests/test_steward_core_b.py:56) | rs/stew: rs-stew.md: markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
 | `ScanTicksTest.test_wrapped_marker_and_wrapped_body` (py/tests/test_steward_core_b.py:60) | rs/stew: rs-stew.md: markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
 | `PlanMarkersTest.test_records_asks_and_ideas_only` (py/tests/test_steward_core_b.py:71) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
@@ -2652,61 +2652,61 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `OneLiveSessionPerProjectTest.test_brain_respawn_after_handover_is_a_new_conversation` (py/tests/test_steward_core_b.py:346) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `OneLiveSessionPerProjectTest.test_context_tokens_trigger_handover` (py/tests/test_steward_core_b.py:354) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `OneLiveSessionPerProjectTest.test_line_count_is_only_a_fallback_and_ignores_young_sessions` (py/tests/test_steward_core_b.py:369) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` (py/tests/test_steward_core_b.py:392) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
-| `OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` (py/tests/test_steward_core_b.py:401) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` (py/tests/test_steward_core_b.py:417) | T10: `web_steward.context_tokens_for` (model/effort/sıcaklık değil); `rs-stew.md`de EKSİK | KAPSAM DIŞI |
-| `StuckBrainTest.test_status_sentence_is_not_a_routine_question_and_tour_is_capped` (py/tests/test_steward_core_b.py:436) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `StuckBrainTest.test_two_failed_tours_restart_the_brain` (py/tests/test_steward_core_b.py:449) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `StuckBrainTest.test_undeliverable_adhoc_answer_is_given_up` (py/tests/test_steward_core_b.py:464) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DeliveryTargetTest.test_prefers_asking_session_then_main_over_experiment_sessions` (py/tests/test_steward_core_b.py:477) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReaskTest.test_similar_answered_question_is_redelivered_not_reopened` (py/tests/test_steward_core_b.py:500) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReaskTest.test_repeat_cap_other_project_old_and_clarification_open_new` (py/tests/test_steward_core_b.py:510) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReaskTest.test_answered_routine_question_asked_to_owner_opens_new` (py/tests/test_steward_core_b.py:521) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ReaskTest.test_directive_lists_earlier_answers` (py/tests/test_steward_core_b.py:531) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `QuestionOptionsTest.test_options_normalize_resolve_and_key` (py/tests/test_steward_core_b.py:542) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `QuestionOptionsTest.test_notification_text_and_page_html` (py/tests/test_steward_core_b.py:571) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SettingsTest.test_defaults_parse_and_clamp` (py/tests/test_steward_core_b.py:596) | rs/stew: rs-stew.md: identity::name_rules_edges, identity::valid_steward_id_vectors | KAPSAM DIŞI |
-| `McpTest.test_tools_list_and_dispatch_cover_each_other` (py/tests/test_steward_core_b.py:619) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `McpTest.test_tool_calls_hit_expected_endpoints` (py/tests/test_steward_core_b.py:631) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `JobMarkerParseTest.test_hyphenated_kind_and_malformed_body_are_not_dropped` (py/tests/test_steward_core_b.py:653) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus ... | KAPSAM DIŞI |
-| `JobMarkerParseTest.test_prose_mentions_and_placeholders_still_ignored` (py/tests/test_steward_core_b.py:659) | rs/stew: rs-stew.md: markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
-| `QuestionPageHttpTest.test_question_page_round_trip` (py/tests/test_steward_core_b.py:693) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `QuestionPageHttpTest.test_notify_phone_sets_click_header` (py/tests/test_steward_core_b.py:716) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_non_routine_question_is_owner_only` (py/tests/test_steward_core_b.py:743) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_routine_owner_only_topics` (py/tests/test_steward_core_b.py:749) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_commit_push_merge_build_deploy_are_not_owner_only` (py/tests/test_steward_core_b.py:756) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_blocked_marker_goes_to_brain_not_owner` (py/tests/test_steward_core_b.py:763) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_rules_text_no_longer_reserves_commit_push_for_owner` (py/tests/test_steward_core_b.py:768) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_readonly_job_request_not_owner_only` (py/tests/test_steward_core_b.py:773) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_plain_routine_is_answerable` (py/tests/test_steward_core_b.py:784) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_defer_reason` (py/tests/test_steward_core_b.py:788) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `BrainAuthorityAndDeferTest.test_tour_retry_gap_after_deferral` (py/tests/test_steward_core_b.py:794) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourDeliveryTest.test_short_tour_inline` (py/tests/test_steward_core_b.py:799) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `TourDeliveryTest.test_long_tour_goes_to_file_and_old_files_pruned` (py/tests/test_steward_core_b.py:805) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownKeepModeTest.test_keep_does_not_stop` (py/tests/test_steward_core_b.py:831) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownKeepModeTest.test_default_stops` (py/tests/test_steward_core_b.py:836) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownOnlyTest.test_only_closes_selected_project_and_leaves_rest` (py/tests/test_steward_core_b.py:845) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownBlockersTest.test_quiet_session_without_blocker_gets_handover` (py/tests/test_steward_core_b.py:868) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownBlockersTest.test_blocked_session_waits_and_records_reason` (py/tests/test_steward_core_b.py:872) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ShutdownBlockersTest.test_blocked_session_left_open_after_wait_max` (py/tests/test_steward_core_b.py:879) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SmartTickTest.test_count_open_tbd` (py/tests/test_steward_core_b.py:893) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
-| `SmartTickTest.test_routine_question_skips_tour_interval` (py/tests/test_steward_core_b.py:898) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` (py/tests/test_steward_core_b.py:913) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` (py/tests/test_steward_core_b.py:925) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` (py/tests/test_steward_core_b.py:935) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `SmartTickTest.test_idle_session_without_open_todo_not_nudged` (py/tests/test_steward_core_b.py:947) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `AskStatusLineTests.test_status_lines_do_not_open_records` (py/tests/test_steward_core_b.py:960) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `AskBaseTests.test_dated_session_name_collapses_to_base` (py/tests/test_steward_core_b.py:970) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DeferAnswerTests.test_is_defer_answer` (py/tests/test_steward_core_b.py:981) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `DeferAnswerTests.test_digest_hides_deferred_until_expiry` (py/tests/test_steward_core_b.py:987) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `StartDecisionEventTests.test_event_shape` (py/tests/test_steward_core_b.py:995) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ExpiredHandoverNoteTest.test_note_helper` (py/tests/test_steward_core_b.py:1007) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` (py/tests/test_steward_core_b.py:1021) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` (py/tests/test_steward_core_b.py:1026) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `UcliStuckLadderTest.test_shorten_helper` (py/tests/test_steward_core_b.py:1040) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `UcliStuckLadderTest.test_ladder` (py/tests/test_steward_core_b.py:1047) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `RemoteRespawnNoteTest.test_note_reaches_directive` (py/tests/test_steward_core_b.py:1074) | rs/stew: rs-stew.md: identity::paths_for_vectors, identity::paths_layout_and_errors | KAPSAM DIŞI |
-| `RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` (py/tests/test_steward_core_b.py:1079) | rs/stew: rs-stew.md: identity::paths_for_vectors, identity::paths_layout_and_errors | KAPSAM DIŞI |
+| `OneLiveSessionPerProjectTest.test_workspace_claude_md_carries_the_permanent_model_rule` (py/tests/test_steward_core_b.py:403) | rs/stew: rs-stew.md: prompts::build_workspace_claude_md_vectors, prompts::identity_section_vectors | KAPSAM DIŞI |
+| `OneLiveSessionPerProjectTest.test_fable_sessions_use_the_lower_context_threshold` (py/tests/test_steward_core_b.py:412) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `OneLiveSessionPerProjectTest.test_context_tokens_from_transcript_tail` (py/tests/test_steward_core_b.py:428) | T10: `web_steward.context_tokens_for` (model/effort/sıcaklık değil); `rs-stew.md`de EKSİK | KAPSAM DIŞI |
+| `StuckBrainTest.test_status_sentence_is_not_a_routine_question_and_tour_is_capped` (py/tests/test_steward_core_b.py:447) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `StuckBrainTest.test_two_failed_tours_restart_the_brain` (py/tests/test_steward_core_b.py:460) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `StuckBrainTest.test_undeliverable_adhoc_answer_is_given_up` (py/tests/test_steward_core_b.py:475) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DeliveryTargetTest.test_prefers_asking_session_then_main_over_experiment_sessions` (py/tests/test_steward_core_b.py:488) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReaskTest.test_similar_answered_question_is_redelivered_not_reopened` (py/tests/test_steward_core_b.py:511) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReaskTest.test_repeat_cap_other_project_old_and_clarification_open_new` (py/tests/test_steward_core_b.py:521) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReaskTest.test_answered_routine_question_asked_to_owner_opens_new` (py/tests/test_steward_core_b.py:532) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ReaskTest.test_directive_lists_earlier_answers` (py/tests/test_steward_core_b.py:542) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `QuestionOptionsTest.test_options_normalize_resolve_and_key` (py/tests/test_steward_core_b.py:553) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `QuestionOptionsTest.test_notification_text_and_page_html` (py/tests/test_steward_core_b.py:582) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SettingsTest.test_defaults_parse_and_clamp` (py/tests/test_steward_core_b.py:607) | rs/stew: rs-stew.md: identity::name_rules_edges, identity::valid_steward_id_vectors | KAPSAM DIŞI |
+| `McpTest.test_tools_list_and_dispatch_cover_each_other` (py/tests/test_steward_core_b.py:630) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `McpTest.test_tool_calls_hit_expected_endpoints` (py/tests/test_steward_core_b.py:642) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `JobMarkerParseTest.test_hyphenated_kind_and_malformed_body_are_not_dropped` (py/tests/test_steward_core_b.py:664) | rs/stew: rs-stew.md: markers::p_bare_marker, markers::p_unwrap_ticks, markers::scan_markers_corpus ... | KAPSAM DIŞI |
+| `JobMarkerParseTest.test_prose_mentions_and_placeholders_still_ignored` (py/tests/test_steward_core_b.py:670) | rs/stew: rs-stew.md: markers::p_unwrap_ticks, markers::scan_markers_corpus, markers::scan_markers_vectors | KAPSAM DIŞI |
+| `QuestionPageHttpTest.test_question_page_round_trip` (py/tests/test_steward_core_b.py:704) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `QuestionPageHttpTest.test_notify_phone_sets_click_header` (py/tests/test_steward_core_b.py:727) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_non_routine_question_is_owner_only` (py/tests/test_steward_core_b.py:754) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_routine_owner_only_topics` (py/tests/test_steward_core_b.py:760) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_commit_push_merge_build_deploy_are_not_owner_only` (py/tests/test_steward_core_b.py:767) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_blocked_marker_goes_to_brain_not_owner` (py/tests/test_steward_core_b.py:774) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_rules_text_no_longer_reserves_commit_push_for_owner` (py/tests/test_steward_core_b.py:779) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_readonly_job_request_not_owner_only` (py/tests/test_steward_core_b.py:784) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_plain_routine_is_answerable` (py/tests/test_steward_core_b.py:807) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_defer_reason` (py/tests/test_steward_core_b.py:811) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `BrainAuthorityAndDeferTest.test_tour_retry_gap_after_deferral` (py/tests/test_steward_core_b.py:817) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourDeliveryTest.test_short_tour_inline` (py/tests/test_steward_core_b.py:822) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `TourDeliveryTest.test_long_tour_goes_to_file_and_old_files_pruned` (py/tests/test_steward_core_b.py:828) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownKeepModeTest.test_keep_does_not_stop` (py/tests/test_steward_core_b.py:854) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownKeepModeTest.test_default_stops` (py/tests/test_steward_core_b.py:859) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownOnlyTest.test_only_closes_selected_project_and_leaves_rest` (py/tests/test_steward_core_b.py:868) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownBlockersTest.test_quiet_session_without_blocker_gets_handover` (py/tests/test_steward_core_b.py:891) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownBlockersTest.test_blocked_session_waits_and_records_reason` (py/tests/test_steward_core_b.py:895) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ShutdownBlockersTest.test_blocked_session_left_open_after_wait_max` (py/tests/test_steward_core_b.py:902) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SmartTickTest.test_count_open_tbd` (py/tests/test_steward_core_b.py:916) | rs/stew: rs-stew.md: markers::count_open_tbd_edges, markers::count_open_tbd_vectors | KAPSAM DIŞI |
+| `SmartTickTest.test_routine_question_skips_tour_interval` (py/tests/test_steward_core_b.py:921) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SmartTickTest.test_done_confirmed_with_open_tbd_asks_owner` (py/tests/test_steward_core_b.py:936) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SmartTickTest.test_tbd_only_project_not_started_owner_asked_once` (py/tests/test_steward_core_b.py:962) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SmartTickTest.test_brain_stopped_project_not_restarted_by_cadence_until_cooldown` (py/tests/test_steward_core_b.py:972) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `SmartTickTest.test_idle_session_without_open_todo_not_nudged` (py/tests/test_steward_core_b.py:984) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `AskStatusLineTests.test_status_lines_do_not_open_records` (py/tests/test_steward_core_b.py:997) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `AskBaseTests.test_dated_session_name_collapses_to_base` (py/tests/test_steward_core_b.py:1007) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DeferAnswerTests.test_is_defer_answer` (py/tests/test_steward_core_b.py:1018) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `DeferAnswerTests.test_digest_hides_deferred_until_expiry` (py/tests/test_steward_core_b.py:1024) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `StartDecisionEventTests.test_event_shape` (py/tests/test_steward_core_b.py:1032) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ExpiredHandoverNoteTest.test_note_helper` (py/tests/test_steward_core_b.py:1044) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ExpiredHandoverNoteTest.test_expired_without_marker_carries_note` (py/tests/test_steward_core_b.py:1058) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `ExpiredHandoverNoteTest.test_ready_marker_has_no_card_note` (py/tests/test_steward_core_b.py:1063) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `UcliStuckLadderTest.test_shorten_helper` (py/tests/test_steward_core_b.py:1077) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `UcliStuckLadderTest.test_ladder` (py/tests/test_steward_core_b.py:1084) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
+| `RemoteRespawnNoteTest.test_note_reaches_directive` (py/tests/test_steward_core_b.py:1111) | rs/stew: rs-stew.md: identity::paths_for_vectors, identity::paths_layout_and_errors | KAPSAM DIŞI |
+| `RemoteRespawnNoteTest.test_no_note_keeps_empty_directive` (py/tests/test_steward_core_b.py:1116) | rs/stew: rs-stew.md: identity::paths_for_vectors, identity::paths_layout_and_errors | KAPSAM DIŞI |
 | `ContextQuestionTest.test_classifier` (py/tests/test_steward_ctx.py:71) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `ContextQuestionTest.test_low_context_continues_without_handover` (py/tests/test_steward_ctx.py:76) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `ContextQuestionTest.test_high_context_hands_over` (py/tests/test_steward_ctx.py:86) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
@@ -2829,23 +2829,23 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `UcliChatTests.test_missing_file_is_an_empty_history` (py/tests/test_stopped_session_chat.py:277) | `parity.rs::parity_chat` `ucli-dosya-yok` | TAŞINDI |
 | `UcliChatTests.test_stopped_ucli_instance_chat_is_served_through_term_chat` (py/tests/test_stopped_session_chat.py:280) | `web._term_chat` bağlaması (T1); okuyucu `parity_chat` `chat-ucli-` | KAPSAM DIŞI |
 | `RecoverStuckTest.test_uses_parent_aware_kill` (py/tests/test_stuck_kills_parent.py:13) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
-| `RecoverStuckTest.test_unknown_permission_uses_provider_default` (py/tests/test_stuck_kills_parent.py:28) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
-| `RecoverStuckTest.test_dry_run_kills_nothing` (py/tests/test_stuck_kills_parent.py:40) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
-| `RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` (py/tests/test_stuck_kills_parent.py:46) | T4: `stuck.py` kurtarma akışı; `live_or_spawn_*` taşındı (G3) | KAPSAM DIŞI |
+| `RecoverStuckTest.test_unknown_permission_uses_provider_default` (py/tests/test_stuck_kills_parent.py:30) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
+| `RecoverStuckTest.test_dry_run_kills_nothing` (py/tests/test_stuck_kills_parent.py:43) | T4: `stuck.py` kurtarma akışı | KAPSAM DIŞI |
+| `RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` (py/tests/test_stuck_kills_parent.py:49) | T4: `stuck.py` kurtarma akışı; `live_or_spawn_*` taşındı (G3) | KAPSAM DIŞI |
 | `TokenTests.test_concurrent_issue_keeps_file_and_digest_consistent` (py/tests/test_ucli_agents.py:29) | `tests/real_fs.rs::concurrent_issue_keeps_file_and_digest_consistent` | TAŞINDI |
 | `TokenTests.test_issue_writes_0600_file_and_only_hash_in_registry` (py/tests/test_ucli_agents.py:48) | `tests/real_fs.rs::agent_token_is_0600_and_only_its_hash_is_registered` | TAŞINDI |
 | `TokenTests.test_reissue_invalidates_old_token_and_revoke_clears` (py/tests/test_ucli_agents.py:56) | `tests/real_fs.rs::agent_reissue_invalidates_and_revoke_clears` | TAŞINDI |
 | `TokenTests.test_children_get_no_token_and_garbage_rejected` (py/tests/test_ucli_agents.py:65) | `tests/real_fs.rs::agent_children_get_no_token_and_garbage_is_rejected` | TAŞINDI |
-| `TokenTests.test_revoke_unsafe_name_does_not_touch_files` (py/tests/test_ucli_agents.py:71) | `tests/real_fs.rs::agent_children_get_no_token_and_garbage_is_rejected` | TAŞINDI |
-| `ReserveTests.test_limit_two_live_and_names_sequential` (py/tests/test_ucli_agents.py:80) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `ReserveTests.test_taken_names_skipped_and_depth_one` (py/tests/test_ucli_agents.py:91) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `ReserveTests.test_fold_text` (py/tests/test_ucli_agents.py:97) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `SettingsTests.test_defaults` (py/tests/test_ucli_agents.py:108) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `SettingsTests.test_off_and_cost` (py/tests/test_ucli_agents.py:113) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `ProviderSetupTests.test_no_port_or_child_or_off_gives_nothing` (py/tests/test_ucli_agents.py:136) | `parity.rs::parity_ucli` `ajan-port-yok` `ajan-cocuk` `ajan-kapali` | TAŞINDI |
-| `ProviderSetupTests.test_unsupported_binary_gives_nothing` (py/tests/test_ucli_agents.py:145) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
-| `ProviderSetupTests.test_enabled_returns_flag_and_env_without_token_value` (py/tests/test_ucli_agents.py:151) | `parity.rs::parity_ucli` `ajan-acik` `ajan-anahtarli` | TAŞINDI |
-| `ProviderSetupTests.test_build_inner_command_keeps_token_out_of_argv` (py/tests/test_ucli_agents.py:161) | `parity.rs::parity_ucli` `ajan-acik` `ajan-anahtarli` | TAŞINDI |
+| `TokenTests.test_revoke_unsafe_name_does_not_touch_files` (py/tests/test_ucli_agents.py:75) | `tests/real_fs.rs::agent_children_get_no_token_and_garbage_is_rejected` | TAŞINDI |
+| `ReserveTests.test_limit_two_live_and_names_sequential` (py/tests/test_ucli_agents.py:84) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `ReserveTests.test_taken_names_skipped_and_depth_one` (py/tests/test_ucli_agents.py:95) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `ReserveTests.test_fold_text` (py/tests/test_ucli_agents.py:101) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `SettingsTests.test_defaults` (py/tests/test_ucli_agents.py:112) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `SettingsTests.test_off_and_cost` (py/tests/test_ucli_agents.py:117) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `ProviderSetupTests.test_no_port_or_child_or_off_gives_nothing` (py/tests/test_ucli_agents.py:140) | `parity.rs::parity_ucli` `ajan-port-yok` `ajan-cocuk` `ajan-kapali` | TAŞINDI |
+| `ProviderSetupTests.test_unsupported_binary_gives_nothing` (py/tests/test_ucli_agents.py:149) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
+| `ProviderSetupTests.test_enabled_returns_flag_and_env_without_token_value` (py/tests/test_ucli_agents.py:155) | `parity.rs::parity_ucli` `ajan-acik` `ajan-anahtarli` | TAŞINDI |
+| `ProviderSetupTests.test_build_inner_command_keeps_token_out_of_argv` (py/tests/test_ucli_agents.py:165) | `parity.rs::parity_ucli` `ajan-acik` `ajan-anahtarli` | TAŞINDI |
 | `ApprovalExecTest.test_suspended_registered` (py/tests/test_ucli_approval_exec.py:34) | `parity.rs::parity_oneshot` `onay-askida` | TAŞINDI |
 | `ApprovalExecTest.test_75_without_suspended_line_is_error` (py/tests/test_ucli_approval_exec.py:45) | `parity.rs::parity_oneshot` `onay-satirsiz` | TAŞINDI |
 | `ApprovalExecTest.test_bad_run_key` (py/tests/test_ucli_approval_exec.py:49) | `parity.rs::parity_oneshot` `onay-ad` | TAŞINDI |
@@ -2915,17 +2915,17 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `CheckpointFlagTest.test_ambiguous_is_error` (py/tests/test_ucli_checkpoint_flag.py:38) | `parity.rs::parity_ucli` `bayraklar` `bayrak-gecersiz` | TAŞINDI |
 | `CheckpointFlagTest.test_argv_added_once` (py/tests/test_ucli_checkpoint_flag.py:42) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
 | `CheckpointFlagTest.test_unsupported_binary_skipped_not_rejected` (py/tests/test_ucli_checkpoint_flag.py:46) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
-| `Validate.test_off_by_default_and_dropped` (py/tests/test_ucli_checks_opts.py:19) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
-| `Validate.test_restricted_ok_max_defaults_to_mode` (py/tests/test_ucli_checks_opts.py:24) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
-| `Validate.test_errors` (py/tests/test_ucli_checks_opts.py:29) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
-| `Validate.test_full_needs_accept_risk` (py/tests/test_ucli_checks_opts.py:33) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
-| `Registry.test_missing_loose_mode_and_shape` (py/tests/test_ucli_checks_opts.py:55) | `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `Registry.test_symlink_rejected` (py/tests/test_ucli_checks_opts.py:66) | `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
-| `Apply.test_flags_added` (py/tests/test_ucli_checks_opts.py:90) | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
-| `Apply.test_full_adds_accept_risk` (py/tests/test_ucli_checks_opts.py:97) | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
-| `Apply.test_full_refused_when_binary_only_knows_restricted` (py/tests/test_ucli_checks_opts.py:101) | `parity.rs::parity_ucli` `checks-deger-tanimsiz` | TAŞINDI |
-| `Apply.test_unsupported_binary_refused` (py/tests/test_ucli_checks_opts.py:111) | `parity.rs::parity_ucli` `eksik-checks` | TAŞINDI |
-| `Apply.test_needs_state_dir_and_registry` (py/tests/test_ucli_checks_opts.py:115) | `parity.rs::parity_ucli` `checks-statedir-yok` `checks-kayit-hata` | TAŞINDI |
+| `Validate.test_off_by_default_and_dropped` (py/tests/test_ucli_checks_opts.py:21) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
+| `Validate.test_restricted_ok_max_defaults_to_mode` (py/tests/test_ucli_checks_opts.py:26) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
+| `Validate.test_errors` (py/tests/test_ucli_checks_opts.py:31) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
+| `Validate.test_full_needs_accept_risk` (py/tests/test_ucli_checks_opts.py:35) | `parity.rs::parity_ucli` `checks-` | TAŞINDI |
+| `Registry.test_missing_loose_mode_and_shape` (py/tests/test_ucli_checks_opts.py:57) | `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `Registry.test_symlink_rejected` (py/tests/test_ucli_checks_opts.py:68) | `tests/real_fs.rs::checks_registry_rejects_missing_loose_mode_links_and_bad_shape` | TAŞINDI |
+| `Apply.test_flags_added` (py/tests/test_ucli_checks_opts.py:133) | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
+| `Apply.test_full_adds_accept_risk` (py/tests/test_ucli_checks_opts.py:140) | `parity.rs::parity_ucli` `checks-uygula` | TAŞINDI |
+| `Apply.test_full_refused_when_binary_only_knows_restricted` (py/tests/test_ucli_checks_opts.py:144) | `parity.rs::parity_ucli` `checks-deger-tanimsiz` | TAŞINDI |
+| `Apply.test_unsupported_binary_refused` (py/tests/test_ucli_checks_opts.py:154) | `parity.rs::parity_ucli` `eksik-checks` | TAŞINDI |
+| `Apply.test_needs_state_dir_and_registry` (py/tests/test_ucli_checks_opts.py:158) | `parity.rs::parity_ucli` `checks-statedir-yok` `checks-kayit-hata` | TAŞINDI |
 | `RefusalTests.test_cap_refusal_has_code_and_amounts` (py/tests/test_ucli_cost_cap_refusal.py:13) | `real_ledger.rs::a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not` | TAŞINDI |
 | `RefusalTests.test_plain_value_error_has_no_code` (py/tests/test_ucli_cost_cap_refusal.py:18) | `real_ledger.rs::a_cap_refusal_carries_code_and_amounts_and_other_errors_do_not` | TAŞINDI |
 | `ProviderRaisesTests.test_claude_service_flags_raises_over_cap` (py/tests/test_ucli_cost_cap_refusal.py:25) | `real_ledger.rs::a_claude_service_build_is_refused_over_the_cap` | TAŞINDI |
@@ -2938,29 +2938,29 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ReasoningModeTests.test_a_non_dict_ucli_limits_is_tolerated` (py/tests/test_ucli_effort.py:121) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `ReasoningModeTests.test_it_does_not_leak_into_the_numeric_overrides` (py/tests/test_ucli_effort.py:125) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `CatalogTests.test_only_chat_models_are_listed_and_their_capabilities_kept` (py/tests/test_ucli_effort.py:147) | `parity.rs::parity_misc` `live` | TAŞINDI |
-| `CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` (py/tests/test_ucli_effort.py:155) | `parity.rs::parity_model_sources` `src-ucli-akis`; `tests/model_sources.rs::repeated_errors_never_replace_the_last_good_list` | TAŞINDI |
-| `CatalogTests.test_without_a_key_nothing_is_fetched` (py/tests/test_ucli_effort.py:164) | `parity.rs::parity_model_sources` `src-ucli-anahtarsiz`; `tests/model_sources.rs::no_request_without_a_key` | TAŞINDI |
-| `CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` (py/tests/test_ucli_effort.py:170) | `tests/model_sources.rs::model_list_and_effort_gate_share_one_fetch` | TAŞINDI |
-| `ReasoningEffortForTests.test_a_model_that_declares_support_gets_the_level` (py/tests/test_ucli_effort.py:186) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `ReasoningEffortForTests.test_gemma_which_rejects_the_field_gets_nothing` (py/tests/test_ucli_effort.py:190) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `ReasoningEffortForTests.test_an_unknown_model_or_an_empty_catalog_gets_nothing` (py/tests/test_ucli_effort.py:195) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `ReasoningEffortForTests.test_a_malformed_capabilities_entry_is_tolerated` (py/tests/test_ucli_effort.py:200) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `ReasoningEffortForTests.test_an_allowed_values_list_restricts_the_level_unless_aliased` (py/tests/test_ucli_effort.py:208) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
-| `EffortArgsTests.test_a_capable_model_and_a_new_binary_get_the_session_preset` (py/tests/test_ucli_effort.py:219) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `EffortArgsTests.test_off_is_silent_and_sends_nothing` (py/tests/test_ucli_effort.py:225) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
-| `EffortArgsTests.test_a_named_level_overrides_the_preset_but_not_the_model_gate` (py/tests/test_ucli_effort.py:231) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
-| `EffortArgsTests.test_an_old_binary_gets_nothing_and_the_log_says_why` (py/tests/test_ucli_effort.py:237) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
-| `EffortArgsTests.test_a_model_that_rejects_the_field_is_skipped_and_logged` (py/tests/test_ucli_effort.py:243) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `EffortArgsTests.test_no_model_and_a_missing_binary_give_nothing_instead_of_raising` (py/tests/test_ucli_effort.py:249) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `BuildInnerCommandTests.test_the_preset_name_rides_along_as_the_last_flag` (py/tests/test_ucli_effort.py:280) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `BuildInnerCommandTests.test_an_unknown_or_empty_effort_falls_back_to_medium_for_the_flag_too` (py/tests/test_ucli_effort.py:284) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `BuildInnerCommandTests.test_gemma_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:290) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
-| `BuildInnerCommandTests.test_an_old_binary_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:294) | `parity.rs::parity_ucli` `eski-ikili` | TAŞINDI |
-| `BuildInnerCommandTests.test_off_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:298) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
-| `BuildInnerCommandTests.test_the_api_key_wrapper_keeps_the_flag` (py/tests/test_ucli_effort.py:302) | `parity.rs::parity_ucli` `anahtar-yaz` | TAŞINDI |
-| `BuildInnerCommandTests.test_every_effort_preset_still_round_trips_through_the_running_command` (py/tests/test_ucli_effort.py:308) | rs/proc: `extract_info`/`matches_proc` gidiş dönüşü `cops-procscan/src/providers.rs` (`ucli_effort_presets`, `detect`); komut tarafı `parity_ucli` `temel-` | KAPSAM DIŞI |
-| `BuildInnerCommandTests.test_the_command_is_still_recognised_as_a_ucli_process` (py/tests/test_ucli_effort.py:318) | rs/proc: `extract_info`/`matches_proc` gidiş dönüşü `cops-procscan/src/providers.rs` (`ucli_effort_presets`, `detect`); komut tarafı `parity_ucli` `temel-` | KAPSAM DIŞI |
-| `RealBinaryTests.test_the_delivered_binary_knows_the_flag_when_it_is_new_enough` (py/tests/test_ucli_effort.py:325) | rs/prov: gereksiz: teslim edilen gerçek ucli ikilisini sınar | KAPSAM DIŞI |
+| `CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` (py/tests/test_ucli_effort.py:161) | `parity.rs::parity_model_sources` `src-ucli-akis`; `tests/model_sources.rs::repeated_errors_never_replace_the_last_good_list` | TAŞINDI |
+| `CatalogTests.test_without_a_key_nothing_is_fetched` (py/tests/test_ucli_effort.py:170) | `parity.rs::parity_model_sources` `src-ucli-anahtarsiz`; `tests/model_sources.rs::no_request_without_a_key` | TAŞINDI |
+| `CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` (py/tests/test_ucli_effort.py:176) | `tests/model_sources.rs::model_list_and_effort_gate_share_one_fetch` | TAŞINDI |
+| `ReasoningEffortForTests.test_a_model_that_declares_support_gets_the_level` (py/tests/test_ucli_effort.py:192) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `ReasoningEffortForTests.test_gemma_which_rejects_the_field_gets_nothing` (py/tests/test_ucli_effort.py:196) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `ReasoningEffortForTests.test_an_unknown_model_or_an_empty_catalog_gets_nothing` (py/tests/test_ucli_effort.py:201) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `ReasoningEffortForTests.test_a_malformed_capabilities_entry_is_tolerated` (py/tests/test_ucli_effort.py:206) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `ReasoningEffortForTests.test_an_allowed_values_list_restricts_the_level_unless_aliased` (py/tests/test_ucli_effort.py:214) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
+| `EffortArgsTests.test_a_capable_model_and_a_new_binary_get_the_session_preset` (py/tests/test_ucli_effort.py:225) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `EffortArgsTests.test_off_is_silent_and_sends_nothing` (py/tests/test_ucli_effort.py:231) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
+| `EffortArgsTests.test_a_named_level_overrides_the_preset_but_not_the_model_gate` (py/tests/test_ucli_effort.py:237) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
+| `EffortArgsTests.test_an_old_binary_gets_nothing_and_the_log_says_why` (py/tests/test_ucli_effort.py:243) | `parity.rs::parity_ucli` `eksik` | TAŞINDI |
+| `EffortArgsTests.test_a_model_that_rejects_the_field_is_skipped_and_logged` (py/tests/test_ucli_effort.py:249) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `EffortArgsTests.test_no_model_and_a_missing_binary_give_nothing_instead_of_raising` (py/tests/test_ucli_effort.py:255) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `BuildInnerCommandTests.test_the_preset_name_rides_along_as_the_last_flag` (py/tests/test_ucli_effort.py:286) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `BuildInnerCommandTests.test_an_unknown_or_empty_effort_falls_back_to_medium_for_the_flag_too` (py/tests/test_ucli_effort.py:290) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `BuildInnerCommandTests.test_gemma_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:296) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
+| `BuildInnerCommandTests.test_an_old_binary_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:300) | `parity.rs::parity_ucli` `eski-ikili` | TAŞINDI |
+| `BuildInnerCommandTests.test_off_gets_the_command_byte_identical_to_before` (py/tests/test_ucli_effort.py:304) | `parity.rs::parity_ucli` `ayar-reasoning-` | TAŞINDI |
+| `BuildInnerCommandTests.test_the_api_key_wrapper_keeps_the_flag` (py/tests/test_ucli_effort.py:308) | `parity.rs::parity_ucli` `anahtar-yaz` | TAŞINDI |
+| `BuildInnerCommandTests.test_every_effort_preset_still_round_trips_through_the_running_command` (py/tests/test_ucli_effort.py:314) | rs/proc: `extract_info`/`matches_proc` gidiş dönüşü `cops-procscan/src/providers.rs` (`ucli_effort_presets`, `detect`); komut tarafı `parity_ucli` `temel-` | KAPSAM DIŞI |
+| `BuildInnerCommandTests.test_the_command_is_still_recognised_as_a_ucli_process` (py/tests/test_ucli_effort.py:324) | rs/proc: `extract_info`/`matches_proc` gidiş dönüşü `cops-procscan/src/providers.rs` (`ucli_effort_presets`, `detect`); komut tarafı `parity_ucli` `temel-` | KAPSAM DIŞI |
+| `RealBinaryTests.test_the_delivered_binary_knows_the_flag_when_it_is_new_enough` (py/tests/test_ucli_effort.py:331) | rs/prov: gereksiz: teslim edilen gerçek ucli ikilisini sınar | KAPSAM DIŞI |
 | `UcliEndpointTest.test_default_is_evren` (py/tests/test_ucli_endpoint.py:23) | `parity.rs::parity_ucli` `temel-` | TAŞINDI |
 | `UcliEndpointTest.test_custom_valid_endpoint_wins_and_trailing_slash_dropped` (py/tests/test_ucli_endpoint.py:27) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz` ; `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
 | `UcliEndpointTest.test_invalid_endpoint_falls_back_and_empty_clears` (py/tests/test_ucli_endpoint.py:31) | `parity.rs::parity_ucli` `ayar-endpoint` `endpoint-gecersiz` ; `parity.rs::parity_settings_pyfmt` `endpoint` | TAŞINDI |
@@ -3003,8 +3003,8 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `InstructionsFlagsTest.test_unsupported_binary_skips` (py/tests/test_ucli_instructions_flags.py:54) | `parity.rs::parity_ucli` `opts-talimat-desteksiz` (bayrakları tanımayan `--help`), `opts-talimat` | TAŞINDI |
 | `InteractiveArgsTest.test_supported_adds_flag` (py/tests/test_ucli_interactive_flag.py:12) | `parity.rs::parity_ucli` `eksik` `temel-` | TAŞINDI |
 | `InteractiveArgsTest.test_unsupported_skips_and_logs` (py/tests/test_ucli_interactive_flag.py:16) | `parity.rs::parity_ucli` `eksik` `temel-` | TAŞINDI |
-| `UcliKeyPathTest.test_default_and_service` (py/tests/test_ucli_key_path.py:14) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
-| `UcliKeyPathTest.test_callers_share_helper` (py/tests/test_ucli_key_path.py:19) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `UcliKeyPathTest.test_default_and_service` (py/tests/test_ucli_key_path.py:15) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
+| `UcliKeyPathTest.test_callers_share_helper` (py/tests/test_ucli_key_path.py:20) | `parity.rs::parity_ucli` `anahtar-` `hizmet-` | TAŞINDI |
 | `LastExchangePairingTest.test_pending_user_turn_has_empty_assistant` (py/tests/test_ucli_last_exchange_pairing.py:17) | `parity.rs::parity_chat` `ucli-bekleyen` | TAŞINDI |
 | `LastExchangePairingTest.test_answered_turn_pairs_normally` (py/tests/test_ucli_last_exchange_pairing.py:22) | `parity.rs::parity_chat` `ucli-cevapli` | TAŞINDI |
 | `LastExchangePairingTest.test_assistant_only_and_empty` (py/tests/test_ucli_last_exchange_pairing.py:26) | `parity.rs::parity_chat` `ucli-yalniz-asistan` `ucli-satir-bos` `ucli-sid-yok` | TAŞINDI |
@@ -3126,33 +3126,33 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `ValidateTests.test_shells_and_wrappers_rejected` (py/tests/test_ucli_start_opts.py:36) | `parity.rs::parity_ucli` `hizmet-bilinmeyen` `cmds-kabuk` `glob-` `timeout-` | TAŞINDI |
 | `ValidateTests.test_glob_needs_cmds_and_must_be_narrow` (py/tests/test_ucli_start_opts.py:40) | `parity.rs::parity_ucli` `hizmet-bilinmeyen` `cmds-kabuk` `glob-` `timeout-` | TAŞINDI |
 | `ValidateTests.test_timeout_range_and_requires_cmds` (py/tests/test_ucli_start_opts.py:48) | `parity.rs::parity_ucli` `hizmet-bilinmeyen` `cmds-kabuk` `glob-` `timeout-` | TAŞINDI |
-| `BuildTests.test_no_opts_is_identical_to_before` (py/tests/test_ucli_start_opts.py:80) | `parity.rs::parity_ucli` `opts-bos` | TAŞINDI |
-| `BuildTests.test_max_history_kib_is_passed_only_when_the_binary_knows_it_and_the_setting_wins` (py/tests/test_ucli_start_opts.py:84) | `parity.rs::parity_ucli` `ayar-limit` `eksik` | TAŞINDI |
-| `BuildTests.test_claude_service_swaps_endpoint_once_and_key_stays_out_of_argv` (py/tests/test_ucli_start_opts.py:98) | `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
-| `BuildTests.test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap` (py/tests/test_ucli_start_opts.py:116) | `real_ledger.rs::a_claude_service_build_is_refused_over_the_cap`; bayraklar `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
-| `BuildTests.test_groq_service_uses_groq_endpoint_and_key_env` (py/tests/test_ucli_start_opts.py:145) | `parity.rs::parity_ucli` `hizmet-grok`; aynı hizmet yolu | TAŞINDI |
-| `BuildTests.test_service_models_fetches_live_list_with_correct_auth` (py/tests/test_ucli_start_opts.py:153) | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` `src-svc-istek-yok` (URL ve başlık karşılaştırılır) | TAŞINDI |
-| `BuildTests.test_claude_service_skips_instructions_auto_when_file_over_16kib` (py/tests/test_ucli_start_opts.py:177) | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` | TAŞINDI |
-| `BuildTests.test_missing_service_key_refuses_spawn` (py/tests/test_ucli_start_opts.py:202) | `parity.rs::parity_ucli` `hizmet-claude-anahtarsiz` | TAŞINDI |
-| `BuildTests.test_evren_service_changes_nothing` (py/tests/test_ucli_start_opts.py:206) | `parity.rs::parity_ucli` `hizmet-evren` | TAŞINDI |
-| `BuildTests.test_exec_flags_appended_and_gated_by_binary` (py/tests/test_ucli_start_opts.py:209) | `parity.rs::parity_ucli` `toolchain-uygula` `eksik` | TAŞINDI |
-| `BuildTests.test_exec_bind_ro` (py/tests/test_ucli_start_opts.py:219) | `parity.rs::parity_ucli` `bind-temel` ; `parity.rs::parity_misc` `exec` | TAŞINDI |
-| `BuildTests.test_star_expands_on_path_and_write_adds_allow_edit` (py/tests/test_ucli_start_opts.py:227) | `parity.rs::parity_ucli` `exec-write-create` ; `parity.rs::parity_misc` `expand` | TAŞINDI |
-| `BuildTests.test_patterns_validate` (py/tests/test_ucli_start_opts.py:241) | `parity.rs::parity_ucli` `cmds-glob` `cmds-re` | TAŞINDI |
-| `BuildTests.test_star_never_opens_forbidden` (py/tests/test_ucli_start_opts.py:249) | `parity.rs::parity_ucli` `cmds-glob-yasak` ; `parity.rs::parity_misc` `expand` | TAŞINDI |
-| `BuildTests.test_write_permission_default_off` (py/tests/test_ucli_start_opts.py:259) | `parity.rs::parity_ucli` `write` | TAŞINDI |
-| `WiringTests.test_only_ucli_accepts_cli_opts` (py/tests/test_ucli_start_opts.py:267) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
-| `WiringTests.test_spawn_never_passes_cli_opts_to_other_providers` (py/tests/test_ucli_start_opts.py:273) | `parity.rs::parity_spawn` `claude-opts` | TAŞINDI |
-| `WiringTests.test_start_rejects_opts_for_non_ucli_and_invalid_opts` (py/tests/test_ucli_start_opts.py:280) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `WiringTests.test_new_chat_rejects_before_recording_an_instance` (py/tests/test_ucli_start_opts.py:293) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `WiringTests.test_new_chat_lock_timeout_forgets_instance` (py/tests/test_ucli_start_opts.py:328) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `WiringTests.test_new_chat_timeout_after_spawn_keeps_instance` (py/tests/test_ucli_start_opts.py:334) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `WiringTests.test_new_chat_unexpected_error_before_spawn_forgets_instance` (py/tests/test_ucli_start_opts.py:340) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
-| `CostCapTests.test_today_sums_only_today_and_uses_the_task_model` (py/tests/test_ucli_start_opts.py:370) | `real_ledger.rs::today_sums_only_todays_logs_and_uses_the_task_model` | TAŞINDI |
-| `CostCapTests.test_cap_zero_means_off_and_cap_blocks_when_reached` (py/tests/test_ucli_start_opts.py:380) | `real_ledger.rs::cap_zero_is_off_and_a_reached_cap_blocks` | TAŞINDI |
-| `CostCapTests.test_config_parsing_is_safe` (py/tests/test_ucli_start_opts.py:391) | `parity.rs::parity_panel` `cost0`..`cost7` | TAŞINDI |
-| `CostCapTests.test_credit_total_parsing_is_safe` (py/tests/test_ucli_start_opts.py:403) | `parity.rs::parity_panel` `cost8`..`cost15` | TAŞINDI |
-| `TokioThreadsEnvTests.test_env_overrides_limits_tokio_workers` (py/tests/test_ucli_start_opts.py:414) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
+| `BuildTests.test_no_opts_is_identical_to_before` (py/tests/test_ucli_start_opts.py:81) | `parity.rs::parity_ucli` `opts-bos` | TAŞINDI |
+| `BuildTests.test_max_history_kib_is_passed_only_when_the_binary_knows_it_and_the_setting_wins` (py/tests/test_ucli_start_opts.py:85) | `parity.rs::parity_ucli` `ayar-limit` `eksik` | TAŞINDI |
+| `BuildTests.test_claude_service_swaps_endpoint_once_and_key_stays_out_of_argv` (py/tests/test_ucli_start_opts.py:99) | `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
+| `BuildTests.test_claude_service_gets_team_flags_and_is_refused_over_the_daily_cap` (py/tests/test_ucli_start_opts.py:117) | `real_ledger.rs::a_claude_service_build_is_refused_over_the_cap`; bayraklar `parity.rs::parity_ucli` `hizmet-claude` | TAŞINDI |
+| `BuildTests.test_groq_service_uses_groq_endpoint_and_key_env` (py/tests/test_ucli_start_opts.py:146) | `parity.rs::parity_ucli` `hizmet-grok`; aynı hizmet yolu | TAŞINDI |
+| `BuildTests.test_service_models_fetches_live_list_with_correct_auth` (py/tests/test_ucli_start_opts.py:154) | `parity.rs::parity_model_sources` `src-svc-ttl` `src-svc-ayri` `src-svc-istek-yok` (URL ve başlık karşılaştırılır) | TAŞINDI |
+| `BuildTests.test_claude_service_skips_instructions_auto_when_file_over_16kib` (py/tests/test_ucli_start_opts.py:178) | `parity.rs::parity_ucli` `hizmet-claude-buyuk-talimat` | TAŞINDI |
+| `BuildTests.test_missing_service_key_refuses_spawn` (py/tests/test_ucli_start_opts.py:203) | `parity.rs::parity_ucli` `hizmet-claude-anahtarsiz` | TAŞINDI |
+| `BuildTests.test_evren_service_changes_nothing` (py/tests/test_ucli_start_opts.py:207) | `parity.rs::parity_ucli` `hizmet-evren` | TAŞINDI |
+| `BuildTests.test_exec_flags_appended_and_gated_by_binary` (py/tests/test_ucli_start_opts.py:210) | `parity.rs::parity_ucli` `toolchain-uygula` `eksik` | TAŞINDI |
+| `BuildTests.test_exec_bind_ro` (py/tests/test_ucli_start_opts.py:220) | `parity.rs::parity_ucli` `bind-temel` ; `parity.rs::parity_misc` `exec` | TAŞINDI |
+| `BuildTests.test_star_expands_on_path_and_write_adds_allow_edit` (py/tests/test_ucli_start_opts.py:228) | `parity.rs::parity_ucli` `exec-write-create` ; `parity.rs::parity_misc` `expand` | TAŞINDI |
+| `BuildTests.test_patterns_validate` (py/tests/test_ucli_start_opts.py:242) | `parity.rs::parity_ucli` `cmds-glob` `cmds-re` | TAŞINDI |
+| `BuildTests.test_star_never_opens_forbidden` (py/tests/test_ucli_start_opts.py:250) | `parity.rs::parity_ucli` `cmds-glob-yasak` ; `parity.rs::parity_misc` `expand` | TAŞINDI |
+| `BuildTests.test_write_permission_default_off` (py/tests/test_ucli_start_opts.py:260) | `parity.rs::parity_ucli` `write` | TAŞINDI |
+| `WiringTests.test_only_ucli_accepts_cli_opts` (py/tests/test_ucli_start_opts.py:268) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
+| `WiringTests.test_spawn_never_passes_cli_opts_to_other_providers` (py/tests/test_ucli_start_opts.py:274) | `parity.rs::parity_spawn` `claude-opts` | TAŞINDI |
+| `WiringTests.test_start_rejects_opts_for_non_ucli_and_invalid_opts` (py/tests/test_ucli_start_opts.py:281) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
+| `WiringTests.test_new_chat_rejects_before_recording_an_instance` (py/tests/test_ucli_start_opts.py:294) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
+| `WiringTests.test_new_chat_lock_timeout_forgets_instance` (py/tests/test_ucli_start_opts.py:329) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
+| `WiringTests.test_new_chat_timeout_after_spawn_keeps_instance` (py/tests/test_ucli_start_opts.py:335) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
+| `WiringTests.test_new_chat_unexpected_error_before_spawn_forgets_instance` (py/tests/test_ucli_start_opts.py:341) | T4: `/api/start`, `/api/new-chat` akışı | KAPSAM DIŞI |
+| `CostCapTests.test_today_sums_only_today_and_uses_the_task_model` (py/tests/test_ucli_start_opts.py:371) | `real_ledger.rs::today_sums_only_todays_logs_and_uses_the_task_model` | TAŞINDI |
+| `CostCapTests.test_cap_zero_means_off_and_cap_blocks_when_reached` (py/tests/test_ucli_start_opts.py:381) | `real_ledger.rs::cap_zero_is_off_and_a_reached_cap_blocks` | TAŞINDI |
+| `CostCapTests.test_config_parsing_is_safe` (py/tests/test_ucli_start_opts.py:392) | `parity.rs::parity_panel` `cost0`..`cost7` | TAŞINDI |
+| `CostCapTests.test_credit_total_parsing_is_safe` (py/tests/test_ucli_start_opts.py:404) | `parity.rs::parity_panel` `cost8`..`cost15` | TAŞINDI |
+| `TokioThreadsEnvTests.test_env_overrides_limits_tokio_workers` (py/tests/test_ucli_start_opts.py:415) | `parity.rs::parity_model_effort` `bos-` | TAŞINDI |
 | `TestSetting.test_default_off_and_words` (py/tests/test_ucli_state_dir.py:42) | `parity.rs::parity_settings_pyfmt` `limitler` | TAŞINDI |
 | `TestChatOnce.test_state_dir_passed_only_when_on_supported_and_session` (py/tests/test_ucli_state_dir.py:67) | `parity.rs::parity_oneshot` `durum-dizini-` | TAŞINDI |
 | `TestPaths.test_dir_is_per_root_and_stable_and_outside_the_repo` (py/tests/test_ucli_state_dir.py:79) | `parity.rs::parity_misc` `ucli-misc` | TAŞINDI |
@@ -3309,18 +3309,18 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `TestBodyless.test_failed_run_with_junk_body_is_error` (py/tests/test_web_review_runner.py:551) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestBodyless.test_successful_exit_with_junk_body_is_error` (py/tests/test_web_review_runner.py:555) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestBodyless.test_report_bodyless_rule` (py/tests/test_web_review_runner.py:559) | rs/rev: `cops-review-core` parite (rs-rev.md) | KAPSAM DIŞI |
-| `TestRecover.test_recover_on_start` (py/tests/test_web_review_runner.py:570) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestRecover.test_recover_on_start_salvages_draft_report` (py/tests/test_web_review_runner.py:578) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestRecover.test_recover_on_start_salvages_report_from_io_log` (py/tests/test_web_review_runner.py:590) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` (py/tests/test_web_review_runner.py:608) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_findings_are_saved_before_pair_turns_done` (py/tests/test_web_review_runner.py:647) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_detached_run_writes_files_and_finishes` (py/tests/test_web_review_runner.py:664) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_restart_adopts_live_run_and_finishes_it` (py/tests/test_web_review_runner.py:689) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_run_finished_while_service_down_is_processed` (py/tests/test_web_review_runner.py:704) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_pid_reuse_is_not_adopted_as_alive` (py/tests/test_web_review_runner.py:712) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_adopt_keeps_pre_restart_io_log` (py/tests/test_web_review_runner.py:717) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_adopt_failure_marks_partial_not_stuck_running` (py/tests/test_web_review_runner.py:728) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
-| `TestDetached.test_without_cfg_old_behavior_partial` (py/tests/test_web_review_runner.py:739) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestRecover.test_recover_on_start` (py/tests/test_web_review_runner.py:647) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestRecover.test_recover_on_start_salvages_draft_report` (py/tests/test_web_review_runner.py:655) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestRecover.test_recover_on_start_salvages_report_from_io_log` (py/tests/test_web_review_runner.py:667) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestRecover.test_recover_on_start_no_report_head_keeps_file_empty` (py/tests/test_web_review_runner.py:685) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_findings_are_saved_before_pair_turns_done` (py/tests/test_web_review_runner.py:724) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_detached_run_writes_files_and_finishes` (py/tests/test_web_review_runner.py:741) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_restart_adopts_live_run_and_finishes_it` (py/tests/test_web_review_runner.py:766) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_run_finished_while_service_down_is_processed` (py/tests/test_web_review_runner.py:781) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_pid_reuse_is_not_adopted_as_alive` (py/tests/test_web_review_runner.py:789) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_adopt_keeps_pre_restart_io_log` (py/tests/test_web_review_runner.py:794) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_adopt_failure_marks_partial_not_stuck_running` (py/tests/test_web_review_runner.py:805) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
+| `TestDetached.test_without_cfg_old_behavior_partial` (py/tests/test_web_review_runner.py:816) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 
 ### İlk aday listesinde olmayan test dosyaları (kapsam ya da kullanılan dış adları sınıyor)
 
@@ -3372,12 +3372,12 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `EnsureRunningHoOnOpenTest.test_lacking_ho_resumes_then_hands_over` (py/tests/test_steward_ho_on_open.py:102) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `EnsureRunningHoOnOpenTest.test_clean_open_no_handover` (py/tests/test_steward_ho_on_open.py:110) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
 | `EnsureRunningHoOnOpenTest.test_handover_failure_no_pending` (py/tests/test_steward_ho_on_open.py:116) | rs/stew: rs-stew.md satırı var, orada henüz EKSİK | KAPSAM DIŞI |
-| `MainSessionModel.test_registered_fable_becomes_sonnet_medium` (py/tests/test_steward_main_model.py:13) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
-| `MainSessionModel.test_opus_and_empty_on_claude` (py/tests/test_steward_main_model.py:16) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
-| `MainSessionModel.test_non_claude_cli_untouched` (py/tests/test_steward_main_model.py:20) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
-| `MainSessionModel.test_remote_unknown_cli_only_claude_models` (py/tests/test_steward_main_model.py:24) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
-| `MainSessionModel.test_non_claude_model_on_claude_cli_untouched` (py/tests/test_steward_main_model.py:29) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
-| `MainSessionModel.test_no_sonnet_known_is_noop` (py/tests/test_steward_main_model.py:32) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_registered_fable_becomes_sonnet_medium` (py/tests/test_steward_main_model.py:20) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_opus_and_empty_on_claude` (py/tests/test_steward_main_model.py:23) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_non_claude_cli_untouched` (py/tests/test_steward_main_model.py:27) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_remote_unknown_cli_only_claude_models` (py/tests/test_steward_main_model.py:31) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_non_claude_model_on_claude_cli_untouched` (py/tests/test_steward_main_model.py:36) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
+| `MainSessionModel.test_no_sonnet_known_is_noop` (py/tests/test_steward_main_model.py:39) | `parity.rs::parity_spawn` `ana-oturum` | TAŞINDI |
 | `PreviewOnlyTest.test_preview_does_not_issue_token` (py/tests/test_ucli_agents_preview.py:12) | `tests/real_fs.rs::a_dry_run_build_issues_no_token_and_writes_nothing` | TAŞINDI |
 | `ApprovalTest.test_register_dirs_private_and_state` (py/tests/test_ucli_approval.py:30) | `parity.rs::parity_oneshot` `kayit-akis` (izinler ağaç görüntüsünde) | TAŞINDI |
 | `ApprovalTest.test_bad_run_key` (py/tests/test_ucli_approval.py:40) | `approval::tests::names_are_full_matches`; `parity.rs::parity_oneshot` `kayit-akis` | TAŞINDI |
@@ -3418,11 +3418,11 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `RateTest.test_corrupt_lines_are_skipped` (py/tests/test_ucli_cost_rate.py:40) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
 | `RateTest.test_missing_dir_and_bad_window` (py/tests/test_ucli_cost_rate.py:47) | `real_ledger.rs::the_rate_scales_with_the_window_and_skips_corrupt_lines_and_bad_windows` | TAŞINDI |
 | `ReleaseOnFailedStart.test_release_returns_the_reserved_share_immediately` (py/tests/test_ucli_cost_release.py:12) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
-| `ReserveTests.test_two_sessions_cap_two` (py/tests/test_ucli_cost_reserve.py:25) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
-| `ReserveTests.test_same_name_replaces` (py/tests/test_ucli_cost_reserve.py:32) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
-| `ReserveTests.test_release_frees_slot` (py/tests/test_ucli_cost_reserve.py:38) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
-| `ReserveTests.test_ttl_expiry` (py/tests/test_ucli_cost_reserve.py:46) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
-| `ReserveTests.test_no_cap_keeps_nothing` (py/tests/test_ucli_cost_reserve.py:51) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_two_sessions_cap_two` (py/tests/test_ucli_cost_reserve.py:28) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_same_name_replaces` (py/tests/test_ucli_cost_reserve.py:35) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_release_frees_slot` (py/tests/test_ucli_cost_reserve.py:41) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_ttl_expiry` (py/tests/test_ucli_cost_reserve.py:49) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
+| `ReserveTests.test_no_cap_keeps_nothing` (py/tests/test_ucli_cost_reserve.py:54) | `real_ledger.rs::reservations_share_the_cap_replace_release_and_expire` | TAŞINDI |
 | `Compute.test_rss_io_children_cpu` (py/tests/test_ucli_metrics.py:44) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
 | `Compute.test_stat_comm_with_parens` (py/tests/test_ucli_metrics.py:67) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
 | `Compute.test_disk_limits` (py/tests/test_ucli_metrics.py:70) | T7: metrik örnekleyici, depo ve uçlar | KAPSAM DIŞI |
@@ -3456,22 +3456,22 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `StartTests.test_third_live_child_refused` (py/tests/test_web_agents.py:128) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `StartTests.test_edit_needs_allow_edit_parent` (py/tests/test_web_agents.py:135) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `StartTests.test_validation` (py/tests/test_web_agents.py:144) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `StartTests.test_child_cannot_start_and_parent_must_run` (py/tests/test_web_agents.py:150) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `StartTests.test_human_needs_parent` (py/tests/test_web_agents.py:157) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `StartTests.test_start_failure_releases_and_forgets` (py/tests/test_web_agents.py:161) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `StartTests.test_task_not_delivered_stops_child` (py/tests/test_web_agents.py:169) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `StartTests.test_disabled` (py/tests/test_web_agents.py:175) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_models` (py/tests/test_web_agents.py:189) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_status_states` (py/tests/test_web_agents.py:193) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_waiting_input_when_child_has_pending_owner_question` (py/tests/test_web_agents.py:205) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_result_is_last_assistant_after_last_user` (py/tests/test_web_agents.py:216) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_result_readable_after_stop` (py/tests/test_web_agents.py:226) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_other_parent_cannot_see_or_touch` (py/tests/test_web_agents.py:232) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `QueryTests.test_send_folds_and_refuses_stopped` (py/tests/test_web_agents.py:240) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `LifecycleTests.test_parent_closed_stops_children_and_revokes` (py/tests/test_web_agents.py:249) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `LifecycleTests.test_reap_debounces_then_closes_orphans` (py/tests/test_web_agents.py:259) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `LifecycleTests.test_reap_keeps_children_when_discovery_fails` (py/tests/test_web_agents.py:267) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
-| `LifecycleTests.test_reap_enforces_cost_cap` (py/tests/test_web_agents.py:274) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_child_cannot_start_and_parent_must_run` (py/tests/test_web_agents.py:185) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_human_needs_parent` (py/tests/test_web_agents.py:192) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_start_failure_releases_and_forgets` (py/tests/test_web_agents.py:196) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_task_not_delivered_stops_child` (py/tests/test_web_agents.py:204) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `StartTests.test_disabled` (py/tests/test_web_agents.py:210) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_models` (py/tests/test_web_agents.py:224) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_status_states` (py/tests/test_web_agents.py:228) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_waiting_input_when_child_has_pending_owner_question` (py/tests/test_web_agents.py:240) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_result_is_last_assistant_after_last_user` (py/tests/test_web_agents.py:251) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_result_readable_after_stop` (py/tests/test_web_agents.py:261) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_other_parent_cannot_see_or_touch` (py/tests/test_web_agents.py:267) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `QueryTests.test_send_folds_and_refuses_stopped` (py/tests/test_web_agents.py:275) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `LifecycleTests.test_parent_closed_stops_children_and_revokes` (py/tests/test_web_agents.py:284) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `LifecycleTests.test_reap_debounces_then_closes_orphans` (py/tests/test_web_agents.py:294) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `LifecycleTests.test_reap_keeps_children_when_discovery_fails` (py/tests/test_web_agents.py:302) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
+| `LifecycleTests.test_reap_enforces_cost_cap` (py/tests/test_web_agents.py:309) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `CallerTests.test_agent_token_maps_to_parent` (py/tests/test_web_agents_glue.py:31) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `CallerTests.test_panel_token_is_human` (py/tests/test_web_agents_glue.py:34) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
 | `CallerTests.test_bad_or_missing_token_rejected` (py/tests/test_web_agents_glue.py:37) | T7: alt ajan uçları (`web_agents`) | KAPSAM DIŞI |
@@ -3500,8 +3500,8 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `DryRunPureTest.test_ucli_unsafe_name_gets_no_agent_flags_in_either_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry-1` | TAŞINDI |
 | `DryRunPureTest.test_ucli_claude_service_with_ask_dir` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-hizmet-` | TAŞINDI |
 | `DryRunPureTest.test_ucli_removed_key_is_not_deleted_by_dry_run` (py/tests/test_spawn_dry_run_pure.py) | `parity.rs::parity_spawn` `yan-ucli-dry` | TAŞINDI |
-| `DismissStrayDialogTest.test_failed_down_sends_no_enter` (py/tests/test_rsprov_g4_dismiss.py:32) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-tus-basarisiz` | TAŞINDI |
-| `DismissStrayDialogTest.test_successful_down_is_followed_by_enter` (py/tests/test_rsprov_g4_dismiss.py:35) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-model-diyalog` | TAŞINDI |
+| `DismissStrayDialogTest.test_failed_down_sends_no_enter` (py/tests/test_rsprov_g4_dismiss.py:40) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-tus-basarisiz` | TAŞINDI |
+| `DismissStrayDialogTest.test_successful_down_is_followed_by_enter` (py/tests/test_rsprov_g4_dismiss.py:43) | `tests/tui.rs::no_enter_unless_the_cursor_is_seen_on_no`; parite `g4-pane-dialog-model-diyalog` | TAŞINDI |
 | `StaleResultText.test_old_marker_does_not_end_the_wait_and_the_late_dialog_is_confirmed` (py/tests/test_tbd399_live_switch.py:88) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
 | `StaleResultText.test_old_effort_marker_alone_is_unconfirmed` (py/tests/test_tbd399_live_switch.py:95) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
 | `StaleResultText.test_new_marker_is_done` (py/tests/test_tbd399_live_switch.py:101) | `tests/tui.rs::an_old_result_line_does_not_count`; parite `g4-ekran-` | TAŞINDI |
@@ -3559,10 +3559,10 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 | `BrokenBackupLinkTest.test_link_to_an_existing_file_still_counts_as_a_backup` (py/tests/test_rsprov_g9_fixes.py:66) | `parity.rs::parity_g9` `esitle-bagli-yedek` | TAŞINDI |
 | `GhostScreenNotLoggedTest.test_only_counts_reach_the_log` (py/tests/test_rsprov_g9_fixes.py:90) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen`; `parity.rs::parity_g9` `hayalet-` | TAŞINDI |
 | `GhostScreenNotLoggedTest.test_unreadable_screen_counts_zero` (py/tests/test_rsprov_g9_fixes.py:96) | `tests/g9.rs::reclaim_never_panics_and_never_logs_the_screen`; `parity.rs::parity_g9` `hayalet-0` | TAŞINDI |
-| `HiddenWithoutTmuxTest.test_is_logged_and_nothing_is_opened` (py/tests/test_rsprov_g9_fixes.py:124) | `parity.rs::parity_g9` `{cli}-gizli-tmuxsuz` | TAŞINDI |
-| `HiddenWithoutTmuxTest.test_hidden_with_tmux_is_unchanged` (py/tests/test_rsprov_g9_fixes.py:129) | `parity.rs::parity_g9` `{cli}-gizli` | TAŞINDI |
-| `HiddenWithoutTmuxTest.test_missing_terminal_keeps_its_single_event` (py/tests/test_rsprov_g9_fixes.py:134) | `parity.rs::parity_g9` `{cli}-gtsiz-tmuxsuz` | TAŞINDI |
-| `WatchdogValueErrorTest.test_is_logged_without_the_message_and_ends_the_watchdog` (py/tests/test_rsprov_g9_fixes.py:144) | `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it`; `parity.rs::parity_g9` `bekci-valueerror` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_is_logged_and_nothing_is_opened` (py/tests/test_rsprov_g9_fixes.py:125) | `parity.rs::parity_g9` `{cli}-gizli-tmuxsuz` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_hidden_with_tmux_is_unchanged` (py/tests/test_rsprov_g9_fixes.py:130) | `parity.rs::parity_g9` `{cli}-gizli` | TAŞINDI |
+| `HiddenWithoutTmuxTest.test_missing_terminal_keeps_its_single_event` (py/tests/test_rsprov_g9_fixes.py:135) | `parity.rs::parity_g9` `{cli}-gtsiz-tmuxsuz` | TAŞINDI |
+| `WatchdogValueErrorTest.test_is_logged_without_the_message_and_ends_the_watchdog` (py/tests/test_rsprov_g9_fixes.py:162) | `tests/g9.rs::watchdog_failed_relaunch_is_logged_and_a_value_error_ends_it`; `parity.rs::parity_g9` `bekci-valueerror` | TAŞINDI |
 | `Index.test_unrecognised_record_is_not_replaced` (py/tests/test_rsprov_g10_approval.py:113) | `parity.rs::parity_oneshot` `onay-defter-taninmayan` `durumsuz` | TAŞINDI |
 | `Index.test_chat_once_refuses_live_key_before_spawn` (py/tests/test_rsprov_g10_approval.py:119) | `tests/real_oneshot.rs::a_live_run_key_is_refused_before_the_binary_starts` | TAŞINDI |
 | `Dirs.test_symlinked_run_dir_or_sub_dir_refused` (py/tests/test_rsprov_g10_approval.py:134) | `parity.rs::parity_oneshot` `kayit-baglanti` `onay-kosu-baglanti` | TAŞINDI |
@@ -3720,13 +3720,13 @@ Güncel sayım (27 Kas): 1554 satır: TAŞINDI 753, TAŞINDI-TESTSİZ 0, KAPSAM 
 
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
 |---|---|---|
-| `StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` (py/tests/test_bg_work.py:105) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` (py/tests/test_bg_work.py:110) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` (py/tests/test_bg_work.py:115) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` (py/tests/test_bg_work.py:121) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_stopped_task_is_not_pending` (py/tests/test_bg_work.py:118) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_failed_stop_or_other_task_stays_pending` (py/tests/test_bg_work.py:123) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_notification_delivered_mid_turn` (py/tests/test_bg_work.py:128) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `StoppedAndMidTurnNotifications.test_quoted_notification_in_queued_user_text_does_not_count` (py/tests/test_bg_work.py:134) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `RulesTest.test_adhoc_session_answer_waits_for_running_subagent` (py/tests/test_steward_core_a.py:394) | rs/stew: rs-stew.md eşleme satırı (`tick/slots.rs`) | KAPSAM DIŞI |
 | `ReviewFindings20261029Test.test_owner_only_bare_number_after_token_stays_owner` (py/tests/test_steward_core_a.py:794) | rs/stew: rs-stew.md: `pytests::owner_only_bare_number_after_token_stays_owner` | KAPSAM DIŞI |
-| `SmartTickTest.test_tbd_only_question_counts_once` (py/tests/test_steward_core_b.py:925) | rs/stew: rs-stew.md eşleme satırı | KAPSAM DIŞI |
+| `SmartTickTest.test_tbd_only_question_counts_once` (py/tests/test_steward_core_b.py:948) | rs/stew: rs-stew.md eşleme satırı | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_provider_errors_write_no_lesson` (py/tests/test_web_review_runner.py:593) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_other_failures_still_write_lesson` (py/tests/test_web_review_runner.py:602) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
 | `TestProviderErrorNoLesson.test_model_quoting_provider_error_in_long_stderr_still_writes_lesson` (py/tests/test_web_review_runner.py:608) | T8: reviewer koşucusu (`web_review`) | KAPSAM DIŞI |
@@ -3774,18 +3774,18 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `SecretEnvGoesToAFileTest.test_secret_names_leave_the_command_line_and_reach_the_child` (py/tests/test_rsprov_s4_secret_env.py:90) | `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv`; `parity.rs::parity_spawn` `-sir-hidden` | TAŞINDI |
 | `SecretEnvGoesToAFileTest.test_provider_env_is_split_the_same_way` (py/tests/test_rsprov_s4_secret_env.py:113) | `parity.rs::parity_spawn` `-sir-` (sağlayıcı ve kanca ortamı aynı birleşik listeden ayrılır: `spawn.rs::plan_inner`) | TAŞINDI |
 | `SecretEnvGoesToAFileTest.test_only_the_three_suffixes_count` (py/tests/test_rsprov_s4_secret_env.py:121) | `parity.rs::parity_spawn` `-sir-` (`TOKENS`, `KEY_DIR`, `PASSWORD` komutta); `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv` | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_without_secret_names_the_command_is_unchanged_and_nothing_is_written` (py/tests/test_rsprov_s4_secret_env.py:129) | `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv`; `parity.rs::parity_spawn` mevcut vakalar | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_dry_run_writes_nothing_and_masks` (py/tests/test_rsprov_s4_secret_env.py:135) | `parity.rs::parity_spawn` `-sir-dry`; `parity_g9` `sir-kuru` | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_concurrent_spawns_get_separate_files` (py/tests/test_rsprov_s4_secret_env.py:144) | `tests/secrets_argv.rs::{spawn_env_tokens_are_random_hex, spawn_env_file_fails_closed_and_never_overwrites}` (ezmeme) | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_window_and_watchdog_paths_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:151) | `parity.rs::parity_spawn` `-sir-gt` `-sir-gt_tmux`; `parity_g9` `sir-pencere` | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_logs_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:164) | `parity.rs::parity_g9` `sir-` (günlükler eşit); `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv` | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_stale_files_are_pruned_fresh_ones_kept` (py/tests/test_rsprov_s4_secret_env.py:169) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
-| `SecretEnvGoesToAFileTest.test_a_wide_own_directory_is_narrowed` (py/tests/test_rsprov_s4_secret_env.py:185) | `parity.rs::parity_g9` `sir-dizin-genis`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
-| `FailClosedTest.test_symlinked_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:206) | `parity.rs::parity_g9` `sir-dizin-bag`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
-| `FailClosedTest.test_directory_owned_by_someone_else_is_refused` (py/tests/test_rsprov_s4_secret_env.py:213) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (`write_spawn_env_as`) | TAŞINDI |
-| `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
-| `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
-| `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_without_secret_names_the_command_is_unchanged_and_nothing_is_written` (py/tests/test_rsprov_s4_secret_env.py:163) | `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv`; `parity.rs::parity_spawn` mevcut vakalar | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_dry_run_writes_nothing_and_masks` (py/tests/test_rsprov_s4_secret_env.py:169) | `parity.rs::parity_spawn` `-sir-dry`; `parity_g9` `sir-kuru` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_concurrent_spawns_get_separate_files` (py/tests/test_rsprov_s4_secret_env.py:178) | `tests/secrets_argv.rs::{spawn_env_tokens_are_random_hex, spawn_env_file_fails_closed_and_never_overwrites}` (ezmeme) | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_window_and_watchdog_paths_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:185) | `parity.rs::parity_spawn` `-sir-gt` `-sir-gt_tmux`; `parity_g9` `sir-pencere` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_logs_carry_no_secret` (py/tests/test_rsprov_s4_secret_env.py:198) | `parity.rs::parity_g9` `sir-` (günlükler eşit); `tests/secrets_argv.rs::spawn_secret_env_goes_to_a_private_file_not_argv` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_stale_files_are_pruned_fresh_ones_kept` (py/tests/test_rsprov_s4_secret_env.py:203) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `SecretEnvGoesToAFileTest.test_a_wide_own_directory_is_narrowed` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-genis`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `FailClosedTest.test_symlinked_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:240) | `parity.rs::parity_g9` `sir-dizin-bag`; `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` | TAŞINDI |
+| `FailClosedTest.test_directory_owned_by_someone_else_is_refused` (py/tests/test_rsprov_s4_secret_env.py:247) | `tests/secrets_argv.rs::spawn_env_file_fails_closed_and_never_overwrites` (`write_spawn_env_as`) | TAŞINDI |
+| `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:253) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
+| `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:258) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
+| `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:266) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
 | `LoadsTest.test_depth_limit_is_rusts` (py/tests/test_rsprov_json_bounds.py) | `pyjson.rs::MAX_DEPTH`; `parity_live` `durum-cok-derin`, `parity_chat` `derin` | TAŞINDI |
 | `LoadsTest.test_brackets_inside_strings_do_not_count` (py/tests/test_rsprov_json_bounds.py) | `pyjson.rs::Parser::string` (dize içeriği derinliğe sayılmaz); Python birim testi | TAŞINDI |
 | `LoadsTest.test_lone_surrogates_become_replacement_char` (py/tests/test_rsprov_json_bounds.py) | `parity_chat` `sapma-vekil`, `parity_transcript` `esit-vekil` | TAŞINDI |
@@ -3796,15 +3796,15 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `WatchdogRestoresTheEnvFileTest.test_relaunch_finds_the_file_again` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` | TAŞINDI |
 | `WatchdogRestoresTheEnvFileTest.test_an_unconsumed_file_is_left_untouched` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` (ikinci yarı) | TAŞINDI |
 | `WatchdogRestoresTheEnvFileTest.test_unwritable_directory_stops_the_relaunch` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_does_not_relaunch_when_the_env_file_cannot_be_restored` | TAŞINDI |
-| `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:70) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:75) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:81) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_decision_and_resume_use_the_same_conversation` (py/tests/test_rsprov_stuck_other_providers.py:86) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_hand_built_info_takes_the_id_of_the_process` (py/tests/test_rsprov_stuck_other_providers.py:96) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:100) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `_Cases.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:106) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
-| `CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` (py/tests/test_rsprov_stuck_other_providers.py:136) | `parity.rs::parity_chat` `codex-sid-yok` `codex-bos-sid` `codex-yanlis-sid` | TAŞINDI |
-| `AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` (py/tests/test_rsprov_stuck_other_providers.py:179) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:85) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:90) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:96) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_decision_and_resume_use_the_same_conversation` (py/tests/test_rsprov_stuck_other_providers.py:101) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_hand_built_info_takes_the_id_of_the_process` (py/tests/test_rsprov_stuck_other_providers.py:111) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:115) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:121) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` (py/tests/test_rsprov_stuck_other_providers.py:171) | `parity.rs::parity_chat` `codex-sid-yok` `codex-bos-sid` `codex-yanlis-sid` | TAŞINDI |
+| `AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` (py/tests/test_rsprov_stuck_other_providers.py:214) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `_Disabled.test_provider_opts_out` (py/tests/test_rsprov_stuck_other_providers.py) | `tests/tui.rs::codex_and_agy_opt_out_of_stuck_recovery`; `parity.rs` `fam_tui` `wants_stuck_recovery` | TAŞINDI |
 | `_Disabled.test_exact_unanswered_conversation_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
 | `_Disabled.test_hand_built_info_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
@@ -3831,23 +3831,23 @@ Karar (teknik): kısmi toplam, iki kopyanın zaten verdiği alt sınır; `report
 | `UsageSummaryFifoTest.*` (py/tests/test_rsprov_usage_fifo.py) | `report::tests::usage_summary_skips_a_fifo_without_blocking` | TAŞINDI |
 | `CompareScanFifoTest.*` (py/tests/test_rsprov_usage_fifo.py) | `ucli_compare.py` Rust karşılığı yok (T7) | KAPSAM DIŞI |
 | (yalnız Rust) | `report::tests::a_read_error_mid_file_keeps_the_partial_total` | TAŞINDI |
-| `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
+| `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:251) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:267) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 
 ### main `8613e2b1` eşitlemesinin testleri (28 Kas)
 
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
 |---|---|---|
-| `NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` (py/tests/test_bg_work.py:135) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
-| `NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` (py/tests/test_bg_work.py:139) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
-| `NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` (py/tests/test_bg_work.py:152) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` (py/tests/test_bg_work.py:157) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
-| `NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` (py/tests/test_bg_work.py:160) | `parity.rs::parity_bg_work` `bg-transkript-` (6 saat sonrası dahil) | TAŞINDI |
-| `SessionRecordSignal.test_live_footers` (py/tests/test_bg_work.py:200) | `tests/real_bg_record.rs::live_footers`; `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
-| `SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` (py/tests/test_bg_work.py:206) | `tests/real_bg_record.rs::record_of_dead_reused_or_other_session_is_ignored`; `parity.rs::parity_live` `kayit-` | TAŞINDI |
-| `SessionRecordSignal.test_broken_record_and_missing_dir` (py/tests/test_bg_work.py:215) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-komsu` `kayit-dizin-yok` | TAŞINDI |
-| `SessionRecordSignal.test_fifo_record_does_not_block` (py/tests/test_bg_work.py:224) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
-| `SessionRecordSignal.test_non_finite_pid_and_oversized_record_are_skipped` (py/tests/test_bg_work.py:240) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-govde-` `kayit-komsu` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_agent_view_hint_is_not_background_work` (py/tests/test_bg_work.py:147) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_real_counts_beside_the_hint_still_count` (py/tests/test_bg_work.py:151) | `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_request_copy_does_not_revive_refused_call` (py/tests/test_bg_work.py:164) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_request_copy_alone_is_not_a_job` (py/tests/test_bg_work.py:169) | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
+| `NavigationHintAndRequestCopies.test_typed_assistant_record_is_still_pending_and_expires` (py/tests/test_bg_work.py:172) | `parity.rs::parity_bg_work` `bg-transkript-` (6 saat sonrası dahil) | TAŞINDI |
+| `SessionRecordSignal.test_live_footers` (py/tests/test_bg_work.py:212) | `tests/real_bg_record.rs::live_footers`; `parity.rs::parity_bg_work` `bg-ekran` | TAŞINDI |
+| `SessionRecordSignal.test_record_of_dead_reused_or_other_session_is_ignored` (py/tests/test_bg_work.py:218) | `tests/real_bg_record.rs::record_of_dead_reused_or_other_session_is_ignored`; `parity.rs::parity_live` `kayit-` | TAŞINDI |
+| `SessionRecordSignal.test_broken_record_and_missing_dir` (py/tests/test_bg_work.py:264) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-komsu` `kayit-dizin-yok` | TAŞINDI |
+| `SessionRecordSignal.test_fifo_record_does_not_block` (py/tests/test_bg_work.py:273) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
+| `SessionRecordSignal.test_non_finite_pid_and_oversized_record_are_skipped` (py/tests/test_bg_work.py:289) | `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking`; `parity.rs::parity_live` `kayit-govde-` `kayit-komsu` | TAŞINDI |
 | `SessionRecordReaders.test_regular_record_is_still_read` (py/tests/test_rsprov_session_record_regular.py) | `parity_resume` `devam-kayit-` | TAŞINDI |
 | `SessionRecordReaders.test_oversized_record_is_ignored` (py/tests/test_rsprov_session_record_regular.py) | Rust sınırı `SESSION_FILE_MAX_BYTES` (`read_bytes`) | TAŞINDI |
 | `SessionRecordReaders.test_fifo_does_not_block` (py/tests/test_rsprov_session_record_regular.py) | `real_fs::reading_takes_only_regular_files_and_never_blocks_on_a_fifo` | TAŞINDI |
