@@ -212,20 +212,57 @@ class SessionRecordSignal(unittest.TestCase):
         self.record("shell", pid=2 ** 22 + 7)    # süreç yok
         self.assertEqual(self.work(idle), 0)
 
+    def pending_work(self):
+        """Ekran boş, transkriptte bildirimi gelmemiş arka plan işi var: `background_work` ne diyor."""
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        p = os.path.join(d.name, "s.jsonl")
+        with open(p, "w") as f:
+            f.write(_use("t1", ts="2099-01-01T00:00:00Z") + "\n")
+        with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=Path(p)):
+            return self.work(LIVE_FOOTERS[0][1])
+
+    def test_idle_record_overrides_transcript_history(self):
+        self.record("idle")
+        self.assertEqual(self.pending_work(), 0)
+
+    def test_idle_record_does_not_hide_the_screen_counter(self):
+        self.record("idle")
+        self.assertGreater(self.work("⏵⏵ auto mode on · 1 shell · ↓ to manage"), 0)
+
+    def test_transcript_still_used_when_record_cannot_decide(self):
+        self.assertEqual(self.pending_work(), 1)              # kayıt yok
+        for kw in ({"status": "waiting"}, {"status": "yeni-durum"}, {"status": "idle", "sid": "baska"},
+                   {"status": "idle", "start": "1"}, {"status": "idle", "pid": 2 ** 22 + 7}):
+            for n in os.listdir(self.dir):
+                os.remove(os.path.join(self.dir, n))
+            self.record(**kw)
+            self.assertEqual(self.pending_work(), 1, kw)
+
+    def test_any_active_record_of_the_conversation_wins_over_idle(self):
+        self.record("shell")
+        with open(os.path.join(self.dir, "%d.json" % os.getpid())) as f:
+            d = json.load(f)
+        with open(os.path.join(self.dir, "0-ikinci.json"), "w") as f:
+            json.dump(dict(d, status="idle"), f)
+        for order in (["0-ikinci.json", "%d.json" % os.getpid()], ["%d.json" % os.getpid(), "0-ikinci.json"]):
+            with mock.patch.object(bg_work.os, "listdir", return_value=order):
+                self.assertEqual(bg_work.session_record_status(self.dir, "s1"), "shell", order)
+
     def test_broken_record_and_missing_dir(self):
         with open(os.path.join(self.dir, "1.json"), "w") as f:
             f.write("[1")
         with open(os.path.join(self.dir, "2.json"), "w") as f:
             f.write("[]")
-        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
-        self.assertFalse(bg_work.session_record_active(os.path.join(self.dir, "yok"), "s1"))
-        self.assertFalse(bg_work.session_record_active(self.dir, None))
+        self.assertIsNone(bg_work.session_record_status(self.dir, "s1"))
+        self.assertIsNone(bg_work.session_record_status(os.path.join(self.dir, "yok"), "s1"))
+        self.assertIsNone(bg_work.session_record_status(self.dir, None))
 
     def test_fifo_record_does_not_block(self):
         fifo = os.path.join(self.dir, "1.json")
         os.mkfifo(fifo)
         out = []
-        t = threading.Thread(target=lambda: out.append(bg_work.session_record_active(self.dir, "s1")), daemon=True)
+        t = threading.Thread(target=lambda: out.append(bg_work.session_record_status(self.dir, "s1")), daemon=True)
         t.start()
         t.join(5)
         if t.is_alive():                       # takılan okuyucuyu bırak: yazma ucu açılıp kapanınca EOF alır
@@ -233,19 +270,19 @@ class SessionRecordSignal(unittest.TestCase):
                 pass
             t.join(5)
             self.fail("süreç kaydı okuması FIFO'da bloklandı")
-        self.assertEqual(out, [False])
+        self.assertEqual(out, [None])
         self.record("busy")                    # sağlam kayıt FIFO'nun yanında yine okunur
-        self.assertTrue(bg_work.session_record_active(self.dir, "s1"))
+        self.assertEqual(bg_work.session_record_status(self.dir, "s1"), "busy")
 
     def test_non_finite_pid_and_oversized_record_are_skipped(self):
         with open(os.path.join(self.dir, "1.json"), "w") as f:
             f.write('{"pid": Infinity, "sessionId": "s1", "status": "busy", "procStart": "1"}')
-        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
+        self.assertIsNone(bg_work.session_record_status(self.dir, "s1"))
         self.record("busy")
         path = os.path.join(self.dir, f"{os.getpid()}.json")
         with open(path, "a") as f:
             f.write(" " * (1024 * 1024))
-        self.assertFalse(bg_work.session_record_active(self.dir, "s1"))
+        self.assertIsNone(bg_work.session_record_status(self.dir, "s1"))
 
 
 class SubagentActiveForUsesBoth(unittest.TestCase):
