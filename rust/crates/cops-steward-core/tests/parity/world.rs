@@ -123,6 +123,8 @@ parity!("plan_deliveries", plan_deliveries_vectors, |c| {
     got
 });
 
+parity!("bg_blocks_message", bg_blocks_message_vectors, |c| bg_blocks_message(&c.arg("v")));
+
 parity!("holds_total_slot", holds_total_slot_vectors, |c| holds_total_slot(
     &c.arg("v"),
     c.arg("now"),

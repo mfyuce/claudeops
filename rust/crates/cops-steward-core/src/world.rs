@@ -438,7 +438,7 @@ where
     }
     for (project, make) in entries {
         let Some(v) = pick_delivery_view(mine, project.as_ref(), "") else { continue };
-        if v.busy == Some(true) || taken.contains(&v.name) || v.subagent_active || v.subagent_unknown {
+        if v.busy == Some(true) || taken.contains(&v.name) || bg_blocks_message(v) {
             continue;
         }
         out.push(make(v));
@@ -458,6 +458,14 @@ where
         st.insert("last_directive_at".to_string(), Value::Object(map));
     }
     Ok((out, st))
+}
+
+/// Arka plan işi oturuma mesaj (yönerge, dürtü, cevap teslimi) göndermeyi engelliyor mu. İstisna (TBD#442 a): tur bitmiş ve
+/// yalnız kabuk/Monitor 30 dk'dan uzun açık (`shell_only_stale`). Devir/kapatma/yeniden açma bunu kullanmaz.
+///
+/// py: bg_blocks_message
+pub fn bg_blocks_message(v: &SessionView) -> bool {
+    v.subagent_unknown || (v.subagent_active && !v.shell_only_stale)
 }
 
 /// Oturum makine geneli (`max_active_total`) slotu yer mi: yalnız mesaj alan/meşgul oturum.
