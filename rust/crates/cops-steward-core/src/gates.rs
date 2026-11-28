@@ -91,7 +91,8 @@ pub fn brain_may_answer(q: &Question) -> (bool, &'static str) {
     if !q.routine {
         return (false, "owner question (STEWARD-ASK): only the owner answers it");
     }
-    if owner_only(&q.text) && !is_readonly_job_request(&q.text) {
+    // Motorun "aç ya da atla" maddesi sahibin KENDİ cevabını alıntılar: içindeki "sil/kurulum" sahibin talimatı (28 Kas)
+    if owner_only(&q.text) && !is_readonly_job_request(&q.text) && !q.text.starts_with(P_HELD_ANSWER_PREFIX) {
         return (false, "owner decision (force-push/install/delete/spend/credentials): only the owner answers it");
     }
     (true, "")

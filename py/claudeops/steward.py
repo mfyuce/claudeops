@@ -3803,7 +3803,9 @@ def brain_may_answer(q: "Question") -> Tuple[bool, str]:
     sorular. SAF; force-push, kurulum (apt/sudo), silme, harcama, kimlik/yetki sahibe aittir (commit/push/merge/build/deploy kalıcı izinle serbest)."""
     if not q.routine:
         return False, "owner question (STEWARD-ASK): only the owner answers it"
-    if OWNER_ONLY_RE.search(q.text or "") and not is_readonly_job_request(q.text or ""):
+    # Motorun "aç ya da atla" maddesi sahibin KENDİ cevabını alıntılar: içindeki "sil/kurulum" sahibin talimatı (28 Kas)
+    if (OWNER_ONLY_RE.search(q.text or "") and not is_readonly_job_request(q.text or "")
+            and not (q.text or "").startswith(_HELD_ANSWER_PREFIX)):
         return False, "owner decision (force-push/install/delete/spend/credentials): only the owner answers it"
     return True, ""
 
