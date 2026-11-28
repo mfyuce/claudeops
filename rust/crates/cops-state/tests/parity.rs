@@ -899,3 +899,29 @@ print(json.dumps([res, [os.path.normpath(p) for p in paths]], ensure_ascii=False
     let rs = Json::Array(vec![Json::Array(res), Json::Array(norm)]);
     assert_eq!(rs.to_compact(), out.trim_end());
 }
+
+/// `store::check_read` daha yeni şemayı OKUR; dayanağı "göçler yalnız ekler" sözleşmesi. Var olan tabloyu ya da satırı
+/// değiştiren bir Python göçü eski ikiliyi sessizce yanıltır: burada kırılır (kasıtlıysa önce `check_read` değişmeli).
+#[test]
+fn python_migrations_only_add() {
+    let e = Env::new();
+    let out = e.py(
+        "files",
+        "from claudeops import store\nprint(json.dumps(store.MIGRATIONS))",
+    );
+    let migrations = j(out.trim());
+    let migrations = migrations.as_array().unwrap();
+    assert!(!migrations.is_empty());
+    for (i, m) in migrations.iter().enumerate() {
+        let sql = m.as_str().unwrap().to_ascii_uppercase();
+        // `--` yorumları sözleşmeye girmez
+        let words: Vec<&str> = sql
+            .lines()
+            .map(|l| l.split("--").next().unwrap_or(""))
+            .flat_map(|l| l.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')))
+            .collect();
+        for banned in ["ALTER", "DROP", "RENAME", "UPDATE", "DELETE", "REPLACE"] {
+            assert!(!words.contains(&banned), "göç v{}: {banned}", i + 1);
+        }
+    }
+}

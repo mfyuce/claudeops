@@ -98,8 +98,10 @@ pub fn output_payload(
     Ok(if lite { lite::to_lite(f) } else { f })
 }
 
-/// `_term_history(name, start, end, lang)`. `start`/`end` Python `int`inin `i64`e doyurulmuş hali: iki kırpma adımı doyumu
-/// Python'un sınırsız tamsayısıyla aynı sonuca götürür (ikisi de aynı uca doyarsa ikinci denetim `invalid_range` verir).
+/// `_term_history(name, start, end, lang)`. `start`/`end` Python `int`inin `i64`e doyurulmuş hali. Oturum çözülüyorsa sonuç
+/// Python'unkiyle aynı (iki uç aynı sınıra doyarsa kırpma sonrası ikinci denetim `invalid_range` verir). Tek fark hata
+/// SIRASI: `end < start` ama ikisi de `i64` dışında aynı yöne taşıyorsa Python ilk denetimde `invalid_range` döner; burada
+/// ilk denetim geçer ve oturum çözülemiyorsa çözüm hatası döner.
 pub fn term_history(
     probe: &dyn Probe,
     tmux: &Tmux,

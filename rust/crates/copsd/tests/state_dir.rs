@@ -106,11 +106,8 @@ fn try_spawn(
     });
     let t = Instant::now();
     loop {
-        // bağlantıdan SONRA da canlılık: portu başkası kaptıysa bağlantı tutar ama copsd çıkar
-        let up_now = TcpStream::connect(("127.0.0.1", port)).is_ok();
-        if up_now {
-            std::thread::sleep(Duration::from_millis(100));
-        }
+        // "porta bağlanılıyor" yetmez: portu başkası tutuyorsa bağlantı copsd daha çıkmadan tutar; dinleyen BU süreç olmalı
+        let up_now = listens(p.0.id(), port);
         if let Some(st) = p.0.try_wait().unwrap() {
             return Err(format!("{st}: {}", err.join().unwrap_or_default()));
         }
@@ -123,6 +120,27 @@ fn try_spawn(
         );
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// `127.0.0.1:port`u dinleyen soket `pid`in açık dosyalarından biri mi (`/proc/net/tcp`: durum `0A` = LISTEN).
+fn listens(pid: u32, port: u16) -> bool {
+    let table = std::fs::read_to_string("/proc/net/tcp").unwrap();
+    let local = format!(":{port:04X}");
+    let sockets: Vec<String> = table
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            (f.len() > 9 && f[1].ends_with(&local) && f[3] == "0A")
+                .then(|| format!("socket:[{}]", f[9]))
+        })
+        .collect();
+    let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return false;
+    };
+    fds.flatten()
+        .filter_map(|e| std::fs::read_link(e.path()).ok())
+        .any(|l| sockets.iter().any(|s| l.as_os_str() == s.as_str()))
 }
 
 #[test]

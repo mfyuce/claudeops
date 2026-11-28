@@ -227,3 +227,22 @@ fn db_error_fallback_logs_only_on_raw_path() {
         .unwrap()
         .contains("statedocs read instances"));
 }
+
+/// Daha yeni şema uyarısı salt okuma açılışından gelir: yazma kipindeki (günlükçüsüz) `StateDocs`ta da dizine dokunmaz.
+#[test]
+fn newer_schema_warning_never_writes_diag_log() {
+    let e = Env::new();
+    py_db(&e, "");
+    let c = rusqlite::Connection::open(e.dir().db()).unwrap();
+    // `schema_version` tablosu varsa sürüm `max(tablo, user_version)`
+    c.pragma_update(None, "user_version", cops_state::store::SCHEMA_VERSION + 1)
+        .unwrap();
+    drop(c);
+    let docs = raw(&e, Backend::Db);
+    let st = docs.read_only_store().unwrap();
+    assert!(st.schema() > cops_state::store::SCHEMA_VERSION);
+    assert!(
+        !e.dir().join("diag.log").exists(),
+        "salt okuma diag.log yazdı"
+    );
+}

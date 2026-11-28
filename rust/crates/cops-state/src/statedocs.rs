@@ -486,7 +486,8 @@ impl StateDocs {
     /// Yalnız okuyan komutlar için ayrı, önbelleklenmeyen salt okunur bağlantı ([`Store::open_read_only`]).
     ///
     /// DB şeması bu koddan YENİYSE (Python yeni göç ekledi, ikili güncellenmedi) okuma sürer; süreç başına sürüm başına BİR
-    /// kez günlüğe yazılır (sessiz değil, ama her okumada da değil).
+    /// kez günlüğe yazılır (sessiz değil, ama her okumada da değil). Bu açılış dosya yazmaz: günlükçü yoksa uyarı kipten
+    /// bağımsız stderr'e gider, `diag.log`a değil.
     pub fn read_only_store(&self) -> Result<Store, StoreError> {
         let st = Store::open_read_only(&self.db_path()?)?;
         static LOGGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
@@ -494,10 +495,14 @@ impl StateDocs {
         if v > crate::store::SCHEMA_VERSION
             && LOGGED.swap(v, std::sync::atomic::Ordering::SeqCst) != v
         {
-            self.log(&format!(
+            let msg = format!(
                 "DB şema sürümü {v}, bu kod {} biliyor: salt okuma sürüyor (göçler yalnız sona eklenir; ikiliyi güncelleyin)",
                 crate::store::SCHEMA_VERSION
-            ));
+            );
+            match &self.logger {
+                Some(f) => f(&msg),
+                None => eprintln!("statedocs {msg}"),
+            }
         }
         Ok(st)
     }
