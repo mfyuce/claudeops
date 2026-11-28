@@ -432,7 +432,7 @@ DEFS[STEWARD] = [
     oos("_name_host _remote_last_assistant _remote_last_assistant.work _remote_view _remote_views _remote_views.probe "
         "_apply_facts _DRYABLE_REMOTE _log_remote_denied _remote_denied _target.remote _remote_running_listing "
         "_remote_folder_of _remote_ref _remote_cwd _remote_file_head _remote_last_exchange _remote_read_context _REMOTE_CARD_CHECKED "
-        "_remote_raw_card _transient_host_error _remote_key _remote_project_rows _remote_session _remote_sleep "
+        "_remote_raw_card _transient_host_error _remote_key _remote_project_rows _remote_session _remote_cli _remote_sleep "
         "_remote_wait_ready _ensure_running_remote _remote_oversized_resume remote_resume_warning "
         "_START_BACKOFF_STEPS _start_backoff_remaining _start_backoff_note _remote_born _name_host_in "
         "_refresh_remote_cards _remote_nudge _remote_handover _remote_wait_closed _remote_stop_and_wait "

@@ -1,4 +1,5 @@
 {
+ "test_steward_main_model.RemoteBlankModel": "`web_steward._remote_cli/_main_model_effort`: uzak host satırından cli okuyup Ayarlar modelini `/api/start`a gönderme (sahte uzak host); uygulama katmanı, saf kural `main_session_model_effort` vektörlerinde, iz T10",
  "test_answered_by.AnsweredByTest": "AÇIK: `commands/steward._answer_by`: cevabın sahibi mi cops mu olduğu (bayrak, COPS_NAME, claude ortamı, /proc üst süreç); CLI, iz T6/T10",
  "test_body_sensitive_c.AutoApprove": "`web_review.auto_approve` bulgu deposunu okuyup onaylar, bildirim yollar (depo ve bildirim sahte); uygulama katmanı, iz T8 (`commands/web_review.py`)",
  "test_body_sensitive_c.BodySensitive.test_export_sensitive_ignores_body_keyword": "AÇIK: `web_review._redacted_row/export_sensitive` dışa aktarımda gövde ayıklama kararı; saf, iz T8 (`commands/web_review.py`)",
