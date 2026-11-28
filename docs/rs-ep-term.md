@@ -46,12 +46,13 @@ Durum: **eş** (aynı sonuç, testle), **fark** (bilinçli, gerekçeli), **Pytho
 | `name = (qs.get("name") or [""])[0].strip()`; boşsa `name_required` 400 | `cops_auth::query_param` (Python `parse_qs`: boş değer atılır) + `pycompat::strip` | eş (birim + parite) |
 | `lang`: yalnız tam `"en"`; `lite`/`viewport`: yalnız tam `"1"`, İLK dolu değer | aynı | eş |
 | sıra: ad denetimi, (history) `int()` denetimi, SONRA `host` | `route()` uzak `host`ta `None`: Python aynı sırayla yanıtlar | eş / Python |
-| history `int((qs.get("start") or [""])[0])`, `ValueError` -> `invalid_range` 400 | `pycompat::parse_int` (Unicode rakam, `_`, `+`, boşluk) -> `i64`e doyurma | eş (`%D9%A3`, `1_0`, `+3`, 23 basamak: izole parite) |
+| history `int((qs.get("start") or [""])[0])`, `ValueError` -> `invalid_range` 400 | `pycompat::parse_int` (Unicode rakam, `_`, `+`, boşluk; 4300 haneden uzun = `ValueError`, `INT_MAX_STR_DIGITS`, R-B2a-1) -> `i64`e doyurma | eş (`%D9%A3`, `1_0`, `+3`, 23 basamak: izole parite; 4300/4301 hane `parity_settings.rs::int_digit_limit_matches_python`) |
 | sınırsız Python `int` | doyurulmuş `i64`: iki kırpma adımı aynı sonucu verir (aynı uca doyan çift ikinci denetimde `invalid_range`) | eş (`i64::MIN/MAX` çiftleri, 23 basamak) |
 | `host` yerel değil -> `web_hosts.proxy_get` | `route()` `None` | Python |
 | imzalı kimlik iletimi (`X-Cops-Fwd*` başlığı, enterprise `fwd`) | `route()` `None` | Python (bkz. Kimlik kararı) |
 | `_term_resolve_for_output`: önbellekte ve 30 sn'den taze ise taramasız | `Resolver` (`RESOLVE_TTL` 30 sn, `production_ttl_is_pythons_30s`) | eş |
 | önbellek yalnız başarılı çözümü saklar; hata dalında `pop` | aynı | eş (birim) |
+| tarama tek-uçuş (`_shared_find_sessions`, R-B2a-4): çağrıdan SONRA başlamış tarama paylaşılır, patlamada en çok iki tarama | `Resolver::shared_sessions` | eş (Python `test_term_scan_coalesce.py`, Rust `concurrent_cold_resolves_share_scans`); Python'da `_find_running_for_action`ın tüm çağıranları, Rust'ta iki REST ucu |
 | önbellek web.py modül sözlüğü: `/ws/term` tikleri ve iki REST ucu ORTAK | copsd'de yalnız iki REST ucunun (Python'un `/ws/term`i kendi önbelleğini kullanmaya devam eder) | fark (R3): sonuç aynı kural; ad başına 30 sn'de en çok bir ek `/proc` taraması (Rust tarafında). Python'da REST'in `pop`u WS kaydını da düşürürdü; WS kendi başarısız capture'ında zaten düşürür |
 | `_find_running_for_action`: `find_sessions(measure_cpu=False)`; tam ad; yoksa `s.base == name` ve `get_instance(s.name) is None`; 2+ belirsiz | `resolve::find_for_action` + `cops_procscan::find_sessions(CpuMode::Skip)` + `session::base_name` | eş (gerçek süreçle: tam, tek taban, belirsiz, kayıtlı taban) |
 | `get_instance(n) is None` (değeri `null` olan kayıt da "yok") | `!matches!(get, None \| Some(Null))` | eş (null kayıt: birim + izole parite) |

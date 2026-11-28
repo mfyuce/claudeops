@@ -527,6 +527,25 @@ def _recheck_targets(name: str, exact: bool = False) -> Optional[list]:
     return list(now or [])
 
 
+_SCAN_LOCK = threading.Lock()
+_scan_last: Optional[tuple] = None  # (taramanın başladığı monotonic an, find_sessions sonucu)
+
+
+def _shared_find_sessions(since: float) -> list:
+    """`find_sessions(measure_cpu=False)` tek-uçuş (R-B2a-4): `since`ten SONRA başlamış bir tarama varsa onun sonucu (çağıranın
+    kendi taramasıyla aynı tazelik), yoksa kilit altında yeni tarama. Soğuk önbellekte eşzamanlı N çözüm tek tarama yapar;
+    sıralı çağrılar ayrı tarar. Liste paylaşılır: çağıran DEĞİŞTİRMEZ (yalnız süzer)."""
+    global _scan_last
+    with _SCAN_LOCK:
+        last = _scan_last
+        if last is not None and last[0] > since:
+            return last[1]
+        started = time.monotonic()
+        sessions = find_sessions(measure_cpu=False)
+        _scan_last = (started, sessions)
+        return sessions
+
+
 def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
     """`_find_running`'in TEKİL-HEDEFLİ/yıkıcı çağrılar (stop/retire/close/
     handover/compact/adopt/terminal-routing) için güvenli hâli.
@@ -561,7 +580,7 @@ def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
     coexistence-suffix'li kimliği varsa) base-fallback'ten ÇIKAR — sadece
     hiç kayıtlı olmayan/legacy proc'lar (ör. `hc58`, suffix sistemi
     2026-06-28'de kaldırılmadan kalma) base-fallback'ten bulunabilsin."""
-    sessions = find_sessions(measure_cpu=False)
+    sessions = _shared_find_sessions(time.monotonic())
     if cli:
         sessions = [s for s in sessions if s.cli == cli]
     exact = [s for s in sessions if s.name == name]

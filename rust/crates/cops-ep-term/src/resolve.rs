@@ -130,6 +130,29 @@ pub struct Resolver {
     /// Çok kullanıcı: taban ad geri düşüşü yok ([`Resolver::exact_only`]).
     exact_only: bool,
     cache: Mutex<HashMap<String, (Target, Instant)>>,
+    /// Son taramanın başladığı an ve sonucu ([`Resolver::shared_sessions`], R-B2a-4).
+    scan: Mutex<Option<(Instant, Vec<Live>)>>,
+}
+
+/// Paylaşılan tarama sonucunu veren [`Probe`] sarmalayıcısı; diğer sorular asıl probe'a.
+struct Scanned<'a> {
+    inner: &'a dyn Probe,
+    sessions: Vec<Live>,
+}
+
+impl Probe for Scanned<'_> {
+    fn sessions(&self) -> Result<Vec<Live>, String> {
+        Ok(self.sessions.clone())
+    }
+    fn registered(&self, name: &str) -> bool {
+        self.inner.registered(name)
+    }
+    fn tmux_backed(&self, pid: u32) -> bool {
+        self.inner.tmux_backed(pid)
+    }
+    fn has_session(&self, name: &str) -> bool {
+        self.inner.has_session(name)
+    }
 }
 
 impl Default for Resolver {
@@ -145,6 +168,7 @@ impl Resolver {
             ttl,
             exact_only: false,
             cache: Mutex::new(HashMap::new()),
+            scan: Mutex::new(None),
         }
     }
 
@@ -176,7 +200,11 @@ impl Resolver {
                 return Ok(Ok(t.clone()));
             }
         }
-        match term_resolve_with(probe, name, en, !self.exact_only) {
+        let scanned = Scanned {
+            inner: probe,
+            sessions: self.shared_sessions(probe, now)?,
+        };
+        match term_resolve_with(&scanned, name, en, !self.exact_only) {
             Ok(Ok(t)) => {
                 self.lock().insert(name.to_string(), (t.clone(), now));
                 Ok(Ok(t))
@@ -189,6 +217,22 @@ impl Resolver {
                 other
             }
         }
+    }
+
+    /// `web._shared_find_sessions(since)` (tek-uçuş, R-B2a-4): `since`ten SONRA başlamış taramanın sonucu (çağıranın kendi
+    /// taramasıyla aynı tazelik), yoksa kilit altında yeni tarama. Soğuk önbellekte eşzamanlı N çözüm (farklı adlar dahil)
+    /// en çok iki tarama yapar; sıralı çağrılar ayrı tarar. Tarama hatası saklanmaz.
+    fn shared_sessions(&self, probe: &dyn Probe, since: Instant) -> Result<Vec<Live>, String> {
+        let mut g = self.scan.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((at, v)) = g.as_ref() {
+            if *at > since {
+                return Ok(v.clone());
+            }
+        }
+        let started = Instant::now();
+        let v = probe.sessions()?;
+        *g = Some((started, v.clone()));
+        Ok(v)
     }
 
     /// tmux okuması başarısız: sıradaki istek taze çözsün (`_term_output_resolve_cache.pop(name, None)`).
@@ -213,11 +257,13 @@ mod tests {
         pub unbacked: Vec<u32>,
         pub gone: Vec<String>,
         pub scans: AtomicUsize,
+        pub delay: Duration,
     }
 
     impl Probe for Fake {
         fn sessions(&self) -> Result<Vec<Live>, String> {
             self.scans.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(self.delay);
             Ok(self.live.lock().unwrap().clone())
         }
         fn registered(&self, name: &str) -> bool {
@@ -307,6 +353,39 @@ mod tests {
         assert_eq!(r.cached("a"), None);
         assert_eq!(code(r.resolve(&f, "a", true)), "not_running");
         assert_eq!(f.scans.load(Ordering::SeqCst), 3, "hata önbelleğe girmez");
+    }
+
+    /// R-B2a-4: soğuk önbellekte eşzamanlı çözümler (farklı adlar dahil) taramayı paylaşır: patlamada en çok iki tarama
+    /// (süren + o sürerken gelenlerin ortak taraması); çağrıdan ÖNCE başlamış tarama kullanılmaz (tazelik aynı).
+    #[test]
+    fn concurrent_cold_resolves_share_scans() {
+        let f = Fake {
+            live: Mutex::new(vec![l("a", 1), l("b", 2), l("c", 3), l("d", 4)]),
+            delay: Duration::from_millis(200),
+            ..Fake::default()
+        };
+        let r = Resolver::default();
+        std::thread::scope(|sc| {
+            for n in ["a", "b", "c", "d", "a", "b"] {
+                let (f, r) = (&f, &r);
+                sc.spawn(move || assert_eq!(code(r.resolve(f, n, true)), format!("ok:{n}")));
+            }
+        });
+        let n = f.scans.load(Ordering::SeqCst);
+        assert!(n <= 2, "{n} tarama");
+        let r2 = Resolver::default();
+        let f2 = Fake {
+            live: Mutex::new(vec![l("a", 1)]),
+            ..Fake::default()
+        };
+        r2.resolve(&f2, "a", true).unwrap().unwrap();
+        r2.forget("a");
+        r2.resolve(&f2, "a", true).unwrap().unwrap();
+        assert_eq!(
+            f2.scans.load(Ordering::SeqCst),
+            2,
+            "sıralı çağrı taze tarar"
+        );
     }
 
     #[test]
