@@ -6,6 +6,7 @@ mod support;
 use cops_providers::real::agents::{AgentRegistry, Sources};
 use cops_providers::real::diaglog::{self, DiagLog};
 use cops_providers::real::effects::{self, atomic_write_text};
+use cops_providers::real::probe::{HomeProjects, ProjectDirs};
 use cops_providers::real::{checks, fsio, pathexec};
 use cops_providers::{
     BuildArgs, BuildOutput, Cli, Effect, LiveProbe, ModelCatalog, Probe, Providers, Settings,
@@ -794,4 +795,44 @@ fn a_non_object_parent_record_fails_the_spawn_before_any_token_is_written() {
     assert!(cmd.unwrap_err().contains("nesne değil"));
     assert!(!std::path::Path::new(&p.agents().token_file("sess1")).exists());
     assert_eq!(fs::read_to_string(state).unwrap(), body);
+}
+
+/// Proje dizini adı Python `_encode_cwd` ile aynı: ASCII harf/rakam dışındaki HER kod noktası tek `-` (TODO rs-prov G2).
+#[test]
+fn project_dirs_encode_cwd_like_python() {
+    let cases = [
+        "/w/p1",
+        "/home/u/BLM308_veri_madenciliği",
+        "/a b/c.d/😀/İ",
+        "",
+        "rel/yol",
+    ];
+    let code = r#"
+import json, sys
+sys.path.insert(0, sys.argv[1] + "/py")
+from claudeops.providers import claude_provider as c
+print(json.dumps([c.os.path.join(c.PROJECTS_DIR, c._encode_cwd(x)) for x in json.loads(sys.argv[2])]))
+"#;
+    let t = tempfile::TempDir::new().unwrap();
+    let home = t.path().to_str().unwrap().to_string();
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let out = std::process::Command::new("python3")
+        .args(["-I", "-c", code, repo.to_str().unwrap()])
+        .arg(serde_json::to_string(&cases).unwrap())
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", &home)
+        .env("CLAUDEOPS_DIR", t.path().join("state"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
+    let dirs = HomeProjects::new(&home);
+    for (cwd, want) in cases.iter().zip(want) {
+        assert_eq!(dirs.claude_project_dir(cwd), want, "{cwd:?}");
+    }
 }

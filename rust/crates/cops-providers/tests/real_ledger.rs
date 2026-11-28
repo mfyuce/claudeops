@@ -6,7 +6,7 @@ mod support;
 
 use cops_providers::cost::{self, refusal, CostRefusal, BY_SESSION_TOP, RESERVE_TTL};
 use cops_providers::real::ledger::{self, file_cost_settings, CostLedger, CostSettings};
-use cops_providers::real::probe::CostGate;
+use cops_providers::real::probe::{CostGate, HomeProjects};
 use cops_providers::real::{RealDeps, RealProbe};
 use cops_providers::settings::UcliCostConfig;
 use cops_providers::{BuildArgs, BuildOutput, Cli, ModelCatalog, Providers, Settings};
@@ -556,7 +556,7 @@ fn a_claude_service_build_is_refused_over_the_cap() {
     let env = t.env(&[]);
     let deps = RealDeps {
         docs: support::file_docs(&t.paths()),
-        projects: Arc::new(support::Projects(t.path("home"))),
+        projects: Arc::new(HomeProjects::new(&t.path("home"))),
         cost: ledger.clone(),
         search: Arc::new(support::NoSearch),
         help: Arc::default(),

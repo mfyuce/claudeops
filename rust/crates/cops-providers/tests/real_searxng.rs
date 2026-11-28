@@ -5,7 +5,7 @@
 mod support;
 
 use cops_providers::real::diaglog::DiagLog;
-use cops_providers::real::probe::SearchUrl;
+use cops_providers::real::probe::{HomeProjects, SearchUrl};
 use cops_providers::real::searxng::{self, ManagedSearch, Provision};
 use cops_providers::real::{Env, RealDeps, RealProbe};
 use cops_providers::{BuildArgs, BuildOutput, Cli, ModelCatalog, Providers, Settings};
@@ -321,7 +321,7 @@ fn a_build_asks_for_the_managed_address_only_when_it_should_use_it() {
         let env = t.env(&[]);
         let deps = RealDeps {
             docs: support::file_docs(&t.paths()),
-            projects: Arc::new(support::Projects(t.path("home"))),
+            projects: Arc::new(HomeProjects::new(&t.path("home"))),
             cost: Arc::new(support::OpenGate),
             search: search.clone(),
             help: Arc::default(),

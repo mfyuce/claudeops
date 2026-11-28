@@ -5,7 +5,7 @@
 use cops_providers::cost::CostRefusal;
 use cops_providers::real::docs::StateDocStore;
 use cops_providers::real::help::HelpCache;
-use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
+use cops_providers::real::probe::{CostGate, HomeProjects, SearchUrl};
 use cops_providers::real::{Env, RealDeps, RealProbe};
 use cops_providers::Paths;
 use cops_state::{Backend, StateDir, StateDocs};
@@ -102,7 +102,7 @@ impl Tmp {
         let paths = self.paths();
         let deps = RealDeps {
             docs: file_docs(&paths),
-            projects: Arc::new(Projects(paths.home.clone())),
+            projects: Arc::new(HomeProjects::new(&paths.home)),
             cost: Arc::new(OpenGate),
             search: Arc::new(NoSearch),
             help,
@@ -147,18 +147,6 @@ pub struct NoSearch;
 impl SearchUrl for NoSearch {
     fn search_url(&self, _session: &str, _preview: bool) -> Option<String> {
         None
-    }
-}
-
-pub struct Projects(pub String);
-
-impl ProjectDirs for Projects {
-    fn claude_project_dir(&self, cwd: &str) -> String {
-        let enc: String = cwd
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-            .collect();
-        format!("{}/.claude/projects/{enc}", self.0)
     }
 }
 

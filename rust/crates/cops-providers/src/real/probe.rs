@@ -41,9 +41,31 @@ pub trait SearchUrl: Send + Sync {
     fn search_url(&self, session: &str, preview: bool) -> Option<String>;
 }
 
-/// `claude_provider._encode_cwd` -> `~/.claude/projects/<..>` (rs/proc `transcript.rs::encode_cwd`).
+/// `claude_provider._encode_cwd` -> `~/.claude/projects/<..>`. Gerçek uygulama [`HomeProjects`].
 pub trait ProjectDirs: Send + Sync {
     fn claude_project_dir(&self, cwd: &str) -> String;
+}
+
+/// `os.path.join(paths.PROJECTS_DIR, _encode_cwd(cwd))`; kodlama kuralı rs/proc'ta (tek kopya).
+pub struct HomeProjects {
+    projects_dir: String,
+}
+
+impl HomeProjects {
+    /// `home`: panel kullanıcısının ev dizini ([`Paths::home`]).
+    pub fn new(home: &str) -> HomeProjects {
+        let sep = if home.ends_with('/') { "" } else { "/" };
+        HomeProjects {
+            projects_dir: format!("{home}{sep}.claude/projects"),
+        }
+    }
+}
+
+impl ProjectDirs for HomeProjects {
+    fn claude_project_dir(&self, cwd: &str) -> String {
+        let encoded = cops_procscan::transcript::encode_cwd(cwd);
+        format!("{}/{encoded}", self.projects_dir)
+    }
 }
 
 #[derive(Clone)]

@@ -11,7 +11,7 @@ use cops_providers::cost::CostRefusal;
 use cops_providers::real::docs::StateDocStore;
 use cops_providers::real::effects::{self, EffectError};
 use cops_providers::real::help::HelpCache;
-use cops_providers::real::probe::{CostGate, ProjectDirs, SearchUrl};
+use cops_providers::real::probe::{CostGate, HomeProjects, SearchUrl};
 use cops_providers::real::{Env as OsEnv, RealDeps, RealProbe};
 use cops_providers::ucli::LiveModels;
 use cops_providers::ucli_opts::Toolchain;
@@ -469,14 +469,6 @@ pub fn encode_cwd(cwd: &str) -> String {
         .collect()
 }
 
-pub struct TestProjects(pub String);
-
-impl ProjectDirs for TestProjects {
-    fn claude_project_dir(&self, cwd: &str) -> String {
-        format!("{}/.claude/projects/{}", self.0, encode_cwd(cwd))
-    }
-}
-
 /// Koşucu Python'unun ortamı: taban + vakanın değişkenleri.
 pub fn case_env(e: &Env, case: &Case) -> OsEnv {
     let mut vars = vec![
@@ -515,7 +507,7 @@ fn probe_over(e: &Env, case: &Case, paths: Paths, help: HelpCache) -> RealProbe 
     let env = case_env(e, case);
     let deps = RealDeps {
         docs: file_docs(&paths),
-        projects: Arc::new(TestProjects(e.home.clone())),
+        projects: Arc::new(HomeProjects::new(&e.home)),
         cost: Arc::new(OpenGate),
         search: Arc::new(NoSearch),
         help: Arc::new(help),
