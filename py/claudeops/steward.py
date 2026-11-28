@@ -259,6 +259,7 @@ class SessionView:
     live_effort: str = ""               # aynı kaynaktan canlı effort ("" = bilinmiyor)
     idle_since: float = 0.0             # ucli: durum dosyası activity=waiting_for_stdin'e geçtiği an (epoch; 0 = bilinmiyor / boşta değil)
     cache_ttl: str = ""                 # ucli: oturumun `--cache-ttl` değeri ("5m" | "1h"; "" = bilinmiyor)
+    shell_only_stale: bool = False      # claude: tur bitmiş, yalnız kabuk/Monitor 30 dk'dan uzun açık (TBD#442 a): yönerge/dürtü/teslim gider, devir/kapatma bekler
     question_open: bool = False         # claude: sahibe sorulan diyalog (AskUserQuestion/plan onayı) cevap bekliyor: tuş basılmaz, kapatılmaz
     owner_input_at: float = 0.0         # claude: son diyalog cevabı ya da kullanıcı yazısı (epoch, 0 = bilinmiyor)
 
@@ -3499,8 +3500,7 @@ def plan_deliveries(entries, mine, taken, state: Dict[str, Any], now: float, lim
         return out, state
     for proj, make in entries:
         v = pick_delivery_view(mine, proj, "")
-        if (v is None or v.busy or v.name in taken
-                or getattr(v, "subagent_active", False) or getattr(v, "subagent_unknown", False)):
+        if v is None or v.busy or v.name in taken or bg_blocks_message(v):
             continue      # alt ajan sürerken (ya da bilinmiyorsa) teslim ana oturumu uyandırmaz
         out.append(make(v))
         taken.add(v.name)
@@ -4124,6 +4124,15 @@ def plan_markers(views: List[SessionView], projects: Dict[str, Project], state: 
         note_project_next(st, proj, v.name, mk, _now())
     st["seen_assistant"] = seen
     return actions, st
+
+
+def bg_blocks_message(v: SessionView) -> bool:
+    """Arka plan işi oturuma MESAJ (yönerge, dürtü, cevap teslimi) göndermeyi engelliyor mu: alt ajan/arka plan işi çalışıyor ya da
+    bilinmiyor. İstisna (TBD#442 a, sahip 28 Kas): tur bitmiş ve yalnız kabuk/Monitor 30 dk'dan uzun açık (`shell_only_stale`):
+    hiç bitmeyen bekleme döngüsü oturumu süresiz kilitlemesin. Devir/kapatma/yeniden açma bu işlevi KULLANMAZ (kabuk ölmez). SAF."""
+    if getattr(v, "subagent_unknown", False):
+        return True
+    return bool(getattr(v, "subagent_active", False)) and not bool(getattr(v, "shell_only_stale", False))
 
 
 def holds_total_slot(v: SessionView, now: float, last_directive_at: float = 0.0) -> bool:
@@ -5691,7 +5700,7 @@ def plan_ucli_idle(views: List[SessionView], projects: Dict[str, Project], state
             continue
         if v.name == cfg.brain_name or _AJ_CHILD_RE.search(v.name) or v.name in touched or v.name in ho_pending:
             continue
-        if v.busy is not False or v.subagent_active or v.subagent_unknown:
+        if v.busy is not False or bg_blocks_message(v):
             continue
         proj = projects.get(v.project)
         if proj is None or proj.phase in ("done", "paused"):
@@ -5812,7 +5821,7 @@ def plan_claude_idle(views: List[SessionView], projects: Dict[str, Project], sta
             continue
         if v.name == cfg.brain_name or _AJ_CHILD_RE.search(v.name) or v.name in touched or v.name in ho_pending:
             continue
-        if v.busy is not False or v.subagent_active or v.subagent_unknown or v.question_open:
+        if v.busy is not False or bg_blocks_message(v) or v.question_open:
             continue
         proj = projects.get(v.project)
         if proj is None or proj.phase in ("done", "paused"):

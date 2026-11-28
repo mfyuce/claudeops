@@ -3102,7 +3102,8 @@ def _session_facts(names: List[str]) -> dict:
         out[name] = {"running": True, "question_open": question_open,
                      "owner_input_age_s": max(0.0, time.time() - owner_at) if owner_at else None,
                      "started_age_s": max(0.0, time.time() - started) if started else None,
-                     "subagent_active": sub, "context_tokens": tokens,
+                     "subagent_active": sub, "shell_only_stale": web_steward._shell_only_stale(s.cli, s.sid),
+                     "context_tokens": tokens,
                      "context_warn": warn, "last_assistant": text[:SESSION_FACTS_TEXT_MAX], "sid_known": bool(s.sid)}
     return {"ok": True, "api": SESSION_FACTS_API, "capabilities": list(SESSION_FACTS_CAPABILITIES), "sessions": out}
 

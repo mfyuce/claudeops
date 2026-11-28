@@ -1303,6 +1303,17 @@ def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
     return None
 
 
+def _shell_only_stale(cli: str, sid: Optional[str]) -> bool:
+    """claude yerel oturumu: tur bitmiş, yalnız kabuk/Monitor 30 dk'dan uzun açık (`bg_work.shell_only_stale`, TBD#442 a). Fırlatmaz."""
+    if cli != "claude" or not sid:
+        return False
+    try:
+        from .. import paths
+        return bg_work.shell_only_stale(paths.SESSIONS_DIR, sid)
+    except Exception:
+        return False
+
+
 def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = None, name: Optional[str] = None,
                        cli: str = "claude") -> bool:
     """Oturumun arka planda işi var mı (meşgul sayılır): (a) alt ajan transkripti (`<oturum>/subagents/agent-*.jsonl`) son
@@ -1444,6 +1455,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                 v.subagent_active = subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli)
             except Exception:
                 v.subagent_active = False
+            v.shell_only_stale = _shell_only_stale(s.cli, s.sid)
             try:
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
@@ -5063,20 +5075,60 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optio
 _SHELL_COMMS = {"bash", "sh", "zsh", "dash"}
 
 
-def bg_shell_running(pid: int) -> bool:
-    """claude sürecinin DOĞRUDAN çocuğu olan, Bash aracının başlattığı bir kabuk (`bash -c source …/shell-snapshots/…`) var mı:
-    arka planda süren komut (nohup/`run_in_background`/uzun betik). Boştaki claude'un böyle çocuğu yoktur; MCP sunucuları doğrudan
-    kabuk değildir. Kapatma bu oturumu "iş bitti" saymaz (yoksa oturum durunca iş de ölür, baştan başlar). Okunamazsa False."""
+BG_SHELL_REPORT_SECONDS = 1800      # bu yaştan büyük arka plan kabuğu `session_busy` yanıtında ve günlükte adıyla bildirilir
+
+
+def _shell_command(argv: List[str]) -> str:
+    """Bash aracı kabuğunun asıl komutu: `… && eval '<komut>'` biçiminde `eval` sonrası, yoksa tüm satır; 160 karakter."""
+    line = " ".join(str(a) for a in argv)
+    i = line.rfind(" eval ")
+    cmd = (line[i + 6:] if i >= 0 else line).strip().strip("'\"")
+    return cmd[:160]
+
+
+def bg_shells(pid: int, now: Optional[float] = None) -> List[Tuple[str, float]]:
+    """claude sürecinin DOĞRUDAN çocuğu olan, Bash aracının başlattığı kabuklar (`bash -c source …/shell-snapshots/…`):
+    [(komut, yaş sn)]. Yaş okunamazsa 0. Okunamazsa []."""
+    out: List[Tuple[str, float]] = []
+    t = time.time() if now is None else now
     try:
         for c in psutil.Process(pid).children():
             try:
-                if c.name() in _SHELL_COMMS and any("shell-snapshots" in a for a in c.cmdline()):
-                    return True
+                argv = c.cmdline()
+                if c.name() not in _SHELL_COMMS or not any("shell-snapshots" in a for a in argv):
+                    continue
             except (psutil.Error, OSError):
                 continue
+            try:
+                age = max(0.0, t - float(c.create_time()))
+            except Exception:
+                age = 0.0
+            out.append((_shell_command(argv), age))
     except (psutil.Error, OSError, ValueError):
         pass
-    return False
+    return out
+
+
+def bg_shell_running(pid: int) -> bool:
+    """claude sürecinin Bash aracı kabuğu var mı (`bg_shells`): arka planda süren komut (nohup/`run_in_background`/uzun betik).
+    Boştaki claude'un böyle çocuğu yoktur; MCP sunucuları doğrudan kabuk değildir. Kapatma bu oturumu "iş bitti" saymaz (yoksa
+    oturum durunca iş de ölür, baştan başlar). Okunamazsa False."""
+    return bool(bg_shells(pid))
+
+
+def long_bg_shells(sessions: List[Any], min_age: float = BG_SHELL_REPORT_SECONDS) -> List[Tuple[str, str, float]]:
+    """Yerel oturumların `min_age`den eski arka plan kabukları [(oturum, komut, yaş sn)]: koşulu hiç sağlanmayan bekleme
+    döngüsü oturumu saatlerce meşgul gösterir (26 Kas pid 305171); motor nedeni adıyla bildirsin. Fırlatmaz."""
+    out: List[Tuple[str, str, float]] = []
+    for x in sessions:
+        pid = getattr(x, "pid", 0)
+        if not isinstance(pid, int) or pid <= 0:
+            continue
+        try:
+            out.extend((str(getattr(x, "name", "")), cmd, age) for cmd, age in bg_shells(pid) if age >= min_age)
+        except Exception:
+            continue
+    return out
 
 
 def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World,
@@ -7143,13 +7195,20 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
             busy = True
         last = max(last, float(lda.get(rn) or 0.0))
     last = max(last, float(lda.get(name) or 0.0))
+    try:
+        live = _live_sessions(name, sid)
+    except Exception:
+        live = []
     try:    # çalışan alt ajan = ana oturum boşta görünse de iş sürüyor (cevap iletimi de aynı kuralı izler)
-        sub = any(subagent_active_for(x.cwd, x.sid, name=x.name, cli=x.cli) for x in _live_sessions(name, sid))
+        sub = any(subagent_active_for(x.cwd, x.sid, name=x.name, cli=x.cli) and not _shell_only_stale(x.cli, x.sid) for x in live)
     except Exception:
         sub = False
     why = "subagent_active" if sub else sw.directive_defer_reason(busy, last, time.time())
     if not why:
         return None
+    long_shells = long_bg_shells(live)
+    for sn, cmd, age in long_shells:
+        sw.log_event("bg_shell_long", paths=sid, name=sn, cmd=cmd, age_min=int(age // 60))
     try:
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
@@ -7158,7 +7217,9 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
     except sw.LockTimeout:
         pass
     sw.log_event("directive_deferred", paths=sid, name=name, reason=why, **_directive_trace(text, False))
-    return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): directive not sent; retried on the next tour"}
+    extra = "".join(f"; long background shell in {sn}: {cmd!r} ({int(age // 60)} min)" for sn, cmd, age in long_shells[:3])
+    return {"ok": False, "code": "session_busy",
+            "error": f"session_busy ({why}): directive not sent; retried on the next tour{extra}"}
 
 
 def _upper_model_gate(name: str, model: str, effort: str, sid: str, actor: str,

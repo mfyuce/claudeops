@@ -1359,6 +1359,31 @@ V3871 = ["Başlamasın", "BAŞLAMASIN", "Baslamasin", "başlama", "Başlama.", "
 for t in V3871:
     add("is_open_answer", {"text": t})
 
+# TBD#442 (a): yalnız kabuk/Monitor 30 dk'dan uzun açık (`shell_only_stale`) yönerge/dürtü/teslimi engellemez; ayrı üreteç (diğer girdiler kaymasın)
+for sa in (False, True):
+    for su in (False, True):
+        for so in (False, True):
+            add("bg_blocks_message", {"v": V("a", True, subagent_active=sa, subagent_unknown=su, shell_only_stale=so)})
+r442 = random.Random(442)
+for _ in range(300):
+    so, sa, su = r442.random() < 0.6, r442.random() < 0.7, r442.random() < 0.15
+    mine, taken = [V("a", True, busy=r442.choice([False, False, None, True]), subagent_active=sa, subagent_unknown=su, shell_only_stale=so)], set()
+    add("plan_deliveries", {"entries": [["a", "nudge"]], "mine": mine, "taken": taken, "state": {}, "now": NOW, "limit": 1},
+        call=lambda: sw.plan_deliveries([("a", lambda v: sw.Action("nudge", v.name, "a"))], mine, taken, {}, NOW, 1))
+    cli = r442.choice(["claude", "ucli"])
+    since = NOW - r442.choice([700, 3600])
+    v = V("a", True, cli=cli, tmux=True, busy=False, idle_since=since, last_activity=since, last_assistant="STEWARD-NEXT: testi yaz",
+          subagent_active=sa, subagent_unknown=su, shell_only_stale=so, cache_ttl="")
+    projects = {"a": P("a", phase="planned")}
+    state = {}
+    cfg = C(claude_idle="act", claude_idle_nudge_secs=600, ucli_idle="act", ucli_idle_nudge_secs=600, ucli_idle_nudge_secs_1h=600, mode="act", brain_name="degnekci")
+    views = [v]
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "planned": [], "world": None}
+    if cli == "claude":
+        add_cb("plan_claude_idle", args, lambda c: sw.plan_claude_idle(views, projects, state, cfg, NOW, [], None, c.get("open_work"), c.get("owner_todo"), c.get("todo_sha"), c.get("oldest_open"), c.get("has_question")), {"open_work": {"a": 2}})
+    else:
+        add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, [], None, c["open_work"]), {"open_work": {"a": 2}})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):
