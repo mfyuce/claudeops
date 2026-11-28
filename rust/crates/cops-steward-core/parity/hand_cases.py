@@ -1427,6 +1427,24 @@ for i in range(400):
     add_cb("explain_idle", {"proj": projects["a"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": acts, "world": None},
            lambda c: sw.explain_idle(projects["a"], views, projects, state, cfg, NOW, [], acts, None, c["open_work"]), {"open_work": {"a": n_open}})
 
+# `6f466333` ucu (28 Kas, copsdev): explain_idle `manual_session` izleme sorusunun durumunu (soruldu / kalan dk) göstersin; ayrı üreteç
+rmx = random.Random(4430)
+for i in range(400):
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned={"hc": "hc", "x": "x"})
+    views = [V("hc20261123", True, blueprint=rmx.choice(["hc", None]))] + ([V("hc20261124", True, blueprint="hc")] if rmx.random() < 0.15 else [])
+    projects = {"hc": P("hc", phase="planned"), "x": P("x")}
+    rec = rmx.choice([
+        {"since": NOW - rmx.choice([0, 60, 3599, MH - 61, MH - 60, MH - 1, MH, 3 * MH, -600]), "session": rmx.choice(["hc20261123", "hc20261124", "baska", 5, None])},
+        {"since": NOW - MH, "session": "hc20261123", "asked": rmx.choice([True, False, 1, 0, None, "", "x", [], [1]])},
+        {"since": rmx.choice(["x", "12", None, True, False, [1], {}, 1.5, 0]), "session": "hc20261123"},
+        {"session": "hc20261123"}, {"since": NOW}, "bozuk", [1], None, 7,
+    ])
+    mh = rmx.choice([{"hc": rec}, {"hc": rec, "x": {"since": NOW, "session": "x2"}}, {"x": rec}, {}, None, "bozuk", [1], 3])
+    state = {} if mh is None and rmx.random() < 0.5 else {"manual_hold": mh}
+    cfg = C(lang=rmx.choice(["tr", "en"]))
+    args = {"proj": projects["hc"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": [], "world": w}
+    add_cb("explain_idle", args, lambda c: sw.explain_idle(projects["hc"], views, projects, state, cfg, NOW, [], [], w, c["open_work"]), {"open_work": {"hc": 1}})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

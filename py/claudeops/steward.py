@@ -6096,7 +6096,18 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
     if world is not None:
         classes = [world.session_class(v.name, v.blueprint) for v in mine]
         if "manual" in classes:
-            return _why("manual_session", lang, ", ".join(v.name for v in mine))
+            detail = ", ".join(v.name for v in mine)
+            hr = dict(state.get("manual_hold") or {}).get(name)     # `manual_hold_step` kaydı: izleme sorusunun durumu
+            if isinstance(hr, dict) and hr.get("session") in [v.name for v in mine]:
+                if hr.get("asked"):
+                    tail = "watch question answered, not asked again" if lang == "en" else "izleme sorusu cevaplandı, yeniden sorulmaz"
+                    return _why("manual_session", lang, f"{detail}; {tail}", hold_asked=True)
+                since = hr.get("since")
+                if isinstance(since, (int, float)) and not isinstance(since, bool) and since - since == 0:   # sonlu (NaN/inf değil)
+                    left = int(max(0.0, MANUAL_HOLD_ASK_SECONDS - (now - since)) // 60)
+                    tail = f"watch question in {left} min" if lang == "en" else f"izleme sorusu {left} dk sonra"
+                    return _why("manual_session", lang, f"{detail}; {tail}", hold_asked=False, hold_minutes_left=left)
+            return _why("manual_session", lang, detail)
     if len(mine) > 1:
         return _why("ambiguous", lang, ", ".join(v.name for v in mine))
     for key, r in sorted(dict(state.get("loop_guard") or {}).items()):

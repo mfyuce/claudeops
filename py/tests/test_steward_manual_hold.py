@@ -87,6 +87,36 @@ class ManualHold(unittest.TestCase):
         self.assertEqual(self.step({}, [q, delivered])[2], [])
 
 
+class ExplainManual(unittest.TestCase):
+    """`explain_idle` `manual_session`: izleme sorusunun durumu (sorulmadı + kalan dk / soruldu, cevaplandı) görünsün (`6f466333` ucu)."""
+    def why(self, hold, now=NOW, lang="tr"):
+        projects = {"hc": sw.Project(name="hc", phase="planned")}
+        views = [sw.SessionView(name="hc20261123", running=True, blueprint="hc")]
+        state = {"manual_hold": hold} if hold is not None else {}
+        return sw.explain_idle(projects["hc"], views, projects, state, sw.Config(lang=lang), now, [], [], world({"hc": "hc"}))
+
+    def test_waiting_shows_minutes_left(self):
+        r = self.why({"hc": {"since": NOW - 3600, "session": "hc20261123"}})
+        self.assertEqual(r["code"], "manual_session")
+        self.assertEqual((r["hold_asked"], r["hold_minutes_left"]), (False, 300))
+        self.assertIn("hc20261123", r["detail"])
+        self.assertIn("300 dk", r["detail"])
+        self.assertIn("300 min", self.why({"hc": {"since": NOW - 3600, "session": "hc20261123"}}, lang="en")["detail"])
+
+    def test_asked_and_answered(self):
+        r = self.why({"hc": {"since": NOW - 3 * H, "session": "hc20261123", "asked": True}})
+        self.assertIs(r["hold_asked"], True)
+        self.assertNotIn("hold_minutes_left", r)
+        self.assertIn("cevaplandı", r["detail"])
+
+    def test_no_or_foreign_or_bad_record_keeps_old_shape(self):
+        for hold in (None, {}, {"hc": {"since": NOW, "session": "baska"}}, {"hc": "bozuk"}, {"hc": {"since": "x", "session": "hc20261123"}}):
+            r = self.why(hold)
+            self.assertEqual(r["code"], "manual_session", hold)
+            self.assertEqual(r["detail"], "hc20261123", hold)
+            self.assertNotIn("hold_asked", r, hold)
+
+
 class Apply(_Tmp):
     """Uygulayıcı: süre kaydı state'e, soru `owned_adopt` kaynaklı ve sahibe bildirilir; 'evet' -> owned + teslim edildi."""
 

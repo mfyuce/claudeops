@@ -967,37 +967,37 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `_START_BLOCK_TR` (steward.py:6061) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
 | `_why` (steward.py:6066) | `explain::why` | explain::p_why | tamam |
 | `explain_idle` (steward.py:6072) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
-| `explain_idle.why` (steward.py:6132) | `explain::explain_idle (içinde)` | explain::explain_idle_vectors | tamam |
-| `explain_idle_all` (steward.py:6193) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:6220) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
-| `daily_path` (steward.py:6271) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6275) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
-| `DRY_KIPS` (steward.py:6298) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
-| `DRY_REPORT_HOURS` (steward.py:6300) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `_count_or_zero` (steward.py:6303) | `report::count_or_zero` | report::p_count_or_zero | tamam |
-| `dry_report` (steward.py:6311) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
-| `dry_report_text` (steward.py:6345) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
-| `dry_ask_due` (steward.py:6357) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
-| `summary_due` (steward.py:6368) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6375) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
-| `_NO_LOG_DAYS` (steward.py:6399) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
-| `_SUMMARY_TXT` (steward.py:6402) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6426) | `report::names_line` | report::p_names | tamam |
-| `_kind_counts` (steward.py:6431) | `report::kind_counts` | report::p_kind_counts | tamam |
-| `_ask_gate_lines` (steward.py:6436) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
-| `daily_summary` (steward.py:6455) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6540) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
-| `write_daily` (steward.py:6558) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6565) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
+| `explain_idle.why` (steward.py:6143) | `explain::explain_idle (içinde)` | explain::explain_idle_vectors | tamam |
+| `explain_idle_all` (steward.py:6204) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
+| `observe_filter` (steward.py:6231) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:6282) | `report::daily_path` | report::daily_path_vectors | tamam |
+| `log_entries_for_date` (steward.py:6286) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
+| `DRY_KIPS` (steward.py:6309) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
+| `DRY_REPORT_HOURS` (steward.py:6311) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
+| `_count_or_zero` (steward.py:6314) | `report::count_or_zero` | report::p_count_or_zero | tamam |
+| `dry_report` (steward.py:6322) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
+| `dry_report_text` (steward.py:6356) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6368) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6379) | `report::summary_due` | report::summary_due_vectors | tamam |
+| `missed_summary_dates` (steward.py:6386) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
+| `_NO_LOG_DAYS` (steward.py:6410) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
+| `_SUMMARY_TXT` (steward.py:6413) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
+| `_names` (steward.py:6437) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6442) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6447) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6466) | `report::daily_summary` | report::daily_summary_vectors | tamam |
+| `summary_text` (steward.py:6551) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
+| `write_daily` (steward.py:6569) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summarize_projects` (steward.py:6576) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (2024 satır)
+### Python testleri (2027 satır)
 
-Test satırı özeti: 2024 satır; doğrudan açık (aşağıda `AÇIK`) 204; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 2027 satır; doğrudan açık (aşağıda `AÇIK`) 204; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -2306,6 +2306,9 @@ Test satırı özeti: 2024 satır; doğrudan açık (aşağıda `AÇIK`) 204; pa
 | `test_steward_manual_hold.ManualHold.test_yes_adopts_no_closes` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf kural `manual_hold_step` (+ `World.session_class`): Rust `world::manual_hold_step`, el vakaları `hand_cases.py` L2 bayat izleme bloğu (900 vaka, bozuk `since` dahil) |
 | `test_steward_manual_hold.ManualHold.test_yes_after_session_closed_does_not_adopt` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf kural `manual_hold_step` (+ `World.session_class`): Rust `world::manual_hold_step`, el vakaları `hand_cases.py` L2 bayat izleme bloğu (900 vaka, bozuk `since` dahil) |
 | `test_steward_manual_hold.ManualHold.test_other_sources_and_delivered_ignored` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf kural `manual_hold_step` (+ `World.session_class`): Rust `world::manual_hold_step`, el vakaları `hand_cases.py` L2 bayat izleme bloğu (900 vaka, bozuk `since` dahil) |
+| `test_steward_manual_hold.ExplainManual.test_waiting_shows_minutes_left` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle` `manual_session`: `state.manual_hold` izleme sorusu durumu (`hold_asked`, `hold_minutes_left`); Rust `explain::manual_session`, el vakaları `hand_cases.py` 4430 bloğu |
+| `test_steward_manual_hold.ExplainManual.test_asked_and_answered` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle` `manual_session`: `state.manual_hold` izleme sorusu durumu (`hold_asked`, `hold_minutes_left`); Rust `explain::manual_session`, el vakaları `hand_cases.py` 4430 bloğu |
+| `test_steward_manual_hold.ExplainManual.test_no_or_foreign_or_bad_record_keeps_old_shape` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle` `manual_session`: `state.manual_hold` izleme sorusu durumu (`hold_asked`, `hold_minutes_left`); Rust `explain::manual_session`, el vakaları `hand_cases.py` 4430 bloğu |
 | `test_steward_manual_hold.Apply.test_ask_then_yes_adopts` | AÇIK (taşınmadı ya da kısmen): `web_steward._maintain_manual_hold` state/soru/bildirim/`_record_owned` uygulayıcısı (G/Ç); saf kural `manual_hold_step` vektörlerinde, iz T10 |
 | `test_steward_multi.TestGolden.test_world_none_is_byte_identical` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+45) |
 | `test_steward_multi.TestGolden.test_default_world_is_identical` | closing::context_threshold_vectors, closing::handover_defer_decision_vectors, closing::is_context_question_vectors, gates::long_texts_stay_within_regex_limits (+62) |
