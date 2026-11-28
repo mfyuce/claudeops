@@ -1466,13 +1466,9 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
                                              "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "total_tokens": 0,
                                              "seconds": 0.0})
             try:
-                with open(os.path.join(dp, fn), encoding="utf-8", errors="replace") as f:
+                with open(os.path.join(dp, fn), "rb") as f:
                     a["runs"] += 1                      # okunamayan dosya "koşu" sayılmaz
-                    for ln in f:
-                        try:
-                            e = json.loads(ln)
-                        except ValueError:
-                            continue
+                    for e in _usage_json_lines(f, os.path.join(dp, fn)):
                         if not isinstance(e, dict) or e.get("event") != "request":
                             continue
                         u = e.get("usage") if isinstance(e.get("usage"), dict) else {}
@@ -1880,6 +1876,27 @@ def _usage_lines(f) -> Iterator[Optional[bytes]]:
             rest = f.readline(1 << 16)
             if not rest or rest.endswith(b"\n"):
                 break
+
+
+def _usage_json_lines(f, path: str) -> Iterator[Any]:
+    """Sayım için okunan (bütçe kapısı DIŞI) kullanım günlüğünün ayrıştırılmış satırları: `_MAX_LINE_BYTES`ten uzun ya da
+    `_MAX_LINE_DEPTH`ten derin satır belleğe alınmadan / ayrıştırılmadan atlanır (`_log_bad`), ayrıştırılamayan satır
+    sessizce atlanır. `f` ikili kipte açılmış olmalı; satırlar eski metin kipindeki gibi `\r` ile de ayrılır (evrensel satır
+    sonu; Rust `report::text_lines`)."""
+    for raw in _usage_lines(f):
+        if raw is None:
+            _log_bad("usage.length", path)
+            continue
+        text = raw.decode("utf-8", errors="replace")
+        text = text[:-1] if text.endswith("\n") else text
+        for line in (text[:-1] if text.endswith("\r") else text).split("\r"):
+            if _too_deep(line):
+                _log_bad("usage.depth", path)
+                continue
+            try:
+                yield json.loads(line)
+            except (ValueError, RecursionError):
+                continue
 
 
 def _too_deep(line: str) -> bool:

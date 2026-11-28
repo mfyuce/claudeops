@@ -110,9 +110,15 @@ def skip(name, why):
     _skipped[k] = _skipped.get(k, 0) + 1
 
 
+# Rust'ta derleme anı sabiti olan sınırlar: test bunları değiştirdiyse karşılaştırma anlamsız (taklit sayılır).
+_LIMITS = {n: rv.__dict__.get(n) for n in ("_MAX_LINE_BYTES", "_MAX_LINE_DEPTH")}
+
+
 def mocked():
-    """Test `review`in bir işlevini taklit ettiyse iç çağrılar gerçek davranışı yansıtmaz."""
-    return any(rv.__dict__.get(n) is not w for n, w in _wrappers.items())
+    """Test `review`in bir işlevini taklit ettiyse (ya da `_LIMITS` sabitini değiştirdiyse) iç çağrılar gerçek davranışı
+    yansıtmaz."""
+    return (any(rv.__dict__.get(n) is not w for n, w in _wrappers.items())
+            or any(rv.__dict__.get(n) != v for n, v in _LIMITS.items()))
 
 
 # ── bağdaştırıcılar: ad -> (bound arguments) -> (istek, sonuç dönüştürücü) ───────────────────

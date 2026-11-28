@@ -488,6 +488,12 @@ class TestEdges(unittest.TestCase):
         with open(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "wb") as f:
             f.write(("\n".join(odd) + "\n").encode() + b"\xff\n" + odd[4].encode() + b"\r\n")
         rv.usage_summary(d, "q")
+        # satır sınırları (rs-prov 28 Kas): 16 MiB'ı aşan ve 512 kattan derin satır atlanır, sonraki kayıt sayılır
+        with open(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "wb") as f:
+            f.write(b"[" * 100000 + b"]" * 100000 + b"\n" + odd[4].encode() + b"\n")
+            f.write(b'{"event": "request", "seconds": 1, "pad": "' + b"x" * (17 << 20) + b'"}\n' + odd[4].encode() + b"\r")
+            f.write(b"[" * 600 + b"]" * 600 + b"\r" + odd[4].encode())
+        rv.usage_summary(d, "q")
         rv.usage_cost_usd(os.path.join(d, "q/evren/glm/ts/bad.usage.jsonl"), "m")
 
 

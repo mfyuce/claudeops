@@ -98,6 +98,7 @@ MAP = {
     "_too_deep": _m("usage", "too_deep"),
     "_MAX_LINE_BYTES": _m("usage", "MAX_LINE_BYTES"),
     "_usage_lines": _m("usage", "next_line"),
+    "_usage_json_lines": _m("report", "usage_summary"),
     "_USAGE_COUNT_KEYS": _m("usage", "Record::charge"),
     "_usage_number": _m("usage", "Record::charge"),
     "_scan_usage": _m("report", "usage_cost_usd"),
@@ -127,6 +128,8 @@ NOTES = {
     "_anthropic_spend": "`report::anthropic_spend`; toplam `anthropic_spent_usd` paritesinden, neden metni `cops-providers` "
                         "`tests/usage_two_copies.rs` + Python `test_rsprov_budget_gate`; `long_integer` Python'da "
                         "yorumlayıcının `ValueError`ıdır",
+    "_usage_json_lines": "`usage_summary` döngüsünde `usage::next_line` + `text_lines` + `usage::too_deep`; uzun/derin satır payı "
+                         "`parity_edges.py` `usage_summary` vakası (rs-prov 28 Kas)",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
                  "`tests/usage_two_copies.rs`",
@@ -246,6 +249,11 @@ classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_rsprov_cost_depth", out("rs/prov + T7 `ucli_cost.py`", "derin satırın tavan kapısındaki sonucu (`sorun` "
                                       "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit LongIntegers")
 classes("test_rsprov_cost_depth", CORE, "ReviewBudgetGate")
+classes("test_rsprov_usage_line_bounds", out("parite koşucusu", "test `_MAX_LINE_BYTES`i küçültür (Rust'ta derleme sabiti); "
+                                            "aynı kural gerçek sınırla `parity_edges.py` `usage_summary` vakasında"),
+        "UsageSummaryTest")
+classes("test_rsprov_usage_line_bounds", out("T7 `ucli_compare.py`", "ucli maliyet tablosu taraması (Rust karşılığı yok)"),
+        "CompareScanTest")
 classes("test_rsprov_cost_line_length", out("rs/prov + T7 `ucli_cost.py`", "uzun satırın tavan kapısındaki sonucu ve akış "
                                             "(`sorun` dönüşü); toplam payı `cops-providers` `usage_two_copies`"),
         "LineLimit Streaming")

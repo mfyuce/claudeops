@@ -85,6 +85,45 @@ impl UsageRow {
     }
 }
 
+/// Python `usage_summary` iç döngüsü: tek kullanım satırını `a`ya ekler.
+fn add_usage_line(a: &mut UsageRow, line: &str, path: &str) {
+    let Ok(Json::Object(e)) = Json::parse(line) else {
+        return;
+    };
+    if !py::is_str(e.get("event"), "request") {
+        return;
+    }
+    let usage = e.get("usage").and_then(Json::as_object);
+    let Some(sec) = badrec::field(&e, "seconds", "usage.record", path) else {
+        return;
+    };
+    let non_finite = |v: &Json| matches!(v, Json::Float(f) if !f.is_finite());
+    if usage.is_some_and(|u| u.values().any(non_finite)) {
+        badrec::log_bad("usage.record", path);
+        return;
+    }
+    a.requests += 1;
+    a.seconds += sec;
+    let Some(u) = usage else { return };
+    for (key, slot) in [
+        ("prompt_tokens", &mut a.prompt_tokens),
+        ("completion_tokens", &mut a.completion_tokens),
+        ("reasoning_tokens", &mut a.reasoning_tokens),
+        ("cached_tokens", &mut a.cached_tokens),
+        ("total_tokens", &mut a.total_tokens),
+    ] {
+        let n = match u.get(key) {
+            Some(Json::Int(i)) => *i,
+            Some(Json::Float(f)) => f.trunc() as i64,
+            // Python keyfi büyüklükte toplar; burada sınıra kırpılır.
+            Some(Json::BigInt(s)) if s.starts_with('-') => i64::MIN,
+            Some(Json::BigInt(_)) => i64::MAX,
+            _ => continue,
+        };
+        *slot = slot.saturating_add(n);
+    }
+}
+
 /// `<ts>.usage.jsonl` dosyalarını (proje, mod/model) başına toplar.
 pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>> {
     let root = py::abspath(reviews_root);
@@ -114,45 +153,33 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
                 rows.len() - 1
             });
             let a = &mut rows[i];
-            let Ok(bytes) = std::fs::read(&path) else {
+            // Python `open(.., "rb")`: dizin açılamaz (koşu sayılmaz)
+            let Ok(file) = std::fs::File::open(&path) else {
                 continue;
             };
+            if file.metadata().is_ok_and(|m| m.is_dir()) {
+                continue;
+            }
             a.runs += 1;
-            for line in text_lines(&String::from_utf8_lossy(&bytes)) {
-                let Ok(Json::Object(e)) = Json::parse(line) else {
-                    continue;
-                };
-                if !py::is_str(e.get("event"), "request") {
-                    continue;
+            let mut reader = io::BufReader::new(file);
+            let mut raw = Vec::new();
+            loop {
+                match usage::next_line(&mut reader, &mut raw) {
+                    // yarıda okuma hatası: kalan satırlar atlanır, sayılanlar kalır (Python `except OSError`)
+                    Ok(Raw::End) | Err(_) => break,
+                    Ok(Raw::TooLong) => {
+                        badrec::log_bad("usage.length", &path);
+                        continue;
+                    }
+                    Ok(Raw::Line) => {}
                 }
-                let usage = e.get("usage").and_then(Json::as_object);
-                let Some(sec) = badrec::field(&e, "seconds", "usage.record", &path) else {
-                    continue;
-                };
-                let non_finite = |v: &Json| matches!(v, Json::Float(f) if !f.is_finite());
-                if usage.is_some_and(|u| u.values().any(non_finite)) {
-                    badrec::log_bad("usage.record", &path);
-                    continue;
-                }
-                a.requests += 1;
-                a.seconds += sec;
-                let Some(u) = usage else { continue };
-                for (key, slot) in [
-                    ("prompt_tokens", &mut a.prompt_tokens),
-                    ("completion_tokens", &mut a.completion_tokens),
-                    ("reasoning_tokens", &mut a.reasoning_tokens),
-                    ("cached_tokens", &mut a.cached_tokens),
-                    ("total_tokens", &mut a.total_tokens),
-                ] {
-                    let n = match u.get(key) {
-                        Some(Json::Int(i)) => *i,
-                        Some(Json::Float(f)) => f.trunc() as i64,
-                        // Python keyfi büyüklükte toplar; burada sınıra kırpılır.
-                        Some(Json::BigInt(s)) if s.starts_with('-') => i64::MIN,
-                        Some(Json::BigInt(_)) => i64::MAX,
-                        _ => continue,
-                    };
-                    *slot = slot.saturating_add(n);
+                let text = String::from_utf8_lossy(&raw);
+                for line in text_lines(text.strip_suffix('\n').unwrap_or(&text)) {
+                    if usage::too_deep(line) {
+                        badrec::log_bad("usage.depth", &path);
+                        continue;
+                    }
+                    add_usage_line(a, line, &path);
                 }
             }
         }

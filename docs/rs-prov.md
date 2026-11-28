@@ -3763,6 +3763,17 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `_Disabled.test_provider_opts_out` (py/tests/test_rsprov_stuck_other_providers.py) | `tests/tui.rs::codex_and_agy_opt_out_of_stuck_recovery`; `parity.rs` `fam_tui` `wants_stuck_recovery` | TAŞINDI |
 | `_Disabled.test_exact_unanswered_conversation_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
 | `_Disabled.test_hand_built_info_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
+
+## Kullanım özeti ve ucli karşılaştırma taraması satır sınırı (28 Kas)
+`review.usage_summary` ve `ucli_compare._scan` satırı sınırsız okuyordu ve derin satırda `json.loads` `RecursionError`
+ile taramayı düşürüyordu. İkisi de artık `review._usage_json_lines` üzerinden (`_usage_lines` 16 MiB + `_too_deep` 512
+kat; `\r` yine ayırıcı). Rust `cops-review-core` `report::usage_summary` dosyayı bütün okumak yerine `usage::next_line`
+ile okur, aynı derinlik kuralı; yarıda okuma hatasında kalan atlanır, sayılan kalır (Python ile aynı).
+
+| Python testi | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `UsageSummaryTest.*` (py/tests/test_rsprov_usage_line_bounds.py) | `cops-review-core` `parity_edges.py` `usage_summary` uzun/derin satır vakası (test sınırı küçülttüğü için koşucuda atlanır) | TAŞINDI |
+| `CompareScanTest.*` (py/tests/test_rsprov_usage_line_bounds.py) | `ucli_compare.py` Rust karşılığı yok (T7) | KAPSAM DIŞI |
 | `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 

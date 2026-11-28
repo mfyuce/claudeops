@@ -7,7 +7,6 @@ Claude Code (claude CLI) oturumları BU tabloda YOK: onlarda süreç örnekleyic
 yoksa karşılaştırma yanıltıcı olurdu. Maliyet tablodaki rakamlar ALT SINIRDIR."""
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, Dict, List, Optional
 
@@ -30,12 +29,8 @@ def _scan(path: str) -> Dict[str, Any]:
     tasks = 0
     tok = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                except ValueError:
-                    continue
+        with open(path, "rb") as f:
+            for rec in rv._usage_json_lines(f, path):       # satır bayt/derinlik sınırı harcama taramasıyla aynı
                 if not isinstance(rec, dict):
                     continue
                 ev = rec.get("event")
