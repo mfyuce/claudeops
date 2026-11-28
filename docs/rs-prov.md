@@ -1,8 +1,10 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
 Durum (27 Kas 2026, `rs/prov` `c8a86a87`, `main` `f7071898` içinde):
-**BİRLEŞTİRMEYE HAZIR DEĞİL.** En son tam kapı (28 Kas, `7334748b`, `main` `8613e2b1` içinde): cargo 1360 geçti, 0 kaldı,
-1 atlandı; clippy ve fmt temiz; Python 6634 OK (25 atlanan); dört eşleme denetimi çıkış 0. Aşağıdaki sayılar önceki turlarındır. G1-G11 taşındı; eşleme tablosu 735 satır (TAŞINDI 659, KAPSAM DIŞI 76) ve test tablosu
+**BİRLEŞTİRMEYE HAZIR DEĞİL.** En son tam kapı (28 Kas, `4a025117`, `main` güncel): cargo 1385 geçti, 0 kaldı,
+1 atlandı; clippy ve fmt temiz; Python 6668 OK (25 atlanan: hepsi ortam, 19 `CLAUDEOPS_TEST_PG_URL` yok, 1 node/typescript yok,
+5 gerçek ucli ikilisi yok; worktree'de `bin/ucli` yok, 23→25 artışı `test_ucli_checks_real_binary` ikisi); dört eşleme denetimi çıkış 0.
+Önceki tam kapı (28 Kas, `7334748b`, `main` `8613e2b1` içinde): cargo 1360/0/1, Python 6634 OK (25 atlanan). Aşağıdaki sayılar önceki turlarındır. G1-G11 taşındı; eşleme tablosu 735 satır (TAŞINDI 659, KAPSAM DIŞI 76) ve test tablosu
 1602 satır (TAŞINDI 789, KAPSAM DIŞI 813), ikisinde de EKSİK ve TAŞINDI-TESTSİZ 0 (önceki sayıma bu turda eklenen
 4 + 20 satır; S4 uygulamasıyla 6 + 15 satır daha). Engel: ders tablosundaki AÇIK satırlar ("Birleştirme engelleri": kim kapatır). S1 ve S2 onaylandı,
 uygulandı ("S1/S2" bölümü); S3 uygulandı (enterprise `b2779d1`); S5 = (b) ve S6 = (b) onaylandı,
