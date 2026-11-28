@@ -2365,8 +2365,13 @@ def review_tick(cfg: sw.Config, now: Optional[float] = None) -> Dict[str, Any]:
         return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
     if slots:
         return _tick_slots(p, cfg, pool, hist, targets, slots, t, gap, actions)
+    targets = anthropic_filter(p, cfg, targets, pool, hist)     # TBD#429: tek yuvalı turda da bütçe/deneme kapısı
+    if not targets:
+        return {"ok": True, "actions": actions, "started": 0, "noop": not actions, "reason": "no targets"}
     skip: List[str] = _backlog_skip(cfg, pool)
-    skip_pairs: List[str] = []
+    # `review_anthropic_projects` dışındaki proje anthropic hedefiyle koşmaz (yuva kipindeki gibi; öteki modlar sürer)
+    skip_pairs: List[str] = [rv.pair_key(pr, x) for pr in anthropic_excluded(cfg, pool) for x in targets
+                             if x.mode == "anthropic"]
     while True:
         nxt = rv.next_review(pool, hist, targets, t, busy_projects=skip, head_of=_head_of,
                              window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)), skip_pairs=skip_pairs)
@@ -2457,17 +2462,27 @@ def anthropic_filter(p: Any, cfg: Any, targets: List[rv.ReviewTarget], pool: Any
         return targets
     if hist is not None and anthropic_trial_complete(cfg, pool, hist, targets):
         return [t for t in targets if t.mode != "anthropic"]
+    if anthropic_budget_block(p, cfg):
+        return [t for t in targets if t.mode != "anthropic"]
+    return targets
+
+
+def anthropic_budget_block(p: Any, cfg: Any) -> str:
+    """Bütçe denetimi (TBD#422, TBD#429: yuvalı tur, tek yuvalı tur ve elle koşu): toplam harcama
+    `review_anthropic_budget_usd`'ye ulaştıysa ya da (bütçe açıkken) sayılamıyorsa ret nedeni (olay yazılır), yoksa ""."""
     cap = float(getattr(cfg, "review_anthropic_budget_usd", 100.0) or 0)
+    if cap <= 0:
+        return ""
     spent, problem = rv._anthropic_spend(p.reviews)
-    if cap > 0 and problem:      # sayılamayan harcama "bütçenin altında" DEĞİLDİR (günlük dolar tavanıyla aynı kural)
+    if problem:      # sayılamayan harcama "bütçenin altında" DEĞİLDİR (günlük dolar tavanıyla aynı kural)
         sw.log_event("review_anthropic_budget_unverifiable", paths=p, cap=cap, reason=problem,
                      message=f"anthropic inceleme koşuları başlatılmıyor: harcama sayılamıyor ({problem}); reviews altındaki "
                              "bu kaydı düzeltin ya da review_anthropic_budget_usd=0 ile bütçe denetimini kapatın")
-        return [t for t in targets if t.mode != "anthropic"]
-    if cap > 0 and spent >= cap:
+        return f"anthropic review budget cannot be verified ({problem})"
+    if spent >= cap:
         sw.log_event("review_anthropic_budget_reached", paths=p, spent=round(spent, 2), cap=cap)
-        return [t for t in targets if t.mode != "anthropic"]
-    return targets
+        return f"anthropic review budget reached ({spent:.2f} / {cap:g} USD)"
+    return ""
 
 
 def _tick_slots(p: Any, cfg: Any, pool: Dict[str, Any], hist: Dict[str, Any], targets: List[rv.ReviewTarget],
@@ -2753,10 +2768,16 @@ def manual_run(cfg: Any, project: str, mode: str = "", model: str = "", lens: st
         if targets and not known:
             return {"ok": False, "error": f"unknown target: {mode}/{model}"}
         target = known[0] if known else rv.ReviewTarget(mode, mname, rv.slug_model(mname), meff)
+        if target.mode == "anthropic":      # TBD#429 (a): bütçe dolunca / sayılamıyorsa elle koşu da reddedilir
+            why = anthropic_budget_block(p, cfg)
+            if why:
+                return {"ok": False, "error": why}
     else:
         hist = rv.load_history(p)
         pool = {"projects": {project: {"enabled": True}}}
         slots0 = _slots_for(cfg)
+        if any(x.mode == "anthropic" for x in targets) and anthropic_budget_block(p, cfg):
+            targets = [x for x in targets if x.mode != "anthropic"]
         nxt = rv.next_review(pool, hist, [x for x in targets if not slots0 or slots0.get(x.mode, 1) > 0], time.time(),
                              window=rv.window_seconds(getattr(cfg, "review_window_hours", 720)))
         if nxt is None:

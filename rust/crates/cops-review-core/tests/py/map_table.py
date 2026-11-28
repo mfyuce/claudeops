@@ -249,6 +249,8 @@ classes("test_review_anthropic", _runner, "TestTrialComplete")
 classes("test_rsprov_cost_depth", out("rs/prov + T7 `ucli_cost.py`", "derin satırın tavan kapısındaki sonucu (`sorun` "
                                       "dönüşü); toplam payı `cops-providers` `usage_two_copies`"), "DepthLimit LongIntegers")
 classes("test_rsprov_cost_depth", CORE, "ReviewBudgetGate")
+classes("test_rsprov_budget_all_paths", out(WR, "bütçe kapısının tek yuvalı turda ve elle koşuda uygulanması (TBD#429)"),
+        "SingleSlotTickTest ManualRunTest")
 classes("test_rsprov_usage_line_bounds", out("parite koşucusu", "test `_MAX_LINE_BYTES`i küçültür (Rust'ta derleme sabiti); "
                                             "aynı kural gerçek sınırla `parity_edges.py` `usage_summary` vakasında"),
         "UsageSummaryTest")
