@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+cops-state = { path = "../cops-state" }
 libc = "0.2"
 regex = "1"
 

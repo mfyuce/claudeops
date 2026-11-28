@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 617 | 153 | 464 | 0 |
-| test durumu (158 dosya) | 1981 | 115 | 1866 | 0 |
+| tanım | 619 | 153 | 466 | 0 |
+| test durumu (159 dosya) | 1987 | 115 | 1872 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -33,7 +33,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `commands/usage.py` | KISMİ | 9 | 0 | 9 | 0 |
 | `model_usage.py` | KISMİ | 13 | 2 | 11 | 0 |
 | `orphan_watch.py` | KISMİ | 19 | 0 | 19 | 0 |
-| `paths.py` | KISMİ | 26 | 9 | 17 | 0 |
+| `paths.py` | KISMİ | 28 | 9 | 19 | 0 |
 | `commands/web.py` | seçili | 7 | 3 | 4 | 0 |
 | `tmux_backend.py` | seçili | 3 | 3 | 0 | 0 |
 
@@ -739,6 +739,8 @@ Yok.
 | `paths.py::shared_write_allowed` | işlev:143 | kapsam dışı | yok | yok | ortak anahtar/kullanım dosyalarının yazım kapısı (açılış, TBD#412 b). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `paths.py::GUARD_LOCK` | sabit:157 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
 | `paths.py::ensure_private_state_dir` | işlev:160 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::trusted_path_env` | işlev:175 | kapsam dışı | yok | yok | süreç girişinde güvenilmeyen PATH girdisi süzgeci (P2-2, TBD#450); Rust eşi `cops_state::paths` (copsd, cops-cli girişi), test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `paths.py::secure_path_environ` | işlev:194 | kapsam dışı | yok | yok | süreç girişinde güvenilmeyen PATH girdisi süzgeci (P2-2, TBD#450); Rust eşi `cops_state::paths` (copsd, cops-cli girişi), test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
 
 ### `py/claudeops/commands/web.py`
 
@@ -756,9 +758,9 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `tmux_backend.py::TMUX_SOCKET` | sabit:23 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
-| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:25 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
-| `tmux_backend.py::is_tmux_backed` | işlev:914 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
+| `tmux_backend.py::TMUX_SOCKET` | sabit:25 | karşılandı | `status.rs::TMUX_SOCKET` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`run.py:scan_sessions` | yok |
+| `tmux_backend.py::_ANCESTOR_WALK_LIMIT` | sabit:27 | karşılandı | `status.rs::ANCESTOR_WALK_LIMIT` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | 6 adım sınırının ucu sınanmıyor |
+| `tmux_backend.py::is_tmux_backed` | işlev:928 | karşılandı | `status.rs::Probe::is_tmux_backed` | `tests/fake_proc.rs::tmux_terminal_and_orphans`<br>`tests/fake_proc.rs::other_users_processes_are_never_read`<br>`run.py:scan_sessions` | başka kullanıcının atasında durur, içeriğini okumaz. Python düzeltildi: 6ae5da3 |
 
 ## Python test durumları
 
@@ -1336,6 +1338,17 @@ Yok.
 | `test_orphan_watch.py::Procs.test_codex_app_server_and_its_children_ignored` | 134 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
 | `test_orphan_watch.py::Job.test_notifies_only_new_keys_and_forgets_resolved` | 149 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
 | `test_orphan_watch.py::Job.test_registered_as_light_job` | 161 | kapsam dışı | yok | sahipsiz kaynak denetimi. İz: T7 (periyodik+kullanım) |
+
+### `py/tests/test_path_env.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_path_env.py::TrustedPathEnv.test_keeps_trusted_and_order` | 22 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `test_path_env.py::TrustedPathEnv.test_drops_missing_relative_empty` | 26 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `test_path_env.py::TrustedPathEnv.test_drops_file_and_world_writable` | 31 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `test_path_env.py::TrustedPathEnv.test_drops_foreign_owner` | 40 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `test_path_env.py::TrustedPathEnv.test_duplicates_kept_once` | 51 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
+| `test_path_env.py::TrustedPathEnv.test_secure_environ_rewrites_and_reports` | 55 | kapsam dışı | yok | PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test `paths.rs::trusted_path_env_drops_untrusted`. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_paths_isolation.py`
 

@@ -287,5 +287,9 @@
  "test_brain_directive_subagent_gate.TestBrainDirectiveSubagentGate.test_busy_without_long_shell_keeps_message": "`web_steward._brain_directive_defer` + `long_bg_shells`: meşgul ertelemede uzun arka plan kabuğunu (komut + yaş) yanıta ve `bg_shell_long` olayına yazma; uygulama katmanı (psutil süreç ağacı), saf kural `directive_defer_reason` vektörlerinde, iz T10",
  "test_shell_only_stale.RecordShellSince": "`bg_work.session_record_shell_since/shell_only_stale`: claude süreç kaydı (`sessions/<pid>.json`, /proc procStart) okuma; G/Ç, Rust eşi `cops-providers` bg_work (iz rs-prov)",
  "test_shell_only_stale.DirectiveDefer": "`web_steward._brain_directive_defer`: `_shell_only_stale` iken alt ajan ertelemesi kalkar; uygulama katmanı, saf kural `bg_blocks_message` vektörlerinde, iz T10",
- "test_shell_only_stale.BlocksMessage": "saf kural `bg_blocks_message` (+ `handover_defer_decision`, `holds_total_slot` değişmedi): Rust `world::bg_blocks_message`, el vakaları `hand_cases.py` TBD#442 bloğu (tam doğruluk tablosu + teslim/boşta dürtü)"
+ "test_steward_manual_hold.ExplainManual": "saf `explain_idle` `manual_session`: `state.manual_hold` izleme sorusu durumu (`hold_asked`, `hold_minutes_left`); Rust `explain::manual_session`, el vakaları `hand_cases.py` 4430 bloğu",
+ "test_shell_only_stale.ExplainIdle": "saf `explain_idle`: `bg_running` nedeni + `shell_only_stale` işareti; Rust `explain::with_session`/`explain_idle`, el vakaları `hand_cases.py` 4429 bloğu + kayıtlı vektörler",
+ "test_shell_only_stale.BlocksMessage": "saf kural `bg_blocks_message` (+ `handover_defer_decision`, `holds_total_slot` değişmedi): Rust `world::bg_blocks_message`, el vakaları `hand_cases.py` TBD#442 bloğu (tam doğruluk tablosu + teslim/boşta dürtü)",
+ "test_steward_manual_hold.ManualHold": "saf kural `manual_hold_step` (+ `World.session_class`): Rust `world::manual_hold_step`, el vakaları `hand_cases.py` L2 bayat izleme bloğu (900 vaka, bozuk `since` dahil)",
+ "test_steward_manual_hold.Apply": "AÇIK: `web_steward._maintain_manual_hold` state/soru/bildirim/`_record_owned` uygulayıcısı (G/Ç); saf kural `manual_hold_step` vektörlerinde, iz T10"
 }

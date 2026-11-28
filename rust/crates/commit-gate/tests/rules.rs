@@ -91,13 +91,50 @@ fn exception_needs_owner_approved_tbd() {
 
 #[test]
 fn fix_warns_only_on_new_public_surface() {
-    let diff = "diff --git a/py/a.py b/py/a.py\n--- a/py/a.py\n+++ b/py/a.py\n@@ -1 +1,9 @@\n-def moved(x):\n+def moved(x, y):\n+def fresh(a):\n+    async def method(self):\n+def _private():\n+        def inner():\n+    if p == \"/api/new\":\ndiff --git a/py/tests/t.py b/py/tests/t.py\n--- a/py/tests/t.py\n+++ b/py/tests/t.py\n@@ -0,0 +1 @@\n+def helper():\n";
+    let diff = "diff --git a/py/a.py b/py/a.py\n--- a/py/a.py\n+++ b/py/a.py\n@@ -1 +1,9 @@\n-def moved(x):\n+def moved(x, y):\n+def fresh(a):\n+class K:\n+    async def method(self):\n+def _private():\n+        def inner():\n+    if p == \"/api/new\":\ndiff --git a/py/tests/t.py b/py/tests/t.py\n--- a/py/tests/t.py\n+++ b/py/tests/t.py\n@@ -0,0 +1 @@\n+def helper():\n";
     assert_eq!(
         new_public(diff),
         ["işlev fresh", "işlev method", "uç /api/new"]
     );
     let v = evaluate("fix: x", &[], diff, None);
     assert!(v.errors.is_empty() && v.warnings.len() == 1);
+}
+
+/// `b77b133a` yanlış alarmı: girintili `def`, kapsayan girintisiz satır (hunk başlığı ya da hunk içi) bir işlevse iç işlevdir.
+#[test]
+fn nested_function_in_function_is_not_public() {
+    let hdr = |ctx: &str, body: &str| {
+        format!("diff --git a/py/a.py b/py/a.py\n--- a/py/a.py\n+++ b/py/a.py\n@@ -10,0 +11,3 @@ {ctx}\n{body}")
+    };
+    // başlık: kapsayan üst düzey işlev (b77b133a: `def explain_idle(...)` içinde `def why(...)`)
+    assert!(new_public(&hdr(
+        "def explain_idle(proj: Project,",
+        "+    def why(code: str):\n"
+    ))
+    .is_empty());
+    assert!(new_public(&hdr("async def run(x):", "+    async def step():\n")).is_empty());
+    // başlık sınıf ya da boş: yöntem, eskisi gibi sayılır
+    assert_eq!(
+        new_public(&hdr("class Store:", "+    def put(self):\n")),
+        ["işlev put"]
+    );
+    assert_eq!(new_public(&hdr("", "+    def put(self):\n")), ["işlev put"]);
+    // hunk içi girintisiz satır kapsamı değiştirir
+    assert!(
+        new_public(&hdr("class Store:", "+def outer():\n+    def inner():\n")) == ["işlev outer"]
+    );
+    assert_eq!(
+        new_public(&hdr("def f():", "+class C:\n+    def m(self):\n")),
+        ["işlev m"]
+    );
+    // atama/sözlük başlığı (`_WHY_TR = {`) işlev değil: yöntem kuralı sürer
+    assert_eq!(
+        new_public(&hdr("_WHY_TR = {", "+    def put(self):\n")),
+        ["işlev put"]
+    );
+    // silinen iç işlev de iç işlevdir (eski adlar listesine girmez, yeni üst düzey ad yine uyarır)
+    let diff = hdr("def f():", "-    def g():\n+def g():\n");
+    assert_eq!(new_public(&diff), ["işlev g"]);
 }
 
 #[test]

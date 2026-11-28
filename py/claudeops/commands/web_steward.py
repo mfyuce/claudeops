@@ -159,6 +159,36 @@ def _owned_of(sid: str) -> Dict[str, str]:
         return {}
 
 
+def _maintain_manual_hold(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World, paths: Any,
+                          sid: str, now: float, cfg: sw.Config) -> sw.World:
+    """`sw.manual_hold_step`i uygular: süre kaydı `state.manual_hold`, soru `source=owned_adopt` (sahibe bildirilir), olumlu cevapta
+    `owned` elle açılan oturuma yazılır; cevap her durumda teslim edildi sayılır (oturuma iletilmez). Hata olursa `world` aynen."""
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            hold, asks, resolved = sw.manual_hold_step(dict(st.get("manual_hold") or {}), views, world, projects,
+                                                       sw.load_questions(paths), now, cfg.lang)
+            if hold != (st.get("manual_hold") or {}):
+                st["manual_hold"] = hold
+                sw.save_state(st, paths)
+        owned = dict(world.owned)
+        for r in resolved:
+            if r["adopt"]:
+                _record_owned(sid, r["project"], r["session"], "owner_answer")
+                owned[r["project"]] = r["session"]
+            sw.mark_delivered(r["question_id"], paths)
+            sw.log_event("manual_hold_answer", paths=paths, **r)
+        for a in asks:
+            q, outcome = sw.add_question_ex(a["project"], a["text"], source=sw.OWNED_ADOPT_SOURCE, options=["evet", "hayır"], paths=paths)
+            sw.log_event("manual_hold_ask", paths=paths, project=a["project"], session=a["session"], id=q.id, outcome=outcome)
+            if outcome in ("new", "promoted") and q.status == "open":
+                _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
+        return dataclasses.replace(world, owned=owned) if owned != world.owned else world
+    except Exception as e:
+        diag_log("steward_manual_hold_failed", sid=sid, error=repr(e))
+        return world
+
+
 OWNED_SEED_REQUEST = "owned_seed.request"   # kimlik dizininde varsa sıradaki tick log KANITIYLA tohumlar (L2 canlı geçişi, tek sefer)
 OWNED_SEED_LOG_LINES = 20000     # L2 geçiş tohumlamasında taranan son log satırı (kanıt: değnekçinin start/directive olayları)
 
@@ -4841,6 +4871,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
             world = _maintain_owned(views, projects, world, paths, sid, t0)     # L2: izlenen oturum kaydı (+ tek seferlik tohum)
+            world = _maintain_manual_hold(views, projects, world, paths, sid, t0, cfg)   # L2: bayat kayıt -> sahibe "izleyeyim mi?"
             _check_outcomes(cfg, views, paths, t0)        # L5: önceki tick'lerin eylemleri gerçekten sonuç verdi mi
             if sw.load_state(paths).get("act_journal"):
                 _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri

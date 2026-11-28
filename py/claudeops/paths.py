@@ -170,3 +170,36 @@ def ensure_private_state_dir() -> None:
     a plain `os.chmod` on an already-0700 dir is a no-op."""
     os.makedirs(CLAUDEOPS_DIR, exist_ok=True)
     os.chmod(CLAUDEOPS_DIR, 0o700)
+
+
+def trusted_path_env(value: str) -> str:
+    """PATH değerinden güvenilmeyen girdileri atar (P2-2, 28 Kas: servis PATH'inin başında var olmayan `/tmp/tmp.*` vardı;
+    çok kullanıcılı makinede başkası o dizini kurup `tmux`/`claude`/`git` koyarsa servis onu çalıştırırdı). Kalır: mutlak,
+    var olan (bağ çözülerek) dizin, sahibi root ya da bu kullanıcı, başkalarınca (other) yazılamaz. Sıra korunur, tekrar
+    atılır. Rust eşi `cops_state::paths::trusted_path_env`."""
+    out: list = []
+    uid = os.getuid()
+    for p in value.split(os.pathsep):
+        if not os.path.isabs(p) or p in out:
+            continue
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid in (0, uid) and not st.st_mode & stat.S_IWOTH:
+            out.append(p)
+    return os.pathsep.join(out)
+
+
+def secure_path_environ() -> list:
+    """Süreç girişinde (`python3 -m claudeops`) `PATH`i `trusted_path_env` ile yeniden yazar; atılan girdileri döndürür
+    (çocuk süreçler temiz PATH devralır). `PATH` yoksa dokunmaz."""
+    cur = os.environ.get("PATH")
+    if cur is None:
+        return []
+    new = trusted_path_env(cur)
+    kept = set(new.split(os.pathsep)) if new else set()
+    dropped = [p for p in cur.split(os.pathsep) if p not in kept]
+    if new != cur:
+        os.environ["PATH"] = new
+    return dropped

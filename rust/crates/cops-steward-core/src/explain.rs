@@ -11,6 +11,7 @@ use crate::pyc;
 use crate::recovery::{dict_of, doc, float_of, int_of, truthy_at};
 use crate::tour::OpenWork;
 use crate::types::{Action, Config, Project, Question, SessionView, World};
+use crate::world::bg_blocks_message;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
@@ -118,6 +119,38 @@ fn without_session(proj: &Project, input: &ExplainInput<'_>) -> Result<Doc, BadV
     Ok(why("start_blocked", lang, detail, doc(json!({"reason": "queue"}))))
 }
 
+/// `manual_session` nedeni; `manual_hold_step` kaydı oturumla eşleşirse izleme sorusunun durumu (soruldu / kalan dk) eklenir.
+fn manual_session(names: &[&str], state: &Doc, name: &str, now: f64, lang: &str) -> Result<Doc, BadValue> {
+    let detail = names.join(", ");
+    let holds = dict_of(state.get("manual_hold"))?;
+    if let Some(hr) = holds.get(name).and_then(Value::as_object) {
+        if hr.get("session").and_then(Value::as_str).is_some_and(|s| names.contains(&s)) {
+            let en = lang == "en";
+            if truthy_at(hr, "asked") {
+                let tail = if en {
+                    "watch question answered, not asked again"
+                } else {
+                    "izleme sorusu cevaplandı, yeniden sorulmaz"
+                };
+                let detail = format!("{detail}; {tail}");
+                return Ok(why("manual_session", lang, &detail, doc(json!({"hold_asked": true}))));
+            }
+            if let Some(since) =
+                hr.get("since").filter(|v| v.is_number()).and_then(Value::as_f64).filter(|f| f.is_finite())
+            {
+                let rest = MANUAL_HOLD_ASK_SECONDS as f64 - (now - since);
+                let left = pyc::floor_div(if rest > 0.0 { rest } else { 0.0 }, 60.0) as i64;
+                let tail =
+                    if en { format!("watch question in {left} min") } else { format!("izleme sorusu {left} dk sonra") };
+                let detail = format!("{detail}; {tail}");
+                let extra = doc(json!({"hold_asked": false, "hold_minutes_left": left}));
+                return Ok(why("manual_session", lang, &detail, extra));
+            }
+        }
+    }
+    Ok(why("manual_session", lang, &detail, Map::new()))
+}
+
 /// Tek çalışan oturumu olan projenin nedeni.
 fn with_session(proj: &Project, v: &SessionView, input: &ExplainInput<'_>) -> Result<Doc, BadValue> {
     let ExplainInput { state, cfg, now, actions, open_work, .. } = *input;
@@ -162,6 +195,11 @@ fn with_session(proj: &Project, v: &SessionView, input: &ExplainInput<'_>) -> Re
         if owner_wait(txt) {
             return Ok(plain("owner_wait", lang));
         }
+    }
+    if bg_blocks_message(v) {
+        // alt ajan/arka plan işi çalışıyor ya da bilinmiyor: yönerge/dürtü/teslim gitmez
+        let detail = if v.subagent_unknown { "?" } else { "" };
+        return Ok(why("bg_running", lang, detail, Map::new()));
     }
     if let Some(a) = actions.iter().find(|a| a.kind == "idle_nudge" && a.name == v.name) {
         let next = str_or_empty(a.payload.get("next"));
@@ -252,7 +290,7 @@ pub fn explain_idle(proj: &Project, input: &ExplainInput<'_>) -> Result<Doc, Bad
         }
         if mine.iter().any(|v| w.session_class(&v.name, v.blueprint.as_deref()) == "manual") {
             let names: Vec<&str> = mine.iter().map(|v| v.name.as_str()).collect();
-            return Ok(why("manual_session", lang, &names.join(", "), Map::new()));
+            return manual_session(&names, state, name, now, lang);
         }
     }
     if mine.len() > 1 {
@@ -272,7 +310,15 @@ pub fn explain_idle(proj: &Project, input: &ExplainInput<'_>) -> Result<Doc, Bad
     }
     match mine.first() {
         None => without_session(proj, input),
-        Some(v) => with_session(proj, v, input),
+        Some(v) => {
+            // yalnız kabuk/Monitor 30 dk'dan eski (TBD#442 a): mesaj engeli yok, neden bunu `shell_only_stale` ile işaretler
+            let stale = v.subagent_active && v.shell_only_stale && !v.subagent_unknown;
+            let mut d = with_session(proj, v, input)?;
+            if stale {
+                d.insert("shell_only_stale".into(), Value::Bool(true));
+            }
+            Ok(d)
+        }
     }
 }
 

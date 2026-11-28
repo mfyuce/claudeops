@@ -437,6 +437,7 @@ dependencies = [
 name = "cops-tmux"
 version = "0.1.0"
 dependencies = [
+ "cops-state",
  "libc",
  "regex",
  "serde_json",

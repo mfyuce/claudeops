@@ -242,6 +242,7 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `py/claudeops/tmux_backend.py:84` `_tmux_format_literal` (işlev) | `runner::format_literal` | PC | eş (kapı 1) |
 | `py/claudeops/tmux_backend.py:91` `_tmux_arg` (işlev) | `runner::escape_arg` | PC (`_tmux_arg`, kabuk parçaları), PB (P4), PCL (P6) | eş (yeni, P4/P6 düzeltmesi, TBD 366) |
 | `py/claudeops/tmux_backend.py:98` `tmux_new_session_shell_fragment` (işlev) | `shell::Tmux::new_session_shell_fragment` (+`shell_quote`) | PC | eş (conf yolu parametre; dönüş `Result`: hedeflenemeyen ad `BadArgument`; ad/cwd/iç komut `;` kaçışı, P1-P4 düzeltildi, TBD 366) |
+| `py/claudeops/tmux_backend.py` `_client_path` (işlev) | `shell::client_path` (+`process_path`; süzgeç `cops_state::paths::trusted_path_env`) | PC | eş (TBD#450: oturumu açan istemciye süzülmüş PATH; kabuk parçasında `PATH=... ` öneki, `spawn_direct`te `envs` PATH'i) |
 | `py/claudeops/tmux_backend.py:117` `tmux_attach_shell_fragment` (işlev) | `shell::Tmux::attach_shell_fragment` | PC | eş (dönüş `Result`: hedeflenemeyen ad `BadArgument`, P1-P3 düzeltildi, TBD 366) |
 | `py/claudeops/tmux_backend.py:125` `tmux_spawn_direct` (işlev) | `shell::Tmux::spawn_direct` | PF, PL, PB (P4) | eş (dönüş `Result`; P1-P4 düzeltildi iki tarafta, TBD 366) |
 | `py/claudeops/tmux_backend.py:152` `tmux_has_session` (işlev) | `query::Tmux::has_session` | PR, PF, PB | eş (`Err` = Python `False`) |
@@ -571,6 +572,7 @@ Python hatası gibi görünen yeni davranış: P3'ün kapsamı daraldı (yalnız
 | `test_term_viewport.py::RouteTests::test_ws_term_route_parses_viewport_and_passes_it_on` | yok: `/api/term/output`, `/ws/term` rotaları (T2) | kapsam dışı |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_only_a_trailing_semicolon_is_escaped` | `runner::tests` `escape_arg` vakaları; PC (`_tmux_arg` = `escape_arg`) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_spawn_direct_argv_escapes_name_and_cwd` | PB (P4: `semi;` adı ve `w;` dizini iki tarafta da açılır) | karşılandı (parite) |
+| `test_tmux_path_env.py` (NewSessionPathEnv, RealTmuxPanePath) | parite: kabuk parçası ve `spawn_direct` iki tarafta aynı süzülmüş PATH (`parity.rs` parça/spawn vakaları) | karşılandı (parite; TBD#450) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_shell_fragment_escapes_name_cwd_and_inner` | PC (ad `semi;`, cwd `/t;`, iç komut `x;`) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::EscapeTests::test_set_ctx_argv_escapes_the_label` | PCL (`a;` etiketi: yazılan değer eşit ve `a;`) | karşılandı (parite) |
 | `test_tmux_arg_semicolon.py::RealTmuxSemicolonTests::test_spawn_with_semicolon_name_and_cwd_opens_that_session` | PB (P4: oturum o ad ve dizinde) | karşılandı (parite) |
