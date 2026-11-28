@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 from .atomic_json import atomic_write_text, file_lock
 from .paths import CLAUDEOPS_DIR
 from . import jsonbound as _jsonbound
+from .childgroup import _run_grouped
 
 ROOT = os.path.join(CLAUDEOPS_DIR, "ucli_checks")
 MODES = ("restricted", "full")
@@ -107,13 +108,18 @@ TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
+_PROBE_TIMEOUT = 10.0       # `checks validate --help`
+_VALIDATE_TIMEOUT = 20.0    # `checks validate --json`
+
+
 def probe_checks(binary: str) -> Tuple[Optional[bool], str]:
     """`checks validate` yoklaması: True = alt komut var, False = yok (eski ikili: kullanım hatası, çıkış 2), None =
     yoklanamadı (ikinci değer neden; çağıran doğrulanmış saymaz)."""
     try:
         # yalnız çıkış kodu: çıktı çözülmez (UTF-8 olmayan yardım metni "alt komut yok" sayılırsa doğrulama atlanırdı)
-        r = subprocess.run([binary, "checks", "validate", "--help"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, timeout=10)
+        # kendi süreç grubunda: zaman aşımında torunlar da sonlanır (TBD#397, `childgroup`)
+        r = _run_grouped([binary, "checks", "validate", "--help"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, timeout=_PROBE_TIMEOUT)
     except (OSError, subprocess.SubprocessError) as e:
         return None, e.__class__.__name__
     if r.returncode in (0, 2):
@@ -133,8 +139,8 @@ def ucli_validate(data: Dict[str, Any], binary: str) -> Tuple[bool, str]:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f)
         os.chmod(tmp, 0o600)
-        r = subprocess.run([binary, "checks", "validate", "--checks-file", tmp, "--json", "--not-under", ROOT.replace("ucli_checks", "__none__")],
-                           capture_output=True, text=True, timeout=20)
+        r = _run_grouped([binary, "checks", "validate", "--checks-file", tmp, "--json", "--not-under", ROOT.replace("ucli_checks", "__none__")],
+                         stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=_VALIDATE_TIMEOUT)
         try:
             doc = _jsonbound.loads(r.stdout or "{}")
         except ValueError:

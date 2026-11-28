@@ -10,7 +10,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from claudeops import searxng, settings, ucli_client  # noqa: E402
+from claudeops import searxng, settings, ucli_checks, ucli_client  # noqa: E402
 from claudeops.providers import agy_provider, base, claude_provider, ucli_provider  # noqa: E402
 from claudeops.providers.base import McpServerSpec  # noqa: E402
 
@@ -153,6 +153,22 @@ class NeverSignalsAForeignGroup(unittest.TestCase):
         self.assertEqual((r.returncode, r.stdout, r.stderr), (3, "a\n", "b\n"))
         with self.assertRaises(subprocess.TimeoutExpired):
             childgroup._run_grouped(["sleep", "5"], timeout=0.2)
+
+
+class UcliChecksKillsItsGroup(_Tmp):
+    """TODO rs-prov "#397 ajanının gördüğü": `ucli checks validate` yoklaması ve doğrulaması da kendi grubunda."""
+
+    def test_probe(self):
+        with mock.patch.object(ucli_checks, "_PROBE_TIMEOUT", 1.0):
+            self.assertEqual(ucli_checks.probe_checks(self.script()), (None, "TimeoutExpired"))
+        self.assert_grandchild_gone()
+
+    def test_validate(self):
+        with mock.patch.object(ucli_checks, "ROOT", os.path.join(self.tmp, "ucli_checks")), \
+                mock.patch.object(ucli_checks, "_VALIDATE_TIMEOUT", 1.0):
+            self.assertEqual(ucli_checks.ucli_validate({"version": 1}, self.script()),
+                             (False, "ucli çalıştırılamadı: TimeoutExpired"))
+        self.assert_grandchild_gone()
 
 
 if __name__ == "__main__":

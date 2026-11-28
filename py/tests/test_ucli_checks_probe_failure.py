@@ -43,7 +43,7 @@ class ProbeFailure(Base):
         self.assertRejected(self.binary("exit 0", mode=0o644), "PermissionError")
 
     def test_probe_timeout_rejects(self):
-        with mock.patch.object(uck.subprocess, "run", side_effect=subprocess.TimeoutExpired("ucli", 10)):
+        with mock.patch.object(uck, "_run_grouped", side_effect=subprocess.TimeoutExpired("ucli", 10)):
             self.assertRejected("/x/ucli", "TimeoutExpired")
 
     def test_probe_killed_by_signal_rejects(self):

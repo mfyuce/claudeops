@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 617 | 153 | 464 | 0 |
-| test durumu (158 dosya) | 1974 | 115 | 1859 | 0 |
+| test durumu (158 dosya) | 1976 | 115 | 1861 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -1552,6 +1552,8 @@ Yok.
 | `test_rsprov_child_group.py::NeverSignalsAForeignGroup.test_group_equal_to_the_callers_is_never_signalled` | 134 | kapsam dışı | yok | yardımcı alt sürecin zaman aşımında süreç grubu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
 | `test_rsprov_child_group.py::NeverSignalsAForeignGroup.test_a_reaped_child_is_never_signalled` | 142 | kapsam dışı | yok | yardımcı alt sürecin zaman aşımında süreç grubu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
 | `test_rsprov_child_group.py::NeverSignalsAForeignGroup.test_normal_run_matches_subprocess_run` | 150 | kapsam dışı | yok | yardımcı alt sürecin zaman aşımında süreç grubu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
+| `test_rsprov_child_group.py::UcliChecksKillsItsGroup.test_probe` | 161 | kapsam dışı | yok | yardımcı alt sürecin zaman aşımında süreç grubu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
+| `test_rsprov_child_group.py::UcliChecksKillsItsGroup.test_validate` | 166 | kapsam dışı | yok | yardımcı alt sürecin zaman aşımında süreç grubu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T10 (değnekçi) |
 
 ### `py/tests/test_rsprov_cost_one_pass.py`
 
