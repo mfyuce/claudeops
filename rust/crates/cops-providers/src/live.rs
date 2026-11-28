@@ -7,7 +7,7 @@ use crate::bg_work::{self, Clock, SHELL_ONLY_DIRECTIVE_SECONDS, TRANSCRIPT_TAIL_
 use crate::claude_resume::py_int;
 use crate::probe::{Paths, Probe};
 use crate::provider::Cli;
-use crate::pyfmt::{parse_float, parse_int, splitlines};
+use crate::pyfmt::{parse_float, splitlines};
 use crate::pyjson::Py;
 use crate::settings::Settings;
 use crate::ucli_status::{FailedTurns, LivePhase, LiveUsage};
@@ -327,11 +327,23 @@ impl Live<'_> {
             SqlCell::Int(n) => (n != 0).then_some(n),
             // `int(f)`: sıfıra doğru keser; sonsuz/NaN bilinmiyor
             SqlCell::Real(f) => (f != 0.0 && f.is_finite()).then(|| f.trunc() as i64),
-            // `int(metin)`: sayı olmayan metin bilinmiyor
-            SqlCell::Text(s) => parse_int(&s),
-            SqlCell::Blob(b) => parse_int(std::str::from_utf8(&b).ok()?),
+            // `int(metin)`: sayı olmayan metin bilinmiyor; i64'e sığmayan değer Int/Real yolları gibi doyar (R-G6-4)
+            SqlCell::Text(s) => cell_int(&s),
+            // `int(bytes)` yalnız ASCII rakam ve ASCII boşluk (`Py_ISSPACE`: U+001C..U+001F boşluk SAYILMAZ) kabul eder
+            SqlCell::Blob(b) => {
+                if b.iter().any(|c| !c.is_ascii() || (0x1c..=0x1f).contains(c)) {
+                    return None;
+                }
+                cell_int(std::str::from_utf8(&b).ok()?)
+            }
         }
     }
+}
+
+/// SQLite hücresinde `int(metin)`: sığmayan değer uca doyar; 4300 basamaktan uzun değer Python'da `ValueError` (None).
+fn cell_int(s: &str) -> Option<i64> {
+    let n = cops_state::pycompat::parse_int(s)?;
+    (n.as_str().trim_start_matches('-').len() <= 4300).then(|| n.saturating_i64())
 }
 
 /// Python `float(v)` bir süreç kaydı değerinde: sayı, bool (0/1), dize (`float(str)`); `float()`ın taşma verdiği dev tam

@@ -481,6 +481,22 @@ Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crat
 5. copilot `live_context`: sayıya çevrilemeyen hücre None (`copilot-hucre-metin-harf`, `-sonsuz`).
 6. `bg_work`: liste biçimli araç sonucunda yalnız metin blokları, gerçek satır sonlarıyla taranır (`bg-transkript-`).
 
+### Bağımsız gözden geçirme bulguları (28 Kas copsdev, `docs/review/rust-prov-G6G2G3-review.md`; 28 Kas akşam DÜZELDİ)
+- R-G6-1: boş `prompt`lu `task-notification` eki Python gibi "bildirim yok"; kayıt araç çağrısı olarak taranır (`bg-gg-bos-prompt-`).
+- R-G6-2: dilimsiz damgada CPython `local_to_seconds` yerel saati `t + fark` ve `t - 1 gün`de yoklar; 1-9999 dışına taşan yoklama
+  `ValueError` = None. Rust aynı sınırı uygular (`iso_epoch`); parite rastgele damgalarda yıl-1 elemesi kalktı, kenarlar açık eklendi
+  (`bg-damga-`, `bg-gg-yil-`), G3 `sapma-yil-bir` -> `esit-yil-bir`.
+- R-G6-3: tam sayılı büyük kayan noktalı kimlik anahtarı kesin ondalık dökümüyle (`{:.0}`): `1e300` yalnız `int(1e300)` ile eşleşir
+  (`bg-gg-float-`).
+- R-G6-4: copilot bağlam hücresi: BLOB yalnız ASCII (U+001C..U+001F hariç) `int(bytes)`; i64'e sığmayan metin Int/Real gibi doyar,
+  4300 basamaktan uzun metin None (`copilot-hucre-blob-*`, `-metin-arapca`, `-metin-ayirici`). Taşan metnin Python'daki büyük
+  değeri "u64/i64'e sığmayan sayaç (doygun)" bilinen ailesindedir.
+- R-G6-5: ekran desenlerindeki Python `\w` sınıfı `regex`in yeni Unicode'u yerine Python 3.10 tablosundan (`py_word.rs`, ÜRETİLDİ;
+  `bg-ekran-unicode13`). Python sürümü değişirse tablo yeniden üretilmeli.
+- R-G6-6 (iki tarafta, TBD#383 kuralı; Python `bg_work._fresh`): gelecek tarihli başlangıç da 6 saat sınırını iki YÖNDE aşınca
+  sayılmaz (saat geri sıçraması/bozuk damga işi "meşgul" bırakıyordu). Gelecek damgaya dayanan iki Python testi taze damgaya
+  çevrildi (`test_bg_work._recent`).
+
 ### Ders listesi (`docs/rust-lessons-from-python.md`), G6 koduna düşen maddeler
 Crate geneli tek tabloya taşındı ve yeniden doğrulandı: "Ders listesi: crate'in tamamı" bölümü.
 
@@ -498,7 +514,10 @@ tarafı bu ize yönlendirilmeli (`sid_for_stopped_session` G1'de taşındı).
   yol URI diye ayrıştırılmaz), `claude_project_dir` (`_encode_cwd`: `rs/proc` `transcript.rs::encode_cwd`), `agy_resume_id` (G1 ile crate içine alındı).
   Transkript, rollout ve resume çözümü crate içinde (G1); paritede gerçek dosyalardan sınanır.
 - Transkript `read_bytes(path, u64::MAX)` ile BÜTÜN okunur (Python da sınırsız). Satırlar tek tek ayrıştırılıp atılır; son çift
-  sondan tembel aranır. Boyut sınırı konmadı (konursa Python'dan sapma olur); bellek dosya boyutu kadar.
+  sondan tembel aranır. Boyut sınırı konmadı (konursa Python'dan sapma olur); bellek dosya boyutu kadar. Okuma tamponu
+  açılıştaki boyutla ÖNCEDEN ayrılır (`real/fsio.rs::take`, R-G23-2): ayrılamazsa "okunamadı" (boş), eskiden büyütme
+  ayırması başarısız olunca süreç `abort` ediyordu (Python `MemoryError`). Ölçüm (gözden geçirme): 100 MB'ta release
+  `claude_history` 0,40 sn; `last_message_role` her çağrıda tüm dosyayı ayrıştırır: çağrı sıklığı T4/T1 bağlarken ölçülsün.
 - Taşınmayan: `web._term_chat` bağlaması (T1), `io_providers`.
 
 ### Bilinen ayrışmalar (0)
@@ -545,8 +564,8 @@ bu ize yönlendirilmeli.
   uygulamalı); `handover` politikası (T4); `handover_*_downgrade` ve canlı geçiş (G4, `tui.rs`); `web_steward.context_tokens_for`
   (T10; `rs/stew` tablosunda EKSİK, henüz kimse taşımadı).
 
-### Bilinen ayrışmalar (1; testte `known(`, Rust sonucu `expect*` ile ayrıca doğrulanır)
-- 1. yılın ilk günü dilimsiz damga. 512'den derin satır ve eşlenmemiş vekil: 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`).
+### Bilinen ayrışmalar (0; 28 Kas'ta son kayıt da kalktı)
+- (28 Kas: 1. yılın ilk günü dilimsiz damga iki tarafta None, R-G6-2; vaka `esit-yil-bir`.) 512'den derin satır ve eşlenmemiş vekil: 28 Kas `jsonbound` (TODO 279) ile Python da 512 sınırında ve vekili U+FFFD yapıyor: bu ayrışmalar kalktı, vakalar eşit (`agrees(`/`agree(`/`fixed(`).
 - Testsiz fark: i128'e sığmayan birbirini götüren token sayaçları (doygun toplam); yaz saati geçişli dilimsiz damga.
 
 ### Python hatası şüpheleri (hepsi DÜZELDİ; 4 ve 6 sahip onayıyla, S1 ve S2)
@@ -556,8 +575,9 @@ bu ize yönlendirilmeli.
 3. DÜZELDİ (27 Kas, `fdfa1f91`): metin olmayan model okuyucuda atlanır (`test_rsprov_g3_fixes.py`, parite `esit-model-`).
 4. DÜZELDİ (S1, `836fe85d`): `live_or_spawn_*` sid yoksa cwd'deki en yeni transkripti okumaz ("S1/S2" bölümü).
 5. DÜZELDİ (27 Kas, `fdfa1f91` + `37fd9676`): `last_assistant_model`/`_effort` alt ajan (`isSidechain`) satırını atlar
-   (parite `esit-alt-ajan-`). Güncel claude'un ana dosyaya bu satırı yazıp yazmadığı ölçülmedi (canlı transkript
-   okunmadı); yazmıyorsa davranış değişmez.
+   (parite `esit-alt-ajan-`). ÖLÇÜLDÜ (28 Kas copsdev gözden geçirmesi R-G23-1): güncel claude ana dosyaya alt ajan
+   satırı yazmıyor (99 719 assistant satırında `isSidechain` doğru 0; alt ajanlar `<sid>/subagents/agent-*.jsonl`); atlama
+   zararsız, davranış değişmez.
 6. DÜZELDİ (S2, `7f1331b5`): effort yalnız son yanıt satırının modelinden (parite `esit-effort-`, `effort-eski-satirda`).
 7. DÜZELDİ (27 Kas, G1 9. madde ile): `last_request_epoch`/`jsonl_path_for` aşırı uzun sid'i yok sayar (parite
    `transkript-sapma-uzun-sid` eşit); `/` ya da NUL taşıyan aday proje dizininin dışını açmaz (`istek-mutlak`).

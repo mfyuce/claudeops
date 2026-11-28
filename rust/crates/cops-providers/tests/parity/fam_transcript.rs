@@ -119,13 +119,6 @@ impl Build<'_> {
         c.args["expect"] = expect;
         self.cases.push(c);
     }
-
-    /// Bilinen ayrışma: Rust sonucu `expect` ([`since`siz, `since`li] model/effort/istek) ile ayrıca doğrulanır.
-    fn diverge(&mut self, id: &str, data: impl Into<Vec<u8>>, expect: Value, why: &'static str) {
-        let mut c = self.read_case(&format!("sapma-{id}"), data).known(why);
-        c.args["expect"] = expect;
-        self.cases.push(c);
-    }
 }
 
 fn both(model: Option<&str>, effort: Option<&str>, request: Option<f64>) -> Value {
@@ -508,11 +501,17 @@ fn divergences(b: &mut Build<'_>) {
             both(Some("a\u{fffd}"), Some("low"), Some(at(-30)))
         ]),
     );
-    b.diverge(
+    // R-G6-2: 1. yılın ilk gününde dilimsiz damga iki tarafta "damga yok"
+    b.agree(
         "yil-bir",
-        lines(&[turn(20, "yeni", Some("high")), r#"{"type":"assistant","timestamp":"0001-01-01T00:00:00","message":{}}"#.into()]),
-        json!([both(Some("yeni"), Some("high"), None), both(None, None, None)]),
-        "1. yılın ilk gününde dilimsiz damga: Python 'damga yok' sayıp sürer, Rust çok eski sayıp durur",
+        lines(&[
+            turn(20, "yeni", Some("high")),
+            r#"{"type":"assistant","timestamp":"0001-01-01T00:00:00","message":{}}"#.into(),
+        ]),
+        json!([
+            both(Some("yeni"), Some("high"), None),
+            both(Some("yeni"), Some("high"), None)
+        ]),
     );
 }
 

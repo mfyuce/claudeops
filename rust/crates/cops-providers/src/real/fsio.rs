@@ -27,8 +27,12 @@ pub fn open_regular(path: &str) -> io::Result<(File, u64)> {
     Ok((file, meta.len()))
 }
 
-fn take(file: File, len: u64) -> Option<Vec<u8>> {
+/// En çok `len` bayt; `expect` (açılıştaki boyuttan kalan) kadar yer ÖNCEDEN ayrılır: ayrılamazsa None. Dev dosyada
+/// `read_to_end`in büyütme ayırması başarısız olursa süreç `abort` ediyordu (R-G23-2; Python'da `MemoryError`).
+fn take(file: File, len: u64, expect: u64) -> Option<Vec<u8>> {
     let mut out = Vec::new();
+    out.try_reserve_exact(usize::try_from(len.min(expect)).ok()?)
+        .ok()?;
     file.take(len).read_to_end(&mut out).ok()?;
     Some(out)
 }
@@ -39,7 +43,7 @@ pub fn read_bytes(path: &str, max: u64) -> Option<Vec<u8>> {
     if size > max {
         return None;
     }
-    let data = take(file, max.saturating_add(1))?;
+    let data = take(file, max.saturating_add(1), size)?;
     (data.len() as u64 <= max).then_some(data)
 }
 
@@ -47,14 +51,14 @@ pub fn read_bytes(path: &str, max: u64) -> Option<Vec<u8>> {
 pub fn read_tail(path: &str, max: u64) -> Option<Vec<u8>> {
     let (mut file, size) = open_regular(path).ok()?;
     file.seek(SeekFrom::Start(size.saturating_sub(max))).ok()?;
-    take(file, max)
+    take(file, max, size.min(max))
 }
 
 /// `start`tan başlayan en çok `len` bayt.
 pub fn read_range(path: &str, start: u64, len: u64) -> Option<Vec<u8>> {
-    let (mut file, _) = open_regular(path).ok()?;
+    let (mut file, size) = open_regular(path).ok()?;
     file.seek(SeekFrom::Start(start)).ok()?;
-    take(file, len)
+    take(file, len, size.saturating_sub(start))
 }
 
 /// Python metin kipi: UTF-8, evrensel satır sonu (`\r\n`, `\r` -> `\n`).

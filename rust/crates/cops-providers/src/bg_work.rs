@@ -24,8 +24,14 @@ pub struct Clock {
     pub utc_offset_secs: i64,
 }
 
-/// Python `\w` (harf, rakam, `_`) sınıfının içi.
-const W_IN: &str = r"\p{L}\p{N}_";
+/// Python `\w` sınıfının içi: Python 3.10'un Unicode 13 tablosundan ([`crate::py_word::WORD`]); `regex`in `\p{L}\p{N}`
+/// sınıfı daha yeni Unicode'da 9 917 kod noktasını fazladan harf sayıyordu (R-G6-5).
+fn w_in() -> String {
+    crate::py_word::WORD
+        .iter()
+        .map(|(a, b)| format!("\\x{{{a:X}}}-\\x{{{b:X}}}"))
+        .collect()
+}
 
 /// Python `\s`: Unicode boşlukları ve U+001C..U+001F.
 const S: &str = r"[\s\x1c-\x1f]";
@@ -37,7 +43,7 @@ const S: &str = r"[\s\x1c-\x1f]";
 /// sessizce "eşleşme yok" diyordu).
 fn rx(pat: &str) -> Regex {
     let p = pat
-        .replace("{W}", W_IN)
+        .replace("{W}", &w_in())
         .replace("{D}", &format!("[{}]", d_in()))
         .replace("{S}", S);
     Regex::new(&p).expect("sabit desen")
@@ -190,6 +196,8 @@ fn key(v: &Py) -> Option<Key> {
         Py::Float(f) if f.fract() == 0.0 && f.abs() < 9.0e18 => {
             Some(Key::Num((*f as i64).to_string()))
         }
+        // Python `float == int` tam değerle karşılaştırır: tam sayılı büyük kayan nokta kesin ondalık dökümüyle (R-G6-3)
+        Py::Float(f) if f.fract() == 0.0 => Some(Key::Num(format!("{f:.0}"))),
         Py::Float(f) => Some(Key::Num(f.to_string())),
         Py::Null | Py::Array(_) | Py::Object(_) => None,
     }
@@ -230,6 +238,8 @@ fn notification_text<'a>(o: &'a Py, message: &'a Py) -> Option<&'a str> {
         return a
             .get("prompt")
             .and_then(Py::as_str)
+            // Python `if note:`: boş bildirim "bildirim yok" sayılır, kayıt araç çağrısı olarak taranır (R-G6-1)
+            .filter(|c| !c.is_empty())
             .filter(|_| a.get("commandMode").and_then(Py::as_str) == Some("task-notification"));
     }
     message
@@ -337,8 +347,14 @@ pub fn transcript_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clock: C
     pending.iter().any(|(id, (at, task))| {
         !done_use.contains(id)
             && !task.as_ref().is_some_and(|t| done_task.contains(t))
-            && clock.now - at < PENDING_MAX_AGE_SECONDS
+            && fresh(clock.now, *at)
     })
+}
+
+/// Başlangıç `PENDING_MAX_AGE_SECONDS` içinde mi; iki YÖNDE: gelecek tarihli damga (saatin geri sıçraması, bozuk damga)
+/// da sınırı aşınca sayılmaz, yoksa bildirimi gelmeyen iş saat o ana yetişene dek "meşgul" kalıyordu (R-G6-6).
+fn fresh(now: f64, at: f64) -> bool {
+    (now - at).abs() < PENDING_MAX_AGE_SECONDS
 }
 
 /// codex rollout: `SubAgentActivity` `started` olup aynı `agent_thread_id` için bitiş gelmemiş ajan sayısı.
@@ -382,7 +398,7 @@ pub fn codex_subagents_pending<'a>(lines: impl IntoIterator<Item = &'a str>, clo
     }
     started
         .iter()
-        .filter(|(a, at)| !done.contains(*a) && clock.now - **at < PENDING_MAX_AGE_SECONDS)
+        .filter(|(a, at)| !done.contains(*a) && fresh(clock.now, **at))
         .count() as u64
 }
 
@@ -452,7 +468,16 @@ pub fn iso_epoch(v: &Py, local_offset: i64) -> Option<f64> {
     // Python: dilimli damga mikro saniye farkı / 1e6, dilimsiz damga tam saniye + mikro / 1e6
     Some(match offset_micro {
         Some(off) => (seconds * 1_000_000 + micro - off) as f64 / 1e6,
-        None => (seconds - local_offset) as f64 + micro as f64 / 1e6,
+        None => {
+            // CPython `local_to_seconds` yerel saati `t + fark` ve `t - 1 gün` noktalarında da yoklar; 1-9999 dışına
+            // taşan yoklama `ValueError` (yıl 1'in ilk günü, 9999'un son saatleri), Python `_epoch` None döner (R-G6-2).
+            const MIN_SECS: i64 = -62_135_596_800; // 0001-01-01T00:00:00
+            const MAX_SECS: i64 = 253_402_300_799; // 9999-12-31T23:59:59
+            if seconds - 86_400 < MIN_SECS || seconds + local_offset > MAX_SECS {
+                return None;
+            }
+            (seconds - local_offset) as f64 + micro as f64 / 1e6
+        }
     })
 }
 

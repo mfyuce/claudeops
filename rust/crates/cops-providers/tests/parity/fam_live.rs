@@ -1168,6 +1168,17 @@ fn copilot_context(b: &mut Build<'_>) {
         ("metin-bos", Sql::Text(String::new())),
         ("blob", Sql::Blob(b"12".to_vec())),
         ("blob-bos", Sql::Blob(Vec::new())),
+        // R-G6-4: `int(bytes)` yalnız ASCII; i64'e sığmayan metin doyar (Python büyük int, Rust i64::MAX)
+        ("blob-bosluk", Sql::Blob(b" 12\n".to_vec())),
+        ("blob-arapca", Sql::Blob("\u{663}".as_bytes().to_vec())),
+        ("blob-nbsp", Sql::Blob("\u{a0}12".as_bytes().to_vec())),
+        (
+            "blob-genis",
+            Sql::Blob("\u{ff11}\u{ff12}".as_bytes().to_vec()),
+        ),
+        ("blob-ayirici", Sql::Blob(b"\x1c12".to_vec())),
+        ("metin-arapca", Sql::Text("\u{663}".into())),
+        ("metin-ayirici", Sql::Text("\x1c12".into())),
     ];
     for (id, v) in cells {
         let c = b

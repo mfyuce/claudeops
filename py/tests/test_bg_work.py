@@ -63,6 +63,11 @@ def _notif(status, i=None, task=None):
     return json.dumps({"message": {"role": "user", "content": body}})
 
 
+def _recent():
+    """Gerçek saatten bir dakika önce (UTC): işlem duvar saatiyle bakar; gelecek tarihli damga artık taze sayılmaz (R-G6-6)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
+
+
 T = calendar.timegm(time.strptime("2026-11-23T10:30:00", "%Y-%m-%dT%H:%M:%S"))
 
 
@@ -78,6 +83,13 @@ class TranscriptFixture(unittest.TestCase):
     def test_foreground_and_stale(self):
         self.assertFalse(bg_work.transcript_pending([_use("t1", bg=False)], now=T))
         self.assertFalse(bg_work.transcript_pending([_use("t1")], now=T + 7 * 3600))
+
+    def test_future_stamp_is_bounded(self):
+        """Gelecek tarihli başlangıç (saatin geri sıçraması, bozuk damga) da 6 saati aşınca sayılmaz (R-G6-6)."""
+        self.assertTrue(bg_work.transcript_pending([_use("t1", ts="2026-11-23T11:30:00Z")], now=T))
+        self.assertFalse(bg_work.transcript_pending([_use("t1", ts="2026-11-23T17:30:00Z")], now=T))
+        self.assertEqual(bg_work.codex_subagents_pending([_sa("started", "a1", "2026-11-23T11:30:00Z")], now=T), 1)
+        self.assertEqual(bg_work.codex_subagents_pending([_sa("started", "a1", "2026-11-23T17:30:00Z")], now=T), 0)
 
     def test_errored_call_is_not_pending(self):
         err = json.dumps({"message": {"role": "user", "content": [
@@ -218,7 +230,7 @@ class SessionRecordSignal(unittest.TestCase):
         self.addCleanup(d.cleanup)
         p = os.path.join(d.name, "s.jsonl")
         with open(p, "w") as f:
-            f.write(_use("t1", ts="2099-01-01T00:00:00Z") + "\n")
+            f.write(_use("t1", ts=_recent()) + "\n")
         with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=Path(p)):
             return self.work(LIVE_FOOTERS[0][1])
 
@@ -296,7 +308,7 @@ class SubagentActiveForUsesBoth(unittest.TestCase):
         d = tempfile.mkdtemp()
         p = os.path.join(d, "s.jsonl")
         with open(p, "w") as f:
-            f.write(_use("t1", ts="2099-01-01T00:00:00Z") + "\n")
+            f.write(_use("t1", ts=_recent()) + "\n")
         with mock.patch("claudeops.providers.claude_provider.jsonl_path_for", return_value=Path(p)), \
              mock.patch.object(web_steward, "tmux_capture", return_value=""):
             self.assertTrue(web_steward.subagent_active_for("/x", "sid", name="n"))

@@ -457,6 +457,45 @@ fn transcripts() -> Vec<Vec<String>> {
 }
 
 /// Python'da TÜM taramayı düşüren satırlar (Rust satırı atlayıp sürdürür); her biri ardından geçerli bir iş gelir.
+/// Bağımsız gözden geçirme (28 Kas, `docs/review/rust-prov-G6G2G3-review.md`) vakaları; `T` = 2026-11-23T10:30:00Z.
+fn review_lines() -> Vec<(&'static str, Vec<String>)> {
+    let big = format!("1{}", "0".repeat(300));
+    let exact = format!("{:.0}", 1e300f64);
+    vec![
+        // R-G6-1: boş `prompt`lu bildirim eki "bildirim yok"; aynı kayıttaki iş çağrısı sayılır
+        ("bos-prompt", vec![r#"{"attachment":{"commandMode":"task-notification","prompt":""},"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":"t1","input":{"run_in_background":true}}]}}"#.into()]),
+        ("dolu-prompt", vec![r#"{"attachment":{"commandMode":"task-notification","prompt":"x"},"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":"t1","input":{"run_in_background":true}}]}}"#.into()]),
+        // R-G6-3: büyük kayan noktalı kimlik tam değerle eşleşir
+        ("float-1e300", vec![
+            r#"{"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":1e300,"input":{"run_in_background":true}}]}}"#.into(),
+            format!(r#"{{"message":{{"content":[{{"type":"tool_result","tool_use_id":{big},"is_error":true}}]}}}}"#),
+        ]),
+        // `int(1e300)`: kayan noktanın kesin ikili değeri (1 ve 300 sıfır DEĞİL), Python'da eşleşir
+        ("float-1e300-tam", vec![
+            r#"{"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":1e300,"input":{"run_in_background":true}}]}}"#.into(),
+            format!(r#"{{"message":{{"content":[{{"type":"tool_result","tool_use_id":{exact},"is_error":true}}]}}}}"#),
+        ]),
+        ("float-2u63", vec![
+            r#"{"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":9223372036854775808,"input":{"run_in_background":true}}]}}"#.into(),
+            r#"{"message":{"content":[{"type":"tool_result","tool_use_id":9.223372036854775808e18,"is_error":true}]}}"#.into(),
+        ]),
+        ("float-yakin", vec![
+            r#"{"timestamp":"2026-11-23T10:00:00Z","message":{"content":[{"type":"tool_use","id":9223372036854775809,"input":{"run_in_background":true}}]}}"#.into(),
+            r#"{"message":{"content":[{"type":"tool_result","tool_use_id":9.223372036854775808e18,"is_error":true}]}}"#.into(),
+        ]),
+        // R-G6-6: gelecek tarihli başlangıç 6 saati aşınca sayılmaz (iki yönde)
+        ("gelecek-1s", vec![use_("t1", true, "2026-11-23T11:30:00Z")]),
+        ("gelecek-7s", vec![use_("t1", true, "2026-11-23T17:30:00Z")]),
+        ("gelecek-dilimsiz", vec![use_("t1", true, "2026-11-24T10:30:00")]),
+        ("ajan-gelecek-7s", vec![sub_agent("started", json!("a1"), "2026-11-23T17:30:00Z")]),
+        ("ajan-gelecek-1s", vec![sub_agent("started", json!("a1"), "2026-11-23T11:30:00Z")]),
+        // R-G6-2: yıl kenarlarında dilimsiz damga
+        ("yil-bir", vec![use_("t1", true, "0001-01-01T00:00:00")]),
+        ("yil-bir-ikinci-gun", vec![use_("t1", true, "0001-01-02T00:00:00")]),
+        ("yil-dokuzbin", vec![use_("t1", true, "9999-12-31T22:00:00")]),
+    ]
+}
+
 fn odd_lines() -> Vec<(&'static str, Vec<String>)> {
     let good = use_("t1", true, "2026-11-23T10:00:00Z");
     let agent = sub_agent("started", json!("a1"), "2026-11-23T10:17:26Z");
@@ -591,6 +630,8 @@ pub fn random_stamps() -> Vec<String> {
         "0001-01-02T00:00:00+00:00",
         "2199-12-30T23:59:59-23:59",
         "2026-11-23T10:00:00+03:00:00.000001",
+        "0001-01-01T00:00:00",
+        "0001-01-02T12:00:00",
     ];
     let mut out: Vec<String> = bases.iter().map(|s| s.to_string()).collect();
     for _ in 0..6000 {
@@ -610,15 +651,31 @@ pub fn random_stamps() -> Vec<String> {
         }
         out.push(c.into_iter().collect());
     }
-    // Yıl sınırları atılır: Python yerel saat aritmetiği 1. ve 9999. yılda taşar; 2^53 mikro saniyeyi aşan yıllarda
-    // (~2255 sonrası) `int / int` ile `f64` bölmesi son bitte ayrışabilir (yaş karşılaştırmasını etkilemez).
+    // 2^53 mikro saniyeyi aşan yıllarda (~2255 sonrası) `int / int` ile `f64` bölmesi son bitte ayrışabilir (yaş
+    // karşılaştırmasını etkilemez): rastgele uzak yıllar atılır, yıl sınırları aşağıda tam saniyeyle eklenir.
     out.retain(|s| {
         let far = s
             .get(..4)
             .and_then(|y| y.parse::<u32>().ok())
             .is_some_and(|y| y > 2200);
-        !(far || s.starts_with("0000") || s.starts_with("0001-01-01"))
+        !(far || s.starts_with("0000"))
     });
+    // R-G6-2: dilimsiz damgada Python yerel saati `t + fark` ve `t - 1 gün`de yoklar; 1. ve 9999. yıl kenarları
+    out.extend(
+        [
+            "0001-01-01T23:59:59",
+            "0001-01-02T00:00:00",
+            "0001-01-02T00:00:00.000001",
+            "0001-01-01T00:00:00+00:00",
+            "0001-01-01T00:00:00Z",
+            "9999-12-31T20:59:59",
+            "9999-12-31T21:00:00",
+            "9999-12-31T23:59:59",
+            "9999-12-31T23:59:59Z",
+            "9999-12-31T23:59:59-03:00",
+        ]
+        .map(str::to_string),
+    );
     out
 }
 
@@ -699,6 +756,29 @@ fn cases(e: &Env) -> Vec<Case> {
             ));
         }
     }
+    // gözden geçirme vakaları (R-G6-1/2/3/5/6), iki saat diliminde
+    for (name, lines) in review_lines() {
+        for tz in ["UTC0", "XXX-3"] {
+            v.push(Case::new(
+                format!("bg-gg-{name}-{tz}"),
+                "bg",
+                json!({"transcripts": [lines], "now": T, "tz": tz}),
+            ));
+        }
+    }
+    v.push(Case::new(
+        "bg-ekran-unicode13",
+        "bg",
+        json!({"texts": [
+            "\u{870}1 shell · to manage",
+            "x\u{870}1 shell · to manage",
+            "1 shell\u{870} · to manage",
+            "\u{1e290}2 shells · ctrl+b",
+            "\u{870}2 background terminals running",
+            "waiting on 1 shell\u{870}",
+            "\u{870}waiting on 1 shell",
+        ], "now": T, "tz": "UTC0"}),
+    ));
     // beklenmeyen tipte satır: iki tarafta da yalnız o satır/blok atlanır; sağlam satır sayılmaya devam eder
     for (name, lines) in odd_lines() {
         v.push(Case::new(

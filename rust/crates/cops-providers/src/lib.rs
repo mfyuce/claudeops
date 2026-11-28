@@ -25,6 +25,7 @@ pub mod oneshot;
 pub mod probe;
 pub mod provider;
 pub mod py_re;
+pub(crate) mod py_word;
 pub mod pyfmt;
 pub mod pyjson;
 pub mod real;

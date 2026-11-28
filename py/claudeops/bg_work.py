@@ -134,9 +134,15 @@ def transcript_pending(lines: Iterable[str], now: Optional[float] = None) -> boo
     for tid, (t, task) in pending.items():
         if tid in done_use or (task and task in done_task):
             continue
-        if now - t < PENDING_MAX_AGE_SECONDS:
+        if _fresh(now, t):
             return True
     return False
+
+
+def _fresh(now: float, t: float) -> bool:
+    """Başlangıç `PENDING_MAX_AGE_SECONDS` içinde mi; iki YÖNDE: gelecek tarihli damga (saatin geri sıçraması, bozuk damga)
+    da sınırı aşınca sayılmaz, yoksa bildirimi gelmeyen iş saat o ana yetişene dek "meşgul" kalıyordu."""
+    return abs(now - t) < PENDING_MAX_AGE_SECONDS
 
 
 def _result_text(content) -> str:
@@ -285,7 +291,7 @@ def codex_subagents_pending(lines: Iterable[str], now: Optional[float] = None) -
             started[aid] = _epoch(o.get("timestamp")) or now
         elif it.get("kind") in ("completed", "failed", "cancelled", "canceled", "closed"):
             done.add(aid)
-    return sum(1 for a, t in started.items() if a not in done and now - t < PENDING_MAX_AGE_SECONDS)
+    return sum(1 for a, t in started.items() if a not in done and _fresh(now, t))
 
 
 def tail_lines(path: Optional[str]) -> list:
