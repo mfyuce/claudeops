@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 612 | 153 | 459 | 0 |
-| test durumu (156 dosya) | 1952 | 115 | 1837 | 0 |
+| test durumu (157 dosya) | 1954 | 115 | 1839 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -1712,6 +1712,13 @@ Yok.
 | `test_rsprov_paths.py::PathPartTest.test_valid_names_are_accepted` | 22 | kapsam dışı | yok | yola eklenen oturum adı/kimlik denetimi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_rsprov_paths.py::ClaudeRequestTest.test_absolute_sid_never_reads_outside_the_project` | 32 | kapsam dışı | yok | yola eklenen oturum adı/kimlik denetimi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_rsprov_paths.py::UcliFilesTest.test_slash_in_session_name_reads_nothing_outside` | 52 | kapsam dışı | yok | yola eklenen oturum adı/kimlik denetimi. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+
+### `py/tests/test_rsprov_rc_dry_run_preview.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_dry_run_scan_is_in_preview_and_writes_no_sid` | 54 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_rsprov_rc_dry_run_preview.py::RcDryRunRunsInPreview.test_real_run_is_unchanged` | 61 | kapsam dışı | yok | `rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok). İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_rsprov_s1_own_session.py`
 

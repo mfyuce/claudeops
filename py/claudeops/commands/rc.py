@@ -20,6 +20,7 @@ import re
 import sys
 import time
 
+from .. import preview
 from ..discovery import find_by_name, find_sessions
 from ..guard import guard_lock
 from ..handover import ancestor_pids, default_handover_effort
@@ -217,7 +218,13 @@ def run(args) -> int:
     # guard.lock: kill-first sırasında guard cron ile DUP spawn önle
     try:
         with guard_lock(timeout=5.0):
-            errors = _run_inner(args, display, models, roster)
+            if args.dry_run:
+                # Kuru koşu baştan önizleme kipinde: `--kill-first` süreç taraması `spawn_session`dan ÖNCE koşar ve
+                # keşif (agy `extract_info` -> `_remember_agy_sid`) önizleme dışında öğrenilen sid'i diske yazardı.
+                with preview.preview_only():
+                    errors = _run_inner(args, display, models, roster)
+            else:
+                errors = _run_inner(args, display, models, roster)
     except TimeoutError as e:
         print(f"✗ guard.lock alınamadı: {e}", file=sys.stderr)
         return 1
