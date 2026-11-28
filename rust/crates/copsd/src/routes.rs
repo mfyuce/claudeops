@@ -36,6 +36,9 @@ pub struct RouteCtx {
     /// B2a: terminal okuma uçlarının tmux istemcisi. Canlıda Python `tmux_backend.TMUX_SOCKET` ile aynı soket (`-L cops`;
     /// soket dizini süreç ortamındaki `TMUX_TMPDIR`); `--tmux-socket` yalnız yalıtılmış deneme/parite için.
     pub tmux: cops_tmux::Tmux,
+    /// Çok kullanıcı: copsd'ye yerel uç yetki kancası takılı (Python'da authorizer kayıtlı). Terminal uçları yalnız TAM adı
+    /// çözer (taban ad geri düşüşü yok): yetki istekteki ada verilir, `x`in sahibi kayıtsız `x7`yi okuyamasın.
+    pub multi_user: bool,
 }
 
 impl RouteCtx {
@@ -50,6 +53,7 @@ impl RouteCtx {
             ),
             env: SysEnv::from_process(),
             tmux: cops_tmux::Tmux::cops(),
+            multi_user: false,
             state_dir,
             db,
             instances,
@@ -65,13 +69,14 @@ fn register_term(table: &mut RouteTable, ctx: &RouteCtx) {
         eprintln!("copsd: /api/term/ Python'da: HOME yok");
         return;
     };
-    let term = cops_ep_term::Term::new(
+    let term = cops_ep_term::Term::with_resolver(
         Box::new(cops_ep_term::SysProbe {
             scan: cops_procscan::Config::for_dirs(std::path::Path::new(home), &ctx.state_dir),
             docs: ctx.state.clone(),
             tmux: ctx.tmux.clone(),
         }),
         ctx.tmux.clone(),
+        term_resolver(ctx),
     );
     table.get(
         cops_ep_term::OUTPUT_PATH,
@@ -81,6 +86,16 @@ fn register_term(table: &mut RouteTable, ctx: &RouteCtx) {
         cops_ep_term::HISTORY_PATH,
         Arc::new(cops_ep_term::HistoryHook(term)),
     );
+}
+
+/// Terminal uçlarının çözüm önbelleği: çok kullanıcıda yalnız tam ad ([`RouteCtx::multi_user`]).
+pub fn term_resolver(ctx: &RouteCtx) -> cops_ep_term::resolve::Resolver {
+    let r = cops_ep_term::resolve::Resolver::default();
+    if ctx.multi_user {
+        r.exact_only()
+    } else {
+        r
+    }
 }
 
 /// Çekirdek rota tablosu (Dalga 2 izleri satırlarını buraya ekler).

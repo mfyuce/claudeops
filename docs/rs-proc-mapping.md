@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 562 | 153 | 409 | 0 |
-| test durumu (128 dosya) | 1718 | 115 | 1603 | 0 |
+| test durumu (129 dosya) | 1723 | 115 | 1608 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -689,13 +689,13 @@ Yok.
 
 | Python | Tür:satır | Durum | Rust | Parite testi | Not / gerekçe ve iz |
 |---|---|---|---|---|---|
-| `commands/web.py::_find_gnome_terminal_server` | işlev:1135 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
-| `commands/web.py::_diag_status` | işlev:1151 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
-| `commands/web.py::_usage_total` | işlev:1642 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
-| `commands/web.py::_process_started_at` | işlev:1694 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
-| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1701 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
-| `commands/web.py::_ucli_flags` | işlev:1704 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
-| `commands/web.py::_with_ucli_tools` | işlev:1733 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
+| `commands/web.py::_find_gnome_terminal_server` | işlev:1140 | kapsam dışı | yok | yok | gnome-terminal sunucusu araması; uid denetimi cmdline'dan ÖNCE (Python düzeltildi: f51a442f); Rust karşılığı yok (crate'te gnome-terminal araması yok; tüm süreç içeriği `OwnProc` kapısından). İz: T1 (durum) |
+| `commands/web.py::_diag_status` | işlev:1156 | kapsam dışı | yok | yok | Tanılama yükü; `skipped` sözlüğü discovery/needs_ho/session_usage sayaçlarını toplar (Python düzeltildi: 1af088ef); Rust karşılıkları `ScanDiag`, `Usage.skipped_rows`, `Checked.skipped` (JSON'da). İz: T1 (durum) |
+| `commands/web.py::_usage_total` | işlev:1647 | karşılandı | `status.rs::Probe::usage_total` | `tests/fake_proc.rs::probe_usage_total_claude_exact_sid_without_blocking` | sapma 1; durum yükü bağlantısı T1 |
+| `commands/web.py::_process_started_at` | işlev:1699 | karşılandı | `status.rs::Probe::started_at` | `tests/fake_proc.rs::tmux_terminal_and_orphans` | yalnız kendi kullanıcımızın süreci |
+| `commands/web.py::_UCLI_FLAGS_CACHE` | sabit:1706 | kapsam dışı | yok | yok | pid başına önbellek (sapma 9). İz: T1 (durum) |
+| `commands/web.py::_ucli_flags` | işlev:1709 | karşılandı | `status.rs::Probe::ucli_flags`<br>`status.rs::UcliFlags` | `tests/fake_proc.rs::ucli_flags`<br>`tests/fake_proc.rs::ucli_flags_all_set`<br>`tests/fake_proc.rs::ucli_flags_lost_process_is_none_and_not_cached`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges`<br>`run.py:scan_sessions` | `tools` ve önbellek T1 |
+| `commands/web.py::_with_ucli_tools` | işlev:1738 | kapsam dışı | yok | yok | rozete durum dosyasından araç listesi ekler. İz: T1 (durum) |
 
 ### `py/claudeops/tmux_backend.py`
 
@@ -743,6 +743,16 @@ Yok.
 | `test_agy_sids_store.py::AgySidsStoreTest.test_remember_writes_db_and_mirror` | 34 | kapsam dışı | yok | kilitli DB+ayna yazımı. İz: W0-a durum (rs/state); T1 (durum) |
 | `test_agy_sids_store.py::AgySidsStoreTest.test_unchanged_value_does_not_rewrite` | 42 | karşılandı | `providers.rs::agy_sid_rules` | yalnız 'yeni kayıt yok' kararı; yazım W0-a durum (rs/state) |
 | `test_agy_sids_store.py::AgySidsStoreTest.test_concurrent_remembers_lose_nothing` | 48 | kapsam dışı | yok | kilitli DB+ayna yazımı. İz: W0-a durum (rs/state); T1 (durum) |
+
+### `py/tests/test_base_name_authz.py`
+
+| Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
+|---|---|---|---|---|
+| `test_base_name_authz.py::BaseNameAuthzTest.test_single_user_keeps_base_fallback` | 32 | kapsam dışı | yok | çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`). İz: T2 (terminal) |
+| `test_base_name_authz.py::BaseNameAuthzTest.test_multi_user_no_base_fallback` | 37 | kapsam dışı | yok | çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`). İz: T2 (terminal) |
+| `test_base_name_authz.py::BaseNameAuthzTest.test_multi_user_no_ambiguity_leak` | 42 | kapsam dışı | yok | çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`). İz: T2 (terminal) |
+| `test_base_name_authz.py::BaseNameAuthzTest.test_multi_user_exact_still_found` | 48 | kapsam dışı | yok | çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`). İz: T2 (terminal) |
+| `test_base_name_authz.py::BaseNameAuthzTest.test_term_output_multi_user_does_not_read_base_match` | 54 | kapsam dışı | yok | çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`). İz: T2 (terminal) |
 
 ### `py/tests/test_bg_work.py`
 

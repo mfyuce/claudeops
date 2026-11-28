@@ -346,6 +346,13 @@ where
         mounts,
         token: cops_auth::Token::from_file(&tok_path),
     });
+    // Kancalar rota tablosundan ÖNCE: yerel uç yetki kancası takılıysa (çok kullanıcı) terminal uçları yalnız tam adı çözer.
+    let h = hooks(Ctx {
+        upstream: up,
+        front_secret: Some(front_secret).filter(|s| !s.is_empty()),
+        front,
+    })
+    .await;
     // Çoklu rota tablosu: panel kimlikli kayıtlar web.token ister; yoksa tablo AÇILMAZ (istek Python'a gider).
     let mut table = cops_proxy::routes::RouteTable::new();
     let mut rctx = routes::RouteCtx::new(state_dir(), db_path.clone(), instances.clone());
@@ -354,6 +361,7 @@ where
         eprintln!("copsd: tmux soketi: {sock}");
         rctx.tmux = cops_tmux::Tmux::with_socket(sock);
     }
+    rctx.multi_user = h.local_auth.is_some();
     routes::register(&mut table, &rctx);
     let proxy = if table.is_empty() {
         proxy
@@ -368,12 +376,6 @@ where
         }
         proxy.with_route_table(table, cops_auth::Token::from_file(&tok_path))
     };
-    let h = hooks(Ctx {
-        upstream: up,
-        front_secret: Some(front_secret).filter(|s| !s.is_empty()),
-        front,
-    })
-    .await;
     let proxy = match h.local_auth {
         Some(h) => proxy.with_local_auth(h),
         None => proxy,

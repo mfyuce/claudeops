@@ -96,9 +96,13 @@ anahtarlı desen önbelleği (`_MODE_PATTERN_CACHE`, sonuç aynı). Başka önbe
   `b2a_routes` denetler) ve aynı kaynak kuralı (`cops_proxy::resources`) ile karar verir; `shadow` kipinde Python karar verir;
   `off` kipinde ve tek kullanıcıda `Default` = yalnız `web.token`. Kanca yalnız izin verilen isteği görür ve izin verilen kişi
   Python'da da aynı baytları görürdü: sızıntı yolu yok. `own_auth` gerekmez.
-- Taban adı çözümü (istenen ad `x`, cevaplanan oturum `x7`): yetki Python'da da İSTENEN ada göre verilir; Rust aynı kaynakla
-  aynı kararı verir (davranış eş, yeni bir açık değil). Not: bu, Python'daki mevcut bir ince noktadır (sahipliği `x` olan kullanıcı
-  kayıtsız `x7`yi okuyabilir); değiştirilmedi.
+- Taban adı çözümü (istenen ad `x`, cevaplanan oturum `x7`): yetki istekteki ada verildiği için `x`in sahibi kayıtsız `x7`yi
+  okuyabiliyordu (Python'da da). 28 Kas düzeltildi (kapalı yön, iki tarafta): çok kullanıcıda (Python authorizer kayıtlı;
+  copsd'de `Hooks.local_auth` takılı, `RouteCtx.multi_user`) `_find_running_for_action` / `Resolver::exact_only` yalnız TAM
+  adı çözer; taban ad ve belirsizlik `not_running` (aday adı sızmaz). Tek kullanıcıda davranış aynı. Python bu kuralı TÜM
+  tekil hedefli uçlara uygular (dosya, terminal yazma, kapatma); copsd yalnız iki okuma ucunu taşır. Testler
+  `py/tests/test_base_name_authz.py`, `resolve.rs` `exact_only_resolver_never_falls_back_to_base`, copsd
+  `state_ctx.rs` `term_resolver_is_exact_only_in_multi_user`.
 - K9 denetim: Python'da yalnız authorizer kayıtlıyken (`_gate` -> `authz.check` -> denetim kancaları). Rust `on` kipinde
   `gate_audit` aynı kararı denetime yazar; `shadow` kipinde karar (ve denetim) Python'da; `off`/tek kullanıcıda iki tarafta da
   denetim yok. Fark yok.

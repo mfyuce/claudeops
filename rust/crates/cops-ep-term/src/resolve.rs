@@ -52,6 +52,16 @@ pub enum Found {
 /// `_find_running_for_action(name)` (cli süzgeçsiz): önce tam ad; yoksa taban adı `name` olan VE kendi adı kayıtlı olmayan
 /// süreçler (2+ = belirsiz).
 pub fn find_for_action(probe: &dyn Probe, name: &str) -> Result<Found, String> {
+    find_for_action_with(probe, name, true)
+}
+
+/// `base_fallback == false`: çok kullanıcı kipi (Python `authz.has_authorizer()`); tam ad yoksa [`Found::None`] (yetki
+/// istekteki ada verildiği için taban ad başkasının oturumunu açabilirdi; belirsizlik de aday adı sızdırmaz).
+pub fn find_for_action_with(
+    probe: &dyn Probe,
+    name: &str,
+    base_fallback: bool,
+) -> Result<Found, String> {
     let sessions = probe.sessions()?;
     let exact: Vec<Live> = sessions
         .iter()
@@ -60,6 +70,9 @@ pub fn find_for_action(probe: &dyn Probe, name: &str) -> Result<Found, String> {
         .collect();
     if !exact.is_empty() {
         return Ok(Found::Exact(exact));
+    }
+    if !base_fallback {
+        return Ok(Found::None);
     }
     let mut base: Vec<Live> = sessions
         .into_iter()
@@ -80,7 +93,17 @@ pub fn term_resolve(
     name: &str,
     en: bool,
 ) -> Result<Result<Target, Json>, String> {
-    let s = match find_for_action(probe, name)? {
+    term_resolve_with(probe, name, en, true)
+}
+
+/// [`term_resolve`]; `base_fallback` için bkz. [`find_for_action_with`].
+pub fn term_resolve_with(
+    probe: &dyn Probe,
+    name: &str,
+    en: bool,
+    base_fallback: bool,
+) -> Result<Result<Target, Json>, String> {
+    let s = match find_for_action_with(probe, name, base_fallback)? {
         Found::None => return Ok(Err(err(en, Key::NotRunning, name, ""))),
         Found::Ambiguous(procs) => {
             let c: Vec<&str> = procs.iter().map(|s| s.name.as_str()).collect();
@@ -104,6 +127,8 @@ pub fn term_resolve(
 /// `_term_output_resolve_cache` + `_term_resolve_for_output`.
 pub struct Resolver {
     ttl: Duration,
+    /// Çok kullanıcı: taban ad geri düşüşü yok ([`Resolver::exact_only`]).
+    exact_only: bool,
     cache: Mutex<HashMap<String, (Target, Instant)>>,
 }
 
@@ -118,8 +143,19 @@ impl Resolver {
     pub fn with_ttl(ttl: Duration) -> Resolver {
         Resolver {
             ttl,
+            exact_only: false,
             cache: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Çok kullanıcı kipi (copsd'ye yerel uç yetki kancası takılı = Python'da authorizer kayıtlı): yalnız tam ad.
+    pub fn exact_only(mut self) -> Resolver {
+        self.exact_only = true;
+        self
+    }
+
+    pub fn is_exact_only(&self) -> bool {
+        self.exact_only
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, (Target, Instant)>> {
@@ -140,7 +176,7 @@ impl Resolver {
                 return Ok(Ok(t.clone()));
             }
         }
-        match term_resolve(probe, name, en) {
+        match term_resolve_with(probe, name, en, !self.exact_only) {
             Ok(Ok(t)) => {
                 self.lock().insert(name.to_string(), (t.clone(), now));
                 Ok(Ok(t))
@@ -284,6 +320,25 @@ mod tests {
         f.live.lock().unwrap().clear();
         assert_eq!(code(r.resolve(&f, "a", true)), "not_running");
         assert_eq!(r.cached("a"), None, "hata eski kaydı da siler");
+    }
+
+    /// Çok kullanıcı (Python `authz.has_authorizer()`): yetki İSTEKTEKİ ada verilir, taban ad geri düşüşü `x`in sahibine
+    /// kayıtsız `x7`yi açardı. Yalnız tam ad; belirsizlik de aday adı sızdırmadan `not_running`.
+    #[test]
+    fn exact_only_resolver_never_falls_back_to_base() {
+        let f = Fake {
+            live: Mutex::new(vec![l("x7", 1), l("ab1", 2), l("ab2", 3), l("y", 4)]),
+            ..Fake::default()
+        };
+        let r = Resolver::default().exact_only();
+        assert_eq!(code(r.resolve(&f, "x", true)), "not_running");
+        assert_eq!(code(r.resolve(&f, "ab", true)), "not_running");
+        assert_eq!(code(r.resolve(&f, "y", true)), "ok:y");
+        assert_eq!(
+            code(Resolver::default().resolve(&f, "x", true)),
+            "ok:x7",
+            "tek kullanıcıda Python gibi taban ad"
+        );
     }
 
     #[test]

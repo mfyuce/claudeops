@@ -567,6 +567,11 @@ def _find_running_for_action(name: str, cli: Optional[str] = None) -> tuple:
     exact = [s for s in sessions if s.name == name]
     if exact:
         return "exact", exact
+    # Çok kullanıcı (authorizer kayıtlı): yetki İSTEKTEKİ ada verilir; taban ad geri düşüşü `x`in sahibine kayıtsız `x7`yi
+    # açardı. Yalnız tam ad (kapalı yön); belirsizlik hatası da aday adları sızdırmasın diye "none".
+    from .. import authz as _az
+    if _az.has_authorizer():
+        return "none", []
     base_matches = [
         s for s in sessions
         if s.base == name and inst_mod.get_instance(s.name) is None
@@ -4433,6 +4438,8 @@ def _snapshot_resume(saved_at: Optional[float] = None, hidden: bool = False, lan
 def _instances_list() -> dict:
     """Geçmiş sekmesi: tüm instance kayıtları + şu an çalışıp çalışmadığı, en yeni önce."""
     live = {s.name for s in find_sessions(measure_cpu=False)}
+    # `dict(rec, ...)` SIĞ kopya: iç içe değerler (`cli_opts` vb.) `view_instances` önbelleğinin KENDİSİ. Burada yalnız üst
+    # düzey anahtar eklenir (`badge`/`title`); iç içe bir değeri değiştirecek kod önce `inst_mod.get_instance` ile kopyalasın.
     items = [dict(rec, name=name, running=name in live, host=LOCAL_HOST_NAME)
              for name, rec in inst_mod.view_instances().items() if not rec.get("forgotten")]
     items.sort(key=lambda r: r.get("last_started_at") or r.get("created_at") or 0, reverse=True)

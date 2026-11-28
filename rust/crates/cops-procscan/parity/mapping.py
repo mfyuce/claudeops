@@ -890,6 +890,7 @@ FILES = {
     "agy_compaction_view": (_HIST, CHAT),
     "agy_last_exchange": (_HIST, CHAT),
     "agy_models_swr": ("agy model listesi önbelleği", SAG),
+    "base_name_authz": ("çok kullanıcıda taban ad geri düşüşü yok (yetki; Rust eşi `cops-ep-term` `resolve.rs`)", T2),
     "bg_work": ("arka plan işi tespiti (ekran + transkript)", f"{T2}; {T1}"),
     "brain_permission_ucli": ("değnekçi beyninin ucli izinleri", f"{T10}; {SAG}"),
     "cache_info": ("`cache` satır alanı", T1),
@@ -1381,6 +1382,7 @@ def load_pins():
 
 PIN_DATA = """
 agy_binary_resolution:2:aa240fa19e
+base_name_authz:5:0ea2b237ac
 agy_compaction_view:1:704b29a853
 agy_last_exchange:4:04faca6617
 agy_models_swr:1:9166783f75

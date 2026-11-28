@@ -241,3 +241,16 @@ fn tmux_swallow_line_keeps_only_a_short_first_line() {
     let l = copsd::tmux_swallow_line(Swallowed::KillChild, 1, "a\u{1b}[31mb\rc");
     assert!(!l.chars().any(char::is_control), "{l:?}");
 }
+
+/// Çok kullanıcı (yerel uç yetki kancası takılı): terminal uçları taban ada düşmez (yetki istekteki ada verilir; `x`in
+/// sahibi kayıtsız `x7`yi okuyamasın). Tek kullanıcıda Python gibi taban ad.
+#[test]
+fn term_resolver_is_exact_only_in_multi_user() {
+    let env = TestEnv::new().unwrap();
+    let root = env.dir().root().to_path_buf();
+    let mut ctx = RouteCtx::new(root, env.dir().db(), env.dir().instances_json());
+    assert!(!ctx.multi_user);
+    assert!(!copsd::routes::term_resolver(&ctx).is_exact_only());
+    ctx.multi_user = true;
+    assert!(copsd::routes::term_resolver(&ctx).is_exact_only());
+}
