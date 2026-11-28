@@ -290,7 +290,19 @@ impl StateDocs {
 
     /// `diaglog.diag_log(event)`: `{"ts": yerel saniye, "event": ..}` satırı + `log` akışı `diag` (dual/db). Best-effort:
     /// hiçbir hata çağırana dönmez; dosyaya yazılamazsa DB'ye de eklenmez (Python gibi).
+    /// Alınamayan dosya kilidi (`atomic_json._log_lock_refused`, TBD#397): reddi yutan çağıranda da iz kalsın.
+    pub fn log_lock_refused(&self, path: &Path) {
+        let mut m = Map::new();
+        m.insert("path".into(), path.to_string_lossy().into_owned().into());
+        self.diag_log_with("file_lock_refused", m);
+    }
+
     pub fn diag_log(&self, event: &str) {
+        self.diag_log_with(event, Map::new());
+    }
+
+    /// `diaglog.diag_log(event, **data)`: alanlar `ts` ve `event`ten sonra (Python sözlük sırası).
+    pub fn diag_log_with(&self, event: &str, data: Map) {
         if self.read_only {
             match &self.logger {
                 Some(f) => f(event),
@@ -304,6 +316,7 @@ impl StateDocs {
         let mut m = Map::new();
         m.insert("ts".into(), ts.into());
         m.insert("event".into(), event.into());
+        m.extend(data);
         let entry = Json::Object(m);
         let path = self.diag_log_path();
         if crate::diaglog::append(&path, &entry).is_ok() {

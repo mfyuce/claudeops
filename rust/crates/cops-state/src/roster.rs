@@ -297,7 +297,15 @@ impl<'a> Roster<'a> {
                 "roster: salt okuma kipi (kilit dosyası açılmadı)",
             ));
         }
-        let lock = FileLock::roster(&self.path(Tsv::Roster))?;
+        let lock = FileLock::roster(&self.path(Tsv::Roster)).inspect_err(|_| {
+            // Python `_file_lock_outer(path)`: `path` = `<dizin>/roster` (`.lock` eksiz)
+            let p = crate::paths::abs_normpath(&self.path(Tsv::Roster));
+            self.docs.log_lock_refused(
+                &p.parent()
+                    .unwrap_or(std::path::Path::new("/"))
+                    .join("roster"),
+            );
+        })?;
         Ok(RosterGuard {
             roster: *self,
             _lock: lock,

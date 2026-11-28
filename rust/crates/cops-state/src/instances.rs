@@ -334,8 +334,11 @@ impl<'a> Instances<'a> {
             return Err(InstancesError::Write(WriteError::ReadOnly)); // kilit dosyası da açılmaz
         }
         let path = self.docs.dir().instances_json();
-        let _lock = FileLock::exclusive(&self.docs.dir().join("instances.json.lock"))
-            .map_err(InstancesError::Lock)?;
+        let _lock =
+            FileLock::exclusive(&self.docs.dir().join("instances.json.lock")).map_err(|e| {
+                self.docs.log_lock_refused(&path); // Python `instances._locked` (path=INSTANCES_JSON)
+                InstancesError::Lock(e)
+            })?;
         let (mut data, lossy) = self.read_checked()?;
         if lossy {
             return Err(InstancesError::Corrupt(
