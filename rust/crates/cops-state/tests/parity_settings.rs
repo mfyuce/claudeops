@@ -567,6 +567,26 @@ fn missing_or_empty_settings_not_backed_up() {
     assert_eq!(corrupt(), 0);
 }
 
+/// `_backup_if_corrupt`: 512'yi aşan (`load` için bozuk) nesne iki tarafta da yedeklenir, izinli derinlik yedeklenmez;
+/// Python'u taşıran derinlik de `RecursionError` vermeden yedeklenir (TODO rs-prov TBD#448 edge).
+#[test]
+fn too_deep_settings_backed_up_on_both_sides() {
+    let py = "from claudeops import settings as s\ns._backup_if_corrupt()\nimport glob\nprint(len(glob.glob(str(s.SETTINGS_JSON) + '.corrupt-*')))";
+    for (n, want) in [(511usize, false), (600, true), (5000, true)] {
+        let doc = format!(
+            r#"{{"byok": {{"x": "S"}}, "d": {}{}}}"#,
+            "[".repeat(n),
+            "]".repeat(n)
+        );
+        let (rs, pe) = (Env::new(), Env::new());
+        rs.write("settings.json", &doc);
+        pe.write("settings.json", &doc);
+        let rs_backed = cops_state::settings::backup_if_corrupt(&rs.dir()).is_some();
+        let py_backed = pe.py("files", py).trim_end() == "1";
+        assert_eq!((rs_backed, py_backed), (want, want), "derinlik {n}");
+    }
+}
+
 #[test]
 fn defaults_lists_match_python() {
     let e = Env::new();

@@ -393,9 +393,10 @@ def _backup_if_corrupt() -> None:
     if not raw.strip():
         return
     try:
-        if isinstance(json.loads(raw.decode("utf-8")), dict):
+        stored = json.loads(raw.decode("utf-8"))
+        if isinstance(stored, dict) and not _too_deep(stored):
             return
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, RecursionError):    # aşırı derin belge de bozuk: `load` onu varsayılanlarla okur, yazım ezerdi
         pass
     import hashlib
     dest = f"{SETTINGS_JSON}.corrupt-{hashlib.sha256(raw).hexdigest()[:8]}"

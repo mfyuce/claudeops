@@ -51,6 +51,31 @@ class CorruptBackupTest(unittest.TestCase):
         settings.save_settings({"lang": "tr"})
         self.assertEqual(len(glob.glob(self.p + ".corrupt-*")), 1)
 
+    def _deep(self, n):
+        """`byok` anahtarını taşıyan, `n` düzey iç içe dizili nesne."""
+        return '{"byok": {"x": "SECRET"}, "d": ' + "[" * n + "]" * n + "}"
+
+    def test_too_deep_object_is_backed_up(self):
+        """512'yi aşan (Rust sınırı) ama Python'un okuyabildiği nesne `load` için bozuk (varsayılanlar): yazım anahtarları
+        yedeksiz eziyordu; şimdi Rust `backup_if_corrupt` gibi yedeklenir (TODO rs-prov TBD#448 edge)."""
+        self._write(self._deep(600))
+        settings.save_settings({"lang": "tr"})
+        backups = glob.glob(self.p + ".corrupt-*")
+        self.assertEqual(len(backups), 1)
+        with open(backups[0], encoding="utf-8") as f:
+            self.assertIn("SECRET", f.read())
+
+    def test_recursion_deep_object_is_backed_up_not_raised(self):
+        """Python ayrıştırıcısını taşıran derinlik `RecursionError` ile kaydı çökertiyordu."""
+        self._write(self._deep(5000))
+        settings.save_settings({"lang": "tr"})
+        self.assertEqual(len(glob.glob(self.p + ".corrupt-*")), 1)
+
+    def test_allowed_depth_is_not_backed_up(self):
+        self._write(self._deep(511))
+        settings.save_settings({"lang": "tr"})
+        self.assertEqual(glob.glob(self.p + ".corrupt-*"), [])
+
 
 if __name__ == "__main__":
     unittest.main()
