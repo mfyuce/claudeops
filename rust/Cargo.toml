@@ -12,3 +12,8 @@ hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "client-legacy", "http1"] }
 http-body-util = "0.1"
 bytes = "1"
+
+# R-B2a-5 (28 Kas gözden geçirme): copsd B2a'da regex yığını erişilebilir olunca 6,50 -> 9,05 MB; sembol tablosu atılınca
+# -2,06 MB (ölçüldü). Panik geri izi simgesiz olur. regex özellik daraltması ve LTO ayrı iş (tüm çalışma alanı + parite).
+[profile.release]
+strip = true
