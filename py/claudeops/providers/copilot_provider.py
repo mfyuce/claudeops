@@ -234,7 +234,9 @@ def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
         if not m or json.dumps(cwd) in text[m.end():text.find("]", m.end())]:
             return False
         rest = text[m.end():text.find("]", m.end())]
-        sep = "," if rest.strip() else ""
+        # yalnız yorum içeren dizi boş sayılır (sonda virgül kalmasın); dizgi içindeki `//` yorum değildir
+        bare = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', lambda x: x.group(0) if x.group(0).startswith('"') else "", rest, flags=re.S)
+        sep = "," if bare.strip() else ""
         new = text[:m.end()] + "\n    " + json.dumps(cwd) + sep + text[m.end():]
         atomic_write_text(os.path.realpath(path), new)      # mevcut izin (0600) korunur; symlink ise hedef yazılır
         return True
