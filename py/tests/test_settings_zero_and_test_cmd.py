@@ -63,5 +63,17 @@ class TestCmdDistNoteTest(unittest.TestCase):
         self.assertIn("python dışı 1 dosya", out.getvalue())
 
 
+class TestCmdTmpNetTest(unittest.TestCase):
+    def test_single_module_run_loads_tmp_net_first(self):
+        """26 Kas edge: tek modül koşusunda mkdtemp ağı (`test_000_diag_env` -> `tmp_tracking`) kurulmuyordu."""
+        calls = []
+        with mock.patch.object(test_cmd.rt, "related_tests", lambda files, root, deep=False: {"test_x": ["x"]}), \
+             mock.patch.object(test_cmd, "changed_files", lambda repo, base="": ["py/claudeops/x.py"]), \
+             mock.patch.object(test_cmd.subprocess, "run", lambda cmd, **k: calls.append(cmd) or mock.Mock(returncode=0)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            test_cmd.run(Namespace(files=[], base="", deep=False, list=False))
+        self.assertEqual(calls[0][3:], ["test_000_diag_env", "test_x"])
+
+
 if __name__ == "__main__":
     unittest.main()

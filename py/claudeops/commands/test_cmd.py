@@ -67,5 +67,7 @@ def run(args) -> int:
     # cwd=tests: `sys.path`e yer eklemeyen test dosyaları `claudeops`i bulamaz; paket kökünü PYTHONPATH'e koy
     env = dict(os.environ)
     env["PYTHONPATH"] = str(py_root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    r = subprocess.run([sys.executable, "-m", "unittest", *sel], cwd=str(py_root / "tests"), env=env)
+    # `test_000_diag_env` ilk: mkdtemp/mkstemp ağını (`tmp_tracking`) ve geçici diag.log'u kurar (discover'daki gibi)
+    mods = ["test_000_diag_env", *[m for m in sel if m != "test_000_diag_env"]]
+    r = subprocess.run([sys.executable, "-m", "unittest", *mods], cwd=str(py_root / "tests"), env=env)
     return r.returncode
