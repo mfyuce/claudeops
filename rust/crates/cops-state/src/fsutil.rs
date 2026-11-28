@@ -62,6 +62,7 @@ fn write_replace(tmp: &Path, path: &Path, data: &[u8], mode: Option<u32>) -> io:
 
 /// `atomic_write_json`: `mode=None` iken var olan normal dosyanın izni korunur. Üst dizin oluşturulur.
 pub fn atomic_write_json(path: &Path, obj: &Json, mode: Option<u32>) -> io::Result<()> {
+    crate::paths::guard_write(path); // dosya sistemine dokunmadan önce (üst dizin yaratılmadan)
     fs::create_dir_all(parent_of(path))?;
     let mode = mode.or_else(|| {
         fs::metadata(path)
@@ -77,6 +78,7 @@ pub fn atomic_write_json(path: &Path, obj: &Json, mode: Option<u32>) -> io::Resu
 
 /// `atomic_json.atomic_write_text`: `atomic_write_json`un düz metin karşılığı (`mode=None` iken var olan izin korunur).
 pub fn atomic_write_text(path: &Path, text: &str, mode: Option<u32>) -> io::Result<()> {
+    crate::paths::guard_write(path); // dosya sistemine dokunmadan önce (üst dizin yaratılmadan)
     fs::create_dir_all(parent_of(path))?;
     let mode = mode.or_else(|| {
         fs::metadata(path)
@@ -210,6 +212,7 @@ fn sweep_dead_corrupt_tmps(dest: &Path) {
 
 /// `web._atomic_write_text` (roster/models): aynı dizinde `.tmp-*.tsv`, her zaman 0600 (Python `mkstemp`).
 pub fn atomic_write_tsv(path: &Path, text: &str) -> io::Result<()> {
+    crate::paths::guard_write(path); // geçici silinmeden önce
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let tmp = parent_of(path).join(format!(".tmp-{}-rs{n}.tsv", std::process::id()));
     let _ = fs::remove_file(&tmp);

@@ -56,6 +56,17 @@ fn writers_panic_in_live_dir_and_write_nothing() {
             "x",
             None
         ))));
+        // üst dizin YOKKEN de panik dizin yaratılmadan önce (gözden geçirme agy R-5)
+        assert!(panics(|| drop(atomic_write_json(
+            &d.join("alt/x.json"),
+            &j,
+            None
+        ))));
+        assert!(panics(|| drop(atomic_write_text(
+            &d.join("alt2/x.txt"),
+            "x",
+            None
+        ))));
         assert!(panics(|| drop(atomic_write_tsv(&d.roster_tsv(), "a\tb\n"))));
         assert!(panics(|| drop(FileLock::acquire(&d.join("k")))));
         assert!(panics(|| drop(FileLock::exclusive(&d.join("k.lock")))));
