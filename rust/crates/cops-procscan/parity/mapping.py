@@ -949,6 +949,7 @@ FILES = {
     "rsprov_child_group": ("yardımcı alt sürecin zaman aşımında süreç grubu", f"{SAG}; {T10}"),
     "rsprov_help_utf8": ("UTF-8 olmayan yardım ve mcp add çıktısı (açılış)", SAG),
     "rsprov_rc_dry_run_preview": ("`rc --dry-run` önizleme kipi (süreç taraması taklit; `rc` komutu Rust'ta yok)", SAG),
+    "rsprov_json_bounds": ("sağlayıcı okuyucularında JSON derinlik/vekil kuralı (`jsonbound`, Rust `pyjson`)", SAG),
     "rsprov_chat_readers": (_HIST + " (bozuk bayt/biçim, ucli yarım satır)", CHAT),
     "rsprov_g10_oneshot": ("tek atımlık model çağrısı", f"{SAG}; {T10}"),
     "tbd399_control_chars": ("pane'e giden metinde denetim karakterleri ve yalın Enter", f"{SAG}; {W0B}"),
@@ -1472,6 +1473,7 @@ rsprov_cost_one_pass:12:5220e6a9d5
 rsprov_child_group:13:1224408fb8
 rsprov_help_utf8:6:88fc88f6f4
 rsprov_rc_dry_run_preview:4:6706898543
+rsprov_json_bounds:7:f13fa716eb
 review_self_verify:18:4b125a8002
 routing_guidance:15:e045f05d44
 rsprov_chat_readers:15:6e732c13dd
