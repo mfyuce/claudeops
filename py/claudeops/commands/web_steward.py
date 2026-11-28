@@ -4239,6 +4239,24 @@ def _open_work_of(projects: Dict[str, sw.Project], skip_cila: bool = False) -> C
     return count
 
 
+def _open_work_gated_of(projects: Dict[str, sw.Project]) -> Callable[[str], Optional[int]]:
+    """Dürtü / keepwarm / no_work / "neden boşta" için açık iş (Fable cila ters kapısı, sahip q20261128_005532_8db8 = b): cila dışı
+    iş varsa o sayı; YALNIZ `Fable cila` maddeleri kaldıysa açık TBD yokken cila sayısı (cila hazır), açık TBD varken 0 (hve TBD#112
+    her turda iş istiyordu; cila en sona, TBD sahipte). TBD dosyası yok/okunamıyor = açık karar yok. Bilinmeyen = None.
+    `plan_tick`in STEWARD-DONE teyidi ham sayacı (`_open_work_of`) kullanır: açık cila varken proje bitmiş sayılmaz."""
+    real_of, all_of, tbd_of = _open_work_of(projects, skip_cila=True), _open_work_of(projects), _open_tbd_of(projects)
+
+    def count(proj: str) -> Optional[int]:
+        real = real_of(proj)
+        if real is None or real > 0:
+            return real
+        cila = max(0, int(all_of(proj) or 0) - real)
+        if cila and int(tbd_of(proj) or 0) > 0:
+            return 0
+        return cila
+    return count
+
+
 def _no_work_reopen(project: str, trigger: str, question_id: str, cfg: sw.Config, projects: Dict[str, sw.Project], paths: Any,
                     host: Optional[str] = None, rt: Optional[_RemoteTick] = None) -> Dict[str, Any]:
     """`iş yok` ile paused edilmiş projeyi aç: kaydı temizle, phase=planned, bir SONRAKİ yerel başlatma YENİ konuşma (`--new`, devir notu
@@ -4817,7 +4835,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     new_state = planned_state
                 actions = actions + lesson_actions  # reviewer'ın ucli dersleri -> ucli projesinin oturumu (iş iletimiyle aynı yol)
                 kw_actions, kw_state = skw.plan_keepwarm(views, planning, new_state, cfg, t0, actions, world,
-                                                              open_work=_open_work_of(projects),
+                                                              open_work=_open_work_gated_of(projects),
                                                               owner_projects={q.project for q in sw.open_questions(paths=paths) if not q.routine},
                                                               answer_pending={q.project for q in sw.undelivered_answers(paths=paths) if not q.undeliverable})
                 if kw_actions:
@@ -4841,7 +4859,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                         sw.log_event("no_work_ctx_error", paths=paths, errors=nw_ctx["errors"][:3])
                     else:
                         nw_actions, new_state = snw.plan_no_work_close(views, planning, new_state, cfg, t0, actions, world,
-                                                                       open_work=_open_work_of(projects), ctx=nw_ctx)
+                                                                       open_work=_open_work_gated_of(projects), ctx=nw_ctx)
                         for a in nw_actions:
                             if cfg.no_work_close == "dry":
                                 sw.log_event("would:idle_close", paths=paths, name=a.name,
@@ -4855,7 +4873,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                     new_state = planned_state
                 actions = actions + adv_actions     # ilerletme (advance_findings=on): onaylı review bulguları -> kendi projesinin oturumu
                 idle_actions, new_state = sw.plan_ucli_idle(views, planning, new_state, cfg, t0, actions, world,
-                                                            open_work=_open_work_of(projects))
+                                                            open_work=_open_work_gated_of(projects))
                 if cfg.ucli_idle == "dry":
                     for a in idle_actions:          # YALNIZ ölçüm (act kipinde de): oturuma dokunmaz
                         sw.log_event("would:" + a.kind, paths=paths, name=a.name,
@@ -4863,7 +4881,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 else:
                     actions = actions + idle_actions    # TBD#156: boşta ucli kodcu (dürtme / kapat+devir); observe'da OBSERVE_SKIPPED ile `would:`
                 cl_actions, new_state = sw.plan_claude_idle(views, planning, new_state, cfg, t0, actions, world,
-                                                            open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects),
+                                                            open_work=_open_work_gated_of(projects), owner_todo=_owner_todo_of(projects),
                                                             todo_sha=_todo_sha_of(projects), oldest_open=_oldest_open_of(projects),
                                                             has_question=_has_question_of(paths))
                 if cfg.claude_idle == "dry":
@@ -4876,7 +4894,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
                 actions, new_state = sw.loop_guard(actions, views, new_state, t0)     # L4: hedefte değişiklik yokken tekrar eden eylem durur
                 try:        # "neden ilerlemiyor" (panel proje satırı): motorun bu tick'teki kararlarıyla aynı koşullar; hata tick'i düşürmez
                     ctx.idle_why = {"at": t0, "by": sw.explain_idle_all(views, planning, dict(new_state, dialog_stuck=dict(_DIALOG_STUCK), send_fail=dict(_SEND_FAILS)), cfg, t0, sw.load_questions(paths), actions,
-                                                                         world, open_work=_open_work_of(projects), owner_todo=_owner_todo_of(projects))}
+                                                                         world, open_work=_open_work_gated_of(projects), owner_todo=_owner_todo_of(projects))}
                 except Exception as e_why:
                     diag_log("steward_explain_idle_failed", sid=sid, error=repr(e_why))
                 journal = _journal_entries(actions, t0)

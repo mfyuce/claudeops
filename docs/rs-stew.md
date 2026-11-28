@@ -990,9 +990,9 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (1996 satır)
+### Python testleri (2000 satır)
 
-Test satırı özeti: 1996 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 2000 satır; doğrudan açık (aşağıda `AÇIK`) 200; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1024,6 +1024,10 @@ Test satırı özeti: 1996 satır; doğrudan açık (aşağıda `AÇIK`) 200; pa
 | `test_brain_rules_g_h.TestBrainRules.test_h_is_limited_to_reversible_questions` | Rust testi: pytests::owner_answer_reading_is_limited_to_reversible |
 | `test_card_prompt_blockers.CardPromptBlockersTest.test_tr_prompt_demands_currently_open_blockers` | cards::build_card_prompt_vectors |
 | `test_card_prompt_blockers.CardPromptBlockersTest.test_en_prompt_demands_currently_open_blockers` | cards::build_card_prompt_vectors |
+| `test_cila_gate_nudge.CilaGatedOpenWork.test_only_cila_and_open_tbd_is_no_work` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._open_work_gated_of`: TODO.md/TOBEDECIDED.md okuyup dürtü/keepwarm/no_work sayacını kuran uygulama katmanı (dosya G/Ç); saf çekirdekte yeni karar yok, `count_open_tbd` vektörlerde, iz T10 |
+| `test_cila_gate_nudge.CilaGatedOpenWork.test_only_cila_and_no_open_tbd_is_cila_ready` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._open_work_gated_of`: TODO.md/TOBEDECIDED.md okuyup dürtü/keepwarm/no_work sayacını kuran uygulama katmanı (dosya G/Ç); saf çekirdekte yeni karar yok, `count_open_tbd` vektörlerde, iz T10 |
+| `test_cila_gate_nudge.CilaGatedOpenWork.test_real_work_counts_without_cila` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._open_work_gated_of`: TODO.md/TOBEDECIDED.md okuyup dürtü/keepwarm/no_work sayacını kuran uygulama katmanı (dosya G/Ç); saf çekirdekte yeni karar yok, `count_open_tbd` vektörlerde, iz T10 |
+| `test_cila_gate_nudge.CilaGatedOpenWork.test_unknown_stays_unknown` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._open_work_gated_of`: TODO.md/TOBEDECIDED.md okuyup dürtü/keepwarm/no_work sayacını kuran uygulama katmanı (dosya G/Ç); saf çekirdekte yeni karar yok, `count_open_tbd` vektörlerde, iz T10 |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_adds_line_with_id_and_flattens_text` | inserts::todo_insert_directive_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._todo_record_directive |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_same_content_or_same_id_not_duplicated` | inserts::todo_insert_directive_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._todo_record_directive |
 | `test_directive_auto_todo.DirectiveAutoTodo.test_closed_line_allows_same_text_again` | inserts::todo_insert_directive_vectors; testin bu crate dışındaki çağrıları (bu satır onları sınamaz): web_steward._todo_record_directive |
