@@ -4,7 +4,8 @@
 //! `tests/parity_settings.rs::settings_readers_match_python`. Model/effort varsayılanları (`default_model_for` ...)
 //! sağlayıcı bilgisini PARAMETRE alır (bu crate sağlayıcılara bağlı değil); parite: `tests/parity_steward.rs`.
 //!
-//! Python'un İSTİSNA fırlattığı tip hatası [`SettingsTypeError`] döner: sessizce yutulmaz, sessizce düzeltilmez.
+//! Elle bozulmuş tip (TBD#374 S8/S9, sahip kararı B): iki dilde de geçersiz değer yok sayılır (`models` boş liste,
+//! `provider_bin` PATH'e düşer); istisna/hata tipi yok.
 use crate::json::{Json, Map};
 use crate::paths::{expanduser_with, home_env, is_executable_file, realpath};
 use crate::pycompat::{self as py, PyInt};
@@ -66,22 +67,6 @@ pub fn default_ucli_services() -> &'static [Json] {
         },
     )
 }
-
-/// Python'un istisna fırlattığı elle bozulmuş değer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsTypeError {
-    /// Hangi alan (ör. `provider_bin`).
-    pub field: String,
-    /// Python istisna türü.
-    pub python: &'static str,
-}
-
-impl std::fmt::Display for SettingsTypeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "settings {}: Python {}", self.field, self.python)
-    }
-}
-impl std::error::Error for SettingsTypeError {}
 
 /// Süreç ortamından gelen ve okuyucuların kullandığı değerler (`HOME`, `PATH`). Testler açık değer verir.
 #[derive(Debug, Clone, Default)]
