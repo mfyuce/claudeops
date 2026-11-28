@@ -235,7 +235,11 @@ fn strip_underscores(s: &str) -> Option<String> {
     Some(out)
 }
 
-/// `int(s)` (taban 10); `ValueError` = `None`.
+/// Python `sys.int_info.default_max_str_digits` (3.10.7+; canlı panel 3.10.12): `int()` daha uzun ondalık metni reddeder.
+pub const INT_MAX_STR_DIGITS: usize = 4300;
+
+/// `int(s)` (taban 10); `ValueError` = `None`. [`INT_MAX_STR_DIGITS`]ten uzun rakam dizisi (alt çizgisiz, baştaki sıfırlar
+/// dahil) de `None` (R-B2a-1).
 pub fn parse_int(s: &str) -> Option<PyInt> {
     let t = to_ascii_number(s)?;
     let t = t.trim_matches(ascii_space);
@@ -248,7 +252,7 @@ pub fn parse_int(s: &str) -> Option<PyInt> {
         return None;
     }
     let digits = strip_underscores(digits)?;
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if !digits.bytes().all(|b| b.is_ascii_digit()) || digits.len() > INT_MAX_STR_DIGITS {
         return None;
     }
     let body = digits.trim_start_matches('0');

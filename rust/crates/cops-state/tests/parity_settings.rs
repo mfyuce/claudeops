@@ -707,6 +707,48 @@ print(json.dumps([[i(x), f(x)] for x in xs]))
     assert_eq!(rs.to_compact(), out.trim_end());
 }
 
+/// R-B2a-1: Python `int()` 4300 haneden uzun ondalık metni reddeder (`sys.int_info.str_digits_check_threshold`; baştaki
+/// sıfırlar sayılır, alt çizgi, işaret ve boşluk sayılmaz). `/api/term/history` `start`/`end` bu yüzden 400 `invalid_range`.
+#[test]
+fn int_digit_limit_matches_python() {
+    let e = Env::new();
+    let r = |s: &str, n: usize| s.repeat(n);
+    let xs: Vec<String> = vec![
+        r("1", 4300),
+        r("1", 4301),
+        r("0", 4300),
+        r("0", 4301),
+        r("0", 5000),
+        format!("{}1", r("1_", 2200)),
+        format!("{}1", r("1_", 4300)),
+        format!("-{}", r("9", 4300)),
+        format!("+{}", r("9", 4301)),
+        format!("  {}\n", r("7", 4300)),
+        format!(" {} ", r("7", 4301)),
+        r("\u{0661}", 4301),
+    ];
+    let input = Json::Array(xs.iter().map(|s| Json::from(s.as_str())).collect()).to_compact();
+    let out = e.py_in(
+        "files",
+        r#"
+def i(x):
+    try:
+        return str(int(x))
+    except ValueError:
+        return None
+xs = json.load(sys.stdin)
+print(json.dumps([i(x) for x in xs]))
+"#,
+        &input,
+    );
+    let rs = Json::Array(
+        xs.iter()
+            .map(|s| py::parse_int(s).map_or(Json::Null, |n| n.to_string().into()))
+            .collect(),
+    );
+    assert_eq!(rs.to_compact(), out.trim_end());
+}
+
 #[test]
 fn str_repr_match_python() {
     let e = Env::new();
