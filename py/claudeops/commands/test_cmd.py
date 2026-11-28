@@ -52,7 +52,8 @@ def run(args) -> int:
         print(f"HATA: {e}")
         return 2
     sel = rt.related_tests(files, str(py_root), deep=args.deep)
-    others = [f for f in files if not f.endswith(".py")]
+    dist = str(py_root / "webui" / "dist") + os.sep     # dist dosyaları seçime girer (`related_tests`)
+    others = [f for f in files if not f.endswith(".py") and not f.startswith(dist)]
     if not sel:
         print("ilgili test yok" + (f" (python dışı değişiklik: {len(others)} dosya; panel için tsc/dist_check)" if others else ""))
         return 0
@@ -66,5 +67,7 @@ def run(args) -> int:
     # cwd=tests: `sys.path`e yer eklemeyen test dosyaları `claudeops`i bulamaz; paket kökünü PYTHONPATH'e koy
     env = dict(os.environ)
     env["PYTHONPATH"] = str(py_root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    r = subprocess.run([sys.executable, "-m", "unittest", *sel], cwd=str(py_root / "tests"), env=env)
+    # `test_000_diag_env` ilk: mkdtemp/mkstemp ağını (`tmp_tracking`) ve geçici diag.log'u kurar (discover'daki gibi)
+    mods = ["test_000_diag_env", *[m for m in sel if m != "test_000_diag_env"]]
+    r = subprocess.run([sys.executable, "-m", "unittest", *mods], cwd=str(py_root / "tests"), env=env)
     return r.returncode

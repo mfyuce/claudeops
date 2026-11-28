@@ -547,7 +547,9 @@ DEFS["paths.py"] = [
     ok("proc_stat_fields", "procfs.rs::OwnProc::try_stat procfs.rs::OwnProc::stat",
        "I:fake_proc.rs::broken_proc_fields", "yalnız kendi kullanıcımızın süreci"),
     ok("proc_ppid", "procfs.rs::Stat.ppid", "I:fake_proc.rs::own_ppid_from_real_proc"),
-    oos("_test_code_loaded _under_test_runner ensure_private_state_dir ROSTER_TSV MODELS_TSV CLAUDE_MODELS_JSON",
+    oos("_test_code_loaded _under_test_runner _LateTestImportGuard _LateTestImportGuard.__init__ "
+        "_LateTestImportGuard.find_spec _install_late_test_guard "
+        "ensure_private_state_dir ROSTER_TSV MODELS_TSV CLAUDE_MODELS_JSON",
         "durum dizini çözümü, test yalıtımı ve durum dosyaları", W0A),
     oos("ucli_key_file", "ucli anahtar dosyası yolu", SAG),
     oos("shared_write_allowed", "ortak anahtar/kullanım dosyalarının yazım kapısı (açılış, TBD#412 b)", SAG),
@@ -1459,7 +1461,7 @@ model_usage:3:46df4bab8c
 needs_ho_transcript:4:270118e250
 orch_store_db:5:647ecdf3af
 orphan_watch:12:e645fcc095
-paths_isolation:5:5103a70284
+paths_isolation:9:f1712b221a
 proc08_model_switch_no_blind_enter:3:7cba6c87a9
 provider_live_context:7:8fdef1d7cc
 provider_wants_split:3:2d8ab8759a

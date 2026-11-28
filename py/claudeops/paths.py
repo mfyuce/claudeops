@@ -51,6 +51,43 @@ if os.environ.get("CLAUDEOPS_DIR") and not os.path.isabs(CLAUDEOPS_DIR):
     raise SystemExit(f"CLAUDEOPS_DIR göreli ({CLAUDEOPS_DIR}): mutlak yol verin")
 STATE_DIR = Path(CLAUDEOPS_DIR)   # needs_ho / handover timestamp için Path API
 
+
+class _LateTestImportGuard:
+    """26 Kas edge: `claudeops`u ÖNCE (yukarıda canlı dizin sabitlenir), test kodunu SONRA yükleyen depo dışı betik
+    testleri canlı dizine yazdırırdı. Yalnız canlı dizin seçilmiş, giriş noktası depo DIŞINDA olan süreçte kurulur
+    (canlı servis `python3 -m claudeops` depo içinde: kurulmaz); sonradan `unittest` ya da `py/tests` modülü
+    yüklenmek istenirse açık hata (kapalı yön)."""
+
+    def __init__(self, tests_dir: str):
+        self.tests_dir = tests_dir
+
+    def find_spec(self, name, path=None, target=None):
+        hit = name == "unittest" or name.startswith("unittest.")
+        if not hit and path is None and "." not in name:
+            from importlib.machinery import PathFinder
+            spec = PathFinder.find_spec(name)
+            hit = bool(spec and (spec.origin or "").startswith(self.tests_dir))
+        if hit:
+            raise ImportError(f"{name}: claudeops canlı dizini ({CLAUDEOPS_DIR}) seçildikten sonra test kodu yükleniyor; "
+                              "`python3 -m unittest` kullanın ya da CLAUDEOPS_DIR verin (bilerek canlı: "
+                              "CLAUDEOPS_TEST_REAL_DIR=1)")
+        return None
+
+
+def _install_late_test_guard() -> None:
+    import sys
+    if os.environ.get("CLAUDEOPS_DIR") or os.environ.get("CLAUDEOPS_TEST_REAL_DIR") == "1":
+        return
+    repo = Path(__file__).resolve().parents[2]
+    main = getattr(sys.modules.get("__main__"), "__file__", None)
+    if main and repo in Path(main).resolve().parents:
+        return
+    if not any(isinstance(f, _LateTestImportGuard) for f in sys.meta_path):
+        sys.meta_path.insert(0, _LateTestImportGuard(str(repo / "py" / "tests") + os.sep))
+
+
+_install_late_test_guard()
+
 # claudeops repo'nun kendi kökü (bu dosyadan: claudeops/py/claudeops/paths.py → 2 parent yukarı).
 # "LLM'e sor" diag session'ı için cwd — sorulan şey bu repo'nun kendi spawn koduysa mantıklı.
 REPO_DIR = str(Path(__file__).resolve().parents[2])

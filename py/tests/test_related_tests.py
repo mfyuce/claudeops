@@ -51,6 +51,15 @@ class RelatedTestsTests(unittest.TestCase):
     def test_non_python_selects_nothing(self):
         self.assertEqual(self.sel("README.md"), {})
 
+    def test_webui_dist_change_selects_dist_tests(self):
+        """27 Kas: `dist` değişikliği hiçbir test seçmiyordu, boş sayfa yalnız elle fark edildi."""
+        _w(f"{self.root}/tests/test_webui_dist_renders.py", "import os\n")
+        _w(f"{self.root}/tests/test_webui_dist_single_react.py", "import os\n")
+        why = ["webui/dist"]
+        self.assertEqual(self.sel("webui/dist/assets/index-x.js"),
+                         {"test_webui_dist_renders": why, "test_webui_dist_single_react": why})
+        self.assertEqual(self.sel("webui/src/App.tsx"), {})
+
 
 if __name__ == "__main__":
     unittest.main()
