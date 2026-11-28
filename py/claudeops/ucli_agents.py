@@ -33,7 +33,7 @@ STARTING_GRACE_SECONDS = 120.0  # "starting" kaydı oturum henüz görünmese de
 MAX_TEXT_CHARS = 20000
 
 _CHILD_RE = re.compile(r"^(?P<parent>.+)_aj(?P<n>[1-9][0-9]*)$")
-_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+_SAFE_NAME_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\Z")     # `$` sondaki satır sonunu da kabul ederdi
 
 _LOCK = threading.RLock()
 _PREVIEW = threading.local()
