@@ -536,6 +536,9 @@ DEFS["paths.py"] = [
     oos("ucli_key_file", "ucli anahtar dosyası yolu", SAG),
     oos("shared_write_allowed", "ikinci örnekte ortak anahtar/kullanım yazma yasağı (TBD#412)", f"{SAG}; {W0A}"),
     oos("REPO_DIR CONFIG_JSON GUARD_LOCK", "açılış/koruma yolu sabitleri", T4),
+    oos("trusted_path_env secure_path_environ",
+        "süreç girişinde güvenilmeyen PATH girdisi süzgeci (P2-2, TBD#450); Rust eşi `cops_state::paths` "
+        "(copsd, cops-cli girişi), test `paths.rs::trusted_path_env_drops_untrusted`", W0A),
 ]
 
 DEFS["commands/web.py"] = [
@@ -872,6 +875,13 @@ CASES["test_ucli_web.py"] = [
 CASES["test_ucli_resolve_binary.py"] = [
     t_ok("OwnCopyLocationTests.test_a_session_started_from_the_own_copy_is_still_recognised_as_ucli",
          "U:providers.rs::detect", "ikilinin adının `ucli` olması kuralı; yol seçimi " + SAG),
+]
+CASES["test_path_env.py"] = [
+    t_oos(cls("TrustedPathEnv", "test_keeps_trusted_and_order test_drops_missing_relative_empty "
+                                "test_drops_file_and_world_writable test_drops_foreign_owner test_duplicates_kept_once "
+                                "test_secure_environ_rewrites_and_reports"),
+          "PATH süzgeci (TBD#450); Rust eşi `cops_state::paths::trusted_path_env`, test "
+          "`paths.rs::trusted_path_env_drops_untrusted`", W0A),
 ]
 CASES["test_ucli_script.py"] = [
     t_ok("BuildCommandTests.test_permission_modes_list_and_round_trip_from_the_running_command",

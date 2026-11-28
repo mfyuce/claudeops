@@ -187,6 +187,43 @@ def session_record_status(sessions_dir: str, sid: Optional[str]) -> Optional[str
     return "idle" if found else None
 
 
+SHELL_ONLY_DIRECTIVE_SECONDS = 1800     # TBD#442 (a): tur bitmiş, yalnız kabuk/Monitor bu kadar süredir açık = yönerge yine gider
+
+
+def session_record_shell_since(sessions_dir: str, sid: Optional[str]) -> Optional[float]:
+    """Konuşmanın canlı süreç kayıtlarının birleşik durumu `shell` ise (`session_record_status`: tur bitti, yalnız kabuk/Monitor açık)
+    o duruma geçiş anı (epoch sn; birden çok kayıtta en yenisi, `statusUpdatedAt` ms). Başka durum, kayıt yok ya da zaman okunamıyorsa None."""
+    if session_record_status(sessions_dir, sid) != "shell":
+        return None
+    try:
+        names = os.listdir(sessions_dir)
+    except OSError:
+        return None
+    best: Optional[float] = None
+    for n in names:
+        if not n.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(sessions_dir, n), encoding="utf-8") as f:
+                d = json.load(f)
+            if d.get("sessionId") != sid or d.get("status") != "shell":
+                continue
+            t = float(d["statusUpdatedAt"]) / 1000.0
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, RecursionError, OverflowError):
+            continue
+        if t == t and t > 0 and (best is None or t > best):
+            best = t
+    return best
+
+
+def shell_only_stale(sessions_dir: str, sid: Optional[str], now: Optional[float] = None) -> bool:
+    """TBD#442 (a): claude turu bitmiş ve `SHELL_ONLY_DIRECTIVE_SECONDS`ten uzun süredir yalnız kabuk/Monitor açık. Yönerge, dürtü ve
+    cevap teslimi bunu engel saymaz; devir, kapatma, yeniden açma yine bekler (kabuk öldürülmez). Bilinmiyorsa False."""
+    since = session_record_shell_since(sessions_dir, sid)
+    t = time.time() if now is None else now
+    return since is not None and (t - since) >= SHELL_ONLY_DIRECTIVE_SECONDS
+
+
 _CODEX_BG_RE = re.compile(r"(?<![\w.])([1-9]\d*) background terminals? running", re.I)
 
 

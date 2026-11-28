@@ -145,6 +145,8 @@ fn run_self() -> i32 {
 }
 
 fn main() {
+    // P2-2: güvenilmeyen PATH girdileri atılır (Python `__main__` eşi; devredilen Python ve çocuklar temiz PATH devralır)
+    cops_state::paths::secure_path_environ();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     // İkilinin kaynak sürümü (canlı ikili = main HEAD denetimi); stdout ve çıkış kodu devredilen Python'unkidir.
     if args.len() == 1 && args[0] == "--version" {

@@ -125,3 +125,58 @@ fn install_keeps_foreign_hook() {
     assert_eq!(out.status.code(), Some(2));
     assert!(!repo.join(".git/hooks/commit-msg").exists());
 }
+
+/// `a2c21d85` uç durumu: `.gitattributes`taki diff sürücüsü (yerleşik `python` ya da özel `xfuncname`) hunk başlığını
+/// girintili yöntem satırına çevirse de sınıf yöntemi "yeni public yüzey" sayılsın, işlev içindeki yerel işlev sayılmasın.
+#[test]
+fn fix_warning_ignores_diff_driver_in_gitattributes() {
+    for (name, attr, cfg) in [
+        ("drvpy", "*.py diff=python\n", None),
+        (
+            "drvx",
+            "*.py diff=pyx\n",
+            Some(("diff.pyx.xfuncname", "^[ \t]*def .*$")),
+        ),
+    ] {
+        let (_t, repo, tbd) = setup(name);
+        ok(gate(&["install", "--tbd", s(&tbd), "--repo", s(&repo)]));
+        if let Some((k, v)) = cfg {
+            ok(git(&repo, &["config", k, v]));
+        }
+        write(&repo, ".gitattributes", attr);
+        let filler = "        x = 1\n".repeat(8);
+        let base =
+            format!("class K:\n    def old(self):\n{filler}\n\ndef top():\n    y = 1\n{filler}");
+        write(&repo, "py/a.py", &base);
+        ok(git(&repo, &["add", "."]));
+        ok(git(
+            &repo,
+            &["commit", "-qm", "chore: base\n\nPython-exception: TBD#7"],
+        ));
+        // yöntem `old`un gövdesinin sonuna, iç işlev `top`un gövdesinin sonuna
+        let body = base
+            .replace(
+                &format!("{filler}\n\ndef top"),
+                &format!("{filler}    def fresh(self):\n        pass\n\n\ndef top"),
+            )
+            .to_string()
+            + "    def inner():\n        pass\n";
+        write(&repo, "py/a.py", &body);
+        let out = git(&repo, &["commit", "-qam", "fix: y"]);
+        assert!(
+            out.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("işlev fresh"), "{name}: yöntem kaçtı: {err}");
+        assert!(!err.contains("inner"), "{name}: iç işlev sayıldı: {err}");
+        // `check` (pushlanmamış commit'ler, `commit_verdict` yolu) aynı sonucu versin
+        let out = gate(&["check", "--core", s(&repo)]);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("işlev fresh") && !err.contains("inner"),
+            "{name} check: {err}"
+        );
+    }
+}

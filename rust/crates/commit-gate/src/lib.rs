@@ -93,10 +93,12 @@ fn is_test(path: &str) -> bool {
     path.starts_with("py/tests/") || path.contains("/tests/")
 }
 
-fn def_name(line: &str) -> Option<&str> {
-    // yalnız modül düzeyi ve sınıf yöntemi (en çok 4 boşluk girinti); iç işlevler public sayılmaz
+fn def_name(line: &str, outer_fn: bool) -> Option<&str> {
+    // yalnız modül düzeyi ve sınıf yöntemi (en çok 4 boşluk girinti); iç işlevler public sayılmaz: daha derin girinti ya da
+    // kapsayan girintisiz satır bir işlev (`outer_fn`, `b77b133a` yanlış alarmı: `explain_idle` içinde `why`)
     let body = line.trim_start_matches(' ');
-    if line.len() - body.len() > 4 {
+    let indent = line.len() - body.len();
+    if indent > 4 || (indent > 0 && outer_fn) {
         return None;
     }
     let rest = body
@@ -105,6 +107,19 @@ fn def_name(line: &str) -> Option<&str> {
         .strip_prefix("def ")?;
     let name = &rest[..rest.find('(')?];
     (!name.starts_with('_') && !name.starts_with("test")).then_some(name)
+}
+
+/// Girintisiz satır bir işlev tanımı mı (`def`/`async def`). git'in varsayılan hunk başlığı kapsayan en yakın girintisiz satırdır.
+fn is_fn_line(line: &str) -> bool {
+    let l = line.strip_prefix("async ").unwrap_or(line);
+    l.starts_with("def ")
+}
+
+/// Satırın kapsamını izler: girintisiz (boş olmayan) satır dış kapsamı değiştirir.
+fn track(outer_fn: &mut bool, line: &str) {
+    if line.starts_with(|c: char| !c.is_whitespace()) {
+        *outer_fn = is_fn_line(line);
+    }
 }
 
 fn api_literals(line: &str) -> impl Iterator<Item = &str> {
@@ -117,30 +132,44 @@ fn api_literals(line: &str) -> impl Iterator<Item = &str> {
 /// `git diff -U0` çıktısından kapsamdaki (test olmayan) dosyalarda yeni public işlev ve uç adları.
 pub fn new_public(diff: &str) -> Vec<String> {
     let (mut added, mut removed) = (Vec::new(), Vec::new());
+    let (mut new_defs, mut old_defs) = (Vec::new(), Vec::new());
     let mut take = false;
     let mut in_header = false;
+    // kapsayan girintisiz satır işlev mi: yeni ve eski taraf ayrı izlenir; hunk başlığı ikisini de kurar
+    let (mut outer_new, mut outer_old) = (false, false);
     for line in diff.lines() {
         if line.starts_with("diff --git ") {
             in_header = true;
             take = false;
-        } else if in_header {
+        } else if in_header && !line.starts_with("@@") {
             if let Some(p) = line.strip_prefix("+++ b/") {
                 take = in_scope(p) && !is_test(p);
             }
-            in_header = !line.starts_with("@@");
+        } else if line.starts_with("@@") {
+            in_header = false;
+            // `@@ -a,b +c,d @@ <bağlam>`
+            let ctx = line
+                .splitn(3, "@@")
+                .nth(2)
+                .unwrap_or("")
+                .trim_start_matches(' ');
+            outer_new = is_fn_line(ctx);
+            outer_old = outer_new;
         } else if take {
             if let Some(l) = line.strip_prefix('+') {
+                track(&mut outer_new, l);
                 added.push(l);
+                new_defs.extend(def_name(l, outer_new));
             } else if let Some(l) = line.strip_prefix('-') {
+                track(&mut outer_old, l);
                 removed.push(l);
+                old_defs.extend(def_name(l, outer_old));
             }
         }
     }
-    let old_defs: Vec<&str> = removed.iter().filter_map(|l| def_name(l)).collect();
     let old_apis: Vec<&str> = removed.iter().flat_map(|l| api_literals(l)).collect();
-    let mut out: Vec<String> = added
-        .iter()
-        .filter_map(|l| def_name(l))
+    let mut out: Vec<String> = new_defs
+        .into_iter()
         .filter(|n| !old_defs.contains(n))
         .map(|n| format!("işlev {n}"))
         .chain(

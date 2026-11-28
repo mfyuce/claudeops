@@ -6,7 +6,7 @@ use crate::consts_gen::*;
 use crate::identity::{self, OwnershipIndex};
 use crate::prompts::object_of;
 use crate::pyc;
-use crate::types::{Action, Config, Project, SessionView, World};
+use crate::types::{Action, Config, Project, Question, SessionView, World};
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -272,6 +272,128 @@ pub fn owned_evidence(events: &[Map<String, Value>], name: &str, project: &str, 
     false
 }
 
+/// `manual_hold_step` sorusu: `{project, session, text}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldAsk {
+    pub project: String,
+    pub session: String,
+    pub text: String,
+}
+
+/// `manual_hold_step` cevap çözümü: `{question_id, project, session, adopt}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldResolved {
+    pub question_id: String,
+    pub project: String,
+    pub session: String,
+    pub adopt: bool,
+}
+
+/// `manual_hold_step` dönüşü: (yeni `hold`, sorulacaklar, çözülenler).
+pub type HoldStep = (Map<String, Value>, Vec<HoldAsk>, Vec<HoldResolved>);
+
+/// L2 bayat izleme kaydı: kayıtlı ad kapalı + sahibin elle açtığı TEK oturum `MANUAL_HOLD_ASK_SECONDS` sürünce sahibe bir kez
+/// "izleyeyim mi?"; açık olumlu cevapta benimse. Bozuk `since` Python'da `float()` istisnasıydı: `Err`.
+///
+/// py: manual_hold_step
+pub fn manual_hold_step(
+    hold: &Map<String, Value>,
+    views: &[SessionView],
+    world: &World,
+    projects: &IndexMap<String, Project>,
+    questions: &[Question],
+    now: f64,
+    lang: &str,
+) -> Result<HoldStep, BadValue> {
+    let mut out: Map<String, Value> =
+        hold.iter().filter(|(_, v)| v.is_object()).map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut asks = Vec::new();
+    let mut resolved: Vec<HoldResolved> = Vec::new();
+    let mut manual: IndexMap<String, Vec<String>> = IndexMap::new();
+    let running: BTreeSet<&str> = views.iter().filter(|v| v.running).map(|v| v.name.as_str()).collect();
+    for v in views.iter().filter(|v| v.running) {
+        if world.session_class(&v.name, v.blueprint.as_deref()) == "manual" {
+            let key = world.owned_key(&v.name, v.blueprint.as_deref());
+            if !key.is_empty() {
+                manual.entry(key).or_default().push(v.name.clone());
+            }
+        }
+    }
+    for q in questions {
+        if q.status != "answered" || q.delivered_at != 0.0 || q.source != OWNED_ADOPT_SOURCE {
+            continue;
+        }
+        let sess = match out.get(&q.project).and_then(|r| r.get("session")) {
+            Some(v) if pyc::truthy(v) => match v {
+                Value::String(s) => s.clone(),
+                Value::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+                other => other.to_string(),
+            },
+            _ => String::new(),
+        };
+        let only = manual.get(&q.project).is_some_and(|n| n.len() == 1 && n[0] == sess);
+        let adopt = !sess.is_empty()
+            && only
+            && crate::idletext::is_open_answer(&q.answer)
+            && !crate::idletext::is_negative_answer(&q.answer);
+        resolved.push(HoldResolved { question_id: q.id.clone(), project: q.project.clone(), session: sess, adopt });
+        if adopt {
+            out.shift_remove(&q.project);
+        }
+    }
+    let adopted: BTreeSet<&str> = resolved.iter().filter(|r| r.adopt).map(|r| r.project.as_str()).collect();
+    let mut keep: BTreeSet<String> = BTreeSet::new();
+    let mut keys: Vec<&String> = manual.keys().collect();
+    keys.sort();
+    for proj in keys {
+        let names = &manual[proj];
+        let reg = world.owned.get(proj).cloned().unwrap_or_default();
+        let skip = match projects.get(proj) {
+            None => true,
+            Some(p) => matches!(p.phase.as_str(), "done" | "paused"),
+        };
+        if adopted.contains(proj.as_str())
+            || skip
+            || names.len() != 1
+            || reg.is_empty()
+            || running.contains(reg.as_str())
+        {
+            continue;
+        }
+        keep.insert(proj.clone());
+        let mut r: Map<String, Value> = match out.get(proj) {
+            Some(Value::Object(m)) => m.clone(),
+            _ => Map::new(),
+        };
+        if r.get("session") != Some(&Value::String(names[0].clone())) {
+            r = Map::new();
+            r.insert("since".into(), Value::from(now));
+            r.insert("session".into(), Value::String(names[0].clone()));
+        }
+        let asked = r.get("asked").is_some_and(pyc::truthy);
+        if !asked && now - crate::tick::float_or(r.get("since"), now)? >= MANUAL_HOLD_ASK_SECONDS as f64 {
+            let hours = MANUAL_HOLD_ASK_SECONDS / 3600;
+            let n = &names[0];
+            let text = if lang == "en" {
+                format!(
+                    "{proj}: the registered session '{reg}' has not run for {hours}+ h while your own session '{n}' works on the \
+                     project, so the steward gives it no tours. Should the steward track '{n}' (yes) or keep waiting (no)?"
+                )
+            } else {
+                format!(
+                    "{proj}: kayıtlı oturum '{reg}' {hours}+ saattir çalışmıyor, projede sizin açtığınız '{n}' çalışıyor; değnekçi \
+                     bu yüzden projeye tur vermiyor. '{n}' izlensin mi (evet), yoksa beklensin mi (hayır)?"
+                )
+            };
+            asks.push(HoldAsk { project: proj.clone(), session: n.clone(), text });
+            r.insert("asked".into(), Value::Bool(true));
+        }
+        out.insert(proj.clone(), Value::Object(r));
+    }
+    out.retain(|k, _| keep.contains(k));
+    Ok((out, asks, resolved))
+}
+
 /// `update_owned` değişiklik satırı.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnedChange {
@@ -438,7 +560,7 @@ where
     }
     for (project, make) in entries {
         let Some(v) = pick_delivery_view(mine, project.as_ref(), "") else { continue };
-        if v.busy == Some(true) || taken.contains(&v.name) || v.subagent_active || v.subagent_unknown {
+        if v.busy == Some(true) || taken.contains(&v.name) || bg_blocks_message(v) {
             continue;
         }
         out.push(make(v));
@@ -458,6 +580,14 @@ where
         st.insert("last_directive_at".to_string(), Value::Object(map));
     }
     Ok((out, st))
+}
+
+/// Arka plan işi oturuma mesaj (yönerge, dürtü, cevap teslimi) göndermeyi engelliyor mu. İstisna (TBD#442 a): tur bitmiş ve
+/// yalnız kabuk/Monitor 30 dk'dan uzun açık (`shell_only_stale`). Devir/kapatma/yeniden açma bunu kullanmaz.
+///
+/// py: bg_blocks_message
+pub fn bg_blocks_message(v: &SessionView) -> bool {
+    v.subagent_unknown || (v.subagent_active && !v.shell_only_stale)
 }
 
 /// Oturum makine geneli (`max_active_total`) slotu yer mi: yalnız mesaj alan/meşgul oturum.

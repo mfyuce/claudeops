@@ -501,6 +501,60 @@ impl Drop for TestEnv {
     }
 }
 
+/// PATH değerinden güvenilmeyen girdileri atar (P2-2, 28 Kas: servis PATH'inin başında var olmayan `/tmp/tmp.*` vardı; çok
+/// kullanıcılı makinede başkası o dizini kurup `tmux`/`claude`/`git` koyarsa servis onu çalıştırırdı). Kalır: mutlak, var
+/// olan (bağ çözülerek) dizin, sahibi root ya da bu kullanıcı, başkalarınca (other) yazılamaz. Sıra korunur, tekrar atılır.
+///
+/// py: paths.trusted_path_env
+pub fn trusted_path_env(value: &str) -> String {
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: getuid her zaman başarılıdır.
+    let uid = unsafe { libc::getuid() };
+    let mut out: Vec<&str> = Vec::new();
+    for p in value.split(':') {
+        if !p.starts_with('/') || out.contains(&p) {
+            continue;
+        }
+        let Ok(md) = std::fs::metadata(p) else {
+            continue;
+        };
+        if md.is_dir() && (md.uid() == 0 || md.uid() == uid) && md.mode() & 0o002 == 0 {
+            out.push(p);
+        }
+    }
+    out.join(":")
+}
+
+/// Süreç girişinde `PATH`i [`trusted_path_env`] ile yeniden yazar; atılan girdileri döndürür (çocuk süreçler temiz PATH
+/// devralır). `PATH` yoksa ya da UTF-8 değilse dokunmaz. Tek iş parçacıklıyken (ana işlevin başında) çağrılmalı.
+///
+/// py: paths.secure_path_environ
+pub fn secure_path_environ() -> Vec<String> {
+    // yok ya da UTF-8 değil: bilerek dokunulmaz (Python `os.environ` yoksa dokunmaz; UTF-8 dışı PATH süzülemez)
+    let cur = match std::env::var("PATH") {
+        Ok(v) => v,
+        Err(std::env::VarError::NotPresent | std::env::VarError::NotUnicode(_)) => {
+            return Vec::new()
+        }
+    };
+    let new = trusted_path_env(&cur);
+    let kept: Vec<&str> = if new.is_empty() {
+        Vec::new()
+    } else {
+        new.split(':').collect()
+    };
+    let dropped = cur
+        .split(':')
+        .filter(|p| !kept.contains(p))
+        .map(str::to_string)
+        .collect();
+    if new != cur {
+        // sözleşme: çağıran tek iş parçacıklı açılışta çağırır (2021 sürümünde `set_var` güvenli işlev, yarış yine kaçınılır)
+        std::env::set_var("PATH", &new);
+    }
+    dropped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,5 +594,44 @@ mod tests {
         let f = parse_proc_stat("12 (a) b) c) S 1 2").unwrap();
         assert_eq!(f, ["S", "1", "2"]);
         assert!(parse_proc_stat("12 abc").is_none());
+    }
+
+    /// P2-2 (Python `test_path_env.py` eşi): güvenilmeyen PATH girdileri atılır.
+    #[test]
+    fn trusted_path_env_drops_untrusted() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("cops-pathenv-{}", std::process::id()));
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        let mine = root.join("mine");
+        let ww = root.join("ww");
+        std::fs::create_dir_all(&mine).unwrap();
+        std::fs::create_dir_all(&ww).unwrap();
+        std::fs::set_permissions(&ww, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let file = root.join("dosya");
+        std::fs::write(&file, "").unwrap();
+        let (m, w, f) = (
+            mine.to_str().unwrap(),
+            ww.to_str().unwrap(),
+            file.to_str().unwrap(),
+        );
+        let missing = root.join("tmp.aEx49Kzuf1");
+        let val = [
+            missing.to_str().unwrap(),
+            "",
+            ".",
+            "bin",
+            f,
+            w,
+            m,
+            "/usr/bin",
+            m,
+        ]
+        .join(":");
+        assert_eq!(trusted_path_env(&val), format!("{m}:/usr/bin"));
+        assert_eq!(trusted_path_env("/usr/bin:/bin"), "/usr/bin:/bin");
+        assert_eq!(trusted_path_env(""), "");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

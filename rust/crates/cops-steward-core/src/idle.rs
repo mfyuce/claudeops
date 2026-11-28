@@ -91,7 +91,7 @@ fn idle_candidate<'p>(
     {
         return None;
     }
-    if v.busy != Some(false) || v.subagent_active || v.subagent_unknown {
+    if v.busy != Some(false) || crate::world::bg_blocks_message(v) {
         return None;
     }
     projects.get(v.project()).filter(|p| !matches!(p.phase.as_str(), "done" | "paused"))

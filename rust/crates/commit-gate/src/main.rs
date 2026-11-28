@@ -1,5 +1,5 @@
 //! `commit-gate`: git kancaları (`commit-msg`, `pre-push`), kurulum ve `cops check` için denetim.
-use commit_gate::{evaluate, parse_numstat, Verdict};
+use commit_gate::{evaluate, parse_numstat, FileStat, Verdict};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -11,6 +11,11 @@ const USAGE: &str =
 install --tbd DOSYA --repo DİZİN... | check --core DİZİN";
 
 fn git(repo: Option<&Path>, args: &[&str]) -> Result<String, String> {
+    git_cfg(repo, &[], args)
+}
+
+/// `cfg`: alt komuttan önce `-c` ile verilen ayarlar.
+fn git_cfg(repo: Option<&Path>, cfg: &[String], args: &[&str]) -> Result<String, String> {
     let mut c = Command::new("git");
     if let Some(r) = repo {
         // başka repoya bakarken kancadan miras kalan GIT_* değişkenleri hedefi değiştirmesin
@@ -24,7 +29,11 @@ fn git(repo: Option<&Path>, args: &[&str]) -> Result<String, String> {
             c.env_remove(k);
         }
     }
-    c.args(["-c", "core.quotePath=false"]).args(args);
+    c.args(["-c", "core.quotePath=false"]);
+    for kv in cfg {
+        c.arg("-c").arg(kv);
+    }
+    c.args(args);
     let out = c.output().map_err(|e| format!("git çalışmadı: {e}"))?;
     if !out.status.success() {
         return Err(format!(
@@ -43,16 +52,51 @@ const DIFF_FMT: [&str; 4] = [
     "--dst-prefix=b/",
 ];
 
+/// git'in yerleşik hunk başlığı kuralı (kapsayan en yakın satır harf, `_` ya da `$` ile başlar = girintisiz).
+const DEFAULT_FUNCNAME: &str = "^[[:alpha:]$_].*$";
+
+/// `.gitattributes` dosyalara bir diff sürücüsü atadıysa (`diff=python` ya da özel ad) o sürücünün hunk başlığı kuralını
+/// varsayılana çevirir: `new_public` başlığı "kapsayan girintisiz satır" sayar (`a2c21d85`). Çalışma ağacı ve dizindeki
+/// öznitelikler birlikte sorulur.
+fn funcname_overrides(repo: Option<&Path>, files: &[FileStat]) -> Result<Vec<String>, String> {
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut names: Vec<String> = Vec::new();
+    for cached in [false, true] {
+        let mut a = vec!["check-attr", "-z"];
+        if cached {
+            a.push("--cached");
+        }
+        a.extend(["diff", "--"]);
+        a.extend(&paths);
+        let out = git(repo, &a)?;
+        // `yol\0diff\0değer\0` üçlüleri
+        for v in out
+            .split('\0')
+            .collect::<Vec<_>>()
+            .chunks(3)
+            .filter_map(|c| c.get(2))
+        {
+            if !matches!(*v, "" | "unspecified" | "set" | "unset") && !names.iter().any(|n| n == v)
+            {
+                names.push(v.to_string());
+            }
+        }
+    }
+    Ok(names
+        .into_iter()
+        .map(|n| format!("diff.{n}.xfuncname={DEFAULT_FUNCNAME}"))
+        .collect())
+}
+
 fn staged_verdict(msg: &str, tbd: Option<&str>) -> Result<Verdict, String> {
-    let stat = git(None, &["diff", "--cached", "--numstat", "-z", "-M"])?;
+    let stat = parse_numstat(&git(None, &["diff", "--cached", "--numstat", "-z", "-M"])?);
     let mut args = vec!["diff", "--cached", "-U0", "-M"];
     args.extend(DIFF_FMT);
-    Ok(evaluate(
-        msg,
-        &parse_numstat(&stat),
-        &git(None, &args)?,
-        tbd,
-    ))
+    let cfg = funcname_overrides(None, &stat)?;
+    Ok(evaluate(msg, &stat, &git_cfg(None, &cfg, &args)?, tbd))
 }
 
 fn commit_verdict(repo: Option<&Path>, sha: &str, tbd: Option<&str>) -> Result<Verdict, String> {
@@ -60,12 +104,13 @@ fn commit_verdict(repo: Option<&Path>, sha: &str, tbd: Option<&str>) -> Result<V
     let base = ["diff-tree", "--root", "-r", "--no-commit-id", "-M"];
     let mut a = base.to_vec();
     a.extend(["--numstat", "-z", sha]);
-    let stat = git(repo, &a)?;
+    let stat = parse_numstat(&git(repo, &a)?);
     let mut b = base.to_vec();
     b.extend(["-p", "-U0"]);
     b.extend(DIFF_FMT);
     b.push(sha);
-    Ok(evaluate(&msg, &parse_numstat(&stat), &git(repo, &b)?, tbd))
+    let cfg = funcname_overrides(repo, &stat)?;
+    Ok(evaluate(&msg, &stat, &git_cfg(repo, &cfg, &b)?, tbd))
 }
 
 fn report(prefix: &str, v: &Verdict) -> bool {

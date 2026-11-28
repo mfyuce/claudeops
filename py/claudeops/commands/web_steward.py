@@ -159,6 +159,36 @@ def _owned_of(sid: str) -> Dict[str, str]:
         return {}
 
 
+def _maintain_manual_hold(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World, paths: Any,
+                          sid: str, now: float, cfg: sw.Config) -> sw.World:
+    """`sw.manual_hold_step`i uygular: süre kaydı `state.manual_hold`, soru `source=owned_adopt` (sahibe bildirilir), olumlu cevapta
+    `owned` elle açılan oturuma yazılır; cevap her durumda teslim edildi sayılır (oturuma iletilmez). Hata olursa `world` aynen."""
+    try:
+        with sw.steward_lock(paths):
+            st = sw.load_state(paths)
+            hold, asks, resolved = sw.manual_hold_step(dict(st.get("manual_hold") or {}), views, world, projects,
+                                                       sw.load_questions(paths), now, cfg.lang)
+            if hold != (st.get("manual_hold") or {}):
+                st["manual_hold"] = hold
+                sw.save_state(st, paths)
+        owned = dict(world.owned)
+        for r in resolved:
+            if r["adopt"]:
+                _record_owned(sid, r["project"], r["session"], "owner_answer")
+                owned[r["project"]] = r["session"]
+            sw.mark_delivered(r["question_id"], paths)
+            sw.log_event("manual_hold_answer", paths=paths, **r)
+        for a in asks:
+            q, outcome = sw.add_question_ex(a["project"], a["text"], source=sw.OWNED_ADOPT_SOURCE, options=["evet", "hayır"], paths=paths)
+            sw.log_event("manual_hold_ask", paths=paths, project=a["project"], session=a["session"], id=q.id, outcome=outcome)
+            if outcome in ("new", "promoted") and q.status == "open":
+                _notify(cfg, f"{_ask_prefix(q.project, cfg.sid)} {q.text}\n→ {sw.ask_hint(q.id, cfg.sid)}")
+        return dataclasses.replace(world, owned=owned) if owned != world.owned else world
+    except Exception as e:
+        diag_log("steward_manual_hold_failed", sid=sid, error=repr(e))
+        return world
+
+
 OWNED_SEED_REQUEST = "owned_seed.request"   # kimlik dizininde varsa sıradaki tick log KANITIYLA tohumlar (L2 canlı geçişi, tek sefer)
 OWNED_SEED_LOG_LINES = 20000     # L2 geçiş tohumlamasında taranan son log satırı (kanıt: değnekçinin start/directive olayları)
 
@@ -1303,6 +1333,17 @@ def context_tokens_for(cwd: str, sid: Optional[str]) -> Optional[int]:
     return None
 
 
+def _shell_only_stale(cli: str, sid: Optional[str]) -> bool:
+    """claude yerel oturumu: tur bitmiş, yalnız kabuk/Monitor 30 dk'dan uzun açık (`bg_work.shell_only_stale`, TBD#442 a). Fırlatmaz."""
+    if cli != "claude" or not sid:
+        return False
+    try:
+        from .. import paths
+        return bg_work.shell_only_stale(paths.SESSIONS_DIR, sid)
+    except Exception:
+        return False
+
+
 def subagent_active_for(cwd: str, sid: Optional[str], now: Optional[float] = None, name: Optional[str] = None,
                        cli: str = "claude") -> bool:
     """Oturumun arka planda işi var mı (meşgul sayılır): (a) alt ajan transkripti (`<oturum>/subagents/agent-*.jsonl`) son
@@ -1444,6 +1485,7 @@ def _collect_views(cfg: sw.Config, rt: Optional[_RemoteTick] = None) -> List[sw.
                 v.subagent_active = subagent_active_for(s.cwd, s.sid, name=s.name, cli=s.cli)
             except Exception:
                 v.subagent_active = False
+            v.shell_only_stale = _shell_only_stale(s.cli, s.sid)
             try:
                 v.started_at = float(psutil.Process(s.pid).create_time())
             except Exception:
@@ -4128,18 +4170,34 @@ _TODO_DONE_RE = re.compile(r"YAPILDI|ÇÖZÜLDÜ|KAPANDI|TAMAM|✅|\bDONE\b", re
 def _todo_owned_by_other(projects: Dict[str, sw.Project], proj: str, cwd: str, real: str, resolve: Callable[[str], str]) -> bool:
     """TODO.md'nin GERÇEK yolu (symlink çözülmüş), bu projenin kendi klasörünün dışında ve BAŞKA kayıtlı bir projenin klasöründeyse True
     (worktree projesi: `scripts/worktree-docs-link.sh` TODO.md'yi ana checkout'a symlink'ler; copsdevderbent'e claudeops'un açık
-    maddeleri yazılıyordu). Sayı o projeye ait DEĞİL: çağıran None (bilinmiyor) sayar, kanıtlı teyit kanıta kalır."""
+    maddeleri yazılıyordu). Aynı klasörü paylaşan kayıtlı projeden adı uzun olan (cops -> copsdevderbent) da paylaşan sayılır.
+    Paylaşılan dosyada `_scan_todo` yalnız bu projeye etiketli satırları sayar (`_todo_line_tagged`), hiç yoksa None (bilinmiyor);
+    metin/sha okuyucuları '' döner."""
     own = os.path.realpath(cwd)
     home = os.path.dirname(real)
-    if home == own:
-        return False
     for name in projects:
         if name == proj:
             continue
         oc = resolve(name)
-        if oc and os.path.realpath(oc) == home:
+        if not oc or os.path.realpath(oc) != home:
+            continue
+        # aynı klasör: yalnız adı diğerinin uzantısıysa paylaşılan (copsdevderbent 28 Kas: cwd ana checkout, cops'un 435 maddesi)
+        if home != own or (len(proj) > len(name) and proj.startswith(name)):
             return True
     return False
+
+
+_TODO_OPEN_TAG_RE = re.compile(r"\s*(?:[-*+]|\d+[.)])\s*\[[ ~]\]\s*\(([^)]*)\)")
+
+
+def _todo_line_tagged(ln: str, proj: str) -> bool:
+    """Ortak TODO satırı bu projeye mi etiketli: kutudan sonraki ilk parantezin `,`/`;` ile ayrılan parçalarından biri, harf/rakam
+    dışı karakterler atılınca proje adına eşit (`(rs-prov, ...)` -> rsprov, `(26 Kas, copsdev; kapı: cops)` -> copsdev)."""
+    m = _TODO_OPEN_TAG_RE.match(ln)
+    if not m:
+        return False
+    want = re.sub(r"[\W_]", "", proj).lower()
+    return any(re.sub(r"[\W_]", "", t).lower() == want for t in re.split(r"[,;]", m.group(1)))
 
 
 def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = False) -> Optional[Tuple[int, int]]:
@@ -4155,11 +4213,12 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = Fal
         real = _doc_path(cwd, "TODO.md")
         if not real or os.path.getsize(real) > sa.TODO_MAX_BYTES:
             return None
-        if _todo_owned_by_other(projects, proj, cwd, real, resolve):
-            return None
+        shared = _todo_owned_by_other(projects, proj, cwd, real, resolve)
         n_open = n_owner = n_boxed = n_unboxed = 0
         with open(real, encoding="utf-8", errors="replace") as f:
             for ln in f:
+                if shared and not _todo_line_tagged(ln, proj):
+                    continue
                 if re.match(r"\s*(?:[-*+]|\d+[.)])\s*\[[xX]\]", ln):
                     n_boxed += 1
                     continue
@@ -4176,6 +4235,8 @@ def _scan_todo(projects: Dict[str, sw.Project], proj: str, skip_cila: bool = Fal
                     continue
                 if not sw.OWNER_WAIT_LINE_RE.search(ln):
                     n_open += 1
+        if shared:      # yalnız bu projeye etiketli açık satırlar; hiç yoksa bilinmiyor (kanıtlı teyit kanıta kalır)
+            return (n_open, n_owner) if n_open or n_owner else None
         if n_boxed == 0 and n_open == 0:
             n_open = n_unboxed        # biçim tanınmadı: sahipsiz iş olabilir, "iş yok" diye kapatma (isparta 14 Kas)
         return n_open, n_owner
@@ -4812,6 +4873,7 @@ def _tick_once_inner(trigger: str = "timer", sid: str = "default", *, starts_lef
             _note_conflicts(ctx, idx, set(projects), t0)
             views = _collect_views(cfg, **rkw)
             world = _maintain_owned(views, projects, world, paths, sid, t0)     # L2: izlenen oturum kaydı (+ tek seferlik tohum)
+            world = _maintain_manual_hold(views, projects, world, paths, sid, t0, cfg)   # L2: bayat kayıt -> sahibe "izleyeyim mi?"
             _check_outcomes(cfg, views, paths, t0)        # L5: önceki tick'lerin eylemleri gerçekten sonuç verdi mi
             if sw.load_state(paths).get("act_journal"):
                 _replay_journal(cfg, projects, world, paths, sid)      # önceki tick yarıda kaldı: bekleyen kayıt eylemleri
@@ -5046,20 +5108,60 @@ def shutdown_start(sid: str = "default", *, stop_loop: bool = True, modes: Optio
 _SHELL_COMMS = {"bash", "sh", "zsh", "dash"}
 
 
-def bg_shell_running(pid: int) -> bool:
-    """claude sürecinin DOĞRUDAN çocuğu olan, Bash aracının başlattığı bir kabuk (`bash -c source …/shell-snapshots/…`) var mı:
-    arka planda süren komut (nohup/`run_in_background`/uzun betik). Boştaki claude'un böyle çocuğu yoktur; MCP sunucuları doğrudan
-    kabuk değildir. Kapatma bu oturumu "iş bitti" saymaz (yoksa oturum durunca iş de ölür, baştan başlar). Okunamazsa False."""
+BG_SHELL_REPORT_SECONDS = 1800      # bu yaştan büyük arka plan kabuğu `session_busy` yanıtında ve günlükte adıyla bildirilir
+
+
+def _shell_command(argv: List[str]) -> str:
+    """Bash aracı kabuğunun asıl komutu: `… && eval '<komut>'` biçiminde `eval` sonrası, yoksa tüm satır; 160 karakter."""
+    line = " ".join(str(a) for a in argv)
+    i = line.rfind(" eval ")
+    cmd = (line[i + 6:] if i >= 0 else line).strip().strip("'\"")
+    return cmd[:160]
+
+
+def bg_shells(pid: int, now: Optional[float] = None) -> List[Tuple[str, float]]:
+    """claude sürecinin DOĞRUDAN çocuğu olan, Bash aracının başlattığı kabuklar (`bash -c source …/shell-snapshots/…`):
+    [(komut, yaş sn)]. Yaş okunamazsa 0. Okunamazsa []."""
+    out: List[Tuple[str, float]] = []
+    t = time.time() if now is None else now
     try:
         for c in psutil.Process(pid).children():
             try:
-                if c.name() in _SHELL_COMMS and any("shell-snapshots" in a for a in c.cmdline()):
-                    return True
+                argv = c.cmdline()
+                if c.name() not in _SHELL_COMMS or not any("shell-snapshots" in a for a in argv):
+                    continue
             except (psutil.Error, OSError):
                 continue
+            try:
+                age = max(0.0, t - float(c.create_time()))
+            except Exception:
+                age = 0.0
+            out.append((_shell_command(argv), age))
     except (psutil.Error, OSError, ValueError):
         pass
-    return False
+    return out
+
+
+def bg_shell_running(pid: int) -> bool:
+    """claude sürecinin Bash aracı kabuğu var mı (`bg_shells`): arka planda süren komut (nohup/`run_in_background`/uzun betik).
+    Boştaki claude'un böyle çocuğu yoktur; MCP sunucuları doğrudan kabuk değildir. Kapatma bu oturumu "iş bitti" saymaz (yoksa
+    oturum durunca iş de ölür, baştan başlar). Okunamazsa False."""
+    return bool(bg_shells(pid))
+
+
+def long_bg_shells(sessions: List[Any], min_age: float = BG_SHELL_REPORT_SECONDS) -> List[Tuple[str, str, float]]:
+    """Yerel oturumların `min_age`den eski arka plan kabukları [(oturum, komut, yaş sn)]: koşulu hiç sağlanmayan bekleme
+    döngüsü oturumu saatlerce meşgul gösterir (26 Kas pid 305171); motor nedeni adıyla bildirsin. Fırlatmaz."""
+    out: List[Tuple[str, str, float]] = []
+    for x in sessions:
+        pid = getattr(x, "pid", 0)
+        if not isinstance(pid, int) or pid <= 0:
+            continue
+        try:
+            out.extend((str(getattr(x, "name", "")), cmd, age) for cmd, age in bg_shells(pid) if age >= min_age)
+        except Exception:
+            continue
+    return out
 
 
 def _shutdown_blockers(views: List[sw.SessionView], projects: Dict[str, sw.Project], world: sw.World,
@@ -7126,13 +7228,20 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
             busy = True
         last = max(last, float(lda.get(rn) or 0.0))
     last = max(last, float(lda.get(name) or 0.0))
+    try:
+        live = _live_sessions(name, sid)
+    except Exception:
+        live = []
     try:    # çalışan alt ajan = ana oturum boşta görünse de iş sürüyor (cevap iletimi de aynı kuralı izler)
-        sub = any(subagent_active_for(x.cwd, x.sid, name=x.name, cli=x.cli) for x in _live_sessions(name, sid))
+        sub = any(subagent_active_for(x.cwd, x.sid, name=x.name, cli=x.cli) and not _shell_only_stale(x.cli, x.sid) for x in live)
     except Exception:
         sub = False
     why = "subagent_active" if sub else sw.directive_defer_reason(busy, last, time.time())
     if not why:
         return None
+    long_shells = long_bg_shells(live)
+    for sn, cmd, age in long_shells:
+        sw.log_event("bg_shell_long", paths=sid, name=sn, cmd=cmd, age_min=int(age // 60))
     try:
         with sw.steward_lock(paths):
             state = sw.load_state(paths)
@@ -7141,7 +7250,9 @@ def _brain_directive_defer(name: str, sid: str, text: str = "") -> Optional[Dict
     except sw.LockTimeout:
         pass
     sw.log_event("directive_deferred", paths=sid, name=name, reason=why, **_directive_trace(text, False))
-    return {"ok": False, "code": "session_busy", "error": f"session_busy ({why}): directive not sent; retried on the next tour"}
+    extra = "".join(f"; long background shell in {sn}: {cmd!r} ({int(age // 60)} min)" for sn, cmd, age in long_shells[:3])
+    return {"ok": False, "code": "session_busy",
+            "error": f"session_busy ({why}): directive not sent; retried on the next tour{extra}"}
 
 
 def _upper_model_gate(name: str, model: str, effort: str, sid: str, actor: str,

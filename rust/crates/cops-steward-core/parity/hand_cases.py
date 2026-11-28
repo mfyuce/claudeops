@@ -1354,6 +1354,97 @@ V3871 = ["Başlamasın", "BAŞLAMASIN", "Baslamasin", "başlama", "Başlama.", "
 for t in V3871:
     add("is_open_answer", {"text": t})
 
+# TBD#442 (a): yalnız kabuk/Monitor 30 dk'dan uzun açık (`shell_only_stale`) yönerge/dürtü/teslimi engellemez; ayrı üreteç (diğer girdiler kaymasın)
+for sa in (False, True):
+    for su in (False, True):
+        for so in (False, True):
+            add("bg_blocks_message", {"v": V("a", True, subagent_active=sa, subagent_unknown=su, shell_only_stale=so)})
+r442 = random.Random(442)
+for _ in range(300):
+    so, sa, su = r442.random() < 0.6, r442.random() < 0.7, r442.random() < 0.15
+    mine, taken = [V("a", True, busy=r442.choice([False, False, None, True]), subagent_active=sa, subagent_unknown=su, shell_only_stale=so)], set()
+    add("plan_deliveries", {"entries": [["a", "nudge"]], "mine": mine, "taken": taken, "state": {}, "now": NOW, "limit": 1},
+        call=lambda: sw.plan_deliveries([("a", lambda v: sw.Action("nudge", v.name, "a"))], mine, taken, {}, NOW, 1))
+    cli = r442.choice(["claude", "ucli"])
+    since = NOW - r442.choice([700, 3600])
+    v = V("a", True, cli=cli, tmux=True, busy=False, idle_since=since, last_activity=since, last_assistant="STEWARD-NEXT: testi yaz",
+          subagent_active=sa, subagent_unknown=su, shell_only_stale=so, cache_ttl="")
+    projects = {"a": P("a", phase="planned")}
+    state = {}
+    cfg = C(claude_idle="act", claude_idle_nudge_secs=600, ucli_idle="act", ucli_idle_nudge_secs=600, ucli_idle_nudge_secs_1h=600, mode="act", brain_name="degnekci")
+    views = [v]
+    args = {"views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "planned": [], "world": None}
+    if cli == "claude":
+        add_cb("plan_claude_idle", args, lambda c: sw.plan_claude_idle(views, projects, state, cfg, NOW, [], None, c.get("open_work"), c.get("owner_todo"), c.get("todo_sha"), c.get("oldest_open"), c.get("has_question")), {"open_work": {"a": 2}})
+    else:
+        add_cb("plan_ucli_idle", args, lambda c: sw.plan_ucli_idle(views, projects, state, cfg, NOW, [], None, c["open_work"]), {"open_work": {"a": 2}})
+
+# L2 bayat izleme (28 Kas, hc): manual_hold_step; ayrı üreteç
+rmh = random.Random(4428)
+MH = sw.MANUAL_HOLD_ASK_SECONDS
+for i in range(600):
+    owned = {p: rmh.choice(["", p, p + "20261120", "zz"]) for p in ("hc", "x") if rmh.random() < 0.85}
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned=owned)
+    pool = ["hc", "hc20261123", "hc20261124", "x", "x20261101", "hcr", "degnekci", "zz"]
+    views = [V(n, rmh.random() < 0.85, blueprint=rmh.choice([None, None, "hc", "x", ""])) for n in rmh.sample(pool, rmh.randint(0, 4))]
+    projects = {p: P(p, phase=rmh.choice(["planned", "planned", "planning", "paused", "done"])) for p in ("hc", "x") if rmh.random() < 0.9}
+    hold = {}
+    for p in ("hc", "x", "eski"):
+        if rmh.random() < 0.5:
+            hold[p] = rmh.choice([{"since": NOW - rmh.choice([0, MH - 1, MH, 3 * MH]), "session": rmh.choice(pool), "asked": rmh.choice([False, True, 1, 0, None])},
+                                  {"since": NOW - MH, "session": rmh.choice(pool)}, {"session": rmh.choice(pool)}, "bozuk", [1],
+                                  {"since": rmh.choice(["x", "12", None, 0, [1]]), "session": rmh.choice(pool)}])
+    questions = []
+    for j in range(rmh.randint(0, 3)):
+        st = rmh.choice(["answered", "answered", "open"])
+        questions.append(Q(f"q{j}", rmh.choice(["hc", "x", "yok"]), "soru", status=st, answer=rmh.choice(["evet", "Evet, izlensin", "hayır", "hayır beklesin", "aç", "belki", ""]) if st == "answered" else "",
+                           delivered_at=rmh.choice([0.0, 0.0, NOW - 5]), source=rmh.choice([sw.OWNED_ADOPT_SOURCE, sw.OWNED_ADOPT_SOURCE, "hc", "brain"])))
+    add("manual_hold_step", {"hold": hold, "views": views, "world": w, "projects": projects, "questions": questions, "now": NOW, "lang": rmh.choice(["tr", "en"])})
+for i in range(300):     # yönlendirilmiş: hc kayıtlı, elle açılan tek oturum çalışıyor
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned={"hc": "hc", "x": "x"})
+    views = [V("hc20261123", True, blueprint=rmh.choice(["hc", None]))] + ([V("hc", rmh.random() < 0.5)] if rmh.random() < 0.2 else [])
+    projects = {"hc": P("hc", phase=rmh.choice(["planned", "planned", "planned", "paused"])), "x": P("x")}
+    hold = {"hc": rmh.choice([{"since": NOW - rmh.choice([10, MH - 1, MH, 5 * MH]), "session": "hc20261123", "asked": rmh.choice([False, True])},
+                              {"since": rmh.choice(["x", "12", [1], None, 0, NOW - MH]), "session": "hc20261123"},
+                              {"since": NOW - MH, "session": "baska"}])} if rmh.random() < 0.85 else {}
+    questions = [Q("q1", "hc", "soru", status="answered", answer=rmh.choice(["evet", "hayır", "evet ama sonra", "aç", "2) beklesin", "izle"]),
+                   source=sw.OWNED_ADOPT_SOURCE)] if rmh.random() < 0.5 else []
+    add("manual_hold_step", {"hold": hold, "views": views, "world": w, "projects": projects, "questions": questions, "now": NOW, "lang": rmh.choice(["tr", "en"])})
+
+# TBD#442 küçük uç (28 Kas, copsdev): explain_idle arka plan işini (`bg_running`) söylesin, eski yalnız kabuğu `shell_only_stale` ile işaretlesin; ayrı üreteç
+rex = random.Random(4429)
+for i in range(400):
+    so, sa, su = rex.random() < 0.5, rex.random() < 0.6, rex.random() < 0.2
+    since = NOW - rex.choice([60, 700, 3600])
+    v = V("a", True, cli=rex.choice(["claude", "claude", "ucli"]), busy=rex.choice([False, False, None, True]), last_activity=since,
+          last_assistant=rex.choice(["", "STEWARD-NEXT: testi yaz", "STEWARD-ASK: hangisi?", "bitti STEWARD-DONE"]),
+          subagent_active=sa, subagent_unknown=su, shell_only_stale=so)
+    projects = {"a": P("a", phase="planned")}
+    views, state = [v], {}
+    cfg = C(claude_idle=rex.choice(["act", "dry", "off"]), claude_idle_nudge_secs=600, lang=rex.choice(["tr", "en"]))
+    acts = [sw.Action("idle_nudge", "a", "a", payload={"next": "x"})] if rex.random() < 0.2 else []
+    n_open = rex.choice([0, 2])
+    add_cb("explain_idle", {"proj": projects["a"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": acts, "world": None},
+           lambda c: sw.explain_idle(projects["a"], views, projects, state, cfg, NOW, [], acts, None, c["open_work"]), {"open_work": {"a": n_open}})
+
+# `6f466333` ucu (28 Kas, copsdev): explain_idle `manual_session` izleme sorusunun durumunu (soruldu / kalan dk) göstersin; ayrı üreteç
+rmx = random.Random(4430)
+for i in range(400):
+    w = sw.world_for("default", sw.build_ownership_index({"default": ["hc", "x"]}), "degnekci", owned={"hc": "hc", "x": "x"})
+    views = [V("hc20261123", True, blueprint=rmx.choice(["hc", None]))] + ([V("hc20261124", True, blueprint="hc")] if rmx.random() < 0.15 else [])
+    projects = {"hc": P("hc", phase="planned"), "x": P("x")}
+    rec = rmx.choice([
+        {"since": NOW - rmx.choice([0, 60, 3599, MH - 61, MH - 60, MH - 1, MH, 3 * MH, -600]), "session": rmx.choice(["hc20261123", "hc20261124", "baska", 5, None])},
+        {"since": NOW - MH, "session": "hc20261123", "asked": rmx.choice([True, False, 1, 0, None, "", "x", [], [1]])},
+        {"since": rmx.choice(["x", "12", None, True, False, [1], {}, 1.5, 0]), "session": "hc20261123"},
+        {"session": "hc20261123"}, {"since": NOW}, "bozuk", [1], None, 7,
+    ])
+    mh = rmx.choice([{"hc": rec}, {"hc": rec, "x": {"since": NOW, "session": "x2"}}, {"x": rec}, {}, None, "bozuk", [1], 3])
+    state = {} if mh is None and rmx.random() < 0.5 else {"manual_hold": mh}
+    cfg = C(lang=rmx.choice(["tr", "en"]))
+    args = {"proj": projects["hc"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": [], "world": w}
+    add_cb("explain_idle", args, lambda c: sw.explain_idle(projects["hc"], views, projects, state, cfg, NOW, [], [], w, c["open_work"]), {"open_work": {"hc": 1}})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):
