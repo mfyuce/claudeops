@@ -257,19 +257,59 @@ def load_settings() -> Dict[str, Any]:
     except OSError:
         sig = None
     if sig is not None and _LOAD_CACHE["sig"] == sig:
-        return copy.deepcopy(_LOAD_CACHE["val"])
+        return _json_copy(_LOAD_CACHE["val"])
     val, cacheable = _load_settings_uncached()
     if sig is not None and cacheable:
         try:
             st2 = os.stat(SETTINGS_JSON)
             if (str(SETTINGS_JSON), st2.st_mtime_ns, st2.st_size, st2.st_ino) == sig:     # okurken değişmediyse sakla
-                _LOAD_CACHE["sig"], _LOAD_CACHE["val"] = sig, copy.deepcopy(val)
+                _LOAD_CACHE["sig"], _LOAD_CACHE["val"] = sig, _json_copy(val)
         except OSError:
             pass
     return val
 
 
 _LAST_BACKEND: Dict[str, Any] = {}     # yol -> son başarılı okumadaki `store_backend`
+
+
+_MAX_JSON_DEPTH = 512      # Rust `cops_state::json::MAX_DEPTH`: bir değer en çok bu kadar kapsayıcının içinde olabilir
+
+
+def _too_deep(obj: Any, limit: int = _MAX_JSON_DEPTH) -> bool:
+    """Bir değer `limit`ten çok dizi/nesnenin içinde mi (özyinelemesiz; Rust ayrıştırıcısının sınırıyla aynı sayım)."""
+    stack = [(obj, 0)]
+    while stack:
+        v, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(v, dict):
+            stack.extend((c, depth + 1) for c in v.values())
+        elif isinstance(v, list):
+            stack.extend((c, depth + 1) for c in v)
+    return False
+
+
+def _json_copy(obj: Any) -> Any:
+    """JSON değerinin (dict/list/sayı/metin) özyinelemesiz derin kopyası: `copy.deepcopy` 512 düzeyli izinli belgede
+    `RecursionError` verirdi. Başka türler (JSON'da olmaz) olduğu gibi paylaşılır."""
+    def fresh(v: Any) -> Any:
+        return {} if isinstance(v, dict) else [] if isinstance(v, list) else v
+    root = fresh(obj)
+    stack = [(obj, root)]
+    while stack:
+        src, dst = stack.pop()
+        if isinstance(src, dict):
+            for k, v in src.items():
+                dst[k] = c = fresh(v)
+                if c is not v:
+                    stack.append((v, c))
+        else:
+            for v in src:
+                c = fresh(v)
+                dst.append(c)
+                if c is not v:
+                    stack.append((v, c))
+    return root
 
 
 def _load_settings_uncached() -> Tuple[Dict[str, Any], bool]:
@@ -279,6 +319,8 @@ def _load_settings_uncached() -> Tuple[Dict[str, Any], bool]:
     try:
         with open(SETTINGS_JSON, encoding="utf-8") as f:
             stored = json.load(f)
+        if _too_deep(stored):       # çok derin belge bozuk sayılır (önbellek derin kopyası da `RecursionError` verirdi)
+            raise ValueError("settings.json çok derin")
         if isinstance(stored, dict):
             out.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
             if not isinstance(out.get("default_model"), dict):
@@ -309,8 +351,8 @@ def _load_settings_uncached() -> Tuple[Dict[str, Any], bool]:
             return out, True
     except FileNotFoundError:
         return out, True
-    except ValueError:      # JSONDecodeError + UnicodeDecodeError: içerikten gelen hata, imzayla önbelleğe alınabilir
-        pass
+    except (ValueError, RecursionError):    # JSONDecodeError + UnicodeDecodeError + aşırı derin belge: içerikten gelen hata,
+        pass                                # imzayla önbelleğe alınabilir
     except OSError:
         return _keep_backend(out, path), False
     return _keep_backend(out, path), True
