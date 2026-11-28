@@ -176,6 +176,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | `fsutil.rs` `write_replace`, `atomic_write_*`, `write_corrupt_copy` (5) | `let _ = fs::remove_file(tmp)` | önceki çöküşten kalan geçici dosyayı / hata sonrası geçiciyi silme; asıl hata dönülür (Python aynı) |
 | `fsutil.rs` `atomic_write_json/text` (2) | `.ok()` | var olan dosyanın izni: yoksa `None` = umask (Python `_existing_mode`) |
 | `fsutil.rs` `FileLock::drop` | `let _ = HELD.try_with(..)` | iş parçacığı sonlanırken yerel depo yok olabilir; kayıt zaten düşüyor |
+| `fsutil.rs` `sweep_dead_corrupt_tmps` | `let _ = fs::remove_file(p)` | ölü süreçten kalan öksüz geçici yedeği silme en iyi çaba; yedek yazımını engellemez (Python `_sweep_dead_corrupt_tmps` `OSError` yutar) |
 | `json.rs` `as_f64` | `.ok()` | büyük tam sayının kayan noktası; ayrıştırılamazsa sayı değil |
 | `paths.rs` atexit ve `TestEnv::drop` (2) | `let _ = remove_dir_all` | temizlikte hata bildirilecek yer yok; kalan geçici dizin `/tmp` temizliğine |
 | `paths.rs` `getpw` | `.ok()` | NUL içeren ad: passwd kaydı yok (S10) |

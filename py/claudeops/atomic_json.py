@@ -121,6 +121,48 @@ def atomic_write_text(path: str, text: str, *, mode: Optional[int] = None) -> No
         raise
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:          # EPERM: başka kullanıcının canlı süreci
+        return True
+    return True
+
+
+def _sweep_dead_corrupt_tmps(dest: str) -> None:
+    """Aynı belgenin (`<belge>.corrupt-<8>.<pid>-<x>.tmp`, Python `<pid>-<tid>`, Rust `<pid>-rs<n>`) ÖLÜ süreçten kalan
+    geçici yedeklerini sil: `_write_corrupt_copy` arada öldürülürse (SIGKILL, güç) başka hiçbir yol onları silmez. Canlı
+    süreç (yazım sürüyor olabilir), ayrıştırılamayan ad ve normal dosya olmayan girdi kalır. Hata yutulur."""
+    d, base = os.path.split(dest)
+    d = d or "."
+    doc, sep, sha = base.rpartition(".corrupt-")
+    hashed = bool(sep) and len(sha) == 8 and "." not in sha       # `<belge>.corrupt-<sha8>`: belgenin TÜM yedekleri
+    pre = doc + ".corrupt-" if hashed else base + "."            # diğer ad (orch_store `.corrupt`): yalnız aynı hedef
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return
+    for n in names:
+        if not (n.startswith(pre) and n.endswith(".tmp")):
+            continue
+        rest = n[len(pre):-len(".tmp")]           # hashed: "<sha8>.<pid>-<x>", değilse "<pid>-<x>"
+        if hashed:
+            h, dot, rest = rest.partition(".")
+            if len(h) != 8 or not dot:
+                continue
+        pid_s = rest.partition("-")[0]
+        if not (pid_s.isascii() and pid_s.isdigit()) or int(pid_s) <= 0 or int(pid_s) == os.getpid():
+            continue
+        p = os.path.join(d, n)
+        try:
+            if stat.S_ISREG(os.lstat(p).st_mode) and not _pid_alive(int(pid_s)):
+                os.remove(p)
+        except OSError:
+            pass
+
+
 def _write_corrupt_copy(dest: str, raw: bytes) -> bool:
     """Bozuk belgenin 0600 kanıt kopyası; geçici ad + `os.replace`: yarım yedek kalmaz. `dest` aynı içerikli normal
     dosyaysa dokunulmaz (False), eksik/farklıysa değiştirilir (True). Hata `OSError`."""
@@ -132,6 +174,7 @@ def _write_corrupt_copy(dest: str, raw: bytes) -> bool:
     except FileNotFoundError:
         pass
     tmp = f"{dest}.{os.getpid()}-{threading.get_ident()}.tmp"
+    _sweep_dead_corrupt_tmps(dest)
     try:
         with contextlib.suppress(OSError):
             os.remove(tmp)

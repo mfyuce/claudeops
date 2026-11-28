@@ -2103,7 +2103,9 @@ def _last_launch(name: str) -> Optional[Dict[str, Any]]:
         rec = max(cands, key=lambda r: float(r.get("last_started_at") or r.get("created_at") or 0), default=None)
     if not (isinstance(rec, dict) and rec.get("cli") in PROVIDERS):
         return None
-    return inst_mod.get_instance(next(n for n, r in recs.items() if r is rec))     # yalnız dönen kayıt kopyalanır
+    # Denetlenen anlık görüntünün KOPYASI (ikinci okuma yok: arada kayıt değişirse denetlenmemiş kayıt dönerdi);
+    # `view_instances` önbelleğin kendisidir, çağıran değiştirebilsin diye yalnız dönen kayıt kopyalanır.
+    return inst_mod._copy(rec)
 
 
 def _main_default_model() -> str:

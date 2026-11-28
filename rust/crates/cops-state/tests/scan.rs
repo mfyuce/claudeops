@@ -17,7 +17,7 @@ const PATTERNS: [&str; 5] = [
 /// (dosya, kalıp) -> izinli sayı.
 const ALLOWED: &[(&str, &str, usize)] = &[
     ("diaglog.rs", "let _ =", 1),
-    ("fsutil.rs", "let _ =", 8),
+    ("fsutil.rs", "let _ =", 9),
     ("fsutil.rs", ".ok()", 2),
     ("json.rs", ".ok()", 1),
     ("paths.rs", "let _ =", 2),

@@ -136,9 +136,76 @@ pub fn write_corrupt_copy(path: &Path, raw: &[u8]) -> io::Result<PathBuf> {
     }
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let tmp = with_suffix(&dest, &format!(".{}-rs{n}.tmp", std::process::id()));
+    sweep_dead_corrupt_tmps(&dest);
     let _ = fs::remove_file(&tmp);
     write_replace(&tmp, &dest, raw, Some(0o600))?;
     Ok(dest)
+}
+
+/// `kill(pid, 0)`: `ESRCH` = yok; `EPERM` = başka kullanıcının canlı süreci.
+fn pid_alive(pid: u32) -> bool {
+    let Ok(p) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    // SAFETY: sinyal 0 hiçbir şey göndermez, yalnız sürecin varlığını sorar
+    if unsafe { libc::kill(p, 0) } == 0 {
+        return true;
+    }
+    io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Python `atomic_json._sweep_dead_corrupt_tmps`: aynı belgenin ÖLÜ süreçten kalan geçici yedeklerini sil
+/// (`<belge>.corrupt-<sha8>.<pid>-<x>.tmp`; Python `<pid>-<tid>`, Rust `<pid>-rs<n>`). Yazım arada öldürülürse (SIGKILL,
+/// güç) başka hiçbir yol onları silmez. Hedef `.corrupt-<sha8>` biçiminde değilse yalnız aynı hedefinkiler. Canlı süreç
+/// (yazım sürüyor olabilir), bu süreç, ayrıştırılamayan ad ve normal dosya olmayan girdi kalır. Hata yutulur.
+fn sweep_dead_corrupt_tmps(dest: &Path) {
+    let Some(base) = dest.file_name().and_then(|b| b.to_str()) else {
+        return;
+    };
+    let dir = parent_of(dest);
+    let (pre, hashed) = match base.rsplit_once(".corrupt-") {
+        Some((doc, sha)) if sha.chars().count() == 8 && !sha.contains('.') => {
+            (format!("{doc}.corrupt-"), true)
+        }
+        _ => (format!("{base}."), false),
+    };
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    let me = std::process::id();
+    for e in rd.flatten() {
+        let name = e.file_name();
+        let Some(n) = name.to_str() else { continue };
+        let Some(rest) = n
+            .strip_prefix(pre.as_str())
+            .and_then(|r| r.strip_suffix(".tmp"))
+        else {
+            continue;
+        };
+        let rest = if hashed {
+            match rest.split_once('.') {
+                Some((h, r)) if h.chars().count() == 8 => r,
+                _ => continue,
+            }
+        } else {
+            rest
+        };
+        let pid_s = rest.split('-').next().unwrap_or("");
+        // Python `isascii() and isdigit()`: yalnız ASCII rakam
+        if pid_s.is_empty() || !pid_s.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(pid) = pid_s.parse::<u32>() else {
+            continue;
+        };
+        if pid == 0 || pid == me {
+            continue;
+        }
+        let p = dir.join(n);
+        if fs::symlink_metadata(&p).is_ok_and(|m| m.is_file()) && !pid_alive(pid) {
+            let _ = fs::remove_file(&p);
+        }
+    }
 }
 
 /// `web._atomic_write_text` (roster/models): aynı dizinde `.tmp-*.tsv`, her zaman 0600 (Python `mkstemp`).
