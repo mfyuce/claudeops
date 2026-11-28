@@ -153,13 +153,10 @@ pub fn usage_summary(reviews_root: &str, project: &str) -> Result<Vec<UsageRow>>
                 rows.len() - 1
             });
             let a = &mut rows[i];
-            // Python `open(.., "rb")`: dizin açılamaz (koşu sayılmaz)
-            let Ok(file) = std::fs::File::open(&path) else {
+            // Python `_open_regular_rb`: yalnız normal dosya, FIFO açılışta bloklamaz (koşu sayılmaz)
+            let Ok(file) = open_regular_nonblocking(Path::new(&path)) else {
                 continue;
             };
-            if file.metadata().is_ok_and(|m| m.is_dir()) {
-                continue;
-            }
             a.runs += 1;
             let mut reader = io::BufReader::new(file);
             let mut raw = Vec::new();
@@ -473,19 +470,34 @@ fn scan_report(
     since_ms: f64,
     write_mult: f64,
 ) -> (f64, Option<&'static str>) {
-    let mut price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
-    let mut total = 0.0;
-    let mut problem = None;
     let file = match open_regular_nonblocking(path) {
         Ok(file) => file,
         Err(why) => return (0.0, why),
     };
     let key = path.to_string_lossy();
-    let path: &str = &key;
-    let mut reader = std::io::BufReader::new(file);
+    scan_lines(
+        &mut io::BufReader::new(file),
+        &key,
+        model,
+        since_ms,
+        write_mult,
+    )
+}
+
+/// [`scan_report`]ın satır döngüsü (açılmış dosya).
+fn scan_lines(
+    reader: &mut impl io::BufRead,
+    path: &str,
+    model: &str,
+    since_ms: f64,
+    write_mult: f64,
+) -> (f64, Option<&'static str>) {
+    let mut price = anthropic_price(if model.is_empty() { "opus-5-5" } else { model });
+    let mut total = 0.0;
+    let mut problem = None;
     let mut raw = Vec::new();
     loop {
-        let read = match usage::next_line(&mut reader, &mut raw) {
+        let read = match usage::next_line(reader, &mut raw) {
             Ok(Raw::End) => break,
             Ok(Raw::TooLong) => usage::too_long(),
             Ok(Raw::Line) => {
@@ -495,7 +507,11 @@ fn scan_report(
                 };
                 usage::read_line(line, model.is_empty())
             }
-            Err(_) => return (0.0, Some(UNREADABLE)), // yarıda okunamayan dosyanın toplamı 0
+            Err(_) => {
+                // yarıda okunamadı: sayılanlar kalır, toplam güvenilmez (Python ve `cops-providers` ledger ile aynı)
+                problem = Some(UNREADABLE);
+                break;
+            }
         };
         let record = match read {
             Line::Ignored => continue,
@@ -688,4 +704,84 @@ pub fn anthropic_spent_usd(reviews_root: &str) -> Result<f64> {
     } else {
         total
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, Read};
+    use std::os::unix::fs::OpenOptionsExt;
+
+    /// `ok` baytını verir, sonra her okumada `EIO`.
+    struct FailsAfter(io::Cursor<Vec<u8>>);
+
+    impl Read for FailsAfter {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            match self.0.read(buf)? {
+                0 => Err(io::Error::from_raw_os_error(libc::EIO)),
+                n => Ok(n),
+            }
+        }
+    }
+
+    impl BufRead for FailsAfter {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            if self.0.position() as usize >= self.0.get_ref().len() {
+                return Err(io::Error::from_raw_os_error(libc::EIO));
+            }
+            self.0.fill_buf()
+        }
+        fn consume(&mut self, n: usize) {
+            self.0.consume(n)
+        }
+    }
+
+    /// Yarıda okunamayan dosya: sayılan istekler toplamda kalır, sorun "okunamadı" (Python `_scan_usage_windows` ve
+    /// `cops-providers` `real/ledger.rs` ile aynı; rs-prov 28 Kas).
+    #[test]
+    fn a_read_error_mid_file_keeps_the_partial_total() {
+        let line = b"{\"event\": \"request\", \"t\": 1, \"usage\": {\"input_tokens\": 1000000}}\n"
+            .to_vec();
+        let mut whole = io::Cursor::new(line.clone());
+        let (full, ok) = scan_lines(&mut whole, "x", "claude-opus-5-5", 0.0, 1.0);
+        assert!(full > 0.0 && ok.is_none(), "{full} {ok:?}");
+        let mut broken = FailsAfter(io::Cursor::new(line));
+        let (partial, why) = scan_lines(&mut broken, "x", "claude-opus-5-5", 0.0, 1.0);
+        assert_eq!(why, Some(UNREADABLE));
+        assert_eq!(partial, full);
+    }
+
+    /// Yazanı olmayan FIFO `usage_summary`yi bloklamaz: atlanır (koşu sayılmaz), öteki günlük sayılır.
+    #[test]
+    fn usage_summary_skips_a_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("p/m/model/a");
+        let b = dir.path().join("p/m/model/b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let fifo = std::ffi::CString::new(a.join("a.usage.jsonl").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        std::fs::write(
+            b.join("b.usage.jsonl"),
+            "{\"event\": \"request\", \"seconds\": 1}\n",
+        )
+        .unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(usage_summary(&root, ""));
+        });
+        let got = rx.recv_timeout(std::time::Duration::from_secs(5));
+        if got.is_err() {
+            // bloklanan açılışı serbest bırak, sonra düş
+            let _ = std::fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(a.join("a.usage.jsonl"));
+            panic!("usage_summary FIFO açılışında bloklandı");
+        }
+        let rows = got.unwrap().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].runs, rows[0].requests), (1, 1));
+    }
 }

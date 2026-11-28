@@ -99,6 +99,7 @@ MAP = {
     "_MAX_LINE_BYTES": _m("usage", "MAX_LINE_BYTES"),
     "_usage_lines": _m("usage", "next_line"),
     "_usage_json_lines": _m("report", "usage_summary"),
+    "_open_regular_rb": _m("report", "open_regular_nonblocking"),
     "_USAGE_COUNT_KEYS": _m("usage", "Record::charge"),
     "_usage_number": _m("usage", "Record::charge"),
     "_scan_usage": _m("report", "usage_cost_usd"),
@@ -130,6 +131,7 @@ NOTES = {
                         "yorumlayıcının `ValueError`ıdır",
     "_usage_json_lines": "`usage_summary` döngüsünde `usage::next_line` + `text_lines` + `usage::too_deep`; uzun/derin satır payı "
                          "`parity_edges.py` `usage_summary` vakası (rs-prov 28 Kas)",
+    "_open_regular_rb": "FIFO açılışta bloklamaz; Rust `report::tests::usage_summary_skips_a_fifo_without_blocking`",
     "_DEPTH_TOKEN_RE": "Rust'ta regex yok: `too_deep` aynı taramayı bayt döngüsüyle yapar",
     "_too_deep": "dolaylı parite: derin satırlı `anthropic_spent_usd`/`usage_cost_usd` çağrıları; sınır `cops-providers` "
                  "`tests/usage_two_copies.rs`",
@@ -256,6 +258,9 @@ classes("test_rsprov_usage_line_bounds", out("parite koşucusu", "test `_MAX_LIN
         "UsageSummaryTest")
 classes("test_rsprov_usage_line_bounds", out("T7 `ucli_compare.py`", "ucli maliyet tablosu taraması (Rust karşılığı yok)"),
         "CompareScanTest")
+classes("test_rsprov_usage_fifo", CORE, "UsageSummaryFifoTest")
+classes("test_rsprov_usage_fifo", out("T7 `ucli_compare.py`", "ucli maliyet tablosu taraması (Rust karşılığı yok)"),
+        "CompareScanFifoTest")
 classes("test_rsprov_cost_line_length", out("rs/prov + T7 `ucli_cost.py`", "uzun satırın tavan kapısındaki sonucu ve akış "
                                             "(`sorun` dönüşü); toplam payı `cops-providers` `usage_two_copies`"),
         "LineLimit Streaming")

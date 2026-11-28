@@ -3774,6 +3774,18 @@ ile okur, aynı derinlik kuralı; yarıda okuma hatasında kalan atlanır, sayı
 |---|---|---|
 | `UsageSummaryTest.*` (py/tests/test_rsprov_usage_line_bounds.py) | `cops-review-core` `parity_edges.py` `usage_summary` uzun/derin satır vakası (test sınırı küçülttüğü için koşucuda atlanır) | TAŞINDI |
 | `CompareScanTest.*` (py/tests/test_rsprov_usage_line_bounds.py) | `ucli_compare.py` Rust karşılığı yok (T7) | KAPSAM DIŞI |
+
+FIFO ve yarıda okuma hatası (28 Kas): `usage_summary` ve `ucli_compare._scan` normal olmayan dosyayı `O_NONBLOCK` ile
+açıp atlar (`review._open_regular_rb`; Rust `open_regular_nonblocking`), FIFO'da bloklanmaz. Harcama taramasında dosya
+yarıda okunamazsa üç kopya da (Python `_scan_usage_windows`, `cops-providers` `real/ledger.rs`, `cops-review-core`
+`report::scan_lines`) sayılan kısmi toplamı korur ve "okunamadı" sorunu bildirir; bütçe kapısı yine kapanır (TBD#422).
+Karar (teknik): kısmi toplam, iki kopyanın zaten verdiği alt sınır; `report` 0 döndürüyordu.
+
+| Python testi | Rust testi / neden gereksiz | durum |
+|---|---|---|
+| `UsageSummaryFifoTest.*` (py/tests/test_rsprov_usage_fifo.py) | `report::tests::usage_summary_skips_a_fifo_without_blocking` | TAŞINDI |
+| `CompareScanFifoTest.*` (py/tests/test_rsprov_usage_fifo.py) | `ucli_compare.py` Rust karşılığı yok (T7) | KAPSAM DIŞI |
+| (yalnız Rust) | `report::tests::a_read_error_mid_file_keeps_the_partial_total` | TAŞINDI |
 | `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 

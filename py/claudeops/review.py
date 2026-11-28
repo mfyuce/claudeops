@@ -1466,7 +1466,10 @@ def usage_summary(reviews_root: str, project: str = "") -> List[Dict[str, Any]]:
                                              "completion_tokens": 0, "reasoning_tokens": 0, "cached_tokens": 0, "total_tokens": 0,
                                              "seconds": 0.0})
             try:
-                with open(os.path.join(dp, fn), "rb") as f:
+                f = _open_regular_rb(os.path.join(dp, fn))
+                if f is None:                           # FIFO/aygıt: koşu sayılmaz, bloklanmaz
+                    continue
+                with f:
                     a["runs"] += 1                      # okunamayan dosya "koşu" sayılmaz
                     for e in _usage_json_lines(f, os.path.join(dp, fn)):
                         if not isinstance(e, dict) or e.get("event") != "request":
@@ -1876,6 +1879,24 @@ def _usage_lines(f) -> Iterator[Optional[bytes]]:
             rest = f.readline(1 << 16)
             if not rest or rest.endswith(b"\n"):
                 break
+
+
+def _open_regular_rb(path: str):
+    """Yalnız normal dosyayı ikili kipte açar (FIFO açılışta bloklamasın: `O_NONBLOCK`, sonra kaldırılır); normal dosya
+    değilse None. Açılamazsa `OSError`."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            return None
+        os.set_blocking(fd, True)
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
 
 def _usage_json_lines(f, path: str) -> Iterator[Any]:
