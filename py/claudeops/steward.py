@@ -1703,16 +1703,53 @@ _TBD_ID_RE = re.compile(r"TBD\s*#?\s*(\d+)", re.I)
 _ITEM_START_RE = re.compile(r"^(\s*)(#{1,6}\s|[-*]\s|\d+[.)]\s)")
 
 
+_TBD_HEAD_RE = re.compile(r"^(#{1,6})\s")
+TBD_UNLINKED_ANSWERS_HEADING = "## Bağlanamayan sahip cevapları (TBD maddesi bulunamadı)"
+
+
+def _tbd_section_end(lines: List[str], h: int) -> int:
+    """`h` başlığının bloğunun sonu (aynı ya da üst düzey sonraki başlık), sondaki boş satırların ÜSTÜ. SAF."""
+    level = len(_TBD_HEAD_RE.match(lines[h]).group(1))
+    j = h + 1
+    while j < len(lines):
+        m = _TBD_HEAD_RE.match(lines[j])
+        if m and len(m.group(1)) <= level:
+            break
+        j += 1
+    while j > h + 1 and not lines[j - 1].strip():
+        j -= 1
+    return j
+
+
 def tbd_insert_answer(text: str, qid: str, q_text: str, answer: str, date: str) -> Optional[str]:
-    """SAF. İletilemeyen sahip cevabını TOBEDECIDED.md içeriğine ekler: sorudaki `TBD#N` kimliğinin geçtiği maddenin bloğunun ALTINA
-    (bloğun sonu = aynı ya da daha az girintili sonraki madde/başlık); bulunamazsa dosyanın SONUNA. Aynı soru kimliği zaten varsa None.
-    Satır: `Sahip cevabı (tarih, değnekçi) [qid]: ...`."""
+    """SAF. İletilemeyen sahip cevabını TOBEDECIDED.md içeriğine ekler. Yer sırası: (1) soru kimliğinin geçtiği BAŞLIĞIN bölümü
+    (`Soru kimliği: q...`), (2) sorudaki `TBD#N`in başlığı (`## #N` / `### N)`), (3) `TBD#N`in geçtiği maddenin bloğunun altı,
+    (4) dosyada başlık varsa `TBD_UNLINKED_ANSWERS_HEADING` bölümü (28 Kas: dosya sonuna eklenen cevap son başlığın, #441'in
+    altına düşüp yanlış maddeye ait görünüyordu), yoksa dosyanın sonu. Aynı soru kimliği zaten varsa None."""
     if qid and f"[{qid}]" in text:
         return None
     ans = " ".join(str(answer).split())[:1500]
     lines = text.split("\n")
-    for m in _TBD_ID_RE.finditer(q_text or ""):
-        n = m.group(1)
+    full = f"- Sahip cevabı ({date}, değnekçi) [{qid}] (soru: {' '.join((q_text or '').split())[:140]}): {ans}"
+
+    def under(h: int) -> str:
+        j = _tbd_section_end(lines, h)
+        lines[j:j] = [full]
+        return "\n".join(lines)
+
+    heads = [i for i, ln in enumerate(lines) if _TBD_HEAD_RE.match(ln)]
+    if qid:
+        hit = next((i for i, ln in enumerate(lines) if qid in ln), None)
+        own = [h for h in heads if hit is not None and h <= hit]
+        if own:
+            return under(own[-1])
+    ids = [m.group(1) for m in _TBD_ID_RE.finditer(q_text or "")]
+    for n in ids:
+        head = re.compile(rf"^#{{1,6}}\s+(?:#\s*{n}|{n}\))(?!\d)")
+        h = next((i for i in heads if head.match(lines[i])), None)
+        if h is not None:
+            return under(h)
+    for n in ids:
         pat = re.compile(rf"TBD\s*#?\s*{n}(?!\d)", re.I)
         for i, ln in enumerate(lines):
             if not pat.search(ln):
@@ -1729,8 +1766,14 @@ def tbd_insert_answer(text: str, qid: str, q_text: str, answer: str, date: str) 
             pad = " " * (ind + 2)
             lines[j:j] = [f"{pad}- Sahip cevabı ({date}, değnekçi) [{qid}]: {ans}"]
             return "\n".join(lines)
+    if heads:
+        h = next((i for i in heads if lines[i] == TBD_UNLINKED_ANSWERS_HEADING), None)
+        if h is not None:
+            return under(h)
+        body = text.rstrip("\n")
+        return f"{body}\n\n{TBD_UNLINKED_ANSWERS_HEADING}\n{full}\n"
     body = text.rstrip("\n")
-    return (f"{body}\n\n" if body else "") + f"- Sahip cevabı ({date}, değnekçi) [{qid}] (soru: {' '.join((q_text or '').split())[:140]}): {ans}\n"
+    return (f"{body}\n\n" if body else "") + full + "\n"
 
 
 def answer_has_action(answer: str) -> bool:

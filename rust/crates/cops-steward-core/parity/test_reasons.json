@@ -280,5 +280,6 @@
  "test_ucli_cost_watch.CostWatch": "AÇIK: `web_steward.ucli_cost_watch` %80/%90 uyarı, tavanda beyin durdurma, tavan yükselince yeniden kurulma (bildirim/durdurma sahte); web_steward'daki karar merdiveni, iz T10",
  "test_web_review_runner.TestProviderErrorNoLesson": "AÇIK: `web_review.run_job` sağlayıcı/ağ hatasında ucli dersi yazmaz (süreç sahte); koşucu Rust'ta yok, iz T8 (`commands/web_review.py`)",
  "test_web_review_tick.TestModelsFailure": "`web_review.current_targets` model listesi istisnasını yutuyor mu (koşucu tick'i), iz T8 (`commands/web_review.py`)",
- "test_steward_core_a.NegativeAnswerTest.test_open_answer_to_sweep_with_running_session_sets_planned": "`plan_tick` çağrısı; aynı girdiler `parity/hand_cases.py` sonundaki 28 Kas el vakalarında (oturum açık + süpürme sorusu + Aç/tut/başka soru) `plan_tick` vektörüyle Rust'ta sınanıyor"
+ "test_steward_core_a.NegativeAnswerTest.test_open_answer_to_sweep_with_running_session_sets_planned": "`plan_tick` çağrısı; aynı girdiler `parity/hand_cases.py` sonundaki 28 Kas el vakalarında (oturum açık + süpürme sorusu + Aç/tut/başka soru) `plan_tick` vektörüyle Rust'ta sınanıyor",
+ "test_steward_urgent_answers.TbdInsertSection": "`tbd_insert_answer` + `_tbd_section_end`: aynı belge biçimleri (soru kimliği bölümü, `## #N`/`### N)` başlığı, bağlanamayan cevap bölümü, başlıksız dosya) `parity/hand_cases.py` 28 Kas el vakalarında; Rust `inserts::tbd_insert_answer_vectors`, `inserts::p_tbd_section_end`"
 }
