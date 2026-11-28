@@ -17,7 +17,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional
 
-from .atomic_json import atomic_write_json, flock_bounded, _open_lock_file, _write_corrupt_copy
+from .atomic_json import LockError, atomic_write_json, flock_bounded, _open_lock_file, _write_corrupt_copy
 from .diaglog import diag_log
 from .paths import CLAUDEOPS_DIR
 
@@ -139,9 +139,17 @@ def get_instance(name: str) -> Optional[dict]:
 @contextmanager
 def _locked():
     os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
-    fd = _open_lock_file(_LOCK_PATH)     # sembolik bağ/yabancı dosya reddedilir (TBD#383)
     try:
-        flock_bounded(fd)               # süresiz bekleme yok: `LockError` (TBD#374 S6)
+        fd = _open_lock_file(_LOCK_PATH)     # sembolik bağ/yabancı dosya reddedilir (TBD#383)
+    except LockError:
+        diag_log("file_lock_refused", path=INSTANCES_JSON)     # çağıranda yutulsa da iz kalsın (`atomic_json.file_lock` gibi)
+        raise
+    try:
+        try:
+            flock_bounded(fd)               # süresiz bekleme yok: `LockError` (TBD#374 S6)
+        except LockError:
+            diag_log("file_lock_refused", path=INSTANCES_JSON)
+            raise
         yield
     finally:
         os.close(fd)                    # kapatmak flock'u bırakır
