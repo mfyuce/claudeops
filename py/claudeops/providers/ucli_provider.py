@@ -254,7 +254,7 @@ def _fetch_live_models() -> Optional[List[str]]:
     # sunmaktansa listeden eksik kalması daha güvenli.
     chat = [
         m for m in payload.get("data", [])
-        if isinstance(m, dict) and m.get("id") and m.get("task") == "chat"
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"] and m.get("task") == "chat"
     ]
     if chat:
         # AYNI çekimden model yetenekleri de saklanır (`--effort` kapısı, bkz. `reasoning_effort_for`): ikinci bir
