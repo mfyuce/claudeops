@@ -36,12 +36,34 @@ class SymlinkedTodo(unittest.TestCase):
         ws._cwd_resolver = self.orig
         self.tmp.cleanup()
 
-    def test_symlinked_worktree_is_unknown(self):
+    def test_symlinked_worktree_without_tagged_lines_is_unknown(self):
         self.assertIsNone(ws._open_work_of(self.projs)("copsdevderbent"))
         self.assertIsNone(ws._scan_todo(self.projs, "copsdevderbent"))
 
     def test_owner_main_checkout_still_counts(self):
         self.assertEqual(ws._open_work_of(self.projs)("cops"), 3)
+        self.assertEqual(ws._open_work_of(self.projs)("lone"), 3)
+
+    def test_symlinked_worktree_counts_its_tagged_lines(self):
+        """rsprov 28 Kas: ortak TODO'da `(rs-prov, ...)` açık maddeler varken 'iş yok' diye paused yapıldı (sayı None idi)."""
+        with open(os.path.join(self.main, "TODO.md"), "a", encoding="utf-8") as f:
+            f.write("- [ ] (copsdevderbent, edge) x\n- [ ] (26 Kas, copsdev-derbent; kapı: cops) y\n- [x] (copsdevderbent) bitti\n"
+                    "- [ ] (cops, copsdevderbentx) başkası\n- [ ] (sahip cevabı, copsdevderbent) SAHİPTE z\n")
+        self.assertEqual(ws._scan_todo(self.projs, "copsdevderbent"), (2, 1))
+        self.assertEqual(ws._open_work_of(self.projs)("cops"), 6)      # sahibi hepsini sayar (sahibe bağlı hariç)
+
+    def test_same_cwd_extension_project_is_shared(self):
+        """copsdevderbent 28 Kas: cwd ana checkout (cops ile aynı), claudeops'un 435 maddesini kendi işi sandı."""
+        self.cwds["copsdevderbent"] = self.main
+        self.assertIsNone(ws._open_work_of(self.projs)("copsdevderbent"))
+        self.assertEqual(ws._open_work_of(self.projs)("cops"), 3)
+        with open(os.path.join(self.main, "TODO.md"), "a", encoding="utf-8") as f:
+            f.write("- [ ] (copsdevderbent) x\n")
+        self.assertEqual(ws._open_work_of(self.projs)("copsdevderbent"), 1)
+        self.assertEqual(ws._open_work_of(self.projs)("cops"), 4)
+
+    def test_same_cwd_unrelated_names_keep_counting(self):
+        self.cwds["lone"] = self.main       # adı diğerinin uzantısı değil: eski davranış
         self.assertEqual(ws._open_work_of(self.projs)("lone"), 3)
 
     def test_symlink_to_unregistered_dir_still_counts(self):
