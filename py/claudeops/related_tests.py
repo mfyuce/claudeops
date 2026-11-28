@@ -100,8 +100,13 @@ def related_tests(changed: Iterable[str], py_root: str, tests_dir: Optional[str]
     names = set(mods)
     targets: Dict[str, Set[str]] = {}          # modül -> onu tetikleyen değişen modüller
     direct_tests: Set[str] = set()
+    dist_dir = os.path.join(os.path.abspath(py_root), "webui", "dist") + os.sep
+    dist_changed = False
     for c in changed:
         ap = os.path.abspath(c)
+        if ap.startswith(dist_dir):     # panel derlemesi: JS'i koşan/denetleyen testler (27 Kas boş sayfa)
+            dist_changed = True
+            continue
         if os.path.dirname(ap) == os.path.abspath(tests_dir) and os.path.basename(ap).startswith("test") and ap.endswith(".py"):
             direct_tests.add(os.path.basename(ap)[:-3])
             continue
@@ -133,4 +138,8 @@ def related_tests(changed: Iterable[str], py_root: str, tests_dir: Optional[str]
             hit = imports_of(_read(os.path.join(tests_dir, f)), names | set(targets)) & set(targets)
             if hit:
                 out.setdefault(f[:-3], set()).update(*(targets[h] for h in hit))
+    if dist_changed:
+        for f in sorted(os.listdir(tests_dir)):
+            if f.startswith("test_webui_dist") and f.endswith(".py"):
+                out.setdefault(f[:-3], set()).add("webui/dist")
     return {k: sorted(v) for k, v in sorted(out.items())}
