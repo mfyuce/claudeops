@@ -334,6 +334,35 @@ fn roster_by_name_and_blueprint_cwds_match_python() {
     assert_eq!(format!("{}\n{}\n", by.to_compact(), bp.to_compact()), py);
 }
 
+/// db kipinde DB satırı temiz, ayna dosya vekilli (gözden geçirme agy R-1): Python DB'yi okur ve yazar (DB + temiz
+/// ayna); Rust da yazmalı (aynadaki vekil DB doğruluğunu kilitlememeli).
+#[test]
+fn db_mode_clean_db_with_lossy_mirror_writes() {
+    let clean = r#"{"version": 1, "instances": {"a": {"cwd": "/a"}, "b": {"cwd": "/b"}}}"#;
+    let lossy = r#"{"version": 1, "instances": {"a": {"cwd": "/x\ud800y"}, "b": {"cwd": "/b"}}}"#;
+    let (a, b) = (Env::new(), Env::new());
+    for e in [&a, &b] {
+        e.py(
+            "db",
+            &format!("import json\nfrom claudeops.store import default_store\ndefault_store().set_doc('instances', json.loads({clean:?}))"),
+        );
+        e.write("instances.json", lossy);
+    }
+    let q = "from claudeops.store import default_store\nimport json\nprint(json.dumps(default_store().get_doc('instances'), sort_keys=True))";
+    let py = a.py(
+        "db",
+        &format!("from claudeops import instances as i\ntry:\n    i.forget_instance('b'); print('yazdi')\nexcept Exception as ex:\n    print('hata', ex)\n{q}"),
+    );
+    let docs = b.docs(Backend::Db);
+    let wrote = match Instances::new(&docs).forget("b") {
+        Ok(_) => "yazdi".to_string(),
+        Err(e) => format!("hata {e}"),
+    };
+    let rs = format!("{wrote}\n{}", b.py("db", q).trim_end());
+    assert_eq!(rs, py.trim_end());
+    assert_eq!(b.read("instances.json"), a.read("instances.json"));
+}
+
 /// Eşlenmemiş vekil (`"\ud800"`): Python okur ama yazamaz; Rust okur (U+FFFD), yazıcı hata verir, dosya ve DB değişmez.
 #[test]
 fn lone_surrogate_readable_not_writable() {

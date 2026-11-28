@@ -247,7 +247,12 @@ impl<'a> Instances<'a> {
             }
         };
         let data = match self.docs.read(DOC, &path) {
-            Read::Value(v) => v,
+            // db kipinde temiz DB belgesi: aynadaki vekil yazımı kilitlemez (Python `_mutate` DB'yi okuyup yazar; files/dual
+            // kipinde `read` dosyayı yeniden okuyup yine `Lossy` döner)
+            Read::Value(v) => {
+                lossy = false;
+                v
+            }
             Read::Lossy(v) => {
                 lossy = true;
                 v
