@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from claudeops import disk_clean as dc
 
@@ -25,6 +26,7 @@ class SweepTest(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="sweep")
         self.addCleanup(shutil.rmtree, self.root, True)
         self.now = time.time()
+        self._guard_real_tmp()
         self.t = os.path.join(self.root, "target")
         open(os.path.join(self.root, "Cargo.toml"), "w").close()
         p = os.path.join(self.t, "debug")
@@ -38,6 +40,29 @@ class SweepTest(unittest.TestCase):
         touch(os.path.join(p, ".fingerprint", "tokio-ccc", "invoked.timestamp"), 1, now=self.now)
         touch(os.path.join(p, "deps", "libtokio-ccc.rlib"), 90, size=5000, now=self.now)
         touch(os.path.join(p, "deps", "libother-zzz.rlib"), 90, size=7, now=self.now)     # parmak izsiz: dokunulmaz
+
+    def _guard_real_tmp(self):
+        """27 Kas dersi: `run(...)` tmp_root verilmeden GERÇEK /tmp/claude-<uid>/*/*/scratchpad altındaki 1 günden eski
+        CACHEDIR.TAG'li dizinleri (başka oturumların derleme dizinleri ve içindekiler) siliyordu; günlük de canlı
+        disk_cleanup.jsonl'e gidiyordu. Her test: tarayıcılara giden kök ve silinen her yol test kökünde olmalı."""
+        root = os.path.realpath(self.root)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(dc, "LOG", os.path.join(self.root, "disk_cleanup.jsonl")).start()
+        for name in ("scratch_candidates", "scratch_cargo_candidates"):
+            orig = getattr(dc, name)
+
+            def spy(idle, now, tmp_root="/tmp", held=None, _orig=orig, _name=name):
+                if not os.path.realpath(tmp_root).startswith(root):
+                    raise AssertionError(f"{_name} test kökü dışında tarıyor: {tmp_root}")
+                return _orig(idle, now, tmp_root, held)
+            mock.patch.object(dc, name, spy).start()
+        orig_remove = dc._remove
+
+        def remove(path):
+            if not os.path.realpath(path).startswith(root):
+                raise AssertionError(f"test kökü dışında silme: {path}")
+            return orig_remove(path)
+        mock.patch.object(dc, "_remove", remove).start()
 
     def test_candidates_by_invoked_timestamp(self):
         items = dc.cargo_sweep_candidates([self.root], 14, self.now)
@@ -55,12 +80,12 @@ class SweepTest(unittest.TestCase):
     def test_run_dry_and_on(self):
         cfg = {"mode": "dry", "cargo": "off", "scratch": "off", "cargo_sweep": "on", "cargo_roots": [self.root],
                "cargo_idle_days": 14}
-        r = dc.run(cfg, True, self.now, compilers=lambda: False)
+        r = dc.run(cfg, True, self.now, tmp_root=self.root, compilers=lambda: False)
         self.assertEqual(r["removed"], 0)
         self.assertTrue(os.path.exists(os.path.join(self.t, "debug/deps/libserde-aaa.rlib")))
         self.assertGreater(r["candidate_bytes"], 0)
         cfg["mode"] = "on"
-        r = dc.run(cfg, True, self.now, compilers=lambda: False)
+        r = dc.run(cfg, True, self.now, tmp_root=self.root, compilers=lambda: False)
         self.assertGreater(r["freed_bytes"], 0)
         self.assertFalse(os.path.exists(os.path.join(self.t, "debug/deps/libserde-aaa.rlib")))
         self.assertFalse(os.path.exists(os.path.join(self.t, "debug/.fingerprint/serde-aaa")))
@@ -69,13 +94,13 @@ class SweepTest(unittest.TestCase):
 
     def test_compilers_running_skips(self):
         cfg = {"mode": "on", "cargo": "off", "scratch": "off", "cargo_sweep": "on", "cargo_roots": [self.root]}
-        r = dc.run(cfg, True, self.now, compilers=lambda: True)
+        r = dc.run(cfg, True, self.now, tmp_root=self.root, compilers=lambda: True)
         self.assertEqual(r["removed"], 0)
         self.assertTrue(os.path.exists(os.path.join(self.t, "debug/deps/libserde-aaa.rlib")))
 
     def test_sweep_off_by_default_value(self):
         cfg = {"mode": "on", "cargo": "off", "scratch": "off", "cargo_roots": [self.root]}      # cargo_sweep verilmedi: varsayılan dry
-        r = dc.run(cfg, True, self.now, compilers=lambda: False)
+        r = dc.run(cfg, True, self.now, tmp_root=self.root, compilers=lambda: False)
         self.assertEqual(r["removed"], 0)
 
     def test_missing_invoked_timestamp_uses_newest_file(self):
