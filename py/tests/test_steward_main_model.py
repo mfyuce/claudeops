@@ -1,6 +1,4 @@
-"""Sahip kuralı 18 Kas 2026: değnekçinin açtığı claude ana oturumu kayıtlı model ne olursa olsun ana oturum modeli + medium.
-Ana oturum modeli 18 Kas'ta en yeni Sonnet'ti; 28 Kas 2026'dan beri Ayarlar'daki claude varsayılanı, o boşsa Opus. Saf
-`main_session_model_effort` testlerinde `S` yalnız "verilen ana model" yerine geçer."""
+"""Sahip kuralı 18 Kas 2026: değnekçinin açtığı claude ana oturumu kayıtlı model ne olursa olsun Sonnet + medium."""
 import os
 import sys
 import unittest
@@ -41,8 +39,8 @@ class MainSessionModel(unittest.TestCase):
 
 
 class MainModelFromSettings(unittest.TestCase):
-    """Sahip kararı 28 Kas 2026 ("opus yapalım, ben tersini söyleyene kadar"): değnekçinin açtığı claude ana oturumu
-    Ayarlar'daki `default_model.claude` (geçerliyse), boşsa Opus; effort `medium`. Ayarlar'dan geri alınabilir."""
+    """Sahip kararı 28 Kas 2026 19:2x (KALICI, "artık varsayılan sonnet medium"; 00:3x Opus kararının yerine): değnekçinin
+    açtığı claude ana oturumu Ayarlar'daki `default_model.claude` (geçerliyse), boşsa Sonnet 5.5; effort `medium`."""
     CHOICES = ["claude-fable-5-1", "claude-haiku-5-5", "claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]
 
     def setUp(self):
@@ -65,27 +63,29 @@ class MainModelFromSettings(unittest.TestCase):
     def _main(self, **proj):
         return self.ws._main_model_effort(sw.Project(name="p", phase="planned", **proj), sw.Config(), "p")
 
-    def test_empty_setting_gives_opus_medium(self):
-        self.assertEqual(self._main(), ("claude-opus-5-5", "medium"))
-        self.assertEqual(self._main(model="claude-fable-5-1", effort="high"), ("claude-opus-5-5", "medium"))
-        self.assertEqual(self._main(model="claude-sonnet-5-5", effort="medium"), ("claude-opus-5-5", "medium"))
+    def test_empty_setting_gives_sonnet_medium(self):
+        self.assertEqual(self._main(), ("claude-sonnet-5-5", "medium"))
+        self.assertEqual(self._main(model="claude-fable-5-1", effort="high"), ("claude-sonnet-5-5", "medium"))
+        self.assertEqual(self._main(model="claude-opus-5-5", effort="medium"), ("claude-sonnet-5-5", "medium"))
 
-    def test_setting_wins_and_can_revert_to_sonnet(self):
-        self.settings.save_settings({"default_model": {"claude": "claude-sonnet-5-5"}})
-        self.assertEqual(self._main(model="claude-opus-5-5"), ("claude-sonnet-5-5", "medium"))
+    def test_setting_wins_and_can_switch_to_opus(self):
+        self.settings.save_settings({"default_model": {"claude": "claude-opus-5-5"}})
+        self.assertEqual(self._main(model="claude-sonnet-5-5"), ("claude-opus-5-5", "medium"))
 
-    def test_invalid_setting_falls_back_to_opus(self):
+    def test_invalid_setting_falls_back_to_sonnet(self):
         self.settings.save_settings({"default_model": {"claude": "claude-bogus-9"}})
-        self.assertEqual(self._main(), ("claude-opus-5-5", "medium"))
+        self.assertEqual(self._main(), ("claude-sonnet-5-5", "medium"))
 
-    def test_no_opus_in_list_falls_back_to_provider_default(self):
-        self.CHOICES = ["claude-haiku-5-5", "claude-sonnet-5-5"]
-        self.assertEqual(self._main(model="claude-fable-5-1"), ("claude-sonnet-5-5", "medium"))
+    def test_no_sonnet_in_list_falls_back_to_provider_default(self):
+        self.CHOICES = ["claude-haiku-5-5", "claude-opus-5-5"]
+        got = self._main(model="claude-fable-5-1")
+        self.assertIn(got[0], self.CHOICES)
+        self.assertEqual(got[1], "medium")
 
 
 class RemoteBlankModel(_Actions):
     """Uzak projede model boşsa da Ayarlar'daki claude varsayılanı gider (TBD#440 devamı, 28 Kas): boş model uzak
-    `/api/start`ta host'un kendi roster modeline (eski Sonnet) düşer. cli host'un durum satırından okunur."""
+    `/api/start`ta host'un kendi roster modeline düşer. cli host'un durum satırından okunur."""
     def setUp(self):
         super().setUp()
         prov = type(get_provider("claude"))
@@ -107,14 +107,14 @@ class RemoteBlankModel(_Actions):
         return _row("oiso", **dict({"running": False, "model": "claude-sonnet-5"}, **kw))
 
     def test_blank_model_on_claude_row_sends_main_default(self):
-        self.assertEqual(self.start_body(self.stopped()), (OPUS, "medium"))
+        self.assertEqual(self.start_body(self.stopped()), (SONNET, "medium"))
 
     def test_blank_model_with_leftover_effort(self):
-        self.assertEqual(self.start_body(self.stopped(), effort="medium"), (OPUS, "medium"))
+        self.assertEqual(self.start_body(self.stopped(), effort="medium"), (SONNET, "medium"))
 
     def test_settings_can_revert(self):
-        settings.save_settings(dict(settings.load_settings(), default_model={"claude": SONNET}))
-        self.assertEqual(self.start_body(self.stopped()), (SONNET, "medium"))
+        settings.save_settings(dict(settings.load_settings(), default_model={"claude": OPUS}))
+        self.assertEqual(self.start_body(self.stopped()), (OPUS, "medium"))
 
     def test_non_claude_cli_gets_no_claude_model(self):
         self.assertEqual(self.start_body(self.stopped(cli="ucli", model="glm-5.3")), ("", ""))
@@ -135,7 +135,7 @@ class RemoteBlankModel(_Actions):
                                   lambda name, host, model, effort, *a, **k: sent.append((model, effort))
                                   or {"ok": False, "error": "stop here"}):
             ws._remote_respawn("oiso", HOST, sw.load_projects()["oiso"], cfg, ws._world(cfg.sid, cfg), None)
-        self.assertEqual(sent, [(OPUS, "medium")])
+        self.assertEqual(sent, [(SONNET, "medium")])
 
 
 if __name__ == "__main__":

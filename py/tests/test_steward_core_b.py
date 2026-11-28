@@ -389,19 +389,8 @@ class OneLiveSessionPerProjectTest(_Tmp):
         acts, _ = sw.plan_tick([young], projects, {}, nocfg, now, [], [])
         self.assertEqual([x.name for x in acts if x.kind == "handover"], ["a"])
 
-    def test_workspace_claude_md_main_session_is_opus_medium(self):
-        """Sahip kararı 28 Kas 2026: kural metni ana oturumu Opus 5.5 + medium yazar, Sonnet'i ana oturum diye dayatmaz."""
-        for lang in ("tr", "en"):
-            text = sw.build_workspace_claude_md("persona", lang=lang)
-            self.assertIn("Opus 5.5 + medium", text)
-            self.assertIn("`claude-opus-5-5` + `medium`", text)
-            self.assertNotIn("Sonnet 5.5 + medium", text)
-        for rule in (sw.GENERIC_RULE_TR, sw.GENERIC_RULE_EN):
-            self.assertIn("`claude-opus-5-5` + `medium`", rule)
-            self.assertNotIn("claude-sonnet-5-5", rule)
-
     def test_workspace_claude_md_carries_the_permanent_model_rule(self):
-        for lang, needle in (("tr", "Opus 5.5 + medium"), ("en", "Opus 5.5 + medium")):
+        for lang, needle in (("tr", "Sonnet 5.5 + medium"), ("en", "Sonnet 5.5 + medium")):
             text = sw.build_workspace_claude_md("persona", lang=lang)
             self.assertIn(needle, text)
             self.assertIn("Fable", text)

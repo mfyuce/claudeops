@@ -24,8 +24,7 @@ pub fn is_generic(cfg: &Config) -> bool {
     cfg.role == "generic"
 }
 
-/// Ana oturum için üst kademe mi: Fable modeli ya da high/xhigh/max effort (Opus 28 Kas 2026'dan beri ana oturum
-/// varsayılanı, üst değil).
+/// Ana oturum için üst kademe mi: Opus/Fable modeli ya da high/xhigh/max effort.
 ///
 /// py: is_upper_tier
 pub fn is_upper_tier(model: &str, effort: &str) -> bool {
@@ -109,13 +108,13 @@ pub fn upper_tier_question_text(project: &str, model: &str, effort: &str, lang: 
     let (m, e) = (or_dash(model), or_dash(effort));
     if lang == "en" {
         return format!(
-            "{tag} The steward wants to run the MAIN session of '{project}' with model {m} / effort {e} (above \
-             {GENERIC_MODEL} + {GENERIC_EFFORT}). Approve? Until approved it stays on {GENERIC_MODEL} + {GENERIC_EFFORT}."
+            "{tag} The steward wants to run the MAIN session of '{project}' with model {m} / effort {e} (above Sonnet \
+             medium). Approve? Until approved it stays on Sonnet medium."
         );
     }
     format!(
-        "{tag} Değnekçi '{project}' ANA oturumunu {m} / {e} ile çalıştırmak istiyor ({GENERIC_MODEL} + {GENERIC_EFFORT} \
-         üstü). Onaylıyor musun? Onaya kadar {GENERIC_MODEL} + {GENERIC_EFFORT} sürer."
+        "{tag} Değnekçi '{project}' ANA oturumunu {m} / {e} ile çalıştırmak istiyor (Sonnet medium üstü). Onaylıyor \
+         musun? Onaya kadar Sonnet medium sürer."
     )
 }
 

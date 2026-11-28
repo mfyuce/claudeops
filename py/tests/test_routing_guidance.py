@@ -56,22 +56,6 @@ class DefaultsTest(_Tmp):
             self.assertEqual(settings.default_effort_for(p), p.effort_levels()[-1], name)
 
 
-class OpusMainTextTest(unittest.TestCase):
-    """Sahip kararı 28 Kas 2026: ana oturum Opus 5.5 + medium; alt ajan Claude'da aynı anda en çok 10, öteki CLI'lerde sıralı."""
-    def test_routing_md_names_opus_medium_main(self):
-        text = open(routing.BUNDLED_PATH, encoding="utf-8").read()
-        self.assertIn("Opus 5.5, medium", text)
-        self.assertNotIn("Sonnet 5.5, medium", text)
-        self.assertIn("Fable", text)
-
-    def test_steward_persona_economy_line(self):
-        from claudeops.steward import BUNDLED_PERSONA
-        line = next(ln for ln in open(BUNDLED_PERSONA, encoding="utf-8").read().splitlines() if ln.startswith("- Ekonomi:"))
-        self.assertIn("Opus 5.5 medium", line)
-        self.assertIn("10", line)
-        self.assertNotIn("tek tek", line)
-
-
 class GuidanceTest(_Tmp):
     def test_enabled_by_default_and_bundled_path_used(self):
         self.assertTrue(settings.routing_guidance_enabled())
@@ -155,6 +139,25 @@ class CodexSyncTest(_Tmp):
         settings.save_settings({"routing_guidance": "off"})
         self.assertEqual(routing.sync_global_files(path, self.agy)["codex"], "removed")
         self.assertEqual(self._read(path), "# Notlar\n")
+
+
+class SonnetMainTextTest(unittest.TestCase):
+    """Sahip kararı 28 Kas 2026 19:2x (KALICI, "artık varsayılan sonnet medium"): ana oturum Sonnet 5.5 + medium; alt ajan
+    kademeleri ve Claude'da aynı anda en çok 10 alt ajan kuralı değişmez."""
+    def test_routing_md_names_sonnet_medium_main(self):
+        text = open(routing.BUNDLED_PATH, encoding="utf-8").read()
+        self.assertIn("claude: Sonnet 5.5, medium", text)
+        self.assertNotIn("Opus 5.5, medium", text)
+        self.assertIn("Fable", text)
+        self.assertIn("Hacimli ve mekanik iş alt ajanda", text)
+
+    def test_steward_persona_economy_line(self):
+        from claudeops.steward import BUNDLED_PERSONA
+        line = next(ln for ln in open(BUNDLED_PERSONA, encoding="utf-8").read().splitlines() if ln.startswith("- Ekonomi:"))
+        self.assertIn("Sonnet 5.5 medium", line)
+        self.assertNotIn("Opus 5.5 medium", line)
+        self.assertIn("10", line)
+        self.assertNotIn("tek tek", line)
 
 
 if __name__ == "__main__":
