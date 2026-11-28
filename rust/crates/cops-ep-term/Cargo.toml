@@ -14,7 +14,7 @@ cops-state = { path = "../cops-state" }
 cops-procscan = { path = "../cops-procscan" }
 cops-tmux = { path = "../cops-tmux" }
 cops-ep-state = { path = "../cops-ep-state" }
-regex = "1"
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl"] } # copsd boyutu (R-B2a-5): yalnız \s/\d; (?i) ya da \p{..} eklenirse özellik ekle
 tokio.workspace = true
 
 [dev-dependencies]
