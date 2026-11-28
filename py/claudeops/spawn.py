@@ -77,7 +77,15 @@ def _dry_run_preview(cwd: str, overrides: dict, cli_invocation: str) -> str:
 # gömülmez; `CLAUDEOPS_DIR/spawn-env/<rastgele>.env` (dizin 0700, dosya 0600) dosyasına yazılır, kabuk onu ALT KABUKTA
 # yükleyip hemen siler. Yalnız makinedeki BAŞKA Unix hesaplarına karşı korur: çok kullanıcı kipinde oturumlar aynı Unix
 # kullanıcısında koştuğundan panel kullanıcıları arasında koruma DEĞİLDİR (enterprise docs/MULTI-USER.md S1, TBD#177).
-_SECRET_ENV_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET")
+_SECRET_ENV_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_CREDENTIALS", "_CREDENTIAL")
+# Son ekin alt çizgisiz yalın hali de sırdır (`PASSWORD`, `TOKEN`); kayıt TBD#443: karar üç son eki kapsıyordu,
+# parola/kimlik bilgisi adları aynı korumaya alındı (yalnız komut satırını etkiler, CLI değeri yine alır).
+_SECRET_ENV_BARE = frozenset(s[1:] for s in _SECRET_ENV_SUFFIXES)
+
+
+def is_secret_env_name(name: str) -> bool:
+    """S4: adı sır son ekiyle biten (büyük/küçük harfe duyarlı) ya da yalın sır adı olan ortam değeri."""
+    return name.endswith(_SECRET_ENV_SUFFIXES) or name in _SECRET_ENV_BARE
 _SPAWN_ENV_DIRNAME = "spawn-env"
 _SPAWN_ENV_STALE_SECONDS = 3600     # yüklenmeden kalan (pencere hiç açılmadı) dosyalar sonraki yazımda silinir
 
@@ -345,7 +353,7 @@ def spawn_session(
     overrides = _filter_env_overrides(overrides)
     # S4: sır adlı değerler komut satırına girmez (bkz. `_SECRET_ENV_SUFFIXES`); dosya alt kabukta yüklenip silinir,
     # kalan `exec bash` kabuğuna sızmaz. Sır yoksa komut eskisiyle birebir aynı.
-    secret_env = {k: v for k, v in overrides.items() if k.endswith(_SECRET_ENV_SUFFIXES)}
+    secret_env = {k: v for k, v in overrides.items() if is_secret_env_name(k)}
     env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items() if k not in secret_env)
     launch = f"{env_prefix}{cli_invocation}"
     env_dir = env_file = ""

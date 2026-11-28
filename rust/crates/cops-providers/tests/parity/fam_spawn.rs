@@ -147,7 +147,8 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
         for mode in ["dry", "hidden", "gt", "gt_tmux"] {
             v.push(base(format!("{cli}-sir-{mode}"), cli, mode, json!({}))
                 .facts(json!({"hook_env": [["PROVIDER_DIR", "/p d"], ["API_KEY", "s'ır $(id)"], ["MY_TOKEN", "t"],
-                                           ["X_SECRET", "z"], ["TOKENS", "2"], ["KEY_DIR", "/k"], ["PASSWORD", "p"]]})));
+                                           ["X_SECRET", "z"], ["TOKENS", "2"], ["KEY_DIR", "/k"], ["PASSWORD", "p"],
+                                           ["DB_PASSWD", "d"], ["GH_CREDENTIALS", "c"], ["PASSWORDS", "kalir"], ["password", "kalir"]]})));
         }
         v.push(base(format!("{cli}-kanca-gizli"), cli, "hidden", json!({}))
             .facts(json!({"hook_env": [["COPS_NAME", "ezilir"], ["PROVIDER_DIR", "/p d"], ["IFS", "x"]]})));

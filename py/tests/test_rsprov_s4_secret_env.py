@@ -118,13 +118,27 @@ class SecretEnvGoesToAFileTest(_Base):
         with open(os.path.join(self.envdir, self.env_files()[0]), encoding="utf-8") as f:
             self.assertEqual(f.read(), "export SERVICE_TOKEN=prov-gizli\n")
 
-    def test_only_the_three_suffixes_count(self):
-        self.hook_env = {"KEYRING_DIR": "/k", "TOKENS": "2", "SECRETARY": "a", "PASSWORD": "p", "X_KEY": "gizli1"}
+    def test_only_secret_suffixes_and_bare_names_count(self):
+        self.hook_env = {"KEYRING_DIR": "/k", "TOKENS": "2", "SECRETARY": "a", "PASSWORDS": "p",
+                         "X_KEY": "gizli1"}
         self.spawn()
         inner = self.direct[0]
-        for k in ("KEYRING_DIR=/k", "TOKENS=2", "SECRETARY=a", "PASSWORD=p"):
+        for k in ("KEYRING_DIR=/k", "TOKENS=2", "SECRETARY=a", "PASSWORDS=p"):
             self.assertIn(k, inner)
         self.assertNotIn("gizli1", inner)
+
+    def test_password_and_credential_names_leave_the_command_line(self):
+        # TBD#443: üç son ek dışında kalan parola/kimlik bilgisi adları da komut satırına girmez.
+        self.hook_env = {"PASSWORD": "gizli-a", "DB_PASSWORD": "gizli-b", "X_PASSWD": "gizli-c",
+                         "GH_CREDENTIALS": "gizli-d", "AWS_CREDENTIAL": "gizli-e", "TOKEN": "gizli-f"}
+        self.spawn()
+        inner = self.direct[0]
+        for v in self.hook_env.values():
+            self.assertNotIn(v, inner)
+        with open(os.path.join(self.envdir, self.env_files()[0]), encoding="utf-8") as f:
+            body = f.read()
+        for k, v in self.hook_env.items():
+            self.assertIn(f"export {k}={v}\n", body)
 
     def test_without_secret_names_the_command_is_unchanged_and_nothing_is_written(self):
         self.hook_env = dict(PLAIN)
