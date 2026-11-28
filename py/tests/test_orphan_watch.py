@@ -1,6 +1,7 @@
 """Sahipsiz kaynak denetimi: yardımcı tmux soketleri (ölü soket silinir, yaşlı+sahibi ölü rapor, yalnız cops-usage-* kapatılır)
 ve tanınmayan yaşlı CLI süreçleri (öldürme YOK); periyodik iş yeni anomalide tek bildirim."""
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -18,7 +19,10 @@ ME = types.SimpleNamespace(real=os.getuid())     # içerik yalnız kendi süreci
 
 class Sockets(unittest.TestCase):
     def setUp(self):
-        self.d = tempfile.mkdtemp()
+        # AF_UNIX yolu en çok 107 bayt: uzun TMPDIR'de (ör. iç içe geçici dizin) bind "path too long" verirdi
+        base = "/tmp" if len(tempfile.gettempdir()) > 40 and os.path.isdir("/tmp") else None
+        self.d = tempfile.mkdtemp(prefix="cops-ow-", dir=base)
+        self.addCleanup(shutil.rmtree, self.d, True)
         self.socks = []
         self.alive = set()
         self.calls = []
