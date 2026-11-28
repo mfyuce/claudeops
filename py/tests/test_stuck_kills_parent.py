@@ -18,7 +18,8 @@ class RecoverStuckTest(unittest.TestCase):
                 mock.patch.object(stuck, "_ids_held_by_others", return_value=frozenset()), \
                 mock.patch.object(stuck, "kill_session") as ks, \
                 mock.patch.object(stuck, "spawn_session", return_value="tmux"), \
-                mock.patch.object(stuck, "get_provider", return_value=object()):
+                mock.patch.object(stuck, "get_provider", return_value=SimpleNamespace(
+                    wants_stuck_recovery=lambda: True, permission_modes=lambda: ["auto"])):
             out = stuck.recover_stuck(info, display=":0")
         kp.assert_called_once()
         self.assertEqual(kp.call_args.args[0], 4242)
@@ -29,7 +30,7 @@ class RecoverStuckTest(unittest.TestCase):
     def test_unknown_permission_uses_provider_default(self):
         # PROC-04 artığı: kip okunamadıysa sabit "auto" DEĞİL, sağlayıcının ilk kipi (ucli: salt okunur)
         from claudeops.providers import get_provider
-        for cli in ("claude", "ucli", "agy"):
+        for cli in ("claude", "ucli", "copilot"):     # agy/codex: kurtarma kapalı (TBD#441)
             s = SimpleNamespace(name="vc1", pid=4242, cwd="/tmp", model="m", permission_mode=None,
                                 effort="high", cli=cli, sid="abc")
             with mock.patch.object(stuck, "kill_session_and_parent", return_value="killed"), \
@@ -40,7 +41,7 @@ class RecoverStuckTest(unittest.TestCase):
         self.assertNotEqual(get_provider("ucli").permission_modes()[0], "auto")
 
     def test_dry_run_kills_nothing(self):
-        s = SimpleNamespace(name="vc1", pid=1)
+        s = SimpleNamespace(name="vc1", pid=1, cli="claude")
         with mock.patch.object(stuck, "kill_session_and_parent") as kp:
             self.assertEqual(stuck.recover_stuck(SimpleNamespace(session=s), display=":0", dry_run=True), "dry-run")
         kp.assert_not_called()

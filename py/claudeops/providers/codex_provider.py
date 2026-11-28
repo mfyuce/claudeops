@@ -169,6 +169,11 @@ def _is_real_codex_user_text(text: str) -> bool:
 class CodexProvider(CliProvider):
     name = "codex"
 
+    def wants_stuck_recovery(self) -> bool:
+        """TBD#441 (= a, 28 Kas): komut satırındaki konuşma kimliği CLI içinde `/new` ile bayatlayabilir ve canlı
+        konuşmayı gösteren yerel kanıt yok: otomatik takılma kurtarması kapalı, takılan oturumu sahip elle açar."""
+        return False
+
     def __init__(self) -> None:
         self._cache_ts: Optional[float] = None      # hiç okunmadı (0.0 açılıştan sonraki ilk TTL'de okumayı engelliyordu)
         self._cache_models: List[str] = []

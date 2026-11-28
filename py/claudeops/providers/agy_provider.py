@@ -277,6 +277,11 @@ def _sid_claimed_by_other(known: Dict[str, str], sid: str, session_name: str) ->
 class AgyProvider(CliProvider):
     name = "agy"
 
+    def wants_stuck_recovery(self) -> bool:
+        """TBD#441 (= a, 28 Kas): komut satırındaki konuşma kimliği CLI içinde `/new` ile bayatlayabilir ve canlı
+        konuşmayı gösteren yerel kanıt yok: otomatik takılma kurtarması kapalı, takılan oturumu sahip elle açar."""
+        return False
+
     def __init__(self) -> None:
         self._cache_ts: Optional[float] = None      # hiç denenmedi (0.0 açılıştan sonraki ilk TTL'de çekimi engelliyordu)
         self._cache_models: List[str] = []

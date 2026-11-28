@@ -1,7 +1,9 @@
 """TBD#425 (sahip (a), 27 Kas): takılan oturum denetimi codex, agy ve copilot'ta da yalnız konuşma kimliği KESİN
 bilinen oturumda karar verir: kimlik süreç komut satırındaki devam kimliğidir (cwd'deki en yeni dosya, cwd önbelleği ve
 ad eşleşmesi tahmindir). Kimlik yoksa ya da tam eşleşen kayıt yoksa oturum takılmış SAYILMAZ; yeniden açma kararın
-verildiği konuşmayı sürdürür. Süreç YOK (komut satırı sahte), hepsi geçici dizin."""
+verildiği konuşmayı sürdürür. TBD#441 (= a, 28 Kas): codex ve agy'de komut satırı kimliğinin güncel olduğuna dair kanıt
+yok, otomatik kurtarma KAPALI (`wants_stuck_recovery()` False): kesin kimlikte bile karar verilmez, elle kurulan
+`StuckInfo` da öldürülmez. Süreç YOK (komut satırı sahte), hepsi geçici dizin."""
 import json
 import os
 import sqlite3
@@ -124,7 +126,27 @@ class _Cases:
         sp.assert_not_called()
 
 
-class CodexTest(_Cases, _Base):
+class _Disabled:
+    """TBD#441: codex/agy oturumu, konuşması kesin ve cevapsız olsa bile takılmış sayılmaz ve öldürülmez."""
+
+    def test_provider_opts_out(self):
+        self.assertFalse(spawn.get_provider(self.cli).wants_stuck_recovery())
+
+    def test_exact_unanswered_conversation_is_never_stuck(self):
+        self.conversation(OWN, "user")
+        self.assertEqual(stuck.find_stuck([self.session(sid=OWN)]), [])
+
+    def test_hand_built_info_is_left_alone(self):
+        self.conversation(OWN, "user")
+        for info in (SimpleNamespace(session=self.session(sid=OWN)),
+                     SimpleNamespace(session=self.session(sid=OWN), sid=OWN)):
+            out, kp, sp = self.recover(info)
+            self.assertTrue(out.startswith("skipped"), out)
+            kp.assert_not_called()
+            sp.assert_not_called()
+
+
+class CodexTest(_Disabled, _Base):
     cli = "codex"
     FLAG = ("resume",)
 
@@ -156,7 +178,7 @@ class CodexTest(_Cases, _Base):
         self.assertEqual(provider.last_message_role(self.cwd, SIBLING), "user")
 
 
-class AgyTest(_Cases, _Base):
+class AgyTest(_Disabled, _Base):
     cli = "agy"
     FLAG = ("--conversation",)
 
@@ -196,15 +218,6 @@ class AgyTest(_Cases, _Base):
         self.assertTrue(out.startswith("skipped"), out)
         kp.assert_not_called()
         sp.assert_not_called()
-
-    def test_unreadable_or_reused_process_means_unknown(self):
-        self.conversation(OWN, "user")
-        s = self.session(sid=OWN)
-        self.argv = ["vim", "--conversation", OWN]
-        self.assertEqual(stuck.find_stuck([s]), [])
-        for error in (psutil.NoSuchProcess(PID), psutil.AccessDenied(PID), OSError("proc")):
-            with self.subTest(error=type(error).__name__), mock.patch.object(psutil, "Process", side_effect=error):
-                self.assertEqual(stuck.find_stuck([s]), [])
 
 
 class CopilotTest(_Cases, _Base):

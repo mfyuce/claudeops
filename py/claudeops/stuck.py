@@ -10,25 +10,20 @@ Tespit provider.last_message_role() üzerinden gider (CliProvider arayüzü) —
 DOĞRUDAN claude'un jsonl'ına bakmaz, böylece agy/codex/copilot/ucli
 session'ları için de çalışır (claude-özel bir dosya formatına hardcode değil).
 
-claude, codex, agy ve copilot'ta hangi konuşmaya bakılacağı KESİN bilinmeli (TBD#419, TBD#425): claude'da
-yalnız sürecin kendi `sessions/<pid>.json` kaydı; codex ve copilot'ta `Session.sid` (keşif onu yalnız
-komut satırından alır); agy'de yalnız sürecin komut satırındaki `--conversation` (keşfin `Session.sid`i cwd
-önbelleğinden tahmin olabilir). Kimlik yoksa ya da tam eşleşen kayıt yoksa oturum takılmış sayılmaz (dizindeki en yeni
+claude ve copilot'ta hangi konuşmaya bakılacağı KESİN bilinmeli (TBD#419, TBD#425): claude'da yalnız sürecin
+kendi `sessions/<pid>.json` kaydı; copilot'ta `Session.sid` (keşif onu yalnız komut satırından alır). Kimlik yoksa ya da tam eşleşen kayıt yoksa oturum takılmış sayılmaz (dizindeki en yeni
 konuşma kardeşinki olabilir); yeniden açma da kararın verildiği konuşmayı sürdürür.
 
 Komut satırı kimliği CLI içinde `/new`, `/resume`, `/clear` ile BAYATLAR (TBD#427, rs/prov 28 Kas): claude'da karar
 yalnız sürecin kendi kaydından (claude konuşma değişince kaydı yeniler; komut satırından gelmiş olabilecek
 `Session.sid` karar vermez); copilot'ta süreç yalnız o konuşmanın `session-state/<kimlik>/inuse.<pid>.hold` dosyasını
-tutuyorsa (`/new` yeni konuşmanınkini de açar, eskisini bırakmaz; ölçüm 1.0.117); codex ve agy'de canlı konuşmayı
-gösteren yerel kanıt YOK (codex 0.166 konuşmaları ortak app-server süreci tutar, eskisini kapatmaz), yalnız AYNI
-dizinde süreç başladıktan sonra yazılmış başka konuşma varsa karar verilmez. Kalan sınır: yeni konuşmada hiç yazı
-yoksa (codex/agy) fark edilmez.
+tutuyorsa (`/new` yeni konuşmanınkini de açar, eskisini bırakmaz; ölçüm 1.0.117). codex ve agy'de canlı konuşmayı
+gösteren yerel kanıt YOK (codex 0.166 konuşmaları ortak app-server süreci tutar, eskisini kapatmaz): bu ikisinde
+otomatik takılma kurtarması KAPALI (TBD#441 = a, `wants_stuck_recovery()` False); takılan oturumu sahip elle açar.
+Kesin kimlik yolu bulunursa yeniden açılır.
 """
 from __future__ import annotations
 from dataclasses import dataclass
-import glob
-import json
-import os
 import re
 from typing import List, Optional
 
@@ -37,8 +32,6 @@ import psutil
 from .discovery import find_sessions
 from .kill import kill_session, kill_session_and_parent, KILL_GRACE_SECONDS
 from .providers import get_provider
-from .providers import agy_provider, codex_provider
-from .providers.base import _path_part_ok
 from .providers.claude_provider import _live_transcript, live_or_spawn_effort, live_or_spawn_model
 from .session import Session
 from .settings import default_model_for
@@ -51,7 +44,7 @@ from .turns import is_busy_now
 STUCK_CPU_THRESHOLD = 2.0
 
 # Kararı yalnız kesin bilinen konuşmadan verilen sağlayıcılar (ucli'de kimlik oturum adının kendisi).
-_OWN_ID_CLIS = ("claude", "codex", "agy", "copilot")
+_OWN_ID_CLIS = ("claude", "copilot")
 
 
 @dataclass
@@ -95,7 +88,7 @@ def _own_conversation(s: Session) -> Optional[str]:
         # `Session.sid` kayıt yoksa komut satırından gelir (keşif): yalnız kaydın kendisi karar verir
         path = _live_transcript(s.cwd, None, s.pid)
         return path.stem if path else None
-    sid = _argv_conversation(s) if s.cli == "agy" else s.sid
+    sid = s.sid
     if not sid or not _argv_id_current(s, sid):
         return None
     return sid
@@ -106,82 +99,17 @@ _COPILOT_INUSE_RE = re.compile(r"/session-state/([^/]+)/inuse\.(\d+)\.(?:hold|lo
 
 
 def _argv_id_current(s: Session, sid: str) -> bool:
-    """Komut satırındaki kimliğin bayatladığına dair kanıt yok mu (modül açıklaması). Okunamayan her şey = bayat
+    """copilot: süreç yalnız komut satırındaki konuşmayı mı tutuyor (modül açıklaması). Okunamayan her şey = bayat
     olabilir (False)."""
     try:
-        proc = psutil.Process(s.pid)
-        if s.cli == "copilot":
-            held = set()
-            for f in proc.open_files():
-                m = _COPILOT_INUSE_RE.search(str(getattr(f, "path", "")))
-                if m and int(m.group(2)) == s.pid:
-                    held.add(m.group(1))
-            return held == {sid}
-        started = float(proc.create_time())
+        held = set()
+        for f in psutil.Process(s.pid).open_files():
+            m = _COPILOT_INUSE_RE.search(str(getattr(f, "path", "")))
+            if m and int(m.group(2)) == s.pid:
+                held.add(m.group(1))
     except (psutil.Error, OSError, TypeError, ValueError):
         return False
-    if s.cli == "codex":
-        return not _codex_newer_here(s.cwd, sid, started)
-    if s.cli == "agy":
-        return not _agy_cache_moved(s.cwd, sid, started)
-    return True
-
-
-def _codex_newer_here(cwd: str, sid: str, started: float) -> bool:
-    """Aynı dizinde, süreç başladıktan sonra yazılmış başka rollout var mı (başı okunamayan = var sayılır)."""
-    target = os.path.normpath(os.path.abspath(cwd))
-    for path in glob.glob(os.path.join(codex_provider.SESSIONS_DIR, "*", "*", "*", "*.jsonl")):
-        try:
-            if os.stat(path).st_mtime < started:
-                continue
-        except OSError:
-            continue
-        if codex_provider._rollout_sid_matches(path, sid):
-            continue
-        meta = codex_provider._session_meta(path)
-        raw = meta.get("cwd") if meta else None
-        if not isinstance(raw, str) or os.path.normpath(os.path.abspath(raw)) == target:
-            return True
-    return False
-
-
-def _agy_cache_moved(cwd: str, sid: str, started: float) -> bool:
-    """agy'nin kendi cwd önbelleği bu dizinde, süreç başladıktan sonra yazılmış başka konuşmayı mı gösteriyor
-    (okunamayan önbellek = gösteriyor sayılır)."""
-    try:
-        with open(agy_provider.CONVERSATIONS_CACHE, encoding="utf-8") as f:
-            cache = json.load(f)
-    except FileNotFoundError:
-        return False
-    except (OSError, ValueError, RecursionError):
-        return True
-    if not isinstance(cache, dict):
-        return True
-    cur = cache.get(cwd)
-    if not isinstance(cur, str) or not cur.strip() or cur.strip() == sid:
-        return False
-    cur = cur.strip()
-    if not _path_part_ok(cur):
-        return True
-    try:
-        return os.stat(os.path.join(agy_provider.CONVERSATIONS_DIR, f"{cur}.db")).st_mtime >= started
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return True
-
-
-def _argv_conversation(s: Session) -> Optional[str]:
-    """Sürecin komut satırındaki devam kimliği. `extract_info` cwd ve ad verilmeden çağrılır: yalnız argv okunur,
-    öğrenilen eşleşmeye yazılmaz. Süreç okunamıyorsa ya da artık o CLI değilse None."""
-    try:
-        cmd = psutil.Process(s.pid).cmdline()
-    except (psutil.Error, OSError):
-        return None
-    provider = get_provider(s.cli)
-    if not provider.matches_proc(cmd):
-        return None
-    return provider.extract_info(cmd).get("sid") or None
+    return held == {sid}
 
 
 def _is_busy(provider, s: Session) -> bool:
@@ -223,6 +151,8 @@ def recover_stuck(
         display = detect_display()
 
     s = info.session
+    if not get_provider(s.cli).wants_stuck_recovery():   # shell; codex/agy kimliği kesin değil (TBD#441)
+        return "skipped: bu CLI'de otomatik takılma kurtarması kapalı"
 
     if dry_run:
         return "dry-run"

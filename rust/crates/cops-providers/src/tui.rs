@@ -426,8 +426,13 @@ impl Cli {
         }
     }
 
+    /// Takılma kurtarması bu CLI'yi kapatıp açabilir mi. codex/agy: komut satırı kimliği `/new` ile bayatlayabilir,
+    /// canlı konuşmanın yerel kanıtı yok (TBD#441 = a).
     pub fn wants_stuck_recovery(self) -> bool {
-        self.has_conversation()
+        match self {
+            Cli::Codex | Cli::Agy => false,
+            _ => self.has_conversation(),
+        }
     }
 
     /// Devrin kapanış turu için geçici ucuz model (yalnız claude: opus/fable -> sonnet).

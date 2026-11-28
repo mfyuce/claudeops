@@ -391,6 +391,7 @@ DEFS["providers/codex_provider.py"] = [
                    "permission_modes effort_levels model_effort_levels".split()),
         "açılış argv/env, model/effort/izin kuralları", SAG),
     oos(X + "resolve_resume_id _session_meta _rollout_sid_matches", "devam kimliği ve rollout dosyası tam kimlik eşleşmesi", T4),
+    oos(X + "wants_stuck_recovery", "takılma kurtarması kapalı (TBD#441); Rust eşi cops-providers `Cli::wants_stuck_recovery`", T4),
     oos("SESSIONS_DIR _ROLLOUT_UUID_RE _MAX_ROLLOUT_SCAN _safe_mtime _codex_text _is_real_codex_user_text _codex_item "
         + " ".join(X + n for n in "_rollout_path _exact_rollout _transcript_lines last_exchange full_history "
                    "last_message_role".split()),
@@ -426,6 +427,7 @@ DEFS["providers/copilot_provider.py"] = [
 
 A = "AgyProvider."
 DEFS["providers/agy_provider.py"] = [
+    oos(A + "wants_stuck_recovery", "takılma kurtarması kapalı (TBD#441); Rust eşi cops-providers `Cli::wants_stuck_recovery`", T4),
     ok("CONVERSATIONS_CACHE", "lib.rs::Config.agy_cache lib.rs::Config::from_env",
        "I:fake_proc.rs::broken_agy_files P:scan_sessions"),
     ok("AGY_SIDS_JSON", "lib.rs::Config.agy_sids lib.rs::Config::from_env",
@@ -959,7 +961,7 @@ FILES = {
     "rsprov_s2_effort_model": ("canlı effort yalnız son yanıtın modelinden", LIVE),
     "rsprov_stuck_own_conversation": ("takılma kararı ve yeniden açma yalnız oturumun kendi konuşmasından",
                                       f"{SAG}; {T4}"),
-    "rsprov_stuck_other_providers": ("codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan",
+    "rsprov_stuck_other_providers": ("copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441)",
                                      f"{SAG}; {T4}"),
     "rsprov_session_record_regular": ("süreç kaydı okuyucuları FIFO ve büyük dosyada bloklanmaz", SAG),
     "rsprov_s1_own_session": ("sid'siz oturumda model/effort yalnız sürecin kendi kaydından (devir, yeniden açma)",
@@ -1477,7 +1479,7 @@ rsprov_g3_fixes:5:cd4ad4129c
 rsprov_session_record_regular:3:55c6033cef
 rsprov_s1_own_session:12:ceb2a32df2
 rsprov_stuck_own_conversation:13:59ab1dc6cf
-rsprov_stuck_other_providers:12:cff2b06012
+rsprov_stuck_other_providers:14:fbf75c7b90
 rsprov_s2_effort_model:7:a9e1100892
 rsprov_g5_fixes:9:5e8c310c26
 rsprov_g7_fixes:11:787c25c89f

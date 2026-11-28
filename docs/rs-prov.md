@@ -1230,19 +1230,18 @@ Devir, panel, sohbet ve devam aramaları değişmedi (yalnız `stuck._own_conver
   yazılmadıysa fark edilmez. Aynı cwd'de kardeş oturum varsa karar verilmeyebilir (kapalı yön).
 - **Rust:** `find_stuck`/`recover_stuck` karşılığı yok; okuyucu davranışı değişmedi, kod eklenmedi.
 
+## TBD#441: codex ve agy'de otomatik takılma kurtarması kapalı (28 Kas)
+Yukarıdaki "kalan sınır" kapandı: sahip (cops aracılığıyla) TBD#427 kuralını ("kimlik kesin bilinmiyorsa takılmış
+sayılmaz") codex ve agy'ye uyguladı. İkisinde `wants_stuck_recovery()` False (Python sağlayıcı sınıfı, Rust
+`Cli::wants_stuck_recovery`); `find_stuck` onları hiç seçmez, `recover_stuck` sağlayıcı bayrağı kapalıysa (shell dahil)
+öldürmeden `skipped: ...` döner. Yukarıdaki tablodaki codex/agy kuralları ve `_codex_newer_here`, `_agy_cache_moved`,
+`_argv_conversation` kaldırıldı; testleri `_Disabled` sınıfına indi. Takılan codex/agy oturumunu sahip elle açar; kesin
+kimlik yolu bulununca yeniden açılır. Devir ve diğer okuyucular değişmedi.
+
 | Python testi (dosya:satır) | Rust testi / neden gereksiz | durum |
 |---|---|---|
 | `ClaudeArgvTest.test_argv_id_loses_to_the_live_record` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `ClaudeArgvTest.test_argv_id_without_a_record_never_decides` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `CodexArgvTest.test_newer_conversation_in_the_same_cwd_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `CodexArgvTest.test_newer_conversation_elsewhere_or_older_one_here_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `CodexArgvTest.test_own_conversation_written_after_start_is_fine` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `CodexArgvTest.test_unreadable_newer_conversation_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `CodexArgvTest.test_unknown_start_time_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `AgyArgvTest.test_cwd_cache_moved_to_a_newer_conversation_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `AgyArgvTest.test_cache_pointing_at_an_older_conversation_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `AgyArgvTest.test_cache_on_the_own_conversation_or_another_cwd_does_not_block` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `AgyArgvTest.test_unreadable_cache_means_unknown` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `CopilotArgvTest.test_only_the_argv_conversation_held_decides` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `CopilotArgvTest.test_another_held_conversation_means_the_argv_id_may_be_stale` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `CopilotArgvTest.test_hold_of_another_pid_is_not_ours` (py/tests/test_rsprov_stuck_argv_stale.py) | T4: `stuck.py` akışı | KAPSAM DIŞI |
@@ -3752,16 +3751,18 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
 | `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
 | `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
-| `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:70) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:75) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:81) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_decision_and_resume_use_the_same_conversation` (py/tests/test_rsprov_stuck_other_providers.py:86) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_hand_built_info_takes_the_id_of_the_process` (py/tests/test_rsprov_stuck_other_providers.py:96) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:100) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
-| `_Cases.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:106) | T4: `stuck.py` akışı; her sağlayıcı sınıfında koşar | KAPSAM DIŞI |
+| `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:70) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:75) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:81) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_decision_and_resume_use_the_same_conversation` (py/tests/test_rsprov_stuck_other_providers.py:86) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_hand_built_info_takes_the_id_of_the_process` (py/tests/test_rsprov_stuck_other_providers.py:96) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_unknown_conversation_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:100) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
+| `_Cases.test_conversation_held_by_another_session_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py:106) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
 | `CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` (py/tests/test_rsprov_stuck_other_providers.py:136) | `parity.rs::parity_chat` `codex-sid-yok` `codex-bos-sid` `codex-yanlis-sid` | TAŞINDI |
 | `AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` (py/tests/test_rsprov_stuck_other_providers.py:179) | T4: `stuck.py` akışı | KAPSAM DIŞI |
-| `AgyTest.test_unreadable_or_reused_process_means_unknown` (py/tests/test_rsprov_stuck_other_providers.py:187) | T4: `stuck.py` akışı | KAPSAM DIŞI |
+| `_Disabled.test_provider_opts_out` (py/tests/test_rsprov_stuck_other_providers.py) | `tests/tui.rs::codex_and_agy_opt_out_of_stuck_recovery`; `parity.rs` `fam_tui` `wants_stuck_recovery` | TAŞINDI |
+| `_Disabled.test_exact_unanswered_conversation_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
+| `_Disabled.test_hand_built_info_is_left_alone` (py/tests/test_rsprov_stuck_other_providers.py) | T4: `stuck.py` akışı (TBD#441) | KAPSAM DIŞI |
 | `UcliUnchangedTest.test_decision_and_recovery_are_as_before` (py/tests/test_rsprov_stuck_other_providers.py:225) | T4: `stuck.py` akışı | KAPSAM DIŞI |
 | `SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` (py/tests/test_rsprov_stuck_other_providers.py:241) | `parity.rs::parity_g9` `-devam-verilen` | TAŞINDI |
 

@@ -295,6 +295,15 @@ fn claude_wants_follow_has_conversation() {
     assert!(Cli::Claude.wants_handover_wrapup() && Cli::Claude.wants_stuck_recovery());
 }
 
+// test_rsprov_stuck_other_providers.py `_Disabled.test_provider_opts_out` (TBD#441)
+#[test]
+fn codex_and_agy_opt_out_of_stuck_recovery() {
+    for c in [Cli::Codex, Cli::Agy] {
+        assert!(c.has_conversation() && c.wants_handover_wrapup() && !c.wants_stuck_recovery());
+    }
+    assert!(Cli::Copilot.wants_stuck_recovery());
+}
+
 #[test]
 fn shell_wants_nothing() {
     let c = Cli::Shell;

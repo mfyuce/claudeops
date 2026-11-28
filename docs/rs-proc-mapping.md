@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 610 | 153 | 457 | 0 |
-| test durumu (156 dosya) | 1939 | 115 | 1824 | 0 |
+| tanım | 612 | 153 | 459 | 0 |
+| test durumu (156 dosya) | 1941 | 115 | 1826 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -25,9 +25,9 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `providers/__init__.py` | KISMİ | 3 | 1 | 2 | 0 |
 | `providers/base.py` | KISMİ | 83 | 6 | 77 | 0 |
 | `providers/claude_provider.py` | KISMİ | 130 | 8 | 122 | 0 |
-| `providers/codex_provider.py` | KISMİ | 43 | 8 | 35 | 0 |
+| `providers/codex_provider.py` | KISMİ | 44 | 8 | 36 | 0 |
 | `providers/copilot_provider.py` | KISMİ | 39 | 5 | 34 | 0 |
-| `providers/agy_provider.py` | KISMİ | 53 | 10 | 43 | 0 |
+| `providers/agy_provider.py` | KISMİ | 54 | 10 | 44 | 0 |
 | `providers/shell_provider.py` | KISMİ | 14 | 6 | 8 | 0 |
 | `providers/ucli_provider.py` | KISMİ | 90 | 10 | 80 | 0 |
 | `commands/usage.py` | KISMİ | 9 | 0 | 9 | 0 |
@@ -411,28 +411,29 @@ Yok.
 | `providers/codex_provider.py::_is_real_codex_user_text` | işlev:160 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 | `providers/codex_provider.py::CodexProvider` | sınıf:169 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
 | `providers/codex_provider.py::CodexProvider.name` | sabit:170 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/codex_provider.py::CodexProvider.__init__` | işlev:172 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.resolve_resume_id` | işlev:176 | kapsam dışı | yok | yok | devam kimliği ve rollout dosyası tam kimlik eşleşmesi. İz: T4 (yaşam döngüsü) |
-| `providers/codex_provider.py::CodexProvider.build_inner_command` | işlev:201 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.mcp_launch_args` | işlev:219 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.env_overrides` | işlev:230 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.matches_proc` | işlev:233 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
-| `providers/codex_provider.py::CodexProvider.extract_name` | işlev:241 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
-| `providers/codex_provider.py::CodexProvider.extract_info` | işlev:248 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yok |
-| `providers/codex_provider.py::CodexProvider.model_choices` | işlev:269 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.permission_modes` | işlev:288 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.effort_levels` | işlev:291 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.model_effort_levels` | işlev:294 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:315 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:318 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider.background_work` | işlev:329 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/codex_provider.py::CodexProvider._exact_rollout` | işlev:340 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:348 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:366 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.live_context` | işlev:395 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:424 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:434 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/codex_provider.py::CodexProvider.full_history` | işlev:459 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.wants_stuck_recovery` | işlev:172 | kapsam dışı | yok | yok | takılma kurtarması kapalı (TBD#441); Rust eşi cops-providers `Cli::wants_stuck_recovery`. İz: T4 (yaşam döngüsü) |
+| `providers/codex_provider.py::CodexProvider.__init__` | işlev:177 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.resolve_resume_id` | işlev:181 | kapsam dışı | yok | yok | devam kimliği ve rollout dosyası tam kimlik eşleşmesi. İz: T4 (yaşam döngüsü) |
+| `providers/codex_provider.py::CodexProvider.build_inner_command` | işlev:206 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.mcp_launch_args` | işlev:224 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.env_overrides` | işlev:235 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.matches_proc` | işlev:238 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
+| `providers/codex_provider.py::CodexProvider.extract_name` | işlev:246 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names`<br>`tests/fake_proc.rs::broken_proc_fields` | yok |
+| `providers/codex_provider.py::CodexProvider.extract_info` | işlev:253 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::codex_info` | yok |
+| `providers/codex_provider.py::CodexProvider.model_choices` | işlev:274 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.permission_modes` | işlev:293 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.effort_levels` | işlev:296 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.model_effort_levels` | işlev:299 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/codex_provider.py::CodexProvider.busy_status_pattern` | işlev:320 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider.input_settle_delay` | işlev:323 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider.background_work` | işlev:334 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/codex_provider.py::CodexProvider._exact_rollout` | işlev:345 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._rollout_path` | işlev:353 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider._transcript_lines` | işlev:371 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.live_context` | işlev:400 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
+| `providers/codex_provider.py::CodexProvider.last_message_role` | işlev:429 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.last_exchange` | işlev:439 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/codex_provider.py::CodexProvider.full_history` | işlev:464 | kapsam dışı | yok | yok | rollout dosyası ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/copilot_provider.py`
 
@@ -508,33 +509,34 @@ Yok.
 | `providers/agy_provider.py::_sid_claimed_by_other` | işlev:270 | karşılandı | `providers.rs::AgyState::resolve` | `providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
 | `providers/agy_provider.py::AgyProvider` | sınıf:277 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
 | `providers/agy_provider.py::AgyProvider.name` | sabit:278 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/agy_provider.py::AgyProvider.__init__` | işlev:280 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.resolve_resume_id` | işlev:286 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
-| `providers/agy_provider.py::AgyProvider.build_inner_command` | işlev:317 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.env_overrides` | işlev:366 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.mcp_setup_command` | işlev:369 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.matches_proc` | işlev:379 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/agy_provider.py::AgyProvider.extract_name` | işlev:382 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
-| `providers/agy_provider.py::AgyProvider.extract_info` | işlev:389 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::AgyState::resolve` | `golden.rs::provider_detect_and_info`<br>`providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
-| `providers/agy_provider.py::AgyProvider._fetch_models` | işlev:426 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.model_choices` | işlev:445 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.permission_modes` | işlev:478 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.effort_levels` | işlev:481 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.model_effort_levels` | işlev:484 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/agy_provider.py::AgyProvider.busy_status_pattern` | işlev:497 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/agy_provider.py::AgyProvider.usage_command` | işlev:500 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_fresh_argv` | işlev:511 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_auth_missing` | işlev:516 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.parse_fresh_usage` | işlev:521 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider.usage_needs_dismiss` | işlev:524 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/agy_provider.py::AgyProvider.parse_usage_text` | işlev:534 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:566 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:597 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:626 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.full_history` | işlev:645 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:663 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/agy_provider.py::AgyProvider.snapshot_for_live_sid` | işlev:673 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
-| `providers/agy_provider.py::AgyProvider.discover_live_sid` | işlev:683 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.wants_stuck_recovery` | işlev:280 | kapsam dışı | yok | yok | takılma kurtarması kapalı (TBD#441); Rust eşi cops-providers `Cli::wants_stuck_recovery`. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.__init__` | işlev:285 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.resolve_resume_id` | işlev:291 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.build_inner_command` | işlev:322 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.env_overrides` | işlev:371 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.mcp_setup_command` | işlev:374 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.matches_proc` | işlev:384 | karşılandı | `providers.rs::Cli::detect` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/agy_provider.py::AgyProvider.extract_name` | işlev:387 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | yok |
+| `providers/agy_provider.py::AgyProvider.extract_info` | işlev:394 | karşılandı | `providers.rs::Cli::extract_info`<br>`providers.rs::AgyState::resolve` | `golden.rs::provider_detect_and_info`<br>`providers.rs::agy_sid_rules`<br>`tests/fake_proc.rs::broken_agy_files` | yok |
+| `providers/agy_provider.py::AgyProvider._fetch_models` | işlev:431 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.model_choices` | işlev:450 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.permission_modes` | işlev:483 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.effort_levels` | işlev:486 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.model_effort_levels` | işlev:489 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/agy_provider.py::AgyProvider.busy_status_pattern` | işlev:502 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/agy_provider.py::AgyProvider.usage_command` | işlev:505 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_fresh_argv` | işlev:516 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_auth_missing` | işlev:521 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.parse_fresh_usage` | işlev:526 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider.usage_needs_dismiss` | işlev:529 | kapsam dışı | yok | yok | tmux ekranı okuma ve tuş gönderme. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/agy_provider.py::AgyProvider.parse_usage_text` | işlev:539 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/agy_provider.py::AgyProvider._transcript_steps` | işlev:571 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider._steps_desc` | işlev:602 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.last_exchange` | işlev:631 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.full_history` | işlev:650 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.sid_for_stopped_session` | işlev:668 | kapsam dışı | yok | yok | protobuf sohbet deposu okuma. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/agy_provider.py::AgyProvider.snapshot_for_live_sid` | işlev:678 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
+| `providers/agy_provider.py::AgyProvider.discover_live_sid` | işlev:688 | kapsam dışı | yok | yok | devam kimliği ve canlı sid keşfi. İz: T4 (yaşam döngüsü) |
 
 ### `py/claudeops/providers/shell_provider.py`
 
@@ -1758,18 +1760,20 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_id_is_never_stuck` | 83 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_missing_exact_record_is_never_stuck` | 88 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` | 94 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_decision_and_resume_use_the_same_conversation` | 99 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_hand_built_info_takes_the_id_of_the_process` | 109 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_conversation_is_left_alone` | 113 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::_Cases.test_conversation_held_by_another_session_is_left_alone` | 119 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` | 149 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` | 192 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::AgyTest.test_unreadable_or_reused_process_means_unknown` | 200 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::UcliUnchangedTest.test_decision_and_recovery_are_as_before` | 238 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
-| `test_rsprov_stuck_other_providers.py::SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` | 254 | kapsam dışı | yok | codex/agy/copilot takılma kararı yalnız kesin bilinen konuşmadan. İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_id_is_never_stuck` | 85 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_missing_exact_record_is_never_stuck` | 90 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` | 96 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_decision_and_resume_use_the_same_conversation` | 101 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_hand_built_info_takes_the_id_of_the_process` | 111 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_unknown_conversation_is_left_alone` | 115 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Cases.test_conversation_held_by_another_session_is_left_alone` | 121 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Disabled.test_provider_opts_out` | 132 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Disabled.test_exact_unanswered_conversation_is_never_stuck` | 135 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::_Disabled.test_hand_built_info_is_left_alone` | 139 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::CodexTest.test_other_readers_still_fall_back_to_the_newest_rollout_of_the_cwd` | 171 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::AgyTest.test_id_guessed_from_the_cwd_cache_never_decides` | 214 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::UcliUnchangedTest.test_decision_and_recovery_are_as_before` | 251 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
+| `test_rsprov_stuck_other_providers.py::SpawnResumeIdTest.test_every_provider_resumes_the_given_conversation_without_guessing` | 267 | kapsam dışı | yok | copilot takılma kararı yalnız kesin bilinen konuşmadan; codex/agy kapalı (TBD#441). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; T4 (yaşam döngüsü) |
 
 ### `py/tests/test_rsprov_stuck_own_conversation.py`
 
@@ -2638,9 +2642,9 @@ Yok.
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
 | `test_stuck_kills_parent.py::RecoverStuckTest.test_uses_parent_aware_kill` | 13 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
-| `test_stuck_kills_parent.py::RecoverStuckTest.test_unknown_permission_uses_provider_default` | 29 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
-| `test_stuck_kills_parent.py::RecoverStuckTest.test_dry_run_kills_nothing` | 42 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
-| `test_stuck_kills_parent.py::RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` | 48 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
+| `test_stuck_kills_parent.py::RecoverStuckTest.test_unknown_permission_uses_provider_default` | 30 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
+| `test_stuck_kills_parent.py::RecoverStuckTest.test_dry_run_kills_nothing` | 43 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
+| `test_stuck_kills_parent.py::RecoverStuckTest.test_recovery_uses_live_model_and_effort_not_spawn_argv` | 49 | kapsam dışı | yok | takılan oturumu kurtarma. İz: T4 (yaşam döngüsü) |
 
 ### `py/tests/test_tbd399_control_chars.py`
 
