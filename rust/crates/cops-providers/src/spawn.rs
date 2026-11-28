@@ -44,7 +44,7 @@ pub const SESSION_USD_CAP_KEY: &str = "CLAUDEOPS_SESSION_USD_CAP";
 /// (dizin 0700, dosya 0600) dosyasına yazılır ([`Effect::WriteSpawnEnv`]), kabuk onu alt kabukta yükleyip siler. Yalnız
 /// başka Unix hesaplarına karşı korur: çok kullanıcı kipinde oturumlar aynı Unix kullanıcısında koştuğundan panel
 /// kullanıcıları arasında koruma DEĞİLDİR (enterprise `docs/MULTI-USER.md` S1, TBD#177).
-pub const SECRET_ENV_SUFFIXES: [&str; 7] = [
+pub const SECRET_ENV_SUFFIXES: [&str; 12] = [
     "_KEY",
     "_TOKEN",
     "_SECRET",
@@ -52,6 +52,12 @@ pub const SECRET_ENV_SUFFIXES: [&str; 7] = [
     "_PASSWD",
     "_CREDENTIALS",
     "_CREDENTIAL",
+    // 28 Kas (TODO rs-prov S4 kalanı): erişim jetonu/parolalı adres/anahtar parolası adları da
+    "_AUTH",
+    "_PAT",
+    "_DSN",
+    "_PASSPHRASE",
+    "_APIKEY",
 ];
 /// Sır ortam dosyalarının dizini (`CLAUDEOPS_DIR` altında).
 pub const SPAWN_ENV_DIRNAME: &str = "spawn-env";
@@ -90,7 +96,8 @@ pub fn dry_run_preview(cwd: &str, overrides: &[(String, String)], invocation: &s
         .iter()
         .map(|(k, v)| {
             let folded: String = k.chars().map(fold_char).collect();
-            let value = if SECRET_WORDS.iter().any(|w| folded.contains(w)) {
+            let value = if SECRET_WORDS.iter().any(|w| folded.contains(w)) || is_secret_env_name(k)
+            {
                 "***".to_string()
             } else {
                 quote(v)

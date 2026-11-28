@@ -68,7 +68,8 @@ _SECRET_ENV_RE = re.compile(r"KEY|TOKEN|SECRET|PASSW|CREDENTIAL|AUTH", re.IGNORE
 def _dry_run_preview(cwd: str, overrides: dict, cli_invocation: str) -> str:
     """Dry-run satırı: `cd` + ortam + CLI komutu. Öncelik öneki (renice/ionice) gösterilmez; sır adlı env değeri maskelenir
     (çıktı terminale/loga yazılır, çok kullanıcı kancası anahtar döndürebilir). Aşırı uzun komut (uzun prompt) sondan kesilir."""
-    env_part = "".join(f"{k}={'***' if _SECRET_ENV_RE.search(k) else shlex.quote(v)} " for k, v in overrides.items())
+    env_part = "".join(f"{k}={'***' if _SECRET_ENV_RE.search(k) or is_secret_env_name(k) else shlex.quote(v)} "
+                       for k, v in overrides.items())
     out = f"cd {shlex.quote(cwd)} && {env_part}{cli_invocation}"
     return out if len(out) <= DRY_RUN_PREVIEW_MAX else out[:DRY_RUN_PREVIEW_MAX] + "..."
 
@@ -77,7 +78,9 @@ def _dry_run_preview(cwd: str, overrides: dict, cli_invocation: str) -> str:
 # gömülmez; `CLAUDEOPS_DIR/spawn-env/<rastgele>.env` (dizin 0700, dosya 0600) dosyasına yazılır, kabuk onu ALT KABUKTA
 # yükleyip hemen siler. Yalnız makinedeki BAŞKA Unix hesaplarına karşı korur: çok kullanıcı kipinde oturumlar aynı Unix
 # kullanıcısında koştuğundan panel kullanıcıları arasında koruma DEĞİLDİR (enterprise docs/MULTI-USER.md S1, TBD#177).
-_SECRET_ENV_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_CREDENTIALS", "_CREDENTIAL")
+_SECRET_ENV_SUFFIXES = ("_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_CREDENTIALS", "_CREDENTIAL",
+                        # 28 Kas (TODO rs-prov S4 kalanı): erişim jetonu/parolalı adres/anahtar parolası adları da
+                        "_AUTH", "_PAT", "_DSN", "_PASSPHRASE", "_APIKEY")
 # Son ekin alt çizgisiz yalın hali de sırdır (`PASSWORD`, `TOKEN`); kayıt TBD#443: karar üç son eki kapsıyordu,
 # parola/kimlik bilgisi adları aynı korumaya alındı (yalnız komut satırını etkiler, CLI değeri yine alır).
 _SECRET_ENV_BARE = frozenset(s[1:] for s in _SECRET_ENV_SUFFIXES)

@@ -140,6 +140,26 @@ class SecretEnvGoesToAFileTest(_Base):
         for k, v in self.hook_env.items():
             self.assertIn(f"export {k}={v}\n", body)
 
+    def test_auth_pat_dsn_names_leave_the_command_line(self):
+        # 28 Kas (TODO rs-prov S4 kalanı): erişim jetonu, parolalı adres ve anahtar parolası adları da dosyaya gider.
+        self.hook_env = {"GITHUB_PAT": "gizli-g", "DATABASE_DSN": "pg://u:gizli-d@h", "NPM_AUTH": "gizli-n",
+                         "GPG_PASSPHRASE": "gizli-p", "X_APIKEY": "gizli-k", "PAT": "gizli-b",
+                         "PATH_EXTRA": "/kalir", "XPAT": "kalir2"}
+        self.spawn()
+        inner = self.direct[0]
+        for k, v in self.hook_env.items():
+            if v.startswith("/kalir") or v == "kalir2":
+                self.assertIn(f"{k}={v}", inner)
+            else:
+                self.assertNotIn(v, inner)
+
+    def test_dry_run_masks_the_new_secret_names(self):
+        self.hook_env = {"GITHUB_PAT": "gizli-g", "DATABASE_DSN": "pg://u:gizli-d@h", "GPG_PASSPHRASE": "gizli-p"}
+        out = self.spawn(dry_run=True)
+        for v in self.hook_env.values():
+            self.assertNotIn(v, out)
+        self.assertIn("GITHUB_PAT=***", out)
+
     def test_without_secret_names_the_command_is_unchanged_and_nothing_is_written(self):
         self.hook_env = dict(PLAIN)
         self.spawn()

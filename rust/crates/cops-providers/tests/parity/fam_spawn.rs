@@ -148,7 +148,9 @@ fn spawn_cases(e: &Env) -> Vec<Case> {
             v.push(base(format!("{cli}-sir-{mode}"), cli, mode, json!({}))
                 .facts(json!({"hook_env": [["PROVIDER_DIR", "/p d"], ["API_KEY", "s'ır $(id)"], ["MY_TOKEN", "t"],
                                            ["X_SECRET", "z"], ["TOKENS", "2"], ["KEY_DIR", "/k"], ["PASSWORD", "p"],
-                                           ["DB_PASSWD", "d"], ["GH_CREDENTIALS", "c"], ["PASSWORDS", "kalir"], ["password", "kalir"]]})));
+                                           ["DB_PASSWD", "d"], ["GH_CREDENTIALS", "c"], ["PASSWORDS", "kalir"], ["password", "kalir"],
+                                           ["GITHUB_PAT", "g"], ["DATABASE_DSN", "pg://u:p@h"], ["NPM_AUTH", "n"],
+                                           ["GPG_PASSPHRASE", "q"], ["X_APIKEY", "k"], ["PATH_EXTRA", "kalir"], ["XPAT", "kalir"]]})));
         }
         v.push(base(format!("{cli}-kanca-gizli"), cli, "hidden", json!({}))
             .facts(json!({"hook_env": [["COPS_NAME", "ezilir"], ["PROVIDER_DIR", "/p d"], ["IFS", "x"]]})));
@@ -407,6 +409,10 @@ fn misc_cases() -> Vec<Case> {
         ["CREDENTIALS_FILE", "c"],
         ["SECRET", "z"],
         ["PASSWD", "q"],
+        ["GITHUB_PAT", "g"],
+        ["DATABASE_DSN", "d"],
+        ["GPG_PASSPHRASE", "p"],
+        ["PATH_EXTRA", "x"],
         ["COPS_NAME", "a b"],
         ["MONKEY", "m"],
         ["\u{212a}EY", "k"],
