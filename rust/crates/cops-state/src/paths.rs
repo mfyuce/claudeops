@@ -79,7 +79,15 @@ fn resolve_from(
     home: Option<OsString>,
 ) -> io::Result<PathBuf> {
     if let Some(d) = env_dir.filter(|d| !d.is_empty()) {
-        return Ok(d.into());
+        let d = PathBuf::from(d);
+        if !d.is_absolute() {
+            // Python `paths.py` (ve `cops-cli` `Roots::check_absolute`) ile aynı metin: kapalı yön, hiçbir şey yazılmadan
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("CLAUDEOPS_DIR göreli ({}): mutlak yol verin", d.display()),
+            ));
+        }
+        return Ok(d);
     }
     if test {
         return Ok(test_dir());
@@ -328,33 +336,64 @@ pub fn abs_normpath(p: &Path) -> PathBuf {
     PathBuf::from(normpath(&abs))
 }
 
-/// `os.path.realpath` (katı değil): var olmayan kuyruk olduğu gibi kalır.
+/// `os.path.realpath` (katı değil; CPython 3.10 `posixpath._joinrealpath`): bileşen bileşen ilerler, sembolik bağ hedefi
+/// (var olmasa da) aynı kuralla yeniden işlenir (`..` ve ara bağlar dahil); var olmayan kuyruk olduğu gibi kalır, döngüde
+/// kalan kuyruk eklenip bırakılır. Sonuç `abspath` (normpath).
 pub fn realpath(p: &Path) -> PathBuf {
     let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-    let mut out = PathBuf::from("/");
-    for c in abs.components() {
-        match c {
+    let mut seen = std::collections::HashMap::new();
+    let (out, _) = join_realpath(PathBuf::from("/"), &abs, &mut seen);
+    abs_normpath(&out)
+}
+
+/// `_joinrealpath(path, rest, strict=False, seen)`: (yol, döngü yok mu).
+fn join_realpath(
+    mut path: PathBuf,
+    rest: &Path,
+    seen: &mut std::collections::HashMap<PathBuf, Option<PathBuf>>,
+) -> (PathBuf, bool) {
+    let comps: Vec<Component<'_>> = rest.components().collect();
+    let tail = |i: usize| -> PathBuf { comps[i + 1..].iter().collect() };
+    for (i, c) in comps.iter().enumerate() {
+        let name = match c {
+            Component::RootDir => {
+                path = PathBuf::from("/");
+                continue;
+            }
+            Component::CurDir | Component::Prefix(_) => continue,
             Component::ParentDir => {
-                out.pop();
+                path.pop(); // `path` hep mutlak ve `..` içermez: Python `split` ile aynı
+                continue;
             }
-            Component::Normal(n) => {
-                out.push(n);
-                // sembolik bağ (hedefi olmayan dahil) izlenir; döngü 40 adımda kesilir
-                for _ in 0..40 {
-                    let Ok(t) = std::fs::read_link(&out) else {
-                        break;
-                    };
-                    out.pop();
-                    out = if t.is_absolute() { t } else { out.join(t) };
-                    if let Ok(c) = out.canonicalize() {
-                        out = c;
-                    }
-                }
-            }
-            _ => {}
+            Component::Normal(n) => n,
+        };
+        let newpath = path.join(name);
+        let is_link = std::fs::symlink_metadata(&newpath).is_ok_and(|m| m.file_type().is_symlink());
+        if !is_link {
+            path = newpath;
+            continue;
         }
+        match seen.get(&newpath) {
+            Some(Some(done)) => {
+                path = done.clone();
+                continue;
+            }
+            Some(None) => return (newpath.join(tail(i)), false), // döngü
+            None => {}
+        }
+        let Ok(target) = std::fs::read_link(&newpath) else {
+            path = newpath; // okunamayan bağ: bileşen olduğu gibi
+            continue;
+        };
+        seen.insert(newpath.clone(), None);
+        let (resolved, ok) = join_realpath(path, &target, seen);
+        if !ok {
+            return (resolved.join(tail(i)), false);
+        }
+        seen.insert(newpath, Some(resolved.clone()));
+        path = resolved;
     }
-    out
+    (path, true)
 }
 
 /// `os.path.isfile(p) and os.access(p, os.X_OK)`.
@@ -568,6 +607,13 @@ mod tests {
         assert_eq!(r(None, false), PathBuf::from("/h/.claude/claudeops"));
         assert!(r(None, true).starts_with(std::env::temp_dir()));
         assert!(resolve_from(None, false, None).is_err());
+        // Python `paths.py`: göreli ortam değeri açık hata (süreç dizinine göre çözülüp `py/` altına yazılmasın)
+        let e = resolve_from(Some("rel/state".into()), false, home.clone()).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "CLAUDEOPS_DIR göreli (rel/state): mutlak yol verin"
+        );
+        assert!(resolve_from(Some("./x".into()), true, home.clone()).is_err());
     }
 
     #[test]
