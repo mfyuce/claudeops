@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+cops-state = { path = "../cops-state" }
 libc = "0.2"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl"] } # copsd boyutu (R-B2a-5): yalnız \s/\d; (?i) ya da \p{..} eklenirse özellik ekle
 

@@ -53,7 +53,11 @@ class RealTmuxFormatTests(unittest.TestCase):
                     else:   # parçanın argv'si, pencere yerine `-d` ile
                         argv = shlex.split(tb.tmux_new_session_shell_fragment(sess, cwd, "sleep 60"))
                         argv.insert(argv.index("new-session") + 1, "-d")
-                        subprocess.run(argv, check=True, capture_output=True)
+                        env = dict(os.environ)
+                        while "=" in argv[0]:       # `PATH=... tmux` öneki (TBD#450): kabuk ataması, çevreye taşınır
+                            k, _, v = argv.pop(0).partition("=")
+                            env[k] = v
+                        subprocess.run(argv, check=True, capture_output=True, env=env)
                     got = iso.raw("display-message", "-p", "-t", f"={sess}:", "#{session_path}").rstrip("\n")
                     self.assertEqual(got, cwd, f"{via} {base}")
             time.sleep(1.0)

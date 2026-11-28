@@ -76,8 +76,16 @@ impl Tmux {
         if !addressable(name) {
             return Err(TmuxError::BadArgument("name"));
         }
+        // TBD#450: bağlı olmayan istemcinin açtığı oturumda pane PATH'i istemcinin PATH'idir (`-e PATH=` ezemez):
+        // süzülmüş PATH kabuk atamasıyla istemciye verilir (Python `_client_path`)
+        let path = client_path(process_path().as_deref());
+        let prefix = if path.is_empty() {
+            String::new()
+        } else {
+            format!("PATH={} ", shell_quote(&path))
+        };
         Ok(format!(
-            "{} -f {} new-session -A -s {} -c {} -x 100 -y 30 {}",
+            "{prefix}{} -f {} new-session -A -s {} -c {} -x 100 -y 30 {}",
             self.shell_base(),
             shell_quote(conf),
             // `;` ile biten argv elemanı tmux komut ayıracı (TBD#366 P4): `\;` literal verir.
@@ -112,7 +120,7 @@ impl Tmux {
         K: Into<OsString>,
         V: Into<OsString>,
     {
-        let envs: Vec<(OsString, OsString)> = envs
+        let mut envs: Vec<(OsString, OsString)> = envs
             .into_iter()
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
@@ -122,6 +130,16 @@ impl Tmux {
         }
         let conf = conf.to_str().ok_or(TmuxError::BadArgument("conf"))?;
         let command = format!("{inner}; exec bash");
+        // TBD#450: istemcinin PATH'i pane PATH'i olur; `envs` PATH'i (yoksa süreç PATH'i) süzülür (Python `_client_path`)
+        let given = envs
+            .iter()
+            .find(|(k, _)| k == "PATH")
+            .map(|(_, v)| v.to_string_lossy().into_owned());
+        let path = client_path(given.or_else(process_path).as_deref());
+        if !path.is_empty() {
+            envs.retain(|(k, _)| k != "PATH");
+            envs.push(("PATH".into(), path.into()));
+        }
         // `;` ile biten ad/cwd tmux'ta komut ayıracı olurdu ("unknown command: -c", TBD#366 P4).
         let (name, cwd) = (escape_arg(name), escape_arg(&format_literal(cwd)));
         let args = [
@@ -208,6 +226,18 @@ fn ghost_rows(out: &str, now: f64, childless: impl Fn(&str) -> bool) -> bool {
         return false;
     }
     rows.iter().all(|r| childless(r[2]))
+}
+
+/// Süreç PATH'i. UTF-8 olmayan girdi kayıplı çevrilir: bozulan yol var olmayacağından süzgeçte atılır.
+fn process_path() -> Option<String> {
+    std::env::var_os("PATH").map(|v| v.to_string_lossy().into_owned())
+}
+
+/// Oturumu açan tmux istemcisine verilecek süzülmüş PATH (TBD#450); güvenilir girdi yoksa "" (dokunulmaz).
+///
+/// py: tmux_backend._client_path
+fn client_path(path: Option<&str>) -> String {
+    cops_state::paths::trusted_path_env(path.unwrap_or(""))
 }
 
 #[cfg(test)]
