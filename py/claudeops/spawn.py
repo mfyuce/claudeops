@@ -148,6 +148,33 @@ def _write_spawn_env_file(dirpath: str, fname: str, content: str) -> None:
         os.close(dfd)
 
 
+class _SpawnEnvFile:
+    """Bekçinin yeniden açılışta geri yazacağı sır ortam dosyası (TODO 248, S4 kalanı). `repr` içerik göstermez: iş
+    parçacığı argümanları ve iz kayıtları sır taşımasın."""
+    __slots__ = ("dirpath", "fname", "content")
+
+    def __init__(self, dirpath: str, fname: str, content: str):
+        self.dirpath, self.fname, self.content = dirpath, fname, content
+
+    def __repr__(self) -> str:
+        return f"_SpawnEnvFile({self.dirpath}/{self.fname}, <redacted>)"
+
+
+def _restore_spawn_env(env_file: "Optional[_SpawnEnvFile]", name: str, cwd: str, attempt: int) -> bool:
+    """Bekçi yeniden açmadan hemen önce: ilk kabuk dosyayı yükleyip sildiyse (oturum sonra düştü) aynı içerikle geri
+    yazar; dosya hâlâ duruyorsa dokunmaz (`link` ezmez). Yazılamazsa False: yeniden açılış yapılmaz (kapalı yön)."""
+    if env_file is None:
+        return True
+    try:
+        _write_spawn_env_file(env_file.dirpath, env_file.fname, env_file.content)
+    except FileExistsError:
+        return True
+    except OSError as e:
+        diag_log("spawn_env_file_refused", name=name, cwd=cwd, attempt=attempt, error=type(e).__name__)
+        return False
+    return True
+
+
 def detect_display() -> str:
     """DISPLAY'i tespit et: env → :1 → :0 sırasıyla."""
     env = os.environ.get("DISPLAY", "")
@@ -359,6 +386,7 @@ def spawn_session(
     env_prefix = "".join(f"{k}={shlex.quote(v)} " for k, v in overrides.items() if k not in secret_env)
     launch = f"{env_prefix}{cli_invocation}"
     env_dir = env_file = ""
+    env_record = None
     if secret_env:
         env_dir = os.path.join(CLAUDEOPS_DIR, _SPAWN_ENV_DIRNAME)
         env_file = os.path.join(env_dir, f"{_spawn_env_token()}.env")
@@ -370,9 +398,10 @@ def spawn_session(
         return f"[dry-run] {kind}  cmd: {_dry_run_preview(cwd, overrides, cli_invocation)}"
 
     if secret_env:     # kapalı yön: dosya güvenle yazılamazsa sır komut satırına düşmez, oturum açılmaz
+        env_record = _SpawnEnvFile(env_dir, os.path.basename(env_file),
+                                   "".join(f"export {k}={shlex.quote(v)}\n" for k, v in secret_env.items()))
         try:
-            _write_spawn_env_file(env_dir, os.path.basename(env_file),
-                                  "".join(f"export {k}={shlex.quote(v)}\n" for k, v in secret_env.items()))
+            _write_spawn_env_file(env_record.dirpath, env_record.fname, env_record.content)
         except OSError as e:
             diag_log("spawn_env_file_refused", name=name, cli=cli, error=type(e).__name__)
             raise _authz.SpawnRefused("secret_env_file", type(e).__name__) from None
@@ -443,7 +472,7 @@ def spawn_session(
         # process'i canlı tutar — worst-case ek gecikim ~(FALLBACK_RETRY_COUNT+1)×
         # FALLBACK_ATTEMPT_WAIT_SECONDS + tmux timeout'u (sınırlı, asla hang etmez),
         # py/cops web gibi zaten uzun-yaşayan çağıranlarda hiç fark edilmez.
-        threading.Thread(target=_fallback_watchdog, args=(name, cwd, inner, env, window_cmd),
+        threading.Thread(target=_fallback_watchdog, args=(name, cwd, inner, env, window_cmd, env_record),
                           daemon=False).start()
     return kind
 
@@ -532,13 +561,17 @@ def _window_titled(name: str, display: str) -> bool:
     return False
 
 
-def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: str) -> None:
+def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: str,
+                       env_file: "Optional[_SpawnEnvFile]" = None) -> None:
     """İlk gnome-terminal denemesi (spawn_session'da zaten atıldı) tmux session'ı
     getirmezse, aynı komutu FALLBACK_RETRY_COUNT kez daha dener (ara sıra tek
     seferlik D-Bus flake'i çoğunlukla bir sonraki denemede geçer — 2026-08-28
     canlı doğrulandı, reboot sonrası taze bir gnome-terminal-server'da bile
     tekrarladı). Hepsi de başarısız olursa ANCAK O ZAMAN gnome-terminal'siz
-    doğrudan headless tmux'a düşer."""
+    doğrudan headless tmux'a düşer.
+
+    S4 (TODO 248): `env_file` varsa her yeniden açılıştan hemen önce sır ortam dosyası geri yazılır (ilk kabuk onu
+    yükleyip silmiş olabilir); yazılamazsa bekçi açmadan biter, sır komut satırına düşmez."""
     for attempt in range(FALLBACK_RETRY_COUNT + 1):
         deadline = time.monotonic() + FALLBACK_ATTEMPT_WAIT_SECONDS
         while time.monotonic() < deadline:
@@ -554,6 +587,8 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
                 diag_log("spawn_retry_window_exists", name=name, cwd=cwd, attempt=attempt + 1)
                 continue
             diag_log("spawn_retry", name=name, cwd=cwd, attempt=attempt + 1)
+            if not _restore_spawn_env(env_file, name, cwd, attempt + 1):
+                return
             try:
                 launched = _launch_gnome_terminal(name, cwd, window_cmd, env)
             except ValueError as e:     # argv/ortam reddi: bekçi biter (yedek de aynı girdiyi taşır). Metin değer içerebilir: yalnız sınıf adı
@@ -562,6 +597,8 @@ def _fallback_watchdog(name: str, cwd: str, inner: str, env: dict, window_cmd: s
             if not launched:
                 diag_log("spawn_retry_launch_failed", name=name, cwd=cwd, attempt=attempt + 1)
     if tmux_has_session(name):
+        return
+    if not _restore_spawn_env(env_file, name, cwd, FALLBACK_RETRY_COUNT + 1):
         return
     ok = tmux_spawn_direct(name, cwd, inner, env)
     diag_log("spawn_fallback_used", name=name, cwd=cwd, ok=ok)

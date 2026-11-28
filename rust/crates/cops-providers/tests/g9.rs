@@ -7,7 +7,7 @@ use cops_providers::real::routing_sync::{copy2, sync_global_files};
 use cops_providers::real::startup_desktop::X11Desktop;
 use cops_providers::real::Env;
 use cops_providers::spawn_exec::{
-    fallback_watchdog, reclaim_ghost_session, Clock, DiagSink, LaunchError, Launcher, SpawnTmux,
+    fallback_watchdog, fallback_watchdog_with, reclaim_ghost_session, SpawnEnvFile, Clock, DiagSink, LaunchError, Launcher, SpawnTmux,
     Terminal, FALLBACK_ATTEMPT_WAIT_SECONDS, FALLBACK_POLL_SECONDS, FALLBACK_RETRY_COUNT,
 };
 use cops_providers::startup_desktop::{
@@ -300,6 +300,56 @@ fn watchdog_returns_at_once_when_the_session_exists() {
     assert_eq!(r.calls(), ["has s"]);
     assert!(r.events().is_empty());
     assert!(r.clock.sleeps.lock().unwrap().is_empty());
+}
+
+/// TODO 248 (S4 kalanı): ilk kabuk dosyayı yükleyip sildiyse bekçinin yeniden açılışı dosyayı aynı içerikle geri yazar
+/// (0600); var olanı ezmez; yazamazsa açmaz ve günlüğe yalnız sınıf adı girer (Python `WatchdogRestoresTheEnvFileTest`).
+#[test]
+fn watchdog_restores_a_consumed_spawn_env_file_before_relaunching() {
+    let (_d, root) = tmpdir();
+    let dir = format!("{root}/spawn-env");
+    let f = SpawnEnvFile {
+        dir: dir.clone(),
+        file: "abc.env".into(),
+        content: "export API_KEY='s1r'\n".into(),
+    };
+    let r = rig(|_| {}, vec![]);
+    fallback_watchdog_with(&r.launcher, "s", "/w", "inner", &[], "cmd", Some(&f));
+    let path = format!("{dir}/abc.env");
+    assert_eq!(fs::read_to_string(&path).unwrap(), f.content);
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(r.calls().last().unwrap(), "direct s");
+    assert!(!format!("{f:?}{:?}", r.events()).contains("s1r"));
+
+    // dosya hâlâ duruyorsa (yüklenmedi) dokunulmaz
+    fs::write(&path, "eski").unwrap();
+    let r = rig(|_| {}, vec![]);
+    fallback_watchdog_with(&r.launcher, "s", "/w", "inner", &[], "cmd", Some(&f));
+    assert_eq!(fs::read_to_string(&path).unwrap(), "eski");
+    assert_eq!(r.calls().last().unwrap(), "direct s");
+}
+
+#[test]
+fn watchdog_does_not_relaunch_when_the_env_file_cannot_be_restored() {
+    let (_d, root) = tmpdir();
+    let target = format!("{root}/baska");
+    fs::create_dir(&target).unwrap();
+    let dir = format!("{root}/spawn-env");
+    std::os::unix::fs::symlink(&target, &dir).unwrap();
+    let f = SpawnEnvFile {
+        dir,
+        file: "abc.env".into(),
+        content: "export API_KEY='s1r'\n".into(),
+    };
+    let r = rig(|_| {}, vec![]);
+    fallback_watchdog_with(&r.launcher, "s", "/w", "inner", &[], "cmd", Some(&f));
+    let calls = r.calls();
+    assert!(!calls.iter().any(|c| c.starts_with("launch") || c.starts_with("direct")), "{calls:?}");
+    let ev = r.events();
+    let names: Vec<&str> = ev.iter().map(|e| e.0).collect();
+    assert_eq!(names, ["spawn_retry", "spawn_env_file_refused"]);
+    assert!(fs::read_dir(&target).unwrap().next().is_none());
+    assert!(!format!("{ev:?}").contains("s1r"));
 }
 
 #[test]

@@ -556,9 +556,19 @@ fn run(
     let watchdog = if launcher.tmux.available() {
         let l = launcher.clone();
         let (name, cwd, inner) = (req.name.clone(), req.cwd.clone(), plan.inner.clone());
+        let env_file = out.effects.iter().find_map(|e| match e {
+            Effect::WriteSpawnEnv { dir, file, content } => Some(SpawnEnvFile {
+                dir: dir.clone(),
+                file: file.clone(),
+                content: content.clone(),
+            }),
+            _ => None,
+        });
         let handle = std::thread::Builder::new()
             .name("cops-spawn-watchdog".into())
-            .spawn(move || fallback_watchdog(&l, &name, &cwd, &inner, &env, &window_cmd))
+            .spawn(move || {
+                fallback_watchdog_with(&l, &name, &cwd, &inner, &env, &window_cmd, env_file.as_ref())
+            })
             .map_err(|_| SpawnFailure::Error {
                 class: "RuntimeError".into(),
                 message: "can't start new thread".into(),
@@ -603,6 +613,52 @@ pub fn reclaim_ghost_session(launcher: &Launcher, name: &str, cli: &str) {
     );
 }
 
+/// Bekçinin yeniden açılışta geri yazacağı S4 sır ortam dosyası (Python `spawn._SpawnEnvFile`, TODO 248). `Debug`
+/// içerik göstermez.
+#[derive(Clone)]
+pub struct SpawnEnvFile {
+    pub dir: String,
+    pub file: String,
+    pub content: String,
+}
+
+impl fmt::Debug for SpawnEnvFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SpawnEnvFile({}/{}, <redacted>)", self.dir, self.file)
+    }
+}
+
+/// `_restore_spawn_env`: ilk kabuk dosyayı yükleyip sildiyse (oturum sonra düştü) aynı içerikle geri yazar; dosya hâlâ
+/// duruyorsa dokunmaz (`linkat` ezmez, EEXIST = başarı). Yazılamazsa `spawn_env_file_refused` (yalnız sınıf adı) ve
+/// false: yeniden açılış yapılmaz.
+fn restore_spawn_env(
+    launcher: &Launcher,
+    env_file: Option<&SpawnEnvFile>,
+    name: &str,
+    cwd: &str,
+    attempt: u32,
+) -> bool {
+    let Some(f) = env_file else {
+        return true;
+    };
+    match crate::real::effects::write_spawn_env(&f.dir, &f.file, f.content.as_bytes()) {
+        Ok(()) => true,
+        Err((_, e)) if e.kind() == std::io::ErrorKind::AlreadyExists => true,
+        Err((_, e)) => {
+            launcher.log(
+                "spawn_env_file_refused",
+                vec![
+                    ("name", json!(name)),
+                    ("cwd", json!(cwd)),
+                    ("attempt", json!(attempt)),
+                    ("error", json!(oserr::class_name(&e))),
+                ],
+            );
+            false
+        }
+    }
+}
+
 /// `_fallback_watchdog`: ilk gnome-terminal denemesi tmux oturumunu getirmezse [`FALLBACK_RETRY_COUNT`] kez yeniden
 /// dener (bu başlıkta pencere zaten açıksa yenisini açmadan bekler, `spawn_retry_window_exists`); hepsi biterse ANCAK O ZAMAN penceresiz tmux. `Popen` istisnası bekçiyi bitirir; `ValueError`
 /// `spawn_retry_launch_error` günlüğüne yalnız sınıf adıyla yazılır (metin argv/ortam değeri taşıyabilir).
@@ -613,6 +669,20 @@ pub fn fallback_watchdog(
     inner: &str,
     env: &[(String, String)],
     window_cmd: &str,
+) {
+    fallback_watchdog_with(launcher, name, cwd, inner, env, window_cmd, None);
+}
+
+/// [`fallback_watchdog`]; `env_file` varsa her yeniden açılıştan (pencere ya da penceresiz tmux) hemen önce S4 sır
+/// ortam dosyası geri yazılır ([`SpawnEnvFile`]); yazılamazsa bekçi açmadan biter, sır komut satırına düşmez.
+pub fn fallback_watchdog_with(
+    launcher: &Launcher,
+    name: &str,
+    cwd: &str,
+    inner: &str,
+    env: &[(String, String)],
+    window_cmd: &str,
+    env_file: Option<&SpawnEnvFile>,
 ) {
     let (tmux, clock) = (&launcher.tmux, &launcher.clock);
     for attempt in 0..=FALLBACK_RETRY_COUNT {
@@ -654,6 +724,9 @@ pub fn fallback_watchdog(
                     ("attempt", json!(next)),
                 ],
             );
+            if !restore_spawn_env(launcher, env_file, name, cwd, next) {
+                return;
+            }
             match launcher.launch_window(name, &gnome_terminal_argv(name, cwd, window_cmd), env) {
                 Ok(true) => {}
                 Ok(false) => launcher.log(
@@ -682,6 +755,9 @@ pub fn fallback_watchdog(
         }
     }
     if tmux.has_session(name) {
+        return;
+    }
+    if !restore_spawn_env(launcher, env_file, name, cwd, FALLBACK_RETRY_COUNT + 1) {
         return;
     }
     let ok = tmux.spawn_direct(name, cwd, inner, env);

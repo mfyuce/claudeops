@@ -250,5 +250,78 @@ class FailClosedTest(_Base):
         self.assertFalse(os.path.exists(os.path.join(self.root, "yok")))
 
 
+class WatchdogRestoresTheEnvFileTest(_Base):
+    """TODO 248 (S4 kalanı): dosya yüklenip silindikten sonra bekçi yeniden açarsa (oturum düşmüş) CLI yine başlamalı:
+    bekçi her yeniden açılıştan hemen önce dosyayı aynı içerikle geri yazar; var olanı ezmez; yazamazsa açmaz."""
+
+    def run_watchdog(self, consume_first=True):
+        self.hook_env = dict(SECRETS)
+        captured, launched = [], []
+        with mock.patch.object(spawn, "shutil", SimpleNamespace(which=lambda n: "/usr/bin/" + n)), \
+                mock.patch.object(spawn, "_launch_gnome_terminal", lambda name, cwd, cmd, env: True), \
+                mock.patch.object(spawn, "tmux_new_session_shell_fragment", lambda n, c, i: f"FRAG<{i}>"), \
+                mock.patch.object(spawn, "threading", SimpleNamespace(Thread=lambda target, args, daemon: SimpleNamespace(
+                    start=lambda: captured.append(args)))):
+            self.spawn(hidden=False)
+        args = captured[0]
+        self.assert_no_secret_in(repr(args))
+        if consume_first:     # ilk kabuk dosyayı yükleyip sildi, oturum sonra düştü
+            for f in self.env_files():
+                os.unlink(os.path.join(self.envdir, f))
+        seen = []
+
+        def direct(name, cwd, inner, env):
+            seen.append((inner, self.env_files()))
+            return True
+        with mock.patch.object(spawn, "FALLBACK_ATTEMPT_WAIT_SECONDS", 0.01), \
+                mock.patch.object(spawn.time, "sleep"), \
+                mock.patch.object(spawn, "tmux_has_session", return_value=False), \
+                mock.patch.object(spawn, "_window_titled", return_value=False), \
+                mock.patch.object(spawn, "_launch_gnome_terminal",
+                                  lambda name, cwd, cmd, env: launched.append(self.env_files()) or True), \
+                mock.patch.object(spawn, "tmux_spawn_direct", direct):
+            spawn._fallback_watchdog(*args)
+        return args, launched, seen
+
+    def test_relaunch_finds_the_file_again(self):
+        args, launched, seen = self.run_watchdog()
+        self.assertEqual(len(launched), spawn.FALLBACK_RETRY_COUNT)
+        self.assertTrue(all(len(x) == 1 for x in launched), launched)
+        self.assertEqual(len(seen), 1)
+        inner, files = seen[0]
+        self.assertEqual(len(files), 1)
+        self.assertIn(files[0], inner)
+        path = os.path.join(self.envdir, files[0])
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        out = subprocess.run(["bash", "-c", f". {path} && env"], capture_output=True, text=True).stdout
+        for k, v in SECRETS.items():
+            self.assertIn(f"{k}={v}", out)
+        self.assert_no_secret_in(repr(self.logs))
+
+    def test_an_unconsumed_file_is_left_untouched(self):
+        self.hook_env = dict(SECRETS)
+        args, launched, seen = self.run_watchdog(consume_first=False)
+        self.assertEqual(len(seen[0][1]), 1)
+
+    def test_unwritable_directory_stops_the_relaunch(self):
+        if os.geteuid() == 0:
+            self.skipTest("root izin denetimine takılmaz")
+        self.hook_env = dict(SECRETS)
+        orig = spawn._write_spawn_env_file
+        calls = {"n": 0}
+
+        def write_once(*a):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise PermissionError(13, "izin yok")
+            return orig(*a)
+        with mock.patch.object(spawn, "_write_spawn_env_file", write_once):
+            args, launched, seen = self.run_watchdog()
+        self.assertEqual((launched, seen), ([], []))
+        ev = [k for e, k in self.logs if e == "spawn_env_file_refused"]
+        self.assertEqual(ev[-1].get("error"), "PermissionError")
+        self.assert_no_secret_in(repr(self.logs))
+
+
 if __name__ == "__main__":
     unittest.main()

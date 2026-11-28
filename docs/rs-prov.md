@@ -240,8 +240,11 @@ Python 31 MB.
   açılışlar çakışmaz). Açılış komutu `cd CWD && [nice] ( . DOSYA && rm -f DOSYA && [düz ortam] <cli> )`: dosya ALT
   KABUKTA yüklenir ve hemen silinir, değer kalan `exec bash` kabuğuna sızmaz; sır adı yoksa komut eskisiyle birebir
   aynı. Pencere, penceresiz tmux, bekçinin yeniden denemesi ve yedek yol aynı `inner`i kullanır: hiçbirinde değer yok.
-  Bekçi dosya yüklendikten SONRA yeniden açarsa (oturum düşmüş, nadir) dosya yoktur, `.` başarısız olur ve CLI
-  başlamaz (kapalı yön). Yüklenmeden kalan dosyalar (pencere hiç açılmadı) sonraki sır yazımında, bir saatten eskiyse
+  Bekçi dosya yüklendikten SONRA yeniden açarsa (oturum düşmüş, nadir) dosyayı her yeniden açılıştan hemen önce
+  aynı içerikle geri yazar (28 Kas, TODO 248; Python `_SpawnEnvFile`/`_restore_spawn_env`, Rust
+  `spawn_exec::{SpawnEnvFile, fallback_watchdog_with}`; `repr`/`Debug` içerik göstermez): hâlâ duran dosyaya dokunmaz
+  (`link` ezmez), yazamazsa açmaz ve `spawn_env_file_refused` (yalnız sınıf adı) yazar. Yeniden pencere var olan
+  oturuma bağlanırsa (yarış) geri yazılan dosya yüklenmeden kalır, bir saat sonra silinir. Yüklenmeden kalan dosyalar (pencere hiç açılmadı) sonraki sır yazımında, bir saatten eskiyse
   silinir. Durum dizini örneğin kendi `CLAUDEOPS_DIR`i: ikinci örnek ortak köke yazmaz.
   Kapalı yön: dosya yazılamazsa sır komut satırına DÜŞMEZ, oturum açılmaz: Python `SpawnRefused("secret_env_file",
   <sınıf>)` (web temiz ret), Rust `SpawnFailure::Refused` aynı metin; günlükte `spawn_env_file_refused` yalnız ad, cli
@@ -3752,6 +3755,9 @@ aynı Python işlevini kullanır (`base`deki kopya silindi).
 | `FailClosedTest.test_a_regular_file_in_its_place_is_refused` (py/tests/test_rsprov_s4_secret_env.py:219) | `parity.rs::parity_g9` `sir-dizin-dosya` | TAŞINDI |
 | `FailClosedTest.test_unwritable_directory_is_refused` (py/tests/test_rsprov_s4_secret_env.py:224) | `parity.rs::parity_g9` `sir-dizin-yazilamaz` | TAŞINDI |
 | `FailClosedTest.test_dry_run_is_not_refused_and_still_writes_nothing` (py/tests/test_rsprov_s4_secret_env.py:232) | `parity.rs::parity_g9` `sir-kuru`; `parity_spawn` `-sir-dry` | TAŞINDI |
+| `WatchdogRestoresTheEnvFileTest.test_relaunch_finds_the_file_again` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` | TAŞINDI |
+| `WatchdogRestoresTheEnvFileTest.test_an_unconsumed_file_is_left_untouched` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_restores_a_consumed_spawn_env_file_before_relaunching` (ikinci yarı) | TAŞINDI |
+| `WatchdogRestoresTheEnvFileTest.test_unwritable_directory_stops_the_relaunch` (py/tests/test_rsprov_s4_secret_env.py) | `tests/g9.rs::watchdog_does_not_relaunch_when_the_env_file_cannot_be_restored` | TAŞINDI |
 | `_Cases.test_unknown_id_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:70) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
 | `_Cases.test_missing_exact_record_is_never_stuck` (py/tests/test_rsprov_stuck_other_providers.py:75) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
 | `_Cases.test_own_answered_conversation_wins_over_a_stuck_sibling` (py/tests/test_rsprov_stuck_other_providers.py:81) | T4: `stuck.py` akışı; copilot sınıfında koşar (codex/agy TBD#441 ile kapalı) | KAPSAM DIŞI |
