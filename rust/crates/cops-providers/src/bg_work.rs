@@ -1,5 +1,5 @@
 //! Arka plan işi tespiti (`py/claudeops/bg_work.py`): ekran işaretleri ve transkriptte bildirimi gelmemiş iş. SAF
-//! işlevler; dosya okuma (süreç kaydı kanıtı `session_record_active` dahil) `live` modülündedir.
+//! işlevler; dosya okuma (süreç kaydı kanıtı `session_record_status` dahil) `live` modülündedir.
 //!
 //! İki tarafta da beklenmeyen tipte bir satır (nesne olmayan belge, nesne olmayan `message`/`input`/`payload`/`item`,
 //! anahtar olamayan kimlik) yalnız o satırı/bloğu atlatır.

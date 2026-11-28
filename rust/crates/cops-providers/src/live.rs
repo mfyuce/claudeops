@@ -109,11 +109,16 @@ impl Live<'_> {
         sid: Option<&str>,
     ) -> Option<u64> {
         match cli {
+            // ekran sayısı yoksa süreç kaydı karar verir (`busy`/`shell` = 1, `idle` = 0: claude'un kendi kaydı
+            // transkript geçmişini ezer); kayıt yok, bayat ya da tanınmayan durumdaysa transkript yedeği
             Cli::Claude => Some(match bg_work::screen_bg_count(pane_text) {
-                0 => u64::from(
-                    self.session_record_active(sid)
-                        || self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref()),
-                ),
+                0 => match self.session_record_status(sid).as_deref() {
+                    Some("busy" | "shell") => 1,
+                    Some("idle") => 0,
+                    _ => u64::from(
+                        self.transcript_pending_path(self.jsonl_path_for(cwd, sid).as_deref()),
+                    ),
+                },
                 n => n,
             }),
             Cli::Codex => {
@@ -190,31 +195,46 @@ impl Live<'_> {
         bg_work::transcript_pending(lines.iter().map(String::as_str), self.clock)
     }
 
-    /// claude'un süreç kaydı (`sessions/<pid>.json`) bu konuşma için çalışan iş bildiriyor mu: `busy` (tur ya da
-    /// devredilen ajan) ya da `shell` (tur bitti, kabuk/Monitor açık). Süreç yaşamıyorsa, pid yeniden kullanılmışsa
-    /// (`procStart` tutmuyorsa) ya da kayıt okunamıyorsa `false`.
-    pub fn session_record_active(&self, sid: Option<&str>) -> bool {
-        let Some(sid) = sid.filter(|s| !s.is_empty()) else {
-            return false;
-        };
-        let names = self
-            .probe
-            .list_dir(&self.paths.claude_sessions_dir())
-            .unwrap_or_default();
-        names.iter().filter(|n| n.ends_with(".json")).any(|name| {
+    /// claude'un süreç kaydının (`sessions/<pid>.json`) bu konuşma için bildirdiği durum (`str(status or "")`):
+    /// `busy` (tur ya da devredilen ajan), `shell` (tur bitti, kabuk/Monitor açık), `idle` (açık iş yok). Aynı
+    /// konuşmanın birden çok canlı kaydında `busy`/`shell` kazanır, sonra tanınmayan durum (sıralı ilk, ör. `waiting`).
+    /// Canlı kayıt yoksa, pid yeniden kullanılmışsa (`procStart` tutmuyorsa) ya da kayıt okunamıyorsa `None`.
+    pub fn session_record_status(&self, sid: Option<&str>) -> Option<String> {
+        let sid = sid.filter(|s| !s.is_empty())?;
+        let names = self.probe.list_dir(&self.paths.claude_sessions_dir())?;
+        let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for name in names.iter().filter(|n| n.ends_with(".json")) {
             let Some(data) = self.session_file(name) else {
-                return false;
+                continue;
             };
-            let text = |key: &str| data.get(key).and_then(Py::as_str);
-            if text("sessionId") != Some(sid) || !matches!(text("status"), Some("busy" | "shell")) {
-                return false;
+            if data.get("sessionId").and_then(Py::as_str) != Some(sid) {
+                continue;
             }
             // `str(d.get("procStart"))`: kırpılmaz
-            data.get("pid")
+            let live = data
+                .get("pid")
                 .and_then(py_int)
                 .and_then(|pid| self.proc_start(pid))
-                .is_some_and(|start| data.get("procStart").is_some_and(|w| w.py_str() == start))
-        })
+                .is_some_and(|start| data.get("procStart").is_some_and(|w| w.py_str() == start));
+            if live {
+                found.insert(
+                    data.get("status")
+                        .filter(|v| v.truthy())
+                        .map(Py::py_str)
+                        .unwrap_or_default(),
+                );
+            }
+        }
+        for st in ["busy", "shell"] {
+            if found.contains(st) {
+                return Some(st.to_string());
+            }
+        }
+        found
+            .iter()
+            .find(|s| *s != "idle")
+            .cloned()
+            .or_else(|| found.contains("idle").then(|| "idle".to_string()))
     }
 
     /// Son `token_count` olayının `last_token_usage.input_tokens`ı (0 = bilinmiyor). Boolean ve negatif değer sayaç

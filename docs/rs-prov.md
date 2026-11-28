@@ -1300,7 +1300,7 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 - `bg_work.rs`: alt satırdaki `← N agent` iş sayısından silinir (`NAV`; `\s` ve sözcük sonu Python gibi); araç çağrısı ve
   sonucu yalnız türsüz, `assistant` ya da `user` kaydından okunur (`RECORD_TYPES`; bildirim her türden sayılmaya devam eder).
   Bozuk yapıdaki satırın atlanması kuralı aynen.
-- `live.rs::Live::session_record_active`: claude'da ekran sayısı yoksa önce süreç kaydı (`busy`/`shell`, `procStart` canlı
+- `live.rs::Live::session_record_status` (28 Kas, `1c0bde13` portu): claude'da ekran sayısı yoksa önce süreç kaydı (`busy`/`shell` = 1, `idle` = 0 transkripti ezer; tanınmayan durum ya da kayıt yoksa transkript; `procStart` canlı
   sürecin başlangıç tikine eşit, kırpılmadan), sonra transkript. `/proc` ve dizin okuması var olan `LiveProbe` yöntemleriyle
   (`list_dir`, `read_bytes`, `proc_stat`); yeni `Probe`/`Effect` yok.
 - Python hataları (iki tarafta; `d9ce526f`): `sessions/` altındaki FIFO okuyucuyu bloklıyordu; `pid: Infinity`
@@ -2108,7 +2108,7 @@ Birleşimin öteki `py/` değişikliği değnekçi (rs/stew); B1 salt okuma uçl
 | `_NAV_RE` (py/claudeops/bg_work.py:21) | `bg_work.rs::{NAV, without_nav}` | `parity.rs::parity_bg_work` `bg-ekran` (rastgele metinler dahil) | TAŞINDI |
 | `_RECORD_TYPES` (py/claudeops/bg_work.py:22) | `bg_work.rs::{RECORD_TYPES, transcript_pending}` | `parity.rs::parity_bg_work` `bg-transkript-` | TAŞINDI |
 | `_SESSION_RECORD_MAX_BYTES` (py/claudeops/bg_work.py:27) | `claude_resume.rs::{SESSION_FILE_MAX_BYTES, Live::session_file}` | `parity.rs::parity_live` `kayit-govde-`; `tests/real_bg_record.rs::broken_records_fifo_and_oversize_are_skipped_without_blocking` | TAŞINDI |
-| `session_record_active` (py/claudeops/bg_work.py:180) | `live.rs::Live::session_record_active`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
+| `session_record_status` (py/claudeops/bg_work.py:181) | `live.rs::Live::session_record_status`; `claude_resume.rs::{Live::session_file, Live::proc_start, py_int}` | `parity.rs::parity_live` `kayit-`; `tests/real_bg_record.rs` | TAŞINDI |
 
 ## TEST EŞLEME TABLOSU
 
