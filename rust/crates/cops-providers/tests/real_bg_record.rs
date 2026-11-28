@@ -5,6 +5,7 @@
 mod support;
 
 use cops_providers::bg_work::Clock;
+use cops_providers::ucli_status::RECORD_MAX_BYTES;
 use cops_providers::{Cli, Live, Settings};
 use serde_json::json;
 use std::fs;
@@ -152,4 +153,39 @@ fn broken_records_fifo_and_oversize_are_skipped_without_blocking() {
     fs::write(&path, big).unwrap();
     assert_eq!(work(&t, idle, Some("s1")), Some(0));
     assert!(start.elapsed() < Duration::from_secs(5));
+}
+
+/// Hata kaydı okuma sınırı (`RECORD_MAX_BYTES`, Python sınırsız): aşan kayıt SAYILIR, yalnız hata metni boş kalır.
+#[test]
+fn an_oversized_failed_turn_record_is_counted_without_its_error() {
+    let t = Tmp::new();
+    let settings = Settings::default();
+    let paths = t.paths();
+    let probe = t.probe();
+    let live = Live {
+        settings: &settings,
+        paths: &paths,
+        probe: &probe,
+        clock: Clock {
+            now: 0.0,
+            utc_offset_secs: 0,
+        },
+    };
+    let cwd = t.path("work/p1");
+    let body = br#"{"error":"patladi"}"#.to_vec();
+    let padded = |len: u64| {
+        let mut b = body.clone();
+        b.resize(usize::try_from(len).unwrap(), b' ');
+        b
+    };
+    let name = "work/p1/.ucli/chat/failed/s1-100-1.json";
+    for (len, error) in [
+        (RECORD_MAX_BYTES, Some("patladi")),
+        (RECORD_MAX_BYTES + 1, None),
+    ] {
+        t.write(name, padded(len), 0o600);
+        let got = live.live_failed_turns(Cli::Ucli, &cwd, Some("s1")).unwrap();
+        assert_eq!((got.count, got.last_unix), (1, 100), "{len}");
+        assert_eq!(got.last_error.as_deref(), error, "{len}");
+    }
 }

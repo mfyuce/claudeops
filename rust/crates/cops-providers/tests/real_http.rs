@@ -328,8 +328,25 @@ fn http_goes_through_the_environment_proxy_with_basic_auth_unless_bypassed() {
 }
 
 struct Pki {
+    /// Kökün PEM'i (`SSL_CERT_FILE` ile "sistem kökü" yapmak için).
+    ca_pem: String,
     roots: RootCertStore,
     server: Arc<ServerConfig>,
+}
+
+/// `rcgen` `pem` özelliği kapalı: DER elle sarılır.
+fn pem(der: &[u8]) -> String {
+    use base64::Engine;
+    let body = base64::engine::general_purpose::STANDARD.encode(der);
+    let lines: Vec<&str> = body
+        .as_bytes()
+        .chunks(64)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect();
+    format!(
+        "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
+        lines.join("\n")
+    )
 }
 
 fn pki(names: &[&str]) -> Pki {
@@ -357,6 +374,7 @@ fn pki(names: &[&str]) -> Pki {
         )
         .unwrap();
     Pki {
+        ca_pem: pem(ca_cert.der()),
         roots,
         server: Arc::new(server),
     }
@@ -543,6 +561,76 @@ fn the_real_model_io_runs_reads_and_fetches() {
     assert_eq!(
         sources.service_models(&settings, "yerel", KEY),
         ["model-a", "model-b"]
+    );
+    assert!(text(&rx.recv().unwrap()).contains(KEY));
+}
+
+#[test]
+fn ipv6_literal_addresses_are_reached_directly() {
+    let listener = TcpListener::bind("[::1]:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let head = read_head(&mut s);
+        s.write_all(OK).unwrap();
+        let _ = s.shutdown(Shutdown::Write);
+        let _ = s.read(&mut [0u8; 64]);
+        head
+    });
+    let got = get(&[], format!("http://[::1]:{port}/m"));
+    assert_eq!(got.as_deref(), Ok(&b"merha"[..]));
+    assert!(text(&server.join().unwrap()).contains(&format!("host: [::1]:{port}")));
+}
+
+#[test]
+fn an_https_proxy_url_speaks_tls_to_the_proxy() {
+    let pki = pki(&["localhost"]);
+    let (proxy, rx) = tls_server(pki.server.clone());
+    let url = format!("https://u:p@localhost:{proxy}");
+    let client = HttpClient::with_roots(env(&[("http_proxy", &url)]), pki.roots.clone());
+    let got = client.get(&request("http://hedef.invalid/m".into(), 5000, 100));
+    assert_eq!(got.as_deref(), Ok(&b"tls"[..]));
+    let head = text(&rx.recv().unwrap());
+    assert!(head.starts_with("get http://hedef.invalid/m "), "{head}");
+    assert!(head.contains("proxy-authorization: basic "), "{head}");
+    // güvenilmeyen vekil sertifikasına istek (ve anahtar) gönderilmez
+    assert_eq!(
+        get(&[("http_proxy", &url)], "http://hedef.invalid/m".into()),
+        Err(HttpError::Tls)
+    );
+    nothing(&rx);
+}
+
+/// Sistem kökleriyle BAŞARILI bağlantı. `SSL_CERT_FILE` süreç ortamıdır (paralel testlerde değiştirilemez): bu ikili
+/// test kökünü gösteren çocuk olarak yeniden koşulur.
+#[test]
+fn system_roots_accept_a_certificate_they_trust() {
+    const MARK: &str = "COPS_TEST_ROOTS_URL";
+    if let Ok(url) = std::env::var(MARK) {
+        assert_eq!(get(&[], url).as_deref(), Ok(&b"tls"[..]));
+        println!("sistem kökü kabul edildi");
+        return;
+    }
+    let pki = pki(&["localhost"]);
+    let (port, rx) = tls_server(pki.server.clone());
+    let t = Tmp::new();
+    let pem = t.write("work/kok.pem", &pki.ca_pem, 0o600);
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "system_roots_accept_a_certificate_they_trust",
+            "--nocapture",
+        ])
+        .env(MARK, format!("https://localhost:{port}/m"))
+        .env("SSL_CERT_FILE", &pem)
+        .env_remove("SSL_CERT_DIR")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && said.contains("sistem kökü kabul edildi"),
+        "{said}{}",
+        String::from_utf8_lossy(&out.stderr)
     );
     assert!(text(&rx.recv().unwrap()).contains(KEY));
 }
