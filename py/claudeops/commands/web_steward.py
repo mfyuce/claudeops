@@ -2123,14 +2123,23 @@ def _main_default_model() -> str:
         return ""
 
 
+def _remote_cli(host: str, name: str, rt: Optional["_RemoteTick"] = None) -> str:
+    """Uzak host'un TAM adlı satırındaki cli (durmuş roster satırı da verir; `/api/start` modeli boşsa o satırın cli'si ve
+    modeliyle açar). Satır yok, host bayat, cli tanınmıyor ya da satırlar çelişiyor = "" (bilinmiyor)."""
+    found = {str(r.get("cli") or "") for r in (_remote_rows(host, rt) or []) if r.get("name") == name}
+    cli = found.pop() if len(found) == 1 else ""
+    return cli if cli in PROVIDERS else ""
+
+
 def _main_model_effort(project: "sw.Project", cfg: "sw.Config", name: str = "", host: str = "",
-                       model: str = "", effort: str = "") -> Tuple[str, str]:
+                       model: str = "", effort: str = "", rt: Optional["_RemoteTick"] = None) -> Tuple[str, str]:
     """Değnekçinin açtığı ana oturumun (model, effort)u: faz/proje değeri `sw.main_session_model_effort` kuralından geçer
     (claude = her zaman `_main_default_model()` + medium; sahip 18 Kas kuralı, ana model 28 Kas'tan beri Opus). Uzak projede
-    cli bilinmez: yalnız claude-* model düşürülür."""
+    cli host'un proje adlı satırından okunur (`_remote_cli`; başlatma PROJE adıyla yapılır), bilinmiyorsa yalnız claude-*
+    model düşürülür."""
     if not model and not effort:      # açık değer (beyin/direktif) de aynı kuraldan geçer
         model, effort = sw.phase_model_effort(project, cfg)
-    cli = "" if host else _project_cli(name or project.name)
+    cli = _remote_cli(host, project.name, rt) if host else _project_cli(name or project.name)
     m, e = sw.main_session_model_effort(model, effort, cli, _main_default_model())
     if (m, e) != (model, effort) and (model or effort):
         sw.log_event("steward_main_model", paths=sw.paths_for(cfg.sid), name=name or project.name,
@@ -2547,7 +2556,7 @@ def _give_directive_impl(project: sw.Project, text: str, *, model: str = "", eff
         if row is None:
             if not start_if_stopped:
                 return {"ok": False, "error": "not running", "host": host}
-            model, effort = _main_model_effort(project, cfg, target, host, req_model, req_effort)
+            model, effort = _main_model_effort(project, cfg, target, host, req_model, req_effort, rt)
             res = _ensure_running(target, model=model, effort=effort, lang=lang, host=host, rt=rt, sid=cfg.sid,
                                   actor=actor)
             if not res.get("ok"):
@@ -3570,7 +3579,7 @@ def _remote_respawn(name: str, host: str, project: Optional[sw.Project], cfg: sw
     stopped = _remote_stop_and_wait(name, host, world, cfg.sid, "engine", rt)
     if stopped is not None:
         return failed("stop", stopped)
-    model, effort = _main_model_effort(project, cfg, project.name, host)
+    model, effort = _main_model_effort(project, cfg, project.name, host, rt=rt)
     # PROJE adıyla başlat: eski oturumun tarihli adı kapandı, uzak taraf yeni oturuma yeni (tarihli) ad verir
     res = _ensure_running_remote(project.name, host, model, effort, True, rt, sid=cfg.sid, actor="engine",
                                  kind="respawn")

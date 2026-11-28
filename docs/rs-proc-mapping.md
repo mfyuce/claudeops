@@ -12,7 +12,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
 | tanım | 612 | 153 | 459 | 0 |
-| test durumu (156 dosya) | 1941 | 115 | 1826 | 0 |
+| test durumu (156 dosya) | 1948 | 115 | 1833 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -2376,16 +2376,23 @@ Yok.
 
 | Python testi | Satır | Durum | Rust testi / parite | Not / gerekçe ve iz |
 |---|---|---|---|---|
-| `test_steward_main_model.py::MainSessionModel.test_registered_fable_becomes_sonnet_medium` | 15 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainSessionModel.test_opus_and_empty_on_claude` | 18 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainSessionModel.test_non_claude_cli_untouched` | 22 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainSessionModel.test_remote_unknown_cli_only_claude_models` | 26 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainSessionModel.test_non_claude_model_on_claude_cli_untouched` | 31 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainSessionModel.test_no_sonnet_known_is_noop` | 34 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainModelFromSettings.test_empty_setting_gives_opus_medium` | 63 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainModelFromSettings.test_setting_wins_and_can_revert_to_sonnet` | 68 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainModelFromSettings.test_invalid_setting_falls_back_to_opus` | 72 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_main_model.py::MainModelFromSettings.test_no_opus_in_list_falls_back_to_provider_default` | 76 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_registered_fable_becomes_sonnet_medium` | 20 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_opus_and_empty_on_claude` | 23 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_non_claude_cli_untouched` | 27 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_remote_unknown_cli_only_claude_models` | 31 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_non_claude_model_on_claude_cli_untouched` | 36 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainSessionModel.test_no_sonnet_known_is_noop` | 39 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainModelFromSettings.test_empty_setting_gives_opus_medium` | 68 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainModelFromSettings.test_setting_wins_and_can_revert_to_sonnet` | 73 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainModelFromSettings.test_invalid_setting_falls_back_to_opus` | 77 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::MainModelFromSettings.test_no_opus_in_list_falls_back_to_provider_default` | 81 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_blank_model_on_claude_row_sends_main_default` | 109 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_blank_model_with_leftover_effort` | 112 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_settings_can_revert` | 115 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_non_claude_cli_gets_no_claude_model` | 119 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_non_claude_cli_with_claude_record_is_untouched` | 122 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_unknown_cli_keeps_old_behaviour` | 125 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_main_model.py::RemoteBlankModel.test_respawn_sends_main_default` | 129 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_open_dialog.py`
 

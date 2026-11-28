@@ -267,7 +267,7 @@ class TestRemoteRespawn(_Destructive):
         self.assertEqual(self.paths_posted(), ["/api/stop", "/api/start", "/api/term/input"])
         stop, start, inp = self.posts()
         self.assertEqual(stop, STOP)
-        model, effort = sw.phase_model_effort(sw.load_projects()["oiso"], ws.steward_config())
+        model, effort = ws._main_default_model(), "medium"      # boş model: host satırı claude, Ayarlar varsayılanı gider
         self.assertEqual(start, ("/api/start", HOST, {"name": "oiso", "model": model, "effort": effort, "fresh": True},
                                  120.0))                                     # devirden sonra YENİ konuşma
         self.assertEqual((inp[2]["name"], inp[2]["exact"], inp[3]), ("oiso", True, 60.0))

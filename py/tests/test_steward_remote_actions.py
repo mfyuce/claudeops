@@ -170,7 +170,7 @@ class TestRemoteActions(_Actions):
         res = ws.tick_once("manual")
         self.assertEqual([(a["kind"], a["ok"]) for a in res["actions"]], [("start", True)], res)
         start, inp = self.posts()
-        model, effort = sw.phase_model_effort(sw.load_projects()["oiso"], ws.steward_config())
+        model, effort = ws._main_default_model(), "medium"      # boş model: host satırı claude, Ayarlar varsayılanı gider
         self.assertEqual(start, ("/api/start", HOST, {"name": "oiso", "model": model, "effort": effort, "fresh": False},
                                  120.0))
         self.assertEqual((inp[0], inp[2]["name"], inp[2]["exact"]), ("/api/term/input", "oiso", True))

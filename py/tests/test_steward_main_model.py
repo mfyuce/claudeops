@@ -4,11 +4,16 @@ Ana oturum modeli 18 Kas'ta en yeni Sonnet'ti; 28 Kas 2026'dan beri Ayarlar'daki
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from claudeops import steward as sw  # noqa: E402
+from claudeops import settings, steward as sw  # noqa: E402
+from claudeops.commands import web_steward as ws  # noqa: E402
+from claudeops.providers import get_provider  # noqa: E402
+from test_steward_remote_actions import HOST, _Actions, _row, setUpModule, tearDownModule  # noqa: E402,F401
 
 S = "claude-sonnet-5-5"
+OPUS, SONNET = "claude-opus-5-5", "claude-sonnet-5-5"
 
 
 class MainSessionModel(unittest.TestCase):
@@ -76,6 +81,61 @@ class MainModelFromSettings(unittest.TestCase):
     def test_no_opus_in_list_falls_back_to_provider_default(self):
         self.CHOICES = ["claude-haiku-5-5", "claude-sonnet-5-5"]
         self.assertEqual(self._main(model="claude-fable-5-1"), ("claude-sonnet-5-5", "medium"))
+
+
+class RemoteBlankModel(_Actions):
+    """Uzak projede model boşsa da Ayarlar'daki claude varsayılanı gider (TBD#440 devamı, 28 Kas): boş model uzak
+    `/api/start`ta host'un kendi roster modeline (eski Sonnet) düşer. cli host'un durum satırından okunur."""
+    def setUp(self):
+        super().setUp()
+        prov = type(get_provider("claude"))
+        p = mock.patch.object(prov, "model_choices", lambda _s: ["claude-haiku-5-5", OPUS, SONNET])
+        p.start()
+        self.addCleanup(p.stop)
+        self.act()
+
+    def start_body(self, *rows, **proj):
+        if proj:
+            sw.upsert_project("oiso", **proj)
+        self.fake.set(HOST, list(rows))
+        r = ws.http_post("/api/steward/directive", {"name": "oiso", "text": "devam et"})
+        starts = self.posts("/api/start")
+        self.assertEqual(len(starts), 1, r)
+        return starts[0][2]["model"], starts[0][2]["effort"]
+
+    def stopped(self, **kw):
+        return _row("oiso", **dict({"running": False, "model": "claude-sonnet-5"}, **kw))
+
+    def test_blank_model_on_claude_row_sends_main_default(self):
+        self.assertEqual(self.start_body(self.stopped()), (OPUS, "medium"))
+
+    def test_blank_model_with_leftover_effort(self):
+        self.assertEqual(self.start_body(self.stopped(), effort="medium"), (OPUS, "medium"))
+
+    def test_settings_can_revert(self):
+        settings.save_settings(dict(settings.load_settings(), default_model={"claude": SONNET}))
+        self.assertEqual(self.start_body(self.stopped()), (SONNET, "medium"))
+
+    def test_non_claude_cli_gets_no_claude_model(self):
+        self.assertEqual(self.start_body(self.stopped(cli="ucli", model="glm-5.3")), ("", ""))
+
+    def test_non_claude_cli_with_claude_record_is_untouched(self):
+        self.assertEqual(self.start_body(self.stopped(cli="agy"), model=SONNET, effort="high"), (SONNET, "high"))
+
+    def test_unknown_cli_keeps_old_behaviour(self):
+        # proje adlı satır yok (yalnız kapanmış tarihli ad): cli bilinmiyor
+        self.assertEqual(self.start_body(_row("oiso20261017", running=False)), ("", ""))
+
+    def test_respawn_sends_main_default(self):
+        self.fake.set(HOST, [self.stopped()])
+        sent = []
+        cfg = ws.steward_config()
+        with mock.patch.object(ws, "_remote_stop_and_wait", lambda *a, **k: None), \
+                mock.patch.object(ws, "_ensure_running_remote",
+                                  lambda name, host, model, effort, *a, **k: sent.append((model, effort))
+                                  or {"ok": False, "error": "stop here"}):
+            ws._remote_respawn("oiso", HOST, sw.load_projects()["oiso"], cfg, ws._world(cfg.sid, cfg), None)
+        self.assertEqual(sent, [(OPUS, "medium")])
 
 
 if __name__ == "__main__":
