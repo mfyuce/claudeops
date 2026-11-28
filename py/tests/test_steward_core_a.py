@@ -1003,6 +1003,21 @@ class NegativeAnswerTest(unittest.TestCase):
             self.assertTrue(sw.is_open_answer(t), t)
             self.assertEqual(self._plan("paused", t), [("set_phase", "p1"), ("start", "p1")], t)
 
+    def test_open_answer_to_sweep_with_running_session_sets_planned(self):
+        """28 Kas (uzakgoz, sesotappr): oturum direktifle açıkken "Açayım mı?" sorusuna "1) Aç" cevabı yalnız oturuma iletiliyor,
+        faz paused kalıyordu. Süpürme sorusunun açık cevabı oturum açıkken de fazı planned'a çeker; tut cevabı ve başka soru çekmez."""
+        def plan(phase, answer, text):
+            q = sw.Question(id="q1", project="p1", text=text, created_at=1000.0, status="answered", answer=answer, answered_at=2000.0)
+            projects = {"p1": sw.Project(name="p1", phase=phase, cadence_minutes=60)}
+            acts, _ = sw.plan_tick([_view("p1")], projects, {}, _cfg(), 5000.0, [q], [])
+            return [(a.kind, a.name, a.payload.get("phase")) for a in acts if a.kind in ("start", "deliver_answer", "set_phase")]
+        sweep = sw.paused_sweep_text("p1", 6)
+        for phase in ("paused", "done"):
+            self.assertEqual(plan(phase, "1) Aç", sweep), [("set_phase", "p1", "planned"), ("deliver_answer", "p1", None)], phase)
+            self.assertEqual(plan(phase, "2) Paused kalsın", sweep), [("deliver_answer", "p1", None)], phase)
+            self.assertEqual(plan(phase, "evet", "Commit edeyim mi?"), [("deliver_answer", "p1", None)], phase)
+        self.assertEqual(plan("planned", "1) Aç", sweep), [("deliver_answer", "p1", None)])
+
     def test_sweep_question_has_options(self):
         projects = {"c": sw.Project(name="c", phase="paused", cadence_minutes=60)}
         acts, _ = sw.plan_tick([], projects, {"todo_seen": {"c": "h1"}}, _cfg(), 200000.0, [], [], open_work=lambda n: 3, todo_sha=lambda n: "h1")

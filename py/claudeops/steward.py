@@ -4640,6 +4640,11 @@ def plan_tick(views: List[SessionView], projects: Dict[str, Project], state: Dic
                 continue
             if v.name in busy_names or v.busy or v.subagent_active:
                 continue   # bir sonraki tick (çalışan alt ajan varken ana oturumu uyandırma)
+            if (projects[target].phase in ("done", "paused") and _PAUSED_SWEEP_RE.match(q.text or "")
+                    and is_open_answer(q.answer) and not is_negative_answer(q.answer)):
+                # 28 Kas (uzakgoz, sesotappr): oturum direktifle açıkken "Açayım mı?" sorusuna "Aç" cevabı yalnız oturuma gidiyor, faz
+                # paused kalıyordu. Oturumsuz dalla aynı karar: süpürme sorusunun açık cevabı fazı planned'a çeker.
+                actions.append(Action("set_phase", target, "sahip cevabı: aç", {"phase": "planned"}))
             act = Action("deliver_answer", v.name, "answer", {"question_id": q.id})
             actions.append(act)
             deliver_by_session[v.name] = act

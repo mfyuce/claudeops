@@ -1300,6 +1300,14 @@ for phase in ("planned", "paused", "done"):
                 views = [V("alfa", True, **dict({"tmux": True, "busy": False}, **kw))]
                 add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {"pause_close": {"alfa": req_at}},
                                   "cfg": C(enabled=True), "now": NOW, "questions": [], "ideas": [], "world": world})
+# 28 Kas (uzakgoz, sesotappr): oturum açıkken süpürme sorusunun "Aç" cevabı fazı planned'a çeker; tut cevabı ve başka soru çekmez
+for phase in ("planned", "paused", "done"):
+    for text in (sw.paused_sweep_text("alfa", 6), sw.paused_sweep_text("alfa", 6) + "\n", "Commit edeyim mi?"):
+        for ans in ("1) Aç", "2) Paused kalsın", "evet", "Aç, başlamasın"):
+            views = [V("alfa", True, tmux=True, busy=False)]
+            qs = [Q("q1", "alfa", text, status="answered", answer=ans, answered_at=NOW - 30, created_at=NOW - 90)]
+            add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {}, "cfg": C(enabled=True), "now": NOW,
+                              "questions": qs, "ideas": [], "world": None})
 sw.save_questions([])
 for t in ["Kapak rengi ne olsun?", "Dergi hangisi seçilsin?", "Sunum tarihi ne zaman?", sw._HELD_ANSWER_PREFIX + " pr projesi done/paused, cevap (q9) oturum açmadı.", "Yazar sırası nasıl olacak?"]:
     a = {"project": "p", "text": t, "source": "motor", "options": None, "routine": False, "detail": ""}
