@@ -1,7 +1,7 @@
 # İz rs/prov: `cops-providers` (W1-pre sağlayıcılar)
 
 Durum (27 Kas 2026, `rs/prov` `c8a86a87`, `main` `f7071898` içinde):
-**BİRLEŞTİRMEYE HAZIR DEĞİL** (engel: "Birleştirme engelleri" §3.1 (c) ve §3.8). En son tam kapı (28 Kas, `4f111a21`, `main`
+**BİRLEŞTİRMEYE HAZIR DEĞİL** (engel: "Birleştirme engelleri" §3.1 (c) ve §3.8; ikisi de başka izde). 28 Kas akşam tam kapı (`47e3077c`, `main` `55ad90c6` içinde): cargo 1393 geçti, 0 kaldı, 1 atlandı; clippy ve fmt temiz; Python 6737 OK (25 atlanan); dört eşleme denetimi çıkış 0 (TODO 248/254/279 ve #397 kalanları: `63556869`, `74f8dd37`, `7bf869f8`, `5abe8416`, `47e3077c`). Önceki tam kapı (28 Kas, `4f111a21`, `main`
 güncel): cargo 1388 geçti, 0 kaldı, 1 atlandı; clippy temiz, fmt sonradan düzeltildi; Python 6666 OK (25 atlanan). Önceki (`4a025117`): cargo 1385 geçti, 0 kaldı,
 1 atlandı; clippy ve fmt temiz; Python 6668 OK (25 atlanan: hepsi ortam, 19 `CLAUDEOPS_TEST_PG_URL` yok, 1 node/typescript yok,
 5 gerçek ucli ikilisi yok; worktree'de `bin/ucli` yok; 23→25 artışının hangi iki test olduğu kesin değil, yeni atlama dekoratörü yok); dört eşleme denetimi çıkış 0.
