@@ -174,29 +174,72 @@ pub enum RoOpen {
 }
 
 /// DB başlığı (bayt 18/19 = 2: WAL) ve `-wal`/`-shm` varlığından salt okunur açılış biçimi. Başlık okunamazsa (kısa/boş
-/// dosya) `Plain`: SQLite kendisi karar verir (WAL değilse yan dosya yaratmaz).
+/// dosya) `Plain`: SQLite kendisi karar verir (WAL değilse yan dosya yaratmaz). Yol sembolik bağlantıysa HEDEFİN yanına
+/// bakılır: SQLite yan dosyaları çözülmüş yolun yanına koyar (R-B1-2).
 pub fn wal_open_mode(path: &Path) -> RoOpen {
-    use std::io::Read;
-    let mut head = [0u8; 20];
-    let wal = std::fs::File::open(path)
-        .and_then(|mut f| f.read_exact(&mut head))
-        .is_ok()
-        && head.starts_with(b"SQLite format 3\0")
-        && (head[18] == 2 || head[19] == 2);
-    if !wal {
-        return RoOpen::Plain;
-    }
-    let side = |sfx: &str| {
-        let mut p = path.as_os_str().to_owned();
-        p.push(sfx);
-        std::fs::symlink_metadata(PathBuf::from(p)).is_ok()
-    };
-    match (side("-wal"), side("-shm")) {
-        (true, true) => RoOpen::Plain,
-        (false, false) => RoOpen::Immutable,
-        _ => RoOpen::Refuse,
+    let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    match Stamp::take(&real) {
+        Some(s) => s.mode(),
+        None => RoOpen::Plain,
     }
 }
+
+/// immutable okumanın yarış denetimi (R-B1-1): açılıştan ÖNCE ve her sorgudan SONRA alınır; farklıysa sonuç atılır.
+/// Çekirdek zaman damgası kaba olabilir (aynı adımda boyutu değiştirmeyen tek yazım kaçabilir); yazarın açılışı yan
+/// dosyaları, kapanışı ana dosyayı değiştirdiğinden yan dosya varlığıyla birlikte pratikte yeterli.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    dev: u64,
+    ino: u64,
+    size: u64,
+    mtime_ns: i128,
+    ctime_ns: i128,
+    wal_header: bool,
+    wal: bool,
+    shm: bool,
+}
+
+impl Stamp {
+    fn take(real: &Path) -> Option<Stamp> {
+        use std::io::Read;
+        use std::os::unix::fs::MetadataExt;
+        let side = |sfx: &str| {
+            let mut p = real.as_os_str().to_owned();
+            p.push(sfx);
+            std::fs::symlink_metadata(PathBuf::from(p)).is_ok()
+        };
+        let mut f = std::fs::File::open(real).ok()?;
+        let m = f.metadata().ok()?;
+        let mut head = [0u8; 20];
+        let wal_header = f.read_exact(&mut head).is_ok()
+            && head.starts_with(b"SQLite format 3\0")
+            && (head[18] == 2 || head[19] == 2);
+        Some(Stamp {
+            dev: m.dev(),
+            ino: m.ino(),
+            size: m.size(),
+            mtime_ns: i128::from(m.mtime()) * 1_000_000_000 + i128::from(m.mtime_nsec()),
+            ctime_ns: i128::from(m.ctime()) * 1_000_000_000 + i128::from(m.ctime_nsec()),
+            wal_header,
+            wal: side("-wal"),
+            shm: side("-shm"),
+        })
+    }
+
+    fn mode(&self) -> RoOpen {
+        if !self.wal_header {
+            return RoOpen::Plain;
+        }
+        match (self.wal, self.shm) {
+            (true, true) => RoOpen::Plain,
+            (false, false) => RoOpen::Immutable,
+            _ => RoOpen::Refuse,
+        }
+    }
+}
+
+/// Damgası değişen immutable okumanın en çok kaç kez yeniden açılacağı (sonra hata: çağıran dosyaya düşer).
+const RO_RETRIES: usize = 4;
 
 /// `file:` URI (RFC 3986 yüzde kaçışı: SQLite yolda `%`yi çözer, `?`/`#` ayıraçtır).
 fn sqlite_uri(path: &Path, immutable: bool) -> String {
@@ -250,6 +293,8 @@ pub struct Store {
     conn: Mutex<Connection>,
     /// Açılışta okunan şema sürümü (salt okumada [`SCHEMA_VERSION`]ten büyük olabilir).
     schema: i64,
+    /// Salt okumada çözülmüş yol ve (yalnız `immutable=1` bağlantıdayken) açılış öncesi damga ([`Store::read`]).
+    ro: Option<(PathBuf, Mutex<Option<Stamp>>)>,
 }
 
 impl Store {
@@ -271,6 +316,7 @@ impl Store {
             path: path.to_path_buf(),
             conn: Mutex::new(c),
             schema: SCHEMA_VERSION,
+            ro: None,
         })
     }
 
@@ -286,30 +332,77 @@ impl Store {
         if !path.is_file() {
             return Err(StoreError::Missing(path.to_path_buf()));
         }
-        let immutable = match wal_open_mode(path) {
-            RoOpen::Plain => false,
-            RoOpen::Immutable => true,
-            RoOpen::Refuse => {
-                return Err(StoreError::Io(format!(
-                "{}: WAL yan dosyalarından yalnız biri var (salt okunur açılış dosya yaratırdı)",
-                path.display()
-            )))
-            }
-        };
-        let uri = sqlite_uri(path, immutable);
-        let c = Connection::open_with_flags(
-            &uri,
-            OpenFlags::SQLITE_OPEN_READ_ONLY
-                | OpenFlags::SQLITE_OPEN_URI
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        c.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS))?;
-        let schema = check_read(&c)?;
+        let real = std::fs::canonicalize(path).map_err(|e| StoreError::Io(e.to_string()))?;
+        let (c, stamp, schema) = Self::ro_connect(&real)?;
         Ok(Store {
             path: path.to_path_buf(),
             conn: Mutex::new(c),
             schema,
+            ro: Some((real, Mutex::new(stamp))),
         })
+    }
+
+    /// Salt okunur bağlantı + (immutable ise) açılış öncesi damga + şema. Şema denetimi de bir sorgudur: damga sonra
+    /// yeniden alınır, değiştiyse güncel biçimle yeniden açılır.
+    fn ro_connect(real: &Path) -> Result<(Connection, Option<Stamp>, i64)> {
+        for _ in 0..RO_RETRIES {
+            let s0 = Stamp::take(real);
+            let immutable = match s0.map_or(RoOpen::Plain, |s| s.mode()) {
+                RoOpen::Plain => false,
+                RoOpen::Immutable => true,
+                RoOpen::Refuse => {
+                    return Err(StoreError::Io(format!(
+                        "{}: WAL yan dosyalarından yalnız biri var (salt okunur açılış dosya yaratırdı)",
+                        real.display()
+                    )))
+                }
+            };
+            let uri = sqlite_uri(real, immutable);
+            let c = Connection::open_with_flags(
+                &uri,
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | OpenFlags::SQLITE_OPEN_URI
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )?;
+            c.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS))?;
+            let schema = check_read(&c);
+            if !immutable {
+                return Ok((c, None, schema?));
+            }
+            if Stamp::take(real) == s0 {
+                return Ok((c, s0, schema?));
+            }
+        }
+        Err(StoreError::Io(format!(
+            "{}: salt okuma sırasında DB sürekli değişti",
+            real.display()
+        )))
+    }
+
+    /// Okuma sorgusu. `immutable=1` bağlantıda sorgudan sonra damga yeniden alınır; değiştiyse sonuç atılır, bağlantı güncel
+    /// biçimle yeniden açılır ve sorgu yinelenir (R-B1-1). Diğer bağlantılarda doğrudan.
+    fn read<T>(&self, f: impl Fn(&Connection) -> Result<T>) -> Result<T> {
+        let mut c = self.conn();
+        let Some((real, stamp)) = &self.ro else {
+            return f(&c);
+        };
+        let mut stamp = stamp.lock().unwrap_or_else(|e| e.into_inner());
+        for _ in 0..RO_RETRIES {
+            let out = f(&c);
+            let Some(s0) = *stamp else {
+                return out;
+            };
+            if Stamp::take(real) == Some(s0) {
+                return out;
+            }
+            let (nc, ns, _) = Self::ro_connect(real)?;
+            *c = nc;
+            *stamp = ns;
+        }
+        Err(StoreError::Io(format!(
+            "{}: salt okuma sırasında DB sürekli değişti",
+            real.display()
+        )))
     }
 
     pub fn path(&self) -> &Path {
@@ -337,10 +430,12 @@ impl Store {
 
     /// Ham gövde (JSON metni).
     pub fn get_doc_raw(&self, name: &str) -> Result<Option<String>> {
-        Ok(self
-            .conn()
-            .query_row("SELECT body FROM docs WHERE name=?1", [name], |r| r.get(0))
-            .optional()?)
+        self.read(|c| {
+            Ok(
+                c.query_row("SELECT body FROM docs WHERE name=?1", [name], |r| r.get(0))
+                    .optional()?,
+            )
+        })
     }
 
     pub fn get_doc(&self, name: &str) -> Result<Option<Json>> {
@@ -403,34 +498,37 @@ impl Store {
             .replace('%', "\\%")
             .replace('_', "\\_")
             + "%";
-        let c = self.conn();
-        let mut st =
-            c.prepare("SELECT name FROM docs WHERE name LIKE ?1 ESCAPE '\\' ORDER BY name")?;
-        let rows = st.query_map([like], |r| r.get(0))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.read(|c| {
+            let mut st =
+                c.prepare("SELECT name FROM docs WHERE name LIKE ?1 ESCAPE '\\' ORDER BY name")?;
+            let rows = st.query_map([&like], |r| r.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
     }
 
     /// `_doc_stamp`: (sürüm, yazım anının bitleri); satır yoksa `None`. Sil + yeniden yaz sürümü 1'den başlatır:
     /// yazım anı ayırır.
     pub(crate) fn doc_stamp(&self, name: &str) -> Result<Option<(i64, u64)>> {
-        Ok(self
-            .conn()
-            .query_row(
+        self.read(|c| {
+            Ok(c.query_row(
                 "SELECT version, updated FROM docs WHERE name=?1",
                 [name],
                 |r| Ok((r.get(0)?, r.get::<_, f64>(1)?.to_bits())),
             )
             .optional()?)
+        })
     }
 
     pub fn doc_version(&self, name: &str) -> Result<i64> {
-        Ok(self
-            .conn()
-            .query_row("SELECT version FROM docs WHERE name=?1", [name], |r| {
-                r.get(0)
-            })
-            .optional()?
-            .unwrap_or(0))
+        self.read(|c| {
+            Ok(
+                c.query_row("SELECT version FROM docs WHERE name=?1", [name], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .unwrap_or(0),
+            )
+        })
     }
 
     /// Dosyanın TÜM satırlarını tek işlemde değiştirir (Python `replace_tsv` ile aynı satır ayrıştırma).
@@ -479,24 +577,24 @@ impl Store {
     }
 
     pub fn tsv_text(&self, file: &str) -> Result<Option<String>> {
-        let c = self.conn();
-        let mut st = c.prepare("SELECT raw FROM tsv_rows WHERE file=?1 ORDER BY seq")?;
-        let rows: Vec<String> = st
-            .query_map([file], |r| r.get(0))?
-            .collect::<rusqlite::Result<_>>()?;
+        let rows: Vec<String> = self.read(|c| {
+            let mut st = c.prepare("SELECT raw FROM tsv_rows WHERE file=?1 ORDER BY seq")?;
+            let rows = st
+                .query_map([file], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        })?;
         Ok((!rows.is_empty()).then(|| rows.concat()))
     }
 
     /// `tsv_rows(file, active=None)`: yalnız `kind='row'`; `active` verilirse süzülür.
     pub fn tsv_rows(&self, file: &str, active: Option<bool>) -> Result<Vec<TsvShadowRow>> {
-        let c = self.conn();
         let mut q =
             "SELECT seq,active,name,cols FROM tsv_rows WHERE file=?1 AND kind='row'".to_string();
         if active.is_some() {
             q.push_str(" AND active=?2");
         }
         q.push_str(" ORDER BY seq");
-        let mut st = c.prepare(&q)?;
         let map = |r: &rusqlite::Row<'_>| {
             Ok((
                 r.get::<_, i64>(0)?,
@@ -505,11 +603,15 @@ impl Store {
                 r.get::<_, String>(3)?,
             ))
         };
-        let rows: Vec<_> = match active {
-            Some(a) => st.query_map(params![file, i64::from(a)], map)?,
-            None => st.query_map(params![file], map)?,
-        }
-        .collect::<rusqlite::Result<_>>()?;
+        let rows: Vec<_> = self.read(|c| {
+            let mut st = c.prepare(&q)?;
+            let rows = match active {
+                Some(a) => st.query_map(params![file, i64::from(a)], map)?,
+                None => st.query_map(params![file], map)?,
+            }
+            .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        })?;
         let mut out = Vec::new();
         for (seq, active, name, cols) in rows {
             let bad = || StoreError::BadDoc(file.to_string());
@@ -535,15 +637,16 @@ impl Store {
 
     /// `tsv_files`.
     pub fn tsv_files(&self) -> Result<Vec<String>> {
-        let c = self.conn();
-        let mut st = c.prepare("SELECT DISTINCT file FROM tsv_rows ORDER BY file")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.read(|c| {
+            let mut st = c.prepare("SELECT DISTINCT file FROM tsv_rows ORDER BY file")?;
+            let rows = st.query_map([], |r| r.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
     }
 
     /// `schema_version()`.
     pub fn schema_version(&self) -> Result<i64> {
-        Ok(version(&self.conn())?)
+        self.read(|c| Ok(version(c)?))
     }
 
     // ---- log (ekleme günlüğü) ----------------------------------------------------------------------------------
@@ -560,12 +663,14 @@ impl Store {
         })
     }
 
-    fn log_rows(&self, sql: &str, args: impl rusqlite::Params) -> Result<Vec<LogRow>> {
-        let c = self.conn();
-        let mut st = c.prepare(sql)?;
-        let rows: Vec<(i64, f64, String)> = st
-            .query_map(args, |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<rusqlite::Result<_>>()?;
+    fn log_rows(&self, sql: &str, args: impl rusqlite::Params + Copy) -> Result<Vec<LogRow>> {
+        let rows: Vec<(i64, f64, String)> = self.read(|c| {
+            let mut st = c.prepare(sql)?;
+            let rows = st
+                .query_map(args, |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        })?;
         rows.into_iter()
             .map(|(id, ts, body)| {
                 let v = Json::parse(&body).map_err(|_| StoreError::BadDoc(format!("log#{id}")))?;
@@ -604,10 +709,11 @@ impl Store {
 
     /// `list_streams`.
     pub fn list_streams(&self) -> Result<Vec<String>> {
-        let c = self.conn();
-        let mut st = c.prepare("SELECT DISTINCT stream FROM log ORDER BY stream")?;
-        let rows = st.query_map([], |r| r.get(0))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.read(|c| {
+            let mut st = c.prepare("SELECT DISTINCT stream FROM log ORDER BY stream")?;
+            let rows = st.query_map([], |r| r.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
     }
 
     // ---- dışa/içe aktarım, yedek ---------------------------------------------------------------------------------
@@ -616,11 +722,13 @@ impl Store {
     pub fn export_all(&self) -> Result<Json> {
         let mut logs = Map::new();
         for st in self.list_streams()? {
-            let c = self.conn();
-            let mut q = c.prepare("SELECT ts, body FROM log WHERE stream=?1 ORDER BY id")?;
-            let rows: Vec<(f64, String)> = q
-                .query_map([&st], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<rusqlite::Result<_>>()?;
+            let rows: Vec<(f64, String)> = self.read(|c| {
+                let mut q = c.prepare("SELECT ts, body FROM log WHERE stream=?1 ORDER BY id")?;
+                let rows = q
+                    .query_map([&st], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<rusqlite::Result<_>>()?;
+                Ok(rows)
+            })?;
             let mut arr = Vec::with_capacity(rows.len());
             for (ts, body) in rows {
                 let v = Json::parse(&body).map_err(|_| StoreError::BadDoc(format!("log:{st}")))?;
@@ -881,6 +989,106 @@ mod tests {
             vec!["claudeops.db"],
             "olağan mode=ro artık yan dosya yaratmıyor: immutable dalını yeniden değerlendir"
         );
+    }
+
+    /// R-B1-1: `immutable=1` bağlantısı açıkken bir yazar gelip yazar, kapanışta WAL'ı ana dosyaya aktarıp yan dosyaları
+    /// siler. immutable bağlantı değişikliği görmez (kilit/değişiklik denetimi yok): sorgu sonrası damga farklıysa sonuç
+    /// atılmalı ve güncel biçimde yeniden okunmalı. Yan dosya yaratmama sözleşmesi korunur.
+    #[test]
+    fn immutable_read_detects_writer_that_came_and_went() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let dir = env.root().join("ro3");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = closed_wal_db(&dir);
+        let s = Store::open_read_only(&path).unwrap();
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("{\"x\": 1}"));
+        std::thread::sleep(std::time::Duration::from_millis(20)); // çekirdek zaman damgası adımı
+        let w = Connection::open(&path).unwrap();
+        w.execute("UPDATE docs SET body='{\"x\": 2}'", []).unwrap();
+        drop(w);
+        assert_eq!(listing(&dir), vec!["claudeops.db"]);
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("{\"x\": 2}"));
+        drop(s);
+        assert_eq!(listing(&dir), vec!["claudeops.db"]);
+    }
+
+    /// R-B1-1 doğal yarış (gözden geçirme deneyi e7 benzeri): yazar sürekli açıp yazıp kapanırken her salt okunur
+    /// okuma ya tutarlı bir nesil görür ya da hata verir (çağıran dosyaya düşer); karışık nesil YOK.
+    #[test]
+    fn immutable_reads_never_mix_generations_under_writer() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let dir = env.root().join("ro4");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = closed_wal_db(&dir);
+        let body = |g: usize| {
+            let v: Vec<String> = (0..3000).map(|_| g.to_string()).collect();
+            format!("[{}]", v.join(","))
+        };
+        {
+            let w = Connection::open(&path).unwrap();
+            w.execute("UPDATE docs SET body=?1", [body(0)]).unwrap();
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let wp = path.clone();
+        let st = stop.clone();
+        let writer = std::thread::spawn(move || {
+            let mut g = 1;
+            while !st.load(std::sync::atomic::Ordering::Relaxed) {
+                let w = Connection::open(&wp).unwrap();
+                w.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+                w.execute("UPDATE docs SET body=?1", [body(g)]).unwrap();
+                drop(w);
+                g += 1;
+            }
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+        let (mut ok, mut mixed) = (0, 0);
+        while std::time::Instant::now() < deadline {
+            let Ok(s) = Store::open_read_only(&path) else {
+                continue;
+            };
+            let Ok(Some(raw)) = s.get_doc_raw("a") else {
+                continue;
+            };
+            let mut it = raw.trim_matches(['[', ']']).split(',');
+            let first = it.next().unwrap_or_default().to_string();
+            if raw.matches(',').count() == 2999 && it.all(|x| x == first) {
+                ok += 1;
+            } else {
+                mixed += 1;
+            }
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        writer.join().unwrap();
+        assert_eq!(mixed, 0, "karışık nesil okundu ({ok} tutarlı)");
+        assert!(ok > 0);
+    }
+
+    /// R-B1-2: DB yolu sembolik bağlantıysa SQLite yan dosyaları HEDEFİN yanına koyar; açılış biçimi hedefe bakmalı. Aksi
+    /// hâlde açık yazar varken `Immutable` seçilir ve yazarın WAL'daki işlemi görülmez (kalıcı bayat okuma).
+    #[test]
+    fn symlinked_db_checks_side_files_next_to_target() {
+        let env = crate::paths::TestEnv::new().unwrap();
+        let a = env.root().join("sa");
+        let b = env.root().join("sb");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let real = closed_wal_db(&a);
+        let link = b.join("link.db");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let w = Connection::open(&link).unwrap();
+        w.execute("UPDATE docs SET body='2'", []).unwrap();
+        assert_eq!(
+            listing(&a),
+            vec!["claudeops.db", "claudeops.db-shm", "claudeops.db-wal"]
+        );
+        assert_eq!(listing(&b), vec!["link.db"]);
+        assert_eq!(wal_open_mode(&link), RoOpen::Plain);
+        let s = Store::open_read_only(&link).unwrap();
+        assert_eq!(s.get_doc_raw("a").unwrap().as_deref(), Some("2"));
+        drop(s);
+        drop(w);
+        assert_eq!(listing(&b), vec!["link.db"]);
     }
 
     /// Açık yazar varken (yan dosyalar mevcut) olağan salt okunur bağlantı; yazarın son işlemi görülür, dosya listesi

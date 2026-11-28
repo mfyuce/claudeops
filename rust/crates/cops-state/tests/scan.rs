@@ -34,6 +34,7 @@ const ALLOWED: &[(&str, &str, usize)] = &[
     ("statedocs.rs", "let _ =", 1),
     ("steward_settings.rs", "unwrap_or_default()", 3),
     ("store.rs", "let _ =", 1),
+    ("store.rs", ".ok()", 2),
 ];
 
 fn sources() -> Vec<(String, String)> {

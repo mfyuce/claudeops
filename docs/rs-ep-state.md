@@ -43,9 +43,14 @@ aynı kalır, yan etkiler kalkar:
 | WAL, ikisi de yok (tüm veri ana dosyada) | `file:...?mode=ro&immutable=1` (kilit ve yan dosya yok) |
 | Yalnız biri var (çökme artığı, kurtarma yazım ister) | `StoreError::Io`, çağıran dosyaya düşer |
 
-`immutable` dalının riski: okuma sırasında başka bir süreç DB'yi açıp kontrol noktası yazarsa yırtık okuma (SQLite hatası ->
-dosyaya düşülür). Pencere, DB'yi açık tutan süreç yokken gelen ilk yazarın kontrol noktasına kadar; canlıda Python ve copsd
-(`rootrel_learned`) DB'yi açık tuttuğu için bu dala girilmez. Değişiklik B0 `ReadDocs::read`ini de kapsar (aynı işlev).
+`immutable` dalının riski (gözden geçirme R-B1-1, deneyle doğrulandı): denetim ile sorgu arasına yazar girerse bayat, karışık
+nesil ya da `malformed` okuma. Yarış doğrulaması (28 Kas): açılıştan ÖNCE ve her sorgudan SONRA damga alınır (`dev`, `ino`,
+boyut, `mtime`/`ctime` ns, WAL başlığı, `-wal`/`-shm` varlığı); farklıysa sonuç atılır, bağlantı güncel biçimle yeniden açılır
+ve sorgu yinelenir (en çok 4 kez, sonra hata -> dosyaya düşüş). Kalan pencere: aynı çekirdek zaman adımında boyutu
+değiştirmeyen ve yan dosyaları kapanışta silen tam bir yazar ömrü. Yol sembolik bağlantıysa yan dosyalar HEDEFİN yanında
+aranır ve URI çözülmüş yolu kullanır (R-B1-2). Testler `store.rs::immutable_read_detects_writer_that_came_and_went`,
+`immutable_reads_never_mix_generations_under_writer`, `symlinked_db_checks_side_files_next_to_target`. Canlıda Python ve
+copsd (`rootrel_learned`) DB'yi açık tuttuğu için bu dala normalde girilmez. Değişiklik B0 `ReadDocs::read`ini de kapsar.
 
 ## Python -> Rust eşleme tablosu
 
@@ -180,5 +185,5 @@ testlerinde Python çıktısına karşı sınandı (`cops-ep-state/tests/parity.
   DB'yi okurdu: o kurulumda `db` kipinde fark olur; canlı SQLite.
 - copsd ve Python süreçlerinin ortamı farklıysa (`CLAUDEOPS_STORE_BACKEND`, `CLAUDEOPS_DB_URL`, `CLAUDEOPS_DIAG_LOG` yalnız
   birinde) kip/yol farklı çözülür (B0'dan beri aynı varsayım).
-- `immutable=1` dalında eşzamanlı ilk yazarla yırtık okuma: kuramsal, sınanmadı (bkz. bulgu).
+- `immutable=1` dalında eşzamanlı yazar: yarış doğrulamalı (R-B1-1, yukarıda); kalan pencere aynı zaman adımındaki boyutu değişmeyen tam yazar ömrü.
 - RSS ve 60 sn CPU ölçülmedi (ikili boyutu yukarıda).

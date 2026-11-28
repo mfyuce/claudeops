@@ -197,6 +197,7 @@ gerçekten sınadığı okunarak doğrulandı; fd sızıntı testi (bilerek ekle
 | `statedocs.rs` `shadow_tsv_inner` | `unwrap_or_default()` | gölge yok = `""` (Python `or ""`) |
 | `statedocs.rs` `mirror_log` | `let _ = st.trim_log(..)` | Python `mirror_log` tüm hataları yutar (günlük -> log döngüsü olmasın); sonraki eşikte yeniden |
 | `store.rs` `backup` | `let _ = remove_file(tmp)` | hata sonrası geçici dosya; asıl hata dönülür |
+| `store.rs` `Stamp::take` | `File::open(..).ok()?`, `metadata().ok()?` | damga alınamazsa `None`: açılışta `Plain` (SQLite karar verir), sorgu sonrası `None` damga uyuşmaz sayılır ve yeniden açılış asıl hatayı döner (R-B1-1) |
 
 ## Eşleme tablosu
 
