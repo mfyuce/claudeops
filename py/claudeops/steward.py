@@ -6037,6 +6037,7 @@ _WHY_TR = {
     "todo_triage": "TODO'da açık madde var ama oturum 'yok/sahipte' diyor: ayıklama mesajı (sahibe bağlıları TBD'ye taşı) gitti, TODO değişene dek tekrar yok",
     "running": "oturum çalışıyor", "observe": "gözlem kipi: eylem uygulanmaz",
     "dialog_stuck": "diyalogda takılı (güven/resume/giriş): mesaj gitmiyor, elle geçilmeli", "send_failed": "art arda gönderim hatası: oturum takılı olabilir",
+    "bg_running": "arka plan işi (alt ajan/kabuk/Monitor) çalışıyor ya da bilinmiyor: yönerge/dürtü bitmesini bekliyor",
 }
 _WHY_EN = {
     "phase_paused": "project is paused", "phase_done": "project is done", "notes_wait": "notes start with BEKLEME (waiting)",
@@ -6055,6 +6056,7 @@ _WHY_EN = {
     "todo_triage": "TODO has open items but the session says 'none/owner': a triage message (move owner-bound items to TBD) was sent, no repeat until the TODO changes",
     "running": "session is running", "observe": "observe mode: actions are not applied",
     "dialog_stuck": "stuck at a dialog (trust/resume/login): messages do not arrive, answer it by hand", "send_failed": "repeated send failures: the session may be stuck",
+    "bg_running": "background work (sub-agent/shell/Monitor) running or unknown: directives/nudges wait for it",
 }
 _START_BLOCK_TR = {"max_starts": "tick başına başlatma sınırı (max_starts)", "max_active": "etkin oturum sınırı (max_active)",
                    "max_active_total": "makine geneli etkin sınır (max_active_total)", "auto_start_off": "auto_start kapalı",
@@ -6125,60 +6127,67 @@ def explain_idle(proj: Project, views: List[SessionView], projects: Dict[str, Pr
             return _why("start_blocked", lang, _START_BLOCK_TR.get(reason, reason) if lang != "en" else reason, reason=reason)
         return _why("start_blocked", lang, "sıra bekliyor" if lang != "en" else "waiting for its turn", reason="queue")
     v = mine[0]
+    stale = bool(v.subagent_active and v.shell_only_stale and not v.subagent_unknown)
+
+    def why(code: str, lang: str, detail: str = "", **extra: Any) -> Dict[str, Any]:
+        """Yalnız kabuk/Monitor 30 dk'dan eski (TBD#442 a): mesaj engeli yok, neden bunu `shell_only_stale` ile işaretler."""
+        return _why(code, lang, detail, **extra, **({"shell_only_stale": True} if stale else {}))
     txt = v.last_assistant or ""
     if v.busy:
-        return _why("working", lang)
+        return why("working", lang)
     ds = (state.get("dialog_stuck") or {}).get(v.name)
     if isinstance(ds, dict):          # oturum bir diyalogda (güven/resume/giriş/tanınmayan) bekliyor: gönderimler boşa gider
-        return _why("dialog_stuck", lang, f"{ds.get('kind', '')}: {ds.get('head', '')}"[:200], kind=ds.get("kind", ""), since=float(ds.get("since") or 0))
+        return why("dialog_stuck", lang, f"{ds.get('kind', '')}: {ds.get('head', '')}"[:200], kind=ds.get("kind", ""), since=float(ds.get("since") or 0))
     sf = (state.get("send_fail") or {}).get(v.name)
     if isinstance(sf, dict) and int(sf.get("n") or 0) >= 3:
-        return _why("send_failed", lang, f"{sf.get('n')}x {sf.get('error', '')}"[:200], n=int(sf.get("n") or 0), since=float(sf.get("since") or 0))
+        return why("send_failed", lang, f"{sf.get('n')}x {sf.get('error', '')}"[:200], n=int(sf.get("n") or 0), since=float(sf.get("since") or 0))
     if v.cli == "claude" and txt:
         if any(m in txt for m in _ASK_MARKERS):
-            return _why("session_asked", lang, one_line(txt, 160))
+            return why("session_asked", lang, one_line(txt, 160))
         if turn_failed(txt):
-            return _why("turn_failed", lang)
+            return why("turn_failed", lang)
         if waiting_for_gate(txt):
-            return _why("gate", lang)
+            return why("gate", lang)
         if idle_finish_marker(txt)[0]:
-            return _why("finished", lang, idle_finish_marker(txt)[0])
+            return why("finished", lang, idle_finish_marker(txt)[0])
         if owner_wait(txt):
-            return _why("owner_wait", lang)
+            return why("owner_wait", lang)
+    if bg_blocks_message(v):         # alt ajan/arka plan işi çalışıyor ya da bilinmiyor: yönerge/dürtü/teslim gitmez
+        return why("bg_running", lang, "?" if v.subagent_unknown else "")
     for a in actions:
         if a.kind == "idle_nudge" and a.name == v.name:
-            return _why("nudging", lang, str(a.payload.get("next") or "")[:160])
+            return why("nudging", lang, str(a.payload.get("next") or "")[:160])
     if v.cli != "claude":
-        return _why("running", lang)
+        return why("running", lang)
     if cfg.claude_idle == "off" or cfg.claude_idle_nudge_secs <= 0:
-        return _why("idle_off", lang)
+        return why("idle_off", lang)
     since = float(v.last_activity or 0.0)
     if since <= 0 or now - since < cfg.claude_idle_nudge_secs:
         left = int(max(0, cfg.claude_idle_nudge_secs - (now - since)) // 60) if since > 0 else 0
-        return _why("idle_wait", lang, (f"{left} min" if lang == "en" else f"{left} dk") if since > 0 else "?", minutes_left=left)
+        return why("idle_wait", lang, (f"{left} min" if lang == "en" else f"{left} dk") if since > 0 else "?", minutes_left=left)
     rec = dict(state.get("claude_idle") or {}).get(v.name) or {}
     chain = 0 if since > float(rec.get("at") or 0) else int(rec.get("n") or 0)
     if rec.get("mode", "dry") != cfg.claude_idle:
         chain = 0
     if chain >= cfg.ucli_idle_max_consecutive:
-        return _why("nudge_exhausted", lang, f"{chain}/{cfg.ucli_idle_max_consecutive}")
+        return why("nudge_exhausted", lang, f"{chain}/{cfg.ucli_idle_max_consecutive}")
     try:
         n_open = int(open_work(proj.name) or 0) if open_work is not None else 0
     except Exception:
         n_open = 0
     note_hint = next_work_hint(proj, None, real_only=True)
     if n_open <= 0 and not note_hint and not marker_next_work(txt):
-        return _why("no_next_work", lang)
+        return why("no_next_work", lang)
     tt = dict(state.get("todo_triage") or {}).get(proj.name) or {}
     if tt and (next_none_stated(txt) or owner_wait(txt)):
-        return _why("todo_triage", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
+        return why("todo_triage", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
     nn = dict(state.get("next_none") or {}).get(proj.name) or {}
     if next_none_stated(txt) and nn and int(nn.get("open", -1)) == n_open:
-        return _why("next_none", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
+        return why("next_none", lang, f"TODO'da {n_open} açık" if lang != "en" else f"{n_open} open in TODO")
     detail = f"TODO'da {n_open} açık sahipsiz madde" if (n_open > 0 and lang != "en") else (f"{n_open} open ownerless items" if n_open > 0 else note_hint)
     if cfg.claude_idle == "dry":
-        return _why("idle_dry", lang, one_line(detail, 160))
-    return _why("nudging", lang, one_line(detail, 160))
+        return why("idle_dry", lang, one_line(detail, 160))
+    return why("nudging", lang, one_line(detail, 160))
 
 
 def explain_idle_all(views: List[SessionView], projects: Dict[str, Project], state: Dict[str, Any], cfg: Config, now: float,

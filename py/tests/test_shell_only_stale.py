@@ -100,5 +100,32 @@ class DirectiveDefer(unittest.TestCase):
         self.assertEqual(self._defer(False)["code"], "session_busy")
 
 
+class ExplainIdle(unittest.TestCase):
+    """explain_idle 'neden dürtülmedi': arka plan işi mesajı engelliyorsa söylesin; yalnız kabuk 30 dk'dan eskiyse dürtü engeli yok,
+    açıklama bunu `shell_only_stale` ile işaretlesin (TBD#442 küçük uç)."""
+    NOW = 10_000_000.0
+
+    def _why(self, **kw):
+        proj = sw.Project(name="p", phase="planned")
+        v = sw.SessionView(name="p", running=True, cli="claude", busy=False, last_activity=self.NOW - 60, **kw)
+        return sw.explain_idle(proj, [v], {"p": proj}, {}, sw.Config(claude_idle="act"), self.NOW, [])
+
+    def test_background_work_blocks(self):
+        for kw in ({"subagent_active": True}, {"subagent_unknown": True}, {"subagent_unknown": True, "shell_only_stale": True}):
+            r = self._why(**kw)
+            self.assertEqual(r["code"], "bg_running", kw)
+            self.assertNotIn("shell_only_stale", r)
+
+    def test_stale_shell_does_not_block_and_is_flagged(self):
+        r = self._why(subagent_active=True, shell_only_stale=True)
+        self.assertEqual(r["code"], "idle_wait")
+        self.assertIs(r.get("shell_only_stale"), True)
+
+    def test_plain_idle_unchanged(self):
+        r = self._why()
+        self.assertEqual(r["code"], "idle_wait")
+        self.assertNotIn("shell_only_stale", r)
+
+
 if __name__ == "__main__":
     unittest.main()

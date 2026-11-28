@@ -1411,6 +1411,22 @@ for i in range(300):     # yönlendirilmiş: hc kayıtlı, elle açılan tek otu
                    source=sw.OWNED_ADOPT_SOURCE)] if rmh.random() < 0.5 else []
     add("manual_hold_step", {"hold": hold, "views": views, "world": w, "projects": projects, "questions": questions, "now": NOW, "lang": rmh.choice(["tr", "en"])})
 
+# TBD#442 küçük uç (28 Kas, copsdev): explain_idle arka plan işini (`bg_running`) söylesin, eski yalnız kabuğu `shell_only_stale` ile işaretlesin; ayrı üreteç
+rex = random.Random(4429)
+for i in range(400):
+    so, sa, su = rex.random() < 0.5, rex.random() < 0.6, rex.random() < 0.2
+    since = NOW - rex.choice([60, 700, 3600])
+    v = V("a", True, cli=rex.choice(["claude", "claude", "ucli"]), busy=rex.choice([False, False, None, True]), last_activity=since,
+          last_assistant=rex.choice(["", "STEWARD-NEXT: testi yaz", "STEWARD-ASK: hangisi?", "bitti STEWARD-DONE"]),
+          subagent_active=sa, subagent_unknown=su, shell_only_stale=so)
+    projects = {"a": P("a", phase="planned")}
+    views, state = [v], {}
+    cfg = C(claude_idle=rex.choice(["act", "dry", "off"]), claude_idle_nudge_secs=600, lang=rex.choice(["tr", "en"]))
+    acts = [sw.Action("idle_nudge", "a", "a", payload={"next": "x"})] if rex.random() < 0.2 else []
+    n_open = rex.choice([0, 2])
+    add_cb("explain_idle", {"proj": projects["a"], "views": views, "projects": projects, "state": state, "cfg": cfg, "now": NOW, "questions": [], "actions": acts, "world": None},
+           lambda c: sw.explain_idle(projects["a"], views, projects, state, cfg, NOW, [], acts, None, c["open_work"]), {"open_work": {"a": n_open}})
+
 dst = os.path.join(env.CRATE, "fixtures", "hand")
 os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "*.jsonl.gz")):

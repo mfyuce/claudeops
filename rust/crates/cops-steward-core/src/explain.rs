@@ -11,6 +11,7 @@ use crate::pyc;
 use crate::recovery::{dict_of, doc, float_of, int_of, truthy_at};
 use crate::tour::OpenWork;
 use crate::types::{Action, Config, Project, Question, SessionView, World};
+use crate::world::bg_blocks_message;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
@@ -163,6 +164,11 @@ fn with_session(proj: &Project, v: &SessionView, input: &ExplainInput<'_>) -> Re
             return Ok(plain("owner_wait", lang));
         }
     }
+    if bg_blocks_message(v) {
+        // alt ajan/arka plan işi çalışıyor ya da bilinmiyor: yönerge/dürtü/teslim gitmez
+        let detail = if v.subagent_unknown { "?" } else { "" };
+        return Ok(why("bg_running", lang, detail, Map::new()));
+    }
     if let Some(a) = actions.iter().find(|a| a.kind == "idle_nudge" && a.name == v.name) {
         let next = str_or_empty(a.payload.get("next"));
         return Ok(why("nudging", lang, pyc::head(&next, 160), Map::new()));
@@ -272,7 +278,15 @@ pub fn explain_idle(proj: &Project, input: &ExplainInput<'_>) -> Result<Doc, Bad
     }
     match mine.first() {
         None => without_session(proj, input),
-        Some(v) => with_session(proj, v, input),
+        Some(v) => {
+            // yalnız kabuk/Monitor 30 dk'dan eski (TBD#442 a): mesaj engeli yok, neden bunu `shell_only_stale` ile işaretler
+            let stale = v.subagent_active && v.shell_only_stale && !v.subagent_unknown;
+            let mut d = with_session(proj, v, input)?;
+            if stale {
+                d.insert("shell_only_stale".into(), Value::Bool(true));
+            }
+            Ok(d)
+        }
     }
 }
 

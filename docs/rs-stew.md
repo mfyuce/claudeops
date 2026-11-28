@@ -413,7 +413,7 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 
 <!-- MAP:BEGIN (parity/map.py üretir) -->
 
-### Python öğeleri (576 satır)
+### Python öğeleri (577 satır)
 
 | Python adı (dosya:satır) | Rust karşılığı | parite testi | durum |
 |---|---|---|---|
@@ -963,40 +963,41 @@ Rust'ta kaçınılmaz farklar (tipli arayüz):
 | `OWNER_CLAIM_NUDGE_TEXT` (steward.py:5846) | `consts_gen::OWNER_CLAIM_NUDGE_TEXT` | generated::generated_files_are_current | tamam |
 | `plan_claude_idle` (steward.py:5851) | `idle::plan_claude_idle` | idle::plan_claude_idle_vectors | tamam |
 | `_WHY_TR` (steward.py:6022) | `consts_gen::P_WHY_TR` | generated::generated_files_are_current | tamam |
-| `_WHY_EN` (steward.py:6041) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
-| `_START_BLOCK_TR` (steward.py:6059) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
-| `_why` (steward.py:6064) | `explain::why` | explain::p_why | tamam |
-| `explain_idle` (steward.py:6070) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
-| `explain_idle_all` (steward.py:6184) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
-| `observe_filter` (steward.py:6211) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
-| `daily_path` (steward.py:6262) | `report::daily_path` | report::daily_path_vectors | tamam |
-| `log_entries_for_date` (steward.py:6266) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
-| `DRY_KIPS` (steward.py:6289) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
-| `DRY_REPORT_HOURS` (steward.py:6291) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
-| `_count_or_zero` (steward.py:6294) | `report::count_or_zero` | report::p_count_or_zero | tamam |
-| `dry_report` (steward.py:6302) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
-| `dry_report_text` (steward.py:6336) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
-| `dry_ask_due` (steward.py:6348) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
-| `summary_due` (steward.py:6359) | `report::summary_due` | report::summary_due_vectors | tamam |
-| `missed_summary_dates` (steward.py:6366) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
-| `_NO_LOG_DAYS` (steward.py:6390) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
-| `_SUMMARY_TXT` (steward.py:6393) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
-| `_names` (steward.py:6417) | `report::names_line` | report::p_names | tamam |
-| `_kind_counts` (steward.py:6422) | `report::kind_counts` | report::p_kind_counts | tamam |
-| `_ask_gate_lines` (steward.py:6427) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
-| `daily_summary` (steward.py:6446) | `report::daily_summary` | report::daily_summary_vectors | tamam |
-| `summary_text` (steward.py:6531) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
-| `write_daily` (steward.py:6549) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
-| `summarize_projects` (steward.py:6556) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
+| `_WHY_EN` (steward.py:6042) | `consts_gen::P_WHY_EN` | generated::generated_files_are_current | tamam |
+| `_START_BLOCK_TR` (steward.py:6061) | `consts_gen::P_START_BLOCK_TR` | generated::generated_files_are_current | tamam |
+| `_why` (steward.py:6066) | `explain::why` | explain::p_why | tamam |
+| `explain_idle` (steward.py:6072) | `explain::explain_idle` | explain::explain_idle_vectors | tamam |
+| `explain_idle.why` (steward.py:6132) | `explain::explain_idle (içinde)` | explain::explain_idle_vectors | tamam |
+| `explain_idle_all` (steward.py:6193) | `explain::explain_idle_all` | explain::explain_idle_all_vectors | tamam |
+| `observe_filter` (steward.py:6220) | `observe::observe_filter` | observe::observe_filter_vectors | tamam |
+| `daily_path` (steward.py:6271) | `report::daily_path` | report::daily_path_vectors | tamam |
+| `log_entries_for_date` (steward.py:6275) | `report::log_entries_for_date` | iocore::log_entries_for_date_io_cases | tamam |
+| `DRY_KIPS` (steward.py:6298) | `consts_gen::DRY_KIPS` | generated::generated_files_are_current | tamam |
+| `DRY_REPORT_HOURS` (steward.py:6300) | `consts_gen::DRY_REPORT_HOURS` | generated::generated_files_are_current | tamam |
+| `_count_or_zero` (steward.py:6303) | `report::count_or_zero` | report::p_count_or_zero | tamam |
+| `dry_report` (steward.py:6311) | `report::dry_report` | iocore::dry_report_io_cases | tamam |
+| `dry_report_text` (steward.py:6345) | `report::dry_report_text` | report::dry_report_text_vectors | tamam |
+| `dry_ask_due` (steward.py:6357) | `report::dry_ask_due` | report::dry_ask_due_vectors | tamam |
+| `summary_due` (steward.py:6368) | `report::summary_due` | report::summary_due_vectors | tamam |
+| `missed_summary_dates` (steward.py:6375) | `report::missed_summary_dates` | iocore::missed_summary_dates_io_cases | tamam |
+| `_NO_LOG_DAYS` (steward.py:6399) | - | - | kapsam dışı: yol ya da çalışma zamanı nesnesi (dosya yolu, kilit, bellek içi önbellek): rs/state + T10 |
+| `_SUMMARY_TXT` (steward.py:6402) | `consts_gen::P_SUMMARY_TXT` | generated::generated_files_are_current | tamam |
+| `_names` (steward.py:6426) | `report::names_line` | report::p_names | tamam |
+| `_kind_counts` (steward.py:6431) | `report::kind_counts` | report::p_kind_counts | tamam |
+| `_ask_gate_lines` (steward.py:6436) | `report::ask_gate_lines` | report::p_ask_gate_lines | tamam |
+| `daily_summary` (steward.py:6455) | `report::daily_summary` | report::daily_summary_vectors | tamam |
+| `summary_text` (steward.py:6540) | `report::summary_text` | iocore::summary_text_io_cases | tamam |
+| `write_daily` (steward.py:6558) | - | - | kapsam dışı: G/Ç (olay günlüğü, rapor dosyaları): T10 uygulama katmanı |
+| `summarize_projects` (steward.py:6565) | `report::summarize_projects` | report::summarize_projects_vectors | tamam |
 | `rfh_marker_in` (needs_ho.py:164) | `markers::rfh_marker_in` | markers::rfh_marker_edges | tamam |
 | `collapse_ws` (textutil.py:7) | `pyc::collapse_ws` | markers::collapse_ws_edges | tamam |
 | `owner_class` (steward_ask.py:36) | `ask::owner_class` | gates::owner_class_vectors | tamam |
 | `blocked_reason` (steward_ask.py:61) | `ask::blocked_reason` | gates::blocked_reason_vectors | tamam |
 | `tour_eligible` (steward_ask.py:71) | `ask::tour_eligible` | gates::bad_values_are_errors, gates::tour_eligible_hand | tamam |
 
-### Python testleri (2021 satır)
+### Python testleri (2024 satır)
 
-Test satırı özeti: 2021 satır; doğrudan açık (aşağıda `AÇIK`) 204; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
+Test satırı özeti: 2024 satır; doğrudan açık (aşağıda `AÇIK`) 204; parite ile bağlı olup crate dışı çağrısı da olan 858, bunlardan Rust'ta hiç olmayan değnekçi modülünü de çağıran (`AÇIK (Rust'ta yok)`) 99. Python öğesi satırında `AÇIK`: 0.
 
 | Python testi | Rust karşılığı / gerekçe |
 |---|---|
@@ -1518,6 +1519,9 @@ Test satırı özeti: 2021 satır; doğrudan açık (aşağıda `AÇIK`) 204; pa
 | `test_shell_only_stale.BlocksMessage.test_rule` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf kural `bg_blocks_message` (+ `handover_defer_decision`, `holds_total_slot` değişmedi): Rust `world::bg_blocks_message`, el vakaları `hand_cases.py` TBD#442 bloğu (tam doğruluk tablosu + teslim/boşta dürtü) |
 | `test_shell_only_stale.BlocksMessage.test_handover_still_defers` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf kural `bg_blocks_message` (+ `handover_defer_decision`, `holds_total_slot` değişmedi): Rust `world::bg_blocks_message`, el vakaları `hand_cases.py` TBD#442 bloğu (tam doğruluk tablosu + teslim/boşta dürtü) |
 | `test_shell_only_stale.DirectiveDefer.test_stale_shell_lets_directive_through` | gereksiz (bu crate'te sınanacak saf çağrı yok): `web_steward._brain_directive_defer`: `_shell_only_stale` iken alt ajan ertelemesi kalkar; uygulama katmanı, saf kural `bg_blocks_message` vektörlerinde, iz T10 |
+| `test_shell_only_stale.ExplainIdle.test_background_work_blocks` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle`: `bg_running` nedeni + `shell_only_stale` işareti; Rust `explain::with_session`/`explain_idle`, el vakaları `hand_cases.py` 4429 bloğu + kayıtlı vektörler |
+| `test_shell_only_stale.ExplainIdle.test_stale_shell_does_not_block_and_is_flagged` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle`: `bg_running` nedeni + `shell_only_stale` işareti; Rust `explain::with_session`/`explain_idle`, el vakaları `hand_cases.py` 4429 bloğu + kayıtlı vektörler |
+| `test_shell_only_stale.ExplainIdle.test_plain_idle_unchanged` | gereksiz (bu crate'te sınanacak saf çağrı yok): saf `explain_idle`: `bg_running` nedeni + `shell_only_stale` işareti; Rust `explain::with_session`/`explain_idle`, el vakaları `hand_cases.py` 4429 bloğu + kayıtlı vektörler |
 | `test_stated_next.Helper.test_marker_next_work` | markers::done_then_work_is_work, markers::p_bare_marker, markers::p_is_no_work_value, markers::p_unwrap_ticks (+5) |
 | `test_stated_next.Keepwarm.test_keepwarm_sends_devam_with_next_not_ok` | idletext::next_work_hint_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::done_then_work_is_work (+8); testin bu crate dışındaki çağrıları (bu satır onları sınamaz): steward_keepwarm.keepwarm_text; AÇIK (Rust'ta yok): steward_keepwarm.keepwarm_text |
 | `test_stated_next.IdleNudge.test_nudges_with_stated_next_even_with_empty_todo_and_ask_marker` | idle::plan_claude_idle_vectors, idletext::one_line_vectors, idletext::turn_failed_vectors, markers::done_then_work_is_work (+8) |
