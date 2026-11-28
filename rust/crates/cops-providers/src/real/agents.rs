@@ -19,9 +19,9 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// `_SAFE_NAME_RE` (Python `$`: sondaki tek satır sonu kabul edilir).
+/// `_SAFE_NAME_RE` (`\A...\Z`, main `fcd2f242`: sondaki satır sonu artık kabul edilmez).
 static SAFE_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\n?$").expect("sabit desen"));
+    LazyLock::new(|| Regex::new(r"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\z").expect("sabit desen"));
 
 /// Nesne olmayan üst kayıt: spawn düşer (Python `TypeError`).
 pub const BAD_PARENT_RECORD: &str = "ucli_agents: üst oturum kaydı nesne değil; defteri düzelt";

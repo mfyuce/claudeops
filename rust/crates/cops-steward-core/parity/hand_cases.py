@@ -1305,6 +1305,23 @@ for phase in ("planned", "paused", "done"):
                 views = [V("alfa", True, **dict({"tmux": True, "busy": False}, **kw))]
                 add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {"pause_close": {"alfa": req_at}},
                                   "cfg": C(enabled=True), "now": NOW, "questions": [], "ideas": [], "world": world})
+# 28 Kas (uzakgoz, sesotappr): oturum açıkken süpürme sorusunun "Aç" cevabı fazı planned'a çeker; tut cevabı ve başka soru çekmez
+for phase in ("planned", "paused", "done"):
+    for text in (sw.paused_sweep_text("alfa", 6), sw.paused_sweep_text("alfa", 6) + "\n", "Commit edeyim mi?"):
+        for ans in ("1) Aç", "2) Paused kalsın", "evet", "Aç, başlamasın"):
+            views = [V("alfa", True, tmux=True, busy=False)]
+            qs = [Q("q1", "alfa", text, status="answered", answer=ans, answered_at=NOW - 30, created_at=NOW - 90)]
+            add("plan_tick", {"views": views, "projects": {"alfa": P("alfa", phase=phase)}, "state": {}, "cfg": C(enabled=True), "now": NOW,
+                              "questions": qs, "ideas": [], "world": None})
+# 28 Kas: cevap TBD başlık bölümüne (soru kimliği, `## #N`/`### N)`), bağlanamazsa ayrı bölüme; son başlığın altına düşmesin
+_TBD = ("# TBD\n\n## #442 (28 Kas) SORU: kabuk?\nSoru kimliği: q442 (açık).\nmetin\n\n## #429 bütçe\nTBD#441 anılır\n\n### 430) alt\n\n"
+        "## #441 codex\nmetin\n\n- Sahip cevabı (x) [qold]: eski\n")
+for text in (_TBD, _TBD + "\n" + sw.TBD_UNLINKED_ANSWERS_HEADING + "\n- Sahip cevabı (x) [qu]: u\n\n## #443 yeni\n", "- [ ] x\n", "#yok\n", "", "   ## #5 girintili\n"):
+    for qid, q_text in (("q1", "Disk dolu?"), ("q442", "kabuk?"), ("q1", "TBD#441 için?"), ("q1", "TBD #430 ve TBD#429"), ("q1", "TBD#4 ?"), ("", "TBD#5"), ("q1", "TBD#٤٤١")):
+        add("tbd_insert_answer", {"text": text, "qid": qid, "q_text": q_text, "answer": "a  b", "date": "2026-11-28"})
+    lines = text.split("\n")
+    for h in [i for i, ln in enumerate(lines) if sw._TBD_HEAD_RE.match(ln)]:
+        add("_tbd_section_end", {"lines": lines, "h": h})
 sw.save_questions([])
 for t in ["Kapak rengi ne olsun?", "Dergi hangisi seçilsin?", "Sunum tarihi ne zaman?", sw._HELD_ANSWER_PREFIX + " pr projesi done/paused, cevap (q9) oturum açmadı.", "Yazar sırası nasıl olacak?"]:
     a = {"project": "p", "text": t, "source": "motor", "options": None, "routine": False, "detail": ""}

@@ -79,6 +79,45 @@ class TbdInsert(unittest.TestCase):
         self.assertTrue(sw.tbd_insert_answer("", "q3", "x", "y", "d").startswith("- Sahip cevabı"))
 
 
+class TbdInsertSection(unittest.TestCase):
+    """28 Kas: TBD#429/#439 cevapları (soru metninde TBD#N yok) dosya sonuna, yani son başlık #441'in altına düştü."""
+    DOC = ("# TBD\n\n## #442 (28 Kas) SORU: kabuk?\nSoru kimliği: q442 (açık).\nmetin\n\n"
+           "## #429 (27 Kas) bütçe denetimi\nTBD#441 ile ilgili değil\n\n### 430) alt\n\n## #441 (28 Kas) codex\nmetin\n\n- Sahip cevabı (x) [qold]: eski\n")
+
+    def section_of(self, new, qid):
+        head = None
+        for ln in new.split("\n"):
+            if ln.startswith("#"):
+                head = ln
+            if f"[{qid}]" in ln:
+                return head
+
+    def test_unlinked_answer_is_not_filed_under_the_last_heading(self):
+        new = sw.tbd_insert_answer(self.DOC, "q1", "Disk dolu, ne sileyim?", "Hiçbiri", "2026-11-28")
+        self.assertEqual(self.section_of(new, "q1"), sw.TBD_UNLINKED_ANSWERS_HEADING)
+        again = sw.tbd_insert_answer(new, "q2", "başka", "evet", "2026-11-28")
+        self.assertEqual(again.count(sw.TBD_UNLINKED_ANSWERS_HEADING), 1)
+        self.assertEqual(self.section_of(again, "q2"), sw.TBD_UNLINKED_ANSWERS_HEADING)
+
+    def test_tbd_number_goes_to_its_heading_not_first_mention(self):
+        new = sw.tbd_insert_answer(self.DOC, "q1", "TBD#441 için?", "a", "2026-11-28")
+        self.assertTrue(self.section_of(new, "q1").startswith("## #441 "))
+        new = sw.tbd_insert_answer(self.DOC, "q1", "TBD#430 için?", "a", "2026-11-28")
+        self.assertTrue(self.section_of(new, "q1").startswith("### 430)"))
+        lines = new.split("\n")
+        self.assertEqual(lines[lines.index("### 430) alt") + 1][:15], "- Sahip cevabı ")
+
+    def test_question_id_in_a_section_wins(self):
+        new = sw.tbd_insert_answer(self.DOC, "q442", "kabuk ne olsun?", "a", "2026-11-28")
+        self.assertTrue(self.section_of(new, "q442").startswith("## #442 "))
+        lines = new.split("\n")
+        self.assertEqual(lines[lines.index("metin") + 1][:15], "- Sahip cevabı ")      # bloğun sonundaki boş satırın üstüne
+
+    def test_file_without_headings_still_appends(self):
+        self.assertTrue(sw.tbd_insert_answer("- [ ] x\n", "q3", "y", "z", "d").rstrip().endswith("z"))
+        self.assertNotIn(sw.TBD_UNLINKED_ANSWERS_HEADING, sw.tbd_insert_answer("- [ ] x\n", "q3", "y", "z", "d"))
+
+
 class Preserve(_Tmp):
     def _q(self, project="hittite"):
         return sw.Question(id="q9", project=project, text="TBD#5 yapalım mı?", answer="evet yapalım", status="answered", created_at=1.0)

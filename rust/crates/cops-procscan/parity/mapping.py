@@ -413,7 +413,7 @@ DEFS["providers/copilot_provider.py"] = [
         "_PERMISSION_FLAGS "
         + " ".join(P_ + n for n in "build_inner_command env_overrides model_choices permission_modes "
                    "effort_levels".split()), "açılış argv/env, model/effort/izin kuralları", SAG),
-    oos("_RESUME_SCAN_LIMIT _TRUST_TOKEN_RE trust_folder trust_folder::re1 " + P_ + "resolve_resume_id",
+    oos("_RESUME_SCAN_LIMIT _TRUST_TOKEN_RE trust_folder trust_folder::re1 trust_folder::re2 " + P_ + "resolve_resume_id",
         "devam kimliği ve klasöre güven kaydı", T4),
     oos("SESSION_STORE_DB _connect_ro _cell_value " + " ".join(P_ + n for n in "_turns last_exchange full_history".split()),
         "oturum deposu ve sohbet geçmişi", CHAT),
@@ -755,7 +755,7 @@ CASES["test_review_fixes_2026_11_04.py"] = [
           f"{T4}; {T6}"),
     t_oos(cls("UploadNoOverwriteRace", "test_file_appearing_after_check_is_not_clobbered "
               "test_no_overwrite_creates_new_file test_dir_is_fsynced_after_write"), "dosya yükleme", T3),
-    t_oos(cls("CliStatusOverride", "test_stale_override_is_not_found test_valid_override_is_found"),
+    t_oos(cls("CliStatusOverride", "test_stale_override_is_not_found test_valid_override_is_found test_non_text_override_or_map_is_ignored"),
           "CLI ikilisi bulma ayarı", T7),
     t_oos("SeedNonDict.test_list_content_is_left_alone", "oturum açılışında ayar tohumlama", T4),
     t_oos("FileLockPathNormalizationTest.test_spellings_of_one_path_share_one_lock_entry", "durum dosyası kilidi",
@@ -1441,7 +1441,7 @@ chat_compaction_view:3:ada23aaf33
 check_cmd:5:c6cf1fda88
 claude_models_store:4:967306188a
 context_mask_unknown:3:9d143dbe0c
-copilot_trust:9:d6b4d8ba56
+copilot_trust:11:c4cd75d505
 cpu_hogs:3:887f0c1e4a
 diag_log_isolation:2:5ecbb7a6c7
 directive_delivery:19:57e6111f92
@@ -1504,7 +1504,7 @@ statedocs_writers:7:817e74b52a
 steward_api_recovery:17:f79402b74c
 steward_audit_p9:24:36a9eb8914
 steward_brain:34:b4c732deb9
-steward_core_a:122:f4f49eaa0c
+steward_core_a:123:714f2e5607
 steward_core_b:78:400a04ffd3
 steward_ctx:21:12df78f872
 steward_generic:26:09b9cc7fd0
@@ -1523,7 +1523,7 @@ stopped_session_chat:29:b4c521a883
 store_tsv:6:310f8c657f
 stuck_kills_parent:4:f6dcaf3ebf
 tmux_list_utf8:3:1f73edfe38
-ucli_agents:14:5ef9105ef1
+ucli_agents:15:545cd4828b
 ucli_ask_dir:6:78468c20fd
 ucli_brain_mcp:26:f5509e6d5a
 ucli_broad_glob_and_instr_check:11:ea6a9ab95d
@@ -1533,7 +1533,7 @@ ucli_checks_isolation:3:82e57898d3
 ucli_checks_opts:13:35384bf277
 ucli_cost_cap_refusal:3:a396643893
 ucli_default_permission_mode:3:ae4885e482
-ucli_effort:27:b0ffbae640
+ucli_effort:28:789f607e0d
 ucli_endpoint:4:f9abf5df56
 ucli_evren_no_default_cap:2:d4342e7d8b
 ucli_failed_turns:7:ce38ec06b6

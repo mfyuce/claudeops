@@ -343,6 +343,10 @@ fn build_cases(e: &Env) -> Vec<Case> {
         r#"{"trustedFolders": [ "/a]""#,
         r#"{"trustedFolders": ["/a", "\x", "WORK"]}"#,
         r#"{"trustedFolders": ["WORK\u002f", "/\u00e7]"]}"#,
+        // main `4e3b512a`: yalnız yorum içeren dizi boş sayılır; dizgi içindeki `//` yorum değildir
+        "{\"trustedFolders\": [\n  // eski: \"/z\"\n  /* blok */\n]}",
+        r#"{"trustedFolders": ["/a//b"]}"#,
+        r#"{"trustedFolders": [ /* "a" ] */ ]}"#,
     ]
     .iter()
     .enumerate()

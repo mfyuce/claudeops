@@ -251,7 +251,9 @@ def trust_folder(cwd: str, config_path: Optional[str] = None) -> bool:
         if end is None or any(json.loads(e) == cwd for e in entries):      # kapanmayan liste: dokunma
             return False
         rest = text[m.end():end]
-        sep = "," if rest.strip() else ""
+        # yalnız yorum içeren dizi boş sayılır (sonda virgül kalmasın); dizgi içindeki `//` yorum değildir (main `4e3b512a`)
+        bare = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', lambda x: x.group(0) if x.group(0).startswith('"') else "", rest, flags=re.S)
+        sep = "," if bare.strip() else ""
         new = text[:m.end()] + "\n    " + json.dumps(cwd) + sep + text[m.end():]
         atomic_write_text(os.path.realpath(path), new)      # mevcut izin (0600) korunur; symlink ise hedef yazılır
         return True

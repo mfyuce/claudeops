@@ -152,6 +152,12 @@ class CatalogTests(unittest.TestCase):
         self.assertIs(up._LIVE_CAPS["gemma-4-31b"]["reasoning_effort"], False)
         self.assertIs(up._LIVE_CAPS["deepseek-v4-flash"]["reasoning_effort"], True)
 
+    def test_non_text_ids_are_skipped(self):                                     # 26 Kas rs-prov (TODO): TypeError
+        payload = {"data": [{"id": ["x"], "task": "chat", "capabilities": {"reasoning_effort": True}},
+                            {"id": 7, "task": "chat"}, {"id": "ok", "task": "chat", "capabilities": {}}]}
+        self.assertEqual(self.fetch(payload), ["ok"])
+        self.assertEqual(up._LIVE_CAPS, {"ok": {}})
+
     def test_a_failed_or_empty_fetch_keeps_the_previous_map(self):
         self.fetch(models_payload())
         before = dict(up._LIVE_CAPS)

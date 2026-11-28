@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 612 | 153 | 459 | 0 |
-| test durumu (157 dosya) | 1954 | 115 | 1839 | 0 |
+| tanım | 613 | 153 | 460 | 0 |
+| test durumu (157 dosya) | 1960 | 115 | 1845 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -26,7 +26,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `providers/base.py` | KISMİ | 83 | 6 | 77 | 0 |
 | `providers/claude_provider.py` | KISMİ | 130 | 8 | 122 | 0 |
 | `providers/codex_provider.py` | KISMİ | 44 | 8 | 36 | 0 |
-| `providers/copilot_provider.py` | KISMİ | 39 | 5 | 34 | 0 |
+| `providers/copilot_provider.py` | KISMİ | 40 | 5 | 35 | 0 |
 | `providers/agy_provider.py` | KISMİ | 54 | 10 | 44 | 0 |
 | `providers/shell_provider.py` | KISMİ | 14 | 6 | 8 | 0 |
 | `providers/ucli_provider.py` | KISMİ | 90 | 10 | 80 | 0 |
@@ -456,28 +456,29 @@ Yok.
 | `providers/copilot_provider.py::_TRUST_TOKEN_RE` | sabit:228 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
 | `providers/copilot_provider.py::trust_folder` | işlev:231 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
 | `providers/copilot_provider.py::trust_folder::re1` | regex:241 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `providers/copilot_provider.py::_connect_ro` | işlev:262 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::_cell_value` | işlev:269 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::CopilotProvider` | sınıf:279 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
-| `providers/copilot_provider.py::CopilotProvider.name` | sabit:280 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
-| `providers/copilot_provider.py::CopilotProvider.resolve_resume_id` | işlev:282 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `providers/copilot_provider.py::CopilotProvider.build_inner_command` | işlev:312 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.env_overrides` | işlev:339 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.matches_proc` | işlev:345 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
-| `providers/copilot_provider.py::CopilotProvider.extract_name` | işlev:364 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | agy/codex ile aynı kol; copilot'a özel ad testi yok |
-| `providers/copilot_provider.py::CopilotProvider.extract_info` | işlev:371 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::copilot_info` | yok |
-| `providers/copilot_provider.py::CopilotProvider.model_choices` | işlev:387 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.permission_modes` | işlev:390 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.effort_levels` | işlev:393 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `providers/copilot_provider.py::CopilotProvider.mode_status_patterns` | işlev:396 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/copilot_provider.py::CopilotProvider.busy_status_pattern` | işlev:399 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
-| `providers/copilot_provider.py::CopilotProvider.usage_command` | işlev:402 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider.parse_usage_text` | işlev:411 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider.usage_fresh_tui_argv` | işlev:422 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
-| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:426 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::CopilotProvider.live_context` | işlev:449 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
-| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:472 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
-| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:481 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::trust_folder::re2` | regex:255 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `providers/copilot_provider.py::_connect_ro` | işlev:264 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::_cell_value` | işlev:271 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider` | sınıf:281 | karşılandı | `providers.rs::Cli` | `providers.rs::detect`<br>`golden.rs::provider_detect_and_info`<br>`tests/fake_proc.rs::discovers_each_cli_and_names` | yalnız tanıma/ayrıştırma |
+| `providers/copilot_provider.py::CopilotProvider.name` | sabit:282 | karşılandı | `providers.rs::Cli::as_str` | `golden.rs::provider_detect_and_info` | yok |
+| `providers/copilot_provider.py::CopilotProvider.resolve_resume_id` | işlev:284 | kapsam dışı | yok | yok | devam kimliği ve klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `providers/copilot_provider.py::CopilotProvider.build_inner_command` | işlev:314 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.env_overrides` | işlev:341 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.matches_proc` | işlev:347 | karşılandı | `providers.rs::Cli::detect` | `golden.rs::provider_detect_and_info`<br>`providers.rs::detect` | yok |
+| `providers/copilot_provider.py::CopilotProvider.extract_name` | işlev:366 | karşılandı | `providers.rs::Cli::extract_name` | `tests/fake_proc.rs::discovers_each_cli_and_names` | agy/codex ile aynı kol; copilot'a özel ad testi yok |
+| `providers/copilot_provider.py::CopilotProvider.extract_info` | işlev:373 | karşılandı | `providers.rs::Cli::extract_info` | `golden.rs::provider_detect_and_info`<br>`providers.rs::copilot_info` | yok |
+| `providers/copilot_provider.py::CopilotProvider.model_choices` | işlev:389 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.permission_modes` | işlev:392 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.effort_levels` | işlev:395 | kapsam dışı | yok | yok | açılış argv/env, model/effort/izin kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `providers/copilot_provider.py::CopilotProvider.mode_status_patterns` | işlev:398 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/copilot_provider.py::CopilotProvider.busy_status_pattern` | işlev:401 | kapsam dışı | yok | yok | tmux ekranı okuma. İz: T2 (terminal); W0-b tmux (rs/tmux) |
+| `providers/copilot_provider.py::CopilotProvider.usage_command` | işlev:404 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider.parse_usage_text` | işlev:413 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider.usage_fresh_tui_argv` | işlev:424 | kapsam dışı | yok | yok | kota okuma ve ayrıştırma. İz: T7 (periyodik+kullanım) |
+| `providers/copilot_provider.py::CopilotProvider._turns` | işlev:428 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.live_context` | işlev:451 | kapsam dışı | yok | yok | `/api/status` bağlam alanı. İz: T1 (durum) |
+| `providers/copilot_provider.py::CopilotProvider.last_exchange` | işlev:474 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
+| `providers/copilot_provider.py::CopilotProvider.full_history` | işlev:483 | kapsam dışı | yok | yok | oturum deposu ve sohbet geçmişi. İz: rs/prov (G2 `chat.rs`; `sid_for_stopped_session` G1, açık); canlı bağlantı T1 |
 
 ### `py/claudeops/providers/agy_provider.py`
 
@@ -914,13 +915,15 @@ Yok.
 |---|---|---|---|---|
 | `test_copilot_trust.py::TrustFolder.test_adds_and_keeps_comments` | 14 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
 | `test_copilot_trust.py::TrustFolder.test_empty_list` | 21 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_keeps_private_mode` | 26 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_bracket_in_registered_path_does_not_duplicate` | 34 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_bracket_cwd_is_added_once_and_rest_is_kept` | 41 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_comments_inside_list_and_escaped_quote` | 49 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_non_ascii_entry_stored_raw_is_not_duplicated` | 56 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_unterminated_list_is_left_alone` | 61 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
-| `test_copilot_trust.py::TrustFolder.test_idempotent_and_missing` | 66 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_comment_only_list_gets_no_trailing_comma` | 26 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_slashes_inside_a_string_are_not_a_comment` | 33 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_keeps_private_mode` | 38 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_bracket_in_registered_path_does_not_duplicate` | 46 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_bracket_cwd_is_added_once_and_rest_is_kept` | 53 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_comments_inside_list_and_escaped_quote` | 61 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_non_ascii_entry_stored_raw_is_not_duplicated` | 68 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_unterminated_list_is_left_alone` | 73 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
+| `test_copilot_trust.py::TrustFolder.test_idempotent_and_missing` | 78 | kapsam dışı | yok | klasöre güven kaydı. İz: T4 (yaşam döngüsü) |
 
 ### `py/tests/test_cpu_hogs.py`
 
@@ -1434,8 +1437,9 @@ Yok.
 | `test_review_fixes_2026_11_04.py::UploadNoOverwriteRace.test_dir_is_fsynced_after_write` | 123 | kapsam dışı | yok | dosya yükleme. İz: T3 (dosya) |
 | `test_review_fixes_2026_11_04.py::CliStatusOverride.test_stale_override_is_not_found` | 138 | kapsam dışı | yok | CLI ikilisi bulma ayarı. İz: T7 (periyodik+kullanım) |
 | `test_review_fixes_2026_11_04.py::CliStatusOverride.test_valid_override_is_found` | 143 | kapsam dışı | yok | CLI ikilisi bulma ayarı. İz: T7 (periyodik+kullanım) |
-| `test_review_fixes_2026_11_04.py::SeedNonDict.test_list_content_is_left_alone` | 151 | kapsam dışı | yok | oturum açılışında ayar tohumlama. İz: T4 (yaşam döngüsü) |
-| `test_review_fixes_2026_11_04.py::FileLockPathNormalizationTest.test_spellings_of_one_path_share_one_lock_entry` | 168 | kapsam dışı | yok | durum dosyası kilidi. İz: W0-a durum (rs/state) |
+| `test_review_fixes_2026_11_04.py::CliStatusOverride.test_non_text_override_or_map_is_ignored` | 149 | kapsam dışı | yok | CLI ikilisi bulma ayarı. İz: T7 (periyodik+kullanım) |
+| `test_review_fixes_2026_11_04.py::SeedNonDict.test_list_content_is_left_alone` | 157 | kapsam dışı | yok | oturum açılışında ayar tohumlama. İz: T4 (yaşam döngüsü) |
+| `test_review_fixes_2026_11_04.py::FileLockPathNormalizationTest.test_spellings_of_one_path_share_one_lock_entry` | 174 | kapsam dışı | yok | durum dosyası kilidi. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_review_self_verify.py`
 
@@ -2106,46 +2110,47 @@ Yok.
 | `test_steward_core_a.py::NegativeAnswerTest.test_is_negative_answer` | 978 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_a.py::NegativeAnswerTest.test_negative_answer_does_not_reopen` | 990 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 | `test_steward_core_a.py::NegativeAnswerTest.test_hold_answers_real_texts_do_not_reopen` | 995 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::NegativeAnswerTest.test_sweep_question_has_options` | 1006 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` | 1033 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` | 1042 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` | 1047 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` | 1054 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | 1078 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | 1089 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_grace_expiry_still_stops` | 1095 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_small_context_skips_handover` | 1102 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_switch_off_is_old_direct_stop` | 1110 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | 1116 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | 1130 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneHandoverTest.test_unanswered_conflict_still_asks` | 1137 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | 1154 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | 1162 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | 1170 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | 1175 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | 1181 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | 1193 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` | 1199 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_subagent_active_defers_confirmed` | 1207 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_open_work_of_counts_local_todo` | 1212 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` | 1227 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | 1257 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | 1271 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | 1285 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | 1300 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | 1314 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | 1324 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | 1338 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | 1354 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | 1365 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | 1371 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | 1379 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | 1404 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | 1420 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_answer_waits_while_subagent_active` | 1428 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_subagent_active_for_reads_mtime` | 1436 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_compact_answer_directive_drops_preamble` | 1453 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
-| `test_steward_core_a.py::MergedAnswersTest.test_directive_contains_all_answers` | 1469 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_open_answer_to_sweep_with_running_session_sets_planned` | 1006 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::NegativeAnswerTest.test_sweep_question_has_options` | 1021 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_long_owner_instruction_reaches_brain` | 1048 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_second_held_instruction_gets_its_own_item` | 1057 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_later_question_does_not_overwrite_held_item` | 1062 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::HeldInstructionAnswerTest.test_short_hold_brain_and_routine_answers_stay_silent` | 1069 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_done_hands_over_then_stops_never_respawns` | 1093 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_session_gone_during_done_handover_is_not_respawned` | 1104 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_grace_expiry_still_stops` | 1110 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_small_context_skips_handover` | 1117 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_switch_off_is_old_direct_stop` | 1125 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_owner_answer_stops_reasking_and_bitti_closes` | 1131 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_unknown_open_work_symlinked_worktree_accepts_proof` | 1145 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneHandoverTest.test_unanswered_conflict_still_asks` | 1152 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_plain_done_asks_for_confirmation_and_keeps_phase` | 1169 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_second_plain_done_does_not_spam_but_ttl_reasks` | 1177 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_with_evidence_sets_done_and_stops` | 1185 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_without_evidence_is_not_done` | 1190 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirmed_but_local_open_work_asks_owner_not_done` | 1196 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_no_steward_done_tag_ignores_both_markers` | 1208 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_confirm_marker_is_not_plain_done_and_placeholder_ignored` | 1214 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_subagent_active_defers_confirmed` | 1222 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_open_work_of_counts_local_todo` | 1227 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::DoneConfirmTest.test_open_tbd_of_falls_back_to_main_worktree` | 1242 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_skipped_unchanged_item_stays_out_until_state_changes_or_ttl` | 1272 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_plan_tick_records_tour_sig_and_honors_skip_seen` | 1286 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_stale_undelivered_answer_closed_not_toured` | 1300 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_projectless_answer_closes_when_brain_never_runs` | 1315 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_brain_question_answer_goes_to_live_session_named_by_project` | 1329 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_keepwarm_ok_does_not_change_the_item_signature_and_routine_carries_age` | 1339 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_observe_tour_does_not_burn_blocked_tour_budget` | 1353 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_pending_count_is_the_full_list_even_when_a_tour_is_sent` | 1369 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_count_open_tbd_new_format_needs_an_AÇIK_heading` | 1380 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_shutdown_unknown_activity_waits_unless_idle` | 1386 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::TourQuietTest.test_blocked_item_closed_after_max_tours_not_urgent_again` | 1394 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::IdleSkipTest.test_no_idle_item_for_waiting_or_done_projects` | 1419 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_planner_merges_same_session_answers_in_one_action` | 1435 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_answer_waits_while_subagent_active` | 1443 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_subagent_active_for_reads_mtime` | 1451 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_compact_answer_directive_drops_preamble` | 1468 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
+| `test_steward_core_a.py::MergedAnswersTest.test_directive_contains_all_answers` | 1484 | kapsam dışı | yok | değnekçi mantığı (crate işlevleri yalnız sahte/fikstür). İz: T10 (değnekçi) |
 
 ### `py/tests/test_steward_core_b.py`
 
@@ -2732,16 +2737,17 @@ Yok.
 | `test_ucli_agents.py::TokenTests.test_issue_writes_0600_file_and_only_hash_in_registry` | 48 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_agents.py::TokenTests.test_reissue_invalidates_old_token_and_revoke_clears` | 56 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_agents.py::TokenTests.test_children_get_no_token_and_garbage_rejected` | 65 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::TokenTests.test_revoke_unsafe_name_does_not_touch_files` | 71 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ReserveTests.test_limit_two_live_and_names_sequential` | 80 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ReserveTests.test_taken_names_skipped_and_depth_one` | 91 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ReserveTests.test_fold_text` | 97 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::SettingsTests.test_defaults` | 108 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::SettingsTests.test_off_and_cost` | 113 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ProviderSetupTests.test_no_port_or_child_or_off_gives_nothing` | 136 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ProviderSetupTests.test_unsupported_binary_gives_nothing` | 145 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ProviderSetupTests.test_enabled_returns_flag_and_env_without_token_value` | 151 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_agents.py::ProviderSetupTests.test_build_inner_command_keeps_token_out_of_argv` | 161 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::TokenTests.test_trailing_newline_name_is_unsafe` | 71 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::TokenTests.test_revoke_unsafe_name_does_not_touch_files` | 75 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ReserveTests.test_limit_two_live_and_names_sequential` | 84 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ReserveTests.test_taken_names_skipped_and_depth_one` | 95 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ReserveTests.test_fold_text` | 101 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::SettingsTests.test_defaults` | 112 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::SettingsTests.test_off_and_cost` | 117 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ProviderSetupTests.test_no_port_or_child_or_off_gives_nothing` | 140 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ProviderSetupTests.test_unsupported_binary_gives_nothing` | 149 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ProviderSetupTests.test_enabled_returns_flag_and_env_without_token_value` | 155 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_agents.py::ProviderSetupTests.test_build_inner_command_keeps_token_out_of_argv` | 165 | kapsam dışı | yok | ucli alt ajan bayrak/env. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_ask_dir.py`
 
@@ -2879,29 +2885,30 @@ Yok.
 | `test_ucli_effort.py::ReasoningModeTests.test_a_non_dict_ucli_limits_is_tolerated` | 121 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_effort.py::ReasoningModeTests.test_it_does_not_leak_into_the_numeric_overrides` | 125 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 | `test_ucli_effort.py::CatalogTests.test_only_chat_models_are_listed_and_their_capabilities_kept` | 147 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` | 155 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::CatalogTests.test_without_a_key_nothing_is_fetched` | 164 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` | 170 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::ReasoningEffortForTests.test_a_model_that_declares_support_gets_the_level` | 186 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::ReasoningEffortForTests.test_gemma_which_rejects_the_field_gets_nothing` | 190 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::ReasoningEffortForTests.test_an_unknown_model_or_an_empty_catalog_gets_nothing` | 195 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::ReasoningEffortForTests.test_a_malformed_capabilities_entry_is_tolerated` | 200 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::ReasoningEffortForTests.test_an_allowed_values_list_restricts_the_level_unless_aliased` | 208 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_a_capable_model_and_a_new_binary_get_the_session_preset` | 219 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_off_is_silent_and_sends_nothing` | 225 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_a_named_level_overrides_the_preset_but_not_the_model_gate` | 231 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_an_old_binary_gets_nothing_and_the_log_says_why` | 237 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_a_model_that_rejects_the_field_is_skipped_and_logged` | 243 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::EffortArgsTests.test_no_model_and_a_missing_binary_give_nothing_instead_of_raising` | 249 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_the_preset_name_rides_along_as_the_last_flag` | 280 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_an_unknown_or_empty_effort_falls_back_to_medium_for_the_flag_too` | 284 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_gemma_gets_the_command_byte_identical_to_before` | 290 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_an_old_binary_gets_the_command_byte_identical_to_before` | 294 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_off_gets_the_command_byte_identical_to_before` | 298 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_the_api_key_wrapper_keeps_the_flag` | 302 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_every_effort_preset_still_round_trips_through_the_running_command` | 308 | karşılandı | `providers.rs::ucli_effort_presets`<br>`golden.rs::provider_detect_and_info` | yalnız ayrıştırma yönü; argv üretimi W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::BuildInnerCommandTests.test_the_command_is_still_recognised_as_a_ucli_process` | 318 | karşılandı | `providers.rs::detect`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yalnız tanıma/ad; argv üretimi W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `test_ucli_effort.py::RealBinaryTests.test_the_delivered_binary_knows_the_flag_when_it_is_new_enough` | 325 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::CatalogTests.test_non_text_ids_are_skipped` | 155 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::CatalogTests.test_a_failed_or_empty_fetch_keeps_the_previous_map` | 161 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::CatalogTests.test_without_a_key_nothing_is_fetched` | 170 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::CatalogTests.test_model_choices_and_the_effort_gate_share_one_fetch` | 176 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::ReasoningEffortForTests.test_a_model_that_declares_support_gets_the_level` | 192 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::ReasoningEffortForTests.test_gemma_which_rejects_the_field_gets_nothing` | 196 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::ReasoningEffortForTests.test_an_unknown_model_or_an_empty_catalog_gets_nothing` | 201 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::ReasoningEffortForTests.test_a_malformed_capabilities_entry_is_tolerated` | 206 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::ReasoningEffortForTests.test_an_allowed_values_list_restricts_the_level_unless_aliased` | 214 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_a_capable_model_and_a_new_binary_get_the_session_preset` | 225 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_off_is_silent_and_sends_nothing` | 231 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_a_named_level_overrides_the_preset_but_not_the_model_gate` | 237 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_an_old_binary_gets_nothing_and_the_log_says_why` | 243 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_a_model_that_rejects_the_field_is_skipped_and_logged` | 249 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::EffortArgsTests.test_no_model_and_a_missing_binary_give_nothing_instead_of_raising` | 255 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_the_preset_name_rides_along_as_the_last_flag` | 286 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_an_unknown_or_empty_effort_falls_back_to_medium_for_the_flag_too` | 290 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_gemma_gets_the_command_byte_identical_to_before` | 296 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_an_old_binary_gets_the_command_byte_identical_to_before` | 300 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_off_gets_the_command_byte_identical_to_before` | 304 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_the_api_key_wrapper_keeps_the_flag` | 308 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_every_effort_preset_still_round_trips_through_the_running_command` | 314 | karşılandı | `providers.rs::ucli_effort_presets`<br>`golden.rs::provider_detect_and_info` | yalnız ayrıştırma yönü; argv üretimi W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::BuildInnerCommandTests.test_the_command_is_still_recognised_as_a_ucli_process` | 324 | karşılandı | `providers.rs::detect`<br>`tests/fake_proc.rs::mirrors_terminal_and_ucli_flag_edges` | yalnız tanıma/ad; argv üretimi W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `test_ucli_effort.py::RealBinaryTests.test_the_delivered_binary_knows_the_flag_when_it_is_new_enough` | 331 | kapsam dışı | yok | açılış argv/env/model kuralları. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
 
 ### `py/tests/test_ucli_endpoint.py`
 

@@ -61,6 +61,10 @@ static TRUSTED: LazyLock<Regex> =
 static TRUST_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?s)"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*.*?\*/|\]"#).unwrap());
 
+/// Ayırıcı kararı için dizi içeriği: dizgiler kalır, JSONC yorumları silinir (Python `trust_folder` `bare`, main `4e3b512a`).
+static TRUST_BARE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?s)"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/"#).unwrap());
+
 /// `config.json` (JSONC) metnine `cwd`yi `trustedFolders`a ekler; değişiklik yoksa None.
 pub fn trust_folder_edit(text: &str, cwd: &str) -> Option<String> {
     let m = TRUSTED.find(text)?;
@@ -83,7 +87,16 @@ pub fn trust_folder_edit(text: &str, cwd: &str) -> Option<String> {
     }
     let rest = &after[..end?]; // kapanmayan liste: dokunma
     let entry = crate::pyfmt::json_ascii(cwd);
-    let sep = if crate::pyfmt::strip(rest).is_empty() {
+    // yalnız yorum içeren dizi boş sayılır (sonda virgül kalmasın); dizgi içindeki `//` yorum değildir
+    let bare = TRUST_BARE.replace_all(rest, |c: &regex::Captures<'_>| {
+        let t = &c[0];
+        if t.starts_with('"') {
+            t.to_string()
+        } else {
+            String::new()
+        }
+    });
+    let sep = if crate::pyfmt::strip(&bare).is_empty() {
         ""
     } else {
         ","

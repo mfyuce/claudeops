@@ -146,6 +146,12 @@ class CliStatusOverride(unittest.TestCase):
         self.assertEqual(st["path"], "/opt/bin/claude")
         self.assertFalse(st["override_invalid"])
 
+    def test_non_text_override_or_map_is_ignored(self):                          # 26 Kas rs-prov (TODO): .strip() patlıyordu
+        for override in (5, None, ["/x"], {"p": 1}):
+            self.assertFalse(self.status(override).get("override_invalid"), override)
+        with mock.patch.object(cli_install, "load_settings", return_value={"provider_bin": ["claude"]}):
+            self.assertIn("found", cli_install.cli_status("claude"))
+
 
 class SeedNonDict(unittest.TestCase):
     def test_list_content_is_left_alone(self):

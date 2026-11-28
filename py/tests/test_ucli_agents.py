@@ -68,6 +68,10 @@ class TokenTests(AgBase):
         self.assertIsNone(ag.parent_for_token(""))
         self.assertIsNone(ag.parent_for_token("x" * 500))
 
+    def test_trailing_newline_name_is_unsafe(self):                          # 26 Kas rs-prov (TODO): `$` "\n"i kabul ederdi
+        self.assertIsNone(ag._SAFE_NAME_RE.match("p1\n"))
+        self.assertIsNotNone(ag._SAFE_NAME_RE.match("p1"))
+
     def test_revoke_unsafe_name_does_not_touch_files(self):
         victim = os.path.join(self.tmp.name, "victim")
         open(victim, "w").write("x")

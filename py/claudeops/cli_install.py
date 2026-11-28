@@ -28,6 +28,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from .paths import CLAUDEOPS_DIR
@@ -63,7 +64,9 @@ def cli_status(cli_name: str) -> Dict[str, Any]:
     """PATH'te/override'da var mı, claudeops mu kurdu. `has_token` desenindeki
     gibi (hosts.py) -- sır değil, tam yol dönmesi sorun değil."""
     settings = load_settings()
-    override = (settings.get("provider_bin") or {}).get(cli_name, "").strip()
+    bins = settings.get("provider_bin")
+    raw = bins.get(cli_name) if isinstance(bins, dict) else None
+    override = raw.strip() if isinstance(raw, str) else ""      # elle düzenlenmiş metin olmayan değer yok sayılır (`resolved_binary` ile aynı)
     on_path = shutil.which(cli_name)
     managed = bool((settings.get("cli_managed") or {}).get(cli_name))
     # Override yalnız gerçekten çalıştırılabilir bir dosyaya (ya da PATH'te bulunan bir ada) çözülüyorsa sayılır:
@@ -100,7 +103,7 @@ def _ensure_node(lang: str) -> Optional[Dict[str, Any]]:
         # Boru yok: önce dosyaya indir (-f: HTTP hatasında dur), sonra çalıştır; yarım/hatalı indirme çalıştırılmaz.
         # Sürüm etiketi sabit (v0.40.8) ve indirilen dosyanın sha256'sı NVM_INSTALL_SCRIPT_SHA256 ile doğrulanır; uyuşmazsa çalıştırılmaz.
         os.makedirs(INSTALL_DIR, exist_ok=True)
-        nvm_script = os.path.join(INSTALL_DIR, ".install-nvm.sh")
+        nvm_script = _temp_script("nvm")
         try:
             dl = subprocess.run(["curl", "-fsSL", NVM_INSTALL_SCRIPT_URL, "-o", nvm_script],
                                 capture_output=True, text=True, timeout=60)
@@ -147,6 +150,14 @@ def _run_npm(args: List[str], timeout: float) -> subprocess.CompletedProcess:
     )
 
 
+def _temp_script(name: str) -> str:
+    """Kurulum betiği için BENZERSİZ geçici yol (INSTALL_DIR altında, 0600): sabit `.install-<ad>.sh` eşzamanlı iki kurulumda
+    birinin indirdiğini öbürünün silmesine/üzerine yazmasına yol açıyordu (review R-6)."""
+    fd, path = tempfile.mkstemp(prefix=f".install-{name}-", suffix=".sh", dir=INSTALL_DIR)
+    os.close(fd)
+    return path
+
+
 def _install_via_npm(binary_name: str, package: str, lang: str) -> Dict[str, Any]:
     node_err = _ensure_node(lang)
     if node_err is not None:
@@ -166,7 +177,7 @@ def _install_via_script(binary_name: str, script_url: str, lang: str) -> Dict[st
     if not shutil.which("curl"):
         return {"ok": False, "error": "curl bulunamadı" if lang == "tr" else "curl not found"}
     os.makedirs(INSTALL_DIR, exist_ok=True)
-    script_path = os.path.join(INSTALL_DIR, f".install-{binary_name}.sh")
+    script_path = _temp_script(binary_name)
     try:
         dl = subprocess.run(["curl", "-fsSL", script_url, "-o", script_path],
                              capture_output=True, text=True, timeout=60)

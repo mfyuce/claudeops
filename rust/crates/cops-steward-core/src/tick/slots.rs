@@ -158,6 +158,14 @@ impl<'a> Tick<'a> {
                 if self.busy.contains(&v.name) || v.busy == Some(true) || v.subagent_active {
                     continue; // sonraki tick (alt ajan varken ana oturumu uyandırma)
                 }
+                if halted(p)
+                    && crate::questions::is_paused_sweep(&q.text)
+                    && is_open_answer(&q.answer)
+                    && !is_negative_answer(&q.answer)
+                {
+                    // 28 Kas (uzakgoz, sesotappr): oturum açıkken süpürme sorusunun "Aç" cevabı da fazı planned'a çeker
+                    self.act("set_phase", target, "sahip cevabı: aç", &[("phase", "planned".into())]);
+                }
                 by_session.insert(v.name.clone(), self.actions.len());
                 self.act("deliver_answer", &v.name, "answer", &[("question_id", Value::from(q.id.as_str()))]);
                 self.busy.insert(v.name.clone());

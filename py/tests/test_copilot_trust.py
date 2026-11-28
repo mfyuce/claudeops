@@ -23,6 +23,18 @@ class TrustFolder(unittest.TestCase):
         self.assertTrue(trust_folder("/b", self.p))
         self.assertEqual(json.loads(open(self.p).read())["trustedFolders"], ["/b"])
 
+    def test_comment_only_list_gets_no_trailing_comma(self):                     # 26 Kas rs-prov (TODO)
+        self._w('{"trustedFolders": [\n  // eski: "/z"\n  /* blok */\n]}')
+        self.assertTrue(trust_folder("/b", self.p))
+        t = open(self.p).read()
+        self.assertIn('"/b"\n', t)
+        self.assertNotIn('"/b",', t)
+
+    def test_slashes_inside_a_string_are_not_a_comment(self):
+        self._w('{"trustedFolders": ["/a//b"]}')
+        self.assertTrue(trust_folder("/c", self.p))
+        self.assertEqual(json.loads(open(self.p).read())["trustedFolders"], ["/c", "/a//b"])
+
     def test_keeps_private_mode(self):
         self._w('{"trustedFolders": []}')
         os.chmod(self.p, 0o600)
