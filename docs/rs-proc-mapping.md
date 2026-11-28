@@ -11,8 +11,8 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 
 | Küme | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|
-| tanım | 558 | 153 | 405 | 0 |
-| test durumu (128 dosya) | 1714 | 115 | 1599 | 0 |
+| tanım | 562 | 153 | 409 | 0 |
+| test durumu (128 dosya) | 1718 | 115 | 1603 | 0 |
 
 | Modül | Kapsam | Toplam | karşılandı | kapsam dışı | EKSİK |
 |---|---|---|---|---|---|
@@ -33,7 +33,7 @@ Rust yolları `rust/crates/cops-procscan/src/` altındadır; `tests/...` ve `gol
 | `commands/usage.py` | KISMİ | 9 | 0 | 9 | 0 |
 | `model_usage.py` | KISMİ | 13 | 2 | 11 | 0 |
 | `orphan_watch.py` | KISMİ | 19 | 0 | 19 | 0 |
-| `paths.py` | KISMİ | 20 | 9 | 11 | 0 |
+| `paths.py` | KISMİ | 24 | 9 | 15 | 0 |
 | `commands/web.py` | seçili | 7 | 3 | 4 | 0 |
 | `tmux_backend.py` | seçili | 3 | 3 | 0 | 0 |
 
@@ -666,20 +666,24 @@ Yok.
 | `paths.py::_under_test_runner` | işlev:24 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
 | `paths.py::CLAUDEOPS_DIR` | sabit:45 | karşılandı | `lib.rs::Config::from_env` | `run.py:scan_agy_learned` | yalnız canlı parite `CLAUDEOPS_DIR` ile koşar; test yalıtımı kuralı `_under_test_runner` satırında |
 | `paths.py::STATE_DIR` | sabit:51 | karşılandı | `needs_ho.rs::NeedsHo.state_dir`<br>`needs_ho.rs::NeedsHo::new` | `tests/needs_ho_git.rs::git_signals_and_baseline`<br>`run.py:needs_ho_repos` | dizini çağıran verir |
-| `paths.py::REPO_DIR` | sabit:55 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::ROSTER_TSV` | sabit:57 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::MODELS_TSV` | sabit:58 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::CLAUDE_MODELS_JSON` | sabit:59 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
-| `paths.py::SESSIONS_DIR` | sabit:61 | karşılandı | `discovery.rs::sessions_from_json` | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
-| `paths.py::PROJECTS_DIR` | sabit:62 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid` | yok |
-| `paths.py::CONFIG_JSON` | sabit:63 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::parse_proc_stat` | işlev:65 | karşılandı | `procfs.rs::parse_stat` | `procfs.rs::stat_with_parens_in_comm` | dört alan döner; `)` yoksa istisna yerine `None` |
-| `paths.py::proc_stat_fields` | işlev:71 | karşılandı | `procfs.rs::OwnProc::try_stat`<br>`procfs.rs::OwnProc::stat` | `tests/fake_proc.rs::broken_proc_fields` | yalnız kendi kullanıcımızın süreci |
-| `paths.py::proc_ppid` | işlev:77 | karşılandı | `procfs.rs::Stat.ppid` | `tests/fake_proc.rs::own_ppid_from_real_proc` | yok |
-| `paths.py::ucli_key_file` | işlev:81 | kapsam dışı | yok | yok | ucli anahtar dosyası yolu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
-| `paths.py::shared_write_allowed` | işlev:88 | kapsam dışı | yok | yok | ikinci örnekte ortak anahtar/kullanım yazma yasağı (TBD#412). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-a durum (rs/state) |
-| `paths.py::GUARD_LOCK` | sabit:102 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
-| `paths.py::ensure_private_state_dir` | işlev:105 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::_LateTestImportGuard` | sınıf:54 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::_LateTestImportGuard.__init__` | işlev:60 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::_LateTestImportGuard.find_spec` | işlev:63 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::_install_late_test_guard` | işlev:76 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::REPO_DIR` | sabit:92 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::ROSTER_TSV` | sabit:94 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::MODELS_TSV` | sabit:95 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::CLAUDE_MODELS_JSON` | sabit:96 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
+| `paths.py::SESSIONS_DIR` | sabit:98 | karşılandı | `discovery.rs::sessions_from_json` | `tests/fake_proc.rs::json_source_merges_with_proc_scan` | yok |
+| `paths.py::PROJECTS_DIR` | sabit:99 | karşılandı | `transcript.rs::jsonl_path_for` | `tests/fake_proc.rs::transcript_requires_exact_sid` | yok |
+| `paths.py::CONFIG_JSON` | sabit:100 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::parse_proc_stat` | işlev:102 | karşılandı | `procfs.rs::parse_stat` | `procfs.rs::stat_with_parens_in_comm` | dört alan döner; `)` yoksa istisna yerine `None` |
+| `paths.py::proc_stat_fields` | işlev:108 | karşılandı | `procfs.rs::OwnProc::try_stat`<br>`procfs.rs::OwnProc::stat` | `tests/fake_proc.rs::broken_proc_fields` | yalnız kendi kullanıcımızın süreci |
+| `paths.py::proc_ppid` | işlev:114 | karşılandı | `procfs.rs::Stat.ppid` | `tests/fake_proc.rs::own_ppid_from_real_proc` | yok |
+| `paths.py::ucli_key_file` | işlev:118 | kapsam dışı | yok | yok | ucli anahtar dosyası yolu. İz: W1-pre sağlayıcı (rs/prov); canlıya T4 |
+| `paths.py::shared_write_allowed` | işlev:125 | kapsam dışı | yok | yok | ikinci örnekte ortak anahtar/kullanım yazma yasağı (TBD#412). İz: W1-pre sağlayıcı (rs/prov); canlıya T4; W0-a durum (rs/state) |
+| `paths.py::GUARD_LOCK` | sabit:139 | kapsam dışı | yok | yok | açılış/koruma yolu sabitleri. İz: T4 (yaşam döngüsü) |
+| `paths.py::ensure_private_state_dir` | işlev:142 | kapsam dışı | yok | yok | durum dizini çözümü, test yalıtımı ve durum dosyaları. İz: W0-a durum (rs/state) |
 
 ### `py/claudeops/commands/web.py`
 
@@ -1269,8 +1273,12 @@ Yok.
 | `test_paths_isolation.py::CustomRunnerTest.test_script_that_loaded_unittest_is_isolated` | 32 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
 | `test_paths_isolation.py::CustomRunnerTest.test_script_that_loaded_a_repo_test_module_is_isolated` | 36 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
 | `test_paths_isolation.py::CustomRunnerTest.test_plain_script_uses_real_dir` | 42 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
-| `test_paths_isolation.py::IsolationTest.test_state_dir_is_not_live_under_runner` | 48 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
-| `test_paths_isolation.py::IsolationTest.test_runner_detection` | 53 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::LateTestImportTest.test_unittest_after_live_dir_refused` | 62 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::LateTestImportTest.test_repo_test_module_after_live_dir_refused` | 68 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::LateTestImportTest.test_plain_imports_still_work` | 73 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::LateTestImportTest.test_real_dir_opt_in_allows_unittest` | 78 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::IsolationTest.test_state_dir_is_not_live_under_runner` | 84 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
+| `test_paths_isolation.py::IsolationTest.test_runner_detection` | 89 | kapsam dışı | yok | durum dosyası/DB deposu ve durum dizini. İz: W0-a durum (rs/state) |
 
 ### `py/tests/test_proc07_io_ucli_not_fleet.py`
 

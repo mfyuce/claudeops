@@ -44,6 +44,42 @@ class CustomRunnerTest(unittest.TestCase):
         self.assertEqual(got, live)
 
 
+class LateTestImportTest(unittest.TestCase):
+    """26 Kas edge: `claudeops`u ÖNCE (canlı dizin sabitlenir), test kodunu SONRA yükleyen depo dışı betik canlıya yazardı.
+    Canlı dizin seçilmiş depo dışı süreçte sonradan `unittest` ya da `py/tests` modülü yüklenemez (kapalı yön)."""
+
+    def _run(self, after: str, extra_env=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = os.path.join(tmp, "run.py")
+            with open(runner, "w") as f:
+                f.write(f"import sys\nsys.path.insert(0, {PY_DIR!r})\nfrom claudeops import paths\n{after}\n"
+                        "print('SONRA', paths.CLAUDEOPS_DIR)\n")
+            env = {k: v for k, v in os.environ.items() if k not in ("CLAUDEOPS_DIR", "CLAUDEOPS_TEST_REAL_DIR")}
+            env["HOME"] = tmp
+            env.update(extra_env or {})
+            return subprocess.run([sys.executable, runner], env=env, capture_output=True, text=True, timeout=60)
+
+    def test_unittest_after_live_dir_refused(self):
+        r = self._run("import unittest")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("SONRA", r.stdout)
+        self.assertIn("python3 -m unittest", r.stderr)
+
+    def test_repo_test_module_after_live_dir_refused(self):
+        r = self._run(f"sys.path.insert(0, {os.path.join(PY_DIR, 'tests')!r})\nimport tmp_tracking")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("python3 -m unittest", r.stderr)
+
+    def test_plain_imports_still_work(self):
+        r = self._run("import json, http.server, importlib")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("SONRA", r.stdout)
+
+    def test_real_dir_opt_in_allows_unittest(self):
+        r = self._run("import unittest", {"CLAUDEOPS_TEST_REAL_DIR": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
 class IsolationTest(unittest.TestCase):
     def test_state_dir_is_not_live_under_runner(self):
         for p in (paths.CLAUDEOPS_DIR, os.path.dirname(settings.SETTINGS_JSON), os.path.dirname(diaglog.diag_log_path())):
