@@ -9108,6 +9108,10 @@
 "test_steward_core_b.BrainAuthorityAndDeferTest.test_commit_push_merge_build_deploy_are_not_owner_only": [
 "brain_may_answer"
 ],
+"test_steward_core_b.BrainAuthorityAndDeferTest.test_held_answer_item_with_owner_words_is_answerable": [
+"_held_instruction_item",
+"brain_may_answer"
+],
 "test_steward_core_b.BrainAuthorityAndDeferTest.test_defer_reason": [
 "directive_defer_reason"
 ],

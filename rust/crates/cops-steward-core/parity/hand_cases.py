@@ -400,6 +400,13 @@ for t in ["STEWARD-NEXT: " + G2S(5) for _ in range(250)] + ["STEWARD-NEXT: " + "
 for t in ["İŞ İSTEĞİ (STEWARD-JOB): sql_readonly x sil", "İŞ İSTEĞİ (STEWARD-JOB): SQL_READONLY\u001cx", "İŞ İSTEĞİ (STEWARD-JOB): embed sil", "İŞ İSTEĞİ (STEWARD-JOB): ", "iş sql_readonly"]:
     add("is_readonly_job_request", {"text": t})
     add("brain_may_answer", {"q": Q("q", "p", t, routine=True)})
+# 28 Kas: motorun "aç ya da atla" maddesi (önekle başlar) sahibin cevabındaki sahip-yetkisi sözcükleriyle reddedilmez; önek
+# ortada/sonda ise eski kapı geçerli
+for t in [sw._HELD_ANSWER_PREFIX + " p projesi done/paused. Cevap: eski taslakları sil, kurulum notunu güncelle",
+          sw._HELD_ANSWER_PREFIX + " p: parola ve token yenilensin, sudo apt install yap",
+          "dosyayı sileyim mi? " + sw._HELD_ANSWER_PREFIX, " " + sw._HELD_ANSWER_PREFIX + " sil", sw._HELD_ANSWER_PREFIX]:
+    add("brain_may_answer", {"q": Q("q", "p", t, routine=True)})
+    add("brain_may_answer", {"q": Q("q", "p", t, routine=False)})
 for _ in range(500):
     qs = [Q(f"q{i}", rnd.choice(["p", "p", "z"]), rnd.choice(["STEWARD-DONE-CONFIRMED çelişti", "başka"]), status=rnd.choice(["answered", "answered", "open"]),
             answer=G2S(4), answered_at=rnd.choice([0.0, NOW - 5, NOW - 86399, NOW - 86400, NOW - 100]), ) for i in range(rnd.randint(0, 3))]

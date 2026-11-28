@@ -792,6 +792,18 @@ class BrainAuthorityAndDeferTest(unittest.TestCase):
         q = sw.Question(id="q6", project="ysf", text="sql_readonly ile tabloyu sileyim mi?", created_at=0.0, routine=True)
         self.assertFalse(sw.brain_may_answer(q)[0])
 
+    def test_held_answer_item_with_owner_words_is_answerable(self):
+        """28 Kas canlı (q20261127_*, 30 madde): motorun 'aç ya da atla' maddesi sahibin KENDİ cevabını alıntılar; içindeki
+        "sil/kurulum" sahibin talimatıdır, beynin kararı yalnız aç/atla. Önceden sahibe (cops) geri düşüyordu."""
+        q0 = sw.Question(id="q7", project="p", text="?", created_at=0.0, answer="eski taslakları sil, sonra kurulum notunu güncelle " * 2,
+                         answered_by="owner")
+        item = sw._held_instruction_item(q0)
+        self.assertTrue(item.startswith(sw._HELD_ANSWER_PREFIX))
+        self.assertEqual(sw.brain_may_answer(sw.Question(id="q8", project="p", text=item, created_at=0.0, routine=True)), (True, ""))
+        # önek ortada ya da sonda değilse eski kapı geçerli
+        q = sw.Question(id="q9", project="p", text="dosyayı sileyim mi? " + sw._HELD_ANSWER_PREFIX, created_at=0.0, routine=True)
+        self.assertFalse(sw.brain_may_answer(q)[0])
+
     def test_plain_routine_is_answerable(self):
         q = sw.Question(id="q3", project="cli", text="Hangi modelle, sırayla mı ayrı ajanla mı?", created_at=0.0, routine=True)
         self.assertEqual(sw.brain_may_answer(q), (True, ""))
